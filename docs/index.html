@@ -811,6 +811,61 @@
   }
 
   /* ============================================================
+     SCENE 5b — GETTING STARTED / SETUP
+     ============================================================ */
+  #scene-setup {
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+    padding: 100px 0 80px;
+  }
+  #scene-setup .display {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(32px, 4vw, 54px);
+    line-height: 1.1; letter-spacing: -.015em;
+    max-width: 800px; margin: 0 auto 12px;
+    color: var(--ink-0); text-align: center;
+  }
+  #scene-setup .display em {
+    font-style: italic;
+    background: linear-gradient(90deg, var(--accent-1), var(--lime));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  #scene-setup .sub {
+    font-family: var(--serif); font-size: clamp(16px, 1.4vw, 20px);
+    color: var(--ink-1); max-width: 600px; margin: 0 auto 40px;
+    line-height: 1.5; text-align: center;
+  }
+  .setup-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; max-width: 960px; margin: 0 auto;
+  }
+  .setup-card {
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 14px; padding: 24px 22px 20px;
+    text-align: left;
+  }
+  .setup-card h3 {
+    font-size: 17px; color: var(--ink-0); margin: 0 0 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .setup-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+  }
+  .setup-card p {
+    font-size: 14.5px; color: var(--ink-1); line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  .setup-card pre {
+    background: var(--bg-0); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px; margin: 0;
+    overflow-x: auto; font-size: 13px; line-height: 1.6;
+  }
+  .setup-card code { font-family: var(--mono); color: var(--lime-1); }
+
+  /* ============================================================
      SCENE 6 — CTA
      ============================================================ */
   #scene-cta {
@@ -999,6 +1054,7 @@
     <a href="#scene-proof">Proof</a>
     <a href="#scene-guardrails">Guardrails</a>
     <a href="#scene-flywheel">Flywheel</a>
+    <a href="#scene-setup">Setup</a>
     <a href="#scene-cta">Start</a>
   </nav>
 </header>
@@ -1515,6 +1571,36 @@
         <a class="btn btn-ghost reveal" data-delay="4" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/ZAVA.md" style="display:inline-block;">
           Read the technical briefing <span class="arrow">&rarr;</span>
         </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== SCENE 5b · GETTING STARTED ====================== -->
+  <section class="scene" id="scene-setup" aria-labelledby="setup-h">
+    <div class="wrap">
+      <p class="eyebrow reveal" style="display:inline-block;"><span class="dot"></span>Prerequisites</p>
+      <h2 id="setup-h" class="display reveal" data-delay="1">Set up in <em>two minutes</em></h2>
+      <p class="sub reveal" data-delay="2">Threadlight depends on building-block skills from <a href="https://aiappsgbb.github.io/awesome-gbb/" style="color:var(--accent-1);">awesome-gbb</a>. Install both.</p>
+
+      <div class="setup-grid reveal" data-delay="3">
+        <div class="setup-card">
+          <h3><span class="setup-num">1</span> Install the building blocks</h3>
+          <p>The <a href="https://aiappsgbb.github.io/awesome-gbb/" style="color:var(--accent-1);">awesome-gbb</a> plugin ships 27 foundational skills — Foundry agents, MCP servers, governance, deployment patterns. Threadlight orchestrates these.</p>
+          <pre><code>copilot plugin marketplace add aiappsgbb/awesome-gbb
+copilot plugin install awesome-gbb@awesome-gbb</code></pre>
+        </div>
+        <div class="setup-card">
+          <h3><span class="setup-num">2</span> Install Threadlight</h3>
+          <p>The pilot pipeline — eight skills that chain brief → design → deploy → demo into one session.</p>
+          <pre><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
+copilot plugin install threadlight@threadlight-skills</code></pre>
+        </div>
+        <div class="setup-card">
+          <h3><span class="setup-num">3</span> Azure tenant isolation</h3>
+          <p>If you target multiple Azure tenants, set up per-tenant config dirs before deploying. The <code>azure-tenant-isolation</code> skill (included in awesome-gbb) guides you.</p>
+          <pre><code>export AZURE_CONFIG_DIR=~/.azure-tenants/customer
+az login --tenant &lt;tenant-id&gt;</code></pre>
+        </div>
       </div>
     </div>
   </section>
