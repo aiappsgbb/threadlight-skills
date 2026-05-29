@@ -1,11 +1,19 @@
 {
-  "schema_version": "1.0",
+  "name": "threadlight-skills",
+  "owner": {
+    "name": "Microsoft AI Apps GBB",
+    "email": "aiappsgbb@microsoft.com"
+  },
+  "metadata": {
+    "description": "Threadlight pilot pipeline — 8 Copilot skills that take a customer engagement from brief to deployed Foundry agent in one session.",
+    "version": "1.0.0"
+  },
   "plugins": [
     {
       "name": "threadlight-skills",
-      "version": "1.0.0",
       "description": "Threadlight pilot pipeline — 8 Copilot skills that take a customer engagement from brief to deployed Foundry agent in one session.",
-      "path": "."
+      "version": "1.0.0",
+      "source": "."
     }
   ]
 }
