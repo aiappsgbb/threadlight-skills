@@ -12,7 +12,7 @@ description: >
   Teams bot deep dive (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
   GHCP SDK variant (use ghcp-hosted-agents), tenant/subscription isolation for azd (use azure-tenant-isolation).
 metadata:
-  version: "1.3.1"
+  version: "1.4.0"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -2866,6 +2866,41 @@ treats them identically.
 > **See `citadel-spoke-onboarding` skill** for the full step-by-step
 > onboarding procedure, APIM access contract details, and validation
 > notebook.
+
+---
+
+## Deploy-time failure-mode index (signature → action)
+
+**Lookup BEFORE running `az logs` / `azd ai agent monitor` blindly.** Most azd / agent errors have a known root cause and a known fix; matching the error signature here saves the 10-20 min of log-spelunking that re-derives a documented fix.
+
+This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time failure-mode index (10 from-scratch pilots, 17 + 9 MIDs captured). Threadlight's own deeper Gotchas table follows immediately below — when both apply, prefer the row here for the **fast lookup**, then jump to Gotchas for the **full forensic**.
+
+| # | Error signature (in az/azd output, container log, or portal) | 1-line action |
+|---|---|---|
+| **F-01** | `azd provision` fails with `BCP186: Unable to parse literal JSON value` or `invalid character '\\'` | Hardcode the array/object as a literal in `infra/main.bicepparam`; do NOT use `readEnvironmentVariable() + json()` (triple-escapes through shell → azd → Bicep → ARM). |
+| **F-02** | `UserError: Foundry Account capabilityHost Not Found` during provision | Set `ENABLE_CAPABILITY_HOST=false` in azd env. Refreshed-preview platform manages capabilityHost automatically; manual creation removed. |
+| **F-03** | `InsufficientQuota` for `gpt-5.4-mini` (or any model) on `azd provision` | Preflight via `az cognitiveservices usage list --location <region>`; default `capacity: 30` for shared-sub pilots (not 100). Try alt regions: `westus3`, `eastus2`, `northcentralus`. |
+| **F-04** | ACA app stuck on `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest` after `azd deploy` | Verify `azd-service-name: <service>` tag on the ACA module + matching `services.<service>` in `azure.yaml`. azd will swap the placeholder only when both match. |
+| **F-05** | `Image pull failed` < 60s after RBAC granted (per-ACA UAMI side) | RBAC propagation race; add `dependsOn: [rbac]` to the ACA module; wait 60-300s. |
+| **F-06** | `[ImageError] Failed to pull container image` (Foundry project MI side, after deploy step) | Foundry **project MI** (separate from per-ACA UAMI) needs `AcrPull` + `Container Registry Repository Reader` on the ACR. Wait 5-15 min if just granted. |
+| **F-07** | Agent invoke returns `DeploymentNotFound (404)` for a model whose container log shows a literal `{{...}}` mustache | Mustache not substituted. If you hand-edited `agent.yaml` directly, the manifest-time `{{VAR}}` is no longer a placeholder. Replace with the literal model name OR edit `agent.manifest.yaml` and let the scaffold re-substitute. |
+| **F-08** | `ValidationError authType:AAD` on `Microsoft.CognitiveServices/accounts/connections` PUT (App Insights connection) | Switch to ApiKey path. AAD authType is silently rejected on most Foundry account RP versions; ApiKey is the only working flow. |
+| **F-09** | Foundry AppIn connection PUT returns 200 but GET returns `credentials: null`; spans don't reach AppIn | Set `metadata.ConnectionString` explicitly on the AppIn connection in Bicep; OR use env-var passthrough workaround (underscored `APPLICATION_INSIGHTS_CONNECTION_STRING`). |
+| **F-10** | Agent container exits within 5s of startup with `ValueError: connection_string is required`; agent `status: error` | `container.py` is calling `configure_azure_monitor()` raw at module/main scope. Wrap in `_init_telemetry()` helper that no-ops on missing env / ImportError / SDK exception. The agent runs fine without telemetry — don't let telemetry init kill startup. |
+| **F-11** | Agent container log: `WARN APPLICATIONINSIGHTS_CONNECTION_STRING present but malformed (no '=')` | Same as F-10. Foundry runtime sometimes injects a malformed env var (missing the `InstrumentationKey=...;...` shape); validate `=` is present before `configure_azure_monitor()`. |
+| **F-12** | Foundry project MI / agent instance MI / blueprint MI all show 0 role assignments via `az role assignment list --assignee <pid> --all` after deploy | Deployer MI lacks `Microsoft.Authorization/roleAssignments/write`. Grant `User Access Administrator` (`18d7d88d-d35e-4fb5-a5c3-7773c20a72d9`) to the deployer MI, scoped to the Foundry account. |
+| **F-13** | Agent invoke returns `server_error` after manual RBAC grant; SDK calls fail with 401 | Agent instance MI needs `Cognitive Services OpenAI User` on the Foundry account (extension does NOT auto-assign). Pull MI from `azd ai agent show -o json \| jq -r '.instance_identity.principal_id'`. |
+| **F-14** | Backend `/chat` returns 503 "AGENT_ID is not set" | Bicep set ACA env var at provision time, when agent didn't exist yet → empty value stays baked. Switch to postdeploy hook: `az containerapp update --set-env-vars <AGENT>_ID=$(azd ai agent show -o json \| jq -r .name)`. |
+| **F-15** | Backend `/chat` returns 502 / 400 `API version not supported` | Don't use `AzureOpenAI(api_version="2025-04-01-preview")` against the project endpoint. Use direct `httpx.post` against `/api/projects/<p>/agents/<a>/endpoint/protocols/openai/responses?api-version=2025-11-15-preview`. |
+| **F-16** | `azd deploy <agent-service>` 404 with **double-slash URL**: `POST https://<acct>.services.ai.azure.com//agents/<name>/versions` | Bare account endpoint is the wrong target for `azd ai agent` extension AND for `FoundryChatClient`. Output BOTH forms from Bicep: bare account as `AZURE_AI_PROJECT_ENDPOINT` (for `azd ai agent` ext auto-derivation) AND project-scoped `'<acct>/api/projects/<projectName>'` as `FOUNDRY_PROJECT_ENDPOINT` (for SDK + direct REST). The double-slash signature means the consumer treated the bare-account string as already project-scoped. |
+| **F-17** | `azd ai agent` v0.1.34+ postdeploy hook fails: `AZURE_TENANT_ID is not set in the environment` | azd hooks run with cleaned env. Run `azd env set AZURE_TENANT_ID <id>` before `azd deploy` so postdeploy hooks see it. |
+| **F-18** | `azd ai agent show -o json` fields missing under `.identity.principalId` or `.id` doesn't match downstream service URLs | Extension v0.1.34 changed shape: use `.name` (bare agent name for URL construction) and `.instance_identity.principal_id` (NOT `.identity.principalId`). |
+| **F-19** | `azd ai agent` extension rejects manifest with `protocols` schema error | Schema requires `protocols:` as a plural list of `{protocol, version}`, NOT singular `protocol:`. |
+| **F-20** | `azd hook run postdeploy <service>` fails with `AZURE_TENANT_ID is not set` (or any other azd env var) | Same as F-17 — hooks get a cleaned env. `azd env set` whatever the hook reads BEFORE `azd deploy` triggers it. |
+| **F-21** | Agent invoke returns `session_not_ready` after 60s timeout; `azd ai agent show` says `status: active`; container logs show no errors | `from azure.identity import DefaultAzureCredential` (sync) passed to `FoundryChatClient(credential=...)` → SDK is async-only, sync credential's `get_token` doesn't satisfy `get_token_async` → first request hangs until session-ready timeout fires. **MUST** use `from azure.identity.aio import DefaultAzureCredential`. |
+| **F-22** | `azd deploy <agent-service>` succeeds Foundry `Create agent` + `Polling agent status`, then `failed invoking event handlers for 'postdeploy', failed to fetch agent version for <azd-service-name>/<version>: GET .../agents/<azd-service-name>/versions/<v> 404` | The agent IS deployed (`azd ai agent show -o json` confirms `status: active`). Extension's internal postdeploy event handler looks up by **azd service name** instead of `agent.yaml .name:` — 404. **User's own postdeploy hook never gets a chance to run.** Set `azure.yaml` `services.<service>` == `agent.yaml .name:` as workaround until upstream fix lands. |
+
+> **Sourcing.** This index is mirrored from [`aiappsgbb/agentic-loop`](https://github.com/aiappsgbb/agentic-loop) SKILL § Deploy-time failure-mode index. The 22 rows came from 10 from-scratch pilots over 6 days (May 2026): weather-agent, learn-assistant ×2, hybrid-mcp-agent, smb-credit-memo, contoso-claim-triage. When threadlight's own from-scratch runs surface NEW failure modes, add a row here AND cross-update agentic-loop.
 
 ---
 
