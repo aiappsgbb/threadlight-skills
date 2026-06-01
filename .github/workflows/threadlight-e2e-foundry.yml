@@ -266,6 +266,7 @@ jobs:
       # ── Post-run assertions ──────────────────────────────────────────
       - name: Assert agent deployed + responding
         if: success()
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           # threadlight-deploy may create the pilot DIRECTLY in $E2E_WORKSPACE
@@ -278,9 +279,15 @@ jobs:
           fi
           echo "Pilot dir: $PILOT_DIR"
           cd "$PILOT_DIR"
-          azd env get-values 2>/dev/null | grep -E "(AGENT|FOUNDRY)_" || true
-          AGENT_STATUS=$(azd ai agent show -o json 2>/dev/null | jq -r '.status' 2>/dev/null \
-                       || azd ai agent show "$(basename "$PILOT_DIR")" -o json 2>/dev/null | jq -r '.status' 2>/dev/null \
+          # Hard timeouts on every azd call because azd WILL block on interactive
+          # auth prompts when its own token cache has expired (run #26766613882:
+          # 'azd ai agent show' hung for 54 min waiting for input until the
+          # 60-min workflow timeout killed the whole job).
+          echo "----- azd env get-values -----"
+          timeout 30 azd env get-values 2>/dev/null | grep -E "(AGENT|FOUNDRY)_" || true
+          echo "----- azd ai agent show -----"
+          AGENT_STATUS=$(timeout 60 azd ai agent show -o json --no-prompt 2>/dev/null | jq -r '.status' 2>/dev/null \
+                       || timeout 60 azd ai agent show "$(basename "$PILOT_DIR")" -o json --no-prompt 2>/dev/null | jq -r '.status' 2>/dev/null \
                        || echo "no-agent")
           echo "Agent status: $AGENT_STATUS"
           [ "$AGENT_STATUS" = "active" ] || {
