@@ -1,0 +1,333 @@
+# .github/workflows/threadlight-e2e-foundry.yml
+#
+# Full E2E gate for the threadlight pilot pipeline. Drives a complete pilot
+# (threadlight-design → threadlight-deploy + invoke + threadlight-safe-check
+# + teardown) via Copilot CLI in a clean GH Actions runner, with model calls
+# routed to a Foundry account via BYOK.
+#
+# WHY THIS EXISTS
+# ===============
+# Ported from aiappsgbb/agentic-loop/.github/workflows/lean-auto-e2e-foundry.yml
+# (proven green on run #26752622265, 50m57s wallclock, all 16 steps ✅, both
+# demo scenarios passed live, clean teardown). The winning recipe — retry-on-429
+# wrapper + git-suppress prompt + per-run RG name — is reused verbatim because
+# it solved transient Foundry 429s observed on shared CI deployments.
+#
+# COST + TRIGGER MODEL
+# ====================
+# - workflow_dispatch only — no cron, no PR trigger. Each run spends
+#   ~$0.50-1 in Azure resources + ~$0.50 in model tokens. Fire deliberately.
+# - Always-teardown via `azd down --force --purge` in `if: always()` step;
+#   per-run RG name includes `github.run_id` to avoid collisions.
+#
+# BYOK ENV-VARS
+# =============
+# Routes ONLY through Foundry via `COPILOT_PROVIDER_*` (no GitHub Copilot
+# subscription used; no COPILOT_CLI_TOKEN). Env-var names verified against
+# released Copilot CLI 1.0.57-2 (cask 1.0.48). See
+# aiappsgbb/awesome-gbb/.github/workflows/copilot-cli-foundry-auth-smoke.yml
+# for the canonical auth smoke that proved this routing works.
+#
+# REQUIRED GH SECRETS (configure on aiappsgbb/threadlight-skills)
+# ================================================================
+# - AZURE_CLIENT_ID         — UAMI client ID with Cog Svcs OpenAI User on the
+#                             Foundry account + Contributor + User Access
+#                             Administrator at subscription scope
+# - AZURE_TENANT_ID         — Entra tenant for the CI subscription
+# - AZURE_SUBSCRIPTION_ID   — subscription containing the Foundry account
+# - AZURE_AI_ENDPOINT       — Foundry account base URL
+#                             (https://<account>.cognitiveservices.azure.com)
+#
+# See docs/ci/threadlight-e2e-setup.md for the one-time setup runbook.
+
+name: threadlight e2e — Foundry-routed
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Industry vertical for the pilot (drives threadlight-design's SPEC.md generation)"
+        required: false
+        default: "auto-claim-triage"
+        type: choice
+        options:
+          - auto-claim-triage
+          - credit-memo
+          - prior-auth-healthcare
+      region:
+        description: "Azure region for Foundry + ACA"
+        required: false
+        default: "westus3"
+      teardown:
+        description: "Run azd down at the end? Set false to keep resources for post-run debugging."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  E2E_RG_NAME: rg-threadlight-e2e-${{ github.run_id }}
+  E2E_WORKSPACE: /tmp/threadlight-e2e-${{ github.run_id }}
+  E2E_TENANT_ALIAS: ci
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # Budget: design 10min + deploy 15min + invoke 5min + teardown 15min + headroom
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Azure / Foundry auth ──────────────────────────────────────────
+      - name: Azure login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Foundry bearer token
+        run: |
+          set -euo pipefail
+          # `--resource` takes the v1 AAD audience (the SP appId URI). The
+          # v2 scope form (`<resource>/.default`) is only valid with `--scope`
+          # — passing it to `--resource` triggers AADSTS500011. `tr -d '\r\n'`
+          # defends against trailing whitespace from `-o tsv` that would
+          # otherwise surface as an opaque 401 from Foundry.
+          TOKEN=$(az account get-access-token \
+            --resource https://cognitiveservices.azure.com \
+            --query accessToken -o tsv | tr -d '\r\n')
+          echo "::add-mask::$TOKEN"
+          echo "COPILOT_PROVIDER_BEARER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      # ── Tool installs ────────────────────────────────────────────────
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install GitHub Copilot CLI
+        run: |
+          npm install -g @github/copilot
+          copilot --version
+
+      - name: Install azd + Bicep + azd ai agent extension
+        run: |
+          set -euo pipefail
+          curl -fsSL https://aka.ms/install-azd.sh | bash
+          azd version
+          az version
+          az bicep install
+          azd ext install azure.ai.agents || true
+          azd ext list 2>&1 | grep -i "azure.ai.agents" || true
+
+      # ── Tenant-isolation shim ─────────────────────────────────────────
+      # threadlight-deploy's Phase 0 (and the agentic-loop SKILL it cribs)
+      # reads ~/.azure-tenants/index.json to resolve a tenant alias.
+      # CI has no such file; write a minimal one with a "ci" alias.
+      # Means NO SKILL changes are required.
+      - name: Write tenant index shim
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.azure-tenants" "$HOME/.azd-tenants"
+          SUB_NAME=$(az account show --query name -o tsv)
+          cat > "$HOME/.azure-tenants/index.json" <<EOF
+          {
+            "version": 1,
+            "default_alias": "${{ env.E2E_TENANT_ALIAS }}",
+            "tenants": {
+              "${{ env.E2E_TENANT_ALIAS }}": {
+                "tenant_id": "${{ secrets.AZURE_TENANT_ID }}",
+                "description": "GH Actions CI alias for threadlight-e2e-foundry.yml",
+                "config_dir": null,
+                "azd_config_dir": null,
+                "default_subscription": "${SUB_NAME}",
+                "allowed_subscriptions": ["${SUB_NAME}"]
+              }
+            }
+          }
+          EOF
+          echo "Tenant index written:"
+          cat "$HOME/.azure-tenants/index.json"
+
+      # ── Workspace prep ────────────────────────────────────────────────
+      - name: Create fresh workspace
+        run: |
+          set -euo pipefail
+          mkdir -p "${E2E_WORKSPACE}/.github/skills"
+          # Symlink the threadlight skills from the checked-out repo so the
+          # agent can read them via Skill tool. Also symlink agentic-loop
+          # SKILLs if available (defaults this repo cribs from them).
+          for s in threadlight-design threadlight-deploy threadlight-safe-check \
+                   threadlight-local-test threadlight-event-triggers \
+                   threadlight-hitl-patterns threadlight-demo-data-factory \
+                   threadlight-workspace-ui; do
+            ln -snf "${{ github.workspace }}/skills/${s}" \
+                    "${E2E_WORKSPACE}/.github/skills/${s}"
+          done
+          ls -la "${E2E_WORKSPACE}/.github/skills/"
+
+      # ── Drive threadlight via Copilot CLI ────────────────────────────
+      - name: Drive threadlight design → deploy → invoke
+        id: drive
+        env:
+          # BYOK → Foundry. Names verified in agentic-loop's auth-smoke.
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: gpt-5.4-mini
+          COPILOT_PROVIDER_WIRE_MODEL: gpt-5.4-mini
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+          AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
+          AZURE_ENV_NAME: ci-${{ github.run_id }}
+          AZURE_LOCATION: ${{ inputs.region }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/copilot-logs
+
+          # The two extra clauses ("do NOT run git init/commit", "skip
+          # docs/verify.md SHA tracking") prevent self-inflicted failures
+          # observed in earlier agentic-loop CI runs (agent attempted
+          # unsolicited git commit in a /tmp non-repo dir + then chained
+          # into a Foundry 429 retry loop).
+          PROMPT="Drive the threadlight pipeline end-to-end for an enterprise pilot in the ${{ inputs.scenario }} vertical (customer: Contoso, tenant alias: ${E2E_TENANT_ALIAS}, env: ci-${{ github.run_id }}, region: ${{ inputs.region }}, workspace: ${E2E_WORKSPACE}). Use threadlight-design to produce SPEC.md + agent architecture + demo scenarios; then threadlight-deploy to scaffold azd + Bicep + container.py and run azd up; then threadlight-safe-check phase=post-deploy; then invoke the deployed agent with at least 2 spec demo scenarios. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
+
+          echo "----- driver prompt -----"
+          echo "$PROMPT"
+          echo "-------------------------"
+
+          # Wrap copilot CLI in a retry loop. The Copilot CLI's internal retry
+          # policy (5 attempts / ~10s total backoff) gives up too quickly for
+          # a 20+ min agent session when the shared Foundry deployment is
+          # transiently 429-throttled. This wrapper adds an outer retry.
+          # 3 attempts × ~30 min each = matched to timeout-minutes: 60.
+          for attempt in 1 2 3; do
+            echo "===== Copilot CLI attempt $attempt of 3 ====="
+            START_TS=$(date +%s)
+            if copilot \
+                 --allow-all-tools \
+                 --allow-all-paths \
+                 --log-dir /tmp/copilot-logs \
+                 --log-level info \
+                 --no-custom-instructions \
+                 --prompt "$PROMPT" \
+                 2>&1 | tee -a /tmp/threadlight-e2e.log; then
+              ELAPSED=$(($(date +%s) - START_TS))
+              echo "===== Attempt $attempt succeeded in ${ELAPSED}s ====="
+              exit 0
+            fi
+            ELAPSED=$(($(date +%s) - START_TS))
+            # If session ran > 12 min before failing, the agent did real work
+            # and a retry would just spend more money. Stop here.
+            if [ $ELAPSED -gt 720 ]; then
+              echo "===== Attempt $attempt failed after ${ELAPSED}s of real work; not retrying ====="
+              exit 1
+            fi
+            # Only retry on the specific 429/transient signature
+            if ! tail -200 /tmp/threadlight-e2e.log | grep -qE "Too Many Requests|CAPIError|transient API error|429"; then
+              echo "===== Non-transient failure detected; not retrying ====="
+              exit 1
+            fi
+            BACKOFF=$((60 * attempt))
+            echo "===== Attempt $attempt failed on transient error after ${ELAPSED}s; sleeping ${BACKOFF}s ====="
+            sleep $BACKOFF
+          done
+          echo "===== All 3 attempts exhausted ====="
+          exit 1
+
+      # ── Post-run assertions ──────────────────────────────────────────
+      - name: Assert agent deployed + responding
+        if: success()
+        run: |
+          set -euo pipefail
+          # threadlight-deploy may create the pilot DIRECTLY in $E2E_WORKSPACE
+          # or in a subdirectory. Find the actual pilot dir.
+          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          if [ -z "$PILOT_DIR" ]; then
+            echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
+            ls -la "$E2E_WORKSPACE" 2>&1 || true
+            exit 1
+          fi
+          echo "Pilot dir: $PILOT_DIR"
+          cd "$PILOT_DIR"
+          azd env get-values 2>/dev/null | grep -E "(AGENT|FOUNDRY)_" || true
+          AGENT_STATUS=$(azd ai agent show -o json 2>/dev/null | jq -r '.status' 2>/dev/null \
+                       || azd ai agent show "$(basename "$PILOT_DIR")" -o json 2>/dev/null | jq -r '.status' 2>/dev/null \
+                       || echo "no-agent")
+          echo "Agent status: $AGENT_STATUS"
+          [ "$AGENT_STATUS" = "active" ] || {
+            echo "❌ Agent did not reach status=active"
+            exit 1
+          }
+          echo "✅ Agent active"
+
+      - name: Snapshot deployed resources
+        if: always()
+        run: |
+          set +e
+          echo "----- resources in ${E2E_RG_NAME} -----"
+          az resource list \
+            --resource-group "${E2E_RG_NAME}" \
+            --query "[].{name:name, type:type, location:location}" \
+            -o table > /tmp/resource-snapshot.txt 2>&1 || true
+          cat /tmp/resource-snapshot.txt
+
+      # ── Always-teardown ───────────────────────────────────────────────
+      - name: Teardown — azd down --force --purge
+        if: always() && inputs.teardown == 'true'
+        timeout-minutes: 20
+        run: |
+          set +e
+          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          if [ -z "$PILOT_DIR" ] || [ ! -d "$PILOT_DIR/.azure" ]; then
+            echo "No pilot dir with .azure found — azd never initialized; skipping azd down."
+            az group delete --name "${E2E_RG_NAME}" --yes --no-wait 2>/dev/null || true
+            exit 0
+          fi
+          echo "Tearing down pilot at: $PILOT_DIR"
+          cd "$PILOT_DIR"
+          azd down --force --purge --no-prompt 2>&1 | tee /tmp/azd-down.log
+          DOWN_EXIT=$?
+          if [ $DOWN_EXIT -ne 0 ]; then
+            echo "⚠️ azd down exited $DOWN_EXIT — attempting raw RG delete as fallback"
+            az group delete --name "${E2E_RG_NAME}" --yes --no-wait || true
+          fi
+
+      - name: Fallback teardown — async RG delete
+        if: always() && inputs.teardown == 'true'
+        run: |
+          set +e
+          EXISTS=$(az group exists --name "${E2E_RG_NAME}" -o tsv)
+          if [ "$EXISTS" = "true" ]; then
+            echo "RG still exists after azd down — kicking off async delete"
+            az group delete --name "${E2E_RG_NAME}" --yes --no-wait || true
+          else
+            echo "✓ RG ${E2E_RG_NAME} already gone"
+          fi
+
+      # ── Artifact upload ──────────────────────────────────────────────
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: threadlight-e2e-${{ github.run_id }}
+          path: |
+            ${{ env.E2E_WORKSPACE }}/specs/
+            ${{ env.E2E_WORKSPACE }}/docs/
+            /tmp/threadlight-e2e.log
+            /tmp/copilot-logs/
+            /tmp/resource-snapshot.txt
+            /tmp/azd-down.log
+          if-no-files-found: warn
+          retention-days: 7
