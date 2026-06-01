@@ -136,6 +136,24 @@ jobs:
           azd ext install azure.ai.agents || true
           azd ext list 2>&1 | grep -i "azure.ai.agents" || true
 
+      # ── azd auth via OIDC federated credential ────────────────────────
+      # azd has its OWN auth chain — `azure/login@v2` only handles `az`.
+      # Run #26769968309 caught this: agent reported
+      # 'not logged in, run `azd auth login` to login to Azure'
+      # at the deploy stage. Explicit azd auth login with the same
+      # federated credential the rest of the job uses.
+      - name: azd auth login (federated OIDC)
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+          azd auth login --check-status
+
       # ── Tenant-isolation shim ─────────────────────────────────────────
       # threadlight-deploy's Phase 0 (and the agentic-loop SKILL it cribs)
       # reads ~/.azure-tenants/index.json to resolve a tenant alias.
