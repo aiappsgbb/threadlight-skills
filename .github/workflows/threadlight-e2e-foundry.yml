@@ -182,6 +182,21 @@ jobs:
           done
           ls -la "${E2E_WORKSPACE}/.github/skills/"
 
+      # ── Install the checked-out repo as a local Copilot plugin ───────
+      # Even with .github/skills/ symlinks, the Copilot CLI's Skill tool
+      # only finds skills that are formally registered as plugins.
+      # (Run #26766613882 caught this: workflow symlinks created threadlight-auto
+      # but `skill(threadlight-auto)` returned "Skill not found".)
+      # Install the local checkout as a plugin so all skills — incl. brand-new
+      # ones like threadlight-auto not yet on the marketplace — resolve.
+      - name: Install local repo as Copilot plugin
+        run: |
+          set -euo pipefail
+          copilot plugin install "${{ github.workspace }}" 2>&1 | tee /tmp/plugin-install.log
+          echo ""
+          echo "===== Installed plugins ====="
+          copilot plugin list 2>&1 | head -20
+
       # ── Drive threadlight via Copilot CLI ────────────────────────────
       - name: Drive threadlight design → deploy → invoke
         id: drive
