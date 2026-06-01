@@ -54,6 +54,14 @@ on:
           - auto-claim-triage
           - credit-memo
           - prior-auth-healthcare
+      driver:
+        description: "Which driver to use — `manual` calls threadlight-design → -deploy → -safe-check directly; `auto` uses threadlight-auto SKILL to orchestrate all stages"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - manual
       region:
         description: "Azure region for Foundry + ACA"
         required: false
@@ -168,7 +176,7 @@ jobs:
           for s in threadlight-design threadlight-deploy threadlight-safe-check \
                    threadlight-local-test threadlight-event-triggers \
                    threadlight-hitl-patterns threadlight-demo-data-factory \
-                   threadlight-workspace-ui; do
+                   threadlight-workspace-ui threadlight-auto; do
             ln -snf "${{ github.workspace }}/skills/${s}" \
                     "${E2E_WORKSPACE}/.github/skills/${s}"
           done
@@ -196,12 +204,15 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/copilot-logs
 
-          # The two extra clauses ("do NOT run git init/commit", "skip
-          # docs/verify.md SHA tracking") prevent self-inflicted failures
-          # observed in earlier agentic-loop CI runs (agent attempted
-          # unsolicited git commit in a /tmp non-repo dir + then chained
-          # into a Foundry 429 retry loop).
-          PROMPT="Drive the threadlight pipeline end-to-end for an enterprise pilot in the ${{ inputs.scenario }} vertical (customer: Contoso, tenant alias: ${E2E_TENANT_ALIAS}, env: ci-${{ github.run_id }}, region: ${{ inputs.region }}, workspace: ${E2E_WORKSPACE}). Use threadlight-design to produce SPEC.md + agent architecture + demo scenarios; then threadlight-deploy to scaffold azd + Bicep + container.py and run azd up; then threadlight-safe-check phase=post-deploy; then invoke the deployed agent with at least 2 spec demo scenarios. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
+          # Driver-switch: 'auto' uses the new threadlight-auto SKILL; 'manual'
+          # tells the agent to drive design → deploy → safe-check → invoke directly.
+          # Both paths fire the same threadlight-* sub-skills + benefit from the
+          # F-01..F-22 failure-mode index in threadlight-deploy.
+          if [ "${{ inputs.driver }}" = "auto" ]; then
+            PROMPT="Use the threadlight-auto skill to build a pilot: scenario=${{ inputs.scenario }}, customer=Contoso, tenant=${E2E_TENANT_ALIAS}, env=ci-${{ github.run_id }}, region=${{ inputs.region }}, workspace=${E2E_WORKSPACE}. Drive design, deploy, safe-check post-deploy stages and invoke the deployed agent with at least 2 spec demo scenarios before reporting back. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
+          else
+            PROMPT="Drive the threadlight pipeline end-to-end for an enterprise pilot in the ${{ inputs.scenario }} vertical (customer: Contoso, tenant alias: ${E2E_TENANT_ALIAS}, env: ci-${{ github.run_id }}, region: ${{ inputs.region }}, workspace: ${E2E_WORKSPACE}). Use threadlight-design to produce SPEC.md + agent architecture + demo scenarios; then threadlight-deploy to scaffold azd + Bicep + container.py and run azd up; then threadlight-safe-check phase=post-deploy; then invoke the deployed agent with at least 2 spec demo scenarios. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
+          fi
 
           echo "----- driver prompt -----"
           echo "$PROMPT"
