@@ -154,6 +154,30 @@ jobs:
           azd ext install azure.ai.agents || true
           azd ext list 2>&1 | grep -i "azure.ai.agents" || true
 
+      # ── Python + Pattern 0 install ────────────────────────────────────
+      # Workshop §4.3 needs python 3.13 (per §2 prereqs) and the
+      # threadlight_quickstart package installed with the [aoai] extra
+      # (pulls agent-framework[openai] for the AzureOpenAIChatClient path
+      # the workshop documents). We pre-install here rather than letting
+      # the agent do it inside §4.3, because:
+      #   - faster (~1 min vs 5+ min of agent self-exec)
+      #   - deterministic (no model variance in dep-resolution prompts)
+      #   - lets the workflow-owned --info/--check assert step run cleanly
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install threadlight_quickstart [aoai]
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e \
+            "${{ github.workspace }}/skills/threadlight-local-test/references/quickstart[aoai]"
+          # Sanity: importable + correct entry point
+          python -c "import threadlight_quickstart; print('threadlight_quickstart', threadlight_quickstart.__file__)"
+          python -m threadlight_quickstart --help | head -20
+
       # ── azd auth via OIDC federated credential ────────────────────────
       # azd has its OWN auth chain — `azure/login@v3.0.0` only handles `az`.
       # Run #26769968309 caught this: agent reported
