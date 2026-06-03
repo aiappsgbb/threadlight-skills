@@ -22,6 +22,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ._sample_data import extract_records
+
 
 class PoCLayoutError(RuntimeError):
     """Raised when the cwd doesn't look like a threadlight PoC."""
@@ -98,7 +100,8 @@ def discover(start: Path | str | None = None) -> PoCLayout:
             "Re-run threadlight-demo-data-factory or hand-author at least one entity."
         )
 
-    # Validate each sample-data file is a JSON list of dict records.
+    # Validate each sample-data file is a JSON list of dict records OR a
+    # {"_meta", "records"} envelope (see _sample_data.extract_records).
     for path in sample_data_files:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -106,10 +109,10 @@ def discover(start: Path | str | None = None) -> PoCLayout:
             raise PoCLayoutError(
                 f"sample-data file is not valid JSON: {path}\n  {exc}"
             ) from exc
-        if not isinstance(data, list):
-            raise PoCLayoutError(
-                f"sample-data file must be a JSON array (got {type(data).__name__}): {path}"
-            )
+        try:
+            extract_records(data, path)
+        except ValueError as exc:
+            raise PoCLayoutError(str(exc)) from exc
 
     skills_dir = root / "src" / "agent" / "skills"
     skill_subdirs: tuple[Path, ...] = ()

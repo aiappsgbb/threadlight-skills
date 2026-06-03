@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from ._sample_data import extract_records
+
 log = logging.getLogger(__name__)
 
 
@@ -40,10 +42,9 @@ class InMemoryStore:
     @classmethod
     def load(cls, source: Path) -> "InMemoryStore":
         raw = json.loads(source.read_text(encoding="utf-8"))
-        if not isinstance(raw, list):
-            raise ValueError(f"{source} must be a JSON array")
+        records = extract_records(raw, source)
         store = cls(name=source.stem, source=source)
-        for i, rec in enumerate(raw):
+        for i, rec in enumerate(records):
             if not isinstance(rec, dict):
                 raise ValueError(
                     f"{source}[{i}] must be an object, got {type(rec).__name__}"
