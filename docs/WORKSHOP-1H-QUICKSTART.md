@@ -74,7 +74,7 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **0–5** | Welcome + frame | Walk §1 together: what we'll build and the vocabulary heads-up. | Slide-less; just the doc. |
 | **5–10** | Validate prereqs | Run the T-1h prompt (§2). | Green tool output in Copilot CLI. |
 | **10–15** | Install both plugins | Prompt §4.1. | Plugin list shows both. |
-| **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
+| **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
 | **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
 | **55–60** | Preview `threadlight-deploy` + `azd up` + Q&A | Prompt: *"open the Tech Stack section of `~/Repos/workshop/returns-triage/specs/SPEC.md` and walk me through what `threadlight-deploy` will generate and what `azd up` will provision when we run them in §6"*. Name what's coming: Foundry account + project, MCP Container App, hosted-agent container, Cosmos. Point at `threadlight-deploy`, `threadlight-safe-check`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. §6 is the take-home recipe. | "OK, one prompt stands all of that up. Got it." |
@@ -98,7 +98,7 @@ every tool call so you can see what's running.
 
 ### 4.2 Design the use case live
 
-> use the threadlight-design skill in fast-PoC mode to design a retail returns-triage process in ~/Repos/workshop/returns-triage — answer its setup questions interactively as it asks them
+> use the threadlight-design skill in fast-PoC mode to design a retail returns-triage process in ~/Repos/workshop/returns-triage — answer its setup questions interactively as it asks them, and skip browser previews of any generated demo or sales-kit HTML
 
 Fast-PoC asks 2–3 essentials, assumes sensible defaults, and produces
 everything in one pass. The live design conversation **is** the demo —
@@ -159,6 +159,14 @@ on your own AOAI later.
 
 > create a uv 3.13 venv inside ~/Repos/workshop/returns-triage, activate it, and reinstall the threadlight-local-test pattern 0 quickstart package into it
 
+### 5.5 Copilot CLI asks to install Playwright mid-design
+
+Symptom: at the end of `threadlight-design`, Copilot CLI tries to render
+`specs/demo-deck.html` in a browser, can't find Playwright, and offers to
+install it (~3 min). Say no — the artifact doesn't need a real render.
+
+> skip the playwright install and the browser preview — just `cat` or `view` any generated HTML instead, and continue
+
 ---
 
 ## 6. After the workshop: `azd up`
@@ -183,6 +191,10 @@ Same surface as the workshop: Copilot CLI prompts.
 Provisions the resource group, creates the Foundry account + project, builds
 and deploys the MCP Container App, builds the hosted-agent container remotely,
 and resolves `${SERVICE_MCP_FQDN}` into the agent environment.
+
+Expect ~3 min of `azure-tenant-isolation` handshake (tenant index lookup,
+subscription assertion, `AZURE_CONFIG_DIR` setup) **before** provisioning
+actually starts. That's the safety gate, not a hang.
 
 ### 6.4 Smoke test
 
