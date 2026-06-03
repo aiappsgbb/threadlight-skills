@@ -1,22 +1,17 @@
 ---
 name: threadlight-auto
 description: >
-  Full-auto driver for the Threadlight pilot pipeline. Invoke with a single freeform
-  prompt ("Build me an auto-claim triage agent for Contoso Mutual, tenant=fruocco")
-  and it drives Stage 0 preflight → threadlight-design → (optional) threadlight-local-test
-  → threadlight-deploy → threadlight-safe-check → live invoke → optional Sell-kit, all
-  end-to-end. Auto-continues at every gate. HARD STOPS only on tenant assertion failure
-  or quota exhaustion across all probed regions. Supports resumption via
-  `.threadlight/auto-state.json` freshness detection. Smart-recovers from the 3 most
-  common deploy failures (InsufficientQuota → alt-region probe; RBAC race → wait+retry;
-  ImageError → re-grant project MI AcrPull). Wraps the existing threadlight-* skills
-  — does NOT replace them; SEs who already know the per-skill chain should keep
-  invoking those directly.
-  USE FOR: full-auto pilot drive, one-prompt threadlight, for-dummies threadlight,
-  resume failed deploy, demo-in-one-session, autopilot, threadlight orchestrator,
-  drive the whole chain, build pilot end-to-end.
-  DO NOT USE FOR: fine-grained per-stage control (use threadlight-design / -deploy / -safe-check
-  directly), production CI/CD (this is a pilot driver), single-stage iteration.
+  Full-auto driver for the Threadlight pilot pipeline. One freeform prompt
+  ("Build me an auto-claim triage agent for Contoso Mutual") drives
+  threadlight-design → (optional) threadlight-local-test → threadlight-deploy
+  → threadlight-safe-check → live invoke. Auto-continues at every gate;
+  HARD STOPS on tenant assertion failure or quota exhaustion. Resumes from
+  `.threadlight/auto-state.json`. Smart-recovers from quota, RBAC race, and
+  ImagePull deploy failures. Wraps existing threadlight-* skills.
+  USE FOR: full-auto pilot drive, one-prompt threadlight, resume failed deploy,
+  demo-in-one-session, autopilot, threadlight orchestrator.
+  DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
+  -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
   version: "1.0.0"
 ---
