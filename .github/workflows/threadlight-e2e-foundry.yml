@@ -215,6 +215,23 @@ jobs:
           echo "===== Installed plugins ====="
           copilot plugin list 2>&1 | head -20
 
+      # Fail-fast gate: catches silent loader-drop bugs (run #26772059599)
+      # where skill(<name>) returned "Skill not found" but the agent fell
+      # back to Read on SKILL.md, masking the failure as "success".
+      - name: Smoke-check Skill-tool discovery
+        env:
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: gpt-5.4-mini
+          COPILOT_PROVIDER_WIRE_MODEL: gpt-5.4-mini
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+          # COPILOT_PROVIDER_BEARER_TOKEN already exported to $GITHUB_ENV
+          # at the "Get Foundry bearer token" step (line ~116).
+        run: ./scripts/ci/skill-discovery-smoke.sh
+        timeout-minutes: 10
+
       # ── Drive threadlight via Copilot CLI ────────────────────────────
       - name: Drive threadlight design → deploy → invoke
         id: drive
