@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
 # scripts/ci/skill-discovery-smoke.sh
 #
-# Fail-fast gate: asserts the Copilot CLI can load every skill under
-# skills/ via the Skill tool. Catches the silent loader-drop regression
-# first observed in run #26772059599 where skill(threadlight-auto)
-# returned "Skill not found" but the workflow passed because the agent
-# fell back to Read.
+# Fail-fast gate: asserts every skill under skills/ is registered in the
+# Copilot CLI's Skill-tool catalog. Catches the silent loader-drop
+# regression first observed in run #26772059599 where the agent fell
+# back to Read on SKILL.md when skill(<name>) returned "Skill not found",
+# masking the failure as "success".
+#
+# Protocol: `copilot --output-format json` emits JSONL on stdout including
+# `session.skills_loaded` events whose `data.skills` is the registered
+# catalog as `[{name, ...}, ...]` or `[name, ...]`. We parse the last
+# non-empty event and diff against the on-disk skills/ directory listing.
+#
+# This takes the model out of the assertion path entirely: ~10s,
+# deterministic, no prompt formatting variance.
 #
 # Usage: scripts/ci/skill-discovery-smoke.sh
-# Exits 0 if every skill is discoverable; 1 on first failure.
+# Exits 0 if every skill is present in the registry; 1 otherwise.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# Cross-platform timeout (Linux ships 'timeout'; macOS needs coreutils)
+# --- Requirements ----------------------------------------------------------
+for cmd in jq copilot; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "::error::Required command not on PATH: $cmd" >&2
+    exit 1
+  }
+done
+
 if command -v timeout >/dev/null 2>&1; then
   TIMEOUT=timeout
 elif command -v gtimeout >/dev/null 2>&1; then
@@ -23,46 +38,59 @@ else
   exit 1
 fi
 
-if ! command -v copilot >/dev/null 2>&1; then
-  echo "::error::copilot CLI not found on PATH. Install: npm install -g @github/copilot" >&2
+# --- Expected: every directory under skills/ -------------------------------
+mapfile -t EXPECTED < <(find skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+[[ ${#EXPECTED[@]} -gt 0 ]] || { echo "::error::No skill directories under skills/" >&2; exit 1; }
+echo "Expecting ${#EXPECTED[@]} skills under skills/: ${EXPECTED[*]}"
+
+# --- One Copilot call → save JSONL for artifact upload ---------------------
+mkdir -p smoke-outputs
+LOG=smoke-outputs/discovery.jsonl
+
+echo "Calling copilot to enumerate Skill-tool registry (JSON output mode)..."
+rc=0
+"$TIMEOUT" 120 copilot \
+  --output-format json \
+  --no-color --silent --stream off \
+  --no-custom-instructions --allow-all-tools \
+  -p 'reply with the single word: ok' \
+  > "$LOG" 2>&1 || rc=$?
+
+if [[ $rc -ne 0 ]]; then
+  echo "::error::copilot CLI exited $rc (timeout=124, oom=137). First 80 lines of output:" >&2
+  head -80 "$LOG" >&2 || true
+  exit "$rc"
+fi
+
+# --- Parse: last session.skills_loaded with non-empty catalog --------------
+ACTUAL=$(
+  grep -F '"type":"session.skills_loaded"' "$LOG" \
+    | jq -r 'select(.data.skills | length > 0) | .data.skills | map(.name // .)[]' \
+    2>/dev/null | sort -u || true
+)
+
+if [[ -z "$ACTUAL" ]]; then
+  echo "::error::No session.skills_loaded events with non-empty catalog in $LOG" >&2
+  echo "First 80 lines of CLI output:" >&2
+  head -80 "$LOG" >&2 || true
   exit 1
 fi
 
-mapfile -t SKILLS < <(find skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
-[[ ${#SKILLS[@]} -gt 0 ]] || { echo "::error::No skills under skills/" >&2; exit 1; }
+ACTUAL_COUNT=$(echo "$ACTUAL" | wc -l | tr -d ' ')
+echo "Registry reports $ACTUAL_COUNT skill(s) total."
 
-echo "Probing ${#SKILLS[@]} skills: ${SKILLS[*]}"
+# --- Diff expected vs actual ----------------------------------------------
+MISSING=$(comm -23 <(printf '%s\n' "${EXPECTED[@]}") <(echo "$ACTUAL") || true)
 
-FAILED=()
-for skill in "${SKILLS[@]}"; do
-  # Ask the agent to call Skill and quote the literal 'name:' value from
-  # the SKILL.md frontmatter. If the agent paraphrases the description
-  # but quotes the literal name field, we get a hallucination-resistant
-  # signal that the Skill tool actually returned file content.
-  prompt="Call the Skill tool with name=\"$skill\". If the tool returns the skill's content, find the line in the frontmatter that starts with 'name:' and reply EXACTLY: ECHO:$skill:<the literal name value>. If the tool returns 'Skill not found' or any error, reply EXACTLY: MISSING:$skill. Do not use any other tool. Do not call Read."
-
-  out=""
-  exit_code=0
-  out=$($TIMEOUT 60 copilot --no-custom-instructions --allow-all-tools -p "$prompt" 2>&1) || exit_code=$?
-
-  if [[ $exit_code -eq 124 || $exit_code -eq 137 ]]; then
-    echo "  ⏱ $skill TIMEOUT after 60s (exit $exit_code)"
-    FAILED+=("$skill(timeout)")
-    continue
-  fi
-
-  if grep -Eq "^ECHO:${skill}:[[:space:]]*${skill}[[:space:]]*\$" <<<"$out"; then
-    echo "  ✓ $skill"
-  else
-    echo "  ✗ $skill (copilot exit=$exit_code)"
-    echo "    last 5 lines of output: $(echo "$out" | tail -5 | tr '\n' '|')"
-    FAILED+=("$skill")
-  fi
-done
-
-if [[ ${#FAILED[@]} -gt 0 ]]; then
-  echo "::error::${#FAILED[@]} skill(s) failed discovery: ${FAILED[*]}" >&2
+if [[ -n "$MISSING" ]]; then
+  echo "::error::Skill(s) present under skills/ but MISSING from Copilot CLI registry:" >&2
+  echo "$MISSING" | sed 's/^/  - /' >&2
+  echo "" >&2
+  echo "Registered skills matching threadlight-* (for context):" >&2
+  echo "$ACTUAL" | grep -E '^threadlight-' | sed 's/^/  + /' >&2 || echo "  (none)" >&2
+  echo "" >&2
+  echo "Full discovery JSONL saved to: $LOG" >&2
   exit 1
 fi
 
-echo "All ${#SKILLS[@]} skills discoverable."
+echo "✓ All ${#EXPECTED[@]} skill(s) under skills/ are present in the Copilot CLI registry."

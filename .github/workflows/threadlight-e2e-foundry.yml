@@ -74,6 +74,14 @@ on:
         options:
           - "true"
           - "false"
+      mode:
+        description: "full = smoke + drive + assert + teardown (~$1/run); smoke-only = registry discovery gate only (~$0/run, ~30s, no Foundry/Azure resource cost)"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - full
+          - smoke-only
 
 permissions:
   id-token: write
@@ -224,9 +232,18 @@ jobs:
           echo "===== Installed plugins ====="
           copilot plugin list 2>&1 | head -20
 
-      # Fail-fast gate: catches silent loader-drop bugs (run #26772059599)
-      # where skill(<name>) returned "Skill not found" but the agent fell
-      # back to Read on SKILL.md, masking the failure as "success".
+      # Fail-fast gate: asserts every directory under skills/ is registered
+      # in the Copilot CLI's Skill-tool catalog. Catches the silent loader-
+      # drop regression first observed in run #26772059599, where the agent
+      # fell back to Read on SKILL.md when skill(<name>) returned
+      # "Skill not found", masking the failure as "success".
+      #
+      # Protocol: `copilot --output-format json` emits JSONL on stdout
+      # including `session.skills_loaded` events whose `data.skills` is
+      # the registered catalog. The smoke script parses the last non-empty
+      # event and diffs against `find skills/ -mindepth 1 -maxdepth 1`.
+      # No model assertions, no per-skill ECHO prompts — ~30s, deterministic,
+      # no output-formatting variance under Foundry routing.
       - name: Smoke-check Skill-tool discovery
         env:
           COPILOT_PROVIDER_TYPE: azure
@@ -239,11 +256,12 @@ jobs:
           # COPILOT_PROVIDER_BEARER_TOKEN already exported to $GITHUB_ENV
           # at the "Get Foundry bearer token" step (line ~116).
         run: ./scripts/ci/skill-discovery-smoke.sh
-        timeout-minutes: 10
+        timeout-minutes: 5
 
       # ── Drive threadlight via Copilot CLI ────────────────────────────
       - name: Drive threadlight design → deploy → invoke
         id: drive
+        if: inputs.mode != 'smoke-only'
         env:
           # BYOK → Foundry. Names verified in agentic-loop's auth-smoke.
           COPILOT_PROVIDER_TYPE: azure
@@ -324,7 +342,7 @@ jobs:
 
       # ── Post-run assertions ──────────────────────────────────────────
       - name: Assert agent deployed + responding
-        if: success()
+        if: success() && inputs.mode != 'smoke-only'
         timeout-minutes: 3
         run: |
           set -euo pipefail
@@ -356,7 +374,7 @@ jobs:
           echo "✅ Agent active"
 
       - name: Snapshot deployed resources
-        if: always()
+        if: always() && inputs.mode != 'smoke-only'
         run: |
           set +e
           echo "----- resources in ${E2E_RG_NAME} -----"
@@ -368,7 +386,7 @@ jobs:
 
       # ── Always-teardown ───────────────────────────────────────────────
       - name: Teardown — azd down --force --purge
-        if: always() && inputs.teardown == 'true'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
         timeout-minutes: 20
         run: |
           set +e
@@ -388,7 +406,7 @@ jobs:
           fi
 
       - name: Fallback teardown — async RG delete
-        if: always() && inputs.teardown == 'true'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
         run: |
           set +e
           EXISTS=$(az group exists --name "${E2E_RG_NAME}" -o tsv)
@@ -412,5 +430,6 @@ jobs:
             /tmp/copilot-logs/
             /tmp/resource-snapshot.txt
             /tmp/azd-down.log
+            smoke-outputs/
           if-no-files-found: warn
           retention-days: 7
