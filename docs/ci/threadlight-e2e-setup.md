@@ -26,6 +26,19 @@ az identity federated-credential create \
   --audiences "api://AzureADTokenExchange"
 ```
 
+> **For each additional branch you'll trigger `workflow_dispatch` from**, create one more fed-cred — Microsoft Entra ID does not support wildcards in the GitHub Actions OIDC `ref` subject. Slashes are not allowed in the federated-credential `--name`, so replace them with `-`:
+>
+> ```bash
+> BRANCH=my/feature-branch
+> az identity federated-credential create \
+>   --name "github-aiappsgbb-threadlight-skills-$(echo $BRANCH | tr / -)" \
+>   --identity-name uami-awesome-gbb-ci \
+>   --resource-group rg-awesome-gbb-ci \
+>   --issuer "https://token.actions.githubusercontent.com" \
+>   --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/${BRANCH}" \
+>   --audiences "api://AzureADTokenExchange"
+> ```
+
 The UAMI already has these roles (granted during agentic-loop CI setup) — no extra grants needed:
 
 | Scope | Role |
@@ -65,7 +78,8 @@ az identity create \
 UAMI_PRINCIPAL=$(az identity show --name "$UAMI" --resource-group "$RG" --query principalId -o tsv)
 UAMI_CLIENT_ID=$(az identity show --name "$UAMI" --resource-group "$RG" --query clientId -o tsv)
 
-# Federated credentials — main + the feat branch this PR is on
+# Federated credentials — main + the feat branch this PR is on.
+# Add more entries for each additional branch you'll workflow_dispatch from.
 for branch in main feat/port-ci-e2e-from-agentic-loop; do
   az identity federated-credential create \
     --name "github-aiappsgbb-threadlight-skills-$(echo $branch | tr / -)" \
