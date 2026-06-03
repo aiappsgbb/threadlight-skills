@@ -145,7 +145,7 @@ Whether you came from Option A or B, set these 4 secrets:
 
 ```bash
 # Use the right UAMI_CLIENT_ID for your option:
-#   Option A: ff405901-cfd1-473f-9b55-99b012752a8e (uami-awesome-gbb-ci)
+#   Option A: e83f4ad8-7405-4dc4-946a-dff1468e5082 (uami-awesome-gbb-ci, rebuilt Nov 2025)
 #   Option B: the value printed from Step 1 above
 UAMI_CLIENT_ID=<from-above>
 
