@@ -1,7 +1,7 @@
 {
   "name": "threadlight-skills",
   "version": "1.0.0",
-  "description": "Threadlight pilot pipeline — 8 Copilot skills that take a customer engagement from brief to deployed Foundry agent in one session. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), and operator workspace UI. USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, seller enablement. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation).",
+  "description": "Threadlight pilot pipeline — 9 Copilot skills that take a customer engagement from brief to deployed Foundry agent in one session. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), and operator workspace UI. USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, seller enablement. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation).",
   "author": {
     "name": "Microsoft AI Apps GBB",
     "url": "https://github.com/aiappsgbb"
