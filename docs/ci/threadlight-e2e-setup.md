@@ -185,12 +185,13 @@ gh run watch \
        --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
 
-> **Note on model deployment name:** the workflow currently hardcodes
-> `gpt-5.4-mini` as both the agent driver model (`COPILOT_PROVIDER_MODEL_ID`)
-> and the Pattern 0 `.env.local` `AZURE_OPENAI_DEPLOYMENT` value. If your
-> Foundry account hosts a different deployment, edit
-> `.github/workflows/threadlight-e2e-foundry.yml` directly — there is no
-> GH secret for this yet.
+> **Note on model deployment name:** the workflow defaults `model_deployment`
+> to `gpt-5.4-mini`. Override per run with `-f model_deployment=<name>`
+> (e.g. `-f model_deployment=gpt-4o-mini`). The value flows into both the
+> agent driver (`COPILOT_PROVIDER_MODEL_ID` for all four phases + the
+> discovery smoke gate) AND the Pattern 0 `.env.local`
+> (`AZURE_OPENAI_DEPLOYMENT`). The named deployment must already exist on
+> the `AZURE_AI_ENDPOINT` Foundry account.
 
 > **Cheap pre-flight:** trigger `-f mode=smoke-only` first to exercise just
 > the discovery gate (~3-5 min, no Azure spend). Use `mode=full` only when

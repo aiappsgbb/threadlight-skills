@@ -279,8 +279,8 @@ jobs:
         env:
           COPILOT_PROVIDER_TYPE: azure
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
-          COPILOT_PROVIDER_MODEL_ID: gpt-5.4-mini
-          COPILOT_PROVIDER_WIRE_MODEL: gpt-5.4-mini
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_API: responses
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
@@ -504,39 +504,6 @@ jobs:
           }
           echo "✅ Pattern 0 gate passed — proceeding to deploy"
 
-      # ── Workflow-owned azd env setup ─────────────────────────────────
-      # threadlight-deploy is going to run azd up; configuring the env
-      # explicitly here means the Phase 3 prompt doesn't have to think about
-      # env-naming / region / RG bindings, and we can assert that the env's
-      # AZURE_RESOURCE_GROUP matches what we expect (else teardown would
-      # leak resources to an RG the workflow can't see).
-      - name: Configure azd env for the pilot
-        if: inputs.mode != 'smoke-only'
-        working-directory: ${{ env.E2E_WORKSPACE }}/returns-triage
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        run: |
-          set -euo pipefail
-          ENV_NAME="ci-${{ github.run_id }}"
-          # azd env new in a non-tty context with all required values
-          # supplied via --location and env-vars is non-interactive by
-          # default. Idempotent: re-running selects the existing env.
-          azd env new "$ENV_NAME" \
-            --location "${{ inputs.region }}" \
-            --subscription "$AZURE_SUBSCRIPTION_ID" || \
-            azd env select "$ENV_NAME"
-
-          azd env set AZURE_LOCATION "${{ inputs.region }}"
-          azd env set AZURE_RESOURCE_GROUP "${E2E_RG_NAME}"
-          azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
-          azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
-          azd env set AZUREAI_ACCOUNT_NAME "ai-ci-${{ github.run_id }}"
-
-          echo "----- azd env get-values -----"
-          azd env get-values
-
       - name: "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up"
         if: inputs.mode != 'smoke-only'
         env:
@@ -548,31 +515,42 @@ jobs:
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
           AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
+          # azd reads these env-vars when scaffolding + provisioning. The
+          # agent must run `azd env new` ITSELF (after threadlight-deploy
+          # scaffolds azure.yaml) — `azd env new` requires azure.yaml in
+          # the cwd, so we can't pre-create the env from the workflow.
+          # The post-deploy Assert step verifies AZURE_RESOURCE_GROUP in the
+          # env matches E2E_RG_NAME (would catch a misconfiguration).
           AZURE_ENV_NAME: ci-${{ github.run_id }}
           AZURE_LOCATION: ${{ inputs.region }}
+          AZURE_RESOURCE_GROUP: ${{ env.E2E_RG_NAME }}
+          AZUREAI_ACCOUNT_NAME: ai-ci-${{ github.run_id }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
           /tmp/run-copilot-phase.sh deploy /tmp/phase-deploy.log <<'PROMPT_EOF'
-          Workshop quickstart §6.2 + §6.3 — deploy the returns-triage pilot in ${{ env.E2E_WORKSPACE }}/returns-triage to Azure.
+          Workshop quickstart §6.2 + §6.3 — deploy the returns-triage pilot in ${{ env.E2E_WORKSPACE }}/returns-triage to Azure. This is CI running non-interactively; do NOT pause for confirmation prompts.
 
-          The azd environment is ALREADY configured by the workflow:
-            - env name: ci-${{ github.run_id }}
-            - AZURE_LOCATION=${{ inputs.region }}
-            - AZURE_RESOURCE_GROUP=${{ env.E2E_RG_NAME }}
-            - AZUREAI_ACCOUNT_NAME=ai-ci-${{ github.run_id }}
-            - AZURE_SUBSCRIPTION_ID / AZURE_TENANT_ID set
-          Do NOT run 'azd env new' yourself — just verify with 'azd env get-values' that the above are set, then proceed.
+          Mirror the workshop §6.2 + §6.3 prompts exactly:
 
-          Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${{ env.E2E_TENANT_ALIAS }}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+          §6.2: In ${{ env.E2E_WORKSPACE }}/returns-triage, install the azd ai agent extension (already installed system-wide in this runner — harmless to re-run). Then create a new azd environment named ci-${{ github.run_id }} and set these env values (read from the shell env vars I've exported for you):
+            - azd env set AZURE_LOCATION "$AZURE_LOCATION"
+            - azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+            - azd env set AZUREAI_ACCOUNT_NAME "$AZUREAI_ACCOUNT_NAME"
+            - azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+            - azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
+          (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${{ github.run_id }}` and continue with the `azd env set` calls.)
+
+          §6.3: Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${{ env.E2E_TENANT_ALIAS }}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
 
           Do the work YOURSELF — no background sub-agents. Do NOT 'git init'. Skip docs/verify.md SHA tracking (no git context).
 
           Final state required:
             - ${{ env.E2E_WORKSPACE }}/returns-triage/azure.yaml, infra/, src/, .azure/ all exist
             - 'azd ai agent show' (or equivalent) returns the deployed agent in an active state
+            - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
 
           If anything fails that you cannot auto-recover from, stop and surface the exact error.
           PROMPT_EOF
