@@ -648,13 +648,14 @@ jobs:
           head -80 "$RESULTS"
 
       # ── Post-run assertions ──────────────────────────────────────────
+      # Workshop Phase 3 places the pilot at $E2E_WORKSPACE/returns-triage.
+      # The find below still works (well within maxdepth 3) and tolerates
+      # a future scenario placing it deeper.
       - name: Assert agent deployed + responding
         if: success() && inputs.mode != 'smoke-only'
         timeout-minutes: 3
         run: |
           set -euo pipefail
-          # threadlight-deploy may create the pilot DIRECTLY in $E2E_WORKSPACE
-          # or in a subdirectory. Find the actual pilot dir.
           PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
           if [ -z "$PILOT_DIR" ]; then
             echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
@@ -663,6 +664,13 @@ jobs:
           fi
           echo "Pilot dir: $PILOT_DIR"
           cd "$PILOT_DIR"
+          # Confirm the deployed env matches the RG the workflow created,
+          # otherwise teardown would leak resources to a different RG.
+          ENV_RG=$(azd env get-value AZURE_RESOURCE_GROUP 2>/dev/null || echo "")
+          if [ "$ENV_RG" != "$E2E_RG_NAME" ]; then
+            echo "❌ azd env AZURE_RESOURCE_GROUP=$ENV_RG does not match workflow E2E_RG_NAME=$E2E_RG_NAME — teardown would miss resources"
+            exit 1
+          fi
           # Hard timeouts on every azd call because azd WILL block on interactive
           # auth prompts when its own token cache has expired (run #26766613882:
           # 'azd ai agent show' hung for 54 min waiting for input until the
@@ -731,9 +739,19 @@ jobs:
         with:
           name: threadlight-e2e-${{ github.run_id }}
           path: |
-            ${{ env.E2E_WORKSPACE }}/specs/
-            ${{ env.E2E_WORKSPACE }}/docs/
-            /tmp/threadlight-e2e.log
+            ${{ env.E2E_WORKSPACE }}/returns-triage/specs/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/docs/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/.env.local
+            ${{ env.E2E_WORKSPACE }}/returns-triage/tests/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/AGENTS.md
+            /tmp/phase-design.log
+            /tmp/phase-local-test.log
+            /tmp/phase-deploy.log
+            /tmp/phase-invoke.log
+            /tmp/phase-invoke-transcript-1.txt
+            /tmp/phase-invoke-transcript-2.txt
+            /tmp/info.out
+            /tmp/check.out
             /tmp/copilot-logs/
             /tmp/resource-snapshot.txt
             /tmp/azd-down.log
