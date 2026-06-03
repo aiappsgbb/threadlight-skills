@@ -91,11 +91,11 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
 
       # ── Azure / Foundry auth ──────────────────────────────────────────
       - name: Azure login via OIDC
-        uses: azure/login@v2
+        uses: azure/login@v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -123,7 +123,10 @@ jobs:
 
       - name: Install GitHub Copilot CLI
         run: |
-          npm install -g @github/copilot
+          # Pin: Copilot CLI Skill-tool loader behaviour + COPILOT_PROVIDER_*
+          # env contract are tied to a specific CLI release. Bump deliberately
+          # and re-run the smoke step before merging the bump.
+          npm install -g @github/copilot@1.0.59
           copilot --version
 
       - name: Install azd + Bicep + azd ai agent extension
@@ -137,7 +140,7 @@ jobs:
           azd ext list 2>&1 | grep -i "azure.ai.agents" || true
 
       # ── azd auth via OIDC federated credential ────────────────────────
-      # azd has its OWN auth chain — `azure/login@v2` only handles `az`.
+      # azd has its OWN auth chain — `azure/login@v3.0.0` only handles `az`.
       # Run #26769968309 caught this: agent reported
       # 'not logged in, run `azd auth login` to login to Azure'
       # at the deploy stage. Explicit azd auth login with the same
@@ -207,6 +210,12 @@ jobs:
       # but `skill(threadlight-auto)` returned "Skill not found".)
       # Install the local checkout as a plugin so all skills — incl. brand-new
       # ones like threadlight-auto not yet on the marketplace — resolve.
+      # DEPRECATED INSTALL FORM — migrate before this stops working:
+      # `copilot plugin install <local path>` emits "Direct plugin installs
+      # (repos, URLs, local paths) are deprecated. Only plugin@marketplace
+      # installs will be supported in a future release." (Run log line 344.)
+      # Migration: publish threadlight-skills to aiappsgbb/awesome-gbb and
+      # switch this to `copilot plugin install threadlight-skills@awesome-gbb`.
       - name: Install local repo as Copilot plugin
         run: |
           set -euo pipefail
@@ -393,7 +402,7 @@ jobs:
       # ── Artifact upload ──────────────────────────────────────────────
       - name: Upload run artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: threadlight-e2e-${{ github.run_id }}
           path: |
