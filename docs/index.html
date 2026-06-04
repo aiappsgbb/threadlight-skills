@@ -866,61 +866,6 @@
   }
 
   /* ============================================================
-     SCENE 5b — GETTING STARTED / SETUP
-     ============================================================ */
-  #scene-setup {
-    background: var(--bg-1);
-    border-top: 1px solid var(--line);
-    padding: 100px 0 80px;
-  }
-  #scene-setup .display {
-    font-family: var(--serif); font-weight: 500;
-    font-size: clamp(32px, 4vw, 54px);
-    line-height: 1.1; letter-spacing: -.015em;
-    max-width: 800px; margin: 0 auto 12px;
-    color: var(--ink-0); text-align: center;
-  }
-  #scene-setup .display em {
-    font-style: italic;
-    background: linear-gradient(90deg, var(--accent-1), var(--lime));
-    -webkit-background-clip: text; background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  #scene-setup .sub {
-    font-family: var(--serif); font-size: clamp(16px, 1.4vw, 20px);
-    color: var(--ink-1); max-width: 600px; margin: 0 auto 40px;
-    line-height: 1.5; text-align: center;
-  }
-  .setup-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px; max-width: 960px; margin: 0 auto;
-  }
-  .setup-card {
-    background: var(--bg-2); border: 1px solid var(--line);
-    border-radius: 14px; padding: 24px 22px 20px;
-    text-align: left;
-  }
-  .setup-card h3 {
-    font-size: 17px; color: var(--ink-0); margin: 0 0 10px;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .setup-num {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
-  }
-  .setup-card p {
-    font-size: 14.5px; color: var(--ink-1); line-height: 1.55;
-    margin: 0 0 14px;
-  }
-  .setup-card pre {
-    background: var(--bg-0); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px 16px; margin: 0;
-    overflow-x: auto; font-size: 13px; line-height: 1.6;
-  }
-  .setup-card code { font-family: var(--mono); color: var(--lime-1); }
-
-  /* ============================================================
      SCENE 6 — CTA
      ============================================================ */
   #scene-cta {
@@ -1151,7 +1096,7 @@
       <div class="hero-cta-row">
         <a class="btn btn-primary" href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener">Try the live preview <span class="arrow">↗</span></a>
         <a class="btn btn-ghost"   href="#scene-chain">See the chain <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="https://github.com/aiappsgbb/awesome-gbb/blob/main/THREADLIGHT.md">Read the briefing</a>
+        <a class="btn btn-ghost"   href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Read the briefing</a>
       </div>
 
       <div class="hero-live-strip" role="status" aria-label="Live preview environment">
@@ -1292,9 +1237,13 @@
             <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
           </div>
           <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
+          <p class="skill-cowork-note" style="margin: 12px 0 0; padding: 10px 12px; background: var(--accent-soft); border-left: 3px solid var(--accent-1); border-radius: 6px; font-size: 13px; color: var(--ink-1); line-height: 1.55;">
+            <strong style="color: var(--ink-0);">Sellers — install in Microsoft Copilot Cowork.</strong>
+            <code>threadlight-design</code> is Cowork-safe and runs the full seller-facing design loop in your browser. Hand off to an SE in CLI / IDE for the rest of the chain (<code>threadlight-deploy</code> can't run inside Cowork).
+          </p>
           <div class="skill-footer">
             <span>The coding agent reads the skill instructions and generates all artefacts.</span>
-            <a class="link" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
           </div>
         </article>
 
@@ -1303,15 +1252,15 @@
           <div class="aux-group">
             <div class="aux-label">Always wired</div>
             <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
                 <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
               </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-local-test/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
                 <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
               </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-safe-check/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
                 <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
               </a>
@@ -1320,15 +1269,15 @@
           <div class="aux-group">
             <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
             <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
                 <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
               </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-workspace-ui/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
                 <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
               </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-event-triggers/SKILL.md">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
                 <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
               </a>
@@ -1351,7 +1300,7 @@
           <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
           <div class="skill-footer">
             <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
-            <a class="link" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
           </div>
         </article>
 
@@ -1377,7 +1326,11 @@ copilot plugin install awesome-gbb@awesome-gbb</code></pre>
           <h3><span class="setup-num">2</span> Install Threadlight</h3>
           <p>The pilot pipeline — eight skills that chain brief → design → deploy → demo into one session.</p>
           <pre><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
-copilot plugin install threadlight@threadlight-skills</code></pre>
+copilot plugin install threadlight-skills@threadlight-skills</code></pre>
+          <p style="margin: 14px 0 0; padding: 10px 12px; background: var(--accent-soft); border-left: 3px solid var(--accent-1); border-radius: 6px; font-size: 13.5px; color: var(--ink-1); line-height: 1.55;">
+            <strong style="color: var(--ink-0);">Sellers — also install in Microsoft Copilot Cowork.</strong>
+            Add <code>threadlight-design</code> in Cowork to run the full seller-facing design loop (brief → SPEC → demo deck) in your browser, then hand off to an SE in CLI / IDE for deploy.
+          </p>
         </div>
         <div class="setup-card">
           <h3><span class="setup-num">3</span> Azure tenant isolation</h3>
@@ -1541,7 +1494,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
           <div class="stage-name">Pilot</div>
           <p class="stage-tag">One session &rarr; working agent on your Azure. SPEC, code, Bicep, telemetry, evals &mdash; all generated.</p>
           <ul class="stage-list">
-            <li><span class="dot"></span><a href="https://github.com/aiappsgbb/awesome-gbb/blob/main/THREADLIGHT.md">threadlight (&times;9 skills)</a></li>
+            <li><span class="dot"></span><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">threadlight (&times;9 skills)</a></li>
           </ul>
         </div>
 
@@ -1756,36 +1709,6 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     </div>
   </section>
 
-  <!-- ====================== SCENE 5b · GETTING STARTED ====================== -->
-  <section class="scene" id="scene-setup" aria-labelledby="setup-h">
-    <div class="wrap">
-      <p class="eyebrow reveal" style="display:inline-block;"><span class="dot"></span>Prerequisites</p>
-      <h2 id="setup-h" class="display reveal" data-delay="1">Set up in <em>two minutes</em></h2>
-      <p class="sub reveal" data-delay="2">Threadlight depends on building-block skills from <a href="https://aiappsgbb.github.io/awesome-gbb/" style="color:var(--accent-1);">awesome-gbb</a>. Install both.</p>
-
-      <div class="setup-grid reveal" data-delay="3">
-        <div class="setup-card">
-          <h3><span class="setup-num">1</span> Install the building blocks</h3>
-          <p>The <a href="https://aiappsgbb.github.io/awesome-gbb/" style="color:var(--accent-1);">awesome-gbb</a> plugin ships 27 foundational skills — Foundry agents, MCP servers, governance, deployment patterns. Threadlight orchestrates these.</p>
-          <pre><code>copilot plugin marketplace add aiappsgbb/awesome-gbb
-copilot plugin install awesome-gbb@awesome-gbb</code></pre>
-        </div>
-        <div class="setup-card">
-          <h3><span class="setup-num">2</span> Install Threadlight</h3>
-          <p>The pilot pipeline — eight skills that chain brief → design → deploy → demo into one session.</p>
-          <pre><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
-copilot plugin install threadlight@threadlight-skills</code></pre>
-        </div>
-        <div class="setup-card">
-          <h3><span class="setup-num">3</span> Azure tenant isolation</h3>
-          <p>If you target multiple Azure tenants, set up per-tenant config dirs before deploying. The <code>azure-tenant-isolation</code> skill (included in awesome-gbb) guides you.</p>
-          <pre><code>export AZURE_CONFIG_DIR=~/.azure-tenants/customer
-az login --tenant &lt;tenant-id&gt;</code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ====================== SCENE 6 · CTA ====================== -->
   <section class="scene" id="scene-cta" aria-labelledby="cta-h">
     <div class="wrap">
@@ -1802,7 +1725,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
       </div>
 
       <div class="hero-cta-row reveal" data-delay="4">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/awesome-gbb/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
         <a class="btn btn-ghost" href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener">Try the live preview <span class="arrow">↗</span></a>
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/awesome-gbb#readme">Browse the catalog</a>
       </div>
@@ -1816,7 +1739,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     <div>Microsoft GBB · <code>awesome-gbb</code> · internal use</div>
     <div class="right">
       <a href="https://github.com/aiappsgbb/awesome-gbb#readme">README.md</a>
-      <a href="https://github.com/aiappsgbb/awesome-gbb/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
       <a href="https://github.com/aiappsgbb/awesome-gbb/blob/main/ZAVA.md">ZAVA.md</a>
       <a href="AGENTS.md">AGENTS.md</a>
     </div>
