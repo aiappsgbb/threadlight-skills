@@ -1098,12 +1098,25 @@
     font-size: 13.5px; color: var(--ink-1); line-height: 1.55;
   }
   .cowork-steps strong { color: var(--ink-0); }
-  .cowork-steps a { color: var(--lime-1); }
+  .cowork-steps a {
+    color: var(--lime-1);
+    text-decoration: underline;
+    text-decoration-color: rgba(168,255,96,.55);
+    text-underline-offset: 3px;
+    transition: text-decoration-color .15s ease, background .15s ease;
+  }
+  .cowork-steps a:hover { text-decoration-color: var(--lime-1); }
   .cowork-steps code {
     font-family: var(--mono); font-size: 12.5px;
     background: var(--bg-2); border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px; color: var(--ink-0);
   }
+  .cowork-steps a code {
+    color: var(--lime-1);
+    background: var(--lime-soft);
+    border-color: rgba(168,255,96,.32);
+  }
+  .cowork-steps a:hover code { background: rgba(168,255,96,.22); }
 
 </style>
 </head>
