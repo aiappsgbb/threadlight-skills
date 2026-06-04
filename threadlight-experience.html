@@ -1181,8 +1181,14 @@
           </div>
           <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
           <p class="skill-cowork-note" style="margin: 12px 0 0; padding: 10px 12px; background: var(--accent-soft); border-left: 3px solid var(--accent-1); border-radius: 6px; font-size: 13px; color: var(--ink-1); line-height: 1.55;">
-            <strong style="color: var(--ink-0);">Sellers — install in Microsoft Copilot Cowork.</strong>
-            <code>threadlight-design</code> is Cowork-safe and runs the full seller-facing design loop in your browser. Hand off to an SE in CLI / IDE for the rest of the chain (<code>threadlight-deploy</code> can't run inside Cowork).
+            <strong style="color: var(--ink-0);">Sellers — Cowork-safe (runs in Microsoft Copilot Cowork).</strong>
+            Cowork (M365 Frontier) is a separate product from Copilot CLI with its own install flow — no terminal required.
+            <span style="display: block; margin: 8px 0 0;">
+              <strong>1.</strong> Download <a href="https://aiappsgbb.github.io/threadlight-skills/downloads/threadlight-design.zip" style="color: var(--accent-1);"><code>threadlight-design.zip</code></a> (~125 KB) — don't unzip it. &nbsp;
+              <strong>2.</strong> Open Cowork, start a new chat, attach the zip, and send: <em>"Install this skill."</em> &nbsp;
+              <strong>3.</strong> Cowork unpacks and registers it. Future chats see <code>threadlight-design</code> under <code>/</code>.
+            </span>
+            <span style="display: block; margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2);">Hand off to an SE in Copilot CLI / VS Code for <code>threadlight-deploy</code> — Cowork's sandbox can't subprocess <code>azd</code> or <code>docker</code>.</span>
           </p>
           <div class="skill-footer">
             <span>The coding agent reads the skill instructions and generates all artefacts.</span>
