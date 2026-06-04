@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Build Cowork-installable skill zips into docs/downloads/.
 #
-# Microsoft Copilot Cowork (M365 Frontier) discovers custom skills by reading
-# subfolders of OneDrive/Documents/Cowork/skills/. To install a skill, the user
-# downloads a zip whose top-level entry is <skill-name>/, unzips it into that
-# OneDrive path, and waits ~35s for OneDrive sync.
+# Microsoft Copilot Cowork (M365 Frontier) installs custom skills from a zip
+# upload inside a Cowork chat: the seller attaches the zip and asks Cowork to
+# install the skill. Cowork unpacks the zip and registers it for future chats.
 #
 # Each zip published here MUST:
-#   - Contain a single top-level folder matching the skill's `name:` frontmatter
+#   - Be FLAT: SKILL.md at the zip root (no parent folder). Cowork rejects
+#     zips that bury SKILL.md inside a subdirectory.
 #   - Stay within Cowork per-skill limits: SKILL.md ≤ 1 MB,
 #     ≤ 20 companion files, ≤ 5 MB per companion, ≤ 10 MB total companion size
-#   - Contain only the skill folder under skills/ that is Cowork-safe — i.e.
-#     SKILL.md instructions do not require shell execution, docker, azd,
-#     playwright Chromium launch, or ffmpeg at runtime
+#   - Contain only skills that are Cowork-safe — i.e. SKILL.md instructions
+#     do not require shell execution, docker, azd, playwright Chromium launch,
+#     or ffmpeg at runtime
 #
 # Re-run this script whenever a Cowork-safe skill changes. The output zip is
 # committed to docs/downloads/ so it ships with the GH Pages site.
@@ -41,7 +41,9 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   zip_path="${OUT_DIR}/${skill}.zip"
   rm -f "${zip_path}"
 
-  (cd "${SRC_DIR}" && zip -r --quiet "${zip_path}" "${skill}" -x "*.DS_Store" "*/__pycache__/*")
+  # Flat zip: SKILL.md at the root, references/ as a sibling.
+  # Cowork's installer expects SKILL.md at the top level of the archive.
+  (cd "${SRC_DIR}/${skill}" && zip -r --quiet "${zip_path}" . -x "*.DS_Store" "*/__pycache__/*")
 
   # Enforce Cowork per-skill limits
   skill_md_bytes=$(wc -c < "${SRC_DIR}/${skill}/SKILL.md" | tr -d ' ')
@@ -51,6 +53,11 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   echo "✓ ${skill}.zip ($(wc -c < "${zip_path}" | tr -d ' ') bytes)"
   echo "  SKILL.md: ${skill_md_bytes} / 1048576 bytes"
   echo "  companions: ${companion_count} / 20 files, ${companion_bytes} / 10485760 bytes total"
+
+  # Verify SKILL.md is at the zip root (no parent folder)
+  if ! unzip -l "${zip_path}" | awk '{print $4}' | grep -qx 'SKILL.md'; then
+    echo "  ✗ SKILL.md not at zip root — Cowork will reject this archive" >&2; exit 1
+  fi
 
   if (( skill_md_bytes > 1048576 )); then
     echo "  ✗ SKILL.md exceeds 1 MB Cowork limit" >&2; exit 1
