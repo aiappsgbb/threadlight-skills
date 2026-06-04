@@ -982,6 +982,71 @@
   .trap-body .caught .by { color: var(--ink-3); padding-right: 6px; }
   .trap-body .caught code { color: var(--lime-1); }
 
+  /* ============================================================
+     COWORK SELLER PATH — alternate install for M365 Frontier
+     ============================================================ */
+  .cowork-block {
+    position: relative;
+    background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 28px 30px 26px 34px;
+    margin: 28px 0 36px;
+    overflow: hidden;
+  }
+  .cowork-block::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, var(--lime) 0%, var(--lime-1) 100%);
+  }
+  .cowork-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--lime-soft); border: 1px solid rgba(168,255,96,.32);
+    color: var(--lime-1); font-family: var(--mono);
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  .cowork-pill .pill-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--lime); display: inline-block;
+  }
+  .cowork-block h2 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(26px, 2.6vw, 34px); line-height: 1.2;
+    color: var(--ink-0); margin: 14px 0 10px; letter-spacing: -.01em;
+  }
+  .cowork-block h2 em { font-style: italic; color: var(--lime-1); font-weight: 500; }
+  .cowork-lede {
+    font-size: 15px; color: var(--ink-1); line-height: 1.6; margin: 0 0 22px;
+    max-width: 72ch;
+  }
+  .cowork-steps {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  @media (max-width: 800px) { .cowork-steps { grid-template-columns: 1fr; } }
+  .cowork-steps li {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--bg-0); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 16px 16px 14px;
+  }
+  .cowork-step-n {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--lime); color: #0a0d14;
+    font-weight: 700; font-size: 14px; font-family: var(--mono);
+  }
+  .cowork-steps .step-body {
+    font-size: 13.5px; color: var(--ink-1); line-height: 1.55;
+  }
+  .cowork-steps strong { color: var(--ink-0); }
+  .cowork-steps a { color: var(--lime-1); }
+  .cowork-steps code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px; color: var(--ink-0);
+  }
+
 </style>
 </head>
 <body>
@@ -1164,6 +1229,26 @@
         </p>
       </div>
 
+      <aside class="cowork-block reveal" aria-labelledby="cowork-h">
+        <span class="cowork-pill"><span class="pill-dot"></span>Microsoft Copilot Cowork · Seller path</span>
+        <h2 id="cowork-h">On Cowork? <em>Install in one chat.</em></h2>
+        <p class="cowork-lede">Sellers using Microsoft Copilot Cowork (M365 Frontier) can run <code>threadlight-design</code> end-to-end without a terminal. It produces the SPEC, manifest, and agent scaffolding your SE can deploy when the customer is ready.</p>
+        <ol class="cowork-steps">
+          <li>
+            <span class="cowork-step-n">1</span>
+            <div class="step-body"><strong>Download <a href="https://aiappsgbb.github.io/threadlight-skills/downloads/threadlight-design.zip"><code>threadlight-design.zip</code></a></strong> (~125&nbsp;KB, flat skill archive). Don't unzip it.</div>
+          </li>
+          <li>
+            <span class="cowork-step-n">2</span>
+            <div class="step-body"><strong>Open Cowork → start a new chat → attach the zip.</strong></div>
+          </li>
+          <li>
+            <span class="cowork-step-n">3</span>
+            <div class="step-body"><strong>Send <em>"Install this skill."</em></strong> Cowork registers it for every future chat — type <code>/</code> and pick it from the slash-command menu.</div>
+          </li>
+        </ol>
+      </aside>
+
       <div class="chain-rail" id="chain-rail">
 
         <!-- 1 — DESIGN (seller-facing entry) -->
@@ -1180,16 +1265,6 @@
             <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
           </div>
           <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
-          <p class="skill-cowork-note" style="margin: 12px 0 0; padding: 10px 12px; background: var(--accent-soft); border-left: 3px solid var(--accent-1); border-radius: 6px; font-size: 13px; color: var(--ink-1); line-height: 1.55;">
-            <strong style="color: var(--ink-0);">Sellers — Cowork-safe (runs in Microsoft Copilot Cowork).</strong>
-            Cowork (M365 Frontier) is a separate product from Copilot CLI with its own install flow — no terminal required.
-            <span style="display: block; margin: 8px 0 0;">
-              <strong>1.</strong> Download <a href="https://aiappsgbb.github.io/threadlight-skills/downloads/threadlight-design.zip" style="color: var(--accent-1);"><code>threadlight-design.zip</code></a> (~125 KB) — don't unzip it. &nbsp;
-              <strong>2.</strong> Open Cowork, start a new chat, attach the zip, and send: <em>"Install this skill."</em> &nbsp;
-              <strong>3.</strong> Cowork unpacks and registers it. Future chats see <code>threadlight-design</code> under <code>/</code>.
-            </span>
-            <span style="display: block; margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2);">Hand off to an SE in Copilot CLI / VS Code for <code>threadlight-deploy</code> — Cowork's sandbox can't subprocess <code>azd</code> or <code>docker</code>.</span>
-          </p>
           <div class="skill-footer">
             <span>The coding agent reads the skill instructions and generates all artefacts.</span>
             <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
