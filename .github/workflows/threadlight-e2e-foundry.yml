@@ -1,17 +1,31 @@
 # .github/workflows/threadlight-e2e-foundry.yml
 #
-# Full E2E gate for the threadlight pilot pipeline. Drives a complete pilot
-# (threadlight-design → threadlight-deploy + invoke + threadlight-safe-check
-# + teardown) via Copilot CLI in a clean GH Actions runner, with model calls
-# routed to a Foundry account via BYOK.
+# Full E2E gate for the threadlight workshop scenario. Drives the 1-hour
+# workshop runbook (docs/WORKSHOP-1H-QUICKSTART.md) via Copilot CLI in a
+# clean GH Actions runner:
+#   §4.2        threadlight-design (Fast-PoC, retail returns-triage)
+#   §4.3        threadlight-local-test (Pattern 0 --info + --check) —
+#               workflow-owned re-run as a cheap gate before spending
+#               azd up money
+#   §6.2+§6.3   threadlight-deploy → azd up (Foundry account + Container
+#               App + hosted agent)
+#   §6.4        Invoke 2 killer prompts against the deployed agent
+#
+# The Pattern 0 phase is a CI-only gate that is NOT in the workshop runbook's
+# critical path (the workshop runs §4.4 Streamlit live for the same purpose).
+# We use --info/--check instead because they're scriptable, deterministic,
+# and exit non-zero on failure.
 #
 # WHY THIS EXISTS
 # ===============
-# Ported from aiappsgbb/agentic-loop/.github/workflows/lean-auto-e2e-foundry.yml
-# (proven green on run #26752622265, 50m57s wallclock, all 16 steps ✅, both
-# demo scenarios passed live, clean teardown). The winning recipe — retry-on-429
-# wrapper + git-suppress prompt + per-run RG name — is reused verbatim because
-# it solved transient Foundry 429s observed on shared CI deployments.
+# Originally ported from aiappsgbb/agentic-loop/.github/workflows/
+# lean-auto-e2e-foundry.yml with the enterprise-pilot scenario
+# (auto-claim-triage / credit-memo / prior-auth-healthcare). Swapped to the
+# workshop scenario in PR #N because (a) the workshop is the user-facing
+# entry point for this skill pack, so it should be the thing we regression-
+# test, and (b) the workshop's Pattern 0 gate catches design→deploy contract
+# drift (sample-data schema, stub tool wiring, entity discovery) that the
+# enterprise-pilot path skipped.
 #
 # COST + TRIGGER MODEL
 # ====================
@@ -36,36 +50,29 @@
 # - AZURE_TENANT_ID         — Entra tenant for the CI subscription
 # - AZURE_SUBSCRIPTION_ID   — subscription containing the Foundry account
 # - AZURE_AI_ENDPOINT       — Foundry account base URL
-#                             (https://<account>.cognitiveservices.azure.com)
+#                             (https://<account>.cognitiveservices.azure.com).
+#                             Re-used as AZURE_OPENAI_ENDPOINT for Pattern 0
+#                             .env.local; --check does NOT instantiate the
+#                             AOAI client so this re-use is safe in CI. If
+#                             §4.4 Streamlit ever gets wired in CI, a
+#                             separate AZURE_OPENAI_ENDPOINT (openai.azure.com
+#                             form) secret will be required.
 #
 # See docs/ci/threadlight-e2e-setup.md for the one-time setup runbook.
 
-name: threadlight e2e — Foundry-routed
+name: threadlight e2e — workshop returns-triage
 
 on:
   workflow_dispatch:
     inputs:
-      scenario:
-        description: "Industry vertical for the pilot (drives threadlight-design's SPEC.md generation)"
-        required: false
-        default: "auto-claim-triage"
-        type: choice
-        options:
-          - auto-claim-triage
-          - credit-memo
-          - prior-auth-healthcare
-      driver:
-        description: "Which driver to use — `manual` calls threadlight-design → -deploy → -safe-check directly; `auto` uses threadlight-auto SKILL to orchestrate all stages"
-        required: false
-        default: "auto"
-        type: choice
-        options:
-          - auto
-          - manual
       region:
-        description: "Azure region for Foundry + ACA"
+        description: "Azure region for Foundry + ACA (workshop §6.2 AZURE_LOCATION)"
         required: false
         default: "westus3"
+      model_deployment:
+        description: "Foundry model deployment name. Used for both the agent driver (COPILOT_PROVIDER_MODEL_ID) AND the Pattern 0 .env.local (AZURE_OPENAI_DEPLOYMENT). Must match an existing deployment on the AZURE_AI_ENDPOINT account."
+        required: false
+        default: "gpt-5.4-mini"
       teardown:
         description: "Run azd down at the end? Set false to keep resources for post-run debugging."
         required: false
@@ -75,7 +82,7 @@ on:
           - "true"
           - "false"
       mode:
-        description: "full = smoke + drive + assert + teardown (~$1/run); smoke-only = registry discovery gate only (~$0/run, ~30s, no Foundry/Azure resource cost)"
+        description: "full = smoke + design + local-test + deploy + invoke + teardown (~$1/run); smoke-only = registry discovery gate only (~$0/run, ~30s, no Foundry/Azure resource cost)"
         required: false
         default: "full"
         type: choice
@@ -100,6 +107,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.3
+
+      # ── Isolated az / azd config dirs ────────────────────────────────
+      # Mirrors the per-run isolation convention the threadlight-deploy skill
+      # uses internally ($HOME/.azure-ci-$RUNID, $HOME/.azd-ci-$RUNID). We
+      # export them via $GITHUB_ENV so EVERY subsequent step — azure/login,
+      # azd auth login, the deploy agent, and the post-deploy assert — reads
+      # and writes the same isolated token cache + env state. Without this,
+      # the agent provisions into its isolated AZD env and the assert step
+      # reads an empty default ~/.azd cache and reports the deploy missing
+      # (run 26999100945 hit this exact mismatch on an otherwise-green
+      # deploy).
+      - name: Setup isolated az/azd config dirs
+        run: |
+          set -euo pipefail
+          AZ_DIR="$HOME/.azure-ci-${{ github.run_id }}"
+          AZD_DIR="$HOME/.azd-ci-${{ github.run_id }}"
+          mkdir -p "$AZ_DIR" "$AZD_DIR"
+          echo "AZURE_CONFIG_DIR=$AZ_DIR" >> "$GITHUB_ENV"
+          echo "AZD_CONFIG_DIR=$AZD_DIR" >> "$GITHUB_ENV"
+          echo "✓ AZURE_CONFIG_DIR=$AZ_DIR"
+          echo "✓ AZD_CONFIG_DIR=$AZD_DIR"
 
       # ── Azure / Foundry auth ──────────────────────────────────────────
       - name: Azure login via OIDC
@@ -146,6 +174,30 @@ jobs:
           az bicep install
           azd ext install azure.ai.agents || true
           azd ext list 2>&1 | grep -i "azure.ai.agents" || true
+
+      # ── Python + Pattern 0 install ────────────────────────────────────
+      # Workshop §4.3 needs python 3.13 (per §2 prereqs) and the
+      # threadlight_quickstart package installed with the [aoai] extra
+      # (pulls agent-framework[openai] for the AzureOpenAIChatClient path
+      # the workshop documents). We pre-install here rather than letting
+      # the agent do it inside §4.3, because:
+      #   - faster (~1 min vs 5+ min of agent self-exec)
+      #   - deterministic (no model variance in dep-resolution prompts)
+      #   - lets the workflow-owned --info/--check assert step run cleanly
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install threadlight_quickstart [aoai]
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e \
+            "${{ github.workspace }}/skills/threadlight-local-test/references/quickstart[aoai]"
+          # Sanity: importable + correct entry point
+          python -c "import threadlight_quickstart; print('threadlight_quickstart', threadlight_quickstart.__file__)"
+          python -m threadlight_quickstart --help | head -20
 
       # ── azd auth via OIDC federated credential ────────────────────────
       # azd has its OWN auth chain — `azure/login@v3.0.0` only handles `az`.
@@ -248,8 +300,8 @@ jobs:
         env:
           COPILOT_PROVIDER_TYPE: azure
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
-          COPILOT_PROVIDER_MODEL_ID: gpt-5.4-mini
-          COPILOT_PROVIDER_WIRE_MODEL: gpt-5.4-mini
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_API: responses
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
@@ -258,56 +310,33 @@ jobs:
         run: ./scripts/ci/skill-discovery-smoke.sh
         timeout-minutes: 5
 
-      # ── Drive threadlight via Copilot CLI ────────────────────────────
-      - name: Drive threadlight design → deploy → invoke
-        id: drive
+      # ── Drive workshop scenario (4 phases) ────────────────────────────
+      # Each phase runs an explicit Copilot CLI prompt mapped to the
+      # workshop runbook (docs/WORKSHOP-1H-QUICKSTART.md). Workflow-owned
+      # asserts gate progression between phases.
+      #
+      # The retry-on-429 wrapper from the previous mono-Drive step is
+      # extracted to /tmp/run-copilot-phase.sh so it's not duplicated 4×.
+      - name: Write copilot phase helper
         if: inputs.mode != 'smoke-only'
-        env:
-          # BYOK → Foundry. Names verified in agentic-loop's auth-smoke.
-          COPILOT_PROVIDER_TYPE: azure
-          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
-          COPILOT_PROVIDER_MODEL_ID: gpt-5.4-mini
-          COPILOT_PROVIDER_WIRE_MODEL: gpt-5.4-mini
-          COPILOT_PROVIDER_WIRE_API: responses
-          COPILOT_ALLOW_ALL: "true"
-          COPILOT_AUTO_UPDATE: "false"
-          AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
-          AZURE_ENV_NAME: ci-${{ github.run_id }}
-          AZURE_LOCATION: ${{ inputs.region }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          set -euo pipefail
           mkdir -p /tmp/copilot-logs
+          cat > /tmp/run-copilot-phase.sh <<'BASH_EOF'
+          #!/usr/bin/env bash
+          # Usage: run-copilot-phase.sh <phase-name> <log-file>
+          # Reads the prompt from stdin so multi-line content doesn't get
+          # mangled by shell-quoting in the calling step.
+          set -euo pipefail
+          PHASE="$1"
+          LOG="$2"
+          PROMPT="$(cat)"
 
-          # Driver-switch: 'auto' uses the new threadlight-auto SKILL; 'manual'
-          # tells the agent to drive design → deploy → safe-check → invoke directly.
-          # Both paths fire the same threadlight-* sub-skills + benefit from the
-          # F-01..F-22 failure-mode index in threadlight-deploy.
-          #
-          # The "Do the work yourself" clause prevents the Copilot CLI agent from
-          # delegating to background sub-agents (run #26764930163 caught this:
-          # parent agent fired a 'general-purpose' background subtask, returned
-          # 'success' immediately, but the sub-agent's deploy work never landed in
-          # the workspace — Assert step then correctly failed with no azure.yaml).
-          if [ "${{ inputs.driver }}" = "auto" ]; then
-            PROMPT="Use the threadlight-auto skill to build a pilot: scenario=${{ inputs.scenario }}, customer=Contoso, tenant=${E2E_TENANT_ALIAS}, env=ci-${{ github.run_id }}, region=${{ inputs.region }}, workspace=${E2E_WORKSPACE}. Drive design, deploy, safe-check post-deploy stages and invoke the deployed agent with at least 2 spec demo scenarios before reporting back. Do the work YOURSELF in this session — do NOT delegate to background sub-agents or general-purpose Task tools; you must own every step end-to-end so the final workspace at ${E2E_WORKSPACE} contains the pilot's azure.yaml, infra/, src/, specs/SPEC.md, docs/safe-check-post.md, docs/invoke-results.md before you report back. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
-          else
-            PROMPT="Drive the threadlight pipeline end-to-end for an enterprise pilot in the ${{ inputs.scenario }} vertical (customer: Contoso, tenant alias: ${E2E_TENANT_ALIAS}, env: ci-${{ github.run_id }}, region: ${{ inputs.region }}, workspace: ${E2E_WORKSPACE}). Use threadlight-design to produce SPEC.md + agent architecture + demo scenarios; then threadlight-deploy to scaffold azd + Bicep + container.py and run azd up; then threadlight-safe-check phase=post-deploy; then invoke the deployed agent with at least 2 spec demo scenarios. Do the work YOURSELF in this session — do NOT delegate to background sub-agents or general-purpose Task tools; you must own every step end-to-end so the final workspace at ${E2E_WORKSPACE} contains the pilot's azure.yaml, infra/, src/, specs/SPEC.md before you report back. Do NOT run 'git init' or 'git commit' on the pilot workspace — git history is not needed and the workspace is /tmp throwaway. Skip docs/verify.md SHA tracking (no git context); the freshness check tolerates this. If anything fails at the deploy stage that you cannot auto-recover from, stop and surface the exact error."
-          fi
-
-          echo "----- driver prompt -----"
+          echo "----- $PHASE prompt -----"
           echo "$PROMPT"
           echo "-------------------------"
 
-          # Wrap copilot CLI in a retry loop. The Copilot CLI's internal retry
-          # policy (5 attempts / ~10s total backoff) gives up too quickly for
-          # a 20+ min agent session when the shared Foundry deployment is
-          # transiently 429-throttled. This wrapper adds an outer retry.
-          # 3 attempts × ~30 min each = matched to timeout-minutes: 60.
           for attempt in 1 2 3; do
-            echo "===== Copilot CLI attempt $attempt of 3 ====="
+            echo "===== [$PHASE] Copilot CLI attempt $attempt of 3 ====="
             START_TS=$(date +%s)
             if copilot \
                  --allow-all-tools \
@@ -316,46 +345,340 @@ jobs:
                  --log-level info \
                  --no-custom-instructions \
                  --prompt "$PROMPT" \
-                 2>&1 | tee -a /tmp/threadlight-e2e.log; then
+                 2>&1 | tee -a "$LOG"; then
               ELAPSED=$(($(date +%s) - START_TS))
-              echo "===== Attempt $attempt succeeded in ${ELAPSED}s ====="
+              echo "===== [$PHASE] Attempt $attempt succeeded in ${ELAPSED}s ====="
               exit 0
             fi
             ELAPSED=$(($(date +%s) - START_TS))
             # If session ran > 12 min before failing, the agent did real work
             # and a retry would just spend more money. Stop here.
             if [ $ELAPSED -gt 720 ]; then
-              echo "===== Attempt $attempt failed after ${ELAPSED}s of real work; not retrying ====="
+              echo "===== [$PHASE] Attempt $attempt failed after ${ELAPSED}s of real work; not retrying ====="
               exit 1
             fi
-            # Only retry on the specific 429/transient signature
-            if ! tail -200 /tmp/threadlight-e2e.log | grep -qE "Too Many Requests|CAPIError|transient API error|429"; then
-              echo "===== Non-transient failure detected; not retrying ====="
+            if ! tail -200 "$LOG" | grep -qE "Too Many Requests|CAPIError|transient API error|429"; then
+              echo "===== [$PHASE] Non-transient failure detected; not retrying ====="
               exit 1
             fi
             BACKOFF=$((60 * attempt))
-            echo "===== Attempt $attempt failed on transient error after ${ELAPSED}s; sleeping ${BACKOFF}s ====="
+            echo "===== [$PHASE] Attempt $attempt failed on transient error after ${ELAPSED}s; sleeping ${BACKOFF}s ====="
             sleep $BACKOFF
           done
-          echo "===== All 3 attempts exhausted ====="
+          echo "===== [$PHASE] All 3 attempts exhausted ====="
           exit 1
+          BASH_EOF
+          chmod +x /tmp/run-copilot-phase.sh
+
+      - name: "[Phase 1/4] Drive §4.2 — threadlight-design Fast-PoC"
+        if: inputs.mode != 'smoke-only'
+        env:
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+        run: |
+          set -euo pipefail
+          /tmp/run-copilot-phase.sh design /tmp/phase-design.log <<'PROMPT_EOF'
+          Use the threadlight-design skill in Fast-PoC mode to design a retail returns-triage process in ${{ env.E2E_WORKSPACE }}/returns-triage. This is workshop quickstart §4.2 running non-interactively in CI.
+
+          Here are the answers to the Fast-PoC interview questions — do NOT ask follow-up questions; treat the below as the completed Fast-PoC interview:
+            - customer: Contoso Retail
+            - industry / vertical: retail
+            - process: returns-triage
+            - participants: customer-service agent (human), returns supervisor (human), the AI assistant
+            - upstream systems: order-management system, returns-database, customer-profile service (use stub tools — sample data only)
+            - entities: at minimum 'orders' and 'returns' (each with id, customer_id, status, plus a few representative fields); add a 'customers' entity if it helps; populate sample-data with at least 3 records per entity
+            - actions / branches: at minimum approve_refund, deny_refund, escalate_to_supervisor; add request_more_info if useful
+            - runtime: Pattern 0 local (threadlight_quickstart) for §4.3 plus Foundry hosted agent for §6.2-6.4
+
+          Final state required:
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/specs/SPEC.md exists and mentions 'returns'
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/AGENTS.md exists
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/specs/sample-data/ contains at least one non-empty JSON file (>10 bytes)
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/tests/killer-prompts.md exists with at least 2 prompts
+
+          Skip browser previews of any generated demo or sales-kit HTML — do not attempt to install Playwright. Do NOT run 'git init' or 'git commit' on the workspace — it's a /tmp throwaway. Do the work YOURSELF in this session — do NOT delegate to background sub-agents or general-purpose Task tools. If anything fails, stop and surface the exact error.
+          PROMPT_EOF
+        timeout-minutes: 20
+
+      - name: "[Phase 1/4 assert] Design artifacts exist + are non-trivial"
+        if: inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          PILOT_DIR="${E2E_WORKSPACE}/returns-triage"
+          echo "Checking pilot dir: $PILOT_DIR"
+          ls -la "$PILOT_DIR" || { echo "::error::Pilot dir missing"; exit 1; }
+
+          for f in specs/SPEC.md AGENTS.md tests/killer-prompts.md; do
+            if [ ! -s "$PILOT_DIR/$f" ]; then
+              echo "::error::Missing or empty: $f"
+              exit 1
+            fi
+          done
+
+          # Sample-data must have at least one non-empty JSON
+          SAMPLE_DIR="$PILOT_DIR/specs/sample-data"
+          [ -d "$SAMPLE_DIR" ] || { echo "::error::No sample-data dir"; exit 1; }
+          NONEMPTY=$(find "$SAMPLE_DIR" -name "*.json" -size +10c | wc -l)
+          if [ "$NONEMPTY" -lt 1 ]; then
+            echo "::error::No non-trivial sample-data JSON files"
+            ls -la "$SAMPLE_DIR" || true
+            exit 1
+          fi
+
+          # SPEC.md should mention 'returns' to confirm scenario alignment
+          if ! grep -qi "returns" "$PILOT_DIR/specs/SPEC.md"; then
+            echo "::warning::SPEC.md does not mention 'returns' — scenario drift?"
+          fi
+
+          echo "✅ Design phase artifacts look healthy"
+          echo "----- SPEC.md preview -----"
+          head -40 "$PILOT_DIR/specs/SPEC.md"
+
+      - name: "[Phase 2/4] Drive §4.3 — Pattern 0 setup via agent"
+        if: inputs.mode != 'smoke-only'
+        env:
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+          AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          /tmp/run-copilot-phase.sh local-test /tmp/phase-local-test.log <<'PROMPT_EOF'
+          Use the threadlight-local-test skill to set up Pattern 0 quickstart for ${{ env.E2E_WORKSPACE }}/returns-triage. This is workshop quickstart §4.3 running non-interactively in CI.
+
+          Use these settings (do NOT ask):
+            - LLM_BACKEND=aoai
+            - AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_AI_ENDPOINT }}
+            - AZURE_OPENAI_DEPLOYMENT=${{ inputs.model_deployment }}
+
+          The threadlight_quickstart Python package is ALREADY pip-installed system-wide in CI — do NOT pip install it again.
+
+          Steps:
+            1. Write .env.local into ${{ env.E2E_WORKSPACE }}/returns-triage with the three keys above (LLM_BACKEND, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT).
+            2. Run: python -m threadlight_quickstart --info --root ${{ env.E2E_WORKSPACE }}/returns-triage
+            3. Run: python -m threadlight_quickstart --check --root ${{ env.E2E_WORKSPACE }}/returns-triage
+            4. Show me the full stdout of both commands.
+
+          Do NOT launch streamlit. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents. If --check exits non-zero, stop and surface the error verbatim.
+          PROMPT_EOF
+        timeout-minutes: 15
+
+      - name: "[Phase 2/4 assert] Workflow-owned --info + --check"
+        if: inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          PILOT_DIR="${E2E_WORKSPACE}/returns-triage"
+          echo "----- .env.local check -----"
+          if [ ! -s "$PILOT_DIR/.env.local" ]; then
+            echo "::error::Missing or empty $PILOT_DIR/.env.local"
+            exit 1
+          fi
+          # Should NOT contain literal placeholder strings
+          if grep -qE "<your-aoai-resource>|<your-deployment-name>|<placeholder>" "$PILOT_DIR/.env.local"; then
+            echo "::error::.env.local still has placeholder values"
+            cat "$PILOT_DIR/.env.local"
+            exit 1
+          fi
+          # Tight key/value checks
+          grep -qx "LLM_BACKEND=aoai" "$PILOT_DIR/.env.local" || {
+            echo "::error::.env.local missing 'LLM_BACKEND=aoai'"
+            cat "$PILOT_DIR/.env.local"
+            exit 1
+          }
+          grep -qE "^AZURE_OPENAI_ENDPOINT=https://.+$" "$PILOT_DIR/.env.local" || {
+            echo "::error::.env.local missing well-formed AZURE_OPENAI_ENDPOINT"
+            cat "$PILOT_DIR/.env.local"
+            exit 1
+          }
+          grep -qE "^AZURE_OPENAI_DEPLOYMENT=.+$" "$PILOT_DIR/.env.local" || {
+            echo "::error::.env.local missing AZURE_OPENAI_DEPLOYMENT"
+            cat "$PILOT_DIR/.env.local"
+            exit 1
+          }
+
+          echo "----- workflow-owned --info -----"
+          python -m threadlight_quickstart --info --root "$PILOT_DIR" | tee /tmp/info.out
+
+          echo "----- workflow-owned --check -----"
+          python -m threadlight_quickstart --check --root "$PILOT_DIR" | tee /tmp/check.out
+          # Required success markers from cli.py:
+          grep -q "Stub tools wired" /tmp/check.out || {
+            echo "::error::--check did not report 'Stub tools wired'"
+            exit 1
+          }
+          grep -q "Update + reset round-trip works" /tmp/check.out || {
+            echo "::error::--check did not report 'Update + reset round-trip works'"
+            exit 1
+          }
+          grep -q "agent_framework importable" /tmp/check.out || {
+            echo "::error::agent_framework not importable — pip install lost"
+            exit 1
+          }
+          echo "✅ Pattern 0 gate passed — proceeding to deploy"
+
+      - name: "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up"
+        if: inputs.mode != 'smoke-only'
+        env:
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+          AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
+          # azd reads these env-vars when scaffolding + provisioning. The
+          # agent must run `azd env new` ITSELF (after threadlight-deploy
+          # scaffolds azure.yaml) — `azd env new` requires azure.yaml in
+          # the cwd, so we can't pre-create the env from the workflow.
+          # The post-deploy Assert step verifies AZURE_RESOURCE_GROUP in the
+          # env matches E2E_RG_NAME (would catch a misconfiguration).
+          AZURE_ENV_NAME: ci-${{ github.run_id }}
+          AZURE_LOCATION: ${{ inputs.region }}
+          AZURE_RESOURCE_GROUP: ${{ env.E2E_RG_NAME }}
+          AZUREAI_ACCOUNT_NAME: ai-ci-${{ github.run_id }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          /tmp/run-copilot-phase.sh deploy /tmp/phase-deploy.log <<'PROMPT_EOF'
+          Workshop quickstart §6.2 + §6.3 — deploy the returns-triage pilot in ${{ env.E2E_WORKSPACE }}/returns-triage to Azure. This is CI running non-interactively; do NOT pause for confirmation prompts.
+
+          Mirror the workshop §6.2 + §6.3 prompts exactly:
+
+          §6.2: In ${{ env.E2E_WORKSPACE }}/returns-triage, install the azd ai agent extension (already installed system-wide in this runner — harmless to re-run). Then create a new azd environment named ci-${{ github.run_id }} and set these env values (read from the shell env vars I've exported for you):
+            - azd env set AZURE_LOCATION "$AZURE_LOCATION"
+            - azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+            - azd env set AZUREAI_ACCOUNT_NAME "$AZUREAI_ACCOUNT_NAME"
+            - azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+            - azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
+          (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${{ github.run_id }}` and continue with the `azd env set` calls.)
+
+          §6.3: Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${{ env.E2E_TENANT_ALIAS }}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+
+          Do the work YOURSELF — no background sub-agents. Do NOT 'git init'. Skip docs/verify.md SHA tracking (no git context).
+
+          Final state required:
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/azure.yaml, infra/, src/, .azure/ all exist
+            - 'azd ai agent show' (or equivalent) returns the deployed agent in an active state
+            - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
+
+          If anything fails that you cannot auto-recover from, stop and surface the exact error.
+          PROMPT_EOF
+        timeout-minutes: 30
+
+      - name: "[Phase 4/4] Drive §6.4 — invoke killer prompts"
+        if: inputs.mode != 'smoke-only'
+        env:
+          COPILOT_PROVIDER_TYPE: azure
+          COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
+          COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
+          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_ALLOW_ALL: "true"
+          COPILOT_AUTO_UPDATE: "false"
+          AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
+        run: |
+          set -euo pipefail
+          /tmp/run-copilot-phase.sh invoke /tmp/phase-invoke.log <<'PROMPT_EOF'
+          Workshop quickstart §6.4 — invoke at least 2 killer prompts from ${{ env.E2E_WORKSPACE }}/returns-triage/tests/killer-prompts.md against the deployed returns-triage agent. Use the same surface the workshop documents (Invocations protocol against the cloud agent), not local Pattern 0.
+
+          For each prompt, capture the actual command and the agent's actual response to a transcript file BEFORE writing any summary doc:
+            - First prompt's raw output: tee to /tmp/phase-invoke-transcript-1.txt
+            - Second prompt's raw output: tee to /tmp/phase-invoke-transcript-2.txt
+          Use 'tee' (or shell redirection equivalent) — these files must contain the live transcript of the actual invocation command + actual response, not a rewritten summary.
+
+          Then save a summary to ${{ env.E2E_WORKSPACE }}/returns-triage/docs/invoke-results.md with for each prompt: (a) the prompt text, (b) the agent's final response, (c) the trace of tool calls fired (which list_/get_/update_ tools the agent invoked).
+
+          Final state required:
+            - /tmp/phase-invoke-transcript-1.txt exists and is non-empty
+            - /tmp/phase-invoke-transcript-2.txt exists and is non-empty
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/docs/invoke-results.md exists with at least 2 sections
+
+          Do NOT fabricate transcripts. Do NOT write "I was unable to invoke" or "would have invoked" — if invocation truly fails, stop and surface the exact error instead. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents.
+          PROMPT_EOF
+        timeout-minutes: 15
+
+      - name: "[Phase 4/4 assert] Invoke results + transcripts captured"
+        if: inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          RESULTS="${E2E_WORKSPACE}/returns-triage/docs/invoke-results.md"
+          if [ ! -s "$RESULTS" ]; then
+            echo "::error::Missing or empty invoke-results.md"
+            ls -la "${E2E_WORKSPACE}/returns-triage/docs/" 2>&1 || true
+            exit 1
+          fi
+          SECTIONS=$(grep -cE "^(## |Prompt:|### )" "$RESULTS" || true)
+          if [ "$SECTIONS" -lt 2 ]; then
+            echo "::error::invoke-results.md has fewer than 2 prompt sections (got $SECTIONS)"
+            cat "$RESULTS"
+            exit 1
+          fi
+
+          # Anti-fabrication: require BOTH transcript files non-empty
+          for n in 1 2; do
+            T="/tmp/phase-invoke-transcript-${n}.txt"
+            if [ ! -s "$T" ]; then
+              echo "::error::Transcript $T missing or empty — agent likely fabricated results"
+              exit 1
+            fi
+            # Reject canned 'I was unable / hypothetical / simulated' phrases
+            if grep -qiE "I was unable to invoke|could not invoke|would have invoked|simulated response|hypothetical response|cannot actually invoke" "$T"; then
+              echo "::error::Transcript $T contains fabrication phrases — refusing to mark deploy+invoke green"
+              echo "----- transcript $T -----"
+              cat "$T"
+              exit 1
+            fi
+          done
+
+          echo "✅ Phase 4 captured $SECTIONS section(s) + 2 non-fabricated transcripts"
+          echo "----- invoke-results.md preview -----"
+          head -80 "$RESULTS"
 
       # ── Post-run assertions ──────────────────────────────────────────
+      # Workshop Phase 3 places the pilot at $E2E_WORKSPACE/returns-triage.
+      # We pin to that path explicitly because run 26999100945 caught
+      # threadlight-deploy occasionally creating a nested duplicate at
+      # $E2E_WORKSPACE/returns-triage/returns-triage/azure.yaml that a naive
+      # `find ... | head -1` would pick non-deterministically. Fall back to
+      # find only if the expected path is absent (future scenario).
       - name: Assert agent deployed + responding
         if: success() && inputs.mode != 'smoke-only'
         timeout-minutes: 3
         run: |
           set -euo pipefail
-          # threadlight-deploy may create the pilot DIRECTLY in $E2E_WORKSPACE
-          # or in a subdirectory. Find the actual pilot dir.
-          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
-          if [ -z "$PILOT_DIR" ]; then
-            echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
-            ls -la "$E2E_WORKSPACE" 2>&1 || true
-            exit 1
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
+            echo "⚠️ Expected $PILOT_DIR/azure.yaml missing — falling back to find"
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+            if [ -z "$PILOT_DIR" ]; then
+              echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
+              ls -la "$E2E_WORKSPACE" 2>&1 || true
+              exit 1
+            fi
           fi
           echo "Pilot dir: $PILOT_DIR"
+          echo "AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR"
+          echo "AZD_CONFIG_DIR=$AZD_CONFIG_DIR"
           cd "$PILOT_DIR"
+          # Confirm the deployed env matches the RG the workflow created,
+          # otherwise teardown would leak resources to a different RG.
+          ENV_RG=$(azd env get-value AZURE_RESOURCE_GROUP 2>/dev/null || echo "")
+          if [ "$ENV_RG" != "$E2E_RG_NAME" ]; then
+            echo "❌ azd env AZURE_RESOURCE_GROUP=$ENV_RG does not match workflow E2E_RG_NAME=$E2E_RG_NAME — teardown would miss resources"
+            exit 1
+          fi
           # Hard timeouts on every azd call because azd WILL block on interactive
           # auth prompts when its own token cache has expired (run #26766613882:
           # 'azd ai agent show' hung for 54 min waiting for input until the
@@ -390,13 +713,20 @@ jobs:
         timeout-minutes: 20
         run: |
           set +e
-          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          # Pin to the expected workshop pilot path; fall back to find only
+          # if missing (same rationale as the Assert step above).
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -d "$PILOT_DIR/.azure" ]; then
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          fi
           if [ -z "$PILOT_DIR" ] || [ ! -d "$PILOT_DIR/.azure" ]; then
             echo "No pilot dir with .azure found — azd never initialized; skipping azd down."
             az group delete --name "${E2E_RG_NAME}" --yes --no-wait 2>/dev/null || true
             exit 0
           fi
           echo "Tearing down pilot at: $PILOT_DIR"
+          echo "AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR"
+          echo "AZD_CONFIG_DIR=$AZD_CONFIG_DIR"
           cd "$PILOT_DIR"
           azd down --force --purge --no-prompt 2>&1 | tee /tmp/azd-down.log
           DOWN_EXIT=$?
@@ -424,9 +754,19 @@ jobs:
         with:
           name: threadlight-e2e-${{ github.run_id }}
           path: |
-            ${{ env.E2E_WORKSPACE }}/specs/
-            ${{ env.E2E_WORKSPACE }}/docs/
-            /tmp/threadlight-e2e.log
+            ${{ env.E2E_WORKSPACE }}/returns-triage/specs/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/docs/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/.env.local
+            ${{ env.E2E_WORKSPACE }}/returns-triage/tests/
+            ${{ env.E2E_WORKSPACE }}/returns-triage/AGENTS.md
+            /tmp/phase-design.log
+            /tmp/phase-local-test.log
+            /tmp/phase-deploy.log
+            /tmp/phase-invoke.log
+            /tmp/phase-invoke-transcript-1.txt
+            /tmp/phase-invoke-transcript-2.txt
+            /tmp/info.out
+            /tmp/check.out
             /tmp/copilot-logs/
             /tmp/resource-snapshot.txt
             /tmp/azd-down.log

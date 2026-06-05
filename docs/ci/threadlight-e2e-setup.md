@@ -4,6 +4,21 @@
 > [`threadlight-e2e-foundry.yml`](../../.github/workflows/threadlight-e2e-foundry.yml).
 > Operator guide for repeat usage: [`threadlight-e2e.md`](./threadlight-e2e.md).
 
+> **What this workflow tests:** the 1-hour workshop scenario from
+> [`docs/WORKSHOP-1H-QUICKSTART.md`](../WORKSHOP-1H-QUICKSTART.md),
+> end-to-end:
+>
+> - **§4.2** `threadlight-design` Fast-PoC for retail returns-triage
+> - **§4.3** `threadlight-local-test` Pattern 0 (`--info` + `--check`) —
+>   workflow-owned, not in the workshop's critical path; a cheap gate
+>   before `azd up` spending
+> - **§6.2+§6.3** `threadlight-deploy` → `azd up`
+> - **§6.4** Invoke 2 killer prompts against the deployed agent
+>
+> Each phase runs as a separate step with its own logs and a workflow-
+> owned assert; failures are scoped to a single phase, not buried in a
+> mega-prompt.
+
 ## Option A — reuse the existing `uami-awesome-gbb-ci` UAMI (recommended if available)
 
 The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-awesome-gbb-ci` in `rg-awesome-gbb-ci`, sub `ME-MngEnvMCAP979166-fruocco-2` as of 2026-06-01). If your tenant has access to that sub, the lowest-cost option is to add 2 more federated credentials to it for `aiappsgbb/threadlight-skills`.
@@ -130,7 +145,7 @@ Whether you came from Option A or B, set these 4 secrets:
 
 ```bash
 # Use the right UAMI_CLIENT_ID for your option:
-#   Option A: ff405901-cfd1-473f-9b55-99b012752a8e (uami-awesome-gbb-ci)
+#   Option A: e83f4ad8-7405-4dc4-946a-dff1468e5082 (uami-awesome-gbb-ci, rebuilt Nov 2025)
 #   Option B: the value printed from Step 1 above
 UAMI_CLIENT_ID=<from-above>
 
@@ -158,9 +173,9 @@ You should see all 4.
 gh workflow run threadlight-e2e-foundry.yml \
   --repo aiappsgbb/threadlight-skills \
   --ref main \
-  -f scenario=auto-claim-triage \
   -f region=westus3 \
-  -f teardown=true
+  -f teardown=true \
+  -f mode=full
 
 # Watch
 gh run watch \
@@ -169,6 +184,18 @@ gh run watch \
        --workflow=threadlight-e2e-foundry.yml \
        --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
+
+> **Note on model deployment name:** the workflow defaults `model_deployment`
+> to `gpt-5.4-mini`. Override per run with `-f model_deployment=<name>`
+> (e.g. `-f model_deployment=gpt-4o-mini`). The value flows into both the
+> agent driver (`COPILOT_PROVIDER_MODEL_ID` for all four phases + the
+> discovery smoke gate) AND the Pattern 0 `.env.local`
+> (`AZURE_OPENAI_DEPLOYMENT`). The named deployment must already exist on
+> the `AZURE_AI_ENDPOINT` Foundry account.
+
+> **Cheap pre-flight:** trigger `-f mode=smoke-only` first to exercise just
+> the discovery gate (~3-5 min, no Azure spend). Use `mode=full` only when
+> the smoke run is green.
 
 Expected: ~35-55 min wallclock. If it hangs at the first step ("Azure login via OIDC"), the federated credential is mis-scoped — go back to Step 1.
 
@@ -181,7 +208,7 @@ After a successful first run:
    gh run download <run-id> --repo aiappsgbb/threadlight-skills \
      --name threadlight-e2e-<run-id> --dir /tmp/threadlight-evidence
    ```
-2. Inspect the workspace artifacts (specs/, docs/) to confirm the pipeline produced what you expected
+2. Inspect the workspace artifacts (`returns-triage/specs/`, `returns-triage/docs/`, the 4 `phase-*.log` files, the 2 invoke transcripts) to confirm the pipeline produced what you expected
 3. Consider adding a validation evidence row to `skills/threadlight-deploy/SKILL.md` § Validation history (TBD; cribbed from agentic-loop's table pattern)
 
 ## Teardown if you want to remove the federated credentials later

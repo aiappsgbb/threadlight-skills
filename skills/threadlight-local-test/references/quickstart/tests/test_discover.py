@@ -50,13 +50,45 @@ def test_discover_rejects_bad_json(tmp_path):
 
 
 def test_discover_rejects_non_array(tmp_path):
+    """Object without a 'records' key is neither shape."""
     (tmp_path / "specs" / "sample-data").mkdir(parents=True)
     (tmp_path / "specs" / "sample-data" / "obj.json").write_text(
         '{"a": 1}', encoding="utf-8"
     )
     with pytest.raises(PoCLayoutError) as ei:
         discover(tmp_path)
-    assert "JSON array" in str(ei.value)
+    msg = str(ei.value)
+    assert "JSON array" in msg
+    assert "records" in msg
+
+
+def test_discover_accepts_meta_records_envelope(tmp_path):
+    """Canonical threadlight-design / threadlight-demo-data-factory shape."""
+    (tmp_path / "specs" / "sample-data").mkdir(parents=True)
+    (tmp_path / "specs" / "sample-data" / "customers.json").write_text(
+        json.dumps(
+            {
+                "_meta": {"entity": "customers", "record_count": 2},
+                "records": [
+                    {"id": "C-1", "name": "Ada"},
+                    {"id": "C-2", "name": "Grace"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    layout = discover(tmp_path)
+    assert layout.entity_names == ("customers",)
+
+
+def test_discover_rejects_envelope_with_non_list_records(tmp_path):
+    """Wrapper-with-records must have a list under 'records'."""
+    (tmp_path / "specs" / "sample-data").mkdir(parents=True)
+    (tmp_path / "specs" / "sample-data" / "bad.json").write_text(
+        '{"_meta": {}, "records": "oops"}', encoding="utf-8"
+    )
+    with pytest.raises(PoCLayoutError):
+        discover(tmp_path)
 
 
 def test_in_memory_store_loads():
@@ -64,6 +96,26 @@ def test_in_memory_store_loads():
     assert len(store.records) == 5
     assert "T-1001" in store.records
     assert store.records["T-1001"]["status"] == "open"
+
+
+def test_in_memory_store_loads_meta_records_envelope(tmp_path):
+    """InMemoryStore.load must accept the {_meta, records} wrapper."""
+    src = tmp_path / "orders.json"
+    src.write_text(
+        json.dumps(
+            {
+                "_meta": {"entity": "orders", "record_count": 2},
+                "records": [
+                    {"id": "O-1", "status": "pending"},
+                    {"id": "O-2", "status": "shipped"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = InMemoryStore.load(src)
+    assert set(store.records) == {"O-1", "O-2"}
+    assert store.records["O-2"]["status"] == "shipped"
 
 
 def test_in_memory_store_filters():
