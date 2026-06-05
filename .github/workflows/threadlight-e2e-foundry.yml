@@ -108,6 +108,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.3
 
+      # ── Isolated az / azd config dirs ────────────────────────────────
+      # Mirrors the per-run isolation convention the threadlight-deploy skill
+      # uses internally ($HOME/.azure-ci-$RUNID, $HOME/.azd-ci-$RUNID). We
+      # export them via $GITHUB_ENV so EVERY subsequent step — azure/login,
+      # azd auth login, the deploy agent, and the post-deploy assert — reads
+      # and writes the same isolated token cache + env state. Without this,
+      # the agent provisions into its isolated AZD env and the assert step
+      # reads an empty default ~/.azd cache and reports the deploy missing
+      # (run 26999100945 hit this exact mismatch on an otherwise-green
+      # deploy).
+      - name: Setup isolated az/azd config dirs
+        run: |
+          set -euo pipefail
+          AZ_DIR="$HOME/.azure-ci-${{ github.run_id }}"
+          AZD_DIR="$HOME/.azd-ci-${{ github.run_id }}"
+          mkdir -p "$AZ_DIR" "$AZD_DIR"
+          echo "AZURE_CONFIG_DIR=$AZ_DIR" >> "$GITHUB_ENV"
+          echo "AZD_CONFIG_DIR=$AZD_DIR" >> "$GITHUB_ENV"
+          echo "✓ AZURE_CONFIG_DIR=$AZ_DIR"
+          echo "✓ AZD_CONFIG_DIR=$AZD_DIR"
+
       # ── Azure / Foundry auth ──────────────────────────────────────────
       - name: Azure login via OIDC
         uses: azure/login@v3.0.0
@@ -627,20 +648,29 @@ jobs:
 
       # ── Post-run assertions ──────────────────────────────────────────
       # Workshop Phase 3 places the pilot at $E2E_WORKSPACE/returns-triage.
-      # The find below still works (well within maxdepth 3) and tolerates
-      # a future scenario placing it deeper.
+      # We pin to that path explicitly because run 26999100945 caught
+      # threadlight-deploy occasionally creating a nested duplicate at
+      # $E2E_WORKSPACE/returns-triage/returns-triage/azure.yaml that a naive
+      # `find ... | head -1` would pick non-deterministically. Fall back to
+      # find only if the expected path is absent (future scenario).
       - name: Assert agent deployed + responding
         if: success() && inputs.mode != 'smoke-only'
         timeout-minutes: 3
         run: |
           set -euo pipefail
-          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
-          if [ -z "$PILOT_DIR" ]; then
-            echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
-            ls -la "$E2E_WORKSPACE" 2>&1 || true
-            exit 1
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
+            echo "⚠️ Expected $PILOT_DIR/azure.yaml missing — falling back to find"
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+            if [ -z "$PILOT_DIR" ]; then
+              echo "❌ No azure.yaml found under $E2E_WORKSPACE — pilot did not produce an azd project"
+              ls -la "$E2E_WORKSPACE" 2>&1 || true
+              exit 1
+            fi
           fi
           echo "Pilot dir: $PILOT_DIR"
+          echo "AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR"
+          echo "AZD_CONFIG_DIR=$AZD_CONFIG_DIR"
           cd "$PILOT_DIR"
           # Confirm the deployed env matches the RG the workflow created,
           # otherwise teardown would leak resources to a different RG.
@@ -683,13 +713,20 @@ jobs:
         timeout-minutes: 20
         run: |
           set +e
-          PILOT_DIR=$(find "$E2E_WORKSPACE" -maxdepth 3 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          # Pin to the expected workshop pilot path; fall back to find only
+          # if missing (same rationale as the Assert step above).
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -d "$PILOT_DIR/.azure" ]; then
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          fi
           if [ -z "$PILOT_DIR" ] || [ ! -d "$PILOT_DIR/.azure" ]; then
             echo "No pilot dir with .azure found — azd never initialized; skipping azd down."
             az group delete --name "${E2E_RG_NAME}" --yes --no-wait 2>/dev/null || true
             exit 0
           fi
           echo "Tearing down pilot at: $PILOT_DIR"
+          echo "AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR"
+          echo "AZD_CONFIG_DIR=$AZD_CONFIG_DIR"
           cd "$PILOT_DIR"
           azd down --force --purge --no-prompt 2>&1 | tee /tmp/azd-down.log
           DOWN_EXIT=$?
