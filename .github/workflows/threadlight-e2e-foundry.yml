@@ -439,6 +439,30 @@ jobs:
           echo "----- SPEC.md preview -----"
           head -40 "$PILOT_DIR/specs/SPEC.md"
 
+          # Fast-PoC mode: the new Step 1.5 in threadlight-design (v1.7.0+)
+          # MUST surface a one-line callout in SPEC § 12 saying that
+          # audience mode / customer context / brand / production posture
+          # were not collected. This is the auditable trail of silent
+          # defaults — required so downstream skills (and reviewers) can
+          # see what wasn't asked. Scope the check to § 12 only (not the
+          # whole SPEC) and require multiple semantic markers so a stray
+          # "Fast-PoC" mention elsewhere can't false-positive.
+          SECTION12="$(awk '/^##[[:space:]]+12\./{flag=1; next} /^##[[:space:]]+13\./{flag=0} flag' "$PILOT_DIR/specs/SPEC.md" | tr '\n' ' ')"
+          if [ -z "$SECTION12" ]; then
+            echo "::error::SPEC.md § 12 (Assumptions) section not found — threadlight-design (≥1.7.0) must emit § 12"
+            exit 1
+          fi
+          MISSING=0
+          echo "$SECTION12" | grep -qiE "fast.?poc"     || { echo "::error::SPEC § 12 callout missing 'Fast-PoC' marker"; MISSING=1; }
+          echo "$SECTION12" | grep -qiE "not collected" || { echo "::error::SPEC § 12 callout missing 'not collected' phrase"; MISSING=1; }
+          echo "$SECTION12" | grep -qiE "neutral.+defaults|demo defaults" || { echo "::error::SPEC § 12 callout missing 'neutral/demo defaults' phrase"; MISSING=1; }
+          if [ "$MISSING" -ne 0 ]; then
+            echo "----- § 12 region of SPEC.md -----"
+            awk '/^##[[:space:]]+12\./,/^##[[:space:]]+13\./' "$PILOT_DIR/specs/SPEC.md" | head -40
+            exit 1
+          fi
+          echo "✅ Fast-PoC silent-defaults callout present in § 12"
+
       - name: "[Phase 2/4] Drive §4.3 — Pattern 0 setup via agent"
         if: inputs.mode != 'smoke-only'
         env:
@@ -525,6 +549,43 @@ jobs:
           }
           echo "✅ Pattern 0 gate passed — proceeding to deploy"
 
+      - name: "[Phase 3/4 pre] Pre-seed deployment-posture.md for non-interactive Phase 1.5"
+        if: inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          # CI runs non-interactively — threadlight-deploy Phase 1.5 (v1.5.0+)
+          # would otherwise hang at Path 2 (interactive operator prompt) because
+          # Fast-PoC design intentionally leaves SPEC § 11f unpopulated. We
+          # pre-create the canonical posture file with `deployment_target:
+          # demo-sandbox` and `source: provided`, which the skill recognises
+          # as an authoritative Path 1 trigger when SPEC is silent. This is
+          # the documented CI/non-interactive override pattern.
+          SPECS_DIR="${E2E_WORKSPACE}/returns-triage/specs"
+          mkdir -p "$SPECS_DIR"
+          POSTURE="${SPECS_DIR}/deployment-posture.md"
+          cat > "$POSTURE" <<EOF
+          # specs/deployment-posture.md — canonical deploy-time decision record
+          # Pre-seeded by the CI workflow before threadlight-deploy Phase 1.5
+          # runs. The skill (v1.5.0+) treats an existing posture file with a
+          # valid deployment_target as a Path 1 trigger and proceeds silently.
+          deployment_target: demo-sandbox
+          source: provided
+          chosen_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          operator: ci-e2e-foundry@github-actions
+          overrides:
+            networking: public               # status: supported-now
+            replicas: single                 # status: supported-now
+            retention: 90d                   # status: supported-now
+            model_pinning: preview-ok        # status: supported-now
+            defender: off                    # status: supported-now (Ignore tag)
+            cost_guardrails: none            # status: supported-now
+            backup_dr: none                  # status: supported-now
+            continuous_eval: plan-a-defaults # status: supported-now
+          deferred_decisions: []
+          EOF
+          echo "✅ Pre-seeded $POSTURE"
+          head -20 "$POSTURE"
+
       - name: "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up"
         if: inputs.mode != 'smoke-only'
         env:
@@ -566,16 +627,38 @@ jobs:
 
           §6.3: Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${{ env.E2E_TENANT_ALIAS }}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
 
+          Posture is `demo-sandbox` for this CI run (throwaway RG, public ingress, 90d retention, no Defender, no DR, single replica). The pre-Phase-3 workflow step has already pre-created `${{ env.E2E_WORKSPACE }}/returns-triage/specs/deployment-posture.md` with `deployment_target: demo-sandbox` and `source: provided`. threadlight-deploy Phase 1.5 MUST detect this existing posture file and take Path 1 silently — do NOT ask the operator any posture questions and do NOT overwrite the file with a fresh interactive prompt. If you find yourself about to ask "What kind of deployment is the target subscription expecting?", stop: the answer is already on disk.
+
           Do the work YOURSELF — no background sub-agents. Do NOT 'git init'. Skip docs/verify.md SHA tracking (no git context).
 
           Final state required:
             - ${{ env.E2E_WORKSPACE }}/returns-triage/azure.yaml, infra/, src/, .azure/ all exist
+            - ${{ env.E2E_WORKSPACE }}/returns-triage/specs/deployment-posture.md exists with `deployment_target: demo-sandbox`
             - 'azd ai agent show' (or equivalent) returns the deployed agent in an active state
             - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
 
           If anything fails that you cannot auto-recover from, stop and surface the exact error.
           PROMPT_EOF
         timeout-minutes: 30
+
+      - name: "[Phase 3/4 assert] Deployment-posture file recorded by Phase 1.5"
+        if: inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          POSTURE="${E2E_WORKSPACE}/returns-triage/specs/deployment-posture.md"
+          if [ ! -s "$POSTURE" ]; then
+            echo "::error::threadlight-deploy Phase 1.5 did not write specs/deployment-posture.md"
+            ls -la "${E2E_WORKSPACE}/returns-triage/specs/" 2>&1 || true
+            exit 1
+          fi
+          if ! grep -qE "deployment_target:[[:space:]]*demo-sandbox" "$POSTURE"; then
+            echo "::error::deployment-posture.md missing or has wrong deployment_target (expected demo-sandbox)"
+            cat "$POSTURE"
+            exit 1
+          fi
+          echo "✅ Phase 1.5 recorded posture decision"
+          echo "----- deployment-posture.md preview -----"
+          head -40 "$POSTURE"
 
       - name: "[Phase 4/4] Drive §6.4 — invoke killer prompts"
         if: inputs.mode != 'smoke-only'
