@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aiappsgbb/threadlight-skills/skills/threadlight-production-ready/references/waivers-schema.json",
+  "title": "Threadlight Production Readiness — waiver file",
+  "description": "Schema for tests/production-readiness-waivers.json — customer-accepted findings with required justification and compensating control.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "waivers"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Waiver schema version."
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "finding_id",
+          "owner",
+          "expiry",
+          "justification",
+          "compensating_control",
+          "accepted_risk"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^W-\\d{3,6}$",
+            "description": "Unique waiver ID within this file. Format: W-### (e.g., W-001)."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "ID of the finding being waived. Must match a finding ID emitted by the skill (e.g., SEC-004, NET-501)."
+          },
+          "owner": {
+            "type": "string",
+            "format": "email",
+            "description": "Email of the person accountable for this waiver. NOT a distribution list."
+          },
+          "expiry": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO date (YYYY-MM-DD) after which the waiver is invalid. The skill ignores expired waivers and treats the underlying finding as un-waived."
+          },
+          "justification": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Why is this gap acceptable for the customer's risk posture? Free text, must be substantive (min 20 chars)."
+          },
+          "compensating_control": {
+            "type": "string",
+            "minLength": 20,
+            "description": "What offsetting control reduces the risk? Free text, must be substantive (min 20 chars)."
+          },
+          "accepted_risk": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Plain-language summary of the residual risk being accepted. Free text, must be substantive (min 20 chars)."
+          },
+          "approver": {
+            "type": "string",
+            "description": "Optional: name or role of the approver (e.g., 'CISO', 'Head of AI'). Defaults to owner if absent."
+          },
+          "ticket_ref": {
+            "type": "string",
+            "description": "Optional: reference to a ticket / change request (e.g., 'CR-12345')."
+          }
+        }
+      },
+      "uniqueItems": true,
+      "description": "List of accepted waivers. Each entry requires full justification + compensating control + accepted risk; otherwise the waiver is ignored and a WAIVER-INVALID finding is added to the report."
+    }
+  }
+}

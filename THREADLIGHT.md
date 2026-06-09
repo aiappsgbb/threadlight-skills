@@ -1,28 +1,30 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the eight-skill pilot pipeline.**
+> **Engineering reference for the nine-skill pilot pipeline.**
 > The narrative / pitch version of this material lives in
 > [`threadlight-experience.html`](threadlight-experience.html). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **chain of eight `threadlight-*` skills** that take a
+Threadlight is a **chain of nine `threadlight-*` skills** that take a
 customer engagement from a one-paragraph brief through to a deployed,
-evaluated, observable Microsoft Foundry hosted agent — runnable on the
-customer's tenant in a single working session. It is intentionally
-opinionated about ordering, cross-skill contracts (SPEC § sections,
-kebab-case selectors, the three-lifecycle gate), and the seller → SE
-persona split. The contracts are markdown, not code; the runtime is
+evaluated, observable, **production-ready** Microsoft Foundry hosted agent
+— runnable on the customer's tenant in a single working session, then
+walked to production go-live without ending up in lab graveyard. It is
+intentionally opinionated about ordering, cross-skill contracts (SPEC §
+sections, kebab-case selectors, the three-lifecycle gate), and the seller
+→ SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
-The eight skills (alphabetical, but the canonical flow order is given in
+The nine skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-design              threadlight-event-triggers
-threadlight-demo-data-factory   threadlight-hitl-patterns
-threadlight-deploy              threadlight-local-test
-threadlight-safe-check          threadlight-workspace-ui
+threadlight-design              threadlight-hitl-patterns
+threadlight-demo-data-factory   threadlight-local-test
+threadlight-deploy              threadlight-production-ready
+threadlight-event-triggers      threadlight-safe-check
+                                threadlight-workspace-ui
 ```
 
 ---
@@ -39,6 +41,7 @@ skill sounds most exciting.
 | Spec + data exist, you need a screen-shareable PoC in <30 min | `threadlight-local-test` | (iterate; deploy when ready) |
 | Spec + data exist, ready to ship to a customer sandbox | `threadlight-deploy` | safe-check (post-deploy) |
 | You inherited an existing deploy and need to know what's broken | `threadlight-safe-check --phase post-deploy` | deploy (re-run) → safe-check |
+| Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
 | SPEC § 8 declares HITL action gates | `threadlight-hitl-patterns` | (paired with `foundry-teams-bot`) |
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
 | SPEC § 10 declares scheduled / event-driven triggers | `threadlight-event-triggers` | (paired with deploy) |
@@ -305,6 +308,77 @@ and after `azd up` — every time.
 
 ---
 
+### 9. `threadlight-production-ready` ([SKILL.md](skills/threadlight-production-ready/SKILL.md))
+
+**Purpose.** **The bridge between a green safe-check and a real customer
+architecture review.** The advisory production-readiness gate. Takes a
+pilot that has passed `threadlight-safe-check --phase post-deploy` and
+walks 13 cross-cutting pillars (network, AGT, IAM, secrets,
+observability, evals, RAI, HITL, supply-chain, cost, reliability, SRE
+handover, model lifecycle) to produce a customer-facing hand-off
+package.
+
+**Posture priority.** Citadel-spoke is the **recommended** enterprise
+target. AGT v4 in-process middleware is second. Standard remote AI
+gateway / VNet is the third-party fallback. The skill resolves the
+actual target from `SPEC § 12 → SPEC § 11b → deployed evidence →
+default standard-ai-gateway` and adapts its checks — it does not
+shoehorn Citadel where it isn't wanted.
+
+```bash
+# default — all 13 pillars, live + static, both outputs
+python skills/threadlight-production-ready/scripts/production_ready.py
+
+# static only (no Azure auth required)
+python skills/threadlight-production-ready/scripts/production_ready.py --static
+
+# explicit target override
+python skills/threadlight-production-ready/scripts/production_ready.py --target citadel-spoke
+```
+
+**Inputs.** `specs/SPEC.md` (including the new `§ 12 Production
+Readiness` block — target posture, residency, RTO/RPO, SLA, incident
+owner), `specs/manifest.json`, `infra/**/*.bicep`,
+`tests/postdeploy-manifest.json` (must be fresh — default 24h freshness
+window), optional `tests/production-readiness-waivers.json`, and live
+Azure (best-effort, tiered per probe — missing permissions degrade to
+`not-verified`, never tool failure).
+
+**Outputs.**
+- `tests/production-readiness-manifest.json` — machine-readable scorecard
+  (posture, score raw + with-waivers, `would_fail_hard_gate`, per-pillar
+  findings, evidence register, not-verified list, waivers).
+- `docs/production-readiness-report.md` — 10-section customer-facing
+  markdown (executive summary, posture diagram, hard-gate preview,
+  pillar scorecard, deep-dives, uplift plan, cost projection, eval
+  summary, residual risk + RACI + rollout/rollback, appendix).
+
+**Soft-advisory.** Exit `0` even when live probes can't run. Exit `2`
+on missing prerequisite (no `tests/postdeploy-manifest.json`, stale
+safe-check without `--accept-stale-safe-check`, unknown `--pillar`
+id). **Missing SPEC § 12 does not exit 2** — the skill emits an
+`RDY-002` warning, falls back to `standard-ai-gateway` posture, and
+still produces the report. Exit `3` on I/O failure. This is **a
+hand-off package, not a build gate** — it removes every basic /
+intermediate excuse to leave the pilot in lab graveyard.
+
+**Recommended ordering.** `threadlight-safe-check --phase post-deploy`
+must be green and fresh **before** running this skill. For the
+strongest scorecard, also run `foundry-evals` first — otherwise
+the `continuous-evals` pillar checks degrade to `not-verified` rather
+than `pass`.
+
+**Depends on.** `threadlight-safe-check --phase post-deploy` (must be
+green and fresh) + a populated `SPEC § 12` block (the
+`threadlight-design` template ships it by default).
+
+**Persona note.** This is the **only** skill in the chain that
+explicitly produces a customer-facing artefact for an architecture
+review. Treat its markdown report as the deliverable; the JSON manifest
+is for your records.
+
+---
+
 ## Templates & substrates
 
 Reusable substrates live in three places. None of them should be edited
@@ -320,6 +394,7 @@ in a customer fork — copy them, fork the copy.
 | Adaptive Card 1.5 templates for the seven canonical gates | `skills/threadlight-hitl-patterns/templates/cards/` | `threadlight-hitl-patterns` |
 | Workspace UI reference per shape | `skills/threadlight-workspace-ui/templates/<shape>/` | `threadlight-workspace-ui` |
 | Manifest schema (the cross-skill kebab-case selector vocabulary) | `skills/threadlight-design/references/manifest-schema.json` | `threadlight-design` |
+| Production-readiness pillar references, SPEC § 12 template, report skeleton, waiver schema, sample-pilot fixture | `skills/threadlight-production-ready/references/` | `threadlight-production-ready` |
 
 The **selector vocabulary** in `specs/manifest.json` is the contract
 shared by every skill in the chain. If you invent a new selector,
@@ -431,7 +506,7 @@ before the customer joins. Documented in
 
 ## Quick-reference: invocations
 
-The four most-used incantations, copy-pasteable. Each one assumes a real
+The five most-used incantations, copy-pasteable. Each one assumes a real
 shell (not Cowork) for the runtime ones.
 
 ```bash
@@ -446,6 +521,9 @@ shell (not Cowork) for the runtime ones.
 
 # Verify it
 > threadlight-safe-check --phase post-deploy   # expects: gaps: []
+
+# Walk it to production-ready (advisory hand-off package)
+> threadlight-production-ready   # produces docs/production-readiness-report.md + JSON manifest
 ```
 
 The full canonical install set lives in `README.md` § "Threadlight".

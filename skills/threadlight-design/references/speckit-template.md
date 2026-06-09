@@ -19,13 +19,13 @@
 ### Audience & Customer Context
 
 > Populated by `threadlight-design` Step 1.5 (Full mode). Fast-PoC mode
-> leaves the placeholders unchanged and surfaces a callout in § 12.
+> leaves the placeholders unchanged and surfaces a callout in § 13.
 
 - **`audience_mode`**: `external-demo | internal-pilot | third-party-build | unspecified`
   - `external-demo` — Microsoft seller / SE pitching a prospect (default for backwards compat)
   - `internal-pilot` — org's own IT team / centre-of-excellence building for its own users
   - `third-party-build` — SI / partner building inside a customer tenant
-  - `unspecified` — preserve today's behaviour; treat as `external-demo` for prompts, flag in § 12
+  - `unspecified` — preserve today's behaviour; treat as `external-demo` for prompts, flag in § 13
 
 ### Customer / Org
 
@@ -543,7 +543,7 @@ deployment_posture:
 - `deployment_target` is the primary lever. The other rows are
   posture-tuning overrides; each may be omitted (deploy applies the
   defaults for the chosen target).
-- `source` documents how the value was reached — same taxonomy as § 12.
+- `source` documents how the value was reached — same taxonomy as § 13.
 - `deferred_decisions` lists rows the operator acknowledged but cannot
   implement in this pilot's scope (e.g. WAF / Front Door, paired-region
   DR). `threadlight-deploy` surfaces them as
@@ -556,7 +556,40 @@ conflict and asks which wins.
 
 ---
 
-## 12. Assumptions & Open Questions
+## 12. Production Readiness
+
+> **INPUT CONTRACT for `threadlight-production-ready`.** Populated by
+> default in the design template — fill in the placeholders before the
+> pilot moves into customer architecture review. The production-readiness
+> skill reads this block to resolve the target posture (Citadel spoke /
+> AGT / standard AI gateway / hybrid), to score residency and SLA
+> commitments, and to drive the customer-facing hand-off report.
+> Pilots that ship with this section empty default to
+> `target_posture: standard-ai-gateway` and trigger a "Recommended
+> enterprise posture: Citadel-spoke" callout in the report.
+
+- **target_posture**: `citadel-spoke` | `agt` | `standard-ai-gateway` | `hybrid` | `unset`
+  - Citadel-spoke = the recommended enterprise default when the customer
+    has (or is bringing) an AI Hub Gateway. AGT = in-process middleware
+    where there is no hub. Standard AI gateway = third-party fallback.
+    Hybrid = both AGT and an upstream APIM hub.
+- **residency**: `EU` | `US` | `UK` | `India` | `multi-region` (cite the chosen Azure regions)
+- **rto**: `4h` | `1h` | `15m` | … (recovery time objective)
+- **rpo**: `1h` | `15m` | `0` (recovery point objective; `0` means synchronous replication required)
+- **sla**: `99.5` | `99.9` | `99.95` (% availability target)
+- **incident_owner**: `oncall@customer.com` (single mailbox / on-call rotation; not "TBD")
+- **production_track**: `pilot-to-prod-2-week` | `production-hardening-6-week` | `not-bound` (timeline declared by customer)
+- **must-have pillars**: list — pick from `network-posture, agent-governance, identity-access, secrets, observability, continuous-evals, responsible-ai, hitl-audit, supply-chain, cost, reliability, sre-handover, model-lifecycle`
+- **CISO sign-off required**: `yes` (regulated industry, customer-data) | `no` (internal automation, demo-only)
+- **Waiver acceptors**: list of names+titles (people who can sign off a waiver). Empty = nobody can; every gap is a hard block.
+
+> See `skills/threadlight-production-ready/references/spec-section-12-template.md`
+> for two fully-worked examples (Citadel-spoke FSI customer and AGT-only
+> internal automation).
+
+---
+
+## 13. Assumptions & Open Questions
 
 > **Source-taxonomy table.** Every captured-context item from § 1
 > (`audience_mode`, `customer.*`), every § 11f posture override, and any
@@ -579,7 +612,7 @@ conflict and asks which wins.
 > Fast-PoC mode callout *(include verbatim when Step 1.5 was skipped)*:
 > _Fast-PoC mode: audience mode, customer context, brand, and production
 > posture were not collected; using neutral demo defaults. Override later
-> in SPEC § 1 / § 11f / § 12._
+> in SPEC § 1 / § 11f / § 13._
 
 ### Assumptions
 - [Assumption 1 — something taken as given]
