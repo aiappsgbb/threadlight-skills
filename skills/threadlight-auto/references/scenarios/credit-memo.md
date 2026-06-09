@@ -9,7 +9,7 @@
 ```
 Use threadlight-auto with the credit-memo scenario:
   customer: Contoso Financial
-  tenant: fruocco
+  tenant: acme
   env: dev
 ```
 

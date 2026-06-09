@@ -9,7 +9,7 @@
 ```
 Use threadlight-auto with the prior-auth-healthcare scenario:
   customer: Northwind Health
-  tenant: fruocco
+  tenant: acme
   env: dev
 ```
 

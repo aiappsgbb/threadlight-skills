@@ -15,8 +15,8 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
 {
   "version": 1,
   "workspace": "/Users/me/Repos/contoso-claim-triage",
-  "tenant_alias": "fruocco",
-  "subscription_name": "ME-MngEnvMCAP979166-fruocco-1",
+  "tenant_alias": "acme",
+  "subscription_name": "MCAPS-Subscription-Acme-1",
   "azd_env": "dev",
   "region": "westus3",
   "started_at": "2026-06-01T15:42:11Z",
