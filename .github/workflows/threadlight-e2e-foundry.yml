@@ -205,6 +205,49 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "COPILOT_PROVIDER_BEARER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
+      - name: 'DEBUG: token claims + direct endpoint curl'
+        env:
+          COPILOT_PROVIDER_BEARER_TOKEN: ${{ env.COPILOT_PROVIDER_BEARER_TOKEN }}
+          ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+          MODEL: ${{ inputs.model_deployment }}
+        run: |
+          set -uo pipefail
+          echo "::group::Token claims (non-secret fields only)"
+          python3 - <<'PY'
+          import os, json, base64
+          tok = os.environ.get("COPILOT_PROVIDER_BEARER_TOKEN","")
+          if not tok or tok.count(".") < 2:
+              print("NO TOKEN"); raise SystemExit(0)
+          payload = tok.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload).decode("utf-8","replace"))
+          for k in ("aud","iss","oid","appid","azp","tid","roles","scp","idtyp","ver","appidacr","amr"):
+              if k in claims:
+                  print(f"{k}: {claims[k]}")
+          PY
+          echo "::endgroup::"
+          echo "::group::Direct curl POST /openai/v1/responses"
+          ENDPOINT_NORM="${ENDPOINT%/}"
+          curl -sS -o /tmp/resp.json -w 'HTTP %{http_code}\n' \
+            -H "Authorization: Bearer $COPILOT_PROVIDER_BEARER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"model\":\"${MODEL:-gpt-5.4-mini}\",\"input\":\"ping\"}" \
+            "${ENDPOINT_NORM}/openai/v1/responses"
+          head -c 1500 /tmp/resp.json
+          echo
+          echo "::endgroup::"
+          echo "::group::Direct curl POST /openai/deployments/{m}/chat/completions"
+          curl -sS -o /tmp/resp2.json -w 'HTTP %{http_code}\n' \
+            -H "Authorization: Bearer $COPILOT_PROVIDER_BEARER_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"messages":[{"role":"user","content":"ping"}],"max_completion_tokens":5}' \
+            "${ENDPOINT_NORM}/openai/deployments/${MODEL:-gpt-5.4-mini}/chat/completions?api-version=2024-10-21"
+          head -c 1500 /tmp/resp2.json
+          echo
+          echo "::endgroup::"
+          # Non-fatal — diagnostic only
+          true
+
       # ── Tool installs ────────────────────────────────────────────────
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
