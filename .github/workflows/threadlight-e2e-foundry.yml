@@ -791,6 +791,41 @@ jobs:
           cat /tmp/resource-snapshot.txt
 
       # ── Always-teardown ───────────────────────────────────────────────
+      - name: Teardown — sentinel (refuse to delete outside per-run scope)
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          # Belt-and-braces guard. Every teardown command in this workflow
+          # targets ONLY resources whose name embeds github.run_id. This step
+          # refuses to proceed if E2E_RG_NAME or the per-run Cog Svcs account
+          # name ever drift out of that namespace.
+          #
+          # NEVER touched by this workflow's teardown:
+          #   - The shared UAMI (referenced via AZURE_CLIENT_ID secret)
+          #   - The shared Foundry account (referenced via AZURE_AI_ENDPOINT)
+          #   - Any subscription-level role assignment we didn't create
+          #   - Any RG not named rg-threadlight-e2e-<this-run-id>
+          # Anything outside the per-run prefix is someone else's resource.
+          RUNID="${{ github.run_id }}"
+          EXPECTED_RG="rg-threadlight-e2e-${RUNID}"
+          EXPECTED_ACC="ai-ci-${RUNID}"
+          if [ "$E2E_RG_NAME" != "$EXPECTED_RG" ]; then
+            echo "::error::Teardown sentinel: E2E_RG_NAME='$E2E_RG_NAME' does NOT match expected '$EXPECTED_RG' — aborting teardown to avoid touching shared infra"
+            exit 1
+          fi
+          echo "🛡  Teardown scope (this workflow will only touch these):"
+          echo "    - Resource group:        $EXPECTED_RG"
+          echo "    - Cog Svcs account:      $EXPECTED_ACC (soft-delete sweep)"
+          echo "    - Local config dirs:     $AZURE_CONFIG_DIR, $AZD_CONFIG_DIR"
+          echo "🛡  Preserved (NEVER touched):"
+          echo "    - Shared UAMI:           AZURE_CLIENT_ID=${AZURE_CLIENT_ID:0:8}…"
+          echo "    - Shared Foundry acct:   from AZURE_AI_ENDPOINT secret"
+          echo "    - Subscription / tenant: $AZURE_SUBSCRIPTION_ID / $AZURE_TENANT_ID"
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Teardown — azd down --force --purge
         if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
         timeout-minutes: 20
@@ -829,6 +864,38 @@ jobs:
           else
             echo "✓ RG ${E2E_RG_NAME} already gone"
           fi
+
+      - name: Teardown — purge soft-deleted Cog Svcs accounts (per-run only)
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        run: |
+          set +e
+          # azd down --purge usually clears the soft-delete reservation, but
+          # not always — a soft-deleted Cog Svcs / Foundry account holds the
+          # name for 48h, blocking name reuse on re-runs. Sweep ONLY names
+          # that embed this run's github.run_id; never anything else.
+          RUNID="${{ github.run_id }}"
+          EXPECTED_ACC="ai-ci-${RUNID}"
+          DELETED_JSON=$(az cognitiveservices account list-deleted --query "[?name=='$EXPECTED_ACC']" -o json 2>/dev/null)
+          COUNT=$(echo "$DELETED_JSON" | jq 'length' 2>/dev/null || echo 0)
+          if [ "$COUNT" = "0" ] || [ -z "$COUNT" ]; then
+            echo "✓ No soft-deleted Cog Svcs account named '$EXPECTED_ACC' — nothing to purge"
+            exit 0
+          fi
+          echo "$DELETED_JSON" | jq -r '.[] | "\(.name)|\(.location)|\(.resourceGroup // "")"' | while IFS='|' read NAME LOC RG; do
+            # Triple-guard: refuse to purge any name that doesn't embed our run_id.
+            if [[ "$NAME" != *"$RUNID"* ]]; then
+              echo "::warning::Refusing to purge '$NAME' — does not embed run_id $RUNID"
+              continue
+            fi
+            echo "Purging soft-deleted Cog Svcs account: $NAME (loc=$LOC, rg=$RG)"
+            if [ -n "$RG" ]; then
+              az cognitiveservices account purge --name "$NAME" --location "$LOC" --resource-group "$RG" 2>&1 || \
+                echo "::warning::Purge of $NAME exited non-zero (account may already be fully removed)"
+            else
+              az cognitiveservices account purge --name "$NAME" --location "$LOC" --resource-group "$E2E_RG_NAME" 2>&1 || \
+                echo "::warning::Purge of $NAME exited non-zero (account may already be fully removed)"
+            fi
+          done
 
       # ── Artifact upload ──────────────────────────────────────────────
       - name: Upload run artifacts
