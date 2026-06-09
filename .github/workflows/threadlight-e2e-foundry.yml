@@ -151,6 +151,13 @@ jobs:
     runs-on: ubuntu-latest
     # Budget: design 10min + deploy 15min + invoke 5min + teardown 15min + headroom
     timeout-minutes: 60
+    # Environment-scoped OIDC — see "FEATURE-BRANCH AUTH" in the header comment.
+    # The shared UAMI's federated credential is registered for subject
+    # `repo:aiappsgbb/threadlight-skills:environment:e2e-ci`, so every run
+    # (any branch, including main) presents the same OIDC subject and clears
+    # exactly one FIC. Required-reviewer protection rules on this Environment
+    # double as the cost gate for ~$1/run spend.
+    environment: e2e-ci
 
     steps:
       - uses: actions/checkout@v6.0.3
