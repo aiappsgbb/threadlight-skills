@@ -80,9 +80,9 @@ design            local-test       deploy             safe-check
 
 A single natural-language prompt. Examples:
 
-- `"Build me an auto-claim triage agent for Contoso Mutual in fruocco"`
+- `"Build me an auto-claim triage agent for Contoso Mutual in acme"`
 - `"Run threadlight-auto with the credit-memo scenario, customer=Contoso Financial, env=dev"`
-- `"Scaffold a prior-auth pilot for Northwind Health, tenant=fruocco, region=westus3"`
+- `"Scaffold a prior-auth pilot for Northwind Health, tenant=acme, region=westus3"`
 
 Parsing rules:
 - **Scenario template** — look for `with the <name> scenario` or `scenario=<name>` (default: `auto-claim-triage`)
@@ -98,7 +98,7 @@ Parsing rules:
 Use threadlight-auto with:
   scenario: auto-claim-triage
   customer: Contoso Mutual
-  tenant: fruocco
+  tenant: acme
   env: dev
   region: westus3
   workspace: ~/Repos/contoso-claim-triage
@@ -188,8 +188,8 @@ After Invoke completes (or after early termination), `threadlight-auto` emits a 
 ✅ threadlight-auto complete — Contoso Mutual auto-claim triage pilot
 
 Workspace:    ~/Repos/contoso-claim-triage
-Tenant:       fruocco (cd150465-...)
-Subscription: ME-MngEnvMCAP979166-fruocco-1 (3f67d949-...)
+Tenant:       acme (<tenant-guid>)
+Subscription: MCAPS-Subscription-Acme-1 (<sub-guid>)
 RG:           rg-contoso-claim-triage-dev-westus3
 Agent:        contoso-claim-triage-agent v1 (status: active)
 Endpoint:     https://aif-xxx.services.ai.azure.com/api/projects/proj-xxx

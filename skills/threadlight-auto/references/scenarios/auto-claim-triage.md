@@ -10,7 +10,7 @@
 ```
 Use threadlight-auto with the auto-claim-triage scenario:
   customer: Contoso Mutual
-  tenant: fruocco
+  tenant: acme
   env: dev
 ```
 
