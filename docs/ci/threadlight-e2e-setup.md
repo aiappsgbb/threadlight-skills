@@ -21,38 +21,76 @@
 
 ## Option A — reuse the existing `uami-awesome-gbb-ci` UAMI (recommended if available)
 
-The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-awesome-gbb-ci` in `rg-awesome-gbb-ci`, sub `ME-MngEnvMCAP979166-fruocco-2` as of 2026-06-01). If your tenant has access to that sub, the lowest-cost option is to add 2 more federated credentials to it for `aiappsgbb/threadlight-skills`.
+The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-awesome-gbb-ci` in `rg-awesome-gbb-ci`, sub `ME-MngEnvMCAP979166-fruocco-2` as of 2026-06-01). If your tenant has access to that sub, the lowest-cost option is to add federated credentials to it for `aiappsgbb/threadlight-skills`.
+
+> [!CAUTION]
+> **The shared RG `rg-awesome-gbb-ci` MUST carry a `CanNotDelete` management lock.** A cross-repo `azd down` (e.g. from awesome-gbb CI) authenticated as the shared UAMI deleted the entire RG twice in the same week before the lock was added on 2026-06-09. Without the lock, the UAMI has Contributor+UAA at sub scope, so any caller holding its OIDC trust can delete the RG that holds it. Verify the lock exists before assuming this UAMI is safe to reuse:
+>
+> ```bash
+> az lock list --resource-group rg-awesome-gbb-ci \
+>   --query "[?level=='CanNotDelete'].{name:name, level:level}" -o table
+> ```
+>
+> If the lock is missing, add it FIRST:
+>
+> ```bash
+> az lock create \
+>   --name "no-delete-shared-ci" \
+>   --resource-group rg-awesome-gbb-ci \
+>   --lock-type CanNotDelete \
+>   --notes "Shared CI RG. Holds the UAMI used by aiappsgbb/threadlight-skills + aiappsgbb/awesome-gbb CI. Removing this RG nukes both repos' CI."
+> ```
+>
+> Lock-removal requires `Microsoft.Authorization/locks/delete` — explicitly NOT in the UAMI's Contributor/UAA grants. Owners can remove it; the shared UAMI cannot.
+
+### Recommended: environment-scoped FIC (one credential covers every branch)
+
+Preferred over per-branch FICs — works for `main`, every feature branch, and every fork-less PR via the same single subject claim. Pair with a `e2e-ci` GitHub Environment whose required-reviewer rule doubles as the per-run cost gate.
+
+```bash
+# One-time: create the GitHub Environment (idempotent)
+gh api -X PUT repos/aiappsgbb/threadlight-skills/environments/e2e-ci --input - <<'EOF'
+{}
+EOF
+
+# One-time: create the FIC
+az identity federated-credential create \
+  --name "fc-threadlight-skills-env-e2e-ci" \
+  --identity-name uami-awesome-gbb-ci \
+  --resource-group rg-awesome-gbb-ci \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:aiappsgbb/threadlight-skills:environment:e2e-ci" \
+  --audiences "api://AzureADTokenExchange"
+```
+
+The workflow already wires `environment: e2e-ci` on the `e2e` job.
+
+### Per-branch FICs (legacy / fallback)
+
+Only needed if you cannot use the environment-scoped path above. One FIC per branch you `workflow_dispatch` from — Microsoft Entra ID does not support wildcards in the GitHub Actions OIDC `ref` subject.
 
 ```bash
 az identity federated-credential create \
-  --name "github-aiappsgbb-threadlight-skills-main" \
+  --name "fc-threadlight-skills-main" \
   --identity-name uami-awesome-gbb-ci \
   --resource-group rg-awesome-gbb-ci \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/main" \
   --audiences "api://AzureADTokenExchange"
+```
 
+Slashes are not allowed in the federated-credential `--name`, so replace them with `-` when targeting feature branches:
+
+```bash
+BRANCH=my/feature-branch
 az identity federated-credential create \
-  --name "github-aiappsgbb-threadlight-skills-feat" \
+  --name "fc-threadlight-skills-$(echo $BRANCH | tr / -)" \
   --identity-name uami-awesome-gbb-ci \
   --resource-group rg-awesome-gbb-ci \
   --issuer "https://token.actions.githubusercontent.com" \
-  --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/feat/port-ci-e2e-from-agentic-loop" \
+  --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/${BRANCH}" \
   --audiences "api://AzureADTokenExchange"
 ```
-
-> **For each additional branch you'll trigger `workflow_dispatch` from**, create one more fed-cred — Microsoft Entra ID does not support wildcards in the GitHub Actions OIDC `ref` subject. Slashes are not allowed in the federated-credential `--name`, so replace them with `-`:
->
-> ```bash
-> BRANCH=my/feature-branch
-> az identity federated-credential create \
->   --name "github-aiappsgbb-threadlight-skills-$(echo $BRANCH | tr / -)" \
->   --identity-name uami-awesome-gbb-ci \
->   --resource-group rg-awesome-gbb-ci \
->   --issuer "https://token.actions.githubusercontent.com" \
->   --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/${BRANCH}" \
->   --audiences "api://AzureADTokenExchange"
-> ```
 
 The UAMI already has these roles (granted during agentic-loop CI setup) — no extra grants needed:
 
@@ -75,7 +113,7 @@ Use when Option A's sub isn't accessible. Replace `<sub>`, `<rg>`, `<region>`, `
 - `gh` CLI authenticated to `aiappsgbb/threadlight-skills`: `gh auth status`
 - Existing Foundry account with at least one `gpt-5.4-mini` GlobalStandard deployment
 
-### Step 1 — Create UAMI + federated credentials
+### Step 1 — Create RG + UAMI + lock + federated credentials
 
 ```bash
 SUB=<your-sub-id>
@@ -85,6 +123,20 @@ UAMI=uami-threadlight-ci
 
 az group create --name "$RG" --location "$LOC"
 
+# CRITICAL — apply a CanNotDelete lock IMMEDIATELY after creating the RG.
+# The UAMI you're about to provision will have Contributor + UAA at sub
+# scope, which means anyone holding its OIDC trust (this repo's CI, plus
+# any other repo that ever shares this UAMI) can `azd down` this RG and
+# nuke its own auth identity. Lock-removal requires
+# Microsoft.Authorization/locks/delete which is NOT in Contributor/UAA,
+# so this lock holds against the UAMI itself. Owners can lift it; the
+# UAMI cannot.
+az lock create \
+  --name "no-delete-shared-ci" \
+  --resource-group "$RG" \
+  --lock-type CanNotDelete \
+  --notes "Holds UAMI used by aiappsgbb/threadlight-skills CI. DO NOT remove."
+
 az identity create \
   --name "$UAMI" \
   --resource-group "$RG" \
@@ -93,17 +145,19 @@ az identity create \
 UAMI_PRINCIPAL=$(az identity show --name "$UAMI" --resource-group "$RG" --query principalId -o tsv)
 UAMI_CLIENT_ID=$(az identity show --name "$UAMI" --resource-group "$RG" --query clientId -o tsv)
 
-# Federated credentials — main + the feat branch this PR is on.
-# Add more entries for each additional branch you'll workflow_dispatch from.
-for branch in main feat/port-ci-e2e-from-agentic-loop; do
-  az identity federated-credential create \
-    --name "github-aiappsgbb-threadlight-skills-$(echo $branch | tr / -)" \
-    --identity-name "$UAMI" \
-    --resource-group "$RG" \
-    --issuer "https://token.actions.githubusercontent.com" \
-    --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/${branch}" \
-    --audiences "api://AzureADTokenExchange"
-done
+# Recommended: one environment-scoped FIC instead of per-branch (see Option A
+# for rationale). Falls back to per-branch FICs if you skip the Environment.
+gh api -X PUT repos/aiappsgbb/threadlight-skills/environments/e2e-ci --input - <<'EOF'
+{}
+EOF
+
+az identity federated-credential create \
+  --name "fc-threadlight-skills-env-e2e-ci" \
+  --identity-name "$UAMI" \
+  --resource-group "$RG" \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:aiappsgbb/threadlight-skills:environment:e2e-ci" \
+  --audiences "api://AzureADTokenExchange"
 ```
 
 ### Step 2 — Grant required roles
@@ -145,7 +199,14 @@ Whether you came from Option A or B, set these 4 secrets:
 
 ```bash
 # Use the right UAMI_CLIENT_ID for your option:
-#   Option A: e83f4ad8-7405-4dc4-946a-dff1468e5082 (uami-awesome-gbb-ci, rebuilt Nov 2025)
+#   Option A: query live, the value rotates whenever the shared RG is
+#             rebuilt. Last rebuild: 2026-06-09 (after cross-repo azd
+#             down destroyed the RG twice in one week; mitigated with
+#             the CanNotDelete lock documented above).
+#             Live value:
+#               az identity show --name uami-awesome-gbb-ci \
+#                 --resource-group rg-awesome-gbb-ci \
+#                 --query clientId -o tsv
 #   Option B: the value printed from Step 1 above
 UAMI_CLIENT_ID=<from-above>
 
