@@ -34,6 +34,53 @@
 # - Always-teardown via `azd down --force --purge` in `if: always()` step;
 #   per-run RG name includes `github.run_id` to avoid collisions.
 #
+# FEATURE-BRANCH AUTH (when this workflow needs to run from a non-main ref)
+# =========================================================================
+# By default the shared UAMI's federated identity credentials cover only
+# `refs/heads/main` (and possibly `pull_request`). Triggering this workflow
+# from any other ref returns AADSTS700213 at the OIDC login step. To enable
+# feature-branch runs, pick ONE pattern below — all are additive to the
+# shared UAMI and preserve the existing main/PR FICs:
+#
+#   Pattern 1 — Environment-scoped FIC (RECOMMENDED, generalises to any branch)
+#     One FIC + required-reviewer gate via GitHub Environments.
+#     # Workflow change (job level):
+#     #   environment: e2e-ci
+#     # FIC subject:
+#     #   repo:aiappsgbb/threadlight-skills:environment:e2e-ci
+#     # GitHub setup: create the Environment with yourself as required reviewer.
+#     Caveat: adding `environment:` to this job WILL change main's OIDC
+#     subject too, so the existing main FIC must either be replaced or kept
+#     alongside an additional `environment:e2e-ci` FIC.
+#
+#   Pattern 2 — pull_request FIC + add the trigger
+#     # Workflow change (top-level on:):
+#     #   pull_request:
+#     #     types: [labeled, synchronize, reopened]
+#     #     branches: [main]
+#     # Job-level gate (avoid drive-by spending):
+#     #   if: github.event_name == 'workflow_dispatch' ||
+#     #       contains(github.event.pull_request.labels.*.name, 'e2e-ready')
+#     # FIC subject:
+#     #   repo:aiappsgbb/threadlight-skills:pull_request
+#     Caveat: `workflow_dispatch` from a PR's head still presents the branch
+#     subject (NOT pull_request), so this only helps the `pull_request` event.
+#
+#   Pattern 3 — Per-branch FIC (one-shot, ad hoc)
+#     # FIC subject:
+#     #   repo:aiappsgbb/threadlight-skills:ref:refs/heads/<branch-name>
+#     Cheap to add + delete around a single run; doesn't scale beyond a few
+#     branches because Entra FIC subjects are exact-match (no wildcards in
+#     the classic API).
+#
+# az command shape (works for all three patterns — just swap --subject):
+#   az identity federated-credential create \
+#     --identity-name <UAMI_NAME> --resource-group <UAMI_RG> \
+#     --name <fic-name> \
+#     --issuer https://token.actions.githubusercontent.com \
+#     --subject '<one of the subjects above>' \
+#     --audience api://AzureADTokenExchange
+#
 # BYOK ENV-VARS
 # =============
 # Routes ONLY through Foundry via `COPILOT_PROVIDER_*` (no GitHub Copilot
