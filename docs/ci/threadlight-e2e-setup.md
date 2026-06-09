@@ -19,15 +19,15 @@
 > owned assert; failures are scoped to a single phase, not buried in a
 > mega-prompt.
 
-## Option A — reuse the existing `uami-awesome-gbb-ci` UAMI (recommended if available)
+## Option A — reuse the existing `uami-shared-gbb-ci` UAMI (recommended if available)
 
-The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-awesome-gbb-ci` in `rg-awesome-gbb-ci`, sub `ME-MngEnvMCAP979166-fruocco-2` as of 2026-06-01). If your tenant has access to that sub, the lowest-cost option is to add federated credentials to it for `aiappsgbb/threadlight-skills`.
+The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-shared-gbb-ci` in `rg-shared-gbb-ci`, sub `ME-MngEnvMCAP979166-fruocco-2` as of 2026-06-09). If your tenant has access to that sub, the lowest-cost option is to add federated credentials to it for `aiappsgbb/threadlight-skills`.
 
 > [!CAUTION]
-> **The shared RG `rg-awesome-gbb-ci` MUST carry a `CanNotDelete` management lock.** A cross-repo `azd down` (e.g. from awesome-gbb CI) authenticated as the shared UAMI deleted the entire RG twice in the same week before the lock was added on 2026-06-09. Without the lock, the UAMI has Contributor+UAA at sub scope, so any caller holding its OIDC trust can delete the RG that holds it. Verify the lock exists before assuming this UAMI is safe to reuse:
+> **The shared RG `rg-shared-gbb-ci` MUST carry a `CanNotDelete` management lock from the moment it's created.** A cross-repo `azd down` (e.g. from awesome-gbb CI) authenticated as the shared UAMI deleted the predecessor RG (`rg-awesome-gbb-ci`) twice in the same week in 2026-06; we rebuilt clean on `rg-shared-gbb-ci` on 2026-06-09 with the lock applied at creation. Without the lock, the UAMI has Contributor+UAA at sub scope, so any caller holding its OIDC trust can delete the RG that holds it. Verify the lock exists before assuming this UAMI is safe to reuse:
 >
 > ```bash
-> az lock list --resource-group rg-awesome-gbb-ci \
+> az lock list --resource-group rg-shared-gbb-ci \
 >   --query "[?level=='CanNotDelete'].{name:name, level:level}" -o table
 > ```
 >
@@ -36,7 +36,7 @@ The agentic-loop + awesome-gbb CI all share a single UAMI (`uami-awesome-gbb-ci`
 > ```bash
 > az lock create \
 >   --name "no-delete-shared-ci" \
->   --resource-group rg-awesome-gbb-ci \
+>   --resource-group rg-shared-gbb-ci \
 >   --lock-type CanNotDelete \
 >   --notes "Shared CI RG. Holds the UAMI used by aiappsgbb/threadlight-skills + aiappsgbb/awesome-gbb CI. Removing this RG nukes both repos' CI."
 > ```
@@ -56,8 +56,8 @@ EOF
 # One-time: create the FIC
 az identity federated-credential create \
   --name "fc-threadlight-skills-env-e2e-ci" \
-  --identity-name uami-awesome-gbb-ci \
-  --resource-group rg-awesome-gbb-ci \
+  --identity-name uami-shared-gbb-ci \
+  --resource-group rg-shared-gbb-ci \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:aiappsgbb/threadlight-skills:environment:e2e-ci" \
   --audiences "api://AzureADTokenExchange"
@@ -72,8 +72,8 @@ Only needed if you cannot use the environment-scoped path above. One FIC per bra
 ```bash
 az identity federated-credential create \
   --name "fc-threadlight-skills-main" \
-  --identity-name uami-awesome-gbb-ci \
-  --resource-group rg-awesome-gbb-ci \
+  --identity-name uami-shared-gbb-ci \
+  --resource-group rg-shared-gbb-ci \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/main" \
   --audiences "api://AzureADTokenExchange"
@@ -85,8 +85,8 @@ Slashes are not allowed in the federated-credential `--name`, so replace them wi
 BRANCH=my/feature-branch
 az identity federated-credential create \
   --name "fc-threadlight-skills-$(echo $BRANCH | tr / -)" \
-  --identity-name uami-awesome-gbb-ci \
-  --resource-group rg-awesome-gbb-ci \
+  --identity-name uami-shared-gbb-ci \
+  --resource-group rg-shared-gbb-ci \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:aiappsgbb/threadlight-skills:ref:refs/heads/${BRANCH}" \
   --audiences "api://AzureADTokenExchange"
@@ -97,7 +97,7 @@ The UAMI already has these roles (granted during agentic-loop CI setup) — no e
 | Scope | Role |
 |---|---|
 | `/subscriptions/<sub>` | Contributor + User Access Administrator + Reader |
-| Foundry account `aif-awesome-gbb-ci` | Cognitive Services OpenAI User + Foundry User |
+| Foundry account `aif-shared-gbb-ci` | Cognitive Services OpenAI User + Foundry User |
 | ACR `acrawesomegbbci` | AcrPush |
 | AppIn `appi-awesome-gbb-ci` | Monitoring Metrics Publisher |
 
@@ -204,8 +204,8 @@ Whether you came from Option A or B, set these 4 secrets:
 #             down destroyed the RG twice in one week; mitigated with
 #             the CanNotDelete lock documented above).
 #             Live value:
-#               az identity show --name uami-awesome-gbb-ci \
-#                 --resource-group rg-awesome-gbb-ci \
+#               az identity show --name uami-shared-gbb-ci \
+#                 --resource-group rg-shared-gbb-ci \
 #                 --query clientId -o tsv
 #   Option B: the value printed from Step 1 above
 UAMI_CLIENT_ID=<from-above>
@@ -278,13 +278,13 @@ After a successful first run:
 # Option A
 az identity federated-credential delete \
   --name "github-aiappsgbb-threadlight-skills-main" \
-  --identity-name uami-awesome-gbb-ci \
-  --resource-group rg-awesome-gbb-ci
+  --identity-name uami-shared-gbb-ci \
+  --resource-group rg-shared-gbb-ci
 
 az identity federated-credential delete \
   --name "github-aiappsgbb-threadlight-skills-feat" \
-  --identity-name uami-awesome-gbb-ci \
-  --resource-group rg-awesome-gbb-ci
+  --identity-name uami-shared-gbb-ci \
+  --resource-group rg-shared-gbb-ci
 
 # Option B (also delete the UAMI itself if no other workload uses it)
 az identity federated-credential delete --identity-name "$UAMI" --resource-group "$RG" \
