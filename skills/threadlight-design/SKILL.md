@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Threadlight Design
@@ -49,6 +49,16 @@ This skill is designed for two personas:
   After the spec is committed, hand off to `threadlight-local-test` for fast
   inner-loop iteration or directly to `threadlight-deploy` for the customer
   sandbox.
+
+> [!NOTE]
+> **Audience modes** (declared in **Step 1.5** below, Full mode only): the
+> seller flow above is `external-demo`, but this skill also serves
+> `internal-pilot` (an org IT team / centre-of-excellence building for its
+> own users) and `third-party-build` (an SI / partner building inside a
+> customer tenant). Step 1.5 collects `audience_mode` first and steers brand,
+> tone, and artifact framing accordingly — neutral defaults for internal /
+> 3P, no "customer logo" prompt, runbook framing instead of demo-deck framing
+> where it fits. `unspecified` keeps today's behaviour.
 
 > [!TIP]
 > **Cowork-specific tips:** keep the customer's industry vocabulary inline (don't
@@ -89,6 +99,17 @@ Every PoC, regardless of mode, MUST have:
 - ✅ **`specs/experience.html`** — bespoke cinematic customer journey (**optional — on request**; **see Step 6 § 8**). Generate when the user asks for a "cinematic", "experience", or "journey", or when spec § 12 sets `experience: true`. Skip otherwise.
 - ✅ **`tests/killer-prompts.md`** — 5–10 ranked wow-prompts wired into `STARTER_{1,2,3}_TITLE/PROMPT` env vars (see Step 6 § 11). Mandatory under the same condition as the deck.
 - ✅ **`specs/demo-rehearsal.md`** — beat-by-beat run-of-show (T-24h / T-15min / T-5min / T-0) with backup paths (see Step 6 § 12). Mandatory under the same condition as the deck.
+
+> [!IMPORTANT]
+> **Fast-PoC skips Step 1.5 (Audience & Presentation Context).** Audience
+> mode, customer / org context, brand identity, tone / language, and
+> deployment posture are NOT collected interactively — neutral
+> `external-demo` defaults apply (no logo prompt, default tone, demo-deck
+> framing). Step 3 (Generate SpecKit) MUST then surface a one-line callout
+> in SPEC § 12 reading roughly: _"Fast-PoC mode: audience mode, customer
+> context, brand, and production posture were not collected; using neutral
+> demo defaults. Override later in SPEC § 1 / § 11f / § 12."_ Downstream
+> skills key off this so silent defaults stay auditable.
 
 ---
 
@@ -190,6 +211,77 @@ If **no primer exists** for the domain, that's completely fine — the trait-bas
 discovery works independently. Primers just save a few questions for well-known scenarios.
 
 Available primers are samples; the team can add more over time. See `references/domains/README.md`.
+
+### Step 1.5: Audience & Presentation Context (Full mode only — ask-once round)
+
+**Goal**: collect the audience-, brand-, and posture-context that today's
+flow silently defaults — once, before discovery dives in — so SPEC § 1 /
+§ 11f, the brand cascade in Step 6, and `threadlight-deploy` Phase 1.5 all
+inherit explicit choices instead of convention-fallbacks.
+
+**Skip in Fast-PoC mode.** See the Fast-PoC callout above — Fast-PoC
+applies neutral defaults silently and records that decision in SPEC § 12.
+
+**Pattern**: mirror Phase 7 (Citadel handoff) in `threadlight-deploy` —
+each question is optional, defaults are explicit, and a skipped answer
+falls through to today's behaviour and gets a row in the SPEC § 12
+assumptions table with `source: defaulted-after-skip`.
+
+> Scope is deliberately narrow: this step does NOT re-ask anything Step 2
+> already covers (Participants, Data Sourcing, Compliance Screen, temporal
+> patterns). Regulatory / PII / retention / secrets / system access stay
+> in Step 2.
+
+Ask the following six items in one batch (operator can answer inline or
+skip any line):
+
+1. **`audience_mode`** (steers every follow-up — ask this first):
+   - `external-demo` — a Microsoft seller / SE pitching a prospect (today's
+     default for backwards compatibility). Brand prompt fires; demo-deck
+     framing.
+   - `internal-pilot` — an org's own IT team / centre-of-excellence
+     building for the org's own users. Brand defaults to neutral unless
+     opt-in; runbook / handover framing.
+   - `third-party-build` — an SI / partner building inside a customer
+     tenant. Brand defaults to neutral unless opt-in; both your org and
+     the customer tenant are captured below.
+   - `unspecified` — preserve today's behaviour; treat as `external-demo`
+     for prompting purposes but leave a `source: open-question` flag in
+     § 12.
+2. **Customer / org context** — Org name, sector specifics, region(s). For
+   `external-demo` this is the prospect; for `internal-pilot` it's the
+   user's own org; for `third-party-build` capture both the partner's org
+   and the customer tenant they build inside.
+3. **Audience & stakeholders** — Who reviews this? Examples:
+   `external-demo` → industry SME / decision-maker; `internal-pilot` →
+   internal sponsor / arch board; `third-party-build` → customer IT lead.
+   Drives whether downstream Step 6 generates a demo deck (external) or a
+   runbook / handover doc (internal / 3P).
+4. **Brand identity** — `external-demo` flows through the Pattern 1 brand
+   cascade (logo URL / primary hex / "the red telco" hint → convention
+   fallback). `internal-pilot` and `third-party-build` default to the
+   neutral Threadlight palette unless the operator explicitly opts in;
+   do NOT prompt for a "customer logo" in those modes.
+5. **Tone & language** — Formal / consumer-friendly; language(s) for the
+   output artefacts (deck for external; runbook / handover doc for
+   internal / 3P).
+6. **Deployment horizon** — `one-off demo | PoC sandbox | pilot |
+   production-bound`. Pre-populates SPEC § 11f `deployment_target` so
+   `threadlight-deploy` Phase 1.5 takes Path 1 (no re-prompt). Audience
+   modes do NOT constrain horizon — an `internal-pilot` may well be
+   `production-bound`.
+
+Capture in **SPEC § 1** (audience_mode, customer.brand_palette,
+customer.region) and **SPEC § 11f** (`deployment_target` + posture
+overrides as known). Each item carries a `source` field with one of:
+`provided | inferred | defaulted-after-skip | open-question`. Skipped
+items default to today's behaviour and get a row in the **§ 12
+assumptions table** (see Step 3 for the table shape).
+
+**Soft-confirmation hook**: after Step 2 completes, Step 3 (Generate
+SpecKit) shows the merged context (Step 1 + Step 1.5 + Step 2) and the
+defaulted items as one compact table before writing artefacts — see the
+"Pre-generation confirmation" callout in Step 3.
 
 ### Step 2: Discover via Trait Detection
 
@@ -316,6 +408,44 @@ At minimum, confirm:
 
 Use the template from `references/speckit-template.md`.
 
+#### Pre-generation confirmation (Full mode only)
+
+Before writing `specs/SPEC.md`, show the user a single compact table merging
+**Step 1** (clarify), **Step 1.5** (audience & presentation context), and
+**Step 2** (trait discovery) — with the **`source`** of each field
+visible — and ask one open question: _"Anything to tweak before I generate
+the spec?"_
+
+Table shape (mirrors the SPEC § 12 source-taxonomy table):
+
+```markdown
+| Section / Field          | Effective value                  | Source                |
+|--------------------------|----------------------------------|-----------------------|
+| § 1.audience_mode        | external-demo                    | provided              |
+| § 1.customer.name        | Contoso Retail                   | provided              |
+| § 1.customer.region      | EU                               | provided              |
+| § 1.customer.brand_palette | Threadlight neutral            | defaulted-after-skip  |
+| § 1.tone                 | consumer-friendly                | provided              |
+| § 11f.deployment_target  | customer-pilot                   | provided              |
+| § 11f.networking         | public                           | defaulted-after-skip  |
+```
+
+Tweaks are applied inline (rewrite the corresponding § 1 / § 11f field +
+flip `source` to `provided`) and the table is re-shown until the user
+accepts. Skip this step in Fast-PoC mode.
+
+#### Fast-PoC § 12 callout (mandatory when `mode == Fast-PoC`)
+
+When Step 1.5 was skipped because the user is in Fast-PoC, SPEC § 12 MUST
+open with a one-line callout — verbatim shape:
+
+> _Fast-PoC mode: audience mode, customer context, brand, and production
+> posture were not collected; using neutral demo defaults. Override later
+> in SPEC § 1 / § 11f / § 12._
+
+This is the auditable trail that silently-defaulted decisions left for
+downstream skills (and for a later reviewer).
+
 Create in the project directory:
 
 #### `specs/SPEC.md` — The full SpecKit document
@@ -347,6 +477,7 @@ Must include all sections from the template:
 > If missing: read the existing `azure.yaml` services + `infra/main.bicep` modules, write the corresponding kebab-case selector table, prepend it to the SPEC at the right anchor, and re-validate.
 11d. **Demo Data (Realism rules)** — per-entity volumes, distribution, golden cases, reset semantics, industry realism rules. **INPUT CONTRACT for `threadlight-demo-data-factory`.** *Required for every process with mocked systems.*
 11e. **Workflow Model** — `workflow_model: agent | workflow`. **INPUT CONTRACT for `threadlight-deploy` Phase 2** (determines whether to generate an Agent container or a DurableWorkflow container). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions.
+11f. **Deployment Posture** — `deployment_target: demo-sandbox | customer-pilot | production-bound` plus posture overrides (networking, replicas, retention, model_pinning) and a `deferred_decisions:` list. **INPUT CONTRACT for `threadlight-deploy` Phase 1.5**: when populated, Phase 1.5 takes Path 1 (proceed with matching posture defaults, no operator prompt); when absent, Phase 1.5 asks the operator once. Pre-populated by Step 1.5 of this skill (Full mode); left empty by Fast-PoC.
 12. **Assumptions & Open Questions** — what's given, what needs stakeholder input
 
 > **The abstract / pure-coding split.** Sections **5b, 7b, 8 (action gate), 8b, 9 (KPI table),

@@ -16,6 +16,28 @@
 **Description**: [2-3 sentences describing the process end-to-end]
 **Target Persona**: [Who will see the demo — CIO, CFO, COO, CDO, CISO, Developer, or mixed]
 
+### Audience & Customer Context
+
+> Populated by `threadlight-design` Step 1.5 (Full mode). Fast-PoC mode
+> leaves the placeholders unchanged and surfaces a callout in § 12.
+
+- **`audience_mode`**: `external-demo | internal-pilot | third-party-build | unspecified`
+  - `external-demo` — Microsoft seller / SE pitching a prospect (default for backwards compat)
+  - `internal-pilot` — org's own IT team / centre-of-excellence building for its own users
+  - `third-party-build` — SI / partner building inside a customer tenant
+  - `unspecified` — preserve today's behaviour; treat as `external-demo` for prompts, flag in § 12
+
+### Customer / Org
+
+- **`customer.name`**: [Prospect for external-demo; own org for internal-pilot; partner org for third-party-build]
+- **`customer.region`**: [e.g. EU, North America, APAC — drives data residency hints]
+- **`customer.brand_palette`**:
+  - **primary**: [hex color or "Threadlight neutral" if not collected]
+  - **secondary**: [hex color or empty]
+  - **logo_url**: [optional]
+  - Empty / neutral is the default for `internal-pilot` and `third-party-build` unless the operator opts in.
+- **`customer.tenant`** *(third-party-build only)*: [customer tenant the partner builds inside]
+
 ### Goals
 - [Primary goal — what outcome does this deliver?]
 - [Secondary goals]
@@ -475,7 +497,89 @@ that integration explicitly in § 5).
 
 ---
 
+## 11e. Workflow Model
+
+> **INPUT CONTRACT for `threadlight-deploy` Phase 2.** Determines whether
+> the deploy skill generates an Agent container or a DurableWorkflow
+> container. Defaults to `agent` when absent.
+
+```yaml
+workflow_model: agent  # agent | workflow
+```
+
+- `agent` *(default)* — single agent with tools; `threadlight-deploy`
+  generates `AGENTS.md` + Skills + a hosted-agent or ACA-agent container.
+- `workflow` — deterministic multi-step orchestration; `threadlight-deploy`
+  additionally generates `WORKFLOW.md` (executor / phase definitions) and
+  scaffolds a DurableWorkflow container instead of a single agent. Use when
+  the process has fixed phases, long-running waits, retries with explicit
+  back-off, or human approvals between stages.
+
+---
+
+## 11f. Deployment Posture
+
+> **INPUT CONTRACT for `threadlight-deploy` Phase 1.5.** When this block is
+> populated, Phase 1.5 takes **Path 1** — proceed with matching posture
+> defaults, no operator prompt. When absent, Phase 1.5 asks the operator
+> once and writes the answers to `specs/deployment-posture.md`.
+> Pre-populated by `threadlight-design` Step 1.5 (Full mode); left empty
+> by Fast-PoC.
+
+```yaml
+deployment_posture:
+  deployment_target: demo-sandbox | customer-pilot | production-bound
+  source: provided | inferred | defaulted-after-skip | open-question
+  overrides:
+    networking: public | private-required | deferred
+    replicas: single | ha-min-replicas
+    retention: 90d | regulated-7y | customer-defined
+    model_pinning: preview-ok | ga-pinned
+  deferred_decisions:
+    - waf-front-door
+    - dr-runbook
+```
+
+- `deployment_target` is the primary lever. The other rows are
+  posture-tuning overrides; each may be omitted (deploy applies the
+  defaults for the chosen target).
+- `source` documents how the value was reached — same taxonomy as § 12.
+- `deferred_decisions` lists rows the operator acknowledged but cannot
+  implement in this pilot's scope (e.g. WAF / Front Door, paired-region
+  DR). `threadlight-deploy` surfaces them as
+  `<!-- TODO(posture): ... -->` comments in `main.bicep`.
+
+**Authority order** (drift mitigation): SPEC § 11f → `specs/deployment-posture.md`
+→ `azd env` vars. On rerun, `threadlight-deploy` Phase 1.5 reads the
+posture file first; if § 11f also exists and disagrees, it surfaces the
+conflict and asks which wins.
+
+---
+
 ## 12. Assumptions & Open Questions
+
+> **Source-taxonomy table.** Every captured-context item from § 1
+> (`audience_mode`, `customer.*`), every § 11f posture override, and any
+> downstream-skill default that was applied without explicit input MUST
+> appear here with a `Source` value of `provided | inferred |
+> defaulted-after-skip | open-question`. This is the auditable trail of
+> silently-defaulted decisions.
+
+### Captured-context source table
+
+| Field                          | Effective value                      | Source                | Default used? | Follow-up needed |
+|--------------------------------|--------------------------------------|-----------------------|---------------|------------------|
+| § 1.audience_mode              | [e.g. external-demo]                 | [provided / inferred / defaulted-after-skip / open-question] | yes / no | yes / no |
+| § 1.customer.name              | [e.g. Contoso Retail]                | provided              | no            | no               |
+| § 1.customer.region            | [e.g. EU]                            | provided              | no            | no               |
+| § 1.customer.brand_palette     | [e.g. Threadlight neutral]           | defaulted-after-skip  | yes           | no               |
+| § 11f.deployment_target        | [e.g. customer-pilot]                | provided              | no            | no               |
+| § 11f.overrides.networking     | [e.g. public]                        | defaulted-after-skip  | yes           | yes              |
+
+> Fast-PoC mode callout *(include verbatim when Step 1.5 was skipped)*:
+> _Fast-PoC mode: audience mode, customer context, brand, and production
+> posture were not collected; using neutral demo defaults. Override later
+> in SPEC § 1 / § 11f / § 12._
 
 ### Assumptions
 - [Assumption 1 — something taken as given]
