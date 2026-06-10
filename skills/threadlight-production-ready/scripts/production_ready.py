@@ -43,6 +43,118 @@ from typing import Any, Iterable
 
 VERSION = "0.3.0"
 
+# ---------------------------------------------------------------------------
+# region: framing_wizard (v0.4.0)
+# ---------------------------------------------------------------------------
+
+FRAMING_QUESTIONS = [
+    {
+        "id": "target_subscription_id",
+        "prompt": "Azure subscription ID for the production target?",
+        "kind": "text",
+        "required": True,
+    },
+    {
+        "id": "target_resource_group",
+        "prompt": "Resource group name for the production target?",
+        "kind": "text",
+        "required": True,
+    },
+    {
+        "id": "target_posture",
+        "prompt": "Posture profile?",
+        "kind": "choice",
+        "choices": ["citadel-spoke", "standard-ai-gateway", "agt", "hybrid"],
+        "required": True,
+    },
+    {
+        "id": "provisioning_rights",
+        "prompt": "Do you have Contributor or higher on the target RG?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "central_platform_team",
+        "prompt": "Is there a central platform/Citadel team that owns shared infra (gateways, KV, networking)?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "restricted_environment",
+        "prompt": "Is direct write access to the target restricted (i.e. all changes must go through CI/CD)?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "cicd_target",
+        "prompt": "CI/CD target?",
+        "kind": "choice",
+        "choices": ["github-actions", "azure-devops", "none"],
+        "required": True,
+    },
+]
+
+
+def _coerce_bool(s: str) -> bool | None:
+    s = s.strip().lower()
+    if s in {"y", "yes", "true", "1"}:
+        return True
+    if s in {"n", "no", "false", "0"}:
+        return False
+    return None
+
+
+def run_framing_wizard(istream=None, ostream=None) -> dict[str, Any]:
+    """TTY-driven 7-question framing wizard.
+
+    Re-prompts on invalid choice / bool input. Raises SystemExit on EOF for
+    required questions. Returns {question_id: answer} dict.
+    """
+    istream = istream if istream is not None else sys.stdin
+    ostream = ostream if ostream is not None else sys.stdout
+    answers: dict[str, Any] = {}
+    for q in FRAMING_QUESTIONS:
+        while True:
+            print(q["prompt"], file=ostream)
+            if q["kind"] == "choice":
+                print(f"  choices: {', '.join(q['choices'])}", file=ostream)
+            raw = istream.readline()
+            if not raw and q["required"]:
+                raise SystemExit(
+                    f"framing wizard: EOF on required question {q['id']}"
+                )
+            raw = raw.strip()
+            if q["kind"] == "bool":
+                v = _coerce_bool(raw)
+                if v is None:
+                    continue
+                answers[q["id"]] = v
+                break
+            if q["kind"] == "choice":
+                if raw not in q["choices"]:
+                    continue
+                answers[q["id"]] = raw
+                break
+            # text
+            if not raw and q["required"]:
+                continue
+            answers[q["id"]] = raw
+            break
+    return answers
+
+
+def load_framing_file(path) -> dict[str, Any]:
+    """Load + validate a framing-answers JSON file."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    required = [q["id"] for q in FRAMING_QUESTIONS if q["required"]]
+    missing = [k for k in required if k not in data]
+    if missing:
+        raise SystemExit(f"framing file: missing required keys: {missing}")
+    return data
+
+
+# endregion: framing_wizard
+
 PILLAR_IDS = [
     "network-posture",
     "agent-governance",
@@ -3708,6 +3820,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="append a row per run (date, score, posture, debt) for trending; set to '' to disable")
     p.add_argument("--secure-score-floor", type=int, default=60,
                    help="Defender Secure Score percent floor for GOV-104 (default 60)")
+    # v0.4.0 production-onboarding flags
+    p.add_argument("--onboard", action="store_true",
+                   help="Enter 3-phase production onboarding mode (framing wizard + apply-plan.json)")
+    p.add_argument("--framing-file", default=None,
+                   help="JSON file with framing answers (skips the interactive wizard)")
+    p.add_argument("--apply-plan-out", default=None,
+                   help="Path to write apply-plan.json (default: tests/production-readiness-apply-plan.json)")
+    p.add_argument("--scaffold-cicd", action="store_true",
+                   help="Phase 3: write .github/workflows/azd-deploy-prod.yml + UAMI runbook from templates")
+    p.add_argument("--no-rights-probe", action="store_true",
+                   help="Skip the live provisioning-rights probe (use framing answer only)")
+    p.add_argument("--target-sub", default=None,
+                   help="Override target subscription ID (otherwise read from framing or manifest)")
+    p.add_argument("--target-rg", default=None,
+                   help="Override target resource group (otherwise read from framing or manifest)")
+    p.add_argument("--repo-full-name", default=None,
+                   help="owner/repo string for CI/CD scaffolds (auto-detected from git remote if omitted)")
     p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return p.parse_args(argv)
 
