@@ -242,41 +242,124 @@ def _probe_provisioning_rights(subscription_id, resource_group, skip=False):
 
 
 # ---------------------------------------------------------------------------
-# region: onboard_stubs (v0.4.0)
+# region: phase_decision (v0.4.0)
 # ---------------------------------------------------------------------------
 #
-# These two helpers are referenced by the `--onboard` dispatcher in main().
-# They are intentionally stubs here in Phase A — Phase C replaces them with
-# real implementations that run the assessor end-to-end and emit a
-# rights-aware phase banner.
+# Decides Phase 2 mode (self-service vs central-team handoff vs blocked)
+# from the framing answers + live rights probe result. Pure function.
+
+def _phase_decision(framing, rights_result):
+    """Decide phase-2 mode from framing + live rights probe.
+    Pure function — no I/O. Returns {phase2_mode, reason, warning}.
+
+    Decision order:
+      1. restricted_environment in framing → central handoff (regardless of rights)
+      2. rights_class=none → blocked (operator needs an access request first)
+      3. rights_class=full → self-service
+      4. rights_class=unknown → central handoff + warning (assume constrained)
+      5. otherwise (constrained) → central handoff
+    """
+    rclass = rights_result["rights_class"]
+    if framing.get("restricted_environment"):
+        return {
+            "phase2_mode": PHASE_CENTRAL_HANDOFF,
+            "reason": "Framing-Q6 marked restricted environment — handoff regardless of rights",
+            "warning": None,
+        }
+    if rclass == RIGHTS_NONE:
+        return {
+            "phase2_mode": PHASE_BLOCKED,
+            "reason": "Operator has no role assignments at target RG scope",
+            "warning": "Request access (Contributor or Owner) before re-running",
+        }
+    if rclass == RIGHTS_FULL:
+        return {
+            "phase2_mode": PHASE_SELF_SERVICE,
+            "reason": "Operator has write-capable role at RG scope",
+            "warning": None,
+        }
+    if rclass == RIGHTS_UNKNOWN:
+        return {
+            "phase2_mode": PHASE_CENTRAL_HANDOFF,
+            "reason": "Rights probe skipped or failed — assuming constrained",
+            "warning": "Re-run without --no-rights-probe to confirm self-service eligibility",
+        }
+    return {
+        "phase2_mode": PHASE_CENTRAL_HANDOFF,
+        "reason": f"Operator rights classified as {rclass}",
+        "warning": None,
+    }
+
+
+def _emit_phase_banner(framing, rights, decision, sink=None):
+    """Render the v0.4.0 phase-decision banner. Side-effecting (writes to sink).
+    Default sink is sys.stderr.
+    """
+    if sink is None:
+        sink = sys.stderr
+    bar = "━" * 64
+    print(bar, file=sink)
+    print("THREADLIGHT v0.4.0 — Production Onboarding", file=sink)
+    print(
+        f"  Target: {framing.get('target_subscription_id')}/"
+        f"{framing.get('target_resource_group')}",
+        file=sink,
+    )
+    print(f"  Posture: {framing.get('target_posture')}", file=sink)
+    print(
+        f"  Rights:  {rights['rights_class']}  "
+        f"(roles: {', '.join(rights['roles']) or '—'})",
+        file=sink,
+    )
+    print(f"  Phase 2: ⇒ {decision['phase2_mode']}", file=sink)
+    print(f"           reason: {decision['reason']}", file=sink)
+    if decision.get("warning"):
+        print(f"  ⚠ warning: {decision['warning']}", file=sink)
+    print(bar, file=sink)
+
+# endregion: phase_decision
+
+
+# ---------------------------------------------------------------------------
+# region: onboard_runner (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Real implementations for the --onboard side-channel. Replaces the
+# Phase A stubs (_run_assessment_for_onboard + _phase_decision_banner)
+# with rights-probe-aware logic per Phase C6.
 
 def _run_assessment_for_onboard(args, framing: dict) -> dict:
     """Run the assessor for --onboard and return the manifest dict.
 
-    Phase C wires this to the existing assessor flow (load manifest, run
-    pillars, attach rights_probe + phase_decision, write manifest+report).
-    Until then, --onboard mode is non-functional.
+    Loads the input manifest (assumed to have been built by an upstream
+    v0.3.0-style assessment run, or a hand-authored fixture), probes the
+    operator's RBAC against the target RG, decides Phase 2 mode, and
+    attaches both `rights_probe` and `phase_decision` to the returned
+    manifest. The banner is emitted to stderr as a side effect so the
+    operator sees the decision before apply-plan.json is materialized.
     """
-    raise NotImplementedError(
-        "_run_assessment_for_onboard: implemented in Phase C (rights probe + "
-        "phase decision wiring). See plans/2026-06-10-threadlight-production-"
-        "ready-v040.md Task C6 step 1."
+    root = Path(args.root) if getattr(args, "root", None) else Path.cwd()
+    manifest_path = root / args.in_manifest
+    if not manifest_path.is_file():
+        raise SystemExit(
+            f"--onboard: expected manifest at {manifest_path} (run the v0.3.0 "
+            f"assessment first, or pass --in-manifest pointing at an existing "
+            f"production-readiness-manifest.json)."
+        )
+    manifest = _load_manifest(manifest_path)
+
+    sub = getattr(args, "target_sub", None) or framing.get("target_subscription_id")
+    rg = getattr(args, "target_rg", None) or framing.get("target_resource_group")
+    rights = _probe_provisioning_rights(
+        sub, rg, skip=getattr(args, "no_rights_probe", False)
     )
+    decision = _phase_decision(framing, rights)
+    _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+    manifest["rights_probe"] = rights
+    manifest["phase_decision"] = decision
+    return manifest
 
-
-def _phase_decision_banner(framing: dict, plan: dict) -> str:
-    """Render the 3-phase decision banner for --onboard mode.
-
-    Phase C replaces this with `_emit_phase_banner(framing, rights, decision,
-    sink=...)` which knows the rights class and phase 2 mode.
-    """
-    raise NotImplementedError(
-        "_phase_decision_banner: implemented in Phase C (Task C6 step 2 — "
-        "_emit_phase_banner)."
-    )
-
-
-# endregion: onboard_stubs
+# endregion: onboard_runner
 
 
 VERSION = "0.3.0"
@@ -4091,7 +4174,8 @@ def main(argv: list[str] | None = None) -> int:
     # --onboard is the v0.4.0 3-phase production-onboarding side-channel.
     # Phase 1 (Assess) is implemented here; Phase 2 (Refine + Deploy) and
     # Phase 3 (CI/CD Handoff) run downstream in the agent driven by
-    # apply-plan.json. The helpers below are filled in over Phases A6 / B / C.
+    # apply-plan.json. _run_assessment_for_onboard emits the phase-2
+    # decision banner to stderr before apply-plan.json is materialized.
     if args.onboard:
         framing = (load_framing_file(args.framing_file) if args.framing_file
                    else run_framing_wizard())
@@ -4106,7 +4190,6 @@ def main(argv: list[str] | None = None) -> int:
         out_path = args.apply_plan_out or str(Path(args.out) / "apply-plan.json")
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         write_apply_plan(plan, out_path)
-        _eprint(_phase_decision_banner(framing, plan))
         return 0
 
     if not args.quiet:
