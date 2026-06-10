@@ -191,6 +191,7 @@ threadlight-production-ready/
     ├── spec-section-12-template.md       (how to author SPEC § 12)
     ├── report-template.md                (markdown report skeleton)
     ├── waivers-schema.json               (waiver file shape — JSON Schema)
+    ├── ci-github-actions.yml             (sample CI workflow — PR comments + artifacts)
     ├── handoff-checklist.md              (customer pre-go-live checklist)
     ├── live-probe-permissions.md         (per-check minimum Azure RBAC, tiered)
     ├── pillars/                          (one md per pillar — 13)
@@ -426,6 +427,80 @@ See [`references/live-probe-permissions.md`](references/live-probe-permissions.m
 for the per-check mapping. The skill prints a "what would I check with
 more permissions?" hint at the end of the report so the operator can
 go back and elevate before the customer review.
+
+## Industrialization recipes
+
+The skill is single-file Python on purpose so it slots into existing
+delivery surfaces without dragging in a runtime. Two patterns ship with
+the skill — both are **opt-in** and **soft-advisory** so they never
+break a demo.
+
+### Recipe A — CI publishes the scorecard on every PR
+
+Copy `references/ci-github-actions.yml` to `.github/workflows/production-ready.yml`
+in the pilot repo. The workflow:
+
+- Runs in **static mode** on every PR (no Azure auth required) and posts
+  the markdown report as a sticky PR comment
+- Runs in **live mode** on `main` pushes if an `AZURE_CREDENTIALS` secret
+  is present
+- Uploads `docs/production-readiness-report.md` +
+  `tests/production-readiness-manifest.json` as 90-day artifacts
+- Never fails the build — the skill always exits 0; CI is for visibility,
+  not gating
+
+This is the right pattern when "merge to main" is the natural review
+checkpoint and the team wants the scorecard visible in PR review.
+
+### Recipe B — `azd up` postdeploy hook (opt-in)
+
+Add a postdeploy hook to `azure.yaml` so the scorecard is generated
+automatically after every `azd up`. Gate behind an env var so demo
+workspaces don't auto-produce customer-review artefacts.
+
+```yaml
+# azure.yaml
+hooks:
+  postdeploy:
+    posix:
+      shell: sh
+      continueOnError: true     # never block azd up on advisory output
+      interactive: false
+      run: |
+        if [ "${THREADLIGHT_PRODUCTION_READY:-0}" = "1" ]; then
+          echo "→ Threadlight production-readiness scorecard (opt-in)"
+          python tests/production_ready.py --quiet \
+            --out tests/production-readiness-manifest.json \
+            --report docs/production-readiness-report.md
+          echo "  report:   docs/production-readiness-report.md"
+          echo "  manifest: tests/production-readiness-manifest.json"
+        else
+          echo "→ Skipping production-ready (set THREADLIGHT_PRODUCTION_READY=1 to enable)"
+        fi
+```
+
+Operator invocation:
+
+```bash
+# Default — skipped (demo workspace)
+azd up
+
+# Opt-in for the run that produces the customer hand-off package
+THREADLIGHT_PRODUCTION_READY=1 azd up
+
+# Or pin it for an environment
+azd env set THREADLIGHT_PRODUCTION_READY 1
+azd up
+```
+
+`continueOnError: true` guarantees the hook can never turn a successful
+deploy into a red `azd up`. `tests/production_ready.py` must already be
+in the pilot repo (copied from this skill's `scripts/` directory) — the
+hook does not auto-fetch it.
+
+This is the right pattern when the team runs `azd up` against named
+customer environments (`dev` → `prod`) and wants the scorecard generated
+on the same beat as the deployment.
 
 ## Waiver discipline
 

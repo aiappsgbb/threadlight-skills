@@ -101,6 +101,32 @@
           "ticket_ref": {
             "type": "string",
             "description": "Optional: reference to a ticket / change request (e.g., 'CR-12345')."
+          },
+          "raci": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "OPTIONAL governance fields for customers that audit waiver approvals against a RACI matrix. None of these change the skill's runtime behavior — they ride along on the manifest's `waivers_applied[*]` entries and surface in the report's waiver register table. Use these when the customer's CISO process requires explicit Accountable/Consulted/Informed roles distinct from the technical `owner`.",
+            "properties": {
+              "accountable_role": {
+                "type": "string",
+                "description": "Role (not person) ultimately accountable for the residual risk — e.g., 'CISO', 'Head of AI Platform'. Distinct from `owner` (the technical accountable person) so a role rotation does not invalidate the waiver."
+              },
+              "responsible": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles responsible for executing the compensating control. Free-form strings (emails or role names)."
+              },
+              "consulted": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles consulted before approval (e.g., legal, data protection, GRC). Free-form strings."
+              },
+              "informed": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles informed of the waiver (e.g., audit committee, customer-side sponsor). Free-form strings."
+              }
+            }
           }
         }
       },
