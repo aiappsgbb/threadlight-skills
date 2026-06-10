@@ -60,3 +60,6 @@ changed under us today".
 silent change is the image base, the module version, or a transitive
 dependency. Pinning makes the dependency surface auditable and the
 "nothing changed" answer falsifiable.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

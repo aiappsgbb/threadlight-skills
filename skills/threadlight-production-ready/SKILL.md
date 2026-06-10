@@ -22,7 +22,7 @@ description: >
   (citadel-hub-deploy), citadel access contracts (citadel-spoke-onboarding),
   SRE Agent provisioning (azure-sre-agent), AppIn wiring (foundry-observability).
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -78,9 +78,98 @@ knowledge.
 | Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
 | Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
 
-**This skill recommends, never executes.** Every "must-fix" links to the
-remediation skill above; the operator (or a follow-up Copilot session)
-runs that skill.
+**This skill recommends an assessment, then executes the remediation through the
+agent.** v0.4.0 introduces a 3-phase production-onboarding flow — see
+[What this skill does in v0.4.0](#what-this-skill-does-in-v040) below for the
+contract details.
+
+## What this skill does in v0.4.0
+
+```mermaid
+flowchart LR
+    A[Phase 1: Assess<br/>production_ready.py] -->|apply-plan.json| B[Phase 2: Refine+Deploy<br/>agent + Edit/Write + sibling skills]
+    B -->|repo commits<br/>+ pipeline deferrals| C[Phase 3: CI/CD Handoff<br/>azd-deploy-prod.yml<br/>+ UAMI readme]
+    C -.->|post-deploy| A
+```
+
+The skill drives **production onboarding** in three phases:
+
+1. **Assess.** A Python script (`scripts/production_ready.py`) inventories your
+   target Azure subscription/resource group, scores it against 151 findings
+   spanning 13 production-readiness pillars, and emits an `apply-plan.json`
+   that names every must-fix gap and the remediation recipe that closes it.
+
+2. **Refine + Deploy.** The Copilot agent reads `apply-plan.json`, opens the
+   recipes named there, and **executes** each fix using its native Edit/Write
+   tools (for `kind: repo-edit`) or by invoking sibling awesome-gbb skills
+   (for `kind: sibling-skill`). Items marked `kind: manual` are surfaced to
+   you for explicit acknowledgement before any change. Items marked
+   `kind: deferred-to-pipeline` are recorded for Phase 3.
+
+   **Stale-plan detection (the agent MUST do this before applying anything).**
+   Each `apply-plan.json` carries a `manifest_sha256` field — the SHA256 of
+   the canonical JSON of the `production-readiness-manifest.json` it was
+   built from. Before executing the first item, the agent recomputes
+   `sha256(canonical_json(<current production-readiness-manifest.json>))`
+   and compares. If the two hashes differ, the manifest has been
+   re-generated since the plan was emitted (e.g. the operator re-ran
+   `--onboard` in another shell, or hand-edited the manifest) and the plan
+   is stale: **the agent refuses to apply and tells the operator to re-run
+   the Assess phase to get a fresh apply-plan.** Skipping this check risks
+   applying remediations for findings that no longer exist or missing
+   findings that now do — silent drift between the plan and reality is the
+   single failure mode this gate exists to prevent.
+
+3. **CI/CD Handoff.** When the apply-plan contains pipeline-deferred items
+   (or you pass `--scaffold-cicd`), the script renders a GitHub Actions
+   workflow (`.github/workflows/azd-deploy-prod.yml`) and a central-platform-
+   team runbook (`docs/threadlight-cicd/central-team-uami-readme.md`)
+   explaining exactly which UAMI + federated credential to provision so
+   future pushes to `main` deploy without long-lived secrets.
+
+**The Python script is still assessor-only.** It never mutates your repo
+and never mutates your subscription. All edits flow through the Copilot
+agent's tools, which means `git diff` and PR review remain the audit
+trail. The script does not have, and will not be given, a `--apply` flag.
+
+## How to invoke
+
+### Quick assess (no changes)
+```
+python3 scripts/production_ready.py \
+  --target-sub <SUB> --target-rg <RG>
+```
+
+### Full onboarding (interactive framing wizard)
+```
+python3 scripts/production_ready.py --onboard
+```
+
+### Headless / CI-friendly
+```
+python3 scripts/production_ready.py --onboard \
+  --framing-file framing.json \
+  --apply-plan-out apply-plan.json \
+  --no-rights-probe
+```
+
+### Phase 3 scaffold only
+```
+python3 scripts/production_ready.py \
+  --framing-file framing.json \
+  --scaffold-cicd \
+  --repo-full-name owner/repo
+```
+
+## Remediation recipes
+
+Every must-fix finding has a recipe at `references/remediation-recipes/{FINDING_ID}.md`.
+Recipes declare `kind: repo-edit | sibling-skill | manual | deferred-to-pipeline`
+in their YAML front-matter; the apply-plan inherits this `kind` field so the
+agent knows whether to edit a file, invoke a sibling skill, or surface a
+prompt to the operator. See `references/remediation-recipes/_template.md`
+for the schema, and `references/sibling-skills-map.md` for the awesome-gbb
+skills threadlight delegates to.
 
 ## When to invoke
 
@@ -756,15 +845,32 @@ sync with the awesome-gbb skill catalog as it evolves.
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
 
+## What changed since v0.3.0
+
+| Capability | v0.3.0 | v0.4.0 |
+| --- | --- | --- |
+| Assessment | ✅ 127/151 findings, 4 postures, RBAC probe | ✅ unchanged (still assessor-only) |
+| Apply-plan output | ❌ — only scorecard + report | ✅ `apply-plan.json` with 4 `kind` types |
+| Remediation recipes | ❌ — advice in pillar refs | ✅ 61 must-fix recipes (`references/remediation-recipes/`) |
+| Phase 2 execution | ❌ — manual | ✅ agent-driven via Edit/Write + sibling skills |
+| Phase 3 CI/CD scaffold | ❌ | ✅ `.github/workflows/azd-deploy-prod.yml.tmpl` + UAMI runbook |
+| Rights probe | ✅ informational | ✅ now decides Phase-2 mode (self-service vs handoff) |
+| Framing wizard | ❌ | ✅ 7 questions, TTY or `--framing-file` |
+| New CLI flags | — | `--onboard`, `--framing-file`, `--apply-plan-out`, `--scaffold-cicd`, `--no-rights-probe`, `--repo-full-name`, `--target-sub`, `--target-rg` |
+| Removed / explicitly NOT added | — | `--apply FINDING_ID` (script stays assessor-only by design) |
+
 ## What this skill is NOT
 
 - **Not a hard gate.** v1 is soft-advisory; the `would_fail_hard_gate`
   field is the bridge to v2. A v2 `--mode gate` flag would convert
   `must-fix` to exit code 1.
-- **Not an executor.** The skill produces a report and an uplift plan.
-  It never runs `azd up`, modifies infra, creates RBAC role assignments,
-  rotates secrets, or onboards a Citadel spoke. Every fix is owned by
-  the remediation skill linked in the finding.
+- **The Python script is not an executor.** The script produces an
+  assessment, an apply-plan, and (in v0.4.0) CI/CD scaffolds rendered
+  into your repo from templates. It never runs `azd up`, modifies
+  infra, creates RBAC role assignments, or rotates secrets. **The
+  Copilot agent** consumes `apply-plan.json` and performs repo edits /
+  invokes sibling skills — every mutation flows through `git diff` +
+  PR review so the audit trail is preserved.
 - **Not a substitute for `foundry-evals`.** The eval summary pillar reads
   the latest eval-runs output; it does not run new evals.
 - **Not a cost model.** The cost pillar checks for budget/anomaly
@@ -774,19 +880,21 @@ sync with the awesome-gbb skill catalog as it evolves.
   default detection result. See "Posture target resolution".
 - **Not cross-tenant.** v1 assumes single-tenant pilots.
 
-## Out of scope for v1
+## Out of scope for v0.4.0 (deferred to v0.5.0+)
 
-- GitHub Actions CI workflow (deferred until false positives shake out)
-- AGT v4 deep checks (capability-based; awaiting upstream v4 in awesome-gbb)
-- Hard-gate mode (`--mode gate` is v2)
-- `threadlight-experience.html` updates (separate cadence)
-- Automatic invocation of remediation skills
-- Cross-tenant residency analysis
+- `gateway-resilience` pillar (cross-region failover scoring)
+- `EVAL-101..105` (live eval-coverage probes)
+- SPEC § 12 per-customer enforcement
+- awesome-gbb skill landings (#267–272 sibling-skill recipes)
+- Real-customer field-test pass
+- AGT v4 deep checks (capability-based; awaiting upstream v4)
 - Reading Key Vault secret **values** (control-plane only — never reads
   data-plane secrets, even with sufficient permission)
+- Cross-tenant residency analysis
 
 ## Versioning
 
-Skill semver. v1.x is soft-advisory. v2.x will add `--mode gate`. v3.x
-may add CI/CD scaffolding. Breaking changes to the JSON manifest schema
-are gated behind a `schema_version` bump.
+Skill semver. v0.3.0 was soft-advisory assessor only. v0.4.0 adds the
+3-phase production-onboarding flow (assess → refine+deploy → CI/CD
+handoff). v0.5.0+ will land the deferrals above. Breaking changes to
+`apply-plan.json` are gated behind `schema_version` (currently 1).

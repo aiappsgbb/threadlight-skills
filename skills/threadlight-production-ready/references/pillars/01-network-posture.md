@@ -97,3 +97,6 @@ Map findings to skills:
 A pilot can ship green safe-check and still violate residency or
 governance posture. The customer architecture review will catch it; the
 customer's CISO will catch it. This pillar catches it first.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

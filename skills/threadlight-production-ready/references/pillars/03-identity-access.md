@@ -51,3 +51,6 @@ Client secrets in source = breach in waiting. Over-broad RBAC = blast
 radius the size of the subscription. KV access-policies = no auditable
 data-plane trail. None of these get caught by safe-check; all of them
 will be caught by the customer's IAM review.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

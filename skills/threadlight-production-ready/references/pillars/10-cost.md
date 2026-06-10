@@ -63,3 +63,6 @@ under a fixed budget signed by a finance director. The skill produces
 the cost projection the finance director needs to sign off — and the
 alert wiring that means the first anomaly doesn't become an
 expense-report incident.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

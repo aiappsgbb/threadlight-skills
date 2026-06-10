@@ -127,3 +127,6 @@ Production failures don't wait for business hours. The pilot that
 ships without a signed handoff is the pilot whose first incident
 becomes "who do we call?" — and the answer is "the pilot's author",
 which is the wrong answer.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

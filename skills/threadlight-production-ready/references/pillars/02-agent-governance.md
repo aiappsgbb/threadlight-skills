@@ -146,3 +146,6 @@ or dynamic conditions).
 absorbs v4 and the v4 GA designation lands, the `v4_preview` profile
 will be renamed `v4` (and a new `v5_preview` may appear); this skill
 version will bump minor at that point.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

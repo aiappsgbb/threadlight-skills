@@ -41,7 +41,557 @@ from typing import Any, Iterable
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "0.3.0"
+# ---------------------------------------------------------------------------
+# region: apply_plan_schema (v0.4.0)
+# ---------------------------------------------------------------------------
+
+APPLY_PLAN_KINDS = {"repo-edit", "sibling-skill", "manual", "deferred-to-pipeline"}
+APPLY_PLAN_SCHEMA_VERSION = 1
+
+
+def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
+                     framing_path: str | None = None) -> dict:
+    """Build an apply-plan from an assessor manifest + loaded recipe catalog.
+
+    Walks `manifest["findings"]` if present, otherwise flattens
+    `manifest["pillars"][].findings[]` (the v0.3.0 OUTPUT shape). For every
+    finding whose status is `fail`, `warn`, or `not-verified`, emits an
+    entry that either points at the registered recipe or falls back to a
+    `kind: manual` placeholder. Pins `manifest_sha256` so the agent can
+    detect a stale plan in Phase 2.
+
+    Raises SystemExit if any recipe declares an unknown `kind`.
+    """
+    sha = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    findings = manifest.get("findings")
+    if not findings:
+        findings = [
+            f for p in manifest.get("pillars", [])
+            for f in p.get("findings", [])
+        ]
+    items: list[dict] = []
+    for f in findings:
+        if f.get("status") not in {"fail", "warn", "not-verified"}:
+            continue
+        rid = f.get("id")
+        if not rid:
+            continue
+        recipe = recipes.get(rid, {
+            "kind": "manual",
+            "summary": f"No recipe registered for {rid}; consult the pillar reference.",
+        })
+        if recipe["kind"] not in APPLY_PLAN_KINDS:
+            raise SystemExit(
+                f"apply-plan: recipe for {rid} has unknown kind {recipe['kind']!r}; "
+                f"expected one of {sorted(APPLY_PLAN_KINDS)}"
+            )
+        # In a restricted environment (e.g., central-team handoff) the agent
+        # must not auto-mutate the user's repo. Demote any `repo-edit` recipe
+        # to `manual` so the agent surfaces it to the user instead of editing.
+        if framing.get("restricted_environment") and recipe["kind"] == "repo-edit":
+            recipe = {
+                **recipe,
+                "kind": "manual",
+                "summary": (
+                    f"[demoted from repo-edit due to restricted_environment] "
+                    f"{recipe.get('summary', '')}"
+                ).strip(),
+            }
+        items.append({"finding_id": rid, **recipe})
+    plan: dict = {
+        "schema_version": APPLY_PLAN_SCHEMA_VERSION,
+        "manifest_sha256": sha,
+        "framing": framing,
+        "items": items,
+    }
+    if framing_path is not None:
+        plan["framing_path"] = framing_path
+    return plan
+
+
+def write_apply_plan(plan: dict, path) -> None:
+    Path(path).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n",
+                          encoding="utf-8")
+
+
+def _recipe_catalog_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "references" / "remediation-recipes"
+
+
+def load_recipe_catalog(rdir) -> dict[str, dict]:
+    """Parse `references/remediation-recipes/{ID}.md`.
+
+    Each recipe has YAML front-matter (between two `---` lines) with at least
+    a `kind` field. Files starting with `_` (e.g. `_template.md`) are skipped.
+
+    Raises SystemExit on missing/invalid front-matter or unknown kind.
+    """
+    recipes: dict[str, dict] = {}
+    for path in sorted(Path(rdir).glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        rid = path.stem
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---\n"):
+            raise SystemExit(f"recipe {rid}: missing YAML front-matter")
+        parts = text.split("---\n", 2)
+        if len(parts) < 3:
+            raise SystemExit(f"recipe {rid}: malformed front-matter")
+        fm = parts[1]
+        meta: dict[str, str] = {}
+        for line in fm.strip().splitlines():
+            if ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+        if meta.get("kind") not in APPLY_PLAN_KINDS:
+            raise SystemExit(
+                f"recipe {rid}: kind {meta.get('kind')!r} not in {sorted(APPLY_PLAN_KINDS)}"
+            )
+        recipes[rid] = {
+            "kind": meta["kind"],
+            "summary": meta.get("summary", ""),
+            "target_file": meta.get("target_file"),
+            "edit_type": meta.get("edit_type"),
+            "sibling_skill": meta.get("sibling_skill"),
+            "recipe_path": str(path),
+        }
+    return recipes
+
+
+# endregion: apply_plan_schema
+
+
+# ---------------------------------------------------------------------------
+# region: rights_constants (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Rights classification + phase-2 decision constants. Used by Phase C's
+# provisioning-rights probe and the phase decision banner.
+
+RIGHTS_FULL = "full"
+RIGHTS_CONSTRAINED = "constrained"
+RIGHTS_NONE = "none"
+RIGHTS_UNKNOWN = "unknown"
+
+PHASE_SELF_SERVICE = "self-service"
+PHASE_CENTRAL_HANDOFF = "central-team handoff"
+PHASE_BLOCKED = "blocked — no RG access"
+
+WRITE_ROLES = ("Owner", "Contributor", "User Access Administrator")
+READ_ROLES = ("Reader", "Monitoring Reader", "Cost Management Reader")
+
+# endregion: rights_constants
+
+
+# ---------------------------------------------------------------------------
+# region: rights_probe (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Live RBAC probe used by --onboard mode. Decides whether the operator
+# can actually execute Phase 2 deployments in the target subscription.
+
+def _classify_rights(roles):
+    """Classify a list of role-definition names into one of:
+    RIGHTS_FULL / RIGHTS_CONSTRAINED / RIGHTS_NONE.
+
+    Write-capable roles win over read-only roles.
+    """
+    role_set = {r.strip() for r in roles if r}
+    if role_set & set(WRITE_ROLES):
+        return RIGHTS_FULL
+    if role_set & set(READ_ROLES):
+        return RIGHTS_CONSTRAINED
+    return RIGHTS_NONE
+
+
+def _probe_provisioning_rights(subscription_id, resource_group, skip=False):
+    """Shell `az role assignment list --assignee @me --scope <RG-scope>`,
+    classify the returned roles. Returns a dict suitable for the manifest.
+
+    Never raises — on any error returns rights_class=unknown with the
+    error string. When skip=True, returns rights_class=unknown with
+    probe_skipped=True and no shell-out (used by --no-rights-probe and CI).
+    """
+    if skip:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": True,
+            "error": None,
+        }
+    scope = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}"
+    cmd = [
+        "az", "role", "assignment", "list",
+        "--assignee", "@me",
+        "--scope", scope,
+        "-o", "json",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": f"az invocation failed: {e}",
+        }
+    if r.returncode != 0:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": (r.stderr or "").strip() or "az exited non-zero",
+        }
+    try:
+        data = json.loads(r.stdout or "[]")
+    except json.JSONDecodeError as e:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": f"json parse failed: {e}",
+        }
+    roles = [a.get("roleDefinitionName", "") for a in data]
+    return {
+        "rights_class": _classify_rights(roles),
+        "roles": roles,
+        "probe_skipped": False,
+        "error": None,
+    }
+
+# endregion: rights_probe
+
+
+# ---------------------------------------------------------------------------
+# region: phase_decision (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Decides Phase 2 mode (self-service vs central-team handoff vs blocked)
+# from the framing answers + live rights probe result. Pure function.
+
+def _phase_decision(framing, rights_result):
+    """Decide phase-2 mode from framing + live rights probe.
+    Pure function — no I/O. Returns {phase2_mode, reason, warning}.
+
+    Decision order:
+      1. restricted_environment in framing → central handoff (regardless of rights)
+      2. rights_class=none → blocked (operator needs an access request first)
+      3. rights_class=full → self-service
+      4. rights_class=unknown → central handoff + warning (assume constrained)
+      5. otherwise (constrained) → central handoff
+    """
+    rclass = rights_result["rights_class"]
+    if framing.get("restricted_environment"):
+        return {
+            "phase2_mode": PHASE_CENTRAL_HANDOFF,
+            "reason": "Framing-Q6 marked restricted environment — handoff regardless of rights",
+            "warning": None,
+        }
+    if rclass == RIGHTS_NONE:
+        return {
+            "phase2_mode": PHASE_BLOCKED,
+            "reason": "Operator has no role assignments at target RG scope",
+            "warning": "Request access (Contributor or Owner) before re-running",
+        }
+    if rclass == RIGHTS_FULL:
+        return {
+            "phase2_mode": PHASE_SELF_SERVICE,
+            "reason": "Operator has write-capable role at RG scope",
+            "warning": None,
+        }
+    if rclass == RIGHTS_UNKNOWN:
+        return {
+            "phase2_mode": PHASE_CENTRAL_HANDOFF,
+            "reason": "Rights probe skipped or failed — assuming constrained",
+            "warning": "Re-run without --no-rights-probe to confirm self-service eligibility",
+        }
+    return {
+        "phase2_mode": PHASE_CENTRAL_HANDOFF,
+        "reason": f"Operator rights classified as {rclass}",
+        "warning": None,
+    }
+
+
+def _emit_phase_banner(framing, rights, decision, sink=None):
+    """Render the v0.4.0 phase-decision banner. Side-effecting (writes to sink).
+    Default sink is sys.stderr.
+    """
+    if sink is None:
+        sink = sys.stderr
+    bar = "━" * 64
+    print(bar, file=sink)
+    print("THREADLIGHT v0.4.0 — Production Onboarding", file=sink)
+    print(
+        f"  Target: {framing.get('target_subscription_id')}/"
+        f"{framing.get('target_resource_group')}",
+        file=sink,
+    )
+    print(f"  Posture: {framing.get('target_posture')}", file=sink)
+    print(
+        f"  Rights:  {rights['rights_class']}  "
+        f"(roles: {', '.join(rights['roles']) or '—'})",
+        file=sink,
+    )
+    print(f"  Phase 2: ⇒ {decision['phase2_mode']}", file=sink)
+    print(f"           reason: {decision['reason']}", file=sink)
+    if decision.get("warning"):
+        print(f"  ⚠ warning: {decision['warning']}", file=sink)
+    print(bar, file=sink)
+
+# endregion: phase_decision
+
+
+# ---------------------------------------------------------------------------
+# region: onboard_runner (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Real implementations for the --onboard side-channel. Replaces the
+# Phase A stubs (_run_assessment_for_onboard + _phase_decision_banner)
+# with rights-probe-aware logic per Phase C6.
+
+def _run_assessment_for_onboard(args, framing: dict) -> dict:
+    """Run the assessor for --onboard and return the manifest dict.
+
+    Loads the input manifest (assumed to have been built by an upstream
+    v0.3.0-style assessment run, or a hand-authored fixture), probes the
+    operator's RBAC against the target RG, decides Phase 2 mode, and
+    attaches both `rights_probe` and `phase_decision` to the returned
+    manifest. The banner is emitted to stderr as a side effect so the
+    operator sees the decision before apply-plan.json is materialized.
+    """
+    root = Path(args.root) if getattr(args, "root", None) else Path.cwd()
+    manifest_path = root / args.in_manifest
+    if not manifest_path.is_file():
+        raise SystemExit(
+            f"--onboard: expected manifest at {manifest_path} (run the v0.3.0 "
+            f"assessment first, or pass --in-manifest pointing at an existing "
+            f"production-readiness-manifest.json)."
+        )
+    manifest = _load_manifest(manifest_path)
+
+    sub = getattr(args, "target_sub", None) or framing.get("target_subscription_id")
+    rg = getattr(args, "target_rg", None) or framing.get("target_resource_group")
+    rights = _probe_provisioning_rights(
+        sub, rg, skip=getattr(args, "no_rights_probe", False)
+    )
+    decision = _phase_decision(framing, rights)
+    _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+    manifest["rights_probe"] = rights
+    manifest["phase_decision"] = decision
+    return manifest
+
+# endregion: onboard_runner
+
+
+# ---------------------------------------------------------------------------
+# region: cicd_scaffold (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Pure-stdlib template renderer + writer for Phase 3 (CI/CD handoff).
+# Two templates live under references/cicd-templates/:
+#   - azd-deploy-prod.yml.tmpl       (dev-facing GitHub Actions workflow)
+#   - central-team-uami-readme.md.tmpl  (central platform team runbook)
+# `{{TOKEN}}` placeholders are substituted from the framing dict.
+
+def _render_template(path, context: dict) -> str:
+    """Read a .tmpl file and substitute {{KEY}} markers from context.
+
+    Unknown markers are left untouched so the operator can spot gaps.
+    """
+    text = Path(path).read_text()
+    for k, v in context.items():
+        text = text.replace("{{" + k + "}}", str(v))
+    return text
+
+
+def _cicd_context_from_framing(framing: dict, repo_full_name: str, env_name: str = "prod") -> dict:
+    """Build the template-rendering context from framing + repo name."""
+    import datetime
+    sub = framing.get("target_subscription_id", "")
+    rg = framing.get("target_resource_group", "")
+    slug = repo_full_name.replace("/", "-")
+    return {
+        "TARGET_SUBSCRIPTION_ID": sub,
+        "TARGET_RESOURCE_GROUP": rg,
+        "TARGET_LOCATION": framing.get("target_location", "eastus"),
+        "TARGET_POSTURE": framing.get("target_posture", ""),
+        "REPO_FULL_NAME": repo_full_name,
+        "REPO_SLUG": slug,
+        "UAMI_NAME": f"uami-{slug}-prod-deploy",
+        "UAMI_RESOURCE_GROUP": framing.get("central_platform_team_rg", rg),
+        "UAMI_SUBSCRIPTION_ID": framing.get("central_platform_team_sub", sub),
+        "AZURE_TENANT_ID": framing.get("azure_tenant_id", "<tenant-id>"),
+        "AZURE_ENV_NAME": env_name,
+        "ISO_TIMESTAMP": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _scaffold_cicd(framing: dict, repo_full_name: str, out_root) -> list:
+    """Render both CI/CD templates into out_root. Returns list of written Paths."""
+    out_root = Path(out_root)
+    tmpl_dir = Path(__file__).resolve().parent.parent / "references" / "cicd-templates"
+    ctx = _cicd_context_from_framing(framing, repo_full_name)
+    pairs = [
+        (tmpl_dir / "azd-deploy-prod.yml.tmpl",
+         out_root / ".github" / "workflows" / "azd-deploy-prod.yml"),
+        (tmpl_dir / "central-team-uami-readme.md.tmpl",
+         out_root / "docs" / "threadlight-cicd" / "central-team-uami-readme.md"),
+    ]
+    written = []
+    for tmpl, dest in pairs:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(_render_template(tmpl, ctx))
+        written.append(dest)
+    return written
+
+
+def _detect_repo_full_name(cwd: str):
+    """Parse `git remote get-url origin` -> 'owner/repo' or None."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", cwd, "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    url = r.stdout.strip()
+    import re
+    m = re.search(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$", url)
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool) -> None:
+    """If apply-plan has deferred-to-pipeline items and --scaffold-cicd was
+    NOT passed, emit a stderr hint pointing the operator at the flag."""
+    if scaffold_cicd_flag:
+        return
+    pipeline = [i for i in apply_plan.get("items", []) if i.get("kind") == "deferred-to-pipeline"]
+    if not pipeline:
+        return
+    _eprint(
+        f"hint: apply-plan contains {len(pipeline)} deferred-to-pipeline item(s). "
+        f"Re-run with --scaffold-cicd to generate the GitHub Actions workflow + UAMI runbook."
+    )
+
+# endregion: cicd_scaffold
+
+
+VERSION = "0.4.0"
+
+# ---------------------------------------------------------------------------
+# region: framing_wizard (v0.4.0)
+# ---------------------------------------------------------------------------
+
+FRAMING_QUESTIONS = [
+    {
+        "id": "target_subscription_id",
+        "prompt": "Azure subscription ID for the production target?",
+        "kind": "text",
+        "required": True,
+    },
+    {
+        "id": "target_resource_group",
+        "prompt": "Resource group name for the production target?",
+        "kind": "text",
+        "required": True,
+    },
+    {
+        "id": "target_posture",
+        "prompt": "Posture profile?",
+        "kind": "choice",
+        "choices": ["citadel-spoke", "standard-ai-gateway", "agt", "hybrid"],
+        "required": True,
+    },
+    {
+        "id": "provisioning_rights",
+        "prompt": "Do you have Contributor or higher on the target RG?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "central_platform_team",
+        "prompt": "Is there a central platform/Citadel team that owns shared infra (gateways, KV, networking)?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "restricted_environment",
+        "prompt": "Is direct write access to the target restricted (i.e. all changes must go through CI/CD)?",
+        "kind": "bool",
+        "required": True,
+    },
+    {
+        "id": "cicd_target",
+        "prompt": "CI/CD target? (only github-actions in v0.4.0; azure-devops + gitlab are deferred to v0.5.0)",
+        "kind": "choice",
+        "choices": ["github-actions"],
+        "required": True,
+    },
+]
+
+
+def _coerce_bool(s: str) -> bool | None:
+    s = s.strip().lower()
+    if s in {"y", "yes", "true", "1"}:
+        return True
+    if s in {"n", "no", "false", "0"}:
+        return False
+    return None
+
+
+def run_framing_wizard(istream=None, ostream=None) -> dict[str, Any]:
+    """TTY-driven 7-question framing wizard.
+
+    Re-prompts on invalid choice / bool input. Raises SystemExit on EOF for
+    required questions. Returns {question_id: answer} dict.
+    """
+    istream = istream if istream is not None else sys.stdin
+    ostream = ostream if ostream is not None else sys.stdout
+    answers: dict[str, Any] = {}
+    for q in FRAMING_QUESTIONS:
+        while True:
+            print(q["prompt"], file=ostream)
+            if q["kind"] == "choice":
+                print(f"  choices: {', '.join(q['choices'])}", file=ostream)
+            raw = istream.readline()
+            if not raw and q["required"]:
+                raise SystemExit(
+                    f"framing wizard: EOF on required question {q['id']}"
+                )
+            raw = raw.strip()
+            if q["kind"] == "bool":
+                v = _coerce_bool(raw)
+                if v is None:
+                    continue
+                answers[q["id"]] = v
+                break
+            if q["kind"] == "choice":
+                if raw not in q["choices"]:
+                    continue
+                answers[q["id"]] = raw
+                break
+            # text
+            if not raw and q["required"]:
+                continue
+            answers[q["id"]] = raw
+            break
+    return answers
+
+
+def load_framing_file(path) -> dict[str, Any]:
+    """Load + validate a framing-answers JSON file."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    required = [q["id"] for q in FRAMING_QUESTIONS if q["required"]]
+    missing = [k for k in required if k not in data]
+    if missing:
+        raise SystemExit(f"framing file: missing required keys: {missing}")
+    return data
+
+
+# endregion: framing_wizard
 
 PILLAR_IDS = [
     "network-posture",
@@ -3708,6 +4258,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="append a row per run (date, score, posture, debt) for trending; set to '' to disable")
     p.add_argument("--secure-score-floor", type=int, default=60,
                    help="Defender Secure Score percent floor for GOV-104 (default 60)")
+    # v0.4.0 production-onboarding flags
+    p.add_argument("--onboard", action="store_true",
+                   help="Enter 3-phase production onboarding mode (framing wizard + apply-plan.json)")
+    p.add_argument("--framing-file", default=None,
+                   help="JSON file with framing answers (skips the interactive wizard)")
+    p.add_argument("--apply-plan-out", default=None,
+                   help="Path to write apply-plan.json (default: tests/production-readiness-apply-plan.json)")
+    p.add_argument("--scaffold-cicd", action="store_true",
+                   help="Phase 3: write .github/workflows/azd-deploy-prod.yml + UAMI runbook from templates")
+    p.add_argument("--no-rights-probe", action="store_true",
+                   help="Skip the live provisioning-rights probe (use framing answer only)")
+    p.add_argument("--target-sub", default=None,
+                   help="Override target subscription ID (otherwise read from framing or manifest)")
+    p.add_argument("--target-rg", default=None,
+                   help="Override target resource group (otherwise read from framing or manifest)")
+    p.add_argument("--repo-full-name", default=None,
+                   help="owner/repo string for CI/CD scaffolds (auto-detected from git remote if omitted)")
     p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return p.parse_args(argv)
 
@@ -3720,6 +4287,60 @@ def main(argv: list[str] | None = None) -> int:
     # any other inputs.
     if args.remediate:
         return _emit_remediation(root, args.remediate)
+
+    # --scaffold-cicd standalone: when no assessor input is available in cwd
+    # (no specs/manifest.json), render templates + exit. Doesn't run the
+    # assessor. If specs/manifest.json IS present, fall through to the
+    # v0.3.0 main() path; the scaffold will run at the end after the
+    # assessment. Combined with --onboard, scaffolding fires AFTER
+    # apply-plan is written (see the --onboard block below).
+    if args.scaffold_cicd and not args.onboard:
+        manifest_in = root / args.in_manifest
+        if not manifest_in.is_file():
+            framing = (load_framing_file(args.framing_file) if args.framing_file
+                       else run_framing_wizard())
+            repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+            if not repo:
+                _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name.")
+                return 2
+            written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+            for p in written:
+                _eprint(f"wrote {p}")
+            return 0
+        # else fall through; the v0.3.0 main path injects v0.4.0 hooks at the end.
+
+    # --onboard is the v0.4.0 3-phase production-onboarding side-channel.
+    # Phase 1 (Assess) is implemented here; Phase 2 (Refine + Deploy) and
+    # Phase 3 (CI/CD Handoff) run downstream in the agent driven by
+    # apply-plan.json. _run_assessment_for_onboard emits the phase-2
+    # decision banner to stderr before apply-plan.json is materialized.
+    if args.onboard:
+        framing = (load_framing_file(args.framing_file) if args.framing_file
+                   else run_framing_wizard())
+        manifest = _run_assessment_for_onboard(args, framing)
+        recipes = load_recipe_catalog(_recipe_catalog_dir())
+        plan = build_apply_plan(
+            manifest=manifest,
+            recipes=recipes,
+            framing=framing,
+            framing_path=args.framing_file,
+        )
+        out_path = args.apply_plan_out or str(Path(args.out) / "apply-plan.json")
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        write_apply_plan(plan, out_path)
+        # Phase 3: if --scaffold-cicd is also set, render templates now.
+        # Otherwise hint the operator if apply-plan has deferred-to-pipeline items.
+        if args.scaffold_cicd:
+            repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+            if not repo:
+                _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name. Skipping scaffold.")
+            else:
+                written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+                for p in written:
+                    _eprint(f"wrote {p}")
+        else:
+            _hint_pipeline_scaffold_if_needed(plan, scaffold_cicd_flag=False)
+        return 0
 
     if not args.quiet:
         print(f"threadlight-production-ready v{VERSION}")
@@ -3898,6 +4519,44 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         _eprint(f"error: failed to write outputs: {e}")
         return 3
+
+    # 8b. v0.4.0 hooks — when --framing-file is present, attach phase decision
+    # to the manifest, emit the phase banner, build apply-plan, and optionally
+    # scaffold CI/CD templates. All of this is a no-op when --framing-file is
+    # absent, preserving v0.3.0 invocation compatibility.
+    if args.framing_file:
+        framing = load_framing_file(args.framing_file)
+        sub = args.target_sub or framing.get("target_subscription_id")
+        rg = args.target_rg or framing.get("target_resource_group")
+        rights = _probe_provisioning_rights(sub, rg, skip=args.no_rights_probe)
+        decision = _phase_decision(framing, rights)
+        _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+        out_manifest["version"] = VERSION
+        out_manifest["rights_probe"] = rights
+        out_manifest["phase_decision"] = decision
+        try:
+            out_path.write_text(json.dumps(out_manifest, indent=2) + "\n", encoding="utf-8")
+        except OSError as e:
+            _eprint(f"warn: failed to re-write manifest with v0.4.0 fields: {e}")
+        if args.apply_plan_out or args.scaffold_cicd:
+            recipes = load_recipe_catalog(_recipe_catalog_dir())
+            plan = build_apply_plan(
+                manifest=out_manifest, recipes=recipes,
+                framing=framing, framing_path=args.framing_file,
+            )
+            plan_path = args.apply_plan_out or str(root / "apply-plan.json")
+            Path(plan_path).parent.mkdir(parents=True, exist_ok=True)
+            write_apply_plan(plan, plan_path)
+            if args.scaffold_cicd:
+                repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+                if not repo:
+                    _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name. Skipping scaffold.")
+                else:
+                    written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+                    for p in written:
+                        _eprint(f"wrote {p}")
+            else:
+                _hint_pipeline_scaffold_if_needed(plan, scaffold_cicd_flag=False)
 
     # 9. Summary
     if not args.quiet:

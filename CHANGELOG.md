@@ -7,6 +7,114 @@ field.
 
 ## [Unreleased]
 
+## 2026-06-10 — `threadlight-production-ready` v0.4.0 — "production onboarding (3-phase)"
+
+Flips the skill from a pure assessor into a 3-phase production-onboarding
+executor: Phase 1 (Assess, Python script) → Phase 2 (Refine + Deploy,
+agent-driven via Edit/Write + sibling skills) → Phase 3 (CI/CD Handoff,
+scaffolded GitHub Actions workflow + central-team UAMI runbook). The
+sacred architectural rule from v0.3.0 holds: **the Python script never
+mutates the user's repo.** All edits flow through the Copilot agent so
+`git diff` + PR review remain the audit trail. No `--apply FINDING_ID`
+flag was added or planned.
+
+### Added — major
+- **3-phase onboarding flow.** Phase 1 (Assess) emits an `apply-plan.json`
+  describing what needs to change and how. Phase 2 (the Copilot agent)
+  consumes the plan and dispatches by `kind`: `repo-edit` → Edit/Write,
+  `sibling-skill` → invoke another skill via the Skill tool, `manual` →
+  surface to the user, `deferred-to-pipeline` → leave for Phase 3.
+  Phase 3 renders `.github/workflows/azd-deploy-prod.yml` plus a
+  central-team UAMI/FedCred runbook from templates.
+- **Apply-plan output** (`--apply-plan-out PATH`) with 4 `kind` values:
+  `repo-edit`, `sibling-skill`, `manual`, `deferred-to-pipeline`.
+  Includes `manifest_sha256` so Phase 2 detects a stale plan.
+- **Framing wizard** (`--onboard` for TTY, `--framing-file PATH` for
+  headless) — 7 questions covering target subscription, RG, posture,
+  provisioning rights, central platform team, restricted-environment
+  flag, and CI/CD target.
+- **61 must-fix remediation recipes** under
+  `references/remediation-recipes/{ID}.md` (one per non-experimental
+  finding ID). Each declares `kind` and provides exact edit /
+  sibling-skill / manual / pipeline instructions. Catalog drift gated
+  by `tests/test_recipe_catalog.py`.
+- **Provisioning-rights probe + phase-decision banner.** Live
+  `az role assignment list` against the target RG; classifies operator
+  rights as `full | constrained | none | unknown` and decides Phase-2
+  mode (`self-service` vs `central-team handoff` vs `blocked`). Skippable
+  via `--no-rights-probe`. Restricted-environment flag (Framing-Q6)
+  overrides rights class and forces central-team handoff.
+- **CI/CD scaffold** (`--scaffold-cicd`) — renders
+  `.github/workflows/azd-deploy-prod.yml` (deploy + smoke-failover +
+  threadlight-postdeploy jobs) and
+  `docs/threadlight-cicd/central-team-uami-readme.md` (UAMI provisioning
+  runbook) from templates under `references/cicd-templates/`. Federated
+  credentials only — no long-lived secrets in GitHub.
+- **Sibling-skill invocation map** at `references/sibling-skills-map.md`
+  — single source of truth for which awesome-gbb skill the agent
+  invokes when a recipe is `kind: sibling-skill`.
+- **Restricted-environment demotion.** When framing declares
+  `restricted_environment: true`, `build_apply_plan` demotes any
+  `kind: repo-edit` recipe to `kind: manual` so the agent surfaces the
+  task to the user instead of editing the repo — honoring the
+  central-team-owns-onboarding contract.
+- **`sample-pilot-restricted` fixture** modeling a central-team-owned
+  citadel-spoke environment (Reader-only rights, restricted=true,
+  provisioning_rights=false).
+
+### Changed — major
+- **SKILL.md contract flipped.** v0.3.0's "recommends, never executes"
+  → v0.4.0's "Phase 1 assesses, Phase 2 (agent) executes, Phase 3
+  (script) scaffolds." The Python script remains assessor-only by
+  design — execution flows through Copilot agent tools so `git diff`
+  stays the audit trail.
+
+### Added — minor
+- `VERSION = "0.4.0"` pin (`tests/test_version.py`).
+- CLI flags: `--onboard`, `--framing-file`, `--apply-plan-out`,
+  `--scaffold-cicd`, `--no-rights-probe`, `--repo-full-name`.
+- Per-pillar cross-reference footer from each
+  `references/pillars/{N}-*.md` to its remediation recipes.
+- `phase_decision`, `rights_probe`, and `version` keys added to
+  `production-readiness-manifest.json` when `--framing-file` is set.
+- `build_apply_plan` walks `pillars[].findings[]` when top-level
+  `findings` is absent (back-compat preserved); includes
+  `not-verified` items alongside `fail`/`warn` (real gaps in
+  restricted environments).
+
+### Tests
+- 9 new stdlib test files (~30 new test functions). Continues v0.3.0's
+  stdlib-only commitment — no pytest, no third-party deps. Total now
+  19 test files covering apply-plan schema, bicep graph, CI/CD
+  scaffold, diff mode, end-to-end, evidence freshness, experimental
+  exclusion, framing wizard, gate preview, phase decision, recipe
+  catalog, remediate renderer, rights probe, scoring,
+  secure-score-floor, sibling-skill map, smoking-gun regression, trend
+  CSV, version pin.
+
+### Deferred to v0.5.0+
+- `gateway-resilience` pillar (`GW-001..103`) — not yet authored.
+- Full SPEC §12 per-customer enforcement of
+  `defender_plans_required` + `required_policy_ids`.
+- 24 experimental stub closures (continuous-evals EVAL-101..105, NSG
+  flow logs, cost actuals, AppInsights replay).
+- Awesome-gbb upstream landings for #267–272 (recipes currently
+  `kind: manual` until each sibling skill ships).
+- Real-customer field test of the 3-phase flow (currently exercised
+  only via the 4 fixtures).
+
+### Migration notes for v0.3.0 users
+- No breaking script-CLI changes for existing
+  `--target-sub`/`--target-rg`/`--static`/`--gate-preview` usage; v0.3.0
+  invocations continue to work unchanged. To opt into the v0.4.0 flow,
+  add `--onboard` (TTY) or `--framing-file <path>` (headless), plus
+  `--apply-plan-out` to capture the agent dispatch plan and
+  `--scaffold-cicd` to render the Phase 3 templates.
+- Existing fixtures (`sample-pilot`, `sample-pilot-citadel`,
+  `sample-pilot-broken`) score identically under v0.3.0 invocation; the
+  new `version`/`rights_probe`/`phase_decision` keys only appear when
+  `--framing-file` is set.
+
 ## 2026-06-10 — `threadlight-production-ready` v0.3.0 — "the real way to land in prod"
 
 The first end-to-end overhaul of the production-readiness skill since

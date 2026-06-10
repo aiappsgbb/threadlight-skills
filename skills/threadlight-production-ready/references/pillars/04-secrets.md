@@ -59,3 +59,6 @@ Production = "soft-delete on, purge protection on, RBAC, diag on,
 rotation declared, no hardcoded secrets". Any one of those missing is a
 finding the customer's risk team will block on. KV existence alone is
 not the same as KV configured.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

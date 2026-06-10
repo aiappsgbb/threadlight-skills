@@ -53,3 +53,6 @@ A pilot with HITL declared in § 8 but not wired is the worst kind: it
 looks "responsibly governed" in the deck and isn't. A double-firing
 HITL is the worst kind 2.0: the audit log shows "approved" and then
 two actions and no one knows which "Approve" click did what.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.
