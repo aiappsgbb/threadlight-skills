@@ -362,6 +362,101 @@ def _run_assessment_for_onboard(args, framing: dict) -> dict:
 # endregion: onboard_runner
 
 
+# ---------------------------------------------------------------------------
+# region: cicd_scaffold (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Pure-stdlib template renderer + writer for Phase 3 (CI/CD handoff).
+# Two templates live under references/cicd-templates/:
+#   - azd-deploy-prod.yml.tmpl       (dev-facing GitHub Actions workflow)
+#   - central-team-uami-readme.md.tmpl  (central platform team runbook)
+# `{{TOKEN}}` placeholders are substituted from the framing dict.
+
+def _render_template(path, context: dict) -> str:
+    """Read a .tmpl file and substitute {{KEY}} markers from context.
+
+    Unknown markers are left untouched so the operator can spot gaps.
+    """
+    text = Path(path).read_text()
+    for k, v in context.items():
+        text = text.replace("{{" + k + "}}", str(v))
+    return text
+
+
+def _cicd_context_from_framing(framing: dict, repo_full_name: str, env_name: str = "prod") -> dict:
+    """Build the template-rendering context from framing + repo name."""
+    import datetime
+    sub = framing.get("target_subscription_id", "")
+    rg = framing.get("target_resource_group", "")
+    slug = repo_full_name.replace("/", "-")
+    return {
+        "TARGET_SUBSCRIPTION_ID": sub,
+        "TARGET_RESOURCE_GROUP": rg,
+        "TARGET_LOCATION": framing.get("target_location", "eastus"),
+        "TARGET_POSTURE": framing.get("target_posture", ""),
+        "REPO_FULL_NAME": repo_full_name,
+        "REPO_SLUG": slug,
+        "UAMI_NAME": f"uami-{slug}-prod-deploy",
+        "UAMI_RESOURCE_GROUP": framing.get("central_platform_team_rg", rg),
+        "UAMI_SUBSCRIPTION_ID": framing.get("central_platform_team_sub", sub),
+        "AZURE_TENANT_ID": framing.get("azure_tenant_id", "<tenant-id>"),
+        "AZURE_ENV_NAME": env_name,
+        "ISO_TIMESTAMP": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _scaffold_cicd(framing: dict, repo_full_name: str, out_root) -> list:
+    """Render both CI/CD templates into out_root. Returns list of written Paths."""
+    out_root = Path(out_root)
+    tmpl_dir = Path(__file__).resolve().parent.parent / "references" / "cicd-templates"
+    ctx = _cicd_context_from_framing(framing, repo_full_name)
+    pairs = [
+        (tmpl_dir / "azd-deploy-prod.yml.tmpl",
+         out_root / ".github" / "workflows" / "azd-deploy-prod.yml"),
+        (tmpl_dir / "central-team-uami-readme.md.tmpl",
+         out_root / "docs" / "threadlight-cicd" / "central-team-uami-readme.md"),
+    ]
+    written = []
+    for tmpl, dest in pairs:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(_render_template(tmpl, ctx))
+        written.append(dest)
+    return written
+
+
+def _detect_repo_full_name(cwd: str):
+    """Parse `git remote get-url origin` -> 'owner/repo' or None."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", cwd, "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    url = r.stdout.strip()
+    import re
+    m = re.search(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$", url)
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool) -> None:
+    """If apply-plan has deferred-to-pipeline items and --scaffold-cicd was
+    NOT passed, emit a stderr hint pointing the operator at the flag."""
+    if scaffold_cicd_flag:
+        return
+    pipeline = [i for i in apply_plan.get("items", []) if i.get("kind") == "deferred-to-pipeline"]
+    if not pipeline:
+        return
+    _eprint(
+        f"hint: apply-plan contains {len(pipeline)} deferred-to-pipeline item(s). "
+        f"Re-run with --scaffold-cicd to generate the GitHub Actions workflow + UAMI runbook."
+    )
+
+# endregion: cicd_scaffold
+
+
 VERSION = "0.3.0"
 
 # ---------------------------------------------------------------------------
@@ -4171,6 +4266,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.remediate:
         return _emit_remediation(root, args.remediate)
 
+    # --scaffold-cicd standalone: render templates + exit. Doesn't run the
+    # assessor. Combined with --onboard, scaffolding fires AFTER apply-plan
+    # is written (see the --onboard block below).
+    if args.scaffold_cicd and not args.onboard:
+        framing = (load_framing_file(args.framing_file) if args.framing_file
+                   else run_framing_wizard())
+        repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+        if not repo:
+            _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name.")
+            return 2
+        written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+        for p in written:
+            _eprint(f"wrote {p}")
+        return 0
+
     # --onboard is the v0.4.0 3-phase production-onboarding side-channel.
     # Phase 1 (Assess) is implemented here; Phase 2 (Refine + Deploy) and
     # Phase 3 (CI/CD Handoff) run downstream in the agent driven by
@@ -4190,6 +4300,18 @@ def main(argv: list[str] | None = None) -> int:
         out_path = args.apply_plan_out or str(Path(args.out) / "apply-plan.json")
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         write_apply_plan(plan, out_path)
+        # Phase 3: if --scaffold-cicd is also set, render templates now.
+        # Otherwise hint the operator if apply-plan has deferred-to-pipeline items.
+        if args.scaffold_cicd:
+            repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+            if not repo:
+                _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name. Skipping scaffold.")
+            else:
+                written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+                for p in written:
+                    _eprint(f"wrote {p}")
+        else:
+            _hint_pipeline_scaffold_if_needed(plan, scaffold_cicd_flag=False)
         return 0
 
     if not args.quiet:
