@@ -1,5 +1,46 @@
 # Production-readiness, the threadlight way
 
+> **What's new in v0.3.0** (Nov 2025). The 0.3.0 release closed an
+> adversarial-review smoking gun: 16 critical static checks were
+> regex-searching the concatenated raw text of every `.bicep` file in
+> the repo, so a *comment* like `// virtualNetworks should be used`
+> made `NET-001` pass. 0.3.0 replaces that with `BicepGraph` — a real
+> ARM-graph parser that shells `az bicep build --stdout` and walks the
+> compiled JSON resources (including nested `Microsoft.Resources/
+> deployments` from module references). The 14 most-critical static
+> checks (`NET-001/002/003/004`, `IAM-002/005`, `SEC-001/005/006`,
+> `OBS-001/002`, `REL-006`, `MDL-001`) now answer the question "is the
+> resource *declared*?" instead of "does the word appear *somewhere*?".
+>
+> Other 0.3.0 changes:
+>
+> - **`bicep` CLI is now a hard prerequisite.** Missing CLI exits 2
+>   with `az bicep install` instructions, no silent regex fallback.
+> - **`not-verified` scores 0**, not 2-of-4. A run with all gaps marked
+>   "couldn't check" no longer gets a 50% honour score.
+> - **`verification_debt` is a first-class manifest field** — total +
+>   per-pillar count of `not-verified` findings, surfaced in the exec
+>   summary so the gap "we couldn't check this" no longer hides inside
+>   the percent.
+> - **21 unimplemented stubs retired** to `experimental: true`,
+>   excluded from scoring unless `--include-experimental` is set.
+> - **5 long-stubbed live probes wired:** OBS-106 (per-account diag
+>   settings), OBS-102 (App Insights KQL via `az monitor log-analytics
+>   query`), SEC-106 (KV diag coverage), SRE-104 (activity-log alerts),
+>   NET-501 (Citadel APIM Access Contract via `TL_CITADEL_HUB_RG`).
+> - **14 new finding IDs:** Defender plans (`GOV-101/102/103`),
+>   Secure Score floor (`GOV-104`), Defender recs surfaced
+>   (`GOV-105`), Policy (`GOV-201/202/203`), Foundry RBAC + knowledge
+>   index PE + thread policy (`MDL-009/010/011`), quota pre-flight
+>   (`MDL-110/111`), restore-drill freshness (`REL-007/008`).
+> - **Industrialization:** `--diff`, `--gate-preview` (exit 2 on
+>   would-fail-hard-gate), `--remediate <id>` (prints bash recipe),
+>   `--include-experimental`, trend CSV append per run, OIDC CI
+>   recipe replaces `AZURE_CREDENTIALS`, `azd hook` install script.
+>
+> See `CHANGELOG.md` for the full delta. Bicep-only — Terraform is
+> explicitly out of scope in this skill, forever.
+
 > *Green `safe-check` proves a pilot is structurally complete and behaves. It does not prove the customer's CISO, SRE, FinOps and network architect can sign off on it. That conversation needs an evidence-backed artefact — produced in one command, not weeks of tribal-knowledge assembly.*
 
 This page is the long-form companion to the [`threadlight-production-ready`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md) skill. It explains **what production-readiness means in the threadlight chain**, the **three postures** a pilot can target, the **thirteen cross-cutting pillars** the skill scores, the **status taxonomy** that surfaces what's actually blocking go-live, and the **two moments per pilot lifecycle** when you run it.

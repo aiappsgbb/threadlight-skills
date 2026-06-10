@@ -1,0 +1,4 @@
+date,tool_version,posture,raw_percent,with_waivers_percent,verified,total_scoreable,verification_debt,recommendation
+2026-06-10T16:08:12Z,0.3.0,citadel-spoke,50,50,77,143,43,not_ready
+2026-06-10T16:10:28Z,0.3.0,citadel-spoke,54,54,77,143,43,not_ready
+2026-06-10T16:42:02Z,0.3.0,citadel-spoke,54,54,77,143,43,not_ready

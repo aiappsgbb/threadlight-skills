@@ -1,0 +1,13 @@
+{
+  "deployment_manifest": {
+    "subscription_id": "11111111-2222-3333-4444-555555555555",
+    "resource_group": "rg-sample-pilot-citadel",
+    "location": "swedencentral",
+    "target_posture": "citadel-spoke",
+    "tags": {
+      "env": "pilot",
+      "owner": "citadel-team@example.com",
+      "posture": "citadel-spoke"
+    }
+  }
+}

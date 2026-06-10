@@ -1,0 +1,12 @@
+version: 1
+shields:
+  prompt_shield: { enabled: true, severity: high }
+  jailbreak: { enabled: true }
+tools:
+  - name: web_search
+    require_approval: false
+  - name: external_api_call
+    require_approval: true
+telemetry:
+  sink: app_insights
+  emit: [allow, deny, escalate]
