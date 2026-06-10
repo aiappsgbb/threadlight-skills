@@ -1,0 +1,26 @@
+# AGT v4 dynamic policy conditions — time-window and cost-aware (PR #2870 in
+# microsoft/agent-governance-toolkit, commit 3218c2e).
+
+agent_control_specification_version: "0.3.1-beta"
+
+metadata:
+  name: sample-pilot-v4-dynamic-budget
+  description: Caps spend per rolling window and restricts execution to business hours.
+
+rules:
+  - name: business_hours_only
+    when:
+      time_window: "09:00-18:00"
+      day_of_week: ["mon", "tue", "wed", "thu", "fri"]
+    action: allow
+  - name: weekend_block
+    when:
+      day_of_week: ["sat", "sun"]
+    action: deny
+    reason: weekend_lockdown
+
+budgets:
+  per_agent:
+    cost_per_window: 25.0
+    token_count_per_window: 500000
+    window: 1h

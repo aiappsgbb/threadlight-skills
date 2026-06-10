@@ -117,6 +117,15 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
     "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2},
+    # ---- agent-governance — v4-preview deep checks (gated to --agt-profile v4_preview)
+    # See docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md for rationale.
+    # These IDs are only emitted by _check_agt_static_v4 / _check_agt_live_v4; never by v3.7 paths.
+    "AGT-V4-001": {"title": "AGT v4 distribution names declared in dependencies", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-V4-002": {"title": "AGT v4 policy uses ACS intervention_points schema", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    "AGT-V4-003": {"title": "AGT v4 dynamic policy conditions (time/cost/quota) detected", "pillar": "agent-governance", "severity": "informational", "tier": 0},
+    "AGT-V4-006": {"title": "AGT v4 composite GitHub Action pinned via toolkit-version", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-V4-007": {"title": "AGT v4 audit fields present in committed verifier JSON", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    "AGT-V4-101": {"title": "AGT v4 denials carry v4-shaped policy_version in App Insights", "pillar": "agent-governance", "severity": "should-fix", "tier": 2},
 
     # ---- identity-access
     "IAM-001": {"title": "No client secrets in repo (managed identity only)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
@@ -1039,6 +1048,236 @@ def _check_agt_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
     return findings, evidence
 
 
+# ---- pillar 2: agent-governance — v4-preview deep checks --------------------
+#
+# All findings emitted by these functions are gated by _run_pillar to fire only
+# when agt_profile == "v4_preview". They never emit when profile is v3_7, auto-
+# resolved-to-v3_7, or none. See docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md
+# for the recon evidence and design rationale.
+
+# Grounded v4 detection regexes — anchored on verified upstream signals
+# (microsoft/agent-governance-toolkit v4.1.0, CHANGELOG dated 2026-06-01).
+V4_DIST_REGEX = re.compile(
+    r"agent-governance-toolkit(?:-(?:core|runtime|sre|cli)|\[full\])",
+    re.IGNORECASE,
+)
+V4_POLICY_REGEX = re.compile(
+    r"^\s*agent_control_specification_version\s*:|^\s*intervention_points\s*:",
+    re.MULTILINE,
+)
+V4_DYNAMIC_REGEX = re.compile(
+    r"\btime_window\s*:|\bcost_per_window\s*:|\btoken_count_per_window\s*:|\bday_of_week\s*:|agent_os\.policies\.dynamic_context",
+)
+V3_7_DIST_REGEX = re.compile(
+    # legacy umbrella names; if any of these appear and none of V4_DIST then v4-001 fails
+    r"\bagent[-_]governance[-_]toolkit\s*(?:[=@~^<>!]|$)|\bfoundry[-_]agt\s*(?:[=@~^<>!]|$)",
+    re.IGNORECASE,
+)
+
+# Canonical v4 intervention point keys (from policy-engine canonical-all-interventions.yaml)
+_V4_INTERVENTION_KEYS = (
+    "agent_startup", "input", "pre_model_call", "post_model_call",
+    "pre_tool_call", "post_tool_call", "output",
+)
+
+# Canonical v4 audit fields (from CHANGELOG line 34 "expanded audit fields")
+_V4_AUDIT_FIELDS = (
+    "arguments_hash", "approver_did", "policy_version", "issued_at", "completed_at",
+)
+
+
+def _v4_scoped_files(root: Path) -> dict[str, list[Path]]:
+    """Return v4-detection-scoped file groups.
+
+    Critical: this MUST NOT include docs/**, README.md, *.md, or specs/SPEC.md —
+    docs prose mentioning v4 must not flip auto-detection to v4_preview.
+    """
+    deps = _glob_repo(root, "requirements*.txt", "pyproject.toml", "package.json")
+    # also include nested per-service deps (e.g. src/agent/requirements.txt)
+    deps += _glob_repo(root, "src/**/requirements*.txt", "src/**/pyproject.toml", "src/**/package.json")
+    policies = _glob_repo(root, "**/policy*.y*ml", "**/policies/**/*.y*ml", "**/agt-policy*.y*ml")
+    workflows = _glob_repo(root, ".github/workflows/*.yml", ".github/workflows/*.yaml")
+    src_python = _glob_repo(root, "src/**/*.py")
+    verifier_json = _glob_repo(root, "tests/**/verifier*.json", "tests/**/agt-verifier*.json", "docs/**/agt-verifier*.json")
+    return {
+        "deps": [p for p in deps if "node_modules" not in p.parts],
+        "policies": policies,
+        "workflows": workflows,
+        "src_python": src_python,
+        "verifier_json": verifier_json,
+    }
+
+
+def _v4_signal_present(files: list[Path], pattern: re.Pattern[str]) -> tuple[bool, list[Path]]:
+    """Return (any-match, list-of-files-that-matched). Empty list when no files."""
+    matched: list[Path] = []
+    for p in files:
+        text = _read_text(p) or ""
+        if pattern.search(text):
+            matched.append(p)
+    return (bool(matched), matched)
+
+
+def _check_agt_static_v4(ctx: RepoContext) -> list[Finding]:
+    """v4-preview deep checks. Caller MUST gate this to agt_profile == 'v4_preview'."""
+    out: list[Finding] = []
+    scoped = _v4_scoped_files(ctx.root)
+
+    # AGT-V4-001 — v4 distribution names declared in deps
+    # Tri-state: not-applicable if no AGT deps at all; pass if v4 names found;
+    # must-fix only if AGT IS declared but only via v3.7-shape names.
+    v4_in_deps, v4_dep_files = _v4_signal_present(scoped["deps"], V4_DIST_REGEX)
+    v37_in_deps, v37_dep_files = _v4_signal_present(scoped["deps"], V3_7_DIST_REGEX)
+    if v4_in_deps:
+        out.append(_mk_finding("AGT-V4-001",
+            status="pass",
+            detail=f"v4 distribution name(s) found in {len(v4_dep_files)} dependency file(s)"))
+    elif v37_in_deps:
+        out.append(_mk_finding("AGT-V4-001",
+            status="must-fix",
+            detail=("AGT declared in deps but only v3.7-shape names found "
+                    "(`agent-governance-toolkit` umbrella or `foundry-agt`); "
+                    "v4 requires one of `agent-governance-toolkit-{core,runtime,sre,cli}` or `[full]`")))
+    else:
+        out.append(_mk_finding("AGT-V4-001",
+            status="not-applicable",
+            detail="No AGT dependency declared in repo — v4 distribution check skipped"))
+
+    # AGT-V4-002 — ACS schema markers present in policy YAML
+    # Presence-of-key heuristic (NOT exact ACS version match — beta version string will churn).
+    if not scoped["policies"]:
+        out.append(_mk_finding("AGT-V4-002",
+            status="not-applicable",
+            detail="No policy YAML files found — ACS schema check skipped"))
+    else:
+        acs_present = False
+        intervention_keys_found: set[str] = set()
+        acs_version_seen: str | None = None
+        for p in scoped["policies"]:
+            text = _read_text(p) or ""
+            if re.search(r"^\s*agent_control_specification_version\s*:", text, re.MULTILINE):
+                acs_present = True
+                m = re.search(r"^\s*agent_control_specification_version\s*:\s*['\"]?([^'\"\n#]+)", text, re.MULTILINE)
+                if m and not acs_version_seen:
+                    acs_version_seen = m.group(1).strip()
+            if re.search(r"^\s*intervention_points\s*:", text, re.MULTILINE):
+                acs_present = True
+                for key in _V4_INTERVENTION_KEYS:
+                    if re.search(rf"^\s+{re.escape(key)}\s*:", text, re.MULTILINE):
+                        intervention_keys_found.add(key)
+        if acs_present and intervention_keys_found:
+            out.append(_mk_finding("AGT-V4-002",
+                status="pass",
+                detail=(f"ACS schema present (version={acs_version_seen or 'unspecified'}); "
+                        f"intervention keys: {sorted(intervention_keys_found)}")))
+        elif acs_present:
+            out.append(_mk_finding("AGT-V4-002",
+                status="should-fix",
+                detail=("ACS version key present but no `intervention_points:` block detected — "
+                        "policy may be partial-v4; add intervention_points")))
+        else:
+            out.append(_mk_finding("AGT-V4-002",
+                status="should-fix",
+                detail=(f"Policy YAML found ({len(scoped['policies'])} file(s)) but no ACS schema markers "
+                        "(`agent_control_specification_version:` / `intervention_points:`); upgrade to v4 schema")))
+
+    # AGT-V4-003 — informational only: dynamic policy conditions detected anywhere in scoped surface
+    dyn_in_policies, dyn_policy_files = _v4_signal_present(scoped["policies"], V4_DYNAMIC_REGEX)
+    dyn_in_src, dyn_src_files = _v4_signal_present(scoped["src_python"], V4_DYNAMIC_REGEX)
+    if dyn_in_policies or dyn_in_src:
+        out.append(_mk_finding("AGT-V4-003",
+            status="pass",
+            detail=(f"Dynamic policy conditions detected: "
+                    f"{len(dyn_policy_files)} policy file(s), {len(dyn_src_files)} source file(s)")))
+    else:
+        out.append(_mk_finding("AGT-V4-003",
+            status="not-applicable",
+            detail="No dynamic policy conditions (time_window / cost_per_window / token_count_per_window) detected — informational"))
+
+    # AGT-V4-006 — composite GitHub Action pinned via toolkit-version (tri-state)
+    action_uses: list[Path] = []
+    action_pinned: list[Path] = []
+    action_unpinned: list[Path] = []
+    action_use_re = re.compile(r"uses\s*:\s*microsoft/agent-governance-toolkit/action@", re.IGNORECASE)
+    for p in scoped["workflows"]:
+        text = _read_text(p) or ""
+        if action_use_re.search(text):
+            action_uses.append(p)
+            # check for toolkit-version: input within ~30 lines after each `uses:` for the AGT action.
+            # heuristic: split into "uses:" blocks and check each.
+            blocks = re.split(r"(?=\s*-\s*name\s*:|^\s*-\s*uses\s*:|^\s*uses\s*:)", text, flags=re.MULTILINE)
+            for blk in blocks:
+                if action_use_re.search(blk):
+                    if re.search(r"\btoolkit-version\s*:", blk):
+                        action_pinned.append(p)
+                    else:
+                        action_unpinned.append(p)
+                    break
+    if not action_uses:
+        out.append(_mk_finding("AGT-V4-006",
+            status="not-applicable",
+            detail="No use of `microsoft/agent-governance-toolkit/action` in workflows — pin check skipped"))
+    elif action_unpinned:
+        out.append(_mk_finding("AGT-V4-006",
+            status="must-fix",
+            detail=(f"AGT composite action used in {len(action_unpinned)} workflow(s) without `toolkit-version:` input; "
+                    "v4 BREAKING_CHANGES.md makes this input required")))
+    else:
+        out.append(_mk_finding("AGT-V4-006",
+            status="pass",
+            detail=f"AGT composite action used in {len(action_pinned)} workflow(s), all pinned via toolkit-version"))
+
+    # AGT-V4-007 — v4 audit fields present in committed verifier JSON
+    # Tri-state: not-verified if no JSON exists; pass if ≥3 of 5 fields found; should-fix otherwise.
+    if not scoped["verifier_json"]:
+        out.append(_not_verified("AGT-V4-007",
+            "No committed verifier JSON artefact found — v4 audit field check requires JSON output (markdown verifier reports not in scope)"))
+    else:
+        fields_found: set[str] = set()
+        for p in scoped["verifier_json"]:
+            text = _read_text(p) or ""
+            for field_name in _V4_AUDIT_FIELDS:
+                if re.search(rf'["\']?{re.escape(field_name)}["\']?\s*:', text):
+                    fields_found.add(field_name)
+        if len(fields_found) >= 3:
+            out.append(_mk_finding("AGT-V4-007",
+                status="pass",
+                detail=f"v4 audit fields present in verifier JSON: {sorted(fields_found)}"))
+        else:
+            out.append(_mk_finding("AGT-V4-007",
+                status="should-fix",
+                detail=(f"Verifier JSON exists ({len(scoped['verifier_json'])} file(s)) but missing v4 audit fields; "
+                        f"found only: {sorted(fields_found) or 'none'}; expected ≥3 of {list(_V4_AUDIT_FIELDS)}")))
+
+    # NOTE: AGT-V4-004 (modernized PII regex) and AGT-V4-005 (first-party CLI integration packages)
+    # were deferred to a follow-up PR per rubber-duck critique — see
+    # docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md § "What was deferred".
+
+    return out
+
+
+def _check_agt_live_v4(
+    ctx: RepoContext,
+    tiers: dict[int, bool],
+    sub: str | None,
+    rg: str | None,
+) -> tuple[list[Finding], list[EvidenceEntry]]:
+    """v4-preview live deep checks. Caller MUST gate this to agt_profile == 'v4_preview'.
+
+    v1 of v4 deep checks ships only AGT-V4-101 as a `not-verified` stub — symmetric
+    to AGT-102 in the version-agnostic live check. The KQL probe over the `policy_version`
+    field in App Insights denial events is left for a follow-up PR when a real v4
+    pilot is available to test against.
+    """
+    findings: list[Finding] = []
+    evidence: list[EvidenceEntry] = []
+    findings.append(_not_verified(
+        "AGT-V4-101",
+        "Tier 2 KQL probe over v4 `policy_version` field in App Insights denial events not implemented in v1",
+    ))
+    return findings, evidence
+
+
 # ---- pillar 3: identity-access ---------------------------------------------
 
 SECRET_REGEX = re.compile(r"(?i)(client[_-]?secret|api[_-]?key|password|connection[_-]?string)\s*[:=]\s*['\"][^'\"]{8,}")
@@ -1854,10 +2093,19 @@ def _run_pillar(
         findings.extend(static_fn(ctx, resolved_posture))
     elif pillar == "agent-governance":
         findings.extend(static_fn(ctx, agt_profile))
+        # v4-preview deep checks: gated to fire only when profile is v4_preview.
+        # Lives in _check_agt_static_v4 — never emitted by v3_7 / none / auto-as-v3_7.
+        if agt_profile == "v4_preview":
+            findings.extend(_check_agt_static_v4(ctx))
     else:
         findings.extend(static_fn(ctx))
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)
+        # v4-preview live deep checks: gated to fire only when profile is v4_preview.
+        if pillar == "agent-governance" and agt_profile == "v4_preview":
+            v4_live_findings, v4_live_evidence = _check_agt_live_v4(ctx, tiers, sub, rg)
+            live_findings = list(live_findings) + v4_live_findings
+            live_evidence = list(live_evidence) + v4_live_evidence
         # quick mode: only the first live check
         if quick and live_findings:
             kept = live_findings[:1]
@@ -1872,6 +2120,10 @@ def _run_pillar(
         existing_ids = {f.id for f in findings}
         for fid, meta in FINDING_CATALOG.items():
             if meta["pillar"] == pillar and meta["tier"] > 0 and fid not in existing_ids:
+                # v4-only live findings (AGT-V4-*) must not leak into v3.7 / none / static-mode runs
+                # when the active profile is not v4_preview.
+                if pillar == "agent-governance" and fid.startswith("AGT-V4-") and agt_profile != "v4_preview":
+                    continue
                 findings.append(_not_verified(fid, "Skipped — running in --static mode"))
     return findings, evidence
 
@@ -1882,14 +2134,34 @@ def _run_pillar(
 
 
 def _detect_agt_profile(ctx: RepoContext, requested: str) -> str:
+    """Auto-detect AGT profile from scoped artefacts.
+
+    Detection scope is restricted to implementation artefacts (deps files, policy
+    YAMLs, workflow YAMLs, source `.py/.ts/.tsx`) — docs/README/SPEC prose are
+    EXPLICITLY EXCLUDED so that mentions of "AGT v4" in markdown do not flip
+    detection. See docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md
+    for the recon evidence backing the v4 signals.
+    """
     if requested != "auto":
         return requested
     src = ctx.src_text
     # heuristics — capability based, version agnostic
-    if not re.search(r"foundry[-_]agt|from\s+agt\b|@foundry/agt", src, re.I):
+    has_legacy_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
+    has_v4_import = bool(re.search(r"agent_governance_toolkit_(?:core|runtime|sre|cli)|from\s+agent_governance_toolkit", src, re.I))
+    if not has_legacy_import and not has_v4_import:
         return "none"
-    # v4 signals: streaming policy / async middleware / structured RAI
-    if re.search(r"AGTv4|agt\.v4|stream_policy|structured_rai", src, re.I):
+    # v4 signals (any one is sufficient): scan only scoped artefact files,
+    # NOT docs/README/SPEC prose. See _v4_scoped_files for the exact globs.
+    scoped = _v4_scoped_files(ctx.root)
+    if _v4_signal_present(scoped["deps"], V4_DIST_REGEX)[0]:
+        return "v4_preview"
+    if _v4_signal_present(scoped["policies"], V4_POLICY_REGEX)[0]:
+        return "v4_preview"
+    if has_v4_import:
+        return "v4_preview"
+    if _v4_signal_present(scoped["src_python"], V4_DYNAMIC_REGEX)[0]:
+        return "v4_preview"
+    if _v4_signal_present(scoped["policies"], V4_DYNAMIC_REGEX)[0]:
         return "v4_preview"
     return "v3_7"
 

@@ -1,0 +1,59 @@
+# AGT v4 governance policy — minimal but valid Agent Control Specification (ACS)
+# manifest, slimmed from the canonical-all-interventions.yaml fixture in
+# microsoft/agent-governance-toolkit/policy-engine/core/tests/fixtures/manifests/.
+
+agent_control_specification_version: "0.3.1-beta"
+
+metadata:
+  name: sample-pilot-v4-governance
+  description: AGT v4 pilot governance — covers tool calls, prompt shields, telemetry.
+
+policies:
+  input_policy:
+    type: rego
+    bundle: ./bundles/input.tar.gz
+  tool_authz_policy:
+    type: rego
+    bundle: ./bundles/tools.tar.gz
+  output_policy:
+    type: rego
+    bundle: ./bundles/output.tar.gz
+
+intervention_points:
+  agent_startup:
+    policy_target: "$snap.agent"
+    policy_target_kind: agent_metadata
+    policy:
+      id: input_policy
+  input:
+    policy_target: "$snap.input"
+    policy_target_kind: user_input
+    annotations:
+      prompt_classifier:
+        from: "$policy_target.text"
+    policy:
+      id: input_policy
+  pre_tool_call:
+    policy_target: "$snap.tool_call.args"
+    policy_target_kind: tool_args
+    tool_name_from: "$snap.tool_call.name"
+    policy:
+      id: tool_authz_policy
+  post_tool_call:
+    policy_target: "$snap.tool_result"
+    policy_target_kind: tool_result
+    tool_name_from: "$snap.tool_call.name"
+    policy:
+      id: output_policy
+  output:
+    policy_target: "$snap.output"
+    policy_target_kind: assistant_output
+    policy:
+      id: output_policy
+
+telemetry:
+  sink: application_insights
+  emit_denials: true
+
+owasp:
+  asi_version: "2026"

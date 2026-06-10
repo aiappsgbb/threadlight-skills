@@ -1,0 +1,17 @@
+name: AGT verify
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  agt-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run AGT verifier
+        uses: microsoft/agent-governance-toolkit/action@v4
+        with:
+          toolkit-version: "4.1.0"
+          policy-dir: ./policies
+          report-path: ./tests/verifier-report.json
+          fail-on: must-fix
