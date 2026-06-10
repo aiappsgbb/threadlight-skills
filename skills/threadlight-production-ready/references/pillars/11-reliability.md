@@ -1,31 +1,41 @@
 # Pillar 11 — `reliability`
 
+> **v0.3.0:** Adds `REL-007` (restore-drill artefact freshness — fails
+> if `tests/restore-drill-*.md` is older than 90 days, regardless of
+> whether `REL-004` static evidence exists) and `REL-008` (live
+> Recovery Services Vault must contain at least one restore point).
+> Together these close the "configured backups, never tested them"
+> gap that motivated the v0.3.0 overhaul.
+
 > **What this pillar answers.** Does the deployment shape match the
 > declared RTO/RPO? Is the backup actually tested (not just
 > "configured")? Is there a runbook? Has any chaos test been run?
 
 ## Checks
 
-### Static
+### Static (tier 0)
 
 | ID | Check | Default status |
 |---|---|---|
 | `REL-001` | SPEC § 12 declares `rto` and `rpo` targets | `must-fix` if absent |
-| `REL-002` | SPEC § 12 declares `multi_region` plan (`none`, `active-passive`, `active-active`) consistent with RTO | `should-fix` if RTO < 1h and `multi_region: none` |
-| `REL-003` | Backup plan exists for stateful resources (Cosmos, KV, AI Search index, Storage). For each: `backup_type` declared in Bicep or `docs/backup.md` | `should-fix` if absent for any stateful resource |
-| `REL-004` | Restore drill evidence: `tests/restore-drill-*.md` or `docs/restore-drill.md` with date < freshness window (default 90 days) | `must-fix` if RTO < 24h and no drill |
-| `REL-005` | Runbook exists (`docs/runbook.md` or `docs/operations.md`) covering: incident triage, common alerts, restore steps, rollback | `should-fix` if absent |
-| `REL-006` | Chaos test evidence: any documented failure-injection test (Chaos Studio, manual ACA stop, etc.) | `should-fix` if absent for production-targeted pilot |
+| `REL-002` | Multi-region plan documented in SPEC § 12 if RTO < 4h | `must-fix` if RTO < 4h and `multi_region: none` |
+| `REL-003` | Backup / restore runbook present (`docs/backup.md` or `docs/runbook.md` covers restore steps) | `must-fix` if absent |
+| `REL-004` | Capacity host lifecycle understood (SPEC § 12 names the cap host / model-host owner + day-2 swap process) | `should-fix` if absent |
+| `REL-005` | Failure modes catalogued in SPEC § 12 (top-3 likely outage modes with detection + mitigation) | `should-fix` if absent |
+| `REL-006` | Health probes configured for ACA / Functions / Container Apps (Bicep declares liveness + readiness) | `should-fix` if absent |
+| `REL-007` | Restore drill artefact present and dated within freshness window (default 90 days): `tests/restore-drill-*.md` or `docs/restore-drill.md` | `must-fix` |
+| `MDL-008` | Knowledge index refresh cadence declared in SPEC § 12 (cross-listed here because index restore is part of the runbook surface — primary owner is pillar 13) | `should-fix` if absent |
 
 ### Live (tier 1 — `Reader`)
 
 | ID | Check | Default status |
 |---|---|---|
-| `REL-101` | Cosmos: continuous backup enabled if RPO < 24h | `must-fix` if RPO < 24h & PITR off |
-| `REL-102` | Cosmos: backup region matches SPEC residency or is the paired region | `must-fix` if drift |
-| `REL-103` | If `multi_region: active-passive`: secondary region resources exist (account-level replicas) | `must-fix` if absent |
-| `REL-104` | KV: backups configured (export schedule OR replication) for production | `should-fix` if absent |
-| `REL-105` | ACA: zone redundancy enabled if RTO < 1h | `should-fix` if absent |
+| `REL-008` | Live Recovery Services Vault contains at least one restore point (proves the configured backup is actually running) | `should-fix` if zero |
+| `REL-101` | Zone redundancy enabled where supported (ACA, AI Search, Storage) | `should-fix` if absent — **experimental** |
+| `REL-102` | Backup vault present if SPEC § 12 declares backups (Recovery Services Vault discoverable in the target RG / sub) | `must-fix` if declared & missing |
+| `REL-103` | ACA `min-replica >= 1` in prod (cold-start avoidance) | `should-fix` if zero |
+| `REL-104` | Multi-region resources present if SPEC § 12 declares `active-passive` or `active-active` | `should-fix` if drift — **experimental** |
+| `REL-105` | Capacity host status healthy (Foundry cap host shows green provisioning state) | `should-fix` if degraded — **experimental** |
 
 ## RTO / RPO worked examples
 

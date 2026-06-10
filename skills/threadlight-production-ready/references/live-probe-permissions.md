@@ -107,6 +107,21 @@ permission than necessary.
 | `sre-handover` | `SRE-101..104` | 1 | Alert action groups, SRE Agent resource |
 | `model-lifecycle` | `MDL-101..103` | 1 | Model deployment inventory |
 | `model-lifecycle` | `MDL-104` | 2 | KQL model-call traces |
+| `model-lifecycle` | `MDL-110` | 3 | TPM headroom — needs `Cognitive Services Usages Reader` |
+| `model-lifecycle` | `MDL-111` | 1 | Foundry account capacity in target region |
+| `model-lifecycle` | `GOV-101` | 1 | Defender for AI Services plan enabled |
+| `secrets` | `SEC-106` | 1 | KV diagnostic settings → LA (control-plane) |
+| `secrets` | `GOV-102` | 1 | Defender for Key Vault plan enabled |
+| `observability` | `OBS-106` | 1 | Foundry account diagnostic settings → LA |
+| `observability` | `OBS-102` | 2 | KQL trace-freshness probe (24h window) |
+| `supply-chain` | `GOV-103` | 1 | Defender for Servers / Containers plan enabled |
+| `reliability` | `REL-007` | 0 | Restore-drill artefact freshness (static, no Azure) |
+| `reliability` | `REL-008` | 1 | Live Recovery Services Vault restore-point sampling |
+| `sre-handover` | `SRE-104` | 2 | RG activity-log alerts presence |
+| `sre-handover` | `GOV-104` | 1 | Defender Secure Score floor |
+| `sre-handover` | `GOV-201..203` | 1 | Azure Policy assignments + compliance |
+| `network-posture` | `POS-001` | 1 | Declared posture matches detected evidence |
+| `network-posture` | `NET-501` | 5 | Citadel APIM Access Contract — needs `TL_CITADEL_HUB_RG` env |
 
 ## What the skill does when a tier is missing
 

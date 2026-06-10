@@ -1,5 +1,20 @@
 # Sample GitHub Actions workflow — Threadlight production-readiness scorecard
 #
+# v0.3.0 update: this recipe is **OIDC-first**. It no longer expects an
+# `AZURE_CREDENTIALS` JSON secret (which is a long-lived service-principal
+# password and a standing-risk anti-pattern). Instead, configure a
+# federated credential on a User-Assigned Managed Identity or an Entra
+# app registration trusted to your repo and expose three repo/org-level
+# secrets:
+#
+#   AZURE_CLIENT_ID         (clientId of the federated identity)
+#   AZURE_TENANT_ID         (Entra tenant id)
+#   AZURE_SUBSCRIPTION_ID   (subscription scope for the live probes)
+#
+# Plus one repo variable:
+#
+#   vars.AZURE_LIVE_PROBE_ENABLED  ("true" to opt-in to live mode on push to main)
+#
 # Drop this file into `.github/workflows/production-ready.yml` of a pilot
 # repo (or copy the steps into an existing workflow) to publish the markdown
 # scorecard + JSON manifest as PR comments and build artifacts.
@@ -7,8 +22,11 @@
 # Behavior:
 #   - Runs on every PR + on every push to main
 #   - Static mode by default (no Azure auth needed for PR builds)
-#   - Live mode on main pushes if AZURE_CREDENTIALS secret is present
-#   - Soft-advisory: never fails the build (skill always exits 0)
+#   - Live mode on main pushes if AZURE_CLIENT_ID + AZURE_TENANT_ID +
+#     AZURE_SUBSCRIPTION_ID are present AND vars.AZURE_LIVE_PROBE_ENABLED
+#     == "true"
+#   - --gate-preview is on for push events so a regression that introduces a
+#     new must-fix surfaces as a workflow failure (still soft on PRs)
 #   - Uploads `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json`
 #   - Posts the report as a PR comment (PRs only)
 #
@@ -18,6 +36,7 @@
 #   - `tests/postdeploy-manifest.json` (from threadlight-safe-check phase=post-deploy)
 #   - `tests/production_ready.py` (copied from
 #     `skills/threadlight-production-ready/scripts/production_ready.py`)
+#   - `bicep` CLI on PATH (the workflow installs it via `az bicep install`)
 #
 # OPTIONAL: waivers
 #   - `tests/production-readiness-waivers.json` with a `binding` block whose
@@ -50,7 +69,7 @@ on:
 permissions:
   contents: read
   pull-requests: write     # for PR-comment publishing
-  id-token: write          # for Azure federated auth (live mode only)
+  id-token: write          # REQUIRED for Azure OIDC federated auth
 
 jobs:
   scorecard:
@@ -62,33 +81,57 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install bicep CLI (hard prerequisite in v0.3.0)
+        run: |
+          if ! az bicep version >/dev/null 2>&1; then
+            az bicep install
+          fi
+          az bicep version
+
       - name: Determine mode
         id: mode
         run: |
-          if [[ "${{ github.event_name }}" == "push" && -n "${{ secrets.AZURE_CREDENTIALS }}" ]]; then
+          if [[ "${{ github.event_name }}" == "push" \
+                && -n "${{ secrets.AZURE_CLIENT_ID }}" \
+                && -n "${{ secrets.AZURE_TENANT_ID }}" \
+                && -n "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                && "${{ vars.AZURE_LIVE_PROBE_ENABLED }}" == "true" ]]; then
             echo "mode=live" >> "$GITHUB_OUTPUT"
           else
             echo "mode=static" >> "$GITHUB_OUTPUT"
           fi
 
-      # Live mode only — federated auth recommended; secret fallback shown.
-      - name: Azure login (live mode)
+      # Live mode only — OIDC federated auth, no client secrets in repo.
+      - name: Azure login (OIDC federated, live mode)
         if: steps.mode.outputs.mode == 'live'
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run production-readiness scorecard
         id: scorecard
+        env:
+          # Optional: set TL_CITADEL_HUB_RG as a repo variable to enable
+          # NET-501 (Citadel APIM Access Contract probe) for citadel-spoke
+          # pilots. Leave unset for AGT / standard-ai-gateway postures.
+          TL_CITADEL_HUB_RG: ${{ vars.TL_CITADEL_HUB_RG }}
         run: |
           set -euo pipefail
           flags=(
             --out tests/production-readiness-manifest.json
             --report docs/production-readiness-report.md
+            --trend-csv tests/production-readiness-trend.csv
             --quiet
           )
           if [[ "${{ steps.mode.outputs.mode }}" == "static" ]]; then
             flags+=(--static)
+          fi
+          # Push events to main get --gate-preview semantics: a new must-fix
+          # surfaces as a failed workflow so regression caught in CI.
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            flags+=(--gate-preview)
           fi
           if [[ -n "${{ inputs.target_posture }}" ]]; then
             flags+=(--target "${{ inputs.target_posture }}")
@@ -104,6 +147,7 @@ jobs:
               "- **Recommendation:** \(.go_live_recommendation)\n" +
               "- **Raw score:** \(.score.raw_percent)%   **With waivers:** \(.score.with_waivers_percent)%\n" +
               "- **Verification coverage:** \(.verification_coverage.verified)/\(.verification_coverage.total_scoreable) (\(.verification_coverage.percent)%)\n" +
+              "- **Verification debt:** \(.verification_debt.total) not-verified finding(s) (v0.3.0 metric)\n" +
               "- **Posture (resolved):** `\(.posture.resolved)` (declared: `\(.posture.declared // "unset")`, detected: `\(.posture.detected // "none")`)\n" +
               "- **Mode:** \(.mode)   **AGT profile:** \(.agt_profile)"
             ' tests/production-readiness-manifest.json
@@ -123,6 +167,7 @@ jobs:
           path: |
             docs/production-readiness-report.md
             tests/production-readiness-manifest.json
+            tests/production-readiness-trend.csv
           retention-days: 90
 
       - name: Comment on PR

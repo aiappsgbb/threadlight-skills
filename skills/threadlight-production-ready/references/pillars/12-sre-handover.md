@@ -1,5 +1,15 @@
 # Pillar 12 — `sre-handover`
 
+> **v0.3.0:** Wires `SRE-104` as a live probe (resource-group
+> activity-log alerts present), and adds the governance gates
+> `GOV-104` (Defender Secure Score floor, default 60%, configurable
+> via `--secure-score-floor`), `GOV-201` (required Azure Policy
+> assignments present at sub/RG scope), `GOV-202` (no non-compliant
+> resources for required policies), `GOV-203` (sane-default initiative
+> assigned — ASB v3 or customer equivalent). All Policy/Defender
+> requirements come from SPEC § 12 `required_policy_ids` and
+> `defender_plans_required`.
+
 > **What this pillar answers.** When this pilot goes to production at
 > 09:00 Monday, who is on the pager at 03:00 Tuesday? Where do they
 > click? What runbook do they follow? Has the SRE team accepted the
@@ -11,24 +21,29 @@ The pillar requires the artefacts that make the handover real.
 
 ## Checks
 
-### Static
+### Static (tier 0)
 
 | ID | Check | Default status |
 |---|---|---|
-| `SRE-001` | SPEC § 12 declares `incident_owner` (email / team / group) | `must-fix` if absent |
-| `SRE-002` | SPEC § 12 declares `escalation_path` (L1 → L2 → L3 with response-time targets) | `should-fix` if absent |
-| `SRE-003` | `docs/runbook.md` (or equivalent) exists and is referenced from § 12 | `should-fix` if absent (also caught by pillar 11) |
-| `SRE-004` | Handoff acceptance artefact: `docs/handoff-acceptance.md` (or equivalent) signed by the incident owner with date | `must-fix` if absent for go-live |
-| `SRE-005` | If pilot uses Azure SRE Agent: `azure-sre-agent` recipe applied — look for `azuresre/` or `sre-agent/` config in repo or `infra/` Bicep declaring `Microsoft.App/agents` resource | `should-fix` if SRE Agent declared in § 12 but no recipe |
+| `SRE-001` | SPEC § 12 names `incident_owner` / on-call (email / team / group) | `must-fix` if absent |
+| `SRE-002` | Runbook present in `docs/` (e.g., `docs/runbook.md`) | `must-fix` if absent |
+| `SRE-003` | Azure SRE Agent integration considered in SPEC § 12 (adopted / explicitly deferred — not silently skipped) | `should-fix` if unmentioned |
+| `SRE-004` | Severity matrix documented (`docs/severity.md` or in § 12: Sev1..Sev3 with response-time targets) | `should-fix` if absent |
+| `SRE-005` | Postmortem template referenced (`docs/postmortem-template.md` or link in § 12) | `should-fix` if absent |
 
 ### Live (tier 1)
 
 | ID | Check | Default status |
 |---|---|---|
-| `SRE-101` | Alert rules (from pillar 5) have at least one **destination** that isn't email-to-noreply (action group with an actual team / pager / Teams channel) | `must-fix` if zero usable destinations |
-| `SRE-102` | If § 12 declares SRE Agent: `Microsoft.App/agents` resource exists in the configured RG | `must-fix` if declared & missing |
-| `SRE-103` | If SRE Agent + `threadlight-pilot-handover` recipe: at least one daily health task scheduled (HTTP trigger or recipe-driven) | `should-fix` if absent |
-| `SRE-104` | HTTP trigger / webhook secret (if any) stored in KV, not env var | `must-fix` if env-var |
+| `SRE-101` | Action group routes to on-call rotation (at least one non-noreply destination — Teams channel, PagerDuty, real team alias) | `must-fix` if zero usable destinations |
+| `SRE-102` | If § 12 declares SRE Agent: `Microsoft.App/agents` resource exists in the configured RG | `should-fix` if declared & missing |
+| `SRE-103` | Diagnostic settings cover all critical resources (Foundry, KV, ACA, Cosmos → Log Analytics) | `must-fix` if any critical resource has none — **experimental** |
+| `SRE-104` | Activity log alerts on the target RG (any alert at all — proves someone wired baseline platform-event detection) | `should-fix` if zero |
+| `GOV-104` | Defender Secure Score above floor (default 60%; configurable via `--secure-score-floor` or SPEC § 12 `secure_score_floor`) | `should-fix` if below floor |
+| `GOV-105` | Top 3 Defender recommendations enumerated in manifest (informational — surfaces the next 3 things to do) | `informational` |
+| `GOV-201` | Required Azure Policy assignments present at sub/RG scope (v0.3.0: checks "any assignments exist"; v0.4.0 will check declared IDs) | `must-fix` if zero |
+| `GOV-202` | No non-compliant resources for required policies (sampled via `az policy state list`) | `should-fix` if any |
+| `GOV-203` | Sane-default initiatives assigned (ASB-v3 or customer equivalent) | `should-fix` if absent |
 
 ## The `threadlight-pilot-handover` recipe
 
@@ -38,16 +53,22 @@ pilot's resources, posts findings to the incident owner channel, and
 maintains the runbook references.
 
 If `target_posture` includes SRE Agent adoption, this pillar:
-- Verifies the agent resource is provisioned
-- Verifies the `threadlight-pilot-handover` recipe (or equivalent
-  subagent/plugin chain) is applied
-- Verifies daily health task scheduling
-- Notes if the HTTP trigger secret pattern is in KV (not env-var)
+- Verifies the agent resource is provisioned (`SRE-102`)
+- Verifies activity-log alerts exist on the target RG so the agent has
+  baseline platform-event signal to react to (`SRE-104`)
+- Surfaces Defender Secure Score, top recommendations, and required
+  Policy posture as governance gates (`GOV-104..105`, `GOV-201..203`)
 
 If SRE Agent **is not** part of the posture, this pillar is satisfied
-with the runbook + acceptance + alert-route trio. SRE Agent is
+with the runbook + alert-route + activity-log-alerts trio. SRE Agent is
 optional but **strongly recommended** for any pilot heading to
 production — the report surfaces this as a non-blocking callout.
+
+> **Note** (v0.3.0): handoff-acceptance artefact (`docs/handoff-acceptance.md`)
+> and dedicated `webhook-secret-in-KV` checks are planned for v0.4.0.
+> The current evidence trio (alerts route to humans + RG activity-log
+> alerts + Defender Secure Score above floor) covers the most-broken
+> dimensions in customer pilots.
 
 ## Handoff acceptance artefact
 

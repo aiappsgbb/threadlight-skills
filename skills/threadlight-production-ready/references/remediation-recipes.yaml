@@ -1,0 +1,241 @@
+# Threadlight production-readiness — remediation recipes (v0.3.0)
+#
+# Each entry maps a finding id to a copy-pasteable bash recipe that closes
+# the gap with `az` CLI calls (no IaC re-deploy required for the quick wins;
+# Bicep recipes are pointers, not full templates).
+#
+# Format is intentionally minimal so the CLI can grep it with a regex.
+# `production_ready.py --remediate <FID>` prints the matching block to
+# stdout. Operators paste, edit, run.
+#
+# Every recipe assumes:
+#   - You are signed in to Azure (`az login`) and the right subscription
+#     (`az account set --subscription <id>`).
+#   - The pilot manifest `specs/manifest.json` has the target RG + sub.
+
+- id: NET-001
+  pillar: network-posture
+  title: Declare at least one Microsoft.Network/virtualNetworks resource
+  description: |
+    NET-001 fired because the compiled ARM has no virtualNetworks resource.
+    Comments mentioning "virtualNetworks" no longer pass — v0.3.0 uses the
+    real ARM graph. Add a VNet module to your infra and re-run.
+  bash: |
+    # 1. Add the VNet to your Bicep (example — adjust to your topology):
+    cat <<'BICEP' > infra/network/vnet.bicep
+    param location string = resourceGroup().location
+    param vnetName string = 'vnet-pilot'
+    param addressPrefix string = '10.10.0.0/16'
+
+    resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
+      name: vnetName
+      location: location
+      properties: {
+        addressSpace: { addressPrefixes: [ addressPrefix ] }
+        subnets: [
+          {
+            name: 'snet-pe'
+            properties: {
+              addressPrefix: '10.10.0.0/24'
+              privateEndpointNetworkPolicies: 'Disabled'
+            }
+          }
+        ]
+      }
+    }
+    output vnetId string = vnet.id
+    BICEP
+
+    # 2. Reference the module from infra/main.bicep:
+    #    module vnet 'network/vnet.bicep' = { name: 'vnet' ... }
+
+    # 3. Re-deploy via your usual path (azd up / az deployment group create)
+
+- id: NET-003
+  pillar: network-posture
+  title: Disable publicNetworkAccess on Cognitive / Foundry accounts
+  description: |
+    Each Microsoft.CognitiveServices/accounts must set
+    properties.publicNetworkAccess to 'Disabled' and be fronted by a
+    private endpoint.
+  bash: |
+    # Patch publicNetworkAccess on every existing account in the RG:
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    az cognitiveservices account list -g "$RG" --subscription "$SUB" \
+      --query "[].name" -o tsv | while read NAME; do
+        az cognitiveservices account update -g "$RG" --subscription "$SUB" \
+          --name "$NAME" --public-network-access Disabled
+      done
+
+- id: SEC-005
+  pillar: secrets
+  title: Enable soft-delete and purge protection on Key Vaults
+  description: |
+    Key Vault MUST have both `enableSoftDelete: true` and
+    `enablePurgeProtection: true`. v0.3.0 checks compiled ARM, not the
+    word "softDelete" in a comment.
+  bash: |
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    az keyvault list -g "$RG" --subscription "$SUB" \
+      --query "[].name" -o tsv | while read NAME; do
+        az keyvault update -g "$RG" --subscription "$SUB" --name "$NAME" \
+          --enable-purge-protection true \
+          --enable-soft-delete true
+      done
+
+- id: SEC-106
+  pillar: secrets
+  title: Wire a diagnostic setting on every Key Vault
+  description: |
+    Each KV must forward AuditEvent + AllMetrics to Log Analytics or
+    storage. SEC-106 is a v0.3.0 live probe.
+  bash: |
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    LAW_ID="$(az monitor log-analytics workspace list -g "$RG" \
+                --subscription "$SUB" --query "[0].id" -o tsv)"
+    az keyvault list -g "$RG" --subscription "$SUB" \
+      --query "[].id" -o tsv | while read KV_ID; do
+        az monitor diagnostic-settings create \
+          --name "kv-diag" \
+          --resource "$KV_ID" \
+          --workspace "$LAW_ID" \
+          --logs '[{"category":"AuditEvent","enabled":true}]' \
+          --metrics '[{"category":"AllMetrics","enabled":true}]'
+      done
+
+- id: OBS-106
+  pillar: observability
+  title: Wire a diagnostic setting on every Foundry / Cognitive Services account
+  description: |
+    OBS-106 is a v0.3.0 live probe: every AI account must have ≥1
+    diagnostic setting forwarding to Log Analytics.
+  bash: |
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    LAW_ID="$(az monitor log-analytics workspace list -g "$RG" \
+                --subscription "$SUB" --query "[0].id" -o tsv)"
+    az cognitiveservices account list -g "$RG" --subscription "$SUB" \
+      --query "[].id" -o tsv | while read ACC_ID; do
+        az monitor diagnostic-settings create \
+          --name "ai-diag" \
+          --resource "$ACC_ID" \
+          --workspace "$LAW_ID" \
+          --logs '[{"categoryGroup":"audit","enabled":true},{"categoryGroup":"allLogs","enabled":true}]' \
+          --metrics '[{"category":"AllMetrics","enabled":true}]'
+      done
+
+- id: SRE-104
+  pillar: sre-handover
+  title: Wire at least one activity-log alert in the RG
+  description: |
+    Activity-log alerts surface resource-deletion and policy-violation
+    events to your SRE rotation.
+  bash: |
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    AG_ID="$(az monitor action-group list -g "$RG" --subscription "$SUB" \
+                --query "[0].id" -o tsv)"
+    # Create an action group first if AG_ID is empty:
+    if [[ -z "$AG_ID" ]]; then
+      AG_ID="$(az monitor action-group create -n ag-sre -g "$RG" \
+                --subscription "$SUB" --short-name sre \
+                --action email pilot-sre $(jq -r '.incident_owner_email // ""' specs/manifest.json) \
+                --query id -o tsv)"
+    fi
+    az monitor activity-log alert create \
+      --name "alert-resource-delete" \
+      --resource-group "$RG" --subscription "$SUB" \
+      --scope "/subscriptions/$SUB/resourceGroups/$RG" \
+      --condition category=Administrative \
+                  operationName=Microsoft.Resources/subscriptions/resourceGroups/delete \
+      --action-group "$AG_ID"
+
+- id: NET-501
+  pillar: network-posture
+  title: Onboard the pilot as a Citadel-spoke Access Contract
+  description: |
+    For Citadel-spoke posture, the pilot's Foundry account must be
+    fronted by an APIM Access Contract product in the Citadel hub RG.
+    See the `citadel-spoke-onboarding` skill for the full flow.
+  bash: |
+    # Prereq: TL_CITADEL_HUB_RG must point to the Citadel hub RG.
+    : "${TL_CITADEL_HUB_RG:?Set TL_CITADEL_HUB_RG=<hub-rg> before running}"
+    # Invoke the citadel-spoke-onboarding skill (delegated):
+    echo "Run \`copilot skill citadel-spoke-onboarding\` and follow the"
+    echo "Access Contract onboarding for this pilot. After the contract"
+    echo "is published, re-run production-readiness with --pillar network-posture."
+
+- id: GOV-101
+  pillar: model-lifecycle
+  title: Enable Defender for AI Services (Standard tier)
+  description: |
+    Defender for AI surfaces jailbreak attempts, prompt-injection signals,
+    and per-tenant anomalies on Foundry / Cognitive Services accounts.
+  bash: |
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    az security pricing create --name CognitiveServices \
+      --tier Standard --subscription "$SUB"
+
+- id: GOV-102
+  pillar: secrets
+  title: Enable Defender for Key Vault (Standard tier)
+  bash: |
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    az security pricing create --name KeyVaults \
+      --tier Standard --subscription "$SUB"
+
+- id: GOV-103
+  pillar: supply-chain
+  title: Enable Defender for Containers (Standard tier)
+  bash: |
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    az security pricing create --name Containers \
+      --tier Standard --subscription "$SUB"
+
+- id: REL-007
+  pillar: reliability
+  title: Run and commit a restore drill (refresh ≤ 90 days)
+  description: |
+    REL-007 requires a `docs/restore-drill-YYYY-MM-DD.md` artefact whose
+    date is ≤ 90 days old. Run the drill against your RSV, capture the
+    output, commit it.
+  bash: |
+    DRILL_DATE="$(date -u +%Y-%m-%d)"
+    OUT="docs/restore-drill-${DRILL_DATE}.md"
+    mkdir -p docs
+    cat <<MARKDOWN > "$OUT"
+    # Restore drill — ${DRILL_DATE}
+
+    **Drill owner:** _your name_
+    **Vault:** _RSV name + subscription_
+    **Protected item:** _name + container_
+    **Restore point selected:** _id_
+    **Restore target:** _staging RG / temporary disk_
+    **Result:** _success | failure_
+    **Notes:** _RPO observed, RTO observed, anomalies_
+    MARKDOWN
+
+    echo "Drafted ${OUT} — fill in the placeholders and commit."
+
+- id: MDL-001
+  pillar: model-lifecycle
+  title: Pin model deployments (no "latest")
+  description: |
+    Every Microsoft.CognitiveServices/accounts/deployments must set
+    properties.model.version to a concrete version, not "latest" and not
+    blank.
+  bash: |
+    RG="$(jq -r .resource_group specs/manifest.json)"
+    SUB="$(jq -r .subscription_id specs/manifest.json)"
+    # Inventory the offending deployments first:
+    az cognitiveservices account list -g "$RG" --subscription "$SUB" \
+      --query "[].name" -o tsv | while read ACC; do
+        az cognitiveservices account deployment list \
+          --name "$ACC" -g "$RG" --subscription "$SUB" \
+          --query "[?properties.model.version==null || properties.model.version=='latest'].{name:name, kind:properties.model.format}" \
+          -o table
+      done
+    echo "Re-deploy each listed deployment with a pinned version (e.g. '2024-08-06')."

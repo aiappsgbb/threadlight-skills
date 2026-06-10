@@ -1,5 +1,12 @@
 # Pillar 5 — `observability`
 
+> **v0.3.0:** Wires `OBS-106` as a live probe (Foundry account
+> diagnostic settings → Log Analytics) and lights up `OBS-102` as a
+> real KQL freshness probe (`traces | where timestamp > ago(24h)`)
+> instead of the v0.2.0 no-op stub. A green `OBS-101` + red `OBS-106`
+> is the classic "we wired App Insights but forgot the diag settings"
+> failure mode this surfaces.
+
 > **What this pillar answers.** Is App Insights connected at the
 > **Foundry account level** (not just project level)? Is OTel emit
 > verified by real recent traces? Are alert rules wired? Workbook?

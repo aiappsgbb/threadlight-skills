@@ -1,5 +1,10 @@
 # Pillar 9 — `supply-chain`
 
+> **v0.3.0:** Adds `GOV-103` (Defender for Servers / Containers plan
+> enabled on the subscription — surfaces unmonitored image-pull or
+> runtime drift in ACA / AKS workloads). Configurable via SPEC § 12
+> `defender_plans_required`.
+
 > **What this pillar answers.** Are container images pinned **by
 > digest** (not `latest`)? Are Bicep modules pinned? Is dependency
 > scanning on? Is an SBOM emitted?

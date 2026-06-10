@@ -16,7 +16,7 @@
 | [`threadlight-event-triggers`](skills/threadlight-event-triggers/) | Wires ACA Jobs, Event Grid, and cron receivers into the deploy lifecycle |
 | [`threadlight-hitl-patterns`](skills/threadlight-hitl-patterns/) | Human-in-the-loop gates via Teams Adaptive Cards + audit trail |
 | [`threadlight-workspace-ui`](skills/threadlight-workspace-ui/) | Operator dashboard (React workspace) behind Easy Auth |
-| [`threadlight-production-ready`](skills/threadlight-production-ready/) | Advisory production-readiness scorecard + uplift plan + customer-facing hand-off package (Citadel spoke / AGT v4 / AI gateway / 13 cross-cutting pillars) |
+| [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 9 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow

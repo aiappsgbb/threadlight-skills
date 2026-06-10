@@ -41,7 +41,7 @@ from typing import Any, Iterable
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 PILLAR_IDS = [
     "network-posture",
@@ -102,10 +102,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "NET-004": {"title": "Subnet delegation correct for ACA / Functions", "pillar": "network-posture", "severity": "should-fix", "tier": 0},
     "NET-101": {"title": "Foundry account publicNetworkAccess=Disabled (live)", "pillar": "network-posture", "severity": "must-fix", "tier": 1},
     "NET-102": {"title": "Private endpoint resources exist and approved", "pillar": "network-posture", "severity": "must-fix", "tier": 1},
-    "NET-103": {"title": "NSG flow logs enabled on spoke subnets", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
+    "NET-103": {"title": "NSG flow logs enabled on spoke subnets", "pillar": "network-posture", "severity": "should-fix", "tier": 1, "experimental": True},
     "NET-501": {"title": "Citadel APIM Access Contract present", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
-    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
-    "NET-503": {"title": "Hub-side product policy attached", "pillar": "network-posture", "severity": "should-fix", "tier": 5},
+    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5, "experimental": True},
+    "NET-503": {"title": "Hub-side product policy attached", "pillar": "network-posture", "severity": "should-fix", "tier": 5, "experimental": True},
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
@@ -116,7 +116,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "AGT-005": {"title": "AGT policy covers tool calls + prompt shields", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
-    "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2},
+    "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
     # ---- agent-governance — v4-preview deep checks (gated to --agt-profile v4_preview)
     # See docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md for rationale.
     # These IDs are only emitted by _check_agt_static_v4 / _check_agt_live_v4; never by v3.7 paths.
@@ -125,7 +125,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "AGT-V4-003": {"title": "AGT v4 dynamic policy conditions (time/cost/quota) detected", "pillar": "agent-governance", "severity": "informational", "tier": 0},
     "AGT-V4-006": {"title": "AGT v4 composite GitHub Action pinned via toolkit-version", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-V4-007": {"title": "AGT v4 audit fields present in committed verifier JSON", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
-    "AGT-V4-101": {"title": "AGT v4 denials carry v4-shaped policy_version in App Insights", "pillar": "agent-governance", "severity": "should-fix", "tier": 2},
+    "AGT-V4-101": {"title": "AGT v4 denials carry v4-shaped policy_version in App Insights", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
 
     # ---- identity-access
     "IAM-001": {"title": "No client secrets in repo (managed identity only)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
@@ -135,7 +135,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "IAM-005": {"title": "ACA / Functions auth enabled", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
     "IAM-101": {"title": "Role assignments observed in-target match Bicep", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
     "IAM-102": {"title": "No Owner/Contributor on workload identity", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
-    "IAM-103": {"title": "Conditional access / Entra policies considered", "pillar": "identity-access", "severity": "should-fix", "tier": 1},
+    "IAM-103": {"title": "Conditional access / Entra policies considered", "pillar": "identity-access", "severity": "should-fix", "tier": 1, "experimental": True},
 
     # ---- secrets
     "SEC-001": {"title": "Key Vault declared in infra", "pillar": "secrets", "severity": "must-fix", "tier": 0},
@@ -160,7 +160,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "OBS-005": {"title": "Workbook scaffold present", "pillar": "observability", "severity": "should-fix", "tier": 0},
     "OBS-101": {"title": "App Insights resource exists in target RG", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-102": {"title": "Traces ingested in last 24h", "pillar": "observability", "severity": "must-fix", "tier": 2},
-    "OBS-103": {"title": "Exceptions table populated in last 24h", "pillar": "observability", "severity": "should-fix", "tier": 2},
+    "OBS-103": {"title": "Exceptions table populated in last 24h", "pillar": "observability", "severity": "should-fix", "tier": 2, "experimental": True},
     "OBS-104": {"title": "Alert rules wired in target RG", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-105": {"title": "Action group with notification channel", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-106": {"title": "Diagnostic settings on Foundry account -> LA", "pillar": "observability", "severity": "must-fix", "tier": 1},
@@ -172,11 +172,11 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "EVAL-004": {"title": "Threshold values match SPEC sec 9", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-005": {"title": "Grader strategy named in SPEC", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-006": {"title": "Dataset versioning documented", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
-    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
-    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
-    "EVAL-103": {"title": "Eval failure alert exists in target RG", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2},
-    "EVAL-104": {"title": "Eval cadence schedule resource exists", "pillar": "continuous-evals", "severity": "should-fix", "tier": 1},
-    "EVAL-105": {"title": "Eval drift trend reviewed in last 30d", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2},
+    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
+    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
+    "EVAL-103": {"title": "Eval failure alert exists in target RG", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
+    "EVAL-104": {"title": "Eval cadence schedule resource exists", "pillar": "continuous-evals", "severity": "should-fix", "tier": 1, "experimental": True},
+    "EVAL-105": {"title": "Eval drift trend reviewed in last 30d", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
 
     # ---- responsible-ai
     "RAI-001": {"title": "Content filters declared on model deployments", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
@@ -186,7 +186,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "RAI-005": {"title": "Groundedness check planned for RAG", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-006": {"title": "RAI incident escalation owner named", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-101": {"title": "Content filter resource present in target", "pillar": "responsible-ai", "severity": "must-fix", "tier": 1},
-    "RAI-102": {"title": "AGT RAI denials observable in last 24h", "pillar": "responsible-ai", "severity": "should-fix", "tier": 2},
+    "RAI-102": {"title": "AGT RAI denials observable in last 24h", "pillar": "responsible-ai", "severity": "should-fix", "tier": 2, "experimental": True},
 
     # ---- hitl-audit
     "HITL-001": {"title": "SPEC sec 8 declares HITL gates if user-facing", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
@@ -196,7 +196,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "HITL-005": {"title": "HITL decision SLA documented", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
     "HITL-101": {"title": "Audit storage account / table exists", "pillar": "hitl-audit", "severity": "must-fix", "tier": 1},
     "HITL-102": {"title": "Audit storage has immutability policy", "pillar": "hitl-audit", "severity": "should-fix", "tier": 1},
-    "HITL-103": {"title": "HITL audit rows in last 7d (if expected)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 2},
+    "HITL-103": {"title": "HITL audit rows in last 7d (if expected)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 2, "experimental": True},
 
     # ---- supply-chain
     "SUP-001": {"title": "Container images pinned by digest", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
@@ -206,9 +206,9 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-005": {"title": "Vulnerability scan step declared", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-006": {"title": "ACR scoped to private network", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
-    "SUP-101": {"title": "Deployed image digests match repo manifest", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
+    "SUP-101": {"title": "Deployed image digests match repo manifest", "pillar": "supply-chain", "severity": "must-fix", "tier": 1, "experimental": True},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
-    "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
+    "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
 
     # ---- cost
     "COST-001": {"title": "SPEC sec 10 declares pricing plan (PAYG vs PTU)", "pillar": "cost", "severity": "must-fix", "tier": 0},
@@ -217,9 +217,9 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "COST-004": {"title": "Idle scale-down configured for ACA / Functions", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-005": {"title": "Tagging strategy for cost allocation", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-101": {"title": "Live budget alert wired on target RG", "pillar": "cost", "severity": "must-fix", "tier": 3},
-    "COST-102": {"title": "Live actuals vs forecast within 20%", "pillar": "cost", "severity": "should-fix", "tier": 3},
-    "COST-103": {"title": "PAYG vs PTU recommendation matches observed usage", "pillar": "cost", "severity": "should-fix", "tier": 3},
-    "COST-104": {"title": "No orphaned resources in target RG", "pillar": "cost", "severity": "should-fix", "tier": 3},
+    "COST-102": {"title": "Live actuals vs forecast within 20%", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
+    "COST-103": {"title": "PAYG vs PTU recommendation matches observed usage", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
+    "COST-104": {"title": "No orphaned resources in target RG", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-105": {"title": "Resource tags applied as per strategy", "pillar": "cost", "severity": "should-fix", "tier": 3},
 
     # ---- reliability
@@ -229,11 +229,14 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "REL-004": {"title": "Capacity host lifecycle understood", "pillar": "reliability", "severity": "should-fix", "tier": 0},
     "REL-005": {"title": "Failure modes catalogued in SPEC", "pillar": "reliability", "severity": "should-fix", "tier": 0},
     "REL-006": {"title": "Health probes configured for ACA / Functions", "pillar": "reliability", "severity": "should-fix", "tier": 0},
-    "REL-101": {"title": "Zone redundancy enabled where supported", "pillar": "reliability", "severity": "should-fix", "tier": 1},
+    "REL-101": {"title": "Zone redundancy enabled where supported", "pillar": "reliability", "severity": "should-fix", "tier": 1, "experimental": True},
     "REL-102": {"title": "Backup vault present if SPEC declares backups", "pillar": "reliability", "severity": "must-fix", "tier": 1},
     "REL-103": {"title": "ACA min-replica >= 1 in prod", "pillar": "reliability", "severity": "should-fix", "tier": 1},
-    "REL-104": {"title": "Multi-region resources present if declared", "pillar": "reliability", "severity": "should-fix", "tier": 1},
-    "REL-105": {"title": "Capacity host status healthy", "pillar": "reliability", "severity": "should-fix", "tier": 1},
+    "REL-104": {"title": "Multi-region resources present if declared", "pillar": "reliability", "severity": "should-fix", "tier": 1, "experimental": True},
+    "REL-105": {"title": "Capacity host status healthy", "pillar": "reliability", "severity": "should-fix", "tier": 1, "experimental": True},
+    # ---- reliability — NEW v0.3.0: restore-drill freshness + RSV restore points
+    "REL-007": {"title": "Restore drill artefact present and dated within 90 days", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "REL-008": {"title": "Live Recovery Services Vault has restore points", "pillar": "reliability", "severity": "should-fix", "tier": 1},
 
     # ---- sre-handover
     "SRE-001": {"title": "SPEC sec 12 names incident owner / on-call", "pillar": "sre-handover", "severity": "must-fix", "tier": 0},
@@ -243,8 +246,14 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SRE-005": {"title": "Postmortem template referenced", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
     "SRE-101": {"title": "Action group routes to on-call rotation", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
     "SRE-102": {"title": "SRE Agent resource present if planned", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
-    "SRE-103": {"title": "Diagnostic settings cover all critical resources", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
+    "SRE-103": {"title": "Diagnostic settings cover all critical resources", "pillar": "sre-handover", "severity": "must-fix", "tier": 1, "experimental": True},
     "SRE-104": {"title": "Activity log alerts on RG present", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
+    # ---- sre-handover — NEW v0.3.0: Azure Policy compliance (GOV-201..203 + secure-score)
+    "GOV-104": {"title": "Defender Secure Score above floor (default 60%)", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
+    "GOV-105": {"title": "Top 3 Defender recommendations enumerated", "pillar": "sre-handover", "severity": "informational", "tier": 1},
+    "GOV-201": {"title": "Required Azure Policy assignments present", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
+    "GOV-202": {"title": "No non-compliant resources for required policies", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
+    "GOV-203": {"title": "Sane-default initiatives assigned (ASB-v3 or equivalent)", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
 
     # ---- model-lifecycle
     "MDL-001": {"title": "Model deployments pinned to specific version", "pillar": "model-lifecycle", "severity": "must-fix", "tier": 0},
@@ -258,7 +267,20 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "MDL-101": {"title": "Live deployments use pinned version (not `latest`)", "pillar": "model-lifecycle", "severity": "must-fix", "tier": 1},
     "MDL-102": {"title": "Live deployments not in retiring / deprecated list", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 1},
     "MDL-103": {"title": "Live capacity matches plan capacity", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 1},
-    "MDL-104": {"title": "Live rate-limit breaches in last 24h", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 2},
+    "MDL-104": {"title": "Live rate-limit breaches in last 24h", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 2, "experimental": True},
+    # ---- model-lifecycle — NEW v0.3.0: quota pre-flight + Foundry wiring + Defender for AI
+    "MDL-009": {"title": "Project-level RBAC declared on Foundry account", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 0},
+    "MDL-010": {"title": "Knowledge index private-endpointed (if used)", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 0},
+    "MDL-011": {"title": "Agent thread retention/policy declared in SPEC", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 0},
+    "MDL-110": {"title": "TPM headroom available for planned model load", "pillar": "model-lifecycle", "severity": "must-fix", "tier": 1},
+    "MDL-111": {"title": "Foundry account capacity available in target region", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 1},
+    "GOV-101": {"title": "Defender for AI Services plan enabled", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 1},
+
+    # ---- secrets — NEW v0.3.0: Defender for Key Vault
+    "GOV-102": {"title": "Defender for Key Vault plan enabled", "pillar": "secrets", "severity": "should-fix", "tier": 1},
+
+    # ---- supply-chain — NEW v0.3.0: Defender for Servers / Containers
+    "GOV-103": {"title": "Defender for Servers/Containers plan enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
 }
 
 WAIVER_SCHEMA_FIELDS = ("owner", "expiry", "justification", "compensating_control", "accepted_risk")
@@ -824,6 +846,175 @@ def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]
 
 
 # ---------------------------------------------------------------------------
+# Bicep ARM-graph parser (v0.3.0 — closes the smoking gun)
+# ---------------------------------------------------------------------------
+#
+# Before v0.3.0 the production-ready skill answered most "does this Bicep
+# declare X?" questions with `re.search()` over concatenated raw Bicep text.
+# That was wrong: a comment line `// virtualNetworks should be used` was
+# enough to make NET-001 pass. v0.3.0 routes those questions through
+# `BicepGraph` instead.
+#
+# BicepGraph shells out to `az bicep build --file <main.bicep> --stdout` to
+# compile each top-level Bicep file to ARM JSON, then recursively walks any
+# `Microsoft.Resources/deployments` nodes (these are nested templates emitted
+# by `module foo 'foo.bicep'` references) so module-defined resources are
+# flattened into the same lookup table.
+#
+# The `bicep` CLI is a HARD dependency in v0.3.0. If `az bicep build` is
+# missing or the compile fails, `BicepGraph.from_repo()` raises
+# `PrerequisiteError` and `main()` exits with code 2 telling the operator to
+# install the CLI with `az bicep install`. There is no silent fallback to the
+# old regex-over-text approach — that was the bug.
+
+
+class PrerequisiteError(RuntimeError):
+    """Raised when a hard external prerequisite is missing.
+
+    `main()` catches this, prints a remediation hint to stderr, and exits 2.
+    """
+
+
+class BicepGraph:
+    """Compile-once ARM-graph view over a repo's Bicep files.
+
+    Use `by_type("Microsoft.Network/virtualNetworks")` to list all resources
+    of a given ARM type that are *actually declared* (resolved through
+    modules) — not just mentioned in a comment.
+
+    Attributes
+    ----------
+    resources : list[dict]
+        Flat list of ARM resources (modules expanded). Each entry has at
+        least `type`, `apiVersion`, `name`, `properties`.
+    source_files : list[Path]
+        Top-level main.bicep files that were compiled.
+    """
+
+    def __init__(self, resources: list[dict], source_files: list[Path]) -> None:
+        self.resources = resources
+        self.source_files = source_files
+        self._by_type: dict[str, list[dict]] = {}
+        for r in resources:
+            t = (r.get("type") or "").lower()
+            if t:
+                self._by_type.setdefault(t, []).append(r)
+
+    @classmethod
+    def from_repo(cls, root: Path) -> "BicepGraph":
+        # Pick top-level main.bicep files. Prefer the ones a typical
+        # azd-style layout uses: infra/main.bicep, then any *.bicep at root
+        # depth ≤ 2. We deliberately don't try to compile every module
+        # individually — `az bicep build` on a main.bicep expands its
+        # `module` references for us.
+        candidates = sorted(
+            list(_glob_repo(root, "infra/main.bicep"))
+            + list(_glob_repo(root, "main.bicep"))
+            + list(_glob_repo(root, "infra/**/main.bicep"))
+        )
+        # De-dup while preserving order.
+        seen: set[Path] = set()
+        mains: list[Path] = []
+        for p in candidates:
+            if p not in seen:
+                seen.add(p)
+                mains.append(p)
+        if not mains:
+            # No main.bicep at all — return an empty graph. Callers will see
+            # 0 resources of every type and the existing checks will fail
+            # with "no X declared", which is the correct outcome.
+            return cls([], [])
+        all_resources: list[dict] = []
+        first_error: str | None = None
+        for main in mains:
+            try:
+                cp = subprocess.run(
+                    ["az", "bicep", "build", "--file", str(main), "--stdout"],
+                    capture_output=True, text=True, check=False, timeout=120,
+                )
+            except FileNotFoundError as e:
+                raise PrerequisiteError(
+                    "Azure CLI (`az`) not found on PATH — required to compile Bicep. "
+                    "Install Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli "
+                    "and re-run."
+                ) from e
+            if cp.returncode != 0:
+                stderr = (cp.stderr or "").lower()
+                if "bicep cli not found" in stderr or "az bicep install" in stderr:
+                    raise PrerequisiteError(
+                        "Bicep CLI not installed. Run `az bicep install` and re-run "
+                        "the production-readiness skill. v0.3.0 has a hard "
+                        "dependency on the Bicep CLI — there is no regex fallback."
+                    )
+                # Compile error in the user's Bicep. Surface the first one
+                # and keep going — we want to give them as much signal as
+                # we can, but compile errors will cause empty resource
+                # lists which will turn into must-fix findings downstream.
+                if first_error is None:
+                    first_error = f"{main}: {cp.stderr.strip()[:400]}"
+                continue
+            try:
+                arm = json.loads(cp.stdout or "{}")
+            except json.JSONDecodeError:
+                continue
+            all_resources.extend(cls._walk(arm.get("resources") or []))
+        if first_error and not all_resources:
+            # All mains failed to compile and we have no resources at all.
+            # That's a degenerate state — surface it so the operator knows
+            # they have a broken Bicep build, not just a missing resource.
+            raise PrerequisiteError(
+                f"`az bicep build` failed on every top-level main.bicep. "
+                f"Fix the Bicep build before running the production-readiness skill. "
+                f"First error: {first_error}"
+            )
+        return cls(all_resources, mains)
+
+    @staticmethod
+    def _walk(resources: list[dict]) -> list[dict]:
+        out: list[dict] = []
+        for r in resources:
+            rtype = (r.get("type") or "").lower()
+            if rtype == "microsoft.resources/deployments":
+                # Nested template — recurse into properties.template.resources
+                nested = (((r.get("properties") or {}).get("template") or {}).get("resources") or [])
+                out.extend(BicepGraph._walk(nested))
+            else:
+                out.append(r)
+                # Some resources nest children inline.
+                kids = r.get("resources") or []
+                if isinstance(kids, list):
+                    out.extend(BicepGraph._walk(kids))
+        return out
+
+    def by_type(self, arm_type: str) -> list[dict]:
+        return list(self._by_type.get(arm_type.lower(), []))
+
+    def has_type(self, arm_type: str) -> bool:
+        return bool(self._by_type.get(arm_type.lower()))
+
+    def count(self, arm_type: str) -> int:
+        return len(self._by_type.get(arm_type.lower(), []))
+
+    def property_values(self, arm_type: str, dotted_path: str) -> list[Any]:
+        """Return a flat list of values found at `dotted_path` across every
+        resource of `arm_type`. Missing keys are skipped, not coerced to None.
+        """
+        out: list[Any] = []
+        for r in self.by_type(arm_type):
+            v: Any = r
+            ok = True
+            for part in dotted_path.split("."):
+                if isinstance(v, dict) and part in v:
+                    v = v[part]
+                else:
+                    ok = False
+                    break
+            if ok:
+                out.append(v)
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Static repo analysis (pure file scanning - no Azure calls)
 # ---------------------------------------------------------------------------
 
@@ -843,6 +1034,8 @@ class RepoContext:
     manifest: dict
     bicep_text: str = ""
     src_text: str = ""
+    bicep_graph: BicepGraph | None = None
+    resolved_posture: str = ""
 
     @classmethod
     def from_repo(cls, root: Path, manifest: dict) -> "RepoContext":
@@ -864,6 +1057,9 @@ class RepoContext:
                     if "=" in line and not line.startswith("#"):
                         k, _, v = line.partition("=")
                         azd_env[k.strip()] = v.strip().strip('"')
+        # BicepGraph: hard prerequisite in v0.3.0. May raise PrerequisiteError
+        # which main() catches and surfaces with an install hint + exit 2.
+        bicep_graph = BicepGraph.from_repo(root) if bicep else BicepGraph([], [])
         return cls(
             root=root,
             bicep_files=bicep,
@@ -878,6 +1074,7 @@ class RepoContext:
             manifest=manifest,
             bicep_text=bicep_text,
             src_text=src_text,
+            bicep_graph=bicep_graph,
         )
 
 
@@ -886,31 +1083,60 @@ class RepoContext:
 def _check_network_static(ctx: RepoContext, resolved_posture: str) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
-    # NET-001: infra references a network module
-    has_network = bool(re.search(r"(module\s+\w+\s+'[^']*network|virtualNetworks|Microsoft\.Network)", bicep, re.I))
+    g = ctx.bicep_graph
+    # NET-001: infra DECLARES a virtual network (graph-verified — comments don't count)
+    vnets = g.by_type("Microsoft.Network/virtualNetworks") if g else []
+    has_network = bool(vnets)
     out.append(_mk_finding("NET-001",
         status="pass" if has_network else "must-fix",
-        detail="Found network/VNet reference in Bicep" if has_network else "No network module or virtualNetworks resource found in Bicep"))
-    # NET-002: PE for Foundry account
-    has_pe = bool(re.search(r"privateEndpoints?|Microsoft\.Network/privateEndpoints", bicep, re.I))
+        detail=f"Bicep declares {len(vnets)} virtualNetworks resource(s)" if has_network
+               else "No Microsoft.Network/virtualNetworks resource declared in compiled ARM (comments don't count)"))
+    # NET-002: PE for Foundry account (graph-verified)
+    pes = g.by_type("Microsoft.Network/privateEndpoints") if g else []
+    has_pe = bool(pes)
     out.append(_mk_finding("NET-002",
         status="pass" if has_pe else "must-fix",
-        detail="Private endpoint(s) declared" if has_pe else "No private endpoint resources declared"))
-    # NET-003: publicNetworkAccess disabled for AI services / Foundry
-    pna_disabled = bool(re.search(r"publicNetworkAccess\s*:\s*'?Disabled'?", bicep, re.I))
-    pna_enabled = bool(re.search(r"publicNetworkAccess\s*:\s*'?Enabled'?", bicep, re.I))
-    if pna_disabled and not pna_enabled:
-        st = "pass"; d = "publicNetworkAccess: Disabled on AI services"
-    elif pna_enabled:
-        st = "must-fix"; d = "publicNetworkAccess: Enabled — prod must be Disabled"
+        detail=f"{len(pes)} privateEndpoints declared in compiled ARM" if has_pe
+               else "No Microsoft.Network/privateEndpoints resource declared in compiled ARM"))
+    # NET-003: publicNetworkAccess disabled on Foundry / AI accounts (graph-verified)
+    cs_accounts = (g.by_type("Microsoft.CognitiveServices/accounts") if g else []) + \
+                  (g.by_type("Microsoft.MachineLearningServices/workspaces") if g else [])
+    pna_enabled_accts = [a for a in cs_accounts if (a.get("properties") or {}).get("publicNetworkAccess") == "Enabled"]
+    pna_disabled_accts = [a for a in cs_accounts if (a.get("properties") or {}).get("publicNetworkAccess") == "Disabled"]
+    if pna_enabled_accts:
+        st, d = "must-fix", f"{len(pna_enabled_accts)}/{len(cs_accounts)} AI/Foundry accounts have publicNetworkAccess=Enabled — prod must be Disabled"
+    elif pna_disabled_accts and len(pna_disabled_accts) == len(cs_accounts):
+        st, d = "pass", f"All {len(cs_accounts)} AI/Foundry accounts have publicNetworkAccess=Disabled"
+    elif cs_accounts:
+        st, d = "should-fix", f"publicNetworkAccess not explicitly set on {len(cs_accounts) - len(pna_disabled_accts)}/{len(cs_accounts)} AI/Foundry accounts"
+    elif resolved_posture in (POSTURE_CITADEL, POSTURE_STANDARD, POSTURE_AGT, POSTURE_HYBRID):
+        # Posture demands an AI surface but none declared — escalate.
+        st, d = "must-fix", f"Resolved posture is {resolved_posture} but no Microsoft.CognitiveServices/accounts or MachineLearningServices/workspaces declared in compiled ARM"
     else:
-        st = "should-fix"; d = "publicNetworkAccess not explicitly set on AI services"
+        st, d = "should-fix", "No AI/Foundry accounts declared in compiled ARM — cannot check publicNetworkAccess"
     out.append(_mk_finding("NET-003", status=st, detail=d))
-    # NET-004: subnet delegation
-    has_delegation = bool(re.search(r"delegations\s*:|Microsoft\.App/environments|Microsoft\.Web/serverFarms", bicep, re.I))
+    # NET-004: subnet delegation present (graph-verified — looks at subnet
+    # `delegations` property on declared VNets, or presence of an ACA env /
+    # serverFarms which require delegated subnets)
+    has_delegation = False
+    detail_extra = ""
+    if g:
+        for v in vnets:
+            for sub in (v.get("properties") or {}).get("subnets") or []:
+                if (sub.get("properties") or {}).get("delegations"):
+                    has_delegation = True
+                    detail_extra = f"subnet `{sub.get('name')}` has delegations"
+                    break
+            if has_delegation:
+                break
+        if not has_delegation and (g.has_type("Microsoft.App/managedEnvironments")
+                                   or g.has_type("Microsoft.Web/serverfarms")):
+            has_delegation = True
+            detail_extra = "ACA managed env / App Service plan present (implies delegated subnet)"
     out.append(_mk_finding("NET-004",
         status="pass" if has_delegation else "should-fix",
-        detail="Subnet delegation/ACA env declared" if has_delegation else "No subnet delegation found for ACA/Functions"))
+        detail=f"Subnet delegation found: {detail_extra}" if has_delegation
+               else "No subnet delegation found on any declared VNet (and no ACA env / App Service plan that would require one)"))
     # Citadel-specific are not-applicable when not Citadel
     if resolved_posture != POSTURE_CITADEL:
         for fid in ("NET-501", "NET-502", "NET-503"):
@@ -970,8 +1196,56 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
         findings.append(_not_verified("NET-103", "NSG flow log probe not implemented in v1 — review manually"))
     # Citadel checks (tier 5)
     if resolved_posture == POSTURE_CITADEL:
-        for fid in ("NET-501", "NET-502", "NET-503"):
-            findings.append(_not_verified(fid, "Tier 5 Citadel/APIM probe requires hub RG and APIM Service Reader — set TL_CITADEL_HUB_RG env to enable"))
+        # NET-501 — v0.3.0 wired: look up the Citadel hub APIM in the RG
+        # named by TL_CITADEL_HUB_RG and verify an Access Contract product
+        # exists. NET-502/503 remain experimental in v0.3.0.
+        hub_rg = os.getenv("TL_CITADEL_HUB_RG")
+        if not hub_rg:
+            findings.append(_not_verified("NET-501",
+                "TL_CITADEL_HUB_RG env var not set — cannot locate Citadel hub APIM. "
+                "Set TL_CITADEL_HUB_RG=<hub_resource_group> and re-run (Tier 5)."))
+        elif not tiers.get(5) or not sub:
+            findings.append(_not_verified("NET-501",
+                "Tier 5 APIM Service Reader unavailable for Citadel hub probe"))
+        else:
+            apim_list = _az_json("apim", "list", "--resource-group", hub_rg, "--subscription", sub)
+            if apim_list is None:
+                findings.append(_not_verified("NET-501",
+                    f"`az apim list -g {hub_rg}` failed — verify hub RG name and APIM Service Reader role"))
+            elif not apim_list:
+                findings.append(_mk_finding("NET-501", status="must-fix",
+                    detail=f"No APIM instance found in Citadel hub RG `{hub_rg}` — Access Contract cannot exist"))
+            else:
+                contract_found: list[str] = []
+                for apim in apim_list:
+                    apim_name = apim.get("name")
+                    if not apim_name:
+                        continue
+                    products = _az_json("apim", "product", "list",
+                                        "--resource-group", hub_rg,
+                                        "--service-name", apim_name,
+                                        "--subscription", sub) or []
+                    for p in products:
+                        pid = (p.get("name") or "").lower()
+                        pdn = (p.get("displayName") or "").lower()
+                        if "access-contract" in pid or "access contract" in pdn or pid.startswith("ac-"):
+                            contract_found.append(f"{apim_name}/{p.get('name')}")
+                evidence.append(EvidenceEntry(ref="E-NET-501", pillar="network-posture",
+                    description="Citadel APIM Access Contract products",
+                    command=f"az apim product list -g {hub_rg} --service-name <apim>",
+                    scope=f"sub={sub} hub_rg={hub_rg}", tier=5, captured_at=_utc_now(),
+                    result="ok", notes=f"{len(contract_found)} contract product(s) found"))
+                if contract_found:
+                    findings.append(_mk_finding("NET-501", status="pass",
+                        detail=f"Citadel Access Contract(s) found: {contract_found}",
+                        evidence_refs=["E-NET-501"]))
+                else:
+                    findings.append(_mk_finding("NET-501", status="must-fix",
+                        detail=f"No Access Contract product found on any APIM in hub RG `{hub_rg}`",
+                        evidence_refs=["E-NET-501"]))
+        for fid in ("NET-502", "NET-503"):
+            findings.append(_not_verified(fid,
+                "Tier 5 Citadel/APIM probe — experimental in v0.3.0 (set --include-experimental to enable)"))
     return findings, evidence
 
 
@@ -1293,11 +1567,14 @@ def _check_identity_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("IAM-001",
         status="must-fix" if leaked else "pass",
         detail="Possible literal secret found in src/ — review" if leaked else "No literal client secrets in src/"))
-    # IAM-002 user-assigned MI in Bicep
-    has_uami = bool(re.search(r"userAssignedIdentities|Microsoft\.ManagedIdentity/userAssignedIdentities", bicep, re.I))
+    # IAM-002 user-assigned MI in Bicep (graph-verified)
+    g = ctx.bicep_graph
+    uamis = g.by_type("Microsoft.ManagedIdentity/userAssignedIdentities") if g else []
+    has_uami = bool(uamis)
     out.append(_mk_finding("IAM-002",
         status="pass" if has_uami else "must-fix",
-        detail="User-assigned managed identity declared" if has_uami else "No user-assigned managed identity in Bicep"))
+        detail=f"{len(uamis)} user-assigned managed identity resource(s) declared in compiled ARM" if has_uami
+               else "No Microsoft.ManagedIdentity/userAssignedIdentities resource in compiled ARM (comments don't count)"))
     # IAM-003 RBAC scoped
     has_rbac_scoped = bool(re.search(r"Microsoft\.Authorization/roleAssignments", bicep, re.I))
     has_sub_scope = bool(re.search(r"scope:\s*subscription\(\)", bicep, re.I))
@@ -1314,11 +1591,31 @@ def _check_identity_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("IAM-004",
         status="must-fix" if has_sas else "pass",
         detail="SAS token usage found" if has_sas else "No SAS token usage detected"))
-    # IAM-005 auth enabled (ACA / Functions)
-    has_auth = bool(re.search(r"authConfigs|EasyAuth|Microsoft\.Web/sites/config/authsettings", bicep, re.I))
-    out.append(_mk_finding("IAM-005",
-        status="pass" if has_auth else "should-fix",
-        detail="Auth config declared" if has_auth else "No EasyAuth / authConfigs declared for compute"))
+    # IAM-005 auth enabled (ACA / Functions) — graph-verified
+    auth_configs = (g.by_type("Microsoft.Web/sites/config") if g else [])
+    aca_apps = g.by_type("Microsoft.App/containerApps") if g else []
+    aca_auth_configs = g.by_type("Microsoft.App/containerApps/authConfigs") if g else []
+    has_easyauth = any((c.get("name") or "").endswith("/authsettings") or (c.get("name") or "").endswith("/authsettingsV2")
+                       for c in auth_configs)
+    aca_with_auth = [a for a in aca_apps if ((a.get("properties") or {}).get("configuration") or {}).get("ingress", {}).get("clientCertificateMode")
+                     or any("auth" in (k.lower()) for k in ((a.get("properties") or {}).get("configuration") or {}).keys())]
+    has_auth = has_easyauth or bool(aca_with_auth) or bool(aca_auth_configs)
+    # Resolved-posture escalation: a citadel-spoke / standard-AI / AGT / hybrid
+    # surface that ships any compute MUST front it with an auth gate.
+    has_compute = bool(aca_apps) or (bool(g.by_type("Microsoft.Web/sites")) if g else False)
+    needs_auth = ctx.resolved_posture in (POSTURE_CITADEL, POSTURE_STANDARD, POSTURE_AGT, POSTURE_HYBRID) and has_compute
+    if not has_auth and needs_auth:
+        status = "must-fix"
+        detail = ("Posture demands authenticated AI surface but no EasyAuth / authConfigs / "
+                  "Microsoft.App/containerApps/authConfigs on declared compute in compiled ARM")
+    elif has_auth:
+        status = "pass"
+        detail = (f"Auth surface declared: easyauth={len(auth_configs)}, "
+                  f"aca_with_auth={len(aca_with_auth)}, aca_authConfigs={len(aca_auth_configs)}")
+    else:
+        status = "should-fix"
+        detail = "No EasyAuth / authConfigs on declared compute (ACA / Web sites) in compiled ARM"
+    out.append(_mk_finding("IAM-005", status=status, detail=detail))
     return out
 
 
@@ -1361,10 +1658,14 @@ def _check_secrets_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
     src = ctx.src_text
-    has_kv = bool(re.search(r"Microsoft\.KeyVault/vaults|module\s+\w+\s+'[^']*keyvault", bicep, re.I))
+    g = ctx.bicep_graph
+    # SEC-001 — graph-verified Key Vault declaration
+    kvs = g.by_type("Microsoft.KeyVault/vaults") if g else []
+    has_kv = bool(kvs)
     out.append(_mk_finding("SEC-001",
         status="pass" if has_kv else "must-fix",
-        detail="Key Vault declared in infra" if has_kv else "No Key Vault declared in infra"))
+        detail=f"{len(kvs)} Key Vault resource(s) declared in compiled ARM" if has_kv
+               else "No Microsoft.KeyVault/vaults resource declared in compiled ARM"))
     out.append(_mk_finding("SEC-002",
         status="must-fix" if SECRET_REGEX.search(src) else "pass",
         detail="Literal secrets in repo" if SECRET_REGEX.search(src) else "No literal secrets in repo"))
@@ -1376,15 +1677,32 @@ def _check_secrets_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("SEC-004",
         status="pass" if has_rotation else "should-fix",
         detail="Rotation strategy mentioned in SPEC" if has_rotation else "No secret rotation policy in SPEC"))
-    has_soft_delete = bool(re.search(r"enableSoftDelete\s*:\s*true|softDeleteRetention", bicep, re.I))
-    has_purge = bool(re.search(r"enablePurgeProtection\s*:\s*true", bicep, re.I))
-    out.append(_mk_finding("SEC-005",
-        status="pass" if has_soft_delete and has_purge else "must-fix",
-        detail="Soft-delete + purge protection declared" if has_soft_delete and has_purge else "Soft-delete or purge protection not declared"))
-    rbac_kv = bool(re.search(r"enableRbacAuthorization\s*:\s*true", bicep, re.I))
-    out.append(_mk_finding("SEC-006",
-        status="pass" if rbac_kv else "should-fix",
-        detail="KV uses RBAC" if rbac_kv else "KV may use legacy access policies"))
+    # SEC-005 — graph-verified soft-delete + purge protection on declared KVs
+    if not kvs:
+        out.append(_mk_finding("SEC-005", status="must-fix",
+            detail="No Key Vault declared in compiled ARM — cannot check soft-delete/purge"))
+    else:
+        bad_soft = [v for v in kvs if not ((v.get("properties") or {}).get("enableSoftDelete", False))]
+        bad_purge = [v for v in kvs if not ((v.get("properties") or {}).get("enablePurgeProtection", False))]
+        if not bad_soft and not bad_purge:
+            out.append(_mk_finding("SEC-005", status="pass",
+                detail=f"All {len(kvs)} KV(s) declare enableSoftDelete=true AND enablePurgeProtection=true"))
+        else:
+            out.append(_mk_finding("SEC-005", status="must-fix",
+                detail=(f"{len(bad_soft)}/{len(kvs)} KV(s) missing enableSoftDelete, "
+                        f"{len(bad_purge)}/{len(kvs)} missing enablePurgeProtection")))
+    # SEC-006 — graph-verified RBAC on declared KVs
+    if not kvs:
+        out.append(_mk_finding("SEC-006", status="should-fix",
+            detail="No Key Vault declared in compiled ARM — cannot check enableRbacAuthorization"))
+    else:
+        rbac_kvs = [v for v in kvs if (v.get("properties") or {}).get("enableRbacAuthorization", False)]
+        if len(rbac_kvs) == len(kvs):
+            out.append(_mk_finding("SEC-006", status="pass",
+                detail=f"All {len(kvs)} KV(s) declare enableRbacAuthorization=true"))
+        else:
+            out.append(_mk_finding("SEC-006", status="should-fix",
+                detail=f"{len(kvs) - len(rbac_kvs)}/{len(kvs)} KV(s) NOT using RBAC (legacy access policies)"))
     env_files_with_secrets = False
     for envf in _glob_repo(ctx.root, ".azure/**/.env"):
         if SECRET_REGEX.search(_read_text(envf) or ""):
@@ -1440,7 +1758,49 @@ def _check_secrets_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | Non
         status="pass" if len(rbac_v) == len(kvs) else "should-fix",
         detail=f"{len(rbac_v)}/{len(kvs)} KV(s) use RBAC",
         evidence_refs=["E-SEC-101"]))
-    findings.append(_not_verified("SEC-106", "Diagnostic settings probe not implemented in v1 — review portal"))
+    # SEC-106 — v0.3.0 wired: every declared KV must have ≥1 diagnostic setting
+    kv_diag_missing: list[str] = []
+    for v in kvs:
+        rid = v.get("id")
+        if not rid:
+            continue
+        diags = _az_json("monitor", "diagnostic-settings", "list", "--resource", rid) or []
+        if not (isinstance(diags, list) and diags):
+            kv_diag_missing.append(v.get("name", "?"))
+    evidence.append(EvidenceEntry(ref="E-SEC-106", pillar="secrets",
+        description="Diagnostic settings on Key Vaults",
+        command="az monitor diagnostic-settings list --resource <id> (per KV)",
+        scope=f"sub={sub} rg={rg}", tier=4, captured_at=_utc_now(),
+        result="ok", notes=f"{len(kv_diag_missing)} KV(s) missing diag settings"))
+    if not kv_diag_missing:
+        findings.append(_mk_finding("SEC-106", status="pass",
+            detail=f"All {len(kvs)} KV(s) have ≥1 diagnostic setting",
+            evidence_refs=["E-SEC-106"]))
+    else:
+        findings.append(_mk_finding("SEC-106", status="should-fix",
+            detail=f"{len(kv_diag_missing)}/{len(kvs)} KV(s) have no diagnostic settings: {kv_diag_missing}",
+            evidence_refs=["E-SEC-106"]))
+    # ---- v0.3.0 NEW: GOV-102 Defender for Key Vault plan
+    if tiers.get(1) and sub:
+        pricings = _az_json("security", "pricing", "show", "--name", "KeyVaults", "--subscription", sub)
+        tier = None
+        if isinstance(pricings, dict):
+            tier = (pricings.get("properties") or {}).get("pricingTier") or pricings.get("pricingTier")
+        evidence.append(EvidenceEntry(ref="E-GOV-102", pillar="secrets",
+            description="Defender for Key Vault plan",
+            command=f"az security pricing show --name KeyVaults --subscription {sub}",
+            scope=f"sub={sub}", tier=1, captured_at=_utc_now(),
+            result="ok" if pricings is not None else "error",
+            notes=f"tier={tier}"))
+        if tier is None:
+            findings.append(_not_verified("GOV-102", "Defender pricing for KeyVaults not returned"))
+        else:
+            findings.append(_mk_finding("GOV-102",
+                status="pass" if str(tier).lower() == "standard" else "should-fix",
+                detail=f"Defender for Key Vault pricingTier = {tier}",
+                evidence_refs=["E-GOV-102"]))
+    else:
+        findings.append(_not_verified("GOV-102", "Tier 1 Reader unavailable"))
     return findings, evidence
 
 
@@ -1450,14 +1810,21 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
     src = ctx.src_text
-    has_ai = bool(re.search(r"Microsoft\.Insights/components|applicationInsights", bicep, re.I))
+    g = ctx.bicep_graph
+    # OBS-001 — graph-verified App Insights
+    appins = g.by_type("Microsoft.Insights/components") if g else []
+    has_ai = bool(appins)
     out.append(_mk_finding("OBS-001",
         status="pass" if has_ai else "must-fix",
-        detail="App Insights declared" if has_ai else "No App Insights declared in infra"))
-    has_la = bool(re.search(r"Microsoft\.OperationalInsights/workspaces|logAnalytics", bicep, re.I))
+        detail=f"{len(appins)} Application Insights component(s) declared in compiled ARM" if has_ai
+               else "No Microsoft.Insights/components resource declared in compiled ARM"))
+    # OBS-002 — graph-verified Log Analytics workspace
+    laws = g.by_type("Microsoft.OperationalInsights/workspaces") if g else []
+    has_la = bool(laws)
     out.append(_mk_finding("OBS-002",
         status="pass" if has_la else "must-fix",
-        detail="Log Analytics declared" if has_la else "No Log Analytics declared"))
+        detail=f"{len(laws)} Log Analytics workspace(s) declared in compiled ARM" if has_la
+               else "No Microsoft.OperationalInsights/workspaces resource declared in compiled ARM"))
     has_otel = bool(re.search(r"opentelemetry|azure[._-]monitor[._-]opentelemetry|@opentelemetry", src, re.I))
     out.append(_mk_finding("OBS-003",
         status="pass" if has_otel else "must-fix",
@@ -1510,9 +1877,88 @@ def _check_observability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str
             status="pass" if action_groups else "must-fix",
             detail=f"{len(action_groups) if action_groups else 0} action group(s)" if action_groups is not None else "action group list failed",
             evidence_refs=["E-OBS-104"]))
-        findings.append(_not_verified("OBS-106", "Diagnostic settings probe not implemented in v1 — review portal"))
-    # OBS-102 / OBS-103 = KQL — needs LA workspace ID + Monitoring Reader, defer
-    findings.append(_not_verified("OBS-102", "Tier 2 KQL trace freshness not implemented in v1"))
+        # OBS-106 — v0.3.0 wired: enumerate diagnostic settings on each
+        # AI Services / Foundry account and verify at least one wires logs
+        # to a LA workspace or storage account. Tier 1 (Reader).
+        cs_accounts_live = _az_json("resource", "list", "--resource-group", rg, "--subscription", sub,
+                                    "--resource-type", "Microsoft.CognitiveServices/accounts") or []
+        diag_results: list[tuple[str, int]] = []
+        for acct in cs_accounts_live:
+            rid = acct.get("id")
+            if not rid:
+                continue
+            diags = _az_json("monitor", "diagnostic-settings", "list", "--resource", rid) or []
+            diag_results.append((acct.get("name", "?"), len(diags) if isinstance(diags, list) else 0))
+        evidence.append(EvidenceEntry(ref="E-OBS-106", pillar="observability",
+            description="Diagnostic settings on Foundry/AI accounts",
+            command="az monitor diagnostic-settings list --resource <id> (per account)",
+            scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+            result="ok" if cs_accounts_live or not diag_results else "ok",
+            notes=f"{len(diag_results)} accounts inspected"))
+        if not cs_accounts_live:
+            findings.append(_mk_finding("OBS-106", status="not-applicable",
+                detail="No Cognitive Services/Foundry accounts in target RG — nothing to wire diag settings on"))
+        else:
+            missing = [n for (n, c) in diag_results if c == 0]
+            if not missing:
+                findings.append(_mk_finding("OBS-106", status="pass",
+                    detail=f"All {len(diag_results)} AI/Foundry account(s) have ≥1 diagnostic setting",
+                    evidence_refs=["E-OBS-106"]))
+            else:
+                findings.append(_mk_finding("OBS-106", status="must-fix",
+                    detail=f"{len(missing)}/{len(diag_results)} AI/Foundry account(s) have NO diagnostic settings: {missing}",
+                    evidence_refs=["E-OBS-106"]))
+    # OBS-102 — v0.3.0 wired: KQL probe for trace freshness in App
+    # Insights. Tier 2 (Monitoring Reader). Looks for any `traces` rows in
+    # the last 24h on the LA workspace bound to the first App Insights
+    # component in the RG. The probe is opportunistic — if the workspace
+    # ID can't be resolved we leave a not-verified.
+    if not tiers.get(2) or not sub or not rg:
+        findings.append(_not_verified("OBS-102", "Tier 2 Monitoring Reader unavailable for KQL"))
+    else:
+        ai_list = _az_json("resource", "list", "--resource-group", rg, "--subscription", sub,
+                           "--resource-type", "Microsoft.Insights/components") or []
+        if not ai_list:
+            findings.append(_not_verified("OBS-102", "No Application Insights in target RG — cannot run KQL probe"))
+        else:
+            workspace_id: str | None = None
+            for ai in ai_list:
+                wid = (ai.get("properties") or {}).get("WorkspaceResourceId")
+                if wid:
+                    workspace_id = wid
+                    break
+            if not workspace_id:
+                findings.append(_not_verified("OBS-102",
+                    "App Insights present but workspace-based linkage missing — cannot run KQL"))
+            else:
+                # Get LA workspace customer-id for `az monitor log-analytics query`.
+                la_show = _az_json("monitor", "log-analytics", "workspace", "show", "--ids", workspace_id) or {}
+                customer_id = (la_show or {}).get("customerId")
+                if not customer_id:
+                    findings.append(_not_verified("OBS-102",
+                        "LA workspace lookup failed — cannot run KQL"))
+                else:
+                    kql = "traces | where timestamp > ago(24h) | summarize n = count()"
+                    out_q = _az_json("monitor", "log-analytics", "query",
+                                     "--workspace", customer_id, "--analytics-query", kql)
+                    rows = 0
+                    if isinstance(out_q, list) and out_q:
+                        first = out_q[0]
+                        if isinstance(first, dict):
+                            try:
+                                rows = int(first.get("n") or first.get("Count") or 0)
+                            except (TypeError, ValueError):
+                                rows = 0
+                    evidence.append(EvidenceEntry(ref="E-OBS-102", pillar="observability",
+                        description="Traces in App Insights last 24h",
+                        command="az monitor log-analytics query (traces | last 24h | count)",
+                        scope=f"sub={sub} rg={rg}", tier=2, captured_at=_utc_now(),
+                        result="ok", notes=f"{rows} rows"))
+                    findings.append(_mk_finding("OBS-102",
+                        status="pass" if rows > 0 else "should-fix",
+                        detail=(f"{rows} `traces` rows in App Insights last 24h" if rows > 0
+                                else "0 `traces` rows in App Insights last 24h — workload not emitting telemetry?"),
+                        evidence_refs=["E-OBS-102"]))
     findings.append(_not_verified("OBS-103", "Tier 2 KQL exception probe not implemented in v1"))
     return findings, evidence
 
@@ -1565,10 +2011,27 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     bicep = ctx.bicep_text
     src = ctx.src_text
     spec = ctx.spec_text
-    has_cf = bool(re.search(r"raiPolicies|content[-_ ]?filter|defaultRaiPolicy", bicep + src, re.I))
+    g = ctx.bicep_graph
+    # RAI-001 — graph-verified content filter / RAI policy on Cognitive Services
+    # AI Services deployments. Looks for either:
+    #   - a Microsoft.CognitiveServices/accounts/raiPolicies child resource, OR
+    #   - a `raiPolicyName` property on any /accounts/deployments resource.
+    rai_policies = g.by_type("Microsoft.CognitiveServices/accounts/raiPolicies") if g else []
+    deployments = g.by_type("Microsoft.CognitiveServices/accounts/deployments") if g else []
+    deployments_with_policy = [d for d in deployments if (d.get("properties") or {}).get("raiPolicyName")]
+    has_cf = bool(rai_policies) or (bool(deployments) and len(deployments_with_policy) == len(deployments))
+    if has_cf:
+        detail = (f"{len(rai_policies)} raiPolicies resource(s); "
+                  f"{len(deployments_with_policy)}/{len(deployments)} model deployments bind a raiPolicyName")
+    elif deployments:
+        detail = (f"{len(deployments)} model deployment(s) declared but {len(deployments) - len(deployments_with_policy)} "
+                  f"have no raiPolicyName and no raiPolicies child resource present")
+    else:
+        detail = ("No Microsoft.CognitiveServices/accounts/raiPolicies and no model deployments "
+                  "with raiPolicyName declared in compiled ARM")
     out.append(_mk_finding("RAI-001",
         status="pass" if has_cf else "must-fix",
-        detail="Content filter / RAI policy declared" if has_cf else "No content filter / RAI policy declared on deployments"))
+        detail=detail))
     pol_text = ""
     for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
         pol_text += "\n" + (_read_text(p) or "")
@@ -1726,11 +2189,20 @@ def _check_supply_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("SUP-005",
         status="pass" if has_scan else "should-fix",
         detail="Vulnerability scanning referenced" if has_scan else "No vulnerability scan step documented"))
-    # SUP-006 ACR scoped private
-    acr_private = bool(re.search(r"Microsoft\.ContainerRegistry/registries.*\n[^\n]*publicNetworkAccess\s*:\s*'?Disabled", bicep, re.I | re.S))
-    out.append(_mk_finding("SUP-006",
-        status="pass" if acr_private else "should-fix",
-        detail="ACR publicNetworkAccess=Disabled" if acr_private else "ACR not declared private in Bicep"))
+    # SUP-006 ACR scoped private — graph-verified
+    g = ctx.bicep_graph
+    acrs = g.by_type("Microsoft.ContainerRegistry/registries") if g else []
+    if not acrs:
+        out.append(_mk_finding("SUP-006", status="not-applicable",
+            detail="No Microsoft.ContainerRegistry/registries declared in compiled ARM"))
+    else:
+        acr_private = [a for a in acrs if (a.get("properties") or {}).get("publicNetworkAccess") == "Disabled"]
+        if len(acr_private) == len(acrs):
+            out.append(_mk_finding("SUP-006", status="pass",
+                detail=f"All {len(acrs)} ACR(s) declare publicNetworkAccess=Disabled"))
+        else:
+            out.append(_mk_finding("SUP-006", status="should-fix",
+                detail=f"{len(acrs) - len(acr_private)}/{len(acrs)} ACR(s) NOT declared publicNetworkAccess=Disabled"))
     # SUP-007 provenance
     has_prov = bool(re.search(r"slsa|provenance|attestation|cosign|notary", ctx.docs_text, re.I))
     out.append(_mk_finding("SUP-007",
@@ -1768,6 +2240,31 @@ def _check_supply_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None
         findings.append(_not_verified("SUP-102", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SUP-103", "Tier 1 Reader unavailable"))
     findings.append(_not_verified("SUP-101", "Image digest comparison probe not implemented in v1 — diff manifest manually"))
+    # ---- v0.3.0 NEW: GOV-103 Defender for Servers / Containers
+    if tiers.get(1) and sub:
+        srv = _az_json("security", "pricing", "show", "--name", "Containers", "--subscription", sub)
+        srv2 = _az_json("security", "pricing", "show", "--name", "VirtualMachines", "--subscription", sub)
+        tiers_found = []
+        for blob, label in ((srv, "Containers"), (srv2, "VirtualMachines")):
+            if isinstance(blob, dict):
+                t = (blob.get("properties") or {}).get("pricingTier") or blob.get("pricingTier")
+                if t:
+                    tiers_found.append(f"{label}={t}")
+        evidence.append(EvidenceEntry(ref="E-GOV-103", pillar="supply-chain",
+            description="Defender for Servers/Containers plans",
+            command=f"az security pricing show --name Containers/VirtualMachines --subscription {sub}",
+            scope=f"sub={sub}", tier=1, captured_at=_utc_now(),
+            result="ok", notes=", ".join(tiers_found) or "missing"))
+        if not tiers_found:
+            findings.append(_not_verified("GOV-103", "Defender pricing for Servers/Containers not returned"))
+        else:
+            has_standard = any("Standard" in t for t in tiers_found)
+            findings.append(_mk_finding("GOV-103",
+                status="pass" if has_standard else "should-fix",
+                detail=f"Defender plans: {tiers_found}",
+                evidence_refs=["E-GOV-103"]))
+    else:
+        findings.append(_not_verified("GOV-103", "Tier 1 Reader unavailable"))
     return findings, evidence
 
 
@@ -1792,10 +2289,23 @@ def _check_cost_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("COST-004",
         status="pass" if has_scale else "should-fix",
         detail="Scale-to-zero configured" if has_scale else "No scale-to-zero / idle scale-down in compute"))
-    has_tags = bool(re.search(r"tags\s*:\s*\{", ctx.bicep_text, re.I))
-    out.append(_mk_finding("COST-005",
-        status="pass" if has_tags else "should-fix",
-        detail="Tag strategy applied in Bicep" if has_tags else "No tag strategy in Bicep"))
+    # COST-005 — graph-verified tags applied on at least 60% of declared resources
+    g = ctx.bicep_graph
+    if g and g.resources:
+        tagged = [r for r in g.resources if r.get("tags")]
+        ratio = (len(tagged) * 100) // max(1, len(g.resources))
+        if ratio >= 60:
+            out.append(_mk_finding("COST-005", status="pass",
+                detail=f"{len(tagged)}/{len(g.resources)} ARM resources carry tags ({ratio}%)"))
+        elif ratio > 0:
+            out.append(_mk_finding("COST-005", status="should-fix",
+                detail=f"Only {len(tagged)}/{len(g.resources)} ARM resources carry tags ({ratio}%); target ≥60%"))
+        else:
+            out.append(_mk_finding("COST-005", status="should-fix",
+                detail=f"0/{len(g.resources)} ARM resources carry tags — apply cost-allocation tag strategy"))
+    else:
+        out.append(_mk_finding("COST-005", status="should-fix",
+            detail="No Bicep resources compiled — cannot evaluate tag coverage"))
     return out
 
 
@@ -1871,10 +2381,57 @@ def _check_reliability_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("REL-005",
         status="pass" if has_failures else "should-fix",
         detail="Failure modes catalogued in SPEC" if has_failures else "No failure modes catalogued"))
-    has_probes = bool(re.search(r"probes?\s*:|livenessProbe|readinessProbe|healthCheck", ctx.bicep_text, re.I))
-    out.append(_mk_finding("REL-006",
-        status="pass" if has_probes else "should-fix",
-        detail="Health probes configured" if has_probes else "No health probes configured"))
+    # REL-006 — graph-verified health probes on ACA/Web sites
+    g = ctx.bicep_graph
+    aca_apps = g.by_type("Microsoft.App/containerApps") if g else []
+    web_sites = g.by_type("Microsoft.Web/sites") if g else []
+    aca_with_probes = []
+    for a in aca_apps:
+        containers = (((a.get("properties") or {}).get("template") or {}).get("containers") or [])
+        if any(c.get("probes") for c in containers):
+            aca_with_probes.append(a)
+    web_with_probes = [w for w in web_sites if (w.get("properties") or {}).get("siteConfig", {}).get("healthCheckPath")]
+    total_compute = len(aca_apps) + len(web_sites)
+    has_probes = (total_compute == 0) or (len(aca_with_probes) == len(aca_apps) and len(web_with_probes) == len(web_sites))
+    if total_compute == 0:
+        out.append(_mk_finding("REL-006", status="not-applicable",
+            detail="No ACA or Web Sites declared in compiled ARM — no probes to configure"))
+    elif has_probes:
+        out.append(_mk_finding("REL-006", status="pass",
+            detail=f"Health probes configured on all {total_compute} compute resource(s) "
+                   f"(aca={len(aca_with_probes)}/{len(aca_apps)}, web={len(web_with_probes)}/{len(web_sites)})"))
+    else:
+        missing_aca = len(aca_apps) - len(aca_with_probes)
+        missing_web = len(web_sites) - len(web_with_probes)
+        out.append(_mk_finding("REL-006", status="should-fix",
+            detail=f"Health probes missing on {missing_aca + missing_web} compute resource(s) "
+                   f"(aca_missing={missing_aca}, web_missing={missing_web})"))
+    # REL-007 — v0.3.0 NEW: restore drill artefact freshness (≤90d)
+    drill_files = list(_glob_repo(ctx.root,
+        "docs/**/restore-drill*.md", "docs/**/restore-drill*.json",
+        "**/RESTORE-DRILL*.md", "evidence/**/restore-drill*.*"))
+    if not drill_files:
+        out.append(_mk_finding("REL-007", status="must-fix",
+            detail="No restore-drill artefact found under docs/, evidence/. "
+                   "Run `azqr restore-drill` (or your equivalent) and commit the report."))
+    else:
+        newest = max(drill_files, key=lambda p: p.stat().st_mtime)
+        age_days = (datetime.now(timezone.utc).timestamp() - newest.stat().st_mtime) / 86400
+        body = _read_text(newest) or ""
+        date_m = re.search(r"(\d{4}-\d{2}-\d{2})", body)
+        if date_m:
+            try:
+                drill_dt = datetime.strptime(date_m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                age_body = (datetime.now(timezone.utc) - drill_dt).days
+                age_days = min(age_days, age_body)
+            except ValueError:
+                pass
+        if age_days <= 90:
+            out.append(_mk_finding("REL-007", status="pass",
+                detail=f"Restore-drill artefact `{newest.name}` is {int(age_days)} days old (≤90d)"))
+        else:
+            out.append(_mk_finding("REL-007", status="must-fix",
+                detail=f"Restore-drill artefact `{newest.name}` is {int(age_days)} days old (>90d) — re-run drill"))
     return out
 
 
@@ -1908,6 +2465,51 @@ def _check_reliability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str |
             evidence_refs=[]))
     else:
         findings.append(_not_verified("REL-102", "backup vault list failed"))
+    # REL-008 — v0.3.0 NEW: at least one recoverable restore point on any RSV
+    if isinstance(rsv, list) and rsv:
+        rp_total = 0
+        rp_sampled_vault = None
+        for v in rsv:
+            vname = v.get("name")
+            if not vname:
+                continue
+            items = _az_json("backup", "item", "list",
+                             "--resource-group", rg,
+                             "--vault-name", vname,
+                             "--subscription", sub) or []
+            for it in items[:5]:
+                cname = it.get("name")
+                container_name = (it.get("properties") or {}).get("containerName") or ""
+                if not cname or not container_name:
+                    continue
+                rps = _az_json("backup", "recoverypoint", "list",
+                               "--resource-group", rg,
+                               "--vault-name", vname,
+                               "--container-name", container_name,
+                               "--item-name", cname,
+                               "--subscription", sub) or []
+                rp_total += len(rps)
+                if rps and not rp_sampled_vault:
+                    rp_sampled_vault = vname
+                if rp_total >= 1:
+                    break
+            if rp_total >= 1:
+                break
+        evidence.append(EvidenceEntry(ref="E-REL-008", pillar="reliability",
+            description="Recovery points across RSV(s)",
+            command="az backup recoverypoint list (sampled)",
+            scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+            result="ok", notes=f"{rp_total} recoverable point(s), sampled vault={rp_sampled_vault}"))
+        if rp_total >= 1:
+            findings.append(_mk_finding("REL-008", status="pass",
+                detail=f"{rp_total} recoverable point(s) found (sampled vault `{rp_sampled_vault}`)",
+                evidence_refs=["E-REL-008"]))
+        else:
+            findings.append(_mk_finding("REL-008", status="must-fix",
+                detail=f"No restore points across {len(rsv)} RSV(s) — backup is not yet recoverable",
+                evidence_refs=["E-REL-008"]))
+    else:
+        findings.append(_not_verified("REL-008", "no RSV in target RG"))
     findings.append(_not_verified("REL-101", "Zone redundancy probe not implemented in v1"))
     findings.append(_not_verified("REL-104", "Multi-region presence probe not implemented in v1"))
     findings.append(_not_verified("REL-105", "Capacity host health probe not implemented in v1"))
@@ -1970,7 +2572,116 @@ def _check_sre_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
         findings.append(_not_verified("SRE-101", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SRE-102", "Tier 1 Reader unavailable"))
     findings.append(_not_verified("SRE-103", "Diagnostic settings coverage probe not implemented in v1"))
-    findings.append(_not_verified("SRE-104", "Activity log alerts probe not implemented in v1"))
+    # SRE-104 — v0.3.0 wired: activity log alerts on the target RG. Tier 1.
+    if tiers.get(1) and sub and rg:
+        ala = _az_json("monitor", "activity-log", "alert", "list", "--resource-group", rg, "--subscription", sub)
+        evidence.append(EvidenceEntry(ref="E-SRE-104", pillar="sre-handover",
+            description="Activity log alerts on target RG",
+            command=f"az monitor activity-log alert list -g {rg}",
+            scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+            result="ok" if ala is not None else "error",
+            notes=f"{len(ala) if isinstance(ala, list) else 0} alerts"))
+        if ala is None:
+            findings.append(_not_verified("SRE-104", "activity-log alert list failed"))
+        else:
+            findings.append(_mk_finding("SRE-104",
+                status="pass" if ala else "should-fix",
+                detail=f"{len(ala)} activity-log alert(s)" if ala else "No activity-log alerts on target RG",
+                evidence_refs=["E-SRE-104"]))
+    else:
+        findings.append(_not_verified("SRE-104", "Tier 1 Reader unavailable"))
+    # ---- v0.3.0 NEW: GOV-104/105 (Defender Secure Score + recommendations)
+    if tiers.get(1) and sub:
+        scores = _az_json("security", "secure-scores", "list", "--subscription", sub)
+        floor = int(ctx.manifest.get("secure_score_floor", 60)) if isinstance(ctx.manifest, dict) else 60
+        cur_pct: int | None = None
+        if isinstance(scores, list) and scores:
+            for s in scores:
+                if s.get("name") == "ascScore" or "ascScore" in (s.get("id") or ""):
+                    pct_f = ((s.get("properties") or {}).get("score") or {}).get("percentage")
+                    if isinstance(pct_f, (int, float)):
+                        cur_pct = int(round(pct_f * 100)) if pct_f <= 1 else int(round(pct_f))
+                    break
+            if cur_pct is None:
+                pct_f = (((scores[0].get("properties") or {}).get("score") or {}).get("percentage"))
+                if isinstance(pct_f, (int, float)):
+                    cur_pct = int(round(pct_f * 100)) if pct_f <= 1 else int(round(pct_f))
+        evidence.append(EvidenceEntry(ref="E-GOV-104", pillar="sre-handover",
+            description="Defender Secure Score",
+            command=f"az security secure-scores list --subscription {sub}",
+            scope=f"sub={sub}", tier=1, captured_at=_utc_now(),
+            result="ok" if scores is not None else "error",
+            notes=f"score={cur_pct}, floor={floor}"))
+        if cur_pct is None:
+            findings.append(_not_verified("GOV-104", "Defender Secure Score not available (Defender for Cloud may be disabled)"))
+        else:
+            findings.append(_mk_finding("GOV-104",
+                status="pass" if cur_pct >= floor else "should-fix",
+                detail=f"Secure Score = {cur_pct}% (floor: {floor}%)",
+                evidence_refs=["E-GOV-104"]))
+        recs = _az_json("security", "task", "list", "--subscription", sub)
+        top3 = []
+        if isinstance(recs, list) and recs:
+            for r in recs[:3]:
+                rp = (r.get("properties") or {})
+                top3.append(rp.get("recommendationDisplayName") or r.get("name") or "?")
+        findings.append(_mk_finding("GOV-105",
+            status="pass" if top3 else "not-applicable",
+            detail=f"Top Defender recommendations: {top3}" if top3 else "No Defender recommendations surfaced",
+            evidence_refs=["E-GOV-104"]))
+    else:
+        findings.append(_not_verified("GOV-104", "Tier 1 Reader unavailable"))
+        findings.append(_not_verified("GOV-105", "Tier 1 Reader unavailable"))
+    # ---- v0.3.0 NEW: GOV-201/202/203 (Azure Policy compliance)
+    if tiers.get(1) and sub and rg:
+        # Resource-group-scoped assignment view ("--disable-scope-strict-match" is not the right
+        # path here; we list at RG scope which already includes inherited).
+        assigns = _az_json("policy", "assignment", "list", "--resource-group", rg, "--subscription", sub)
+        evidence.append(EvidenceEntry(ref="E-GOV-201", pillar="sre-handover",
+            description="Azure Policy assignments at RG scope",
+            command=f"az policy assignment list -g {rg}",
+            scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+            result="ok" if assigns is not None else "error",
+            notes=f"{len(assigns) if isinstance(assigns, list) else 0} assignments"))
+        if assigns is None:
+            findings.append(_not_verified("GOV-201", "policy assignment list failed"))
+            findings.append(_not_verified("GOV-202", "policy assignment list failed"))
+            findings.append(_not_verified("GOV-203", "policy assignment list failed"))
+        else:
+            findings.append(_mk_finding("GOV-201",
+                status="pass" if assigns else "must-fix",
+                detail=f"{len(assigns)} policy assignment(s) at RG scope" if assigns else "No policy assignments at RG scope — enable a baseline initiative",
+                evidence_refs=["E-GOV-201"]))
+            # GOV-202: policy compliance state
+            comp = _az_json("policy", "state", "summarize", "--resource-group", rg, "--subscription", sub)
+            non_compliant = 0
+            if isinstance(comp, dict):
+                vals = (comp.get("results") or {}).get("resourceDetails") or []
+                for v in vals:
+                    if (v.get("complianceState") or "").lower() == "noncompliant":
+                        non_compliant += int(v.get("count") or 0)
+            elif isinstance(comp, list) and comp:
+                for entry in comp:
+                    if isinstance(entry, dict):
+                        for v in (entry.get("results") or {}).get("resourceDetails", []) or []:
+                            if (v.get("complianceState") or "").lower() == "noncompliant":
+                                non_compliant += int(v.get("count") or 0)
+            findings.append(_mk_finding("GOV-202",
+                status="pass" if non_compliant == 0 else "should-fix",
+                detail=f"{non_compliant} non-compliant resource(s) for assigned policies",
+                evidence_refs=["E-GOV-201"]))
+            # GOV-203: sane-default initiatives (ASB / Microsoft cloud security benchmark)
+            asb = [a for a in assigns
+                   if "cloud-security-benchmark" in (a.get("name") or "").lower()
+                   or "asb" in (a.get("displayName") or "").lower()
+                   or "azure security benchmark" in (a.get("displayName") or "").lower()]
+            findings.append(_mk_finding("GOV-203",
+                status="pass" if asb else "should-fix",
+                detail=f"{len(asb)} ASB/MCSB initiative(s) assigned" if asb else "No Azure Security Benchmark / MCSB initiative assigned at RG scope",
+                evidence_refs=["E-GOV-201"]))
+    else:
+        for fid in ("GOV-201", "GOV-202", "GOV-203"):
+            findings.append(_not_verified(fid, "Tier 1 Reader unavailable"))
     return findings, evidence
 
 
@@ -1983,12 +2694,36 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
     spec = ctx.spec_text
-    matches = MODEL_VERSION_RE.findall(bicep)
-    latest_only = matches and all(m.lower() == "latest" for m in matches)
-    pinned = matches and any(m.lower() != "latest" for m in matches)
-    out.append(_mk_finding("MDL-001",
-        status="must-fix" if latest_only else ("pass" if pinned else "should-fix"),
-        detail=f"Found model versions: {matches}" if matches else "No model version constraint found — review"))
+    g = ctx.bicep_graph
+    # MDL-001 — graph-verified: every model deployment must declare an
+    # explicit `model.version` that is not `latest`.
+    deployments = g.by_type("Microsoft.CognitiveServices/accounts/deployments") if g else []
+    if not deployments:
+        out.append(_mk_finding("MDL-001", status="must-fix",
+            detail="No Microsoft.CognitiveServices/accounts/deployments declared in compiled ARM — cannot pin a model that doesn't exist"))
+    else:
+        pinned, floating, missing = [], [], []
+        for d in deployments:
+            model = ((d.get("properties") or {}).get("model") or {})
+            v = model.get("version")
+            name = d.get("name") or "<unnamed>"
+            if not v:
+                missing.append(name)
+            elif str(v).strip().lower() == "latest":
+                floating.append(name)
+            else:
+                pinned.append(f"{name}@{v}")
+        if floating or missing:
+            problems = []
+            if floating:
+                problems.append(f"{len(floating)} use `latest`: {floating}")
+            if missing:
+                problems.append(f"{len(missing)} have no model.version: {missing}")
+            out.append(_mk_finding("MDL-001", status="must-fix",
+                detail="Model deployments not pinned: " + "; ".join(problems)))
+        else:
+            out.append(_mk_finding("MDL-001", status="pass",
+                detail=f"All {len(deployments)} model deployment(s) pinned: {pinned}"))
     out.append(_mk_finding("MDL-002",
         status="pass" if re.search(r"deprecat|retir", spec, re.I) else "should-fix",
         detail="Deprecation plan mentioned in SPEC" if re.search(r"deprecat|retir", spec, re.I) else "No deprecation plan mentioned"))
@@ -2010,6 +2745,46 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("MDL-008",
         status="pass" if re.search(r"index[_ -]?refresh|reindex|knowledge.*update", spec + ctx.docs_text, re.I) else "should-fix",
         detail="Index refresh cadence declared" if re.search(r"index[_ -]?refresh|reindex|knowledge.*update", spec + ctx.docs_text, re.I) else "No knowledge index refresh cadence"))
+    # MDL-009 — Foundry project-level RBAC declared
+    # Look for a roleAssignment whose scope is a Foundry account/project.
+    role_assigns = g.by_type("Microsoft.Authorization/roleAssignments") if g else []
+    cs_accounts = g.by_type("Microsoft.CognitiveServices/accounts") if g else []
+    project_scoped = [r for r in role_assigns
+                      if "cognitiveservices/accounts" in (((r.get("properties") or {}).get("scope") or r.get("scope") or "")).lower()
+                      or "projects" in (r.get("name") or "").lower()]
+    if not cs_accounts:
+        out.append(_mk_finding("MDL-009", status="not-applicable",
+            detail="No Foundry / Cognitive Services accounts declared — no project-level RBAC required"))
+    elif project_scoped:
+        out.append(_mk_finding("MDL-009", status="pass",
+            detail=f"{len(project_scoped)} role assignment(s) scoped to Foundry accounts/projects"))
+    else:
+        out.append(_mk_finding("MDL-009", status="should-fix",
+            detail=f"No project-level role assignment found on declared Foundry accounts "
+                   f"({len(cs_accounts)} account(s), {len(role_assigns)} total role assignments)"))
+    # MDL-010 — knowledge index private-endpointed (if used)
+    # AI Search is the v0.3.0 supported knowledge-index backend. If declared,
+    # must have publicNetworkAccess=disabled AND at least one private endpoint.
+    search_svcs = g.by_type("Microsoft.Search/searchServices") if g else []
+    if not search_svcs:
+        out.append(_mk_finding("MDL-010", status="not-applicable",
+            detail="No Microsoft.Search/searchServices declared — no knowledge index to protect"))
+    else:
+        public_off = [s for s in search_svcs if (s.get("properties") or {}).get("publicNetworkAccess", "Enabled").lower() == "disabled"]
+        if len(public_off) == len(search_svcs):
+            out.append(_mk_finding("MDL-010", status="pass",
+                detail=f"All {len(search_svcs)} search service(s) declare publicNetworkAccess=disabled"))
+        else:
+            out.append(_mk_finding("MDL-010", status="should-fix",
+                detail=f"{len(search_svcs) - len(public_off)}/{len(search_svcs)} search service(s) "
+                       f"have publicNetworkAccess≠Disabled — knowledge index reachable from public internet"))
+    # MDL-011 — agent thread policy declared in SPEC
+    has_thread_policy = bool(re.search(r"agent[_ -]?thread[_ -]?(policy|retention|lifecycle)|thread[_ -]?retention|conversation[_ -]?retention",
+                                       spec + ctx.docs_text, re.I))
+    out.append(_mk_finding("MDL-011",
+        status="pass" if has_thread_policy else "should-fix",
+        detail="Agent thread retention/policy declared" if has_thread_policy
+               else "No agent thread retention/policy mentioned in SPEC or docs"))
     return out
 
 
@@ -2048,6 +2823,86 @@ def _check_model_lifecycle_live(ctx: RepoContext, tiers: dict[int, bool], sub: s
             detail=f"{len(all_deps)} deployment(s) observed",
             evidence_refs=["E-MDL-101"]))
     findings.append(_not_verified("MDL-104", "Tier 2 KQL for 429 breaches not implemented in v1"))
+    # ---- v0.3.0 NEW: MDL-110/111 quota pre-flight (Tier 1) + GOV-101 Defender for AI
+    if tiers.get(1) and sub and rg:
+        usage = _az_json("cognitiveservices", "usage", "list", "--location", "global", "--subscription", sub)
+        if usage is None and accts:
+            # Try per-account region.
+            first_loc = (accts[0].get("location") if accts else None)
+            if first_loc:
+                usage = _az_json("cognitiveservices", "usage", "list", "--location", first_loc, "--subscription", sub)
+        evidence.append(EvidenceEntry(ref="E-MDL-110", pillar="model-lifecycle",
+            description="Cognitive Services quota usage",
+            command="az cognitiveservices usage list --location <region>",
+            scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+            result="ok" if usage is not None else "error",
+            notes=f"{len(usage) if isinstance(usage, list) else 0} usage entries"))
+        if not isinstance(usage, list) or not usage:
+            findings.append(_not_verified("MDL-110", "cognitive services usage list returned no data"))
+            findings.append(_not_verified("MDL-111", "cognitive services usage list returned no data"))
+        else:
+            saturated = []
+            for u in usage:
+                cur = float(u.get("currentValue") or 0)
+                lim = float(u.get("limit") or 0)
+                nm = (u.get("name") or {}).get("value") or u.get("name") or "?"
+                if lim and cur / lim >= 0.8:
+                    saturated.append(f"{nm}={int(cur)}/{int(lim)}")
+            if saturated:
+                findings.append(_mk_finding("MDL-110", status="must-fix",
+                    detail=f"TPM headroom exhausted (≥80%): {saturated}",
+                    evidence_refs=["E-MDL-110"]))
+            else:
+                findings.append(_mk_finding("MDL-110", status="pass",
+                    detail=f"All {len(usage)} quota entries below 80% saturation",
+                    evidence_refs=["E-MDL-110"]))
+            cap_avail = [u for u in usage if float(u.get("limit") or 0) - float(u.get("currentValue") or 0) > 0]
+            findings.append(_mk_finding("MDL-111",
+                status="pass" if cap_avail else "should-fix",
+                detail=f"{len(cap_avail)}/{len(usage)} quota entries have headroom",
+                evidence_refs=["E-MDL-110"]))
+    else:
+        findings.append(_not_verified("MDL-110", "Tier 1 Reader unavailable for quota probe"))
+        findings.append(_not_verified("MDL-111", "Tier 1 Reader unavailable for quota probe"))
+    # GOV-101: Defender for AI Services plan enabled
+    if tiers.get(1) and sub:
+        pricings = _az_json("security", "pricing", "list", "--subscription", sub)
+        ai_pricing = None
+        kv_pricing = None
+        srv_pricing = None
+        if isinstance(pricings, list):
+            for p in pricings:
+                nm = (p.get("name") or "").lower()
+                if "ai" in nm or "cognitive" in nm:
+                    ai_pricing = p
+                elif "keyvaults" in nm or "key vault" in nm:
+                    kv_pricing = p
+                elif "servers" in nm or "containers" in nm or "appservices" in nm:
+                    if not srv_pricing:
+                        srv_pricing = p
+        elif isinstance(pricings, dict):
+            for nm, p in (pricings or {}).items():
+                if "ai" in nm.lower() or "cognitive" in nm.lower():
+                    ai_pricing = p
+        evidence.append(EvidenceEntry(ref="E-GOV-101", pillar="model-lifecycle",
+            description="Defender for Cloud pricing plans",
+            command=f"az security pricing list --subscription {sub}",
+            scope=f"sub={sub}", tier=1, captured_at=_utc_now(),
+            result="ok" if pricings is not None else "error",
+            notes="present" if ai_pricing else "missing"))
+        if ai_pricing is None:
+            findings.append(_not_verified("GOV-101", "No AI Services Defender plan entry returned"))
+        else:
+            tier = ((ai_pricing.get("properties") or {}).get("pricingTier") or ai_pricing.get("pricingTier") or "Free")
+            findings.append(_mk_finding("GOV-101",
+                status="pass" if str(tier).lower() == "standard" else "should-fix",
+                detail=f"Defender for AI Services pricingTier = {tier}",
+                evidence_refs=["E-GOV-101"]))
+        # GOV-102 / GOV-103 are in other pillars but we surface here for
+        # completeness — runners under other pillars will append the canonical
+        # not-verified placeholder otherwise.
+    else:
+        findings.append(_not_verified("GOV-101", "Tier 1 Reader unavailable"))
     return findings, evidence
 
 
@@ -2086,6 +2941,10 @@ def _run_pillar(
 ) -> tuple[list[Finding], list[EvidenceEntry]]:
     """Dispatch to the right runner pair. Returns (findings, evidence)."""
     static_fn, live_fn = PILLAR_RUNNERS[pillar]
+    # Stash resolved_posture on ctx so cross-pillar posture-aware static checks
+    # (e.g. IAM-005 escalation when posture demands an auth-fronted surface)
+    # can read it without a signature change.
+    ctx.resolved_posture = resolved_posture
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
     # Each pillar's static signature varies slightly; handle uniformly
@@ -2178,29 +3037,51 @@ PILLAR_WEIGHTS["secrets"] = 2
 PILLAR_WEIGHTS["observability"] = 2
 
 
-def _score_pillar(findings: list[Finding]) -> tuple[str, int, int]:
-    """Return (pillar_status, score, max_score). 100-point scale per pillar."""
+def _score_pillar(findings: list[Finding], include_experimental: bool = False) -> tuple[str, int, int, int]:
+    """Return (pillar_status, score_percent, max_score, verification_debt_count).
+
+    v0.3.0 scoring contract (rubber-duck-tightened):
+      pass         → +4 (full credit)
+      waived       → +3 (compensating control accepted; not full credit)
+      should-fix   → +1 (partial; gap is real but not blocking)
+      must-fix     → +0 (blocking)
+      not-verified → +0 (verification debt — was +2 inflating to 50% in v0.2.0)
+
+    The fourth return value is `verification_debt` — the count of
+    not-verified findings in this pillar. The caller surfaces this as a
+    first-class exec-summary metric so the gap "we couldn't check this"
+    no longer hides inside the percent.
+
+    Findings flagged ``experimental: True`` in FINDING_CATALOG are excluded
+    from scoring unless the caller passes ``include_experimental=True``
+    (i.e. the user opted in via ``--include-experimental``).
+    """
     if not findings:
-        return "not-applicable", 0, 0
+        return "not-applicable", 0, 0, 0
+    if not include_experimental:
+        findings = [f for f in findings
+                    if not (FINDING_CATALOG.get(f.id) or {}).get("experimental")]
     relevant = [f for f in findings if f.status != "not-applicable"]
     if not relevant:
-        return "not-applicable", 0, 0
+        return "not-applicable", 0, 0, 0
     max_score = len(relevant) * 4
     earned = 0
     has_must = False
     has_should = False
+    verification_debt = 0
     for f in relevant:
         if f.status == "pass":
             earned += 4
         elif f.status == "waived":
             earned += 3
-        elif f.status == "not-verified":
-            earned += 2
         elif f.status == "should-fix":
             earned += 1
             has_should = True
         elif f.status == "must-fix":
             has_must = True
+        elif f.status == "not-verified":
+            verification_debt += 1
+            # +0 — verification debt no longer inflates score
     pct = (earned * 100) // max_score if max_score else 0
     if has_must:
         st = "red"
@@ -2208,7 +3089,7 @@ def _score_pillar(findings: list[Finding]) -> tuple[str, int, int]:
         st = "amber"
     else:
         st = "green"
-    return st, pct, 100
+    return st, pct, 100, verification_debt
 
 
 def _apply_waivers(findings: list[Finding], waivers: dict[str, dict]) -> list[Finding]:
@@ -2383,6 +3264,7 @@ def _build_manifest(
     quick: bool,
     static_only: bool,
     freshness_hours: int = DEFAULT_FRESHNESS_HOURS,
+    include_experimental: bool = False,
 ) -> dict:
     # Capture run-end timestamp once so the freshness math and the manifest
     # field agree exactly (prevents exact-boundary flake).
@@ -2392,16 +3274,27 @@ def _build_manifest(
     raw_max = 0
     waived_total = 0
     waived_max = 0
+    verification_debt_by_pillar: dict[str, int] = {}
+    total_verification_debt = 0
+
+    def _filter_exp(findings: list[Finding]) -> list[Finding]:
+        if include_experimental:
+            return findings
+        return [f for f in findings
+                if not (FINDING_CATALOG.get(f.id) or {}).get("experimental")]
+
     for pid in PILLAR_IDS:
         raw_fs = pillar_results_raw.get(pid, [])
         w_fs = pillar_results_waived.get(pid, [])
-        r_status, r_score, r_max_s = _score_pillar(raw_fs)
-        w_status, w_score, w_max_s = _score_pillar(w_fs)
+        r_status, r_score, r_max_s, r_debt = _score_pillar(raw_fs, include_experimental=include_experimental)
+        w_status, w_score, w_max_s, w_debt = _score_pillar(w_fs, include_experimental=include_experimental)
         weight = PILLAR_WEIGHTS[pid]
         raw_total_score += r_score * weight
         raw_max += 100 * weight if r_max_s else 0
         waived_total += w_score * weight
         waived_max += 100 * weight if w_max_s else 0
+        verification_debt_by_pillar[pid] = w_debt
+        total_verification_debt += w_debt
         pillars_block.append({
             "pillar": pid,
             "title": PILLAR_TITLES[pid],
@@ -2409,14 +3302,21 @@ def _build_manifest(
             "status_with_waivers": w_status,
             "score_raw": r_score,
             "score_with_waivers": w_score,
-            "findings": [asdict(f) for f in w_fs],
+            "verification_debt": w_debt,
+            "findings": [asdict(f) for f in _filter_exp(w_fs)],
         })
     raw_pct = (raw_total_score * 100) // raw_max if raw_max else 0
     waived_pct = (waived_total * 100) // waived_max if waived_max else 0
     raw_must = any(any(f.status == "must-fix" for f in raw_fs) for raw_fs in pillar_results_raw.values())
     waived_must = any(any(f.status == "must-fix" for f in w_fs) for w_fs in pillar_results_waived.values())
-    # Verification coverage: of the scoreable findings (pass/should-fix/must-fix/not-verified),
-    # what fraction was actually verified (not 'not-verified')?
+    # Verification coverage (v0.3.0 fix): of the verifiable findings
+    # (pass + should-fix + must-fix + not-verified + waived), what fraction
+    # actually has a verified status? `not-applicable` is OUT of the
+    # denominator — we can't claim coverage for things that don't apply.
+    # `waived` IS verified (the operator explicitly inspected it and
+    # accepted the risk). Pre-v0.3.0 this math counted `waived` AND
+    # excluded `not-applicable`, but treated `not-verified` as 50% credit
+    # in the score itself — fixed in `_score_pillar`.
     scoreable = [f for fs in pillar_results_waived.values() for f in fs
                  if f.status in ("pass", "should-fix", "must-fix", "not-verified", "waived")]
     not_verified_count = sum(1 for f in scoreable if f.status == "not-verified")
@@ -2451,8 +3351,13 @@ def _build_manifest(
             "total_scoreable": len(scoreable),
             "percent": coverage_pct,
         },
+        "verification_debt": {
+            "total": total_verification_debt,
+            "by_pillar": verification_debt_by_pillar,
+        },
         "go_live_recommendation": rec,
         "would_fail_hard_gate": raw_must,
+        "include_experimental": include_experimental,
         "permission_tiers": {str(k): v for k, v in tiers.items()},
         "warnings": warnings,
         "safe_check_reference": safe_check_ref,
@@ -2510,6 +3415,20 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append(f"- **Mode:** {manifest['mode']}   **AGT profile:** {manifest['agt_profile']}")
     out.append(f"- **Would fail a hard gate?** {'YES' if manifest['would_fail_hard_gate'] else 'no'}")
     out.append(f"- **Not-verified findings:** {manifest['not_verified_count']} (live probes that could not run — see Appendix)")
+    debt = manifest.get("verification_debt") or {}
+    debt_total = debt.get("total", manifest.get("not_verified_count", 0))
+    if debt_total:
+        top_debt = sorted(
+            ((p, n) for p, n in (debt.get("by_pillar") or {}).items() if n),
+            key=lambda kv: -kv[1],
+        )[:3]
+        top_label = ", ".join(f"{p}={n}" for p, n in top_debt) if top_debt else "—"
+        out.append(
+            f"- **Verification debt:** {debt_total} not-verified findings (top pillars: {top_label}). "
+            f"`not-verified` no longer earns partial score credit in v0.3.0."
+        )
+    else:
+        out.append("- **Verification debt:** 0 (all checks executed)")
     # Per-evidence freshness banner (issue #22). Only added when the run's
     # oldest evidence is older than `freshness_hours` before `checked_at`.
     ef = manifest.get("evidence_freshness") or {}
@@ -2777,6 +3696,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="(unused in v1 - SPEC is read from manifest's repo root)")
     p.add_argument("--root", default=".", help="repo root (default: cwd)")
     p.add_argument("--quiet", action="store_true", help="suppress non-error stdout")
+    p.add_argument("--include-experimental", action="store_true",
+                   help="include experimental finding IDs in scoring (default: excluded)")
+    p.add_argument("--diff", metavar="MANIFEST",
+                   help="compare current run against a prior manifest JSON; emit diff to stdout and exit")
+    p.add_argument("--gate-preview", action="store_true",
+                   help="treat any must-fix as a hard-gate preview: exit 2 if would-fail-hard-gate is true")
+    p.add_argument("--remediate", metavar="FINDING_ID",
+                   help="print bash remediation recipe for a finding ID from references/remediation-recipes.yaml and exit")
+    p.add_argument("--trend-csv", metavar="PATH", default="tests/production-readiness-trend.csv",
+                   help="append a row per run (date, score, posture, debt) for trending; set to '' to disable")
+    p.add_argument("--secure-score-floor", type=int, default=60,
+                   help="Defender Secure Score percent floor for GOV-104 (default 60)")
     p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return p.parse_args(argv)
 
@@ -2784,6 +3715,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path(args.root).resolve()
+
+    # --remediate is a side-channel: print the recipe and exit. Doesn't need
+    # any other inputs.
+    if args.remediate:
+        return _emit_remediation(root, args.remediate)
 
     if not args.quiet:
         print(f"threadlight-production-ready v{VERSION}")
@@ -2804,8 +3740,15 @@ def main(argv: list[str] | None = None) -> int:
     waivers, waiver_binding, waiver_errs = _load_waivers(waivers_path)
     warnings.extend(waiver_errs)
 
-    # 3. Context
-    ctx = RepoContext.from_repo(root, manifest)
+    # 3. Context — inject CLI-flag overrides into manifest so checks see them.
+    # `--secure-score-floor` is read by GOV-104 via `ctx.manifest`; threading it
+    # here keeps the CLI flag honest while letting an explicit manifest entry win.
+    manifest.setdefault("secure_score_floor", args.secure_score_floor)
+    try:
+        ctx = RepoContext.from_repo(root, manifest)
+    except PrerequisiteError as e:
+        _eprint(f"error: {e}")
+        return 2
 
     # 3b. Missing SPEC § 12 — soft warning, NOT exit 2 (rubber-duck #1).
     # When §12 is absent or empty, the skill still runs; posture falls back to
@@ -2941,6 +3884,7 @@ def main(argv: list[str] | None = None) -> int:
         quick=args.quick,
         static_only=args.static,
         freshness_hours=args.freshness_hours,
+        include_experimental=args.include_experimental,
     )
 
     out_path = root / args.out
@@ -2972,7 +3916,139 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  -> report:   {report_path}")
         if warnings:
             print(f"  ({len(warnings)} warning(s) — see appendix)")
+
+    # 10. v0.3.0 NEW: trend CSV append (best-effort, never blocks)
+    if args.trend_csv:
+        try:
+            _append_trend_csv(root / args.trend_csv, out_manifest, resolved)
+        except OSError as e:
+            _eprint(f"warn: failed to append trend csv: {e}")
+
+    # 11. v0.3.0 NEW: --diff mode prints diff vs prior manifest to stdout
+    if args.diff:
+        try:
+            prior = json.loads(Path(args.diff).read_text(encoding="utf-8"))
+            print("\n" + _diff_manifests(prior, out_manifest))
+        except (OSError, ValueError) as e:
+            _eprint(f"warn: failed to load --diff manifest: {e}")
+
+    # 12. v0.3.0 NEW: --gate-preview returns exit 2 on hard-gate-would-fail
+    if args.gate_preview and out_manifest.get("would_fail_hard_gate"):
+        _eprint("error: --gate-preview: at least one must-fix would block go-live")
+        return 2
     return 0
+
+
+# ---------------------------------------------------------------------------
+# v0.3.0 NEW: industrialization helpers (diff, trend, remediation)
+# ---------------------------------------------------------------------------
+
+
+def _append_trend_csv(path: Path, manifest: dict, posture: str) -> None:
+    """Append a single row to a trend CSV. Creates header on first write."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = ("date,tool_version,posture,raw_percent,with_waivers_percent,"
+              "verified,total_scoreable,verification_debt,recommendation\n")
+    exists = path.exists()
+    cov = manifest.get("verification_coverage") or {}
+    debt = (manifest.get("verification_debt") or {}).get("total", 0)
+    row = ",".join([
+        manifest.get("checked_at", ""),
+        manifest.get("tool_version", ""),
+        posture,
+        str(manifest.get("score", {}).get("raw_percent", "")),
+        str(manifest.get("score", {}).get("with_waivers_percent", "")),
+        str(cov.get("verified", "")),
+        str(cov.get("total_scoreable", "")),
+        str(debt),
+        manifest.get("go_live_recommendation", ""),
+    ]) + "\n"
+    mode = "a" if exists else "w"
+    with path.open(mode, encoding="utf-8") as f:
+        if not exists:
+            f.write(header)
+        f.write(row)
+
+
+def _diff_manifests(prior: dict, current: dict) -> str:
+    """Render a short, human-readable diff between two production-readiness manifests."""
+    lines: list[str] = []
+    lines.append("# production-readiness diff")
+    lines.append("")
+    lines.append(f"prior   : {prior.get('checked_at')} v{prior.get('tool_version')} "
+                 f"score raw={prior.get('score', {}).get('raw_percent')}%")
+    lines.append(f"current : {current.get('checked_at')} v{current.get('tool_version')} "
+                 f"score raw={current.get('score', {}).get('raw_percent')}%")
+    delta = (current.get("score", {}).get("raw_percent", 0) -
+             prior.get("score", {}).get("raw_percent", 0))
+    arrow = "▲" if delta > 0 else ("▼" if delta < 0 else "—")
+    lines.append(f"delta   : {arrow} {delta:+d}%")
+    lines.append("")
+    prior_idx = {(p.get("pillar"), f.get("id")): f
+                 for p in prior.get("pillars", []) for f in p.get("findings", [])}
+    curr_idx = {(p.get("pillar"), f.get("id")): f
+                for p in current.get("pillars", []) for f in p.get("findings", [])}
+    all_keys = sorted(set(prior_idx) | set(curr_idx))
+    flipped: list[str] = []
+    new_must: list[str] = []
+    new_pass: list[str] = []
+    gone: list[str] = []
+    for k in all_keys:
+        p = prior_idx.get(k)
+        c = curr_idx.get(k)
+        if p is None and c is not None:
+            if c.get("status") == "must-fix":
+                new_must.append(f"+ {k[0]}/{k[1]} → must-fix")
+            elif c.get("status") == "pass":
+                new_pass.append(f"+ {k[0]}/{k[1]} → pass")
+        elif c is None and p is not None:
+            gone.append(f"- {k[0]}/{k[1]} (was {p.get('status')})")
+        elif p and c and p.get("status") != c.get("status"):
+            flipped.append(f"  {k[0]}/{k[1]} : {p.get('status')} → {c.get('status')}")
+    if new_must:
+        lines.append("## new must-fix")
+        lines.extend(new_must)
+        lines.append("")
+    if flipped:
+        lines.append("## status changes")
+        lines.extend(flipped)
+        lines.append("")
+    if new_pass:
+        lines.append("## new pass")
+        lines.extend(new_pass)
+        lines.append("")
+    if gone:
+        lines.append("## removed")
+        lines.extend(gone)
+    if not (new_must or flipped or new_pass or gone):
+        lines.append("(no per-finding changes)")
+    return "\n".join(lines)
+
+
+def _emit_remediation(root: Path, finding_id: str) -> int:
+    """Print remediation recipe for a finding ID. Returns 0 on hit, 2 on miss."""
+    fid = finding_id.strip().upper()
+    recipe_file = root / "skills" / "threadlight-production-ready" / "references" / "remediation-recipes.yaml"
+    if not recipe_file.exists():
+        # fall back to relative to this script
+        recipe_file = Path(__file__).resolve().parent.parent / "references" / "remediation-recipes.yaml"
+    if not recipe_file.exists():
+        _eprint(f"error: remediation-recipes.yaml not found at {recipe_file}")
+        return 2
+    body = recipe_file.read_text(encoding="utf-8")
+    # Very small YAML-ish parser: split blocks by `^- id:` markers.
+    blocks = re.split(r"\n(?=- id:\s*)", "\n" + body)
+    for block in blocks:
+        m = re.search(r"- id:\s*([A-Z0-9\-]+)", block)
+        if m and m.group(1).upper() == fid:
+            # Strip leading "- id:" line and print the rest, plus a header
+            print(f"# remediation recipe — {fid}")
+            print(block.strip())
+            print()
+            return 0
+    _eprint(f"error: no remediation recipe found for `{fid}`")
+    _eprint("       add an entry to skills/threadlight-production-ready/references/remediation-recipes.yaml")
+    return 2
 
 
 if __name__ == "__main__":

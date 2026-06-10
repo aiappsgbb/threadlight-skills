@@ -1,0 +1,1555 @@
+{
+  "schema_version": "1.0",
+  "tool": "threadlight-production-ready",
+  "tool_version": "0.3.0",
+  "checked_at": "2026-06-10T17:19:29Z",
+  "mode": "static",
+  "agt_profile": "v3_7",
+  "posture": {
+    "declared": "citadel-spoke",
+    "detected": "",
+    "resolved": "citadel-spoke"
+  },
+  "score": {
+    "raw_percent": 54,
+    "with_waivers_percent": 54
+  },
+  "verification_coverage": {
+    "verified": 77,
+    "total_scoreable": 143,
+    "percent": 53
+  },
+  "verification_debt": {
+    "total": 43,
+    "by_pillar": {
+      "network-posture": 4,
+      "agent-governance": 1,
+      "identity-access": 2,
+      "secrets": 7,
+      "observability": 5,
+      "continuous-evals": 0,
+      "responsible-ai": 1,
+      "hitl-audit": 2,
+      "supply-chain": 2,
+      "cost": 2,
+      "reliability": 3,
+      "sre-handover": 8,
+      "model-lifecycle": 6
+    }
+  },
+  "go_live_recommendation": "not_ready",
+  "would_fail_hard_gate": true,
+  "include_experimental": false,
+  "permission_tiers": {
+    "0": true,
+    "1": false,
+    "2": false,
+    "3": false,
+    "4": false,
+    "5": false
+  },
+  "warnings": [],
+  "safe_check_reference": {
+    "phase": "post-deploy",
+    "checked_at": "2026-06-10T16:07:34Z",
+    "deployment_manifest_sha256": "811f50b4209ce26b4662a39ad70dd81ef1e4e0724decbaa9a12646f8f160e9cd",
+    "source_path": "tests/postdeploy-manifest.json"
+  },
+  "pillars": [
+    {
+      "pillar": "network-posture",
+      "title": "1. Network posture",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 50,
+      "score_with_waivers": 50,
+      "verification_debt": 4,
+      "findings": [
+        {
+          "id": "NET-001",
+          "title": "infra references network module",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Bicep declares 1 virtualNetworks resource(s)",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-002",
+          "title": "Private endpoints declared for Foundry account",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "2 privateEndpoints declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-003",
+          "title": "Public network access disabled on AI services",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "All 1 AI/Foundry accounts have publicNetworkAccess=Disabled",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-004",
+          "title": "Subnet delegation correct for ACA / Functions",
+          "pillar": "network-posture",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Subnet delegation found: subnet `snet-aca` has delegations",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-101",
+          "title": "Foundry account publicNetworkAccess=Disabled (live)",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-102",
+          "title": "Private endpoint resources exist and approved",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "NET-501",
+          "title": "Citadel APIM Access Contract present",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 5,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "POS-001",
+          "title": "Declared posture matches detected evidence",
+          "pillar": "network-posture",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "agent-governance",
+      "title": "2. Agent governance (AGT)",
+      "status_raw": "green",
+      "status_with_waivers": "green",
+      "score_raw": 85,
+      "score_with_waivers": 85,
+      "verification_debt": 1,
+      "findings": [
+        {
+          "id": "AGT-001",
+          "title": "AGT middleware imported in src/",
+          "pillar": "agent-governance",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "AGT import found in src/",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-002",
+          "title": "policy.yaml present in repo",
+          "pillar": "agent-governance",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "policy.yaml present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-003",
+          "title": "OWASP ASI 2026 verifier referenced",
+          "pillar": "agent-governance",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "OWASP ASI 2026 referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-004",
+          "title": "AGT version pinned (not floating)",
+          "pillar": "agent-governance",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "AGT version constraint detected",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-005",
+          "title": "AGT policy covers tool calls + prompt shields",
+          "pillar": "agent-governance",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Policy covers tool calls + prompt shields",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-006",
+          "title": "AGT telemetry sink configured",
+          "pillar": "agent-governance",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Telemetry sink wired",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "AGT-101",
+          "title": "Workload identity scoped to AGT-required RBAC",
+          "pillar": "agent-governance",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "identity-access",
+      "title": "3. Identity and access",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 71,
+      "score_with_waivers": 71,
+      "verification_debt": 2,
+      "findings": [
+        {
+          "id": "IAM-001",
+          "title": "No client secrets in repo (managed identity only)",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No literal client secrets in src/",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-002",
+          "title": "User-assigned managed identity declared in Bicep",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "1 user-assigned managed identity resource(s) declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-003",
+          "title": "RBAC scopes declared in Bicep (not subscription-wide)",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "RBAC declared and not at subscription scope",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-004",
+          "title": "No long-lived SAS tokens in code",
+          "pillar": "identity-access",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No SAS token usage detected",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-005",
+          "title": "ACA / Functions auth enabled",
+          "pillar": "identity-access",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Auth surface declared: easyauth=0, aca_with_auth=0, aca_authConfigs=1",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-101",
+          "title": "Role assignments observed in-target match Bicep",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-102",
+          "title": "No Owner/Contributor on workload identity",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "secrets",
+      "title": "4. Secrets",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 39,
+      "score_with_waivers": 39,
+      "verification_debt": 7,
+      "findings": [
+        {
+          "id": "SEC-001",
+          "title": "Key Vault declared in infra",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "1 Key Vault resource(s) declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-002",
+          "title": "No literal secrets in repo (regex sweep)",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No literal secrets in repo",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-003",
+          "title": "appsettings reference KV references, not raw values",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No Key Vault references detected \u2014 settings may use raw values",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-004",
+          "title": "Secret rotation policy documented in SPEC",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No secret rotation policy in SPEC",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-005",
+          "title": "Bicep declares soft-delete + purge protection",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "All 1 KV(s) declare enableSoftDelete=true AND enablePurgeProtection=true",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-006",
+          "title": "RBAC (not access policies) on Key Vault",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "All 1 KV(s) declare enableRbacAuthorization=true",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-007",
+          "title": "No secrets in azd env files committed",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No secrets in committed .azure envs",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-101",
+          "title": "Live KV exists with soft-delete enabled",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-102",
+          "title": "Live KV has purge protection enabled",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-103",
+          "title": "Live KV publicNetworkAccess disabled",
+          "pillar": "secrets",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-104",
+          "title": "Live KV has firewall / VNet rules",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-105",
+          "title": "Live KV access via RBAC (not policies)",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SEC-106",
+          "title": "Live KV diagnostic settings to LA workspace",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 4,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-102",
+          "title": "Defender for Key Vault plan enabled",
+          "pillar": "secrets",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "observability",
+      "title": "5. Observability",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 35,
+      "score_with_waivers": 35,
+      "verification_debt": 5,
+      "findings": [
+        {
+          "id": "OBS-001",
+          "title": "App Insights declared in infra",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "1 Application Insights component(s) declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-002",
+          "title": "Log Analytics workspace declared",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "1 Log Analytics workspace(s) declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-003",
+          "title": "OTel SDK wired in src/",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "OTel SDK wired in src/",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-004",
+          "title": "Foundry observability emit configured",
+          "pillar": "observability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No Foundry observability emit detected",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-005",
+          "title": "Workbook scaffold present",
+          "pillar": "observability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No workbook scaffold found",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-101",
+          "title": "App Insights resource exists in target RG",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-102",
+          "title": "Traces ingested in last 24h",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 2,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-104",
+          "title": "Alert rules wired in target RG",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-105",
+          "title": "Action group with notification channel",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "OBS-106",
+          "title": "Diagnostic settings on Foundry account -> LA",
+          "pillar": "observability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "continuous-evals",
+      "title": "6. Continuous evals",
+      "status_raw": "red",
+      "status_with_waivers": "red",
+      "score_raw": 83,
+      "score_with_waivers": 83,
+      "verification_debt": 0,
+      "findings": [
+        {
+          "id": "EVAL-001",
+          "title": "SPEC sec 9 declares eval scenarios",
+          "pillar": "continuous-evals",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "SPEC sec 9 (Evals) present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-002",
+          "title": "evals/ folder with foundry-evals run files",
+          "pillar": "continuous-evals",
+          "severity": "must-fix",
+          "status": "must-fix",
+          "tier": 0,
+          "detail": "No evals/ folder with eval files",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-003",
+          "title": "Eval scheduling plan documented (A or B)",
+          "pillar": "continuous-evals",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Eval scheduling plan referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-004",
+          "title": "Threshold values match SPEC sec 9",
+          "pillar": "continuous-evals",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Eval thresholds present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-005",
+          "title": "Grader strategy named in SPEC",
+          "pillar": "continuous-evals",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Grader strategy named",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-006",
+          "title": "Dataset versioning documented",
+          "pillar": "continuous-evals",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Dataset versioning hinted",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "responsible-ai",
+      "title": "7. Responsible AI",
+      "status_raw": "red",
+      "status_with_waivers": "red",
+      "score_raw": 71,
+      "score_with_waivers": 71,
+      "verification_debt": 1,
+      "findings": [
+        {
+          "id": "RAI-001",
+          "title": "Content filters declared on model deployments",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "0 raiPolicies resource(s); 1/1 model deployments bind a raiPolicyName",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-002",
+          "title": "AGT RAI policy section present",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "must-fix",
+          "tier": 0,
+          "detail": "AGT policy missing RAI/content-safety section",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-003",
+          "title": "Prompt shields enabled in policy",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Prompt shields configured",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-004",
+          "title": "PII redaction strategy documented",
+          "pillar": "responsible-ai",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "PII redaction strategy documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-005",
+          "title": "Groundedness check planned for RAG",
+          "pillar": "responsible-ai",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Groundedness check planned",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-006",
+          "title": "RAI incident escalation owner named",
+          "pillar": "responsible-ai",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "RAI/incident owner named in SPEC",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "RAI-101",
+          "title": "Content filter resource present in target",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "hitl-audit",
+      "title": "8. HITL and audit",
+      "status_raw": "red",
+      "status_with_waivers": "red",
+      "score_raw": 35,
+      "score_with_waivers": 35,
+      "verification_debt": 2,
+      "findings": [
+        {
+          "id": "HITL-001",
+          "title": "SPEC sec 8 declares HITL gates if user-facing",
+          "pillar": "hitl-audit",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "SPEC sec 8 (HITL) present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-002",
+          "title": "HITL gate implementations referenced in src/",
+          "pillar": "hitl-audit",
+          "severity": "must-fix",
+          "status": "must-fix",
+          "tier": 0,
+          "detail": "SPEC declares HITL but no implementation in src/",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-003",
+          "title": "Audit trail destination configured",
+          "pillar": "hitl-audit",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Persistent storage for audit declared",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-004",
+          "title": "Escalation channel reachable (Teams/email/webhook)",
+          "pillar": "hitl-audit",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No escalation channel reference",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-005",
+          "title": "HITL decision SLA documented",
+          "pillar": "hitl-audit",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No HITL decision SLA documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-101",
+          "title": "Audit storage account / table exists",
+          "pillar": "hitl-audit",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-102",
+          "title": "Audit storage has immutability policy",
+          "pillar": "hitl-audit",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "supply-chain",
+      "title": "9. Supply chain",
+      "status_raw": "red",
+      "status_with_waivers": "red",
+      "score_raw": 53,
+      "score_with_waivers": 53,
+      "verification_debt": 2,
+      "findings": [
+        {
+          "id": "SUP-001",
+          "title": "Container images pinned by digest",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "must-fix",
+          "tier": 0,
+          "detail": ":latest tags found and no digest pins \u2014 prod images must be pinned",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-002",
+          "title": "Bicep modules pinned (no `latest`)",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No floating bicep module refs",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-003",
+          "title": "Dependency manifest committed (lock file)",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Dependency manifest / lock present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-004",
+          "title": "SBOM generation step declared",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "SBOM generation referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-005",
+          "title": "Vulnerability scan step declared",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No vulnerability scan step documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-006",
+          "title": "ACR scoped to private network",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No Microsoft.ContainerRegistry/registries declared in compiled ARM",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-007",
+          "title": "Provenance / attestation considered",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Provenance/attestation referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-102",
+          "title": "ACR has public access disabled",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-103",
+          "title": "Defender for Servers/Containers plan enabled",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "cost",
+      "title": "10. Cost",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 60,
+      "score_with_waivers": 60,
+      "verification_debt": 2,
+      "findings": [
+        {
+          "id": "COST-001",
+          "title": "SPEC sec 10 declares pricing plan (PAYG vs PTU)",
+          "pillar": "cost",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "SPEC sec 10 (Cost) present",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-002",
+          "title": "Budget thresholds declared",
+          "pillar": "cost",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Budget threshold(s) referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-003",
+          "title": "Cost owner documented",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Cost owner documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-004",
+          "title": "Idle scale-down configured for ACA / Functions",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No scale-to-zero / idle scale-down in compute",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-005",
+          "title": "Tagging strategy for cost allocation",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "10/13 ARM resources carry tags (76%)",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-101",
+          "title": "Live budget alert wired on target RG",
+          "pillar": "cost",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 3,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-105",
+          "title": "Resource tags applied as per strategy",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 3,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "reliability",
+      "title": "11. Reliability",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 55,
+      "score_with_waivers": 55,
+      "verification_debt": 3,
+      "findings": [
+        {
+          "id": "REL-001",
+          "title": "SPEC sec 12 declares RTO / RPO",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "RTO=4h RPO=1h",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-002",
+          "title": "Multi-region plan documented if RTO < 4h",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Single-region acceptable for declared RTO",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-003",
+          "title": "Backup / restore runbook present",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Backup/restore referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-004",
+          "title": "Capacity host lifecycle understood",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No capacity host lifecycle plan",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-005",
+          "title": "Failure modes catalogued in SPEC",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Failure modes catalogued in SPEC",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-006",
+          "title": "Health probes configured for ACA / Functions",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Health probes configured on all 1 compute resource(s) (aca=1/1, web=0/0)",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-007",
+          "title": "Restore drill artefact present and dated within 90 days",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Restore-drill artefact `restore-drill-2026-05-11.md` is 0 days old (\u226490d)",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-102",
+          "title": "Backup vault present if SPEC declares backups",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-103",
+          "title": "ACA min-replica >= 1 in prod",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "REL-008",
+          "title": "Live Recovery Services Vault has restore points",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "sre-handover",
+      "title": "12. SRE handover",
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 38,
+      "score_with_waivers": 38,
+      "verification_debt": 8,
+      "findings": [
+        {
+          "id": "SRE-001",
+          "title": "SPEC sec 12 names incident owner / on-call",
+          "pillar": "sre-handover",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Incident owner: oncall@example.com",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-002",
+          "title": "Runbook present in docs/",
+          "pillar": "sre-handover",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Runbook present in docs/",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-003",
+          "title": "Azure SRE Agent integration considered",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Azure SRE Agent integration considered",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-004",
+          "title": "Severity matrix documented",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Severity matrix documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-005",
+          "title": "Postmortem template referenced",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Postmortem template referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-101",
+          "title": "Action group routes to on-call rotation",
+          "pillar": "sre-handover",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-102",
+          "title": "SRE Agent resource present if planned",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-104",
+          "title": "Activity log alerts on RG present",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-104",
+          "title": "Defender Secure Score above floor (default 60%)",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-105",
+          "title": "Top 3 Defender recommendations enumerated",
+          "pillar": "sre-handover",
+          "severity": "informational",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-201",
+          "title": "Required Azure Policy assignments present",
+          "pillar": "sre-handover",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-202",
+          "title": "No non-compliant resources for required policies",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-203",
+          "title": "Sane-default initiatives assigned (ASB-v3 or equivalent)",
+          "pillar": "sre-handover",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    },
+    {
+      "pillar": "model-lifecycle",
+      "title": "13. Model lifecycle",
+      "status_raw": "red",
+      "status_with_waivers": "red",
+      "score_raw": 37,
+      "score_with_waivers": 37,
+      "verification_debt": 6,
+      "findings": [
+        {
+          "id": "MDL-001",
+          "title": "Model deployments pinned to specific version",
+          "pillar": "model-lifecycle",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "All 1 model deployment(s) pinned: [\"[format('{0}/{1}', 'foundry-pilot-citadel', 'gpt-4o-2024-08-06')]@2024-08-06\"]",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-002",
+          "title": "Deprecation plan referenced in SPEC",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No deprecation plan mentioned",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-003",
+          "title": "Model upgrade canary process documented",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Upgrade canary/blue-green referenced",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-004",
+          "title": "Capacity / quota considered for prod scale",
+          "pillar": "model-lifecycle",
+          "severity": "must-fix",
+          "status": "must-fix",
+          "tier": 0,
+          "detail": "No quota / capacity sizing in SPEC",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-005",
+          "title": "Fallback model strategy documented",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No fallback model strategy",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-006",
+          "title": "Rate limit handling in code",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No rate-limit / 429 handling detected",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-007",
+          "title": "Region-residency policy for models",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Residency / region policy mentioned",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-008",
+          "title": "Knowledge index refresh cadence declared",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Index refresh cadence declared",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-009",
+          "title": "Project-level RBAC declared on Foundry account",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No project-level role assignment found on declared Foundry accounts (1 account(s), 1 total role assignments)",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-010",
+          "title": "Knowledge index private-endpointed (if used)",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No Microsoft.Search/searchServices declared \u2014 no knowledge index to protect",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-011",
+          "title": "Agent thread retention/policy declared in SPEC",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "Agent thread retention/policy declared",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-101",
+          "title": "Live deployments use pinned version (not `latest`)",
+          "pillar": "model-lifecycle",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-102",
+          "title": "Live deployments not in retiring / deprecated list",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-103",
+          "title": "Live capacity matches plan capacity",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-110",
+          "title": "TPM headroom available for planned model load",
+          "pillar": "model-lifecycle",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "MDL-111",
+          "title": "Foundry account capacity available in target region",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GOV-101",
+          "title": "Defender for AI Services plan enabled",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        }
+      ]
+    }
+  ],
+  "evidence_register": [],
+  "evidence_freshness": {
+    "oldest_captured_at": null,
+    "newest_captured_at": null,
+    "span_hours": null,
+    "stale": false,
+    "threshold_hours": 24
+  },
+  "waivers": [],
+  "not_verified_count": 66
+}

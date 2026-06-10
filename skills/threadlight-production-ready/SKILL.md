@@ -22,10 +22,25 @@ description: >
   (citadel-hub-deploy), citadel access contracts (citadel-spoke-onboarding),
   SRE Agent provisioning (azure-sre-agent), AppIn wiring (foundry-observability).
 metadata:
-  version: "1.0.0"
+  version: "0.3.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
+
+> **v0.3.0 — "the real way to land in prod"** (Nov 2025). Replaces 16
+> regex-over-Bicep-text static checks with a real ARM-graph parser
+> (`BicepGraph` shells `az bicep build` and walks compiled JSON), wires
+> 5 long-stubbed live probes (OBS-106, OBS-102 KQL, SEC-106, SRE-104,
+> NET-501 Citadel APIM via `TL_CITADEL_HUB_RG`), retires unimplemented
+> stubs to `experimental: true` (24 IDs total — 23 new + 1 inherited
+> from v0.2.0 — excluded from scoring unless `--include-experimental`),
+> adds **15 new** non-experimental Defender/Policy/quota/restore-drill/
+> Foundry-RBAC finding IDs, fixes the scoring bug that gave
+> `not-verified` 50% credit (now 0), and ships `--diff`, `--gate-preview`,
+> `--remediate`, trend CSV, and an OIDC CI recipe. **`bicep` CLI is now a
+> hard prerequisite** — missing CLI exits 2 with `az bicep install`
+> instructions, no silent regex fallback. See
+> `docs/production-readiness.md#whats-new-in-v030` for the full diff.
 
 The single skill in the chain that asks "**is this pilot ready for the
 customer architecture review, or is it about to land in the lab graveyard?**"
@@ -92,8 +107,8 @@ about findings, not just emit them.
 
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
-| 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
-| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | AGT in-process middleware wired (capability-based, version-agnostic); policy + verifier artefacts present; OWASP-ASI evidence current | `foundry-agt` |
+| 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
+| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | AGT module imported in app code (capability-based, version-agnostic) — wiring depth not asserted by static check; policy + verifier artefacts present; OWASP-ASI reference present | `foundry-agt` |
 | 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
 | 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
@@ -102,7 +117,7 @@ about findings, not just emit them.
 | 8 | [`hitl-audit`](references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
 | 9 | [`supply-chain`](references/pillars/09-supply-chain.md) | Container images pinned **by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted | `azd-patterns` |
 | 10 | [`cost`](references/pillars/10-cost.md) | Pricing plan declared (PAYG vs PTU); budget + anomaly alerts wired; forecast vs budget cap; idle-resource sweep done | `paygo-ptu-cost-analyzer` |
-| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; **backup/restore tested** (not just "configured"); runbook exists; chaos test done | `foundry-vnet-deploy`, `foundry-caphost-lifecycle` |
+| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; backup/restore configured AND restore-drill artefact present and ≤90 days old (REL-007); runbook exists; chaos test referenced | `foundry-vnet-deploy`, `foundry-caphost-lifecycle` |
 | 12 | [`sre-handover`](references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) |
 | 13 | [`model-lifecycle`](references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `foundry-hosted-agents` |
 
@@ -318,10 +333,14 @@ single "Oldest evidence" bullet only when staleness is flagged.
   },
   "go_live_recommendation": "ready_with_waivers",  // ready | ready_with_waivers | ready_with_residual_risk | ready_with_unverified_risk | not_ready
   "would_fail_hard_gate": true,                    // bool — preview of v2 hard-mode behavior
-  "verification_coverage": {                       // how much of the report is actually evidence vs gaps
+  "verification_coverage": {                       // v0.3.0: of verifiable findings (pass + should-fix + must-fix + not-verified + waived; not-applicable EXCLUDED), what fraction has a non-not-verified status. Pre-v0.3.0 this incorrectly inflated coverage by counting not-applicable as "verified".
     "verified": 22,
     "total_scoreable": 41,
     "percent": 53
+  },
+  "verification_debt": {                           // v0.3.0 NEW: count of not-verified findings (the "couldn't check this" gap). Surfaced as first-class exec-summary metric so the gap no longer hides inside score percent.
+    "total": 19,
+    "by_pillar": {"network-posture": 3, "sre-handover": 4, ...}
   },
   "summary": {
     "top_findings": [
