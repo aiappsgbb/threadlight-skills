@@ -3740,7 +3740,10 @@ def main(argv: list[str] | None = None) -> int:
     waivers, waiver_binding, waiver_errs = _load_waivers(waivers_path)
     warnings.extend(waiver_errs)
 
-    # 3. Context
+    # 3. Context — inject CLI-flag overrides into manifest so checks see them.
+    # `--secure-score-floor` is read by GOV-104 via `ctx.manifest`; threading it
+    # here keeps the CLI flag honest while letting an explicit manifest entry win.
+    manifest.setdefault("secure_score_floor", args.secure_score_floor)
     try:
         ctx = RepoContext.from_repo(root, manifest)
     except PrerequisiteError as e:

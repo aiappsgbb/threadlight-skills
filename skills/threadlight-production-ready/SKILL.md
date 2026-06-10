@@ -31,10 +31,11 @@ metadata:
 > regex-over-Bicep-text static checks with a real ARM-graph parser
 > (`BicepGraph` shells `az bicep build` and walks compiled JSON), wires
 > 5 long-stubbed live probes (OBS-106, OBS-102 KQL, SEC-106, SRE-104,
-> NET-501 Citadel APIM via `TL_CITADEL_HUB_RG`), retires 21 unimplemented
-> stubs to `experimental: true` (excluded from scoring unless
-> `--include-experimental`), adds 14 new Defender/Policy/quota/restore-
-> drill/Foundry-RBAC findings, fixes the scoring bug that gave
+> NET-501 Citadel APIM via `TL_CITADEL_HUB_RG`), retires unimplemented
+> stubs to `experimental: true` (24 IDs total — 23 new + 1 inherited
+> from v0.2.0 — excluded from scoring unless `--include-experimental`),
+> adds **15 new** non-experimental Defender/Policy/quota/restore-drill/
+> Foundry-RBAC finding IDs, fixes the scoring bug that gave
 > `not-verified` 50% credit (now 0), and ships `--diff`, `--gate-preview`,
 > `--remediate`, trend CSV, and an OIDC CI recipe. **`bicep` CLI is now a
 > hard prerequisite** — missing CLI exits 2 with `az bicep install`

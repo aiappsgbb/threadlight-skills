@@ -84,10 +84,9 @@ def t_excluded_by_default_in_manifest() -> None:
     leaked = finding_ids & exp
     expect(not leaked,
            f"default-run: 0 experimental IDs in manifest (leaked: {sorted(leaked)[:5]})")
-    expect(m.get("include_experimental") is False or
-           "include_experimental" not in m or
-           m.get("include_experimental") is None,
-           "default-run: include_experimental flag NOT set in manifest")
+    expect(m.get("include_experimental") is False,
+           "default-run: include_experimental == False in manifest "
+           f"(got: {m.get('include_experimental')!r})")
 
 
 def t_included_when_flag_set() -> None:

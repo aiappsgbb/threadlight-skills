@@ -43,14 +43,16 @@ Closes the regression that motivated the rewrite:
   `OBS-106` (Foundry diag settings → LA), `OBS-102` (KQL trace freshness),
   `SEC-106` (KV diag settings → LA), `SRE-104` (RG activity-log alerts),
   `NET-501` (Citadel APIM Access Contract via `TL_CITADEL_HUB_RG`).
-- **14 new non-experimental finding IDs** for governance + capacity surface area:
+- **15 new non-experimental finding IDs** for governance + capacity surface area:
   `REL-007` / `REL-008` (restore-drill freshness + live recovery-point sampling),
   `GOV-101..105` (Defender for AI Services / KV / Servers + Secure Score floor + top recommendations),
   `GOV-201..203` (required Policy assignments + compliance + ASB-v3 initiative),
   `MDL-009/010/011` (project-level RBAC + private-endpointed knowledge index + thread retention),
   `MDL-110` / `MDL-111` (TPM headroom + Foundry account quota).
-  Plus 23 additional IDs flagged `experimental: True` (excluded from scoring
-  by default — see Changed section below).
+  Plus 23 additional IDs flagged `experimental: True` (24 total experimental
+  in catalog: 23 newly retired in v0.3.0 + 1 inherited from v0.2.0; all
+  excluded from scoring unless `--include-experimental` — see Changed
+  section below).
 - **`--diff <prior.json>`** — prints a markdown diff of pillar / finding deltas
   between two manifests; useful in PR comments. Pinned by `test_diff_mode.py`.
 - **`--gate-preview`** — exit 2 if any must-fix would block go-live. The flag
