@@ -1,0 +1,5 @@
+# Pinned at AGT 4.1.0 — the new 5-distribution layout (PR #2668 in
+# microsoft/agent-governance-toolkit). The `[full]` extra would pull
+# in core + runtime + sre + cli together; here we only need core.
+agent-governance-toolkit-core==4.1.0
+agent-framework==1.8.0

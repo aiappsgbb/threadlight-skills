@@ -1,0 +1,30 @@
+{
+  "schema": "agt-verifier/v4",
+  "policy_version": "4.1.0",
+  "issued_at": "2026-06-10T10:00:00Z",
+  "completed_at": "2026-06-10T10:00:42Z",
+  "verifier_run_id": "demo-run-001",
+  "decisions": [
+    {
+      "intervention_point": "pre_tool_call",
+      "tool_name": "search_inventory",
+      "verdict": "allow",
+      "arguments_hash": "sha256:abc123def456789012345678901234567890abcdef1234567890abcdef123456",
+      "approver_did": "did:web:sample-team.example.com",
+      "evaluated_at": "2026-06-10T10:00:15Z"
+    },
+    {
+      "intervention_point": "output",
+      "verdict": "redact",
+      "policy_version": "4.1.0",
+      "redactions": ["PII.ssn"],
+      "evaluated_at": "2026-06-10T10:00:38Z"
+    }
+  ],
+  "summary": {
+    "total_interventions": 47,
+    "allowed": 44,
+    "denied": 1,
+    "redacted": 2
+  }
+}
