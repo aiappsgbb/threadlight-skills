@@ -3,8 +3,9 @@
 > **Outcome by minute 60:** both Copilot plugins installed, a retail
 > returns-triage PoC **designed from scratch** in the room, running locally
 > against your own Azure OpenAI deployment, killer demo prompts answered live
-> on screen, and a previewed `threadlight-deploy` + `azd up` recipe to take
-> home.
+> on screen, and `threadlight-deploy` + `azd up` kicked off to Azure —
+> the longest single step, but still inside the hour, with provisioning
+> progress visible in the Azure Portal while you wrap up Q&A.
 
 The workshop runs through **Copilot CLI prompts** — the skills do the work
 (installs, env files, process management, deploys). You watch the tool calls
@@ -19,7 +20,7 @@ fly past; you don't type shell commands.
 3. [Minute-by-minute runbook](#3-minute-by-minute-runbook)
 4. [Prompt appendix](#4-prompt-appendix)
 5. [Recovery prompts](#5-recovery-prompts)
-6. [After the workshop: `azd up`](#6-after-the-workshop-azd-up)
+6. [Deploy to Azure: `azd up`](#6-deploy-to-azure-azd-up)
 
 ---
 
@@ -77,12 +78,14 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
 | **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
-| **55–60** | Preview `threadlight-deploy` + `azd up` + Q&A | Prompt: *"open the Tech Stack section of `~/Repos/workshop/returns-triage/specs/SPEC.md` and walk me through what `threadlight-deploy` will generate and what `azd up` will provision when we run them in §6"*. Name what's coming: Foundry account + project, MCP Container App, hosted-agent container, Cosmos. Point at `threadlight-deploy`, `threadlight-safe-check`, `threadlight-production-ready`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. §6 is the take-home recipe. | "OK, one prompt stands all of that up. Got it." |
+| **55–60** | Kick off `threadlight-deploy` + `azd up` + Q&A | Run §6 — `threadlight-deploy` then `azd up`. This is the longest single step but still fits the hour. While it runs, keep the **Azure Portal resource group view** visible alongside the Copilot CLI: the resource group fills in (Foundry account + project, Container App for MCP, hosted-agent container build, Cosmos) as `azd` provisions. Point at `threadlight-safe-check`, `threadlight-production-ready`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. | Resource group populating live; "OK, one prompt stands all of that up. Got it." |
 
-`threadlight-deploy` + `azd up` are **previewed from the SPEC, not run**,
-because the full chain (deploy scaffold generation + remote container build +
-provision) is 20–30 min — it blows the 60-min budget. §6 is the standalone
-recipe to run after the session.
+`threadlight-deploy` + `azd up` is the **longest single step** (15–25 min
+depending on region and remote-build cache state) but still fits the hour.
+The Copilot CLI shows tool calls; the **Azure Portal resource group view**
+shows provisioning progress in real time — keep both visible. The agent
+is reachable for cloud-side smoke tests (§6.4) once the hosted-agent
+container finishes building.
 
 ---
 
@@ -169,10 +172,13 @@ install it (~3 min). Say no — the artifact doesn't need a real render.
 
 ---
 
-## 6. After the workshop: `azd up`
+## 6. Deploy to Azure: `azd up`
 
-Standalone recipe — run this after the session to stand the agent up in Azure.
-Same surface as the workshop: Copilot CLI prompts.
+Kick this off in the closing minutes of the workshop (or run standalone
+after the session). The Copilot CLI surface is the same as the rest of
+the workshop — prompts in, tool calls flying past. **Keep the Azure Portal
+resource group view open in a second tab** so you can watch provisioning
+fill in live while `azd` runs.
 
 ### 6.1 Prereqs
 
@@ -211,6 +217,16 @@ When you're ready to harden:
   cost, reliability, SRE handover, model lifecycle), defaulting to AI Citadel
   spoke posture, and produces an advisory scorecard + uplift plan +
   customer-facing hand-off package. Soft-gate — never fails the deploy.
+  - **AGT v4 detection is automatic** (`--agt-profile auto`): if the pilot
+    declares `agent-governance-toolkit-{core,runtime,sre,cli}` deps or uses
+    the v4 ACS `intervention_points:` policy schema, six v4-specific deep
+    checks fire (distribution names, ACS schema, dynamic policy conditions,
+    `toolkit-version:` Action pin, audit-field shape). v3.7-shape pilots
+    keep the version-agnostic check set — no false-fails.
+  - **Per-evidence freshness** is stamped on every live probe and surfaced
+    in the executive summary when the oldest evidence is older than
+    `--freshness-hours` (default 24h). Run the skill again before the
+    customer call if your safe-check evidence is stale from a previous day.
 - **Governance / model routing** — `citadel-spoke-onboarding` skill in
   `awesome-gbb`. Routes model traffic through a shared APIM AI Gateway and
   flips `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the `connectionName/deploymentName`
