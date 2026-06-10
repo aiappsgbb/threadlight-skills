@@ -106,6 +106,20 @@ The skill drives **production onboarding** in three phases:
    you for explicit acknowledgement before any change. Items marked
    `kind: deferred-to-pipeline` are recorded for Phase 3.
 
+   **Stale-plan detection (the agent MUST do this before applying anything).**
+   Each `apply-plan.json` carries a `manifest_sha256` field — the SHA256 of
+   the canonical JSON of the `production-readiness-manifest.json` it was
+   built from. Before executing the first item, the agent recomputes
+   `sha256(canonical_json(<current production-readiness-manifest.json>))`
+   and compares. If the two hashes differ, the manifest has been
+   re-generated since the plan was emitted (e.g. the operator re-ran
+   `--onboard` in another shell, or hand-edited the manifest) and the plan
+   is stale: **the agent refuses to apply and tells the operator to re-run
+   the Assess phase to get a fresh apply-plan.** Skipping this check risks
+   applying remediations for findings that no longer exist or missing
+   findings that now do — silent drift between the plan and reality is the
+   single failure mode this gate exists to prevent.
+
 3. **CI/CD Handoff.** When the apply-plan contains pipeline-deferred items
    (or you pass `--scaffold-cicd`), the script renders a GitHub Actions
    workflow (`.github/workflows/azd-deploy-prod.yml`) and a central-platform-

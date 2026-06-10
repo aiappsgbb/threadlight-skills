@@ -17,3 +17,6 @@ Concrete instructions for the agent — exact strings to find, exact text to ins
 
 ## Verification
 How the agent (or operator) confirms the fix worked. Usually: re-run `python3 scripts/production_ready.py --target-rg <RG> --target-sub <SUB>` and check that the finding flips from `fail` to `pass`.
+
+## Stale-plan check (the agent MUST do this before applying)
+Recompute `sha256(canonical_json(<current production-readiness-manifest.json>))` and compare against `apply_plan["manifest_sha256"]`. If they differ, the plan is stale — refuse to apply and ask the operator to re-run `--onboard` to get a fresh apply-plan. See SKILL.md "Stale-plan detection" for the full contract.

@@ -525,9 +525,9 @@ FRAMING_QUESTIONS = [
     },
     {
         "id": "cicd_target",
-        "prompt": "CI/CD target?",
+        "prompt": "CI/CD target? (only github-actions in v0.4.0; azure-devops + gitlab are deferred to v0.5.0)",
         "kind": "choice",
-        "choices": ["github-actions", "azure-devops", "none"],
+        "choices": ["github-actions"],
         "required": True,
     },
 ]
