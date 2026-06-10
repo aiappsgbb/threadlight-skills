@@ -355,7 +355,7 @@ Seven modules. Names mirror the v0.3.0 module convention (Module A, B, C, …).
 
 ### Module B — Per-finding recipe catalog (bulk artifact work)
 
-**Surface area:** `references/remediation-recipes/{ID}.md`, one per must-fix finding. v0.3.0 has ~40 must-fix IDs after excluding experimental and rolled-up GOV-* checks.
+**Surface area:** `references/remediation-recipes/{ID}.md`, one per must-fix finding. v0.3.0 has **61 must-fix non-experimental IDs** across the 13 pillars (verified by enumerating `FINDING_CATALOG` with `severity == "must-fix" and not experimental`). Largest pillar buckets: observability (8), secrets (8), network-posture (6), agent-governance (5), identity-access (5), reliability (5), model-lifecycle (4), responsible-ai (4), sre-handover (4), continuous-evals (3), cost (3), hitl-audit (3), supply-chain (3).
 **New tests:** `test_recipe_catalog.py` — every must-fix in `FINDING_CATALOG` (filtering `experimental=False`) has a recipe; every recipe has required sections (`## Target file`, `## Edit type`, `## Edit recipe`, `## Verification`); recipe `kind` matches expected (repo-edit / sibling-skill / manual).
 **Touches:** `references/remediation-recipes/` (~40 new files), `references/remediation-recipes.yaml` (existing — kept for `--remediate` backward compat; document drift policy in SKILL.md).
 **Depends on:** Module A (schema definition).
@@ -489,7 +489,7 @@ Comparison to v0.3.0 (the immediately prior release):
 |---|---|---|---|
 | New script LOC | ~2,100 | ~600 | 0.29× |
 | New stdlib tests | 8 files (~47 functions) | 7 files (~35 functions) | 0.74× |
-| New reference docs | ~3 (template, recipes.yaml, hooks) | ~45 (40 recipes + 2 templates + 2 schema/map + 1 invocation-map) | 15× |
+| New reference docs | ~3 (template, recipes.yaml, hooks) | ~66 (61 recipes + 2 cicd-templates + 1 apply-plan schema + 1 sibling-skill map + 1 framing-Q reference) | 22× |
 | SKILL.md rewrite scope | partial (over-claims rewritten) | substantial (3-phase model added) | ≈2× |
 | New fixtures | 2 (`sample-pilot-broken`, `sample-pilot-citadel`) | 1 (`sample-pilot-restricted`) + 4 framing-files | similar |
 | Live-Azure surface (new probes) | 5 newly wired | 1 (provisioning-rights probe) | 0.2× |
