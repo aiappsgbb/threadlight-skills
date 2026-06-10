@@ -85,6 +85,18 @@ def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
                 f"apply-plan: recipe for {rid} has unknown kind {recipe['kind']!r}; "
                 f"expected one of {sorted(APPLY_PLAN_KINDS)}"
             )
+        # In a restricted environment (e.g., central-team handoff) the agent
+        # must not auto-mutate the user's repo. Demote any `repo-edit` recipe
+        # to `manual` so the agent surfaces it to the user instead of editing.
+        if framing.get("restricted_environment") and recipe["kind"] == "repo-edit":
+            recipe = {
+                **recipe,
+                "kind": "manual",
+                "summary": (
+                    f"[demoted from repo-edit due to restricted_environment] "
+                    f"{recipe.get('summary', '')}"
+                ).strip(),
+            }
         items.append({"finding_id": rid, **recipe})
     plan: dict = {
         "schema_version": APPLY_PLAN_SCHEMA_VERSION,

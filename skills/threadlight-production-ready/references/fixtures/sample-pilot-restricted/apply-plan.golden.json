@@ -13,19 +13,19 @@
     {
       "edit_type": "replace",
       "finding_id": "NET-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-101.md",
       "sibling_skill": null,
-      "summary": "Redeploy Foundry account with publicNetworkAccess=Disabled (live verification)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Redeploy Foundry account with publicNetworkAccess=Disabled (live verification)",
       "target_file": "infra/foundry/account.bicep"
     },
     {
       "edit_type": "replace",
       "finding_id": "NET-102",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-102.md",
       "sibling_skill": null,
-      "summary": "Ensure private endpoint resources exist and are approved",
+      "summary": "[demoted from repo-edit due to restricted_environment] Ensure private endpoint resources exist and are approved",
       "target_file": "infra/foundry/private-endpoint.bicep"
     },
     {
@@ -50,10 +50,10 @@
     {
       "edit_type": "insert",
       "finding_id": "IAM-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/IAM-101.md",
       "sibling_skill": null,
-      "summary": "Ensure live role assignments match Bicep declarations",
+      "summary": "[demoted from repo-edit due to restricted_environment] Ensure live role assignments match Bicep declarations",
       "target_file": "infra/identity.bicep"
     },
     {
@@ -68,10 +68,10 @@
     {
       "edit_type": "replace",
       "finding_id": "SEC-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SEC-101.md",
       "sibling_skill": null,
-      "summary": "Enable soft-delete on deployed Key Vault (enableSoftDelete: true)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Enable soft-delete on deployed Key Vault (enableSoftDelete: true)",
       "target_file": "infra/foundry/kv.bicep"
     },
     {
@@ -86,10 +86,10 @@
     {
       "edit_type": "replace",
       "finding_id": "SEC-103",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SEC-103.md",
       "sibling_skill": null,
-      "summary": "Disable public network access on Key Vault (publicNetworkAccess: Disabled)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Disable public network access on Key Vault (publicNetworkAccess: Disabled)",
       "target_file": "infra/foundry/kv.bicep"
     },
     {
@@ -115,10 +115,10 @@
     {
       "edit_type": "insert",
       "finding_id": "OBS-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-101.md",
       "sibling_skill": null,
-      "summary": "Verify App Insights connection at Foundry account level (cross-ref OBS-001 deployment)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Verify App Insights connection at Foundry account level (cross-ref OBS-001 deployment)",
       "target_file": "infra/foundry/foundry.bicep"
     },
     {
@@ -133,46 +133,46 @@
     {
       "edit_type": "insert",
       "finding_id": "OBS-104",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-104.md",
       "sibling_skill": null,
-      "summary": "Declare alert rules in Bicep (infra/observability/alerts.bicep)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Declare alert rules in Bicep (infra/observability/alerts.bicep)",
       "target_file": "infra/observability/alerts.bicep"
     },
     {
       "edit_type": "insert",
       "finding_id": "OBS-105",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-105.md",
       "sibling_skill": null,
-      "summary": "Declare action group with notification channel (infra/observability/action-group.bicep)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Declare action group with notification channel (infra/observability/action-group.bicep)",
       "target_file": "infra/observability/action-group.bicep"
     },
     {
       "edit_type": "insert",
       "finding_id": "OBS-106",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-106.md",
       "sibling_skill": null,
-      "summary": "Declare diagnostic settings on Foundry account routing logs to Log Analytics",
+      "summary": "[demoted from repo-edit due to restricted_environment] Declare diagnostic settings on Foundry account routing logs to Log Analytics",
       "target_file": "infra/observability/diagnostic-settings.bicep"
     },
     {
       "edit_type": "insert",
       "finding_id": "RAI-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/RAI-101.md",
       "sibling_skill": null,
-      "summary": "Create and deploy content filter resource in Bicep for target binding",
+      "summary": "[demoted from repo-edit due to restricted_environment] Create and deploy content filter resource in Bicep for target binding",
       "target_file": "infra/foundry/rai-policy.bicep"
     },
     {
       "edit_type": "insert",
       "finding_id": "HITL-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/HITL-101.md",
       "sibling_skill": null,
-      "summary": "Deploy audit storage resource to target resource group",
+      "summary": "[demoted from repo-edit due to restricted_environment] Deploy audit storage resource to target resource group",
       "target_file": "infra/audit.bicep"
     },
     {
@@ -193,10 +193,10 @@
     {
       "edit_type": "insert",
       "finding_id": "COST-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/COST-101.md",
       "sibling_skill": null,
-      "summary": "Deploy budget alert resource on target RG (live tier-3 check)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Deploy budget alert resource on target RG (live tier-3 check)",
       "target_file": "infra/budget.bicep"
     },
     {
@@ -226,10 +226,10 @@
     {
       "edit_type": "replace",
       "finding_id": "SRE-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SRE-101.md",
       "sibling_skill": null,
-      "summary": "Configure action group receiver to route alerts to on-call rotation (Teams, PagerDuty, or email)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Configure action group receiver to route alerts to on-call rotation (Teams, PagerDuty, or email)",
       "target_file": "infra/observability/action-group.bicep"
     },
     {
@@ -274,10 +274,10 @@
     {
       "edit_type": "replace",
       "finding_id": "MDL-101",
-      "kind": "repo-edit",
+      "kind": "manual",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/MDL-101.md",
       "sibling_skill": null,
-      "summary": "Confirm live deployments use pinned version (redeploy fixed Bicep from MDL-001)",
+      "summary": "[demoted from repo-edit due to restricted_environment] Confirm live deployments use pinned version (redeploy fixed Bicep from MDL-001)",
       "target_file": "infra/foundry/deployments.bicep"
     },
     {
@@ -310,6 +310,6 @@
       "summary": "No recipe registered for GOV-101; consult the pillar reference."
     }
   ],
-  "manifest_sha256": "c4f01e9201468562f9470b0af71f28ab2db0b5bf81bb28fe2976fd7cb065c90b",
+  "manifest_sha256": "dd1456614b624985d95e22f6aeb146fd0c798d5022fe05a8ab56f06a44f10670",
   "schema_version": 1
 }
