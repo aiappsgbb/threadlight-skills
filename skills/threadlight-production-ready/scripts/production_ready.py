@@ -41,6 +41,105 @@ from typing import Any, Iterable
 # Constants
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# region: apply_plan_schema (v0.4.0)
+# ---------------------------------------------------------------------------
+
+APPLY_PLAN_KINDS = {"repo-edit", "sibling-skill", "manual", "deferred-to-pipeline"}
+APPLY_PLAN_SCHEMA_VERSION = 1
+
+
+def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
+                     framing_path: str | None = None) -> dict:
+    """Build an apply-plan from an assessor manifest + loaded recipe catalog.
+
+    Walks `manifest["findings"]`; for every finding whose status is `fail` or
+    `warn`, emits an entry that either points at the registered recipe or
+    falls back to a `kind: manual` placeholder. Pins `manifest_sha256` so the
+    agent can detect a stale plan in Phase 2.
+
+    Raises SystemExit if any recipe declares an unknown `kind`.
+    """
+    sha = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    items: list[dict] = []
+    for f in manifest.get("findings", []):
+        if f.get("status") not in {"fail", "warn"}:
+            continue
+        rid = f["id"]
+        recipe = recipes.get(rid, {
+            "kind": "manual",
+            "summary": f"No recipe registered for {rid}; consult the pillar reference.",
+        })
+        if recipe["kind"] not in APPLY_PLAN_KINDS:
+            raise SystemExit(
+                f"apply-plan: recipe for {rid} has unknown kind {recipe['kind']!r}; "
+                f"expected one of {sorted(APPLY_PLAN_KINDS)}"
+            )
+        items.append({"finding_id": rid, **recipe})
+    plan: dict = {
+        "schema_version": APPLY_PLAN_SCHEMA_VERSION,
+        "manifest_sha256": sha,
+        "framing": framing,
+        "items": items,
+    }
+    if framing_path is not None:
+        plan["framing_path"] = framing_path
+    return plan
+
+
+def write_apply_plan(plan: dict, path) -> None:
+    Path(path).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n",
+                          encoding="utf-8")
+
+
+def _recipe_catalog_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "references" / "remediation-recipes"
+
+
+def load_recipe_catalog(rdir) -> dict[str, dict]:
+    """Parse `references/remediation-recipes/{ID}.md`.
+
+    Each recipe has YAML front-matter (between two `---` lines) with at least
+    a `kind` field. Files starting with `_` (e.g. `_template.md`) are skipped.
+
+    Raises SystemExit on missing/invalid front-matter or unknown kind.
+    """
+    recipes: dict[str, dict] = {}
+    for path in sorted(Path(rdir).glob("*.md")):
+        if path.name.startswith("_"):
+            continue
+        rid = path.stem
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---\n"):
+            raise SystemExit(f"recipe {rid}: missing YAML front-matter")
+        parts = text.split("---\n", 2)
+        if len(parts) < 3:
+            raise SystemExit(f"recipe {rid}: malformed front-matter")
+        fm = parts[1]
+        meta: dict[str, str] = {}
+        for line in fm.strip().splitlines():
+            if ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+        if meta.get("kind") not in APPLY_PLAN_KINDS:
+            raise SystemExit(
+                f"recipe {rid}: kind {meta.get('kind')!r} not in {sorted(APPLY_PLAN_KINDS)}"
+            )
+        recipes[rid] = {
+            "kind": meta["kind"],
+            "summary": meta.get("summary", ""),
+            "target_file": meta.get("target_file"),
+            "edit_type": meta.get("edit_type"),
+            "sibling_skill": meta.get("sibling_skill"),
+            "recipe_path": str(path),
+        }
+    return recipes
+
+
+# endregion: apply_plan_schema
+
+
 VERSION = "0.3.0"
 
 # ---------------------------------------------------------------------------
