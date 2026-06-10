@@ -20,10 +20,12 @@ Test catalog (matches ADR `2026-06-10-per-evidence-freshness-design.md`):
     t_freshness_hours_coupling   — single flag drives both gates (regression pin)
     t_clock_skew                 — captured_at > checked_at → clamped, warning
     t_renderer_manifest_agree    — banner present iff stale=true
+    t_renderer_banner_wording    — exact regex pin on the exec-summary bullet text
 """
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -252,6 +254,74 @@ def t_renderer_manifest_agree() -> None:
            "render: static-mode → no banner bullet")
 
 
+def t_renderer_banner_wording() -> None:
+    """Exec-summary banner wording is regex-pinned.
+
+    Rationale (from creator-session sign-off): the exec summary is the
+    single highest-leverage surface a CISO reviewer reads. Silent wording
+    drift (someone changes the bullet text in a refactor and the manifest
+    still says `stale: true`) costs nothing technically but erodes the
+    human signal. This is a one-line guard against that.
+
+    Pinned shape:
+        - **Oldest evidence:** YYYY-MM-DDTHH:MMZ (Nh before report) —
+          exceeds freshness window (Th). Some evidence may be stale.
+    """
+    print("\nt_renderer_banner_wording")
+    base_manifest = {
+        "schema_version": "1.0",
+        "tool": "threadlight-production-ready",
+        "tool_version": pr.VERSION,
+        "checked_at": ts(0),
+        "mode": "full",
+        "agt_profile": "v3_7",
+        "posture": {"declared": None, "detected": None,
+                    "resolved": "standard-ai-gateway", "resolution_path": []},
+        "score": {"raw_percent": 80, "with_waivers_percent": 80},
+        "verification_coverage": {"verified": 1, "total_scoreable": 1, "percent": 100},
+        "go_live_recommendation": "ready",
+        "would_fail_hard_gate": False,
+        "permission_tiers": {"0": True},
+        "warnings": [],
+        "safe_check_reference": {"path": "x", "checked_at": ts(0),
+                                  "subscription_id": "s", "resource_group": "r"},
+        "pillars": [],
+        "evidence_register": [],
+        "waivers": [],
+        "not_verified_count": 0,
+        "evidence_freshness": {
+            "oldest_captured_at": ts(30),
+            "newest_captured_at": ts(30),
+            "span_hours": 0,
+            "stale": True,
+            "threshold_hours": 24,
+        },
+    }
+    md = pr._render_report(base_manifest, base_manifest["posture"], {}, [], {}, [])
+
+    # The em-dash (—, U+2014) is intentional and must match what the
+    # renderer emits. If a refactor swaps it for a hyphen, this test fires.
+    # Timestamp format is full ISO 8601 UTC with seconds (ADR D5: "round-
+    # trip-ability beats 5 chars of table density"); regex requires seconds
+    # so a silent truncation to minute precision is also caught.
+    pattern = re.compile(
+        r"\*\*Oldest evidence:\*\* "
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+        r" \(\d+h before report\)"
+        r" — exceeds freshness window \(\d+h\)\."
+        r" Some evidence may be stale\."
+    )
+    matches = pattern.findall(md)
+    expect(len(matches) == 1,
+           f"wording: pinned banner regex matched exactly once "
+           f"(got {len(matches)}); rendered=...{md[-400:]!r}")
+
+    # Pin the threshold from the manifest, not just any number — guards
+    # against a refactor that hardcodes 24 instead of reading threshold_hours.
+    expect("freshness window (24h)" in md,
+           "wording: threshold hours come from manifest, not hardcoded")
+
+
 def t_collected_column_present() -> None:
     """Evidence register table renders a 'Collected' column when evidence is non-empty."""
     print("\nt_collected_column_present")
@@ -398,6 +468,7 @@ def main() -> int:
         t_clock_skew,
         t_custom_flag_in_helper,
         t_renderer_manifest_agree,
+        t_renderer_banner_wording,
         t_collected_column_present,
         t_cli_static_mode_shape,
         t_freshness_hours_coupling,
