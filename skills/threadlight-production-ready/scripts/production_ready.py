@@ -163,6 +163,85 @@ READ_ROLES = ("Reader", "Monitoring Reader", "Cost Management Reader")
 
 
 # ---------------------------------------------------------------------------
+# region: rights_probe (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Live RBAC probe used by --onboard mode. Decides whether the operator
+# can actually execute Phase 2 deployments in the target subscription.
+
+def _classify_rights(roles):
+    """Classify a list of role-definition names into one of:
+    RIGHTS_FULL / RIGHTS_CONSTRAINED / RIGHTS_NONE.
+
+    Write-capable roles win over read-only roles.
+    """
+    role_set = {r.strip() for r in roles if r}
+    if role_set & set(WRITE_ROLES):
+        return RIGHTS_FULL
+    if role_set & set(READ_ROLES):
+        return RIGHTS_CONSTRAINED
+    return RIGHTS_NONE
+
+
+def _probe_provisioning_rights(subscription_id, resource_group, skip=False):
+    """Shell `az role assignment list --assignee @me --scope <RG-scope>`,
+    classify the returned roles. Returns a dict suitable for the manifest.
+
+    Never raises — on any error returns rights_class=unknown with the
+    error string. When skip=True, returns rights_class=unknown with
+    probe_skipped=True and no shell-out (used by --no-rights-probe and CI).
+    """
+    if skip:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": True,
+            "error": None,
+        }
+    scope = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}"
+    cmd = [
+        "az", "role", "assignment", "list",
+        "--assignee", "@me",
+        "--scope", scope,
+        "-o", "json",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": f"az invocation failed: {e}",
+        }
+    if r.returncode != 0:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": (r.stderr or "").strip() or "az exited non-zero",
+        }
+    try:
+        data = json.loads(r.stdout or "[]")
+    except json.JSONDecodeError as e:
+        return {
+            "rights_class": RIGHTS_UNKNOWN,
+            "roles": [],
+            "probe_skipped": False,
+            "error": f"json parse failed: {e}",
+        }
+    roles = [a.get("roleDefinitionName", "") for a in data]
+    return {
+        "rights_class": _classify_rights(roles),
+        "roles": roles,
+        "probe_skipped": False,
+        "error": None,
+    }
+
+# endregion: rights_probe
+
+
+# ---------------------------------------------------------------------------
 # region: onboard_stubs (v0.4.0)
 # ---------------------------------------------------------------------------
 #
