@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aiappsgbb/threadlight-skills/skills/threadlight-production-ready/references/waivers-schema.json",
+  "title": "Threadlight Production Readiness — waiver file",
+  "description": "Schema for tests/production-readiness-waivers.json — customer-accepted findings with required justification and compensating control.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "waivers"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Waiver schema version."
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "OPTIONAL but STRONGLY RECOMMENDED in industrialized delivery. Anchors this waiver file to a specific customer + deployment + posture so waivers cannot silently leak between MVPs when teams copy repos. If absent, the skill applies waivers and emits a WAIVER-UNBOUND warning. If present, every populated field must match the current run; mismatch causes the file to be ignored entirely and a WAIVER-BINDING-MISMATCH warning fires. Empty-string fields are treated as 'any' (acceptable wildcard).",
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "description": "Azure subscription ID (GUID) the waivers were approved for. Compared against deployment_manifest.subscription_id."
+        },
+        "resource_group": {
+          "type": "string",
+          "description": "Resource group name the waivers were approved for. Compared against deployment_manifest.resource_group."
+        },
+        "deployment_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 over the post-deploy manifest's deployment_manifest block. Recompute with the value the skill prints in safe_check_ref.deployment_manifest_sha256."
+        },
+        "target_posture": {
+          "type": "string",
+          "enum": ["citadel-spoke", "agt", "standard-ai-gateway", "hybrid"],
+          "description": "Posture these waivers were approved for. Compared against the resolved posture for this run."
+        },
+        "customer_or_pilot_id": {
+          "type": "string",
+          "description": "Free-form customer / pilot identifier for human auditability. Not enforced by the skill but helps reviewers see at a glance which MVP a waiver file belongs to."
+        },
+        "approver_record": {
+          "type": "string",
+          "description": "Free-form reference to the approval artifact (CR ticket, signed PDF, email thread)."
+        }
+      }
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "finding_id",
+          "owner",
+          "expiry",
+          "justification",
+          "compensating_control",
+          "accepted_risk"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^W-\\d{3,6}$",
+            "description": "Unique waiver ID within this file. Format: W-### (e.g., W-001)."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "ID of the finding being waived. Must match a finding ID emitted by the skill (e.g., SEC-004, NET-501)."
+          },
+          "owner": {
+            "type": "string",
+            "format": "email",
+            "description": "Email of the person accountable for this waiver. NOT a distribution list."
+          },
+          "expiry": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO date (YYYY-MM-DD) after which the waiver is invalid. The skill ignores expired waivers and treats the underlying finding as un-waived."
+          },
+          "justification": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Why is this gap acceptable for the customer's risk posture? Free text, must be substantive (min 20 chars)."
+          },
+          "compensating_control": {
+            "type": "string",
+            "minLength": 20,
+            "description": "What offsetting control reduces the risk? Free text, must be substantive (min 20 chars)."
+          },
+          "accepted_risk": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Plain-language summary of the residual risk being accepted. Free text, must be substantive (min 20 chars)."
+          },
+          "approver": {
+            "type": "string",
+            "description": "Optional: name or role of the approver (e.g., 'CISO', 'Head of AI'). Defaults to owner if absent."
+          },
+          "ticket_ref": {
+            "type": "string",
+            "description": "Optional: reference to a ticket / change request (e.g., 'CR-12345')."
+          },
+          "raci": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "OPTIONAL governance fields for customers that audit waiver approvals against a RACI matrix. None of these change the skill's runtime behavior — they ride along on the manifest's `waivers_applied[*]` entries and surface in the report's waiver register table. Use these when the customer's CISO process requires explicit Accountable/Consulted/Informed roles distinct from the technical `owner`.",
+            "properties": {
+              "accountable_role": {
+                "type": "string",
+                "description": "Role (not person) ultimately accountable for the residual risk — e.g., 'CISO', 'Head of AI Platform'. Distinct from `owner` (the technical accountable person) so a role rotation does not invalidate the waiver."
+              },
+              "responsible": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles responsible for executing the compensating control. Free-form strings (emails or role names)."
+              },
+              "consulted": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles consulted before approval (e.g., legal, data protection, GRC). Free-form strings."
+              },
+              "informed": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People or roles informed of the waiver (e.g., audit committee, customer-side sponsor). Free-form strings."
+              }
+            }
+          }
+        }
+      },
+      "uniqueItems": true,
+      "description": "List of accepted waivers. Each entry requires full justification + compensating control + accepted risk; otherwise the waiver is ignored and a WAIVER-INVALID finding is added to the report."
+    }
+  }
+}

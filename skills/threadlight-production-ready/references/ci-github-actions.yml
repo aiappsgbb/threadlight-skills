@@ -1,0 +1,133 @@
+# Sample GitHub Actions workflow — Threadlight production-readiness scorecard
+#
+# Drop this file into `.github/workflows/production-ready.yml` of a pilot
+# repo (or copy the steps into an existing workflow) to publish the markdown
+# scorecard + JSON manifest as PR comments and build artifacts.
+#
+# Behavior:
+#   - Runs on every PR + on every push to main
+#   - Static mode by default (no Azure auth needed for PR builds)
+#   - Live mode on main pushes if AZURE_CREDENTIALS secret is present
+#   - Soft-advisory: never fails the build (skill always exits 0)
+#   - Uploads `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json`
+#   - Posts the report as a PR comment (PRs only)
+#
+# Prerequisites in the pilot repo:
+#   - `specs/SPEC.md` with section 12 populated (from threadlight-design)
+#   - `specs/manifest.json` (from threadlight-design)
+#   - `tests/postdeploy-manifest.json` (from threadlight-safe-check phase=post-deploy)
+#   - `tests/production_ready.py` (copied from
+#     `skills/threadlight-production-ready/scripts/production_ready.py`)
+#
+# OPTIONAL: waivers
+#   - `tests/production-readiness-waivers.json` with a `binding` block whose
+#     subscription_id / resource_group / target_posture match this run.
+#     Without the binding block, an UNBOUND warning surfaces — that is the
+#     correct behavior for industrialized delivery (no silent waiver leakage
+#     across MVPs sharing a CI workflow template).
+
+name: production-readiness
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "infra/**"
+      - "specs/**"
+      - "tests/**"
+      - ".azure/**"
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_posture:
+        description: "Override SPEC § 12 posture for this run"
+        required: false
+        type: choice
+        options: ["", "citadel-spoke", "agt", "standard-ai-gateway", "hybrid"]
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write     # for PR-comment publishing
+  id-token: write          # for Azure federated auth (live mode only)
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && -n "${{ secrets.AZURE_CREDENTIALS }}" ]]; then
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=static" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Live mode only — federated auth recommended; secret fallback shown.
+      - name: Azure login (live mode)
+        if: steps.mode.outputs.mode == 'live'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Run production-readiness scorecard
+        id: scorecard
+        run: |
+          set -euo pipefail
+          flags=(
+            --out tests/production-readiness-manifest.json
+            --report docs/production-readiness-report.md
+            --quiet
+          )
+          if [[ "${{ steps.mode.outputs.mode }}" == "static" ]]; then
+            flags+=(--static)
+          fi
+          if [[ -n "${{ inputs.target_posture }}" ]]; then
+            flags+=(--target "${{ inputs.target_posture }}")
+          fi
+          if [[ -f tests/production-readiness-waivers.json ]]; then
+            flags+=(--waivers tests/production-readiness-waivers.json)
+          fi
+          python tests/production_ready.py "${flags[@]}"
+          # Pull headline numbers for the step summary + PR comment
+          {
+            echo "## Production-readiness scorecard"
+            jq -r '
+              "- **Recommendation:** \(.go_live_recommendation)\n" +
+              "- **Raw score:** \(.score.raw_percent)%   **With waivers:** \(.score.with_waivers_percent)%\n" +
+              "- **Verification coverage:** \(.verification_coverage.verified)/\(.verification_coverage.total_scoreable) (\(.verification_coverage.percent)%)\n" +
+              "- **Posture (resolved):** `\(.posture.resolved)` (declared: `\(.posture.declared // "unset")`, detected: `\(.posture.detected // "none")`)\n" +
+              "- **Mode:** \(.mode)   **AGT profile:** \(.agt_profile)"
+            ' tests/production-readiness-manifest.json
+            echo ""
+            echo "<details><summary>Full report</summary>"
+            echo ""
+            cat docs/production-readiness-report.md
+            echo ""
+            echo "</details>"
+          } > /tmp/summary.md
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-readiness-${{ github.run_number }}
+          path: |
+            docs/production-readiness-report.md
+            tests/production-readiness-manifest.json
+          retention-days: 90
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: production-readiness
+          path: /tmp/summary.md

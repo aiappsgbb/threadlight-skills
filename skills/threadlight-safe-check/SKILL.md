@@ -762,6 +762,22 @@ If any of the above is true, the PoC is **partial**. Communicate that
 honestly to the user (with the gap list from `safe-check`) instead of
 declaring victory.
 
+> **What comes after a green safe-check.** A green `--phase post-deploy`
+> manifest is the **entry condition** for `threadlight-production-ready`
+> — the advisory production-readiness gate that walks 13 cross-cutting
+> pillars (network, AGT, IAM, secrets, observability, evals, RAI, HITL,
+> supply-chain, cost, reliability, SRE handover, model lifecycle) and
+> produces a customer-facing hand-off report. If the pilot is heading
+> into customer architecture review, run
+> `python skills/threadlight-production-ready/scripts/production_ready.py`
+> next. **Recommended ordering: green safe-check → `foundry-evals` (so
+> the continuous-evals pillar scores `pass` from real eval evidence) →
+> `threadlight-production-ready`.** Production-readiness will still run
+> without recent evals — those checks simply degrade to `not-verified`.
+> The skill also reads `tests/postdeploy-manifest.json` and refuses to
+> run if it's stale (>24h) or hash-mismatched with the current
+> deployment.
+
 ---
 
 ## See Also
@@ -770,6 +786,7 @@ declaring victory.
 |-------|----------|
 | [`threadlight-design`](../threadlight-design/) | Authors the `deployment_manifest{}` block in `specs/manifest.json` that this skill consumes |
 | [`threadlight-deploy`](../threadlight-deploy/) | Invokes this skill at `predeploy` and `postdeploy` hooks; the canonical implementation of its Phase 3 / Phase 3.5 gates |
+| [`threadlight-production-ready`](../threadlight-production-ready/) | **Runs after a green `--phase post-deploy`.** Advisory production-readiness scorecard + uplift plan + customer-facing hand-off package (Citadel spoke / AGT v4 / AI gateway / 13 cross-cutting pillars). Reads `tests/postdeploy-manifest.json` as a pre-flight binding |
 | [`threadlight-demo-data-factory`](../threadlight-demo-data-factory/) | Produces seed JSON / database fixtures whose presence safe-check verifies in the post-deploy phase |
 | [`threadlight-event-triggers`](../threadlight-event-triggers/) | Produces ACA Job / Function / consumer receivers whose deployment status (last 5 executions) safe-check probes |
 | [`threadlight-hitl-patterns`](../threadlight-hitl-patterns/) | Produces the bot + audit trail that safe-check verifies for channel reachability (SPEC § 8) |

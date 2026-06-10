@@ -1,7 +1,7 @@
 {
   "name": "threadlight-skills",
-  "version": "1.0.0",
-  "description": "Threadlight pilot pipeline — 9 Copilot skills that take a customer engagement from brief to deployed Foundry agent in one session. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), and operator workspace UI. USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, seller enablement. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation).",
+  "version": "1.1.0",
+  "description": "Threadlight pilot pipeline — 9 pipeline skills + threadlight-auto orchestrator (10 total) that take a customer engagement from brief to deployed, production-ready Foundry agent. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), operator workspace UI, the paved path to production (Citadel spoke + AGT v4 + AI Gateway / VNet checklist with live Azure probes), and a full-auto orchestrator that drives the chain end-to-end behind one freeform prompt. USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, production readiness, paved path to production, citadel spoke, AGT, AI gateway, lab graveyard, customer architecture review, CISO sign-off, go-live readiness, seller enablement, one-prompt threadlight, autopilot, orchestrator, resume failed deploy. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation).",
   "author": {
     "name": "Microsoft AI Apps GBB",
     "url": "https://github.com/aiappsgbb"
@@ -23,7 +23,15 @@
     "hitl",
     "workspace",
     "event-triggers",
-    "safe-check"
+    "safe-check",
+    "production-readiness",
+    "paved-path-to-production",
+    "citadel",
+    "agt",
+    "ai-gateway",
+    "sre-handover",
+    "orchestrator",
+    "autopilot"
   ],
   "skills": "skills/"
 }
