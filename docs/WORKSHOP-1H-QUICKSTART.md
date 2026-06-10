@@ -77,7 +77,7 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
 | **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
-| **55–60** | Preview `threadlight-deploy` + `azd up` + Q&A | Prompt: *"open the Tech Stack section of `~/Repos/workshop/returns-triage/specs/SPEC.md` and walk me through what `threadlight-deploy` will generate and what `azd up` will provision when we run them in §6"*. Name what's coming: Foundry account + project, MCP Container App, hosted-agent container, Cosmos. Point at `threadlight-deploy`, `threadlight-safe-check`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. §6 is the take-home recipe. | "OK, one prompt stands all of that up. Got it." |
+| **55–60** | Preview `threadlight-deploy` + `azd up` + Q&A | Prompt: *"open the Tech Stack section of `~/Repos/workshop/returns-triage/specs/SPEC.md` and walk me through what `threadlight-deploy` will generate and what `azd up` will provision when we run them in §6"*. Name what's coming: Foundry account + project, MCP Container App, hosted-agent container, Cosmos. Point at `threadlight-deploy`, `threadlight-safe-check`, `threadlight-production-ready`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. §6 is the take-home recipe. | "OK, one prompt stands all of that up. Got it." |
 
 `threadlight-deploy` + `azd up` are **previewed from the SPEC, not run**,
 because the full chain (deploy scaffold generation + remote container build +
@@ -204,6 +204,13 @@ actually starts. That's the safety gate, not a hang.
 
 When you're ready to harden:
 
+- **Production-readiness hand-off** — `threadlight-production-ready` is the
+  bridge between a green `threadlight-safe-check --phase post-deploy` and a
+  customer architecture / CISO review. Walks the pilot across 13 pillars
+  (network, AGT, IAM, secrets, observability, evals, RAI, HITL, supply chain,
+  cost, reliability, SRE handover, model lifecycle), defaulting to AI Citadel
+  spoke posture, and produces an advisory scorecard + uplift plan +
+  customer-facing hand-off package. Soft-gate — never fails the deploy.
 - **Governance / model routing** — `citadel-spoke-onboarding` skill in
   `awesome-gbb`. Routes model traffic through a shared APIM AI Gateway and
   flips `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the `connectionName/deploymentName`

@@ -1381,6 +1381,26 @@
           </div>
         </article>
 
+        <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
+        <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
+          <div class="skill-head">
+            <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
+            <span class="skill-tag is-blue">Advisory · soft-gate</span>
+            <span class="skill-tag is-grey">Hand-off package</span>
+          </div>
+          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars — network, AGT, IAM, secrets, observability, continuous evals, RAI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to <strong>AI Citadel spoke</strong>; falls back to AGT-only or standard AI gateway when SPEC § 12 declares a different target.</p>
+          <div class="skill-io" aria-label="Inputs and outputs">
+            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
+            <div class="io-arrow">→</div>
+            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
+          </div>
+          <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
+          <div class="skill-footer">
+            <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
+          </div>
+        </article>
+
       </div>
     </div>
   </section>
@@ -1426,7 +1446,7 @@ copilot plugin install awesome-gbb@awesome-gbb</code></pre>
         </div>
         <div class="setup-card">
           <h3><span class="setup-num">2</span> Install Threadlight</h3>
-          <p>The pilot pipeline — eight skills that chain brief → design → deploy → demo into one session.</p>
+          <p>The pilot pipeline — nine skills that chain brief → design → deploy → demo → production-ready hand-off into one session.</p>
           <pre><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
 copilot plugin install threadlight-skills@threadlight-skills</code></pre>
         </div>
@@ -1819,7 +1839,8 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
 <br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design to design a claims-triage process for an FSI customer."</span>
 <br>
 <br><span class="cmt"># When you're happy with the spec, deploy it</span>
-<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-deploy to ship this to the customer's Azure with Citadel governance."</span>
+<br><br><span class="cmt"># Then walk it to a customer architecture review — advisory, soft-gate, hand-off package</span>
+<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-production-ready to score this pilot across 13 pillars and produce the customer hand-off report."</span>
       </div>
 
       <div class="hero-cta-row reveal" data-delay="4">
