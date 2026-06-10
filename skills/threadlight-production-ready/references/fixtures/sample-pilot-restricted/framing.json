@@ -1,0 +1,9 @@
+{
+  "target_subscription_id": "00000000-0000-0000-0000-000000000999",
+  "target_resource_group": "rg-pilot-restricted",
+  "target_posture": "citadel-spoke",
+  "provisioning_rights": false,
+  "central_platform_team": true,
+  "restricted_environment": true,
+  "cicd_target": "github-actions"
+}

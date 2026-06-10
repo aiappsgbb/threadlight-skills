@@ -1,0 +1,8 @@
+name: sample-pilot
+metadata:
+  template: threadlight-pilot
+services:
+  agent:
+    project: ./src/agent
+    language: py
+    host: containerapp

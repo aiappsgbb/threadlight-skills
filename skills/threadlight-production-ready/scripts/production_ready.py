@@ -53,19 +53,29 @@ def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
                      framing_path: str | None = None) -> dict:
     """Build an apply-plan from an assessor manifest + loaded recipe catalog.
 
-    Walks `manifest["findings"]`; for every finding whose status is `fail` or
-    `warn`, emits an entry that either points at the registered recipe or
-    falls back to a `kind: manual` placeholder. Pins `manifest_sha256` so the
-    agent can detect a stale plan in Phase 2.
+    Walks `manifest["findings"]` if present, otherwise flattens
+    `manifest["pillars"][].findings[]` (the v0.3.0 OUTPUT shape). For every
+    finding whose status is `fail`, `warn`, or `not-verified`, emits an
+    entry that either points at the registered recipe or falls back to a
+    `kind: manual` placeholder. Pins `manifest_sha256` so the agent can
+    detect a stale plan in Phase 2.
 
     Raises SystemExit if any recipe declares an unknown `kind`.
     """
     sha = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    findings = manifest.get("findings")
+    if not findings:
+        findings = [
+            f for p in manifest.get("pillars", [])
+            for f in p.get("findings", [])
+        ]
     items: list[dict] = []
-    for f in manifest.get("findings", []):
-        if f.get("status") not in {"fail", "warn"}:
+    for f in findings:
+        if f.get("status") not in {"fail", "warn", "not-verified"}:
             continue
-        rid = f["id"]
+        rid = f.get("id")
+        if not rid:
+            continue
         recipe = recipes.get(rid, {
             "kind": "manual",
             "summary": f"No recipe registered for {rid}; consult the pillar reference.",
@@ -4266,20 +4276,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.remediate:
         return _emit_remediation(root, args.remediate)
 
-    # --scaffold-cicd standalone: render templates + exit. Doesn't run the
-    # assessor. Combined with --onboard, scaffolding fires AFTER apply-plan
-    # is written (see the --onboard block below).
+    # --scaffold-cicd standalone: when no assessor input is available in cwd
+    # (no specs/manifest.json), render templates + exit. Doesn't run the
+    # assessor. If specs/manifest.json IS present, fall through to the
+    # v0.3.0 main() path; the scaffold will run at the end after the
+    # assessment. Combined with --onboard, scaffolding fires AFTER
+    # apply-plan is written (see the --onboard block below).
     if args.scaffold_cicd and not args.onboard:
-        framing = (load_framing_file(args.framing_file) if args.framing_file
-                   else run_framing_wizard())
-        repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
-        if not repo:
-            _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name.")
-            return 2
-        written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
-        for p in written:
-            _eprint(f"wrote {p}")
-        return 0
+        manifest_in = root / args.in_manifest
+        if not manifest_in.is_file():
+            framing = (load_framing_file(args.framing_file) if args.framing_file
+                       else run_framing_wizard())
+            repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+            if not repo:
+                _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name.")
+                return 2
+            written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+            for p in written:
+                _eprint(f"wrote {p}")
+            return 0
+        # else fall through; the v0.3.0 main path injects v0.4.0 hooks at the end.
 
     # --onboard is the v0.4.0 3-phase production-onboarding side-channel.
     # Phase 1 (Assess) is implemented here; Phase 2 (Refine + Deploy) and
@@ -4491,6 +4507,44 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         _eprint(f"error: failed to write outputs: {e}")
         return 3
+
+    # 8b. v0.4.0 hooks — when --framing-file is present, attach phase decision
+    # to the manifest, emit the phase banner, build apply-plan, and optionally
+    # scaffold CI/CD templates. All of this is a no-op when --framing-file is
+    # absent, preserving v0.3.0 invocation compatibility.
+    if args.framing_file:
+        framing = load_framing_file(args.framing_file)
+        sub = args.target_sub or framing.get("target_subscription_id")
+        rg = args.target_rg or framing.get("target_resource_group")
+        rights = _probe_provisioning_rights(sub, rg, skip=args.no_rights_probe)
+        decision = _phase_decision(framing, rights)
+        _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+        out_manifest["version"] = VERSION
+        out_manifest["rights_probe"] = rights
+        out_manifest["phase_decision"] = decision
+        try:
+            out_path.write_text(json.dumps(out_manifest, indent=2) + "\n", encoding="utf-8")
+        except OSError as e:
+            _eprint(f"warn: failed to re-write manifest with v0.4.0 fields: {e}")
+        if args.apply_plan_out or args.scaffold_cicd:
+            recipes = load_recipe_catalog(_recipe_catalog_dir())
+            plan = build_apply_plan(
+                manifest=out_manifest, recipes=recipes,
+                framing=framing, framing_path=args.framing_file,
+            )
+            plan_path = args.apply_plan_out or str(root / "apply-plan.json")
+            Path(plan_path).parent.mkdir(parents=True, exist_ok=True)
+            write_apply_plan(plan, plan_path)
+            if args.scaffold_cicd:
+                repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
+                if not repo:
+                    _eprint("--scaffold-cicd: could not detect repo owner/repo; pass --repo-full-name. Skipping scaffold.")
+                else:
+                    written = _scaffold_cicd(framing, repo, out_root=os.getcwd())
+                    for p in written:
+                        _eprint(f"wrote {p}")
+            else:
+                _hint_pipeline_scaffold_if_needed(plan, scaffold_cicd_flag=False)
 
     # 9. Summary
     if not args.quiet:

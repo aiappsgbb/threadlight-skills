@@ -1,0 +1,315 @@
+{
+  "framing": {
+    "central_platform_team": true,
+    "cicd_target": "github-actions",
+    "provisioning_rights": false,
+    "restricted_environment": true,
+    "target_posture": "citadel-spoke",
+    "target_resource_group": "rg-pilot-restricted",
+    "target_subscription_id": "00000000-0000-0000-0000-000000000999"
+  },
+  "framing_path": "framing.json",
+  "items": [
+    {
+      "edit_type": "replace",
+      "finding_id": "NET-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-101.md",
+      "sibling_skill": null,
+      "summary": "Redeploy Foundry account with publicNetworkAccess=Disabled (live verification)",
+      "target_file": "infra/foundry/account.bicep"
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "NET-102",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-102.md",
+      "sibling_skill": null,
+      "summary": "Ensure private endpoint resources exist and are approved",
+      "target_file": "infra/foundry/private-endpoint.bicep"
+    },
+    {
+      "edit_type": null,
+      "finding_id": "NET-501",
+      "kind": "sibling-skill",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-501.md",
+      "sibling_skill": "citadel-spoke-onboarding",
+      "summary": "Onboard the Foundry spoke to the Citadel hub (peering + APIM Access Contract)",
+      "target_file": null
+    },
+    {
+      "finding_id": "POS-001",
+      "kind": "manual",
+      "summary": "No recipe registered for POS-001; consult the pillar reference."
+    },
+    {
+      "finding_id": "AGT-101",
+      "kind": "manual",
+      "summary": "No recipe registered for AGT-101; consult the pillar reference."
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "IAM-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/IAM-101.md",
+      "sibling_skill": null,
+      "summary": "Ensure live role assignments match Bicep declarations",
+      "target_file": "infra/identity.bicep"
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "IAM-102",
+      "kind": "manual",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/IAM-102.md",
+      "sibling_skill": null,
+      "summary": "Revoke Owner/Contributor roles from workload identity (requires operator acknowledgement)",
+      "target_file": "infra/identity.bicep"
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "SEC-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SEC-101.md",
+      "sibling_skill": null,
+      "summary": "Enable soft-delete on deployed Key Vault (enableSoftDelete: true)",
+      "target_file": "infra/foundry/kv.bicep"
+    },
+    {
+      "edit_type": "manual",
+      "finding_id": "SEC-102",
+      "kind": "manual",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SEC-102.md",
+      "sibling_skill": null,
+      "summary": "Enable Key Vault purge protection (enablePurgeProtection: true) \u2014 irreversible",
+      "target_file": "infra/foundry/kv.bicep"
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "SEC-103",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SEC-103.md",
+      "sibling_skill": null,
+      "summary": "Disable public network access on Key Vault (publicNetworkAccess: Disabled)",
+      "target_file": "infra/foundry/kv.bicep"
+    },
+    {
+      "finding_id": "SEC-104",
+      "kind": "manual",
+      "summary": "No recipe registered for SEC-104; consult the pillar reference."
+    },
+    {
+      "finding_id": "SEC-105",
+      "kind": "manual",
+      "summary": "No recipe registered for SEC-105; consult the pillar reference."
+    },
+    {
+      "finding_id": "SEC-106",
+      "kind": "manual",
+      "summary": "No recipe registered for SEC-106; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-102",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-102; consult the pillar reference."
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "OBS-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-101.md",
+      "sibling_skill": null,
+      "summary": "Verify App Insights connection at Foundry account level (cross-ref OBS-001 deployment)",
+      "target_file": "infra/foundry/foundry.bicep"
+    },
+    {
+      "edit_type": null,
+      "finding_id": "OBS-102",
+      "kind": "deferred-to-pipeline",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-102.md",
+      "sibling_skill": null,
+      "summary": "Verify traces ingested in last 24h (requires post-deploy smoke test)",
+      "target_file": null
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "OBS-104",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-104.md",
+      "sibling_skill": null,
+      "summary": "Declare alert rules in Bicep (infra/observability/alerts.bicep)",
+      "target_file": "infra/observability/alerts.bicep"
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "OBS-105",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-105.md",
+      "sibling_skill": null,
+      "summary": "Declare action group with notification channel (infra/observability/action-group.bicep)",
+      "target_file": "infra/observability/action-group.bicep"
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "OBS-106",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/OBS-106.md",
+      "sibling_skill": null,
+      "summary": "Declare diagnostic settings on Foundry account routing logs to Log Analytics",
+      "target_file": "infra/observability/diagnostic-settings.bicep"
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "RAI-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/RAI-101.md",
+      "sibling_skill": null,
+      "summary": "Create and deploy content filter resource in Bicep for target binding",
+      "target_file": "infra/foundry/rai-policy.bicep"
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "HITL-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/HITL-101.md",
+      "sibling_skill": null,
+      "summary": "Deploy audit storage resource to target resource group",
+      "target_file": "infra/audit.bicep"
+    },
+    {
+      "finding_id": "HITL-102",
+      "kind": "manual",
+      "summary": "No recipe registered for HITL-102; consult the pillar reference."
+    },
+    {
+      "finding_id": "SUP-102",
+      "kind": "manual",
+      "summary": "No recipe registered for SUP-102; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-103",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-103; consult the pillar reference."
+    },
+    {
+      "edit_type": "insert",
+      "finding_id": "COST-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/COST-101.md",
+      "sibling_skill": null,
+      "summary": "Deploy budget alert resource on target RG (live tier-3 check)",
+      "target_file": "infra/budget.bicep"
+    },
+    {
+      "finding_id": "COST-105",
+      "kind": "manual",
+      "summary": "No recipe registered for COST-105; consult the pillar reference."
+    },
+    {
+      "edit_type": null,
+      "finding_id": "REL-102",
+      "kind": "deferred-to-pipeline",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/REL-102.md",
+      "sibling_skill": null,
+      "summary": "Multi-region failover smoke test runs in CI/CD post-deploy",
+      "target_file": null
+    },
+    {
+      "finding_id": "REL-103",
+      "kind": "manual",
+      "summary": "No recipe registered for REL-103; consult the pillar reference."
+    },
+    {
+      "finding_id": "REL-008",
+      "kind": "manual",
+      "summary": "No recipe registered for REL-008; consult the pillar reference."
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "SRE-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/SRE-101.md",
+      "sibling_skill": null,
+      "summary": "Configure action group receiver to route alerts to on-call rotation (Teams, PagerDuty, or email)",
+      "target_file": "infra/observability/action-group.bicep"
+    },
+    {
+      "finding_id": "SRE-102",
+      "kind": "manual",
+      "summary": "No recipe registered for SRE-102; consult the pillar reference."
+    },
+    {
+      "finding_id": "SRE-104",
+      "kind": "manual",
+      "summary": "No recipe registered for SRE-104; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-104",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-104; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-105",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-105; consult the pillar reference."
+    },
+    {
+      "edit_type": "manual",
+      "finding_id": "GOV-201",
+      "kind": "manual",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/GOV-201.md",
+      "sibling_skill": null,
+      "summary": "Ensure required Azure Policy assignments are present on subscription or resource group scope",
+      "target_file": "N/A"
+    },
+    {
+      "finding_id": "GOV-202",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-202; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-203",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-203; consult the pillar reference."
+    },
+    {
+      "edit_type": "replace",
+      "finding_id": "MDL-101",
+      "kind": "repo-edit",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/MDL-101.md",
+      "sibling_skill": null,
+      "summary": "Confirm live deployments use pinned version (redeploy fixed Bicep from MDL-001)",
+      "target_file": "infra/foundry/deployments.bicep"
+    },
+    {
+      "finding_id": "MDL-102",
+      "kind": "manual",
+      "summary": "No recipe registered for MDL-102; consult the pillar reference."
+    },
+    {
+      "finding_id": "MDL-103",
+      "kind": "manual",
+      "summary": "No recipe registered for MDL-103; consult the pillar reference."
+    },
+    {
+      "edit_type": "manual",
+      "finding_id": "MDL-110",
+      "kind": "manual",
+      "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/MDL-110.md",
+      "sibling_skill": null,
+      "summary": "Ensure TPM headroom available for planned model load (request quota increase if needed)",
+      "target_file": null
+    },
+    {
+      "finding_id": "MDL-111",
+      "kind": "manual",
+      "summary": "No recipe registered for MDL-111; consult the pillar reference."
+    },
+    {
+      "finding_id": "GOV-101",
+      "kind": "manual",
+      "summary": "No recipe registered for GOV-101; consult the pillar reference."
+    }
+  ],
+  "manifest_sha256": "c4f01e9201468562f9470b0af71f28ab2db0b5bf81bb28fe2976fd7cb065c90b",
+  "schema_version": 1
+}
