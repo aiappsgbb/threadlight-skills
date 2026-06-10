@@ -41,7 +41,7 @@ from typing import Any, Iterable
 # Constants
 # ---------------------------------------------------------------------------
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 PILLAR_IDS = [
     "network-posture",
@@ -2001,6 +2001,97 @@ def _evidence_confidence(verification_coverage_pct: int) -> str:
     return "LOW"
 
 
+def _compute_evidence_freshness(
+    evidence: list["EvidenceEntry"],
+    checked_at: str,
+    freshness_hours: int,
+    warnings: list[str] | None = None,
+) -> dict:
+    """Compute the `evidence_freshness` manifest block.
+
+    Always returns the same shape:
+
+        {
+          "oldest_captured_at": ISO 8601 UTC | None,
+          "newest_captured_at": ISO 8601 UTC | None,
+          "span_hours":          int | None,    # newest - oldest, hours, floored
+          "stale":               bool,          # (checked_at - oldest) > freshness_hours, STRICT >
+          "threshold_hours":     int,           # echoed for downstream consumers
+        }
+
+    Static-mode (no evidence) and unparseable-only cases both return null
+    timestamps with `stale: false`. When `warnings` is provided, this function
+    appends explanatory entries for: unparseable rows, all-unparseable runs,
+    clock skew (captured_at after checked_at), and unparseable `checked_at`.
+
+    Strict `>` comparison: an evidence row exactly `freshness_hours` old is
+    NOT stale. Matches the safe-check freshness convention.
+    """
+    block: dict = {
+        "oldest_captured_at": None,
+        "newest_captured_at": None,
+        "span_hours": None,
+        "stale": False,
+        "threshold_hours": freshness_hours,
+    }
+    if not evidence:
+        return block
+
+    parsed: list[tuple[datetime, str]] = []
+    skipped = 0
+    for e in evidence:
+        s = getattr(e, "captured_at", "") or ""
+        try:
+            t = datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            parsed.append((t, s))
+        except (ValueError, TypeError):
+            skipped += 1
+
+    if skipped and warnings is not None:
+        warnings.append(
+            f"freshness: skipped {skipped} evidence row(s) with unparseable captured_at"
+        )
+
+    if not parsed:
+        if warnings is not None:
+            warnings.append(
+                "freshness could not be evaluated: all evidence rows had "
+                "unparseable captured_at"
+            )
+        return block
+
+    parsed.sort()
+    oldest_dt, oldest_str = parsed[0]
+    newest_dt, newest_str = parsed[-1]
+    span_seconds = (newest_dt - oldest_dt).total_seconds()
+    block["oldest_captured_at"] = oldest_str
+    block["newest_captured_at"] = newest_str
+    block["span_hours"] = int(max(0.0, span_seconds) // 3600)
+
+    try:
+        checked_dt = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        if warnings is not None:
+            warnings.append(
+                f"freshness: checked_at not ISO-8601 ({checked_at!r}); "
+                "staleness undecidable"
+            )
+        return block
+
+    age_seconds = (checked_dt - oldest_dt).total_seconds()
+    if age_seconds < 0:
+        if warnings is not None:
+            warnings.append(
+                f"freshness: future captured_at detected (clock skew) — newest "
+                f"evidence is {-age_seconds / 3600:.1f}h ahead of checked_at"
+            )
+        return block
+
+    age_hours = age_seconds / 3600.0
+    block["stale"] = age_hours > freshness_hours
+    return block
+
+
 # ---------------------------------------------------------------------------
 # JSON emitter
 # ---------------------------------------------------------------------------
@@ -2019,7 +2110,11 @@ def _build_manifest(
     safe_check_ref: dict,
     quick: bool,
     static_only: bool,
+    freshness_hours: int = DEFAULT_FRESHNESS_HOURS,
 ) -> dict:
+    # Capture run-end timestamp once so the freshness math and the manifest
+    # field agree exactly (prevents exact-boundary flake).
+    checked_at = _utc_now()
     pillars_block = []
     raw_total_score = 0
     raw_max = 0
@@ -2062,11 +2157,16 @@ def _build_manifest(
         waived_pct,
         sum(1 for p in pillars_block if p["status_with_waivers"] == "red"),
     )
+    # Per-evidence freshness (issue #22). Append warnings in-place so they
+    # land in the JSON manifest's warnings list.
+    evidence_freshness = _compute_evidence_freshness(
+        evidence, checked_at, freshness_hours, warnings=warnings,
+    )
     return {
         "schema_version": "1.0",
         "tool": "threadlight-production-ready",
         "tool_version": VERSION,
-        "checked_at": _utc_now(),
+        "checked_at": checked_at,
         "mode": "static" if static_only else ("quick" if quick else "full"),
         "agt_profile": agt_profile,
         "posture": posture,
@@ -2086,6 +2186,7 @@ def _build_manifest(
         "safe_check_reference": safe_check_ref,
         "pillars": pillars_block,
         "evidence_register": [asdict(e) for e in evidence],
+        "evidence_freshness": evidence_freshness,
         "waivers": list(waivers.values()),
         "not_verified_count": not_verified_count,
     }
@@ -2137,6 +2238,24 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append(f"- **Mode:** {manifest['mode']}   **AGT profile:** {manifest['agt_profile']}")
     out.append(f"- **Would fail a hard gate?** {'YES' if manifest['would_fail_hard_gate'] else 'no'}")
     out.append(f"- **Not-verified findings:** {manifest['not_verified_count']} (live probes that could not run — see Appendix)")
+    # Per-evidence freshness banner (issue #22). Only added when the run's
+    # oldest evidence is older than `freshness_hours` before `checked_at`.
+    ef = manifest.get("evidence_freshness") or {}
+    if ef.get("stale"):
+        oldest = ef.get("oldest_captured_at") or "?"
+        threshold = ef.get("threshold_hours", DEFAULT_FRESHNESS_HOURS)
+        delta_label = ""
+        try:
+            oldest_dt = datetime.strptime(oldest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            checked_dt = datetime.strptime(manifest["checked_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            delta_h = int((checked_dt - oldest_dt).total_seconds() // 3600)
+            delta_label = f" ({delta_h}h before report)"
+        except (ValueError, TypeError, KeyError):
+            pass
+        out.append(
+            f"- **Oldest evidence:** {oldest}{delta_label} — exceeds freshness "
+            f"window ({threshold}h). Some evidence may be stale."
+        )
     if posture["resolved"] != POSTURE_CITADEL:
         out.append("")
         out.append(f"> ℹ️  **Recommended enterprise posture: Citadel-spoke.** "
@@ -2288,10 +2407,11 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("### Evidence register")
     out.append("")
     if evidence:
-        out.append("| Ref | Pillar | Tier | Command | Result | Notes |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("| Ref | Pillar | Tier | Collected | Command | Result | Notes |")
+        out.append("|---|---|---|---|---|---|---|")
         for e in evidence:
-            out.append(f"| `{e.ref}` | {e.pillar} | T{e.tier} | `{e.command}` | {e.result} | {e.notes} |")
+            collected = e.captured_at or "—"
+            out.append(f"| `{e.ref}` | {e.pillar} | T{e.tier} | `{collected}` | `{e.command}` | {e.result} | {e.notes} |")
     else:
         out.append("_No evidence captured (static mode or no Azure access)._")
     out.append("")
@@ -2548,6 +2668,7 @@ def main(argv: list[str] | None = None) -> int:
         safe_check_ref=safe_check_ref,
         quick=args.quick,
         static_only=args.static,
+        freshness_hours=args.freshness_hours,
     )
 
     out_path = root / args.out
