@@ -248,6 +248,35 @@ could pass safe-check, then edit the deployment, then run
 production-ready. The hash and freshness checks prevent that. Override
 explicitly with `--accept-stale-safe-check` if you know what you're doing.
 
+### Per-evidence freshness (multi-day pilots)
+
+For multi-day pilots, every live probe records its own `captured_at`
+timestamp in the `evidence_register`. The manifest also exposes a
+top-level `evidence_freshness` block summarising the oldest/newest
+probe and whether any evidence is stale relative to the run's
+`checked_at`. The executive summary of the markdown report adds a
+single "Oldest evidence" bullet only when staleness is flagged.
+
+- The same `--freshness-hours N` flag controls **two** thresholds:
+  the safe-check `checked_at` pre-flight tolerance (default 24h),
+  and the evidence-staleness banner in this skill (also default 24h).
+  If a pilot needs different windows for the two, run safe-check
+  separately with `--accept-stale-safe-check` and pass
+  `--freshness-hours` here for the evidence-staleness threshold.
+- Static-mode runs (`--static`) emit `evidence_register: []` and an
+  `evidence_freshness` block with all-null timestamps and
+  `stale: false` (nothing to evaluate).
+- The staleness flag uses a strict `>` comparison: evidence exactly
+  `freshness-hours` old is *not* flagged. Raw timestamps are always
+  in the JSON manifest for downstream re-evaluation with stricter or
+  looser thresholds.
+- Unparseable `captured_at` strings are skipped and surfaced as
+  warnings. If *all* evidence rows are unparseable, a loud warning
+  appears and `stale` stays `false` (we can't know).
+- Clock skew (a `captured_at` after the run's `checked_at`) also
+  surfaces a warning and does not flag staleness — that's a system
+  clock problem, not stale evidence.
+
 ## Outputs
 
 ### `tests/production-readiness-manifest.json` (machine-readable scorecard)
@@ -322,13 +351,20 @@ explicitly with `--accept-stale-safe-check` if you know what you're doing.
       "id": "EV-101",
       "command": "az resource list -g rg-pilot --resource-type Microsoft.ApiManagement/service/apis",
       "scope": "subscription:abc.../resourceGroup:rg-pilot",
-      "ran_at": "2025-06-09T22:29:55Z",
+      "captured_at": "2025-06-09T22:29:55Z",
       "permission_tier": 5,
       "permission_role_required": "API Management Service Reader",
       "result": "1 resource matched"
     }
     // ... every probe recorded
   ],
+  "evidence_freshness": {                   // issue #22: multi-day-pilot freshness
+    "oldest_captured_at": "2025-06-08T09:14:02Z",
+    "newest_captured_at": "2025-06-09T22:29:55Z",
+    "span_hours": 37,                       // newest - oldest, floor(h)
+    "stale": true,                          // (checked_at - oldest) > threshold_hours
+    "threshold_hours": 24                   // echoed from --freshness-hours
+  },
   "not_verified": [
     {
       "id": "NV-001",
