@@ -94,3 +94,6 @@ SRE asks is "show me the trace". If there are no traces — or the
 traces are partial — the rollback decision is made blind. Observability
 is the difference between "find and fix in 20 minutes" and "find and
 fix in 3 days".
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

@@ -64,3 +64,6 @@ AGT (e.g., `target_posture: standard-ai-gateway`).
 will not ship a pilot they can't defend. This pillar gives them the
 defensible answer in one screenshot: filter settings, shield status,
 PII policy, eval evidence.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

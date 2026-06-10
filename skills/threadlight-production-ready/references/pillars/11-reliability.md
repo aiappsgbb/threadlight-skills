@@ -74,3 +74,6 @@ Bicep as configuration, and in `tests/restore-drill-*.md` as evidence.
 A production pilot has all three. A "lab graveyard" pilot has the
 targets and maybe the Bicep, but the evidence column is blank — and
 the first incident proves it.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

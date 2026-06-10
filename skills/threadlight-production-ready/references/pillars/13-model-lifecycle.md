@@ -77,3 +77,6 @@ that model is in deprecation notice; the team forgot which versions
 they pinned; the agent quietly upgrades to a new version mid-quarter
 and starts answering customer prompts differently. The post-mortem is
 "why didn't we know?". Pillar 13 is the answer.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.

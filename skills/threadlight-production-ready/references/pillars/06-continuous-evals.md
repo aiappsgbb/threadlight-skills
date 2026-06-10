@@ -68,3 +68,6 @@ regress the first time anything upstream changes: model version, system
 prompt, retrieval index, tool schema, anything. The customer's data
 science team will demand this conversation. The skill ships the
 artefact that answers it.
+
+---
+**v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.
