@@ -141,6 +141,28 @@ def load_recipe_catalog(rdir) -> dict[str, dict]:
 
 
 # ---------------------------------------------------------------------------
+# region: rights_constants (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# Rights classification + phase-2 decision constants. Used by Phase C's
+# provisioning-rights probe and the phase decision banner.
+
+RIGHTS_FULL = "full"
+RIGHTS_CONSTRAINED = "constrained"
+RIGHTS_NONE = "none"
+RIGHTS_UNKNOWN = "unknown"
+
+PHASE_SELF_SERVICE = "self-service"
+PHASE_CENTRAL_HANDOFF = "central-team handoff"
+PHASE_BLOCKED = "blocked — no RG access"
+
+WRITE_ROLES = ("Owner", "Contributor", "User Access Administrator")
+READ_ROLES = ("Reader", "Monitoring Reader", "Cost Management Reader")
+
+# endregion: rights_constants
+
+
+# ---------------------------------------------------------------------------
 # region: onboard_stubs (v0.4.0)
 # ---------------------------------------------------------------------------
 #
