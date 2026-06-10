@@ -457,7 +457,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 # ---------------------------------------------------------------------------
 # region: framing_wizard (v0.4.0)

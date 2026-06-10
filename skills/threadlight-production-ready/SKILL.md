@@ -22,7 +22,7 @@ description: >
   (citadel-hub-deploy), citadel access contracts (citadel-spoke-onboarding),
   SRE Agent provisioning (azure-sre-agent), AppIn wiring (foundry-observability).
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
