@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "tool": "threadlight-production-ready",
   "tool_version": "0.3.0",
-  "checked_at": "2026-06-10T16:57:40Z",
+  "checked_at": "2026-06-10T17:07:11Z",
   "mode": "static",
   "agt_profile": "v3_7",
   "posture": {
@@ -11,8 +11,8 @@
     "resolved": "standard-ai-gateway"
   },
   "score": {
-    "raw_percent": 31,
-    "with_waivers_percent": 31
+    "raw_percent": 30,
+    "with_waivers_percent": 30
   },
   "verification_coverage": {
     "verified": 74,
@@ -918,8 +918,8 @@
       "title": "8. HITL and audit",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 25,
-      "score_with_waivers": 25,
+      "score_raw": 12,
+      "score_with_waivers": 12,
       "verification_debt": 2,
       "findings": [
         {
@@ -960,9 +960,9 @@
           "title": "Escalation channel reachable (Teams/email/webhook)",
           "pillar": "hitl-audit",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Escalation channel referenced",
+          "detail": "No escalation channel reference",
           "evidence_refs": [],
           "waiver_id": null
         },
