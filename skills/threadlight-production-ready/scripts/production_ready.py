@@ -140,6 +140,44 @@ def load_recipe_catalog(rdir) -> dict[str, dict]:
 # endregion: apply_plan_schema
 
 
+# ---------------------------------------------------------------------------
+# region: onboard_stubs (v0.4.0)
+# ---------------------------------------------------------------------------
+#
+# These two helpers are referenced by the `--onboard` dispatcher in main().
+# They are intentionally stubs here in Phase A — Phase C replaces them with
+# real implementations that run the assessor end-to-end and emit a
+# rights-aware phase banner.
+
+def _run_assessment_for_onboard(args, framing: dict) -> dict:
+    """Run the assessor for --onboard and return the manifest dict.
+
+    Phase C wires this to the existing assessor flow (load manifest, run
+    pillars, attach rights_probe + phase_decision, write manifest+report).
+    Until then, --onboard mode is non-functional.
+    """
+    raise NotImplementedError(
+        "_run_assessment_for_onboard: implemented in Phase C (rights probe + "
+        "phase decision wiring). See plans/2026-06-10-threadlight-production-"
+        "ready-v040.md Task C6 step 1."
+    )
+
+
+def _phase_decision_banner(framing: dict, plan: dict) -> str:
+    """Render the 3-phase decision banner for --onboard mode.
+
+    Phase C replaces this with `_emit_phase_banner(framing, rights, decision,
+    sink=...)` which knows the rights class and phase 2 mode.
+    """
+    raise NotImplementedError(
+        "_phase_decision_banner: implemented in Phase C (Task C6 step 2 — "
+        "_emit_phase_banner)."
+    )
+
+
+# endregion: onboard_stubs
+
+
 VERSION = "0.3.0"
 
 # ---------------------------------------------------------------------------
@@ -3948,6 +3986,27 @@ def main(argv: list[str] | None = None) -> int:
     # any other inputs.
     if args.remediate:
         return _emit_remediation(root, args.remediate)
+
+    # --onboard is the v0.4.0 3-phase production-onboarding side-channel.
+    # Phase 1 (Assess) is implemented here; Phase 2 (Refine + Deploy) and
+    # Phase 3 (CI/CD Handoff) run downstream in the agent driven by
+    # apply-plan.json. The helpers below are filled in over Phases A6 / B / C.
+    if args.onboard:
+        framing = (load_framing_file(args.framing_file) if args.framing_file
+                   else run_framing_wizard())
+        manifest = _run_assessment_for_onboard(args, framing)
+        recipes = load_recipe_catalog(_recipe_catalog_dir())
+        plan = build_apply_plan(
+            manifest=manifest,
+            recipes=recipes,
+            framing=framing,
+            framing_path=args.framing_file,
+        )
+        out_path = args.apply_plan_out or str(Path(args.out) / "apply-plan.json")
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        write_apply_plan(plan, out_path)
+        _eprint(_phase_decision_banner(framing, plan))
+        return 0
 
     if not args.quiet:
         print(f"threadlight-production-ready v{VERSION}")
