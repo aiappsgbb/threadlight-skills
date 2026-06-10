@@ -3276,6 +3276,13 @@ def _build_manifest(
     waived_max = 0
     verification_debt_by_pillar: dict[str, int] = {}
     total_verification_debt = 0
+
+    def _filter_exp(findings: list[Finding]) -> list[Finding]:
+        if include_experimental:
+            return findings
+        return [f for f in findings
+                if not (FINDING_CATALOG.get(f.id) or {}).get("experimental")]
+
     for pid in PILLAR_IDS:
         raw_fs = pillar_results_raw.get(pid, [])
         w_fs = pillar_results_waived.get(pid, [])
@@ -3296,7 +3303,7 @@ def _build_manifest(
             "score_raw": r_score,
             "score_with_waivers": w_score,
             "verification_debt": w_debt,
-            "findings": [asdict(f) for f in w_fs],
+            "findings": [asdict(f) for f in _filter_exp(w_fs)],
         })
     raw_pct = (raw_total_score * 100) // raw_max if raw_max else 0
     waived_pct = (waived_total * 100) // waived_max if waived_max else 0
@@ -3350,6 +3357,7 @@ def _build_manifest(
         },
         "go_live_recommendation": rec,
         "would_fail_hard_gate": raw_must,
+        "include_experimental": include_experimental,
         "permission_tiers": {str(k): v for k, v in tiers.items()},
         "warnings": warnings,
         "safe_check_reference": safe_check_ref,

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "tool": "threadlight-production-ready",
   "tool_version": "0.3.0",
-  "checked_at": "2026-06-10T17:07:07Z",
+  "checked_at": "2026-06-10T17:19:29Z",
   "mode": "static",
   "agt_profile": "v3_7",
   "posture": {
@@ -39,6 +39,7 @@
   },
   "go_live_recommendation": "not_ready",
   "would_fail_hard_gate": true,
+  "include_experimental": false,
   "permission_tiers": {
     "0": true,
     "1": false,
@@ -131,43 +132,10 @@
           "waiver_id": null
         },
         {
-          "id": "NET-103",
-          "title": "NSG flow logs enabled on spoke subnets",
-          "pillar": "network-posture",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
           "id": "NET-501",
           "title": "Citadel APIM Access Contract present",
           "pillar": "network-posture",
           "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 5,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "NET-502",
-          "title": "Foundry connection to Citadel hub reachable",
-          "pillar": "network-posture",
-          "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 5,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "NET-503",
-          "title": "Hub-side product policy attached",
-          "pillar": "network-posture",
-          "severity": "should-fix",
           "status": "not-verified",
           "tier": 5,
           "detail": "Skipped \u2014 running in --static mode",
@@ -272,17 +240,6 @@
           "detail": "Skipped \u2014 running in --static mode",
           "evidence_refs": [],
           "waiver_id": null
-        },
-        {
-          "id": "AGT-102",
-          "title": "AGT denials visible in App Insights last 24h",
-          "pillar": "agent-governance",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
         }
       ]
     },
@@ -366,17 +323,6 @@
           "title": "No Owner/Contributor on workload identity",
           "pillar": "identity-access",
           "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "IAM-103",
-          "title": "Conditional access / Entra policies considered",
-          "pillar": "identity-access",
-          "severity": "should-fix",
           "status": "not-verified",
           "tier": 1,
           "detail": "Skipped \u2014 running in --static mode",
@@ -637,17 +583,6 @@
           "waiver_id": null
         },
         {
-          "id": "OBS-103",
-          "title": "Exceptions table populated in last 24h",
-          "pillar": "observability",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
           "id": "OBS-104",
           "title": "Alert rules wired in target RG",
           "pillar": "observability",
@@ -756,61 +691,6 @@
           "detail": "Dataset versioning hinted",
           "evidence_refs": [],
           "waiver_id": null
-        },
-        {
-          "id": "EVAL-101",
-          "title": "Latest eval run results retrievable",
-          "pillar": "continuous-evals",
-          "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "EVAL-102",
-          "title": "Latest eval run meets SPEC thresholds",
-          "pillar": "continuous-evals",
-          "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "EVAL-103",
-          "title": "Eval failure alert exists in target RG",
-          "pillar": "continuous-evals",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "EVAL-104",
-          "title": "Eval cadence schedule resource exists",
-          "pillar": "continuous-evals",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "EVAL-105",
-          "title": "Eval drift trend reviewed in last 30d",
-          "pillar": "continuous-evals",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
         }
       ]
     },
@@ -899,17 +779,6 @@
           "detail": "Skipped \u2014 running in --static mode",
           "evidence_refs": [],
           "waiver_id": null
-        },
-        {
-          "id": "RAI-102",
-          "title": "AGT RAI denials observable in last 24h",
-          "pillar": "responsible-ai",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
         }
       ]
     },
@@ -918,8 +787,8 @@
       "title": "8. HITL and audit",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 46,
-      "score_with_waivers": 46,
+      "score_raw": 35,
+      "score_with_waivers": 35,
       "verification_debt": 2,
       "findings": [
         {
@@ -960,9 +829,9 @@
           "title": "Escalation channel reachable (Teams/email/webhook)",
           "pillar": "hitl-audit",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Escalation channel referenced",
+          "detail": "No escalation channel reference",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -995,17 +864,6 @@
           "severity": "should-fix",
           "status": "not-verified",
           "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "HITL-103",
-          "title": "HITL audit rows in last 7d (if expected)",
-          "pillar": "hitl-audit",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
           "detail": "Skipped \u2014 running in --static mode",
           "evidence_refs": [],
           "waiver_id": null
@@ -1099,30 +957,8 @@
           "waiver_id": null
         },
         {
-          "id": "SUP-101",
-          "title": "Deployed image digests match repo manifest",
-          "pillar": "supply-chain",
-          "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
           "id": "SUP-102",
           "title": "ACR has public access disabled",
-          "pillar": "supply-chain",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "SUP-103",
-          "title": "ACR has Microsoft Defender enabled",
           "pillar": "supply-chain",
           "severity": "should-fix",
           "status": "not-verified",
@@ -1213,39 +1049,6 @@
           "title": "Live budget alert wired on target RG",
           "pillar": "cost",
           "severity": "must-fix",
-          "status": "not-verified",
-          "tier": 3,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "COST-102",
-          "title": "Live actuals vs forecast within 20%",
-          "pillar": "cost",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 3,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "COST-103",
-          "title": "PAYG vs PTU recommendation matches observed usage",
-          "pillar": "cost",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 3,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "COST-104",
-          "title": "No orphaned resources in target RG",
-          "pillar": "cost",
-          "severity": "should-fix",
           "status": "not-verified",
           "tier": 3,
           "detail": "Skipped \u2014 running in --static mode",
@@ -1352,17 +1155,6 @@
           "waiver_id": null
         },
         {
-          "id": "REL-101",
-          "title": "Zone redundancy enabled where supported",
-          "pillar": "reliability",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
           "id": "REL-102",
           "title": "Backup vault present if SPEC declares backups",
           "pillar": "reliability",
@@ -1376,28 +1168,6 @@
         {
           "id": "REL-103",
           "title": "ACA min-replica >= 1 in prod",
-          "pillar": "reliability",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "REL-104",
-          "title": "Multi-region resources present if declared",
-          "pillar": "reliability",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "REL-105",
-          "title": "Capacity host status healthy",
           "pillar": "reliability",
           "severity": "should-fix",
           "status": "not-verified",
@@ -1499,17 +1269,6 @@
           "title": "SRE Agent resource present if planned",
           "pillar": "sre-handover",
           "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "SRE-103",
-          "title": "Diagnostic settings cover all critical resources",
-          "pillar": "sre-handover",
-          "severity": "must-fix",
           "status": "not-verified",
           "tier": 1,
           "detail": "Skipped \u2014 running in --static mode",
@@ -1743,17 +1502,6 @@
           "severity": "should-fix",
           "status": "not-verified",
           "tier": 1,
-          "detail": "Skipped \u2014 running in --static mode",
-          "evidence_refs": [],
-          "waiver_id": null
-        },
-        {
-          "id": "MDL-104",
-          "title": "Live rate-limit breaches in last 24h",
-          "pillar": "model-lifecycle",
-          "severity": "should-fix",
-          "status": "not-verified",
-          "tier": 2,
           "detail": "Skipped \u2014 running in --static mode",
           "evidence_refs": [],
           "waiver_id": null
