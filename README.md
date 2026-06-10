@@ -1,10 +1,10 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Nine Copilot skills** that take a customer engagement from a
-> one-paragraph brief through to a deployed, evaluated, observable,
-> **production-ready** Microsoft Foundry hosted agent — runnable on the
-> customer's tenant in a single working session, then handed off to the
-> production track without ending up in lab graveyard.
+> **Nine pipeline skills + one orchestrator (10 total)** that take a customer
+> engagement from a one-paragraph brief through to a deployed, evaluated,
+> observable, **production-ready** Microsoft Foundry hosted agent — runnable
+> on the customer's tenant in a single working session, then handed off to
+> the production track without ending up in lab graveyard.
 
 | Skill | What it does |
 |-------|-------------|
@@ -17,6 +17,7 @@
 | [`threadlight-hitl-patterns`](skills/threadlight-hitl-patterns/) | Human-in-the-loop gates via Teams Adaptive Cards + audit trail |
 | [`threadlight-workspace-ui`](skills/threadlight-workspace-ui/) | Operator dashboard (React workspace) behind Easy Auth |
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | Advisory production-readiness scorecard + uplift plan + customer-facing hand-off package (Citadel spoke / AGT v4 / AI gateway / 13 cross-cutting pillars) |
+| [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 9 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow
 
@@ -25,6 +26,10 @@ threadlight-design → threadlight-local-test → threadlight-deploy →
 threadlight-safe-check (gate) → foundry-evals + foundry-observability →
 threadlight-production-ready (advisory) → customer architecture review
 ```
+
+The 9-stage pipeline above is the spine. `threadlight-auto` drives the same
+chain end-to-end when you want one-prompt automation (demos, resumption,
+template-from-scenario kickoffs).
 
 The full technical briefing is in [`THREADLIGHT.md`](THREADLIGHT.md).
 

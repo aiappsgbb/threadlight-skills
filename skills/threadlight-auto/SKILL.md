@@ -4,7 +4,8 @@ description: >
   Full-auto driver for the Threadlight pilot pipeline. One freeform prompt
   ("Build me an auto-claim triage agent for Contoso Mutual") drives
   threadlight-design → (optional) threadlight-local-test → threadlight-deploy
-  → threadlight-safe-check → live invoke. Auto-continues at every gate;
+  → threadlight-safe-check → live invoke → (optional, advisory)
+  threadlight-production-ready. Auto-continues at every gate;
   HARD STOPS on tenant assertion failure or quota exhaustion. Resumes from
   `.threadlight/auto-state.json`. Smart-recovers from quota, RBAC race, and
   ImagePull deploy failures. Wraps existing threadlight-* skills.
@@ -150,7 +151,8 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 | 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active` |
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + behavioral gates green |
 | 5 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
-| 6 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
+| 6 | Production-ready (OPTIONAL, advisory) | `threadlight-production-ready` (file-path CLI) | `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json` — never blocks. Run when the customer asked for a paved-path / architecture-review artifact alongside the demo. Skip for pure throwaway demos. |
+| 7 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
 
 ### Per-stage HARD STOPs (in addition to global tenant + quota)
 
@@ -205,6 +207,14 @@ Stage wallclock:
 Demo scenarios run:
   1. Rear-end FNOL    ✅ in-force, low fraud, $3.9k estimate
   2. Parked-vehicle   ✅ in-force, PII masked, $2.3k estimate
+
+Production-ready scorecard:
+  ⚠️  Not run (skip flag set / opt-in only).
+  To run: cp ../threadlight-skills/skills/threadlight-production-ready/scripts/production_ready.py tests/
+          python tests/production_ready.py
+  Output: docs/production-readiness-report.md + tests/production-readiness-manifest.json
+  Soft-advisory only — never blocks the pilot; produces the customer-review
+  artifact that turns a demo into a hand-off package.
 
 Auto-recovery events:
   [1] InsufficientQuota in swedencentral → switched to westus3

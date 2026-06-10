@@ -12,6 +12,39 @@
       "const": "1.0",
       "description": "Waiver schema version."
     },
+    "binding": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "OPTIONAL but STRONGLY RECOMMENDED in industrialized delivery. Anchors this waiver file to a specific customer + deployment + posture so waivers cannot silently leak between MVPs when teams copy repos. If absent, the skill applies waivers and emits a WAIVER-UNBOUND warning. If present, every populated field must match the current run; mismatch causes the file to be ignored entirely and a WAIVER-BINDING-MISMATCH warning fires. Empty-string fields are treated as 'any' (acceptable wildcard).",
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "description": "Azure subscription ID (GUID) the waivers were approved for. Compared against deployment_manifest.subscription_id."
+        },
+        "resource_group": {
+          "type": "string",
+          "description": "Resource group name the waivers were approved for. Compared against deployment_manifest.resource_group."
+        },
+        "deployment_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA256 over the post-deploy manifest's deployment_manifest block. Recompute with the value the skill prints in safe_check_ref.deployment_manifest_sha256."
+        },
+        "target_posture": {
+          "type": "string",
+          "enum": ["citadel-spoke", "agt", "standard-ai-gateway", "hybrid"],
+          "description": "Posture these waivers were approved for. Compared against the resolved posture for this run."
+        },
+        "customer_or_pilot_id": {
+          "type": "string",
+          "description": "Free-form customer / pilot identifier for human auditability. Not enforced by the skill but helps reviewers see at a glance which MVP a waiver file belongs to."
+        },
+        "approver_record": {
+          "type": "string",
+          "description": "Free-form reference to the approval artifact (CR ticket, signed PDF, email thread)."
+        }
+      }
+    },
     "waivers": {
       "type": "array",
       "items": {

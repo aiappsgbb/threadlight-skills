@@ -106,6 +106,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "NET-501": {"title": "Citadel APIM Access Contract present", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
     "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
     "NET-503": {"title": "Hub-side product policy attached", "pillar": "network-posture", "severity": "should-fix", "tier": 5},
+    "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
     "AGT-001": {"title": "AGT middleware imported in src/", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
@@ -252,6 +253,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 WAIVER_SCHEMA_FIELDS = ("owner", "expiry", "justification", "compensating_control", "accepted_risk")
+WAIVER_BINDING_FIELDS = ("subscription_id", "resource_group", "deployment_manifest_sha256", "target_posture")
 WAIVER_MIN_TEXT_LEN = 20
 WAIVER_ID_RE = re.compile(r"^W-\d{3,}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -498,19 +500,22 @@ def _validate_manifest_binding(
 # ---------------------------------------------------------------------------
 
 
-def _load_waivers(path: Path | None) -> tuple[dict[str, dict], list[str]]:
+def _load_waivers(path: Path | None) -> tuple[dict[str, dict], dict, list[str]]:
     """Load and validate waivers file.
 
-    Returns ({finding_id: waiver_record}, errors). Bad waivers are dropped with
-    an error message but do not hard-fail the run.
+    Returns ({finding_id: waiver_record}, binding_block, errors). Bad waivers
+    are dropped with an error message but do not hard-fail the run. The
+    binding block (optional, top-level) is returned verbatim for
+    _validate_waiver_binding to vet against the current run.
     """
     if path is None or not path.exists():
-        return {}, []
+        return {}, {}, []
     data = _read_json(path)
     if data is None:
-        return {}, [f"waivers: {path} is not valid JSON — ignoring file"]
+        return {}, {}, [f"waivers: {path} is not valid JSON — ignoring file"]
     if not isinstance(data, dict) or not isinstance(data.get("waivers"), list):
-        return {}, [f"waivers: {path} must be an object with a 'waivers' array"]
+        return {}, {}, [f"waivers: {path} must be an object with a 'waivers' array"]
+    binding = data.get("binding") if isinstance(data.get("binding"), dict) else {}
 
     out: dict[str, dict] = {}
     errors: list[str] = []
@@ -560,7 +565,74 @@ def _load_waivers(path: Path | None) -> tuple[dict[str, dict], list[str]]:
             continue
         seen_ids.add(wid)
         out[finding_id] = w
-    return out, errors
+    return out, binding, errors
+
+
+def _validate_waiver_binding(
+    binding: dict,
+    sub: str | None,
+    rg: str | None,
+    deployment_manifest_sha256: str | None,
+    resolved_posture: str,
+) -> tuple[bool, list[str]]:
+    """Decide whether waivers from this file apply to the current run.
+
+    The binding block is OPTIONAL for backward compat: if absent or empty,
+    waivers still apply but a loud warning is emitted (file is "unbound" —
+    risk of MVP-to-MVP waiver leakage when teams reuse repos).
+
+    When binding IS present, every populated field must match the current
+    run. Mismatch → waivers do NOT apply and a prominent warning surfaces
+    the mismatch so the operator can verify they grabbed the right file.
+
+    Returns (apply: bool, messages: list[str]).
+    """
+    if not binding:
+        return True, [
+            "WAIVER-UNBOUND: waivers file has no `binding` block — waivers are "
+            "applied but cannot be vouched for. Risk: MVP-to-MVP waiver leakage "
+            "in industrialized delivery. Add a `binding` block (subscription_id, "
+            "resource_group, deployment_manifest_sha256, target_posture) so each "
+            "waiver file is anchored to the customer + deployment it was approved "
+            "for. See references/waivers-schema.json."
+        ]
+    msgs: list[str] = []
+    mismatches: list[str] = []
+    expected = {
+        "subscription_id": sub or "",
+        "resource_group": rg or "",
+        "deployment_manifest_sha256": deployment_manifest_sha256 or "",
+        "target_posture": resolved_posture or "",
+    }
+    for field in WAIVER_BINDING_FIELDS:
+        decl = binding.get(field)
+        if decl is None or decl == "":
+            continue  # unset binding field is OK — only what's declared must match
+        if not isinstance(decl, str):
+            mismatches.append(f"{field}: declared value not a string")
+            continue
+        actual = expected.get(field, "")
+        if decl.strip() != (actual or "").strip():
+            mismatches.append(f"{field}: waivers declare `{decl}`, current run is `{actual or '(unset)'}`")
+    if mismatches:
+        detail = "; ".join(mismatches)
+        msgs.append(
+            "WAIVER-BINDING-MISMATCH: waivers file is bound to a different "
+            f"deployment — NOT APPLYING any waivers. Mismatch: {detail}. "
+            "Either remove waivers/, copy the correct waivers file for this "
+            "customer+deployment, or update the binding block if the same "
+            "approver intentionally re-scoped the waivers."
+        )
+        return False, msgs
+    # All declared binding fields match
+    msgs.append(
+        f"WAIVER-BOUND: waivers applied against binding "
+        f"(sub={binding.get('subscription_id', '(any)')}, "
+        f"rg={binding.get('resource_group', '(any)')}, "
+        f"posture={binding.get('target_posture', '(any)')}, "
+        f"sha256={(binding.get('deployment_manifest_sha256') or '(any)')[:12]}…)"
+    )
+    return True, msgs
 
 
 # ---------------------------------------------------------------------------
@@ -941,8 +1013,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     return out
 
 
-def _check_agt_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None,
-                    app_insights_resource_id: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:
+def _check_agt_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
     if tiers.get(1) and sub and rg:
@@ -1886,21 +1957,48 @@ def _hard_gate_would_fail(findings_raw: list[Finding]) -> bool:
 
 
 def _go_live_recommendation(raw_must: bool, waived_must: bool,
-                             verification_coverage_pct: int) -> str:
-    """Recommendation taxonomy:
+                             verification_coverage_pct: int,
+                             waived_score_pct: int,
+                             red_pillar_count: int) -> str:
+    """Recommendation taxonomy (rubber-duck-tightened):
       - not_ready: unwaived must-fix remains
       - ready_with_waivers: must-fix exists but every one is waived
-      - ready_with_unverified_risk: no unwaived must-fix, but verification coverage <50%
-      - ready: no unwaived must-fix and >=50% of scoreable checks were verified
+      - ready_with_unverified_risk: no unwaived must-fix, but verification
+        coverage <50% (severe) or <80% (moderate, only triggers if score is
+        otherwise clean)
+      - ready_with_residual_risk: no unwaived must-fix, coverage OK, but
+        weighted score is <80% OR one or more pillars are red. Architecture
+        review still has open work.
+      - ready: no unwaived must-fix AND coverage ≥80% AND score ≥80% AND no
+        red pillars. The plain `ready` label is conservative on purpose —
+        "READY" is the word executives will quote, so it must mean something.
     Waivers never lift the recommendation above ready_with_waivers."""
     if raw_must and waived_must:
         return "not_ready"
     if raw_must and not waived_must:
         return "ready_with_waivers"
-    # No unwaived must-fix → check verification coverage
+    # No unwaived must-fix → grade the rest
     if verification_coverage_pct < 50:
         return "ready_with_unverified_risk"
+    if waived_score_pct < 80 or red_pillar_count > 0:
+        return "ready_with_residual_risk"
+    if verification_coverage_pct < 80:
+        return "ready_with_unverified_risk"
     return "ready"
+
+
+def _evidence_confidence(verification_coverage_pct: int) -> str:
+    """Confidence band the executive summary shows alongside score.
+
+    HIGH ≥80% — verified evidence covers most checks
+    MEDIUM 50–79% — verified evidence covers about half
+    LOW <50% — most evidence is `not-verified`; treat conclusions as advisory
+    """
+    if verification_coverage_pct >= 80:
+        return "HIGH"
+    if verification_coverage_pct >= 50:
+        return "MEDIUM"
+    return "LOW"
 
 
 # ---------------------------------------------------------------------------
@@ -1957,7 +2055,13 @@ def _build_manifest(
     not_verified_count = sum(1 for f in scoreable if f.status == "not-verified")
     verified_count = len(scoreable) - not_verified_count
     coverage_pct = (verified_count * 100) // len(scoreable) if scoreable else 0
-    rec = _go_live_recommendation(raw_must, waived_must, coverage_pct)
+    rec = _go_live_recommendation(
+        raw_must,
+        waived_must,
+        coverage_pct,
+        waived_pct,
+        sum(1 for p in pillars_block if p["status_with_waivers"] == "red"),
+    )
     return {
         "schema_version": "1.0",
         "tool": "threadlight-production-ready",
@@ -2019,13 +2123,16 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     rec_label = {
         "ready": "🟢 READY",
         "ready_with_waivers": "🟡 READY WITH WAIVERS",
+        "ready_with_residual_risk": "🟡 READY WITH RESIDUAL RISK",
         "ready_with_unverified_risk": "🟡 READY WITH UNVERIFIED RISK",
         "not_ready": "🔴 NOT READY",
     }[rec]
     cov = manifest["verification_coverage"]
+    confidence = _evidence_confidence(cov["percent"])
     out.append(f"- **Go-live recommendation:** {rec_label}")
     out.append(f"- **Raw score:** {manifest['score']['raw_percent']}%   **With waivers:** {manifest['score']['with_waivers_percent']}%")
     out.append(f"- **Verification coverage:** {cov['verified']}/{cov['total_scoreable']} checks verified ({cov['percent']}%) — the rest are `not-verified`")
+    out.append(f"- **Evidence confidence:** {confidence} — `HIGH` ≥80%, `MEDIUM` 50–79%, `LOW` <50%. See Appendix for permission-tier breakdown.")
     out.append(f"- **Resolved posture:** `{posture['resolved']}` (declared: `{posture['declared'] or 'unset'}`, detected: `{posture['detected'] or 'none'}`)")
     out.append(f"- **Mode:** {manifest['mode']}   **AGT profile:** {manifest['agt_profile']}")
     out.append(f"- **Would fail a hard gate?** {'YES' if manifest['would_fail_hard_gate'] else 'no'}")
@@ -2300,9 +2407,9 @@ def main(argv: list[str] | None = None) -> int:
     bind_warns = _validate_manifest_binding(manifest, postdeploy, args.accept_stale_safe_check)
     warnings = pd_warns + bind_warns
 
-    # 2. Waivers
+    # 2. Waivers — loaded here; binding validated AFTER posture resolution.
     waivers_path = root / args.waivers if args.waivers else None
-    waivers, waiver_errs = _load_waivers(waivers_path)
+    waivers, waiver_binding, waiver_errs = _load_waivers(waivers_path)
     warnings.extend(waiver_errs)
 
     # 3. Context
@@ -2338,6 +2445,20 @@ def main(argv: list[str] | None = None) -> int:
     declared, detected, resolved = _resolve_posture(args.target, ctx.spec_12, ctx.spec_11b, apim_evidence)
     posture = {"declared": declared, "detected": detected, "resolved": resolved}
     tiers = _probe_tiers(sub, rg, az_ok) if not args.static else {0: True, 1: False, 2: False, 3: False, 4: False, 5: False}
+
+    # 5b. Validate waiver binding against THIS run (sub/rg/posture/deployment).
+    # Done after posture resolution so the binding can vet target_posture.
+    # Done before pillar runs so an unbound or mismatched file doesn't silently
+    # apply waivers that were approved for a different MVP. Backward-compat:
+    # missing binding still applies waivers but emits a loud UNBOUND warning.
+    if waivers_path is not None and waivers_path.exists():
+        dm_sha = _sha256_block(postdeploy.get("deployment_manifest") or {})
+        apply_waivers, binding_msgs = _validate_waiver_binding(
+            waiver_binding, sub, rg, dm_sha, resolved,
+        )
+        warnings.extend(binding_msgs)
+        if not apply_waivers:
+            waivers = {}
 
     # 6. AGT profile
     agt_profile = _detect_agt_profile(ctx, args.agt_profile)
@@ -2378,6 +2499,35 @@ def main(argv: list[str] | None = None) -> int:
         pillar_findings_raw.setdefault(pid, [])
         pillar_findings_waived.setdefault(pid, [])
 
+    # 7b. POS-001 — declared posture contradiction.
+    # Fire when SE declared an enterprise posture (citadel-spoke, agt, hybrid)
+    # but live evidence found nothing matching it AND tier 1 ran. Skipped when
+    # tier 1 was unreachable (we'd be guessing) or pillar wasn't requested.
+    if (
+        "network-posture" in pillars_to_run
+        and declared in (POSTURE_CITADEL, POSTURE_AGT, POSTURE_HYBRID)
+        and not detected
+        and tiers.get(1, False)
+    ):
+        pos_finding = _mk_finding(
+            "POS-001",
+            status="should-fix",
+            detail=(
+                f"SPEC § 12 declares `target_posture: {declared}` but live "
+                "evidence (APIM, Foundry connection, AGT middleware) did not "
+                "confirm it. Either the deployment hasn't reached the declared "
+                "posture yet, the operator running this skill lacks permission "
+                "to see the hub-side resources, or the declaration is stale. "
+                "Architecture review should resolve this before customer "
+                "sign-off — production-readiness reports that contradict the "
+                "spec erode trust."
+            ),
+        )
+        pillar_findings_raw["network-posture"].append(pos_finding)
+        pillar_findings_waived["network-posture"] = _apply_waivers(
+            pillar_findings_raw["network-posture"], waivers,
+        )
+
     # 8. Build manifest + report
     safe_check_ref = {
         "phase": postdeploy.get("phase"),
@@ -2416,6 +2566,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.quiet:
         rec_label = {"ready": "🟢 READY",
                      "ready_with_waivers": "🟡 READY WITH WAIVERS",
+                     "ready_with_residual_risk": "🟡 READY (residual risk)",
                      "ready_with_unverified_risk": "🟡 READY (unverified risk)",
                      "not_ready": "🔴 NOT READY"}[out_manifest["go_live_recommendation"]]
         cov = out_manifest["verification_coverage"]

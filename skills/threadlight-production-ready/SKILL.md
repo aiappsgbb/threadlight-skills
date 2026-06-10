@@ -286,7 +286,7 @@ explicitly with `--accept-stale-safe-check` if you know what you're doing.
       "percent_pass_with_waivers": 86
     }
   },
-  "go_live_recommendation": "ready_with_waivers",  // ready | ready_with_waivers | ready_with_unverified_risk | not_ready
+  "go_live_recommendation": "ready_with_waivers",  // ready | ready_with_waivers | ready_with_residual_risk | ready_with_unverified_risk | not_ready
   "would_fail_hard_gate": true,                    // bool — preview of v2 hard-mode behavior
   "verification_coverage": {                       // how much of the report is actually evidence vs gaps
     "verified": 22,
@@ -438,6 +438,14 @@ without falsifying the raw score. The skill enforces a strict shape so
 ```jsonc
 {
   "schema_version": "1.0",
+  "binding": {                                       // OPTIONAL but STRONGLY RECOMMENDED
+    "subscription_id": "aaaa-…",                     // anchors the file to ONE customer +
+    "resource_group": "rg-contoso-prod-westus3",     // ONE deployment + ONE posture so
+    "deployment_manifest_sha256": "…",               // copying repos between MVPs cannot
+    "target_posture": "citadel-spoke",               // silently leak approved waivers
+    "customer_or_pilot_id": "contoso-claim-triage",  // free-form, for audit trail
+    "approver_record": "CR-12345 / approval.pdf"     // free-form, for audit trail
+  },
   "waivers": [
     {
       "id": "W-001",                         // string, unique within file
@@ -452,9 +460,33 @@ without falsifying the raw score. The skill enforces a strict shape so
 }
 ```
 
-All five fields (`owner`, `expiry`, `justification`, `compensating_control`,
-`accepted_risk`) are **required**. Missing any field ⇒ waiver is
-ignored and a `WAIVER-INVALID` finding is added to the report.
+All five waiver fields (`owner`, `expiry`, `justification`,
+`compensating_control`, `accepted_risk`) are **required**. Missing any
+field ⇒ waiver is ignored and a `WAIVER-INVALID` finding is added to
+the report.
+
+### Binding discipline (industrialization)
+
+When a delivery team runs many MVPs back-to-back, the biggest waiver
+trap is **file leakage**: a `tests/production-readiness-waivers.json`
+approved for Contoso gets accidentally inherited by the next pilot
+(Northwind) because the repo was copied. The `binding` block prevents
+that. Behavior:
+
+| Binding state | Skill behavior | Warning emitted |
+|---|---|---|
+| Missing or empty | Waivers applied (backward compat) | `WAIVER-UNBOUND` — surfaces in report appendix |
+| Present, every populated field matches | Waivers applied | `WAIVER-BOUND` confirmation (sub/rg/posture/sha) |
+| Present, any populated field mismatches | Waivers **ignored entirely** (score reverts to raw) | `WAIVER-BINDING-MISMATCH` — lists each mismatched field with declared vs current |
+
+Empty-string fields in `binding` are treated as wildcards (acceptable
+for any value). Use this when the same approver intentionally signed
+waivers off across, e.g., dev + test subscriptions for the same RG name.
+
+The `deployment_manifest_sha256` is the SHA256 over the post-deploy
+manifest's `deployment_manifest{}` block — the skill prints this value
+in `safe_check_ref.deployment_manifest_sha256` of every run, so the
+operator can copy it into the binding once approval is signed.
 
 ### Score interaction
 
@@ -468,6 +500,33 @@ ignored and a `WAIVER-INVALID` finding is added to the report.
 
 This prevents the failure mode where a pilot ships with everything
 waived and the next reviewer can't tell.
+
+### Go-live recommendation taxonomy
+
+The skill resolves one of five labels. Waivers never lift the
+recommendation above `ready_with_waivers` — the "READY" word is
+reserved for runs the architecture-review board can quote without
+caveats.
+
+| Label | Meaning | Trigger |
+|---|---|---|
+| 🟢 `ready` | No unwaived must-fix, ≥80% verification coverage, ≥80% weighted score, zero red pillars. The plain READY label is conservative on purpose. | All gates clean. |
+| 🟡 `ready_with_residual_risk` | No unwaived must-fix and coverage is OK, but the weighted score is <80% or at least one pillar is red. Architecture review still has open work. | Score <80% OR red pillar count > 0. |
+| 🟡 `ready_with_unverified_risk` | No unwaived must-fix, but verification coverage is too low to vouch for the rest of the surface. | Coverage <50% (severe) or <80% with otherwise clean state. |
+| 🟡 `ready_with_waivers` | Must-fix findings exist; every one of them is waived. Hard-gate would still fail. | Raw must-fix present, all waived. |
+| 🔴 `not_ready` | At least one unwaived must-fix remains. | Raw must-fix unwaived. |
+
+### POS-001 — declared posture contradiction
+
+When `SPEC § 12` declares an enterprise posture (`citadel-spoke`, `agt`,
+or `hybrid`) but live tier-1 evidence (APIM Access Contract, Foundry
+hub connection, AGT middleware in `src/`) confirms none of it, the
+skill emits a `POS-001 should-fix` finding under the `network-posture`
+pillar. This catches stale declarations, "we'll wire it next sprint"
+hand-waving, and operator-permission gaps that masquerade as
+unconfigured posture. The finding does NOT fire in static mode, when
+tier 1 is unreachable, or when declared posture is `standard-ai-gateway`
+or unset (no contradiction to surface).
 
 ## TDD pressure scenarios (RED baseline)
 

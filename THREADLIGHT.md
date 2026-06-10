@@ -379,6 +379,47 @@ is for your records.
 
 ---
 
+## Appendix A — `threadlight-auto` (the orchestrator)
+
+The nine skills above are the **spine**. They're invoked individually
+when an SE wants stage-by-stage control: design today, deploy tomorrow,
+production-ready next week.
+
+[`threadlight-auto`](skills/threadlight-auto/) is a **separate, optional
+wrapper** that drives the chain end-to-end behind one freeform prompt:
+
+```
+"Build me an auto-claim triage agent for Contoso Mutual in acme"
+   ↓
+threadlight-auto → orchestrator.py state machine drives:
+   design → (optional) local-test → deploy → safe-check → invoke
+        → (optional, advisory) production-ready → (optional) sell
+```
+
+It is not a tenth pillar — it's a different shape (a driver). Use it when:
+
+- **First time** running the chain — you don't yet know which skill fires when
+- **Demos** — the whole arc has to complete in one Copilot session
+- **Resumption** — a deploy failed; you want to retry without re-doing earlier stages
+- **Template kickoff** — pick a scenario, fill in `{customer, tenant, region}`
+
+Do NOT use it when:
+
+- You want fine-grained control over each stage (call the spine skills directly)
+- You're iterating on a single stage
+- This is production CI/CD — `threadlight-auto` is a **pilot driver**, not a
+  production pipeline orchestrator. For that, see `azd-patterns` + your CI tool.
+
+The orchestrator persists state in `.threadlight/auto-state.json`, smart-recovers
+from the three most common deploy failures (quota, RBAC race, ImagePull), and
+HARD STOPs on tenant assertion failure or quota exhaustion. **Stage 6
+(production-ready) is opt-in** — the orchestrator never runs it by default,
+because demo workspaces shouldn't auto-generate customer-review artefacts.
+Set the `--run-production-ready` orchestrator flag (or invoke the skill
+directly) when you want the paved-path scorecard alongside the demo.
+
+---
+
 ## Templates & substrates
 
 Reusable substrates live in three places. None of them should be edited
