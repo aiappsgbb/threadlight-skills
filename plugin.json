@@ -31,7 +31,13 @@
     "ai-gateway",
     "sre-handover",
     "orchestrator",
-    "autopilot"
+    "autopilot",
+    "bicep-graph",
+    "verification-debt",
+    "gate-preview",
+    "remediate",
+    "trend-csv",
+    "oidc-ci"
   ],
   "skills": "skills/"
 }

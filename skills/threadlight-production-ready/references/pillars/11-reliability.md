@@ -1,5 +1,12 @@
 # Pillar 11 — `reliability`
 
+> **v0.3.0:** Adds `REL-007` (restore-drill artefact freshness — fails
+> if `tests/restore-drill-*.md` is older than 90 days, regardless of
+> whether `REL-004` static evidence exists) and `REL-008` (live
+> Recovery Services Vault must contain at least one restore point).
+> Together these close the "configured backups, never tested them"
+> gap that motivated the v0.3.0 overhaul.
+
 > **What this pillar answers.** Does the deployment shape match the
 > declared RTO/RPO? Is the backup actually tested (not just
 > "configured")? Is there a runbook? Has any chaos test been run?

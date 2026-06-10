@@ -1,5 +1,13 @@
 # Pillar 13 — `model-lifecycle`
 
+> **v0.3.0:** Adds `MDL-110` (TPM headroom — fails if planned model
+> load would exceed `--quota-utilization`, default 80%), `MDL-111`
+> (Foundry account capacity available in target region, via
+> `Cognitive Services Usages Reader`), and `GOV-101` (Defender for
+> AI Services plan enabled on the subscription — the most-skipped
+> Defender plan in early pilots; required for jailbreak / prompt
+> injection detection on Foundry endpoints).
+
 > **What this pillar answers.** Are model deployment names and versions
 > **pinned** (no `latest`)? Is there a fallback model? Is there a
 > retirement-notice owner? Is there an A/B or rollback strategy? Are

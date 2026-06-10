@@ -59,6 +59,27 @@ item is a yes/no question.
 | ☐ | If SRE Agent recipe adopted: daily health task is scheduled | SRE |
 | ☐ | If AGT middleware in use: verifier run within last 30 days, results green | Product |
 
+## F — Governance + capacity surface (v0.3.0)
+
+These rows match new finding IDs added in production-ready v0.3.0. They
+are advisory but every "no" here was the cause of a production incident
+in at least one prior GBB engagement, so push hard against waiving them.
+
+| ☐ | Item | Owner | Finding ID |
+|---|---|---|---|
+| ☐ | Restore-drill artefact (`tests/restore-drill-*.md`) exists and is dated within 90 days | SRE | `REL-007` |
+| ☐ | Recovery Services Vault has at least one restore point in the live env | SRE | `REL-008` |
+| ☐ | **Defender for AI Services** plan enabled on the subscription | Security | `GOV-101` |
+| ☐ | **Defender for Key Vault** plan enabled on the subscription | Security | `GOV-102` |
+| ☐ | **Defender for Servers / Containers** plan enabled (Standard tier) | Security | `GOV-103` |
+| ☐ | Defender Secure Score above the agreed floor (default 60%; see `--secure-score-floor`) | Security | `GOV-104` |
+| ☐ | Required Azure Policy assignments present at sub/RG scope | Security | `GOV-201` |
+| ☐ | No non-compliant resources under required policies | Security | `GOV-202` |
+| ☐ | Sane-default initiative assigned (ASB v3 or customer equivalent) | Security | `GOV-203` |
+| ☐ | TPM headroom available for planned model load (no `--quota-utilization > 80%`) | Product | `MDL-110` |
+| ☐ | Foundry account capacity available in the target region | Product | `MDL-111` |
+| ☐ | Declared `target_posture` matches detected live evidence (no `POS-001`) | SE | `POS-001` |
+
 ---
 
 > **If any box is unchecked at cutover time, the answer to "are we

@@ -93,6 +93,26 @@ waivers:
   default_expiry_days: 90
   approvers:
     - <name / role>
+
+### Defender + Policy floor (v0.3.0)
+
+# Names of Defender for Cloud plans the customer requires enabled on
+# the subscription. The skill checks each name against `az security
+# pricing show` and fails the corresponding GOV-101..103 finding if
+# the tier is not "Standard". Leave empty to skip the gate.
+defender_plans_required:
+  - AiServices         # GOV-101 — Defender for AI Services
+  - KeyVaults          # GOV-102 — Defender for Key Vault
+  - VirtualMachines    # GOV-103 — Defender for Servers (or Containers)
+
+# Azure Policy assignment IDs (or display names) that must be assigned
+# at the subscription or RG scope. The skill checks each one via
+# `az policy assignment list` and fails GOV-201 if any are missing.
+# Use this to encode the customer's regulatory baseline (e.g., a
+# specific ASB-v3 initiative, or an FSI overlay).
+required_policy_ids:
+  - <e.g., /providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8>  # ASB-v3
+  # - <e.g., /subscriptions/<sub>/providers/Microsoft.Authorization/policySetDefinitions/customer-baseline>
 ```
 
 ## Field guide
@@ -114,6 +134,36 @@ customer. By default the skill scores all 13; this field elevates
 findings in named pillars to `must-fix` regardless of severity, and
 demotes findings in unlisted pillars to `should-fix`. Use to capture
 regulator-driven priorities (e.g., FSI must-have `secrets`, `sre-handover`).
+
+### `defender_plans_required` (v0.3.0)
+
+A list of Microsoft Defender for Cloud plan names that must be in the
+`Standard` tier on the deployment's subscription. The skill checks each
+against `az security pricing show` and fails the matching `GOV-101..103`
+finding if the tier is `Free` or unset. Leave empty to disable the
+Defender gate (not recommended for any pilot above tier-1 sensitivity).
+
+Common values:
+
+- `AiServices` → `GOV-101` (the most-skipped plan in early pilots)
+- `KeyVaults` → `GOV-102`
+- `VirtualMachines` / `Containers` → `GOV-103`
+- `StorageAccounts`, `SqlServers`, `Arm` (extras the skill scores under
+  the generic GOV bucket if listed)
+
+### `required_policy_ids` (v0.3.0)
+
+A list of Azure Policy assignment IDs (full ARM ID) or human-friendly
+initiative display names that must be assigned at subscription or RG
+scope. The skill walks `az policy assignment list` and fails `GOV-201`
+if any are missing, `GOV-202` if any assignment has non-compliant
+resources, and `GOV-203` if the sane-default initiative (ASB v3 by
+default; configurable per customer) is not assigned.
+
+Use this to encode the customer's regulatory baseline — e.g., an FSI
+overlay, an ASB v3 initiative, or a customer-authored policy set.
+Leave empty to skip the gate; ship at least the ASB v3 initiative ID
+in any pilot that targets `target_posture: citadel-spoke`.
 
 ### `residency`
 

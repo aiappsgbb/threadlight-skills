@@ -1,5 +1,10 @@
 # Pillar 1 — `network-posture`
 
+> **v0.3.0:** Adds `POS-001` (declared `target_posture` must match
+> detected evidence — flags pilots that claim citadel-spoke but show
+> no APIM access contract) and wires `NET-501` as a live probe
+> (Citadel APIM Access Contract in `TL_CITADEL_HUB_RG`).
+
 > **What this pillar answers.** Is the network shape of this pilot
 > aligned with the customer's declared production posture? And — as a
 > sub-scored section — is **data residency** correct across model,

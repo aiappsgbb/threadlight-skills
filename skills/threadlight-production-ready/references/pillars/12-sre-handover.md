@@ -1,5 +1,15 @@
 # Pillar 12 — `sre-handover`
 
+> **v0.3.0:** Wires `SRE-104` as a live probe (resource-group
+> activity-log alerts present), and adds the governance gates
+> `GOV-104` (Defender Secure Score floor, default 60%, configurable
+> via `--secure-score-floor`), `GOV-201` (required Azure Policy
+> assignments present at sub/RG scope), `GOV-202` (no non-compliant
+> resources for required policies), `GOV-203` (sane-default initiative
+> assigned — ASB v3 or customer equivalent). All Policy/Defender
+> requirements come from SPEC § 12 `required_policy_ids` and
+> `defender_plans_required`.
+
 > **What this pillar answers.** When this pilot goes to production at
 > 09:00 Monday, who is on the pager at 03:00 Tuesday? Where do they
 > click? What runbook do they follow? Has the SRE team accepted the

@@ -1,5 +1,10 @@
 # Pillar 4 — `secrets`
 
+> **v0.3.0:** Wires `SEC-106` as a live probe (KV diagnostic settings
+> shipping to a Log Analytics workspace — control plane, not data
+> plane) and adds `GOV-102` (Defender for Key Vault plan enabled on
+> the subscription, configurable via SPEC § 12 `defender_plans_required`).
+
 > **What this pillar answers.** Is Key Vault configured for production
 > (soft-delete, purge protection, RBAC)? Are there hardcoded secrets in
 > the repo? Is there a rotation policy declared?
