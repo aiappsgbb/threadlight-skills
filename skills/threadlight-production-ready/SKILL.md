@@ -127,10 +127,12 @@ The skill drives **production onboarding** in three phases:
    explaining exactly which UAMI + federated credential to provision so
    future pushes to `main` deploy without long-lived secrets.
 
-**The Python script is still assessor-only.** It never mutates your repo
-and never mutates your subscription. All edits flow through the Copilot
-agent's tools, which means `git diff` and PR review remain the audit
-trail. The script does not have, and will not be given, a `--apply` flag.
+**The Python script is assessor-only for remediation findings.** It never mutates your repo or
+subscription for findings — fixes are dispatched to the agent as apply-plan tasks. The single
+documented exception is `--scaffold-cicd`, which writes 2 files (`.github/workflows/threadlight.yml`
+and `scripts/threadlight-runbook.md`) into the customer repo so the production-onboarding pipeline
+can run. That exception is bounded, opt-in, and writes deterministic templates only — it does not
+emit remediation patches.
 
 ## How to invoke
 

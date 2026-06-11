@@ -13,10 +13,12 @@ Flips the skill from a pure assessor into a 3-phase production-onboarding
 executor: Phase 1 (Assess, Python script) → Phase 2 (Refine + Deploy,
 agent-driven via Edit/Write + sibling skills) → Phase 3 (CI/CD Handoff,
 scaffolded GitHub Actions workflow + central-team UAMI runbook). The
-sacred architectural rule from v0.3.0 holds: **the Python script never
-mutates the user's repo.** All edits flow through the Copilot agent so
-`git diff` + PR review remain the audit trail. No `--apply FINDING_ID`
-flag was added or planned.
+sacred architectural rule from v0.3.0 holds for remediation findings:
+fixes are dispatched through the Copilot agent so `git diff` + PR review
+remain the audit trail. The lone Python write exception is the
+`--scaffold-cicd` opt-in flag, which writes 2 deterministic template files
+into the customer repo so the production-onboarding pipeline can run. No
+`--apply FINDING_ID` flag was added or planned.
 
 ### Added — major
 - **3-phase onboarding flow.** Phase 1 (Assess) emits an `apply-plan.json`
