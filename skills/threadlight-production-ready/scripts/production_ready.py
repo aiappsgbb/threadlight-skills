@@ -534,7 +534,7 @@ FRAMING_QUESTIONS = [
     },
     {
         "id": "cicd_target",
-        "prompt": "CI/CD target? (only github-actions in v0.4.0; azure-devops + gitlab are deferred to v0.6.0+)",
+        "prompt": "CI/CD target? (only github-actions in v0.4.0+v0.5.0; azure-devops + gitlab are deferred to v0.6.0+)",
         "kind": "choice",
         "choices": ["github-actions"],
         "required": True,
@@ -559,17 +559,23 @@ def _coerce_bool(s: str) -> bool | None:
 
 
 def run_framing_wizard(istream=None, ostream=None) -> dict[str, Any]:
-    """TTY-driven 7-question framing wizard.
+    """TTY-driven 8-question framing wizard.
 
     Re-prompts on invalid choice / bool input. Raises SystemExit on EOF for
-    required questions. Returns {question_id: answer} dict.
+    required questions. Returns {question_id: answer} dict. Renders `help`
+    text (if present on a question) once before the first prompt of that
+    question so operators have format hints (e.g. "UUID required").
     """
     istream = istream if istream is not None else sys.stdin
     ostream = ostream if ostream is not None else sys.stdout
     answers: dict[str, Any] = {}
     for q in FRAMING_QUESTIONS:
+        first_prompt = True
         while True:
             print(q["prompt"], file=ostream)
+            if first_prompt and q.get("help"):
+                print(f"  {q['help']}", file=ostream)
+                first_prompt = False
             if q["kind"] == "choice":
                 print(f"  choices: {', '.join(q['choices'])}", file=ostream)
             raw = istream.readline()
