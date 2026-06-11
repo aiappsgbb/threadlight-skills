@@ -1170,6 +1170,138 @@ def _load_waivers(path: Path | None) -> tuple[dict[str, dict], dict, list[str]]:
     return out, binding, errors
 
 
+def _load_customer_overrides(path):
+    """Load customer-overrides YAML with a minimal stdlib parser.
+
+    Supports the limited shape:
+        customer: <str>
+        overrides:
+          - recipe_id: <str>
+            status: pass|fail
+            reason: <str>
+
+    Returns None if path is None. Raises FileNotFoundError if path is missing.
+    """
+    if path is None:
+        return None
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+
+    out = {"customer": None, "overrides": []}
+    current = None
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith(" ") and ":" in line and not line.startswith("-"):
+            key, _, val = line.partition(":")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key == "customer":
+                out["customer"] = val
+            elif key == "overrides":
+                pass
+            continue
+        stripped = line.lstrip()
+        if stripped.startswith("- "):
+            if current is not None:
+                out["overrides"].append(current)
+            current = {}
+            stripped = stripped[2:]
+        if current is not None and ":" in stripped:
+            key, _, val = stripped.partition(":")
+            current[key.strip()] = val.strip().strip('"').strip("'")
+    if current is not None:
+        out["overrides"].append(current)
+    return out
+
+
+def _validate_customer_overrides(ov):
+    """Validate a customer-overrides payload. Raises ValueError on invalid shape."""
+    if not isinstance(ov, dict):
+        raise ValueError("customer-overrides must be a mapping")
+    if not ov.get("customer"):
+        raise ValueError("customer-overrides missing required 'customer' field")
+    overrides = ov.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise ValueError("'overrides' must be a list")
+    for i, item in enumerate(overrides):
+        if not isinstance(item, dict):
+            raise ValueError(f"overrides[{i}] must be a mapping")
+        if not item.get("recipe_id"):
+            raise ValueError(f"overrides[{i}] missing 'recipe_id'")
+        status = item.get("status")
+        if status not in ("pass", "fail"):
+            raise ValueError(
+                f"overrides[{i}].status must be 'pass' or 'fail', got {status!r}"
+            )
+        if not isinstance(item.get("reason"), str) or not item["reason"].strip():
+            raise ValueError(
+                f"overrides[{i}] requires a non-empty 'reason' string"
+            )
+
+
+def _finding_lookup_id(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("recipe_id") or finding.get("id")
+    return getattr(finding, "recipe_id", None) or getattr(finding, "id", None)
+
+
+def _finding_severity(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("severity")
+    return getattr(finding, "severity", None)
+
+
+def _finding_status(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("status")
+    return getattr(finding, "status", None)
+
+
+def _apply_customer_overrides(findings, ov):
+    """Apply customer overrides to findings. Status-flips only.
+
+    A finding with severity == 'must-fix' may never be overridden — attempting
+    to do so calls sys.exit(2) with a loud error to fail the deploy gate.
+    """
+    if ov is None:
+        return findings
+    index = {item["recipe_id"]: item for item in ov.get("overrides", [])}
+    out = []
+    for f in findings:
+        rid = _finding_lookup_id(f)
+        if rid in index:
+            target_status = index[rid]["status"]
+            if _finding_severity(f) == "must-fix":
+                msg = (
+                    "FATAL: customer-override on must-fix finding rejected.\n"
+                    f"  recipe_id: {rid}\n"
+                    f"  current status: {_finding_status(f)}\n"
+                    f"  attempted override: {target_status}\n"
+                    f"  reason given: {index[rid].get('reason')!r}\n"
+                    "Must-fix findings cannot be silenced by customer overrides. "
+                    "Either remediate the finding, or work with the threadlight "
+                    "maintainers to demote it from must-fix in the next release."
+                )
+                print(msg, file=sys.stderr)
+                sys.exit(2)
+            if isinstance(f, dict):
+                new_f = dict(f)
+                new_f["status"] = target_status
+                new_f["override_reason"] = index[rid]["reason"]
+                new_f["override_customer"] = ov["customer"]
+            else:
+                new_f = Finding(**asdict(f))
+                new_f.status = target_status
+                setattr(new_f, "override_reason", index[rid]["reason"])
+                setattr(new_f, "override_customer", ov["customer"])
+            out.append(new_f)
+        else:
+            out.append(f)
+    return out
+
+
 def _validate_waiver_binding(
     binding: dict,
     sub: str | None,
@@ -3648,6 +3780,8 @@ def _score_pillar(findings: list[Finding], include_experimental: bool = False) -
         elif f.status == "should-fix":
             earned += 1
             has_should = True
+        elif f.status == "fail":
+            has_should = True
         elif f.status == "must-fix":
             has_must = True
         elif f.status == "not-verified":
@@ -3821,6 +3955,15 @@ def _compute_evidence_freshness(
 # ---------------------------------------------------------------------------
 
 
+def _finding_to_dict(finding: Finding) -> dict:
+    row = asdict(finding)
+    for key in ("override_customer", "override_reason"):
+        val = getattr(finding, key, None)
+        if val is not None:
+            row[key] = val
+    return row
+
+
 def _build_manifest(
     posture: dict,
     pillar_results_raw: dict[str, list[Finding]],
@@ -3874,7 +4017,7 @@ def _build_manifest(
             "score_raw": r_score,
             "score_with_waivers": w_score,
             "verification_debt": w_debt,
-            "findings": [asdict(f) for f in _filter_exp(w_fs)],
+            "findings": [_finding_to_dict(f) for f in _filter_exp(w_fs)],
         })
     raw_pct = (raw_total_score * 100) // raw_max if raw_max else 0
     waived_pct = (waived_total * 100) // waived_max if waived_max else 0
@@ -3889,7 +4032,7 @@ def _build_manifest(
     # excluded `not-applicable`, but treated `not-verified` as 50% credit
     # in the score itself — fixed in `_score_pillar`.
     scoreable = [f for fs in pillar_results_waived.values() for f in fs
-                 if f.status in ("pass", "should-fix", "must-fix", "not-verified", "waived")]
+                 if f.status in ("pass", "fail", "should-fix", "must-fix", "not-verified", "waived")]
     not_verified_count = sum(1 for f in scoreable if f.status == "not-verified")
     verified_count = len(scoreable) - not_verified_count
     coverage_pct = (verified_count * 100) // len(scoreable) if scoreable else 0
@@ -3951,6 +4094,7 @@ STATUS_ICON = {
     "red": "🔴",
     "not-applicable": "⚪",
     "pass": "✅",
+    "fail": "❌",
     "should-fix": "⚠️",
     "must-fix": "❌",
     "not-verified": "❓",
@@ -4093,7 +4237,14 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
             detail = (f.detail or "").replace("|", "\\|")
             extra = f" (tier: {tier_label})" if f.tier > 0 else ""
             wsuffix = f" — waiver {f.waiver_id}" if f.waiver_id else ""
-            out.append(f"| `{f.id}` | {f.severity} | {STATUS_ICON.get(f.status, '?')} {f.status} | {detail}{extra}{wsuffix} |")
+            override_reason = getattr(f, "override_reason", None)
+            override_customer = getattr(f, "override_customer", None)
+            osuffix = ""
+            if override_reason:
+                safe_customer = str(override_customer or "unknown").replace("|", "\\|")
+                safe_reason = str(override_reason).replace("|", "\\|")
+                osuffix = f" — customer override {safe_customer}: {safe_reason}"
+            out.append(f"| `{f.id}` | {f.severity} | {STATUS_ICON.get(f.status, '?')} {f.status} | {detail}{extra}{wsuffix}{osuffix} |")
         out.append("")
     # 6. Uplift plan
     out.append("## 6. Uplift plan (suggested order)")
@@ -4296,6 +4447,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Override target resource group (otherwise read from framing or manifest)")
     p.add_argument("--repo-full-name", default=None,
                    help="owner/repo string for CI/CD scaffolds (auto-detected from git remote if omitted)")
+    p.add_argument("--customer-overrides", default=None,
+                   help="Path to a customer-overrides.yaml file (SPEC §12). "
+                        "Status-flips only. Must-fix findings cannot be overridden — "
+                        "attempting to do so exits 2.")
     p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return p.parse_args(argv)
 
@@ -4381,6 +4536,14 @@ def main(argv: list[str] | None = None) -> int:
     waivers_path = root / args.waivers if args.waivers else None
     waivers, waiver_binding, waiver_errs = _load_waivers(waivers_path)
     warnings.extend(waiver_errs)
+    customer_overrides = None
+    if args.customer_overrides:
+        try:
+            customer_overrides = _load_customer_overrides(args.customer_overrides)
+            _validate_customer_overrides(customer_overrides)
+        except (FileNotFoundError, ValueError) as e:
+            _eprint(f"error: customer-overrides: {e}")
+            return 2
 
     # 3. Context — inject CLI-flag overrides into manifest so checks see them.
     # `--secure-score-floor` is read by GOV-104 via `ctx.manifest`; threading it
@@ -4504,6 +4667,12 @@ def main(argv: list[str] | None = None) -> int:
         pillar_findings_waived["network-posture"] = _apply_waivers(
             pillar_findings_raw["network-posture"], waivers,
         )
+
+    if customer_overrides:
+        for pid in PILLAR_IDS:
+            pillar_findings_waived[pid] = _apply_customer_overrides(
+                pillar_findings_waived.get(pid, []), customer_overrides,
+            )
 
     # 8. Build manifest + report
     safe_check_ref = {
