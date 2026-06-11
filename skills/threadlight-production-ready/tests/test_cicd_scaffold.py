@@ -47,6 +47,7 @@ def test_render_builds_context_from_framing():
         "target_resource_group": "rg",
         "target_posture": "agt",
         "central_platform_team": "platform-prod",
+        "azure_tenant_id": "00000000-0000-0000-0000-000000000001",
     }
     ctx = mod._cicd_context_from_framing(framing, repo_full_name="aiappsgbb/threadlight-skills")
     assert ctx["TARGET_SUBSCRIPTION_ID"] == "sub"
@@ -63,6 +64,7 @@ def test_scaffold_writes_both_files():
         "target_subscription_id": "sub",
         "target_resource_group": "rg",
         "target_posture": "agt",
+        "azure_tenant_id": "00000000-0000-0000-0000-000000000001",
     }
     written = mod._scaffold_cicd(framing, "aiappsgbb/threadlight-skills", out_root=tmp)
     paths = [str(p.relative_to(tmp)) for p in written]
@@ -130,7 +132,8 @@ def test_scaffold_via_cli_flag_e2e():
         '"target_subscription_id": "sub", "target_resource_group": "rg",'
         '"target_posture": "agt", "provisioning_rights": true,'
         '"central_platform_team": false, "restricted_environment": false,'
-        '"cicd_target": "github-actions"'
+        '"cicd_target": "github-actions",'
+        '"azure_tenant_id": "00000000-0000-0000-0000-000000000001"'
         '}'
     )
     script = ROOT / "scripts" / "production_ready.py"
@@ -160,7 +163,8 @@ def test_scaffold_hint_when_pipeline_items_present_and_flag_absent():
         '"target_subscription_id": "sub", "target_resource_group": "rg",'
         '"target_posture": "agt", "provisioning_rights": true,'
         '"central_platform_team": false, "restricted_environment": false,'
-        '"cicd_target": "github-actions"'
+        '"cicd_target": "github-actions",'
+        '"azure_tenant_id": "00000000-0000-0000-0000-000000000001"'
         '}'
     )
     # Force-inject a deferred-to-pipeline item by writing an apply-plan post-hoc?
@@ -215,6 +219,35 @@ def test_scaffold_hint_silent_when_no_pipeline_items():
     finally:
         mod._eprint = saved
     assert not any("--scaffold-cicd" in line for line in captured), captured
+
+
+# --- B5 (v0.5.0): runbook has no surviving placeholders -----------------
+
+def test_runbook_has_no_unfilled_angle_bracket_placeholders():
+    """Closes #33 defense-in-depth: with a full framing dict (including
+    azure_tenant_id), the scaffolded runbook must have zero surviving '<...>'
+    patterns — every angle-bracket placeholder must be substituted."""
+    import re
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    framing = {
+        "target_subscription_id": "00000000-0000-0000-0000-000000000000",
+        "target_resource_group": "rg-test",
+        "target_posture": "agt",
+        "provisioning_rights": True,
+        "central_platform_team": False,
+        "restricted_environment": False,
+        "cicd_target": "github-actions",
+        "azure_tenant_id": "11111111-1111-1111-1111-111111111111",
+    }
+    written = mod._scaffold_cicd(framing, "aiappsgbb/threadlight-skills", out_root=tmp)
+    for path in written:
+        if not str(path).endswith("central-team-uami-readme.md"):
+            continue
+        text = path.read_text(encoding="utf-8")
+        matches = re.findall(r"<[a-z-]+>", text)
+        # Allow `<tenant-id>` ONLY if it's inside a code-fence comment or quoted example;
+        # the strict assertion is "the substitution token didn't leak through".
+        assert matches == [], f"Runbook has unfilled placeholders: {matches}. See #33."
 
 
 if __name__ == "__main__":
