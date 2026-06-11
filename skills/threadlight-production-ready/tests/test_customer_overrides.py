@@ -98,5 +98,125 @@ class CustomerOverridesMustFixRejection(unittest.TestCase):
         self.assertIn("SEC-001", proc.stderr + proc.stdout)
 
 
+class CustomerOverridesParserStrict(unittest.TestCase):
+    """W2 — strict-mode rejections to protect the audit trail.
+
+    The mini-YAML parser is intentionally not feature-complete. Rather than
+    silently degrade (e.g. swallow a `reason: |` block scalar's body), it
+    rejects loudly so an operator can't accidentally apply an override
+    whose justification text was lost.
+    """
+
+    def test_load_rejects_block_scalar(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-block-scalar.yaml")
+        self.assertIn("block scalar", str(cm.exception).lower())
+
+    def test_load_rejects_tab_indentation(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-tab-indent.yaml")
+        self.assertIn("tab", str(cm.exception).lower())
+
+    def test_load_rejects_unquoted_inline_comment(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-inline-comment.yaml")
+        self.assertIn("#", str(cm.exception))
+        self.assertIn("quote", str(cm.exception).lower())
+
+    def test_load_accepts_quoted_value_containing_hash(self):
+        """A `#` inside a properly quoted value is fine — only unquoted
+        ` #` is ambiguous."""
+        import tempfile
+        text = (
+            'customer: acme-corp\n'
+            'overrides:\n'
+            '  - recipe_id: SEC-103\n'
+            '    status: pass\n'
+            '    reason: "stale # 2025-04-22 — review by Q3"\n'
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(text)
+            path = f.name
+        try:
+            ov = prod._load_customer_overrides(path)
+            self.assertIn("#", ov["overrides"][0]["reason"])
+        finally:
+            pathlib.Path(path).unlink()
+
+    def test_load_rejects_duplicate_top_level_key(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-duplicate-top-key.yaml")
+        self.assertIn("duplicate", str(cm.exception).lower())
+        self.assertIn("customer", str(cm.exception))
+
+    def test_load_rejects_duplicate_recipe_id(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-duplicate-recipe-id.yaml")
+        self.assertIn("duplicate recipe_id", str(cm.exception).lower())
+        self.assertIn("SEC-103", str(cm.exception))
+
+    def test_load_rejects_unknown_top_level_key(self):
+        with self.assertRaises(ValueError) as cm:
+            prod._load_customer_overrides(FIXTURES / "customer-overrides-unknown-top-key.yaml")
+        self.assertIn("unknown top-level key", str(cm.exception).lower())
+        self.assertIn("typo_field", str(cm.exception))
+
+    def test_validate_rejects_unknown_override_item_key(self):
+        ov = prod._load_customer_overrides(FIXTURES / "customer-overrides-unknown-item-key.yaml")
+        with self.assertRaises(ValueError) as cm:
+            prod._validate_customer_overrides(ov)
+        self.assertIn("unknown", str(cm.exception).lower())
+        self.assertIn("severity", str(cm.exception))
+
+
+class CustomerOverridesPathRestriction(unittest.TestCase):
+    """W3 — --customer-overrides must reject combinations where the
+    overrides would be silently dropped (i.e. anything other than the
+    v0.3.0 assess codepath actually loads + applies them)."""
+
+    def _run(self, *flags):
+        args = [sys.executable, str(SCRIPT), *flags, "--quiet"]
+        return subprocess.run(args, capture_output=True, text=True, check=False, timeout=60)
+
+    def test_rejects_combination_with_onboard(self):
+        proc = self._run(
+            "--customer-overrides", str(FIXTURES / "customer-overrides-valid.yaml"),
+            "--onboard",
+            "--framing-file", str(SAMPLE_PILOT / "framing.json") if (SAMPLE_PILOT / "framing.json").is_file()
+                                else str(FIXTURES / "customer-overrides-valid.yaml"),
+            "--root", str(SAMPLE_PILOT),
+        )
+        self.assertEqual(proc.returncode, 2, proc.stderr + proc.stdout)
+        combined = (proc.stderr + proc.stdout).lower()
+        self.assertIn("--customer-overrides", proc.stderr + proc.stdout)
+        self.assertIn("--onboard", proc.stderr + proc.stdout)
+
+    def test_rejects_combination_with_remediate(self):
+        proc = self._run(
+            "--customer-overrides", str(FIXTURES / "customer-overrides-valid.yaml"),
+            "--remediate", "SEC-001",
+        )
+        self.assertEqual(proc.returncode, 2, proc.stderr + proc.stdout)
+        self.assertIn("--customer-overrides", proc.stderr + proc.stdout)
+        self.assertIn("--remediate", proc.stderr + proc.stdout)
+
+    def test_rejects_standalone_scaffold_without_manifest(self):
+        import tempfile
+        # An empty cwd has no specs/manifest.json, so --scaffold-cicd takes
+        # the standalone branch.
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = self._run(
+                "--customer-overrides", str(FIXTURES / "customer-overrides-valid.yaml"),
+                "--scaffold-cicd",
+                "--framing-file", str(FIXTURES.parent.parent / "references" / "fixtures" /
+                                       "sample-pilot-restricted" / "framing.json"),
+                "--repo-full-name", "octocat/demo",
+                "--root", tmp,
+            )
+        self.assertEqual(proc.returncode, 2, proc.stderr + proc.stdout)
+        self.assertIn("--customer-overrides", proc.stderr + proc.stdout)
+        self.assertIn("--scaffold-cicd", proc.stderr + proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

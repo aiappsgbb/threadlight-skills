@@ -843,6 +843,18 @@ See `references/customer-overrides-schema.md` for the full schema, the
 worked example at `references/customer-overrides.example.yaml`, and the test
 matrix at `tests/test_customer_overrides.py`.
 
+**Parser is strict-mode (audit-trail safety).** The mini-YAML loader is
+intentionally not feature-complete — it rejects YAML constructs whose
+silent loss would corrupt the audit trail. Rejected: tab indentation,
+block scalars (`|`, `>`), unquoted `<space>#` in values, duplicate
+top-level keys, duplicate `recipe_id` entries, and unknown top-level or
+per-override keys. Quote any value that contains `#`.
+
+**`--customer-overrides` is only valid on the v0.3.0 assess codepath.**
+Combining it with `--remediate`, `--onboard`, or standalone `--scaffold-cicd`
+(no manifest) exits 2 — those codepaths don't apply overrides, so
+honoring the flag would silently drop them.
+
 ## Integration with the threadlight chain
 
 ```

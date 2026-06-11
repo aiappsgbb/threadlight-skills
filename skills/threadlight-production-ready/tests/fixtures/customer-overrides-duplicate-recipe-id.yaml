@@ -1,0 +1,8 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: "First override."
+  - recipe_id: SEC-103
+    status: fail
+    reason: "Second override — would silently shadow the first."

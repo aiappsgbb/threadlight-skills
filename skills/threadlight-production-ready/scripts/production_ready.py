@@ -1179,7 +1179,7 @@ def _load_waivers(path: Path | None) -> tuple[dict[str, dict], dict, list[str]]:
 
 
 def _load_customer_overrides(path):
-    """Load customer-overrides YAML with a minimal stdlib parser.
+    """Load customer-overrides YAML with a STRICT minimal stdlib parser.
 
     Supports the limited shape:
         customer: <str>
@@ -1188,37 +1188,130 @@ def _load_customer_overrides(path):
             status: pass|fail
             reason: <str>
 
-    Returns None if path is None. Raises FileNotFoundError if path is missing.
+    Strict mode (PR #34 review / W2): rejects YAML constructs the parser
+    cannot faithfully round-trip, rather than degrading silently. A
+    customer-overrides file is an audit-trail decision record, so silent
+    text loss (e.g. on a `reason: |` block scalar) means a customer's
+    justification disappears while the override still applies. Better to
+    fail loudly. Rejected constructs:
+      - tab indentation
+      - block scalars (`|`, `>` and their `-`/`+` variants)
+      - unquoted `<space>#` in values (would be silently captured)
+      - duplicate top-level keys
+      - duplicate recipe_id entries in `overrides:`
+      - unknown top-level keys
+
+    Per-override-item unknown keys are rejected in _validate_customer_overrides.
+
+    Returns None if path is None. Raises FileNotFoundError if path is
+    missing, ValueError on any unsupported construct.
     """
     if path is None:
         return None
     p = Path(path)
     text = p.read_text(encoding="utf-8")
 
+    ALLOWED_TOP = {"customer", "overrides"}
+    BLOCK_SCALAR_RE = re.compile(r"^[|>][+\-]?\d*\s*$")
+
     out = {"customer": None, "overrides": []}
     current = None
-    for raw in text.splitlines():
+    seen_top: set = set()
+    seen_override_keys: set = set()
+    seen_recipe_ids: set = set()
+
+    def _strip_quotes(v):
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            return v[1:-1], True
+        return v, False
+
+    def _check_value(line_no, key, raw_val):
+        raw_val = raw_val.strip()
+        if BLOCK_SCALAR_RE.match(raw_val):
+            raise ValueError(
+                f"line {line_no}: {key!r}: block scalars (`|`, `>`) are not "
+                f"supported by the customer-overrides stdlib parser. Inline "
+                f"the value on a single line, or quote it."
+            )
+        val, quoted = _strip_quotes(raw_val)
+        if not quoted and " #" in val:
+            raise ValueError(
+                f"line {line_no}: {key!r}: unquoted '#' in value would be "
+                f"silently captured into the audit trail. Quote the value, "
+                f"or remove the inline comment."
+            )
+        return val
+
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        # Reject tabs in leading whitespace (currently silently skipped by
+        # the lstrip(" ") check below, which would let a tab-indented list
+        # entry silently disappear from the overrides list).
+        leading = raw.lstrip(" ")
+        if leading and leading[0] == "\t":
+            raise ValueError(
+                f"line {line_no}: tab indentation is not supported. Use spaces."
+            )
+
         line = raw.rstrip()
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+
+        # Top-level key (no leading space, key:value, not a list item)
         if not line.startswith(" ") and ":" in line and not line.startswith("-"):
+            if current is not None:
+                out["overrides"].append(current)
+                current = None
+                seen_override_keys = set()
             key, _, val = line.partition(":")
             key = key.strip()
-            val = val.strip().strip('"').strip("'")
+            if key not in ALLOWED_TOP:
+                raise ValueError(
+                    f"line {line_no}: unknown top-level key {key!r}. "
+                    f"Allowed: {sorted(ALLOWED_TOP)}."
+                )
+            if key in seen_top:
+                raise ValueError(
+                    f"line {line_no}: duplicate top-level key {key!r}."
+                )
+            seen_top.add(key)
             if key == "customer":
-                out["customer"] = val
+                out["customer"] = _check_value(line_no, key, val)
             elif key == "overrides":
-                pass
+                if val.strip():
+                    raise ValueError(
+                        f"line {line_no}: 'overrides:' must be followed by a "
+                        f"list (each entry starting with `- recipe_id:`), not "
+                        f"an inline value."
+                    )
             continue
+
         stripped = line.lstrip()
         if stripped.startswith("- "):
             if current is not None:
                 out["overrides"].append(current)
             current = {}
+            seen_override_keys = set()
             stripped = stripped[2:]
+
         if current is not None and ":" in stripped:
             key, _, val = stripped.partition(":")
-            current[key.strip()] = val.strip().strip('"').strip("'")
+            key = key.strip()
+            if key in seen_override_keys:
+                raise ValueError(
+                    f"line {line_no}: duplicate key {key!r} in same override item."
+                )
+            seen_override_keys.add(key)
+            checked = _check_value(line_no, key, val)
+            current[key] = checked
+            if key == "recipe_id":
+                if checked in seen_recipe_ids:
+                    raise ValueError(
+                        f"line {line_no}: duplicate recipe_id {checked!r} in "
+                        f"overrides list."
+                    )
+                seen_recipe_ids.add(checked)
+
     if current is not None:
         out["overrides"].append(current)
     return out
@@ -1226,6 +1319,7 @@ def _load_customer_overrides(path):
 
 def _validate_customer_overrides(ov):
     """Validate a customer-overrides payload. Raises ValueError on invalid shape."""
+    ALLOWED_OVERRIDE_KEYS = {"recipe_id", "status", "reason"}
     if not isinstance(ov, dict):
         raise ValueError("customer-overrides must be a mapping")
     if not ov.get("customer"):
@@ -1236,6 +1330,12 @@ def _validate_customer_overrides(ov):
     for i, item in enumerate(overrides):
         if not isinstance(item, dict):
             raise ValueError(f"overrides[{i}] must be a mapping")
+        unknown = set(item.keys()) - ALLOWED_OVERRIDE_KEYS
+        if unknown:
+            raise ValueError(
+                f"overrides[{i}] has unknown keys {sorted(unknown)}. "
+                f"Allowed: {sorted(ALLOWED_OVERRIDE_KEYS)}."
+            )
         if not item.get("recipe_id"):
             raise ValueError(f"overrides[{i}] missing 'recipe_id'")
         status = item.get("status")
@@ -4482,6 +4582,23 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path(args.root).resolve()
 
+    # --customer-overrides is only honored on the v0.3.0 assess codepath
+    # (it flips finding statuses in-memory before report/manifest emit).
+    # Combining it with --remediate (recipe-print side-channel) or --onboard
+    # (apply-plan emit, no findings flip) would silently drop the overrides.
+    # PR #34 review / W3: reject loudly at argparse-time rather than ignore.
+    if args.customer_overrides and (args.remediate or args.onboard):
+        incompat = "--remediate" if args.remediate else "--onboard"
+        _eprint(
+            f"error: --customer-overrides cannot be combined with {incompat}. "
+            "Overrides are applied during the v0.3.0 assessment pass (which "
+            "flips finding statuses before report emit). The %s codepath "
+            "does not run that pass, so the overrides would be silently "
+            "dropped. Either run the assessment without %s, or drop "
+            "--customer-overrides." % (incompat, incompat)
+        )
+        return 2
+
     # --remediate is a side-channel: print the recipe and exit. Doesn't need
     # any other inputs.
     if args.remediate:
@@ -4496,6 +4613,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.scaffold_cicd and not args.onboard:
         manifest_in = root / args.in_manifest
         if not manifest_in.is_file():
+            # Standalone-scaffold path: same W3 reasoning — overrides
+            # would be silently dropped here too.
+            if args.customer_overrides:
+                _eprint(
+                    "error: --customer-overrides cannot be combined with "
+                    "standalone --scaffold-cicd (no manifest at "
+                    f"{manifest_in}). Run the v0.3.0 assessment first, or "
+                    "drop --customer-overrides."
+                )
+                return 2
             framing = (load_framing_file(args.framing_file) if args.framing_file
                        else run_framing_wizard())
             repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())

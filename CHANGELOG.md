@@ -47,6 +47,15 @@ truthful v0.6.0+ deferral boundary.
 - Stale `deferred to v0.5.0` wording now points to `v0.6.0+`.
 - `SUP-101` and `SRE-103` catalog titles were re-aimed at the new repo-edit
   gates (`SUPPORT.md` and `docs/sre/runbook.md`).
+- `_load_customer_overrides` is now strict-mode: rejects tab indentation,
+  block scalars (`|`/`>`), unquoted `<space>#` in values, duplicate
+  top-level keys, duplicate `recipe_id` entries, and unknown top-level keys.
+  `_validate_customer_overrides` rejects unknown per-override keys.
+  Rationale: silent text loss on an override's `reason` field would corrupt
+  the audit trail.
+- `--customer-overrides` now rejects combinations where the overrides would
+  be silently dropped (`--remediate`, `--onboard`, standalone
+  `--scaffold-cicd` without a manifest). Exits 2 with a loud error.
 
 ### Deferred to v0.6.0+
 
