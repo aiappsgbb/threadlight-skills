@@ -539,6 +539,13 @@ FRAMING_QUESTIONS = [
         "choices": ["github-actions"],
         "required": True,
     },
+    {
+        "id": "azure_tenant_id",
+        "prompt": "Azure tenant ID (UUID) where the production subscription lives",
+        "help": "Find it via `az account show --query tenantId -o tsv`. UUID format required.",
+        "kind": "text",
+        "required": True,
+    },
 ]
 
 

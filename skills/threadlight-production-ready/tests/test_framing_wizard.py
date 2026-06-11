@@ -25,7 +25,7 @@ _spec.loader.exec_module(mod)
 
 def test_framing_questions_have_required_fields():
     qs = mod.FRAMING_QUESTIONS
-    assert len(qs) == 7, "v0.4.0 ships exactly 7 framing questions"
+    assert len(qs) == 8, "v0.5.0 adds azure_tenant_id (#33)"
     for q in qs:
         assert {"id", "prompt", "kind", "required"}.issubset(q.keys())
         assert q["kind"] in {"text", "choice", "bool"}
@@ -43,6 +43,7 @@ def test_framing_question_ids_are_canonical():
         "central_platform_team",
         "restricted_environment",
         "cicd_target",
+        "azure_tenant_id",  # v0.5.0 (#33) — runbook substitution
     }
 
 
@@ -59,6 +60,7 @@ def test_wizard_reads_answers_from_stdin():
         "n\n"
         "n\n"
         "github-actions\n"
+        "11111111-1111-1111-1111-111111111111\n"  # azure_tenant_id
     )
     fake_out = io.StringIO()
     answers = mod.run_framing_wizard(istream=fake_in, ostream=fake_out)
@@ -69,6 +71,7 @@ def test_wizard_reads_answers_from_stdin():
     assert answers["central_platform_team"] is False
     assert answers["restricted_environment"] is False
     assert answers["cicd_target"] == "github-actions"
+    assert answers["azure_tenant_id"] == "11111111-1111-1111-1111-111111111111"
 
 
 def test_wizard_rejects_invalid_choice():
@@ -81,6 +84,7 @@ def test_wizard_rejects_invalid_choice():
         "n\n"
         "n\n"
         "github-actions\n"
+        "11111111-1111-1111-1111-111111111111\n"  # azure_tenant_id
     )
     fake_out = io.StringIO()
     answers = mod.run_framing_wizard(istream=fake_in, ostream=fake_out)
@@ -100,6 +104,7 @@ def test_framing_file_loader_reads_json():
         "central_platform_team": False,
         "restricted_environment": True,
         "cicd_target": "github-actions",
+        "azure_tenant_id": "11111111-1111-1111-1111-111111111111",
     }
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(payload, f)
@@ -140,6 +145,31 @@ def test_args_parser_accepts_onboard_flags():
     assert args.no_rights_probe is True
     assert args.target_sub == "00000000-0000-0000-0000-000000000000"
     assert args.target_rg == "rg-test"
+
+
+# ---------------------------------------------------------------------------
+# v0.5.0 — azure_tenant_id (#33)
+# ---------------------------------------------------------------------------
+
+def test_framing_questions_includes_azure_tenant_id():
+    ids = [q["id"] for q in mod.FRAMING_QUESTIONS]
+    assert "azure_tenant_id" in ids, (
+        "Wizard must collect tenant ID so runbook <tenant-id> placeholder is filled. See #33."
+    )
+
+
+def test_framing_question_count_is_eight():
+    assert len(mod.FRAMING_QUESTIONS) == 8, (
+        "v0.5.0 ships 8 framing questions (azure_tenant_id added per #33)."
+    )
+
+
+def test_azure_tenant_id_question_validation():
+    q = next(q for q in mod.FRAMING_QUESTIONS if q["id"] == "azure_tenant_id")
+    assert q.get("required", True), "azure_tenant_id must be required"
+    # Help text or prompt should mention UUID format so operator knows what to enter
+    haystack = (q.get("help", "") + " " + q.get("prompt", "")).lower()
+    assert "uuid" in haystack, "question should mention UUID format in prompt or help text"
 
 
 if __name__ == "__main__":
