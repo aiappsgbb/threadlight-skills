@@ -41,7 +41,57 @@ def test_map_lists_at_least_one_sibling_recipe():
     assert _sibling_skill_recipes(), "no sibling-skill recipes found; expected NET-501 at minimum"
 
 
+def test_recipes_for_planned_siblings_must_be_manual():
+    """Recipes for unbuilt upstream sibling skills MUST be kind: manual (issue #31).
+    
+    The sibling-skills-map.md marks planned skills inline as `*(planned — awesome-gbb#NNN)*`.
+    Any recipe in such a row must declare `kind: manual` in its YAML front-matter.
+    Otherwise the apply-plan dispatcher would call a non-existent sibling skill.
+    """
+    import re
+    import pathlib
+    
+    text = MAP.read_text(encoding="utf-8")
+    planned_recipes = []
+    for line in text.splitlines():
+        if "(planned" not in line:
+            continue
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.split("|")]
+        # cells[0] is empty (leading "|"), cells[1] is the finding-id cell
+        if len(cells) < 2:
+            continue
+        first = cells[1]
+        if not first or first in ("Finding ID", ":---", "---"):
+            continue
+        planned_recipes.append(first)
+    
+    assert planned_recipes, "expected at least one '(planned' row in sibling-skills-map.md"
+    
+    offenders = []
+    for rid in planned_recipes:
+        rpath = RDIR / f"{rid}.md"
+        if not rpath.exists():
+            # Recipe file missing — separate problem, not what this test gates.
+            continue
+        rtext = rpath.read_text(encoding="utf-8")
+        m = re.search(r"^kind:\s*([a-z-]+)\s*$", rtext, re.MULTILINE)
+        if not m:
+            offenders.append(f"{rid}: no kind: in front-matter")
+            continue
+        if m.group(1) != "manual":
+            offenders.append(
+                f"{rid}: kind: {m.group(1)} but sibling skill is unbuilt — must be 'manual'."
+            )
+    
+    assert offenders == [], (
+        "Planned-sibling rule violated. See #31.\n  " + "\n  ".join(offenders)
+    )
+
+
 if __name__ == "__main__":
     test_every_sibling_recipe_is_in_map()
     test_map_lists_at_least_one_sibling_recipe()
+    test_recipes_for_planned_siblings_must_be_manual()
     print("OK")
