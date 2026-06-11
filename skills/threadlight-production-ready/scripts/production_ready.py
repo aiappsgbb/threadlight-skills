@@ -479,7 +479,18 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
+
+# Files emitted by THIS assessor that must never be ingested by a subsequent run
+# (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
+# Keep in sync with the default values of --out / --report / --trend-csv /
+# --apply-plan-out in _parse_args. test_idempotent_assess gates that.
+EXCLUDE_GLOBS = (
+    "production-readiness-report.md",
+    "production-readiness-manifest.json",
+    "production-readiness-trend.csv",
+    "production-readiness-apply-plan.json",
+)
 
 # ---------------------------------------------------------------------------
 # region: framing_wizard (v0.4.0)
@@ -525,9 +536,16 @@ FRAMING_QUESTIONS = [
     },
     {
         "id": "cicd_target",
-        "prompt": "CI/CD target? (only github-actions in v0.4.0; azure-devops + gitlab are deferred to v0.5.0)",
+        "prompt": "CI/CD target? (only github-actions in v0.4.0+v0.5.0; azure-devops + gitlab are deferred to v0.6.0+)",
         "kind": "choice",
         "choices": ["github-actions"],
+        "required": True,
+    },
+    {
+        "id": "azure_tenant_id",
+        "prompt": "Azure tenant ID (UUID) where the production subscription lives",
+        "help": "Find it via `az account show --query tenantId -o tsv`. UUID format required.",
+        "kind": "text",
         "required": True,
     },
 ]
@@ -543,17 +561,23 @@ def _coerce_bool(s: str) -> bool | None:
 
 
 def run_framing_wizard(istream=None, ostream=None) -> dict[str, Any]:
-    """TTY-driven 7-question framing wizard.
+    """TTY-driven 8-question framing wizard.
 
     Re-prompts on invalid choice / bool input. Raises SystemExit on EOF for
-    required questions. Returns {question_id: answer} dict.
+    required questions. Returns {question_id: answer} dict. Renders `help`
+    text (if present on a question) once before the first prompt of that
+    question so operators have format hints (e.g. "UUID required").
     """
     istream = istream if istream is not None else sys.stdin
     ostream = ostream if ostream is not None else sys.stdout
     answers: dict[str, Any] = {}
     for q in FRAMING_QUESTIONS:
+        first_prompt = True
         while True:
             print(q["prompt"], file=ostream)
+            if first_prompt and q.get("help"):
+                print(f"  {q['help']}", file=ostream)
+                first_prompt = False
             if q["kind"] == "choice":
                 print(f"  choices: {', '.join(q['choices'])}", file=ostream)
             raw = istream.readline()
@@ -654,7 +678,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "NET-102": {"title": "Private endpoint resources exist and approved", "pillar": "network-posture", "severity": "must-fix", "tier": 1},
     "NET-103": {"title": "NSG flow logs enabled on spoke subnets", "pillar": "network-posture", "severity": "should-fix", "tier": 1, "experimental": True},
     "NET-501": {"title": "Citadel APIM Access Contract present", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
-    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5, "experimental": True},
+    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
     "NET-503": {"title": "Hub-side product policy attached", "pillar": "network-posture", "severity": "should-fix", "tier": 5, "experimental": True},
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
@@ -722,8 +746,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "EVAL-004": {"title": "Threshold values match SPEC sec 9", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-005": {"title": "Grader strategy named in SPEC", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-006": {"title": "Dataset versioning documented", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
-    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
-    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
+    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
+    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
     "EVAL-103": {"title": "Eval failure alert exists in target RG", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
     "EVAL-104": {"title": "Eval cadence schedule resource exists", "pillar": "continuous-evals", "severity": "should-fix", "tier": 1, "experimental": True},
     "EVAL-105": {"title": "Eval drift trend reviewed in last 30d", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -756,7 +780,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-005": {"title": "Vulnerability scan step declared", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-006": {"title": "ACR scoped to private network", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
-    "SUP-101": {"title": "Deployed image digests match repo manifest", "pillar": "supply-chain", "severity": "must-fix", "tier": 1, "experimental": True},
+    "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
 
@@ -796,7 +820,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SRE-005": {"title": "Postmortem template referenced", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
     "SRE-101": {"title": "Action group routes to on-call rotation", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
     "SRE-102": {"title": "SRE Agent resource present if planned", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
-    "SRE-103": {"title": "Diagnostic settings cover all critical resources", "pillar": "sre-handover", "severity": "must-fix", "tier": 1, "experimental": True},
+    "SRE-103": {"title": "SRE runbook present (docs/sre/runbook.md)", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
     "SRE-104": {"title": "Activity log alerts on RG present", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
     # ---- sre-handover — NEW v0.3.0: Azure Policy compliance (GOV-201..203 + secure-score)
     "GOV-104": {"title": "Defender Secure Score above floor (default 60%)", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
@@ -975,7 +999,12 @@ def _glob_repo(root: Path, *patterns: str) -> list[Path]:
     out: list[Path] = []
     for pat in patterns:
         out.extend(root.rglob(pat))
-    return [p for p in out if ".git" not in p.parts and "node_modules" not in p.parts]
+    return [
+        p for p in out
+        if ".git" not in p.parts
+        and "node_modules" not in p.parts
+        and p.name not in EXCLUDE_GLOBS
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1147,6 +1176,238 @@ def _load_waivers(path: Path | None) -> tuple[dict[str, dict], dict, list[str]]:
         seen_ids.add(wid)
         out[finding_id] = w
     return out, binding, errors
+
+
+def _load_customer_overrides(path):
+    """Load customer-overrides YAML with a STRICT minimal stdlib parser.
+
+    Supports the limited shape:
+        customer: <str>
+        overrides:
+          - recipe_id: <str>
+            status: pass|fail
+            reason: <str>
+
+    Strict mode (PR #34 review / W2): rejects YAML constructs the parser
+    cannot faithfully round-trip, rather than degrading silently. A
+    customer-overrides file is an audit-trail decision record, so silent
+    text loss (e.g. on a `reason: |` block scalar) means a customer's
+    justification disappears while the override still applies. Better to
+    fail loudly. Rejected constructs:
+      - tab indentation
+      - block scalars (`|`, `>` and their `-`/`+` variants)
+      - unquoted `<space>#` in values (would be silently captured)
+      - duplicate top-level keys
+      - duplicate recipe_id entries in `overrides:`
+      - unknown top-level keys
+
+    Per-override-item unknown keys are rejected in _validate_customer_overrides.
+
+    Returns None if path is None. Raises FileNotFoundError if path is
+    missing, ValueError on any unsupported construct.
+    """
+    if path is None:
+        return None
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+
+    ALLOWED_TOP = {"customer", "overrides"}
+    BLOCK_SCALAR_RE = re.compile(r"^[|>][+\-]?\d*\s*$")
+
+    out = {"customer": None, "overrides": []}
+    current = None
+    seen_top: set = set()
+    seen_override_keys: set = set()
+    seen_recipe_ids: set = set()
+
+    def _strip_quotes(v):
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            return v[1:-1], True
+        return v, False
+
+    def _check_value(line_no, key, raw_val):
+        raw_val = raw_val.strip()
+        if BLOCK_SCALAR_RE.match(raw_val):
+            raise ValueError(
+                f"line {line_no}: {key!r}: block scalars (`|`, `>`) are not "
+                f"supported by the customer-overrides stdlib parser. Inline "
+                f"the value on a single line, or quote it."
+            )
+        val, quoted = _strip_quotes(raw_val)
+        if not quoted and " #" in val:
+            raise ValueError(
+                f"line {line_no}: {key!r}: unquoted '#' in value would be "
+                f"silently captured into the audit trail. Quote the value, "
+                f"or remove the inline comment."
+            )
+        return val
+
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        # Reject tabs in leading whitespace (currently silently skipped by
+        # the lstrip(" ") check below, which would let a tab-indented list
+        # entry silently disappear from the overrides list).
+        leading = raw.lstrip(" ")
+        if leading and leading[0] == "\t":
+            raise ValueError(
+                f"line {line_no}: tab indentation is not supported. Use spaces."
+            )
+
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+
+        # Top-level key (no leading space, key:value, not a list item)
+        if not line.startswith(" ") and ":" in line and not line.startswith("-"):
+            if current is not None:
+                out["overrides"].append(current)
+                current = None
+                seen_override_keys = set()
+            key, _, val = line.partition(":")
+            key = key.strip()
+            if key not in ALLOWED_TOP:
+                raise ValueError(
+                    f"line {line_no}: unknown top-level key {key!r}. "
+                    f"Allowed: {sorted(ALLOWED_TOP)}."
+                )
+            if key in seen_top:
+                raise ValueError(
+                    f"line {line_no}: duplicate top-level key {key!r}."
+                )
+            seen_top.add(key)
+            if key == "customer":
+                out["customer"] = _check_value(line_no, key, val)
+            elif key == "overrides":
+                if val.strip():
+                    raise ValueError(
+                        f"line {line_no}: 'overrides:' must be followed by a "
+                        f"list (each entry starting with `- recipe_id:`), not "
+                        f"an inline value."
+                    )
+            continue
+
+        stripped = line.lstrip()
+        if stripped.startswith("- "):
+            if current is not None:
+                out["overrides"].append(current)
+            current = {}
+            seen_override_keys = set()
+            stripped = stripped[2:]
+
+        if current is not None and ":" in stripped:
+            key, _, val = stripped.partition(":")
+            key = key.strip()
+            if key in seen_override_keys:
+                raise ValueError(
+                    f"line {line_no}: duplicate key {key!r} in same override item."
+                )
+            seen_override_keys.add(key)
+            checked = _check_value(line_no, key, val)
+            current[key] = checked
+            if key == "recipe_id":
+                if checked in seen_recipe_ids:
+                    raise ValueError(
+                        f"line {line_no}: duplicate recipe_id {checked!r} in "
+                        f"overrides list."
+                    )
+                seen_recipe_ids.add(checked)
+
+    if current is not None:
+        out["overrides"].append(current)
+    return out
+
+
+def _validate_customer_overrides(ov):
+    """Validate a customer-overrides payload. Raises ValueError on invalid shape."""
+    ALLOWED_OVERRIDE_KEYS = {"recipe_id", "status", "reason"}
+    if not isinstance(ov, dict):
+        raise ValueError("customer-overrides must be a mapping")
+    if not ov.get("customer"):
+        raise ValueError("customer-overrides missing required 'customer' field")
+    overrides = ov.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise ValueError("'overrides' must be a list")
+    for i, item in enumerate(overrides):
+        if not isinstance(item, dict):
+            raise ValueError(f"overrides[{i}] must be a mapping")
+        unknown = set(item.keys()) - ALLOWED_OVERRIDE_KEYS
+        if unknown:
+            raise ValueError(
+                f"overrides[{i}] has unknown keys {sorted(unknown)}. "
+                f"Allowed: {sorted(ALLOWED_OVERRIDE_KEYS)}."
+            )
+        if not item.get("recipe_id"):
+            raise ValueError(f"overrides[{i}] missing 'recipe_id'")
+        status = item.get("status")
+        if status not in ("pass", "fail"):
+            raise ValueError(
+                f"overrides[{i}].status must be 'pass' or 'fail', got {status!r}"
+            )
+        if not isinstance(item.get("reason"), str) or not item["reason"].strip():
+            raise ValueError(
+                f"overrides[{i}] requires a non-empty 'reason' string"
+            )
+
+
+def _finding_lookup_id(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("recipe_id") or finding.get("id")
+    return getattr(finding, "recipe_id", None) or getattr(finding, "id", None)
+
+
+def _finding_severity(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("severity")
+    return getattr(finding, "severity", None)
+
+
+def _finding_status(finding) -> str | None:
+    if isinstance(finding, dict):
+        return finding.get("status")
+    return getattr(finding, "status", None)
+
+
+def _apply_customer_overrides(findings, ov):
+    """Apply customer overrides to findings. Status-flips only.
+
+    A finding with severity == 'must-fix' may never be overridden — attempting
+    to do so calls sys.exit(2) with a loud error to fail the deploy gate.
+    """
+    if ov is None:
+        return findings
+    index = {item["recipe_id"]: item for item in ov.get("overrides", [])}
+    out = []
+    for f in findings:
+        rid = _finding_lookup_id(f)
+        if rid in index:
+            target_status = index[rid]["status"]
+            if _finding_severity(f) == "must-fix":
+                msg = (
+                    "FATAL: customer-override on must-fix finding rejected.\n"
+                    f"  recipe_id: {rid}\n"
+                    f"  current status: {_finding_status(f)}\n"
+                    f"  attempted override: {target_status}\n"
+                    f"  reason given: {index[rid].get('reason')!r}\n"
+                    "Must-fix findings cannot be silenced by customer overrides. "
+                    "Either remediate the finding, or work with the threadlight "
+                    "maintainers to demote it from must-fix in the next release."
+                )
+                print(msg, file=sys.stderr)
+                sys.exit(2)
+            if isinstance(f, dict):
+                new_f = dict(f)
+                new_f["status"] = target_status
+                new_f["override_reason"] = index[rid]["reason"]
+                new_f["override_customer"] = ov["customer"]
+            else:
+                new_f = Finding(**asdict(f))
+                new_f.status = target_status
+                setattr(new_f, "override_reason", index[rid]["reason"])
+                setattr(new_f, "override_customer", ov["customer"])
+            out.append(new_f)
+        else:
+            out.append(f)
+    return out
 
 
 def _validate_waiver_binding(
@@ -1748,7 +2009,7 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
     if resolved_posture == POSTURE_CITADEL:
         # NET-501 — v0.3.0 wired: look up the Citadel hub APIM in the RG
         # named by TL_CITADEL_HUB_RG and verify an Access Contract product
-        # exists. NET-502/503 remain experimental in v0.3.0.
+        # exists. NET-502 now fail-closes to the sibling-skill recipe; NET-503 remains experimental.
         hub_rg = os.getenv("TL_CITADEL_HUB_RG")
         if not hub_rg:
             findings.append(_not_verified("NET-501",
@@ -1793,9 +2054,10 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
                     findings.append(_mk_finding("NET-501", status="must-fix",
                         detail=f"No Access Contract product found on any APIM in hub RG `{hub_rg}`",
                         evidence_refs=["E-NET-501"]))
-        for fid in ("NET-502", "NET-503"):
-            findings.append(_not_verified(fid,
-                "Tier 5 Citadel/APIM probe — experimental in v0.3.0 (set --include-experimental to enable)"))
+        findings.append(_mk_finding("NET-502", status="must-fix",
+            detail="Citadel-spoke connection check requires the `citadel-spoke-onboarding` sibling skill. Dispatch via the recipe at references/remediation-recipes/NET-502.md."))
+        findings.append(_not_verified("NET-503",
+            "Tier 5 Citadel/APIM product-policy probe remains experimental (set --include-experimental to enable)"))
     return findings, evidence
 
 
@@ -2549,7 +2811,11 @@ def _check_evals_static(ctx: RepoContext) -> list[Finding]:
 def _check_evals_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
-    for fid in ("EVAL-101", "EVAL-102", "EVAL-103", "EVAL-104", "EVAL-105"):
+    findings.append(_not_verified("EVAL-101",
+        "EVAL-101 requires a manual operator-team conversation (does the customer have any evaluation harness at all?). See references/remediation-recipes/EVAL-101.md."))
+    findings.append(_not_verified("EVAL-102",
+        "EVAL-102 requires a manual operator-team conversation (does the customer have a regression eval baseline?). See references/remediation-recipes/EVAL-102.md."))
+    for fid in ("EVAL-103", "EVAL-104", "EVAL-105"):
         findings.append(_not_verified(fid, "Eval live probe requires Foundry API access and SDK — not implemented in v1"))
     return findings, evidence
 
@@ -2789,7 +3055,12 @@ def _check_supply_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None
     else:
         findings.append(_not_verified("SUP-102", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SUP-103", "Tier 1 Reader unavailable"))
-    findings.append(_not_verified("SUP-101", "Image digest comparison probe not implemented in v1 — diff manifest manually"))
+    support_md = ctx.root / "SUPPORT.md"
+    support_present = support_md.is_file()
+    findings.append(_mk_finding("SUP-101",
+        status="pass" if support_present else "must-fix",
+        detail=("SUPPORT.md present at repo root" if support_present
+                else "SUPPORT.md missing at repo root — apply references/remediation-recipes/SUP-101.md")))
     # ---- v0.3.0 NEW: GOV-103 Defender for Servers / Containers
     if tiers.get(1) and sub:
         srv = _az_json("security", "pricing", "show", "--name", "Containers", "--subscription", sub)
@@ -3121,7 +3392,12 @@ def _check_sre_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
     else:
         findings.append(_not_verified("SRE-101", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SRE-102", "Tier 1 Reader unavailable"))
-    findings.append(_not_verified("SRE-103", "Diagnostic settings coverage probe not implemented in v1"))
+    sre_runbook = ctx.root / "docs" / "sre" / "runbook.md"
+    sre_runbook_present = sre_runbook.is_file()
+    findings.append(_mk_finding("SRE-103",
+        status="pass" if sre_runbook_present else "must-fix",
+        detail=("docs/sre/runbook.md present" if sre_runbook_present
+                else "docs/sre/runbook.md missing — apply references/remediation-recipes/SRE-103.md")))
     # SRE-104 — v0.3.0 wired: activity log alerts on the target RG. Tier 1.
     if tiers.get(1) and sub and rg:
         ala = _az_json("monitor", "activity-log", "alert", "list", "--resource-group", rg, "--subscription", sub)
@@ -3627,6 +3903,8 @@ def _score_pillar(findings: list[Finding], include_experimental: bool = False) -
         elif f.status == "should-fix":
             earned += 1
             has_should = True
+        elif f.status == "fail":
+            has_should = True
         elif f.status == "must-fix":
             has_must = True
         elif f.status == "not-verified":
@@ -3800,6 +4078,15 @@ def _compute_evidence_freshness(
 # ---------------------------------------------------------------------------
 
 
+def _finding_to_dict(finding: Finding) -> dict:
+    row = asdict(finding)
+    for key in ("override_customer", "override_reason"):
+        val = getattr(finding, key, None)
+        if val is not None:
+            row[key] = val
+    return row
+
+
 def _build_manifest(
     posture: dict,
     pillar_results_raw: dict[str, list[Finding]],
@@ -3853,7 +4140,7 @@ def _build_manifest(
             "score_raw": r_score,
             "score_with_waivers": w_score,
             "verification_debt": w_debt,
-            "findings": [asdict(f) for f in _filter_exp(w_fs)],
+            "findings": [_finding_to_dict(f) for f in _filter_exp(w_fs)],
         })
     raw_pct = (raw_total_score * 100) // raw_max if raw_max else 0
     waived_pct = (waived_total * 100) // waived_max if waived_max else 0
@@ -3868,7 +4155,7 @@ def _build_manifest(
     # excluded `not-applicable`, but treated `not-verified` as 50% credit
     # in the score itself — fixed in `_score_pillar`.
     scoreable = [f for fs in pillar_results_waived.values() for f in fs
-                 if f.status in ("pass", "should-fix", "must-fix", "not-verified", "waived")]
+                 if f.status in ("pass", "fail", "should-fix", "must-fix", "not-verified", "waived")]
     not_verified_count = sum(1 for f in scoreable if f.status == "not-verified")
     verified_count = len(scoreable) - not_verified_count
     coverage_pct = (verified_count * 100) // len(scoreable) if scoreable else 0
@@ -3930,6 +4217,7 @@ STATUS_ICON = {
     "red": "🔴",
     "not-applicable": "⚪",
     "pass": "✅",
+    "fail": "❌",
     "should-fix": "⚠️",
     "must-fix": "❌",
     "not-verified": "❓",
@@ -4072,7 +4360,14 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
             detail = (f.detail or "").replace("|", "\\|")
             extra = f" (tier: {tier_label})" if f.tier > 0 else ""
             wsuffix = f" — waiver {f.waiver_id}" if f.waiver_id else ""
-            out.append(f"| `{f.id}` | {f.severity} | {STATUS_ICON.get(f.status, '?')} {f.status} | {detail}{extra}{wsuffix} |")
+            override_reason = getattr(f, "override_reason", None)
+            override_customer = getattr(f, "override_customer", None)
+            osuffix = ""
+            if override_reason:
+                safe_customer = str(override_customer or "unknown").replace("|", "\\|")
+                safe_reason = str(override_reason).replace("|", "\\|")
+                osuffix = f" — customer override {safe_customer}: {safe_reason}"
+            out.append(f"| `{f.id}` | {f.severity} | {STATUS_ICON.get(f.status, '?')} {f.status} | {detail}{extra}{wsuffix}{osuffix} |")
         out.append("")
     # 6. Uplift plan
     out.append("## 6. Uplift plan (suggested order)")
@@ -4275,13 +4570,34 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Override target resource group (otherwise read from framing or manifest)")
     p.add_argument("--repo-full-name", default=None,
                    help="owner/repo string for CI/CD scaffolds (auto-detected from git remote if omitted)")
-    p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    p.add_argument("--customer-overrides", default=None,
+                   help="Path to a customer-overrides.yaml file (SPEC §12). "
+                        "Status-flips only. Must-fix findings cannot be overridden — "
+                        "attempting to do so exits 2.")
+    p.add_argument("--version", action="version", version=f"production_ready.py {VERSION}")
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path(args.root).resolve()
+
+    # --customer-overrides is only honored on the v0.3.0 assess codepath
+    # (it flips finding statuses in-memory before report/manifest emit).
+    # Combining it with --remediate (recipe-print side-channel) or --onboard
+    # (apply-plan emit, no findings flip) would silently drop the overrides.
+    # PR #34 review / W3: reject loudly at argparse-time rather than ignore.
+    if args.customer_overrides and (args.remediate or args.onboard):
+        incompat = "--remediate" if args.remediate else "--onboard"
+        _eprint(
+            f"error: --customer-overrides cannot be combined with {incompat}. "
+            "Overrides are applied during the v0.3.0 assessment pass (which "
+            "flips finding statuses before report emit). The %s codepath "
+            "does not run that pass, so the overrides would be silently "
+            "dropped. Either run the assessment without %s, or drop "
+            "--customer-overrides." % (incompat, incompat)
+        )
+        return 2
 
     # --remediate is a side-channel: print the recipe and exit. Doesn't need
     # any other inputs.
@@ -4297,6 +4613,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.scaffold_cicd and not args.onboard:
         manifest_in = root / args.in_manifest
         if not manifest_in.is_file():
+            # Standalone-scaffold path: same W3 reasoning — overrides
+            # would be silently dropped here too.
+            if args.customer_overrides:
+                _eprint(
+                    "error: --customer-overrides cannot be combined with "
+                    "standalone --scaffold-cicd (no manifest at "
+                    f"{manifest_in}). Run the v0.3.0 assessment first, or "
+                    "drop --customer-overrides."
+                )
+                return 2
             framing = (load_framing_file(args.framing_file) if args.framing_file
                        else run_framing_wizard())
             repo = args.repo_full_name or _detect_repo_full_name(os.getcwd())
@@ -4360,6 +4686,14 @@ def main(argv: list[str] | None = None) -> int:
     waivers_path = root / args.waivers if args.waivers else None
     waivers, waiver_binding, waiver_errs = _load_waivers(waivers_path)
     warnings.extend(waiver_errs)
+    customer_overrides = None
+    if args.customer_overrides:
+        try:
+            customer_overrides = _load_customer_overrides(args.customer_overrides)
+            _validate_customer_overrides(customer_overrides)
+        except (FileNotFoundError, ValueError) as e:
+            _eprint(f"error: customer-overrides: {e}")
+            return 2
 
     # 3. Context — inject CLI-flag overrides into manifest so checks see them.
     # `--secure-score-floor` is read by GOV-104 via `ctx.manifest`; threading it
@@ -4483,6 +4817,12 @@ def main(argv: list[str] | None = None) -> int:
         pillar_findings_waived["network-posture"] = _apply_waivers(
             pillar_findings_raw["network-posture"], waivers,
         )
+
+    if customer_overrides:
+        for pid in PILLAR_IDS:
+            pillar_findings_waived[pid] = _apply_customer_overrides(
+                pillar_findings_waived.get(pid, []), customer_overrides,
+            )
 
     # 8. Build manifest + report
     safe_check_ref = {

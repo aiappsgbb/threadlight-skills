@@ -1,0 +1,7 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: |
+      Customer uses HashiCorp Vault, not Azure Key Vault.
+      Equivalent control documented in their SOC2 evidence.

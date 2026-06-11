@@ -1,0 +1,5 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: stale # 2025-04-22 — review by Q3

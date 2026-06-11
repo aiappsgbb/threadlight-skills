@@ -1,0 +1,6 @@
+customer: acme-corp
+customer: shadow-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: "Customer uses Vault."

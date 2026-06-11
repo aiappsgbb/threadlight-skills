@@ -1,0 +1,5 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-001
+    status: pass
+    reason: "Trying to skip must-fix — should be rejected."

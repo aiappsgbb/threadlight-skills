@@ -1,0 +1,17 @@
+# customer-overrides.example.yaml
+#
+# Per-customer policy overrides. Status-flips only (PASS ↔ FAIL).
+# Must-fix findings CANNOT be overridden — the script exits 2.
+#
+# Pass with: production_ready.py --customer-overrides path/to/this.yaml
+
+customer: acme-corp
+
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: "Customer uses HashiCorp Vault, not Azure Key Vault. Equivalent control; reviewed by security team 2026-Q2."
+
+  - recipe_id: NET-201
+    status: fail
+    reason: "Customer requires private endpoint for blob (compliance team mandate). Default policy is pass; this customer is stricter."

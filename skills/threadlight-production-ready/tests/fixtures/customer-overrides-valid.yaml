@@ -1,0 +1,8 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: "Customer uses Vault, not Key Vault. Equivalent control."
+  - recipe_id: NET-201
+    status: fail
+    reason: "Customer requires private endpoint for blob — default is pass."

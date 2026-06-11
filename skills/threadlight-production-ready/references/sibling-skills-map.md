@@ -20,9 +20,10 @@ the invocation is expected to flip green.
 
 ## Planned but not implemented (placeholders — recipes are `kind: manual` until skill ships)
 
-The five rows above marked *(planned)* reference awesome-gbb upstream issues
-#267-272. Until those skills ship, the corresponding recipes MUST declare
-`kind: manual` and explain the manual procedure. When a sibling skill ships:
+The four rows above marked *(planned)* reference awesome-gbb upstream issues
+#267, #268, #271, #272. Until those skills ship, the corresponding recipes
+MUST declare `kind: manual` and explain the manual procedure. When a sibling
+skill ships:
 
 1. Update its recipe's front-matter from `kind: manual` to `kind: sibling-skill`.
 2. Add `sibling_skill: <skill-name>` to the front-matter.

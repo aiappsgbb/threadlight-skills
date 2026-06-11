@@ -1,0 +1,6 @@
+customer: acme-corp
+overrides:
+  - recipe_id: SEC-103
+    status: pass
+    reason: "Customer uses Vault."
+typo_field: should_be_rejected

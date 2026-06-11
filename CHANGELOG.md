@@ -7,16 +7,84 @@ field.
 
 ## [Unreleased]
 
+## 2026-06-11 — `threadlight-production-ready` v0.5.0 — "production-ready cleanup"
+
+Closes the v0.5.0 cleanup buckets on top of v0.4.0's 3-phase onboarding
+flow: customer-specific policy overrides, an 8-question framing wizard,
+idempotent assessor input discovery, GitHub-Actions-only CI/CD scope, and a
+truthful v0.6.0+ deferral boundary.
+
+### Added
+
+- **Per-customer overrides** (`--customer-overrides PATH`) with
+  `references/customer-overrides-schema.md`,
+  `references/customer-overrides.example.yaml`, status-flip audit fields
+  (`override_customer`, `override_reason`), and must-fix bypass rejection.
+- **8th framing question**: `azure_tenant_id`, a required UUID tying the
+  production subscription to its tenant (closes #33).
+- **Assessor-output exclusions** via `EXCLUDE_GLOBS`, so generated
+  production-readiness manifests/reports/trends are not re-ingested on the
+  next run.
+- **Sibling-skill flip runbook** at
+  `references/runbooks/sibling-skill-flip-protocol.md` for promoting manual
+  recipes once upstream awesome-gbb skills land.
+- **New stdlib tests**:
+  `tests/test_customer_overrides.py`, `tests/test_idempotent_assess.py`,
+  `tests/test_no_ado_gitlab_in_recipes.py`,
+  `tests/test_sacred_rule_wording.py`, and `tests/test_script_strings.py`.
+- **5 experimental promotions** to must-fix coverage: `NET-502`,
+  `EVAL-101`, `EVAL-102`, `SUP-101`, and `SRE-103`.
+
+### Changed
+
+- `IAM-101` and `OBS-106` recipes now declare `kind: manual` until their
+  upstream sibling-skill contracts land.
+- SKILL.md and this CHANGELOG now acknowledge the sacred architectural rule
+  with the documented `--scaffold-cicd` exception while preserving
+  agent-driven remediation (closes #29).
+- `REL-102` and the catalog gate were stripped of ADO/GitLab CI/CD guidance;
+  v0.5.0 remains GitHub Actions only (closes #32).
+- Stale `deferred to v0.5.0` wording now points to `v0.6.0+`.
+- `SUP-101` and `SRE-103` catalog titles were re-aimed at the new repo-edit
+  gates (`SUPPORT.md` and `docs/sre/runbook.md`).
+- `_load_customer_overrides` is now strict-mode: rejects tab indentation,
+  block scalars (`|`/`>`), unquoted `<space>#` in values, duplicate
+  top-level keys, duplicate `recipe_id` entries, and unknown top-level keys.
+  `_validate_customer_overrides` rejects unknown per-override keys.
+  Rationale: silent text loss on an override's `reason` field would corrupt
+  the audit trail.
+- `--customer-overrides` now rejects combinations where the overrides would
+  be silently dropped (`--remediate`, `--onboard`, standalone
+  `--scaffold-cicd` without a manifest). Exits 2 with a loud error.
+
+### Deferred to v0.6.0+
+
+- **Bucket 2 / `gateway-resilience` pillar** — cross-region failover scoring,
+  ~25-40 new recipes, and a new framing question; deferred to ship as its
+  own themed release.
+- **ADO and GitLab `--scaffold-cicd` targets** — v0.5.0 remains GitHub
+  Actions only pending field-test demand.
+- **4 remaining sibling-skill flips**: awesome-gbb#267 (`REL-007`), #269,
+  #270, and #272 (`SRE-104`); gated on upstream landings, then the
+  sibling-skill flip protocol applies.
+- **~19 remaining experimental recipes** still marked `"experimental": True`
+  in `FINDING_CATALOG`; promote one-by-one as field signal arrives.
+- **Real-customer field-test execution** — Phase G is protocol-only
+  (`references/field-test-protocol.md`); actual customer engagement is
+  post-v0.5.0 follow-up work.
+
 ## 2026-06-10 — `threadlight-production-ready` v0.4.0 — "production onboarding (3-phase)"
 
 Flips the skill from a pure assessor into a 3-phase production-onboarding
 executor: Phase 1 (Assess, Python script) → Phase 2 (Refine + Deploy,
 agent-driven via Edit/Write + sibling skills) → Phase 3 (CI/CD Handoff,
 scaffolded GitHub Actions workflow + central-team UAMI runbook). The
-sacred architectural rule from v0.3.0 holds: **the Python script never
-mutates the user's repo.** All edits flow through the Copilot agent so
-`git diff` + PR review remain the audit trail. No `--apply FINDING_ID`
-flag was added or planned.
+sacred architectural rule from v0.3.0 holds for remediation findings:
+fixes are dispatched through the Copilot agent so `git diff` + PR review
+remain the audit trail. The lone Python write exception is the
+`--scaffold-cicd` opt-in flag, which writes 2 deterministic template files
+into the customer repo so the production-onboarding pipeline can run. No
+`--apply FINDING_ID` flag was added or planned.
 
 ### Added — major
 - **3-phase onboarding flow.** Phase 1 (Assess) emits an `apply-plan.json`
