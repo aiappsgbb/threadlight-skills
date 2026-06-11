@@ -670,7 +670,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "NET-102": {"title": "Private endpoint resources exist and approved", "pillar": "network-posture", "severity": "must-fix", "tier": 1},
     "NET-103": {"title": "NSG flow logs enabled on spoke subnets", "pillar": "network-posture", "severity": "should-fix", "tier": 1, "experimental": True},
     "NET-501": {"title": "Citadel APIM Access Contract present", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
-    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5, "experimental": True},
+    "NET-502": {"title": "Foundry connection to Citadel hub reachable", "pillar": "network-posture", "severity": "must-fix", "tier": 5},
     "NET-503": {"title": "Hub-side product policy attached", "pillar": "network-posture", "severity": "should-fix", "tier": 5, "experimental": True},
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
@@ -738,8 +738,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "EVAL-004": {"title": "Threshold values match SPEC sec 9", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-005": {"title": "Grader strategy named in SPEC", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-006": {"title": "Dataset versioning documented", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
-    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
-    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2, "experimental": True},
+    "EVAL-101": {"title": "Latest eval run results retrievable", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
+    "EVAL-102": {"title": "Latest eval run meets SPEC thresholds", "pillar": "continuous-evals", "severity": "must-fix", "tier": 2},
     "EVAL-103": {"title": "Eval failure alert exists in target RG", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
     "EVAL-104": {"title": "Eval cadence schedule resource exists", "pillar": "continuous-evals", "severity": "should-fix", "tier": 1, "experimental": True},
     "EVAL-105": {"title": "Eval drift trend reviewed in last 30d", "pillar": "continuous-evals", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -772,7 +772,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-005": {"title": "Vulnerability scan step declared", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-006": {"title": "ACR scoped to private network", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
-    "SUP-101": {"title": "Deployed image digests match repo manifest", "pillar": "supply-chain", "severity": "must-fix", "tier": 1, "experimental": True},
+    "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
 
@@ -812,7 +812,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SRE-005": {"title": "Postmortem template referenced", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
     "SRE-101": {"title": "Action group routes to on-call rotation", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
     "SRE-102": {"title": "SRE Agent resource present if planned", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
-    "SRE-103": {"title": "Diagnostic settings cover all critical resources", "pillar": "sre-handover", "severity": "must-fix", "tier": 1, "experimental": True},
+    "SRE-103": {"title": "SRE runbook present (docs/sre/runbook.md)", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
     "SRE-104": {"title": "Activity log alerts on RG present", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
     # ---- sre-handover — NEW v0.3.0: Azure Policy compliance (GOV-201..203 + secure-score)
     "GOV-104": {"title": "Defender Secure Score above floor (default 60%)", "pillar": "sre-handover", "severity": "should-fix", "tier": 1},
@@ -1901,7 +1901,7 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
     if resolved_posture == POSTURE_CITADEL:
         # NET-501 — v0.3.0 wired: look up the Citadel hub APIM in the RG
         # named by TL_CITADEL_HUB_RG and verify an Access Contract product
-        # exists. NET-502/503 remain experimental in v0.3.0.
+        # exists. NET-502 now fail-closes to the sibling-skill recipe; NET-503 remains experimental.
         hub_rg = os.getenv("TL_CITADEL_HUB_RG")
         if not hub_rg:
             findings.append(_not_verified("NET-501",
@@ -1946,9 +1946,10 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
                     findings.append(_mk_finding("NET-501", status="must-fix",
                         detail=f"No Access Contract product found on any APIM in hub RG `{hub_rg}`",
                         evidence_refs=["E-NET-501"]))
-        for fid in ("NET-502", "NET-503"):
-            findings.append(_not_verified(fid,
-                "Tier 5 Citadel/APIM probe — experimental in v0.3.0 (set --include-experimental to enable)"))
+        findings.append(_mk_finding("NET-502", status="must-fix",
+            detail="Citadel-spoke connection check requires the `citadel-spoke-onboarding` sibling skill. Dispatch via the recipe at references/remediation-recipes/NET-502.md."))
+        findings.append(_not_verified("NET-503",
+            "Tier 5 Citadel/APIM product-policy probe remains experimental (set --include-experimental to enable)"))
     return findings, evidence
 
 
@@ -2702,7 +2703,11 @@ def _check_evals_static(ctx: RepoContext) -> list[Finding]:
 def _check_evals_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
-    for fid in ("EVAL-101", "EVAL-102", "EVAL-103", "EVAL-104", "EVAL-105"):
+    findings.append(_not_verified("EVAL-101",
+        "EVAL-101 requires a manual operator-team conversation (does the customer have any evaluation harness at all?). See references/remediation-recipes/EVAL-101.md."))
+    findings.append(_not_verified("EVAL-102",
+        "EVAL-102 requires a manual operator-team conversation (does the customer have a regression eval baseline?). See references/remediation-recipes/EVAL-102.md."))
+    for fid in ("EVAL-103", "EVAL-104", "EVAL-105"):
         findings.append(_not_verified(fid, "Eval live probe requires Foundry API access and SDK — not implemented in v1"))
     return findings, evidence
 
@@ -2942,7 +2947,12 @@ def _check_supply_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None
     else:
         findings.append(_not_verified("SUP-102", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SUP-103", "Tier 1 Reader unavailable"))
-    findings.append(_not_verified("SUP-101", "Image digest comparison probe not implemented in v1 — diff manifest manually"))
+    support_md = ctx.root / "SUPPORT.md"
+    support_present = support_md.is_file()
+    findings.append(_mk_finding("SUP-101",
+        status="pass" if support_present else "must-fix",
+        detail=("SUPPORT.md present at repo root" if support_present
+                else "SUPPORT.md missing at repo root — apply references/remediation-recipes/SUP-101.md")))
     # ---- v0.3.0 NEW: GOV-103 Defender for Servers / Containers
     if tiers.get(1) and sub:
         srv = _az_json("security", "pricing", "show", "--name", "Containers", "--subscription", sub)
@@ -3274,7 +3284,12 @@ def _check_sre_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
     else:
         findings.append(_not_verified("SRE-101", "Tier 1 Reader unavailable"))
         findings.append(_not_verified("SRE-102", "Tier 1 Reader unavailable"))
-    findings.append(_not_verified("SRE-103", "Diagnostic settings coverage probe not implemented in v1"))
+    sre_runbook = ctx.root / "docs" / "sre" / "runbook.md"
+    sre_runbook_present = sre_runbook.is_file()
+    findings.append(_mk_finding("SRE-103",
+        status="pass" if sre_runbook_present else "must-fix",
+        detail=("docs/sre/runbook.md present" if sre_runbook_present
+                else "docs/sre/runbook.md missing — apply references/remediation-recipes/SRE-103.md")))
     # SRE-104 — v0.3.0 wired: activity log alerts on the target RG. Tier 1.
     if tiers.get(1) and sub and rg:
         ala = _az_json("monitor", "activity-log", "alert", "list", "--resource-group", rg, "--subscription", sub)

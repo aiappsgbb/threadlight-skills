@@ -63,6 +63,9 @@ def t_experimental_count_in_catalog() -> None:
     suite is meaningless and the catalog has been mis-labelled."""
     print("\nt_experimental_count_in_catalog")
     exp = _experimental_ids()
+    # After v0.5.0: 5 experimentals promoted to must-fix (NET-502, EVAL-101,
+    # EVAL-102, SUP-101, SRE-103). 19 remaining experimentals are research
+    # stubs deferred to v0.6.0+.
     expect(len(exp) >= 10,
            f"catalog: ≥10 experimental IDs flagged (got {len(exp)})")
 
