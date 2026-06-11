@@ -479,7 +479,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out.
@@ -4466,7 +4466,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Path to a customer-overrides.yaml file (SPEC §12). "
                         "Status-flips only. Must-fix findings cannot be overridden — "
                         "attempting to do so exits 2.")
-    p.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    p.add_argument("--version", action="version", version=f"production_ready.py {VERSION}")
     return p.parse_args(argv)
 
 
