@@ -481,6 +481,15 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 
 VERSION = "0.4.0"
 
+# Files emitted by THIS assessor that must never be ingested by a subsequent run
+# (issue #30 — assessor idempotency). _glob_repo filters these out.
+EXCLUDE_GLOBS = (
+    "production-readiness-report.md",
+    "production-readiness-report.json",
+    "production-readiness-findings.csv",
+    "production-readiness-findings.md",
+)
+
 # ---------------------------------------------------------------------------
 # region: framing_wizard (v0.4.0)
 # ---------------------------------------------------------------------------
@@ -975,7 +984,12 @@ def _glob_repo(root: Path, *patterns: str) -> list[Path]:
     out: list[Path] = []
     for pat in patterns:
         out.extend(root.rglob(pat))
-    return [p for p in out if ".git" not in p.parts and "node_modules" not in p.parts]
+    return [
+        p for p in out
+        if ".git" not in p.parts
+        and "node_modules" not in p.parts
+        and p.name not in EXCLUDE_GLOBS
+    ]
 
 
 # ---------------------------------------------------------------------------
