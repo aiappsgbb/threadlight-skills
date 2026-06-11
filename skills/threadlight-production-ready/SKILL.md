@@ -163,6 +163,23 @@ python3 scripts/production_ready.py \
   --repo-full-name owner/repo
 ```
 
+## Framing wizard questions
+
+`--onboard` asks these 8 questions; `--framing-file` uses the same IDs.
+The IDs and prompts are sourced from `FRAMING_QUESTIONS` in
+`scripts/production_ready.py`.
+
+| # | ID | Description |
+|---|---|---|
+| 1 | `target_subscription_id` | Azure subscription ID for the production target. |
+| 2 | `target_resource_group` | Resource group name for the production target. |
+| 3 | `target_posture` | Posture profile: `citadel-spoke`, `standard-ai-gateway`, `agt`, or `hybrid`. |
+| 4 | `provisioning_rights` | Whether the operator has Contributor-or-higher rights on the target resource group. |
+| 5 | `central_platform_team` | Whether a central platform/Citadel team owns shared gateways, Key Vault, or networking. |
+| 6 | `restricted_environment` | Whether direct writes are restricted and all changes must go through CI/CD. |
+| 7 | `cicd_target` | CI/CD target; `github-actions` is the only supported v0.5.0 value. |
+| 8 | `azure_tenant_id` | Azure tenant ID (UUID) where the production subscription lives; new in v0.5.0. |
+
 ## Remediation recipes
 
 Every must-fix finding has a recipe at `references/remediation-recipes/{FINDING_ID}.md`.
@@ -798,6 +815,34 @@ finding so the LLM doesn't waive it implicitly.
 The CLI surfaces the relevant counter alongside any `must-fix` finding
 so the LLM-reading-this-report can't quietly waive it.
 
+## Per-customer overrides (SPEC § 12 / Bucket 4)
+
+For pilots where the customer's policy posture intentionally diverges from
+threadlight's defaults, pass `--customer-overrides PATH` to flip individual
+finding statuses without authoring a waiver.
+
+```bash
+python3 scripts/production_ready.py \
+    --root /path/to/customer-repo \
+    --customer-overrides /path/to/customer-overrides.yaml \
+    --in-postdeploy tests/postdeploy-manifest.json \
+    --out tests/production-readiness-manifest.json \
+    --report docs/production-readiness-report.md
+```
+
+**Status-flips only.** `pass` ↔ `fail`. Severity is not changed; the recipe
+ID is preserved; the audit trail (`override_customer`, `override_reason`)
+appears in every overridden finding in the manifest.
+
+**Must-fix findings cannot be overridden.** Attempting to override a finding
+with `severity: must-fix` exits 2 with a loud error — no silent must-fix
+bypass. To demote a must-fix recipe, work with the threadlight maintainers
+on a permanent severity change.
+
+See `references/customer-overrides-schema.md` for the full schema, the
+worked example at `references/customer-overrides.example.yaml`, and the test
+matrix at `tests/test_customer_overrides.py`.
+
 ## Integration with the threadlight chain
 
 ```
@@ -847,6 +892,21 @@ sync with the awesome-gbb skill catalog as it evolves.
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
 
+## What changed since v0.4.0
+
+v0.5.0 closes the cleanup buckets that make the v0.4.0 onboarding flow
+release-ready: per-customer status overrides, an 8th tenant-framing question,
+idempotent assessor output exclusion, GitHub-Actions-only CI/CD wording, and
+field-test protocols without claiming field execution.
+
+| Area | v0.5.0 delta |
+| --- | --- |
+| Per-customer policy | `--customer-overrides` supports auditable `pass` ↔ `fail` status flips while rejecting must-fix bypasses. |
+| Framing wizard | Adds `azure_tenant_id`, bringing onboarding to 8 questions. |
+| Recipe catalog | Promotes NET-502, EVAL-101, EVAL-102, SUP-101, and SRE-103 from experimental to must-fix coverage. |
+| Manual boundaries | IAM-101 and OBS-106 are now `kind: manual`; ADO/GitLab CI/CD targets remain out of scope. |
+| Runbooks/tests | Adds sibling-skill flip protocol, customer-overrides tests, idempotency tests, and stale wording gates. |
+
 ## What changed since v0.3.0
 
 | Capability | v0.3.0 | v0.4.0 |
@@ -857,7 +917,7 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Phase 2 execution | ❌ — manual | ✅ agent-driven via Edit/Write + sibling skills |
 | Phase 3 CI/CD scaffold | ❌ | ✅ `.github/workflows/azd-deploy-prod.yml.tmpl` + UAMI runbook |
 | Rights probe | ✅ informational | ✅ now decides Phase-2 mode (self-service vs handoff) |
-| Framing wizard | ❌ | ✅ 7 questions, TTY or `--framing-file` |
+| Framing wizard | ❌ | ✅ 8 questions, TTY or `--framing-file` |
 | New CLI flags | — | `--onboard`, `--framing-file`, `--apply-plan-out`, `--scaffold-cicd`, `--no-rights-probe`, `--repo-full-name`, `--target-sub`, `--target-rg` |
 | Removed / explicitly NOT added | — | `--apply FINDING_ID` (script stays assessor-only by design) |
 
@@ -882,21 +942,27 @@ sync with the awesome-gbb skill catalog as it evolves.
   default detection result. See "Posture target resolution".
 - **Not cross-tenant.** v1 assumes single-tenant pilots.
 
-## Out of scope for v0.4.0 (deferred to v0.5.0+)
+## Out of scope for v0.5.0 (deferred to v0.6.0+)
 
-- `gateway-resilience` pillar (cross-region failover scoring)
-- `EVAL-101..105` (live eval-coverage probes)
-- SPEC § 12 per-customer enforcement
-- awesome-gbb skill landings (#267–272 sibling-skill recipes)
-- Real-customer field-test pass
-- AGT v4 deep checks (capability-based; awaiting upstream v4)
-- Reading Key Vault secret **values** (control-plane only — never reads
-  data-plane secrets, even with sufficient permission)
-- Cross-tenant residency analysis
+- `gateway-resilience` pillar (Bucket 2 — cross-region failover scoring; ~25-40
+  new recipes plus a new framing question; deferred so it can ship as its own
+  themed release)
+- ADO and GitLab `--scaffold-cicd` targets (v0.5.0 still ships GitHub Actions
+  only; deferred pending field-test signal on demand)
+- 4 remaining sibling-skill flips: awesome-gbb#267 (REL-007), #269, #270,
+  #272 (SRE-104); gated on upstream landings, then follow
+  `references/runbooks/sibling-skill-flip-protocol.md`
+- ~19 remaining experimental recipes (`"experimental": True` in
+  `FINDING_CATALOG`); promote one-by-one as field signal arrives
+- Real-customer field-test execution (Phase G shipped protocol only — see
+  `references/field-test-protocol.md`; actual customer engagement is
+  post-v0.5.0 follow-up work)
 
 ## Versioning
 
-Skill semver. v0.3.0 was soft-advisory assessor only. v0.4.0 adds the
+Skill semver. v0.3.0 was soft-advisory assessor only. v0.4.0 added the
 3-phase production-onboarding flow (assess → refine+deploy → CI/CD
-handoff). v0.5.0+ will land the deferrals above. Breaking changes to
+handoff). v0.5.0 closes production-ready cleanup buckets: per-customer
+overrides, 8-question framing, idempotency exclusions, and recipe catalog
+promotions. v0.6.0+ will land the deferrals above. Breaking changes to
 `apply-plan.json` are gated behind `schema_version` (currently 1).
