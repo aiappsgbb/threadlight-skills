@@ -7,6 +7,63 @@ field.
 
 ## [Unreleased]
 
+## 2026-06-11 — `threadlight-production-ready` v0.5.0 — "production-ready cleanup"
+
+Closes the v0.5.0 cleanup buckets on top of v0.4.0's 3-phase onboarding
+flow: customer-specific policy overrides, an 8-question framing wizard,
+idempotent assessor input discovery, GitHub-Actions-only CI/CD scope, and a
+truthful v0.6.0+ deferral boundary.
+
+### Added
+
+- **Per-customer overrides** (`--customer-overrides PATH`) with
+  `references/customer-overrides-schema.md`,
+  `references/customer-overrides.example.yaml`, status-flip audit fields
+  (`override_customer`, `override_reason`), and must-fix bypass rejection.
+- **8th framing question**: `azure_tenant_id`, a required UUID tying the
+  production subscription to its tenant (closes #33).
+- **Assessor-output exclusions** via `EXCLUDE_GLOBS`, so generated
+  production-readiness manifests/reports/trends are not re-ingested on the
+  next run.
+- **Sibling-skill flip runbook** at
+  `references/runbooks/sibling-skill-flip-protocol.md` for promoting manual
+  recipes once upstream awesome-gbb skills land.
+- **New stdlib tests**:
+  `tests/test_customer_overrides.py`, `tests/test_idempotent_assess.py`,
+  `tests/test_no_ado_gitlab_in_recipes.py`,
+  `tests/test_sacred_rule_wording.py`, and `tests/test_script_strings.py`.
+- **5 experimental promotions** to must-fix coverage: `NET-502`,
+  `EVAL-101`, `EVAL-102`, `SUP-101`, and `SRE-103`.
+
+### Changed
+
+- `IAM-101` and `OBS-106` recipes now declare `kind: manual` until their
+  upstream sibling-skill contracts land.
+- SKILL.md and this CHANGELOG now acknowledge the sacred architectural rule
+  with the documented `--scaffold-cicd` exception while preserving
+  agent-driven remediation (closes #29).
+- `REL-102` and the catalog gate were stripped of ADO/GitLab CI/CD guidance;
+  v0.5.0 remains GitHub Actions only (closes #32).
+- Stale `deferred to v0.5.0` wording now points to `v0.6.0+`.
+- `SUP-101` and `SRE-103` catalog titles were re-aimed at the new repo-edit
+  gates (`SUPPORT.md` and `docs/sre/runbook.md`).
+
+### Deferred to v0.6.0+
+
+- **Bucket 2 / `gateway-resilience` pillar** — cross-region failover scoring,
+  ~25-40 new recipes, and a new framing question; deferred to ship as its
+  own themed release.
+- **ADO and GitLab `--scaffold-cicd` targets** — v0.5.0 remains GitHub
+  Actions only pending field-test demand.
+- **4 remaining sibling-skill flips**: awesome-gbb#267 (`REL-007`), #269,
+  #270, and #272 (`SRE-104`); gated on upstream landings, then the
+  sibling-skill flip protocol applies.
+- **~19 remaining experimental recipes** still marked `"experimental": True`
+  in `FINDING_CATALOG`; promote one-by-one as field signal arrives.
+- **Real-customer field-test execution** — Phase G is protocol-only
+  (`references/field-test-protocol.md`); actual customer engagement is
+  post-v0.5.0 follow-up work.
+
 ## 2026-06-10 — `threadlight-production-ready` v0.4.0 — "production onboarding (3-phase)"
 
 Flips the skill from a pure assessor into a 3-phase production-onboarding
