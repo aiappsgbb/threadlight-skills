@@ -482,12 +482,14 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 VERSION = "0.5.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
-# (issue #30 — assessor idempotency). _glob_repo filters these out.
+# (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
+# Keep in sync with the default values of --out / --report / --trend-csv /
+# --apply-plan-out in _parse_args. test_idempotent_assess gates that.
 EXCLUDE_GLOBS = (
     "production-readiness-report.md",
-    "production-readiness-report.json",
-    "production-readiness-findings.csv",
-    "production-readiness-findings.md",
+    "production-readiness-manifest.json",
+    "production-readiness-trend.csv",
+    "production-readiness-apply-plan.json",
 )
 
 # ---------------------------------------------------------------------------

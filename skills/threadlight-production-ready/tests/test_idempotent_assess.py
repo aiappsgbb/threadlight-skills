@@ -50,33 +50,71 @@ class IdempotentAssess(unittest.TestCase):
         self.assertEqual(names, ["README.md", "intro.md"])
 
     def test_glob_repo_excludes_all_assessor_artifacts(self):
-        """All 4 assessor artifact names are skipped, not just the report."""
+        """All assessor artifacts (basename match) are skipped, not just the report."""
         (self.tmp / "tests").mkdir()
-        for name in (
-            "production-readiness-report.md",
-            "production-readiness-report.json",
-            "production-readiness-findings.csv",
-            "production-readiness-findings.md",
-        ):
+        for name in mod.EXCLUDE_GLOBS:
             (self.tmp / "tests" / name).write_text("stale\n", encoding="utf-8")
             (self.tmp / "docs" / name).write_text("stale\n", encoding="utf-8")
-        results = mod._glob_repo(self.tmp, "docs/**/*.md", "tests/**/*.md", "tests/**/*.json", "tests/**/*.csv", "README.md")
+        results = mod._glob_repo(
+            self.tmp,
+            "docs/**/*.md",
+            "tests/**/*.md",
+            "tests/**/*.json",
+            "tests/**/*.csv",
+            "README.md",
+        )
         names = sorted(p.name for p in results)
-        for forbidden in (
-            "production-readiness-report.md",
-            "production-readiness-report.json",
-            "production-readiness-findings.csv",
-            "production-readiness-findings.md",
-        ):
+        for forbidden in mod.EXCLUDE_GLOBS:
             self.assertNotIn(forbidden, names, f"_glob_repo leaked {forbidden}")
 
+    def test_exclude_globs_matches_argparse_defaults(self):
+        """EXCLUDE_GLOBS must be the basenames of every assessor output the
+        argparse defaults emit. PR #34 review caught a drift where the tuple
+        listed fictional filenames (`production-readiness-report.json`,
+        `production-readiness-findings.csv`, `production-readiness-findings.md`)
+        that no codepath ever writes — and was missing the actual outputs
+        (`production-readiness-manifest.json`, `production-readiness-trend.csv`,
+        `production-readiness-apply-plan.json`).
+        """
+        import argparse
+        # Spin up the parser; pull defaults for the 4 output args.
+        parser = argparse.ArgumentParser()
+        mod._add_arguments(parser) if hasattr(mod, "_add_arguments") else None
+        # The parser-building helper isn't always factored out; derive
+        # defaults by scanning module source for the canonical assignments.
+        import re
+        src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
+        wanted_flags = ("--out", "--report", "--trend-csv", "--apply-plan-out")
+        expected_basenames = set()
+        for flag in wanted_flags:
+            m = re.search(
+                rf'add_argument\("{re.escape(flag)}".*?default="([^"]+)"',
+                src, re.DOTALL,
+            )
+            if m and m.group(1):  # --apply-plan-out default is None; skip
+                expected_basenames.add(pathlib.Path(m.group(1)).name)
+        # Apply-plan basename is computed at runtime (production-readiness-apply-plan.json);
+        # cite explicitly so the gate covers it even though argparse default is None.
+        expected_basenames.add("production-readiness-apply-plan.json")
+        actual = set(mod.EXCLUDE_GLOBS)
+        self.assertEqual(
+            actual, expected_basenames,
+            "EXCLUDE_GLOBS drifted from argparse output defaults. "
+            f"Expected {sorted(expected_basenames)}, got {sorted(actual)}.",
+        )
+
     def test_exclude_globs_constant_exists(self):
-        """The EXCLUDE_GLOBS tuple is the contract — gate its content."""
+        """The EXCLUDE_GLOBS tuple is the contract — gate its presence + shape."""
         self.assertTrue(hasattr(mod, "EXCLUDE_GLOBS"))
-        self.assertIn("production-readiness-report.md", mod.EXCLUDE_GLOBS)
-        self.assertIn("production-readiness-report.json", mod.EXCLUDE_GLOBS)
-        self.assertIn("production-readiness-findings.csv", mod.EXCLUDE_GLOBS)
-        self.assertIn("production-readiness-findings.md", mod.EXCLUDE_GLOBS)
+        self.assertIsInstance(mod.EXCLUDE_GLOBS, tuple)
+        self.assertTrue(
+            all(isinstance(x, str) for x in mod.EXCLUDE_GLOBS),
+            "EXCLUDE_GLOBS must be a tuple of strings",
+        )
+        # Sanity: each entry is a bare basename (no slashes, no globs).
+        for entry in mod.EXCLUDE_GLOBS:
+            self.assertNotIn("/", entry, f"{entry!r}: EXCLUDE_GLOBS is basename-only")
+            self.assertNotIn("*", entry, f"{entry!r}: EXCLUDE_GLOBS does not glob")
 
 
 if __name__ == "__main__":
