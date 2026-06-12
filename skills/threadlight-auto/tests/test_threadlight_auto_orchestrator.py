@@ -34,10 +34,11 @@ def run(workspace: Path) -> dict:
 
 def main() -> int:
     cases = [
-        ("blank",        "run",       {"preflight", "design", "deploy", "safe_check", "invoke"}, set()),
-        ("all-complete", "run",       set(),                                                     {"preflight", "design", "deploy", "safe_check", "invoke"}),
-        ("hard-stop",    "hard_stop", None,                                                      None),
-        ("spec-edited",  "run",       None,                                                      None),
+        ("blank",        "run",       {"preflight", "design", "deploy", "safe_check", "cost_projection", "invoke"}, set()),
+        # NOTE: all-complete fixture predates cost_projection; no cost-manifest.json → stage runs
+        ("all-complete", "run",       {"cost_projection", "invoke"},                                                {"preflight", "design", "deploy", "safe_check"}),
+        ("hard-stop",    "hard_stop", None,                                                                         None),
+        ("spec-edited",  "run",       None,                                                                         None),
     ]
     failures = 0
     for fixture_name, expected_type, expected_run, expected_skip in cases:
@@ -76,7 +77,27 @@ def main() -> int:
                 continue
         print(f"✅ {fixture_name}: next_action.type={actual_type}")
 
-    print(f"\n=== {len(cases) - failures}/{len(cases)} passed ===")
+    # --- extra: assert cost_projection is in STAGES between safe_check and invoke ---
+    import importlib.util as _ilu, sys as _sys
+    _s = _ilu.spec_from_file_location("_orch_check", str(ORCH))
+    _m = _ilu.module_from_spec(_s)
+    _sys.modules["_orch_check"] = _m
+    _s.loader.exec_module(_m)
+    stages = _m.STAGES
+    if "cost_projection" not in stages:
+        print("❌ STAGES: cost_projection not in STAGES list")
+        failures += 1
+    else:
+        cp_idx = stages.index("cost_projection")
+        sc_idx = stages.index("safe_check")
+        inv_idx = stages.index("invoke")
+        if not (sc_idx < cp_idx < inv_idx):
+            print(f"❌ STAGES: cost_projection at index {cp_idx} not between safe_check ({sc_idx}) and invoke ({inv_idx})")
+            failures += 1
+        else:
+            print(f"✅ STAGES order: safe_check({sc_idx}) < cost_projection({cp_idx}) < invoke({inv_idx})")
+
+    print(f"\n=== {len(cases) + 1 - failures}/{len(cases) + 1} passed ===")
     return failures
 
 

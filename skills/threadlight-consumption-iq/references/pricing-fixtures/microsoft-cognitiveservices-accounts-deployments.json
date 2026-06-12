@@ -1,7 +1,98 @@
 {
-  "_comment": "Versioned fallback price snapshot for Microsoft.CognitiveServices/accounts/deployments. Refreshed quarterly by CI. Used by pricing_client.py when Azure-pricing MCP is unavailable. Numbers below are PLACEHOLDERS pending the first refresh CI run — see plan.md todo 'pricing-client'.",
-  "_source": "Azure Retail Prices API (planned: CI job refreshes from https://prices.azure.com/api/retail/prices)",
-  "_last_refreshed": null,
+  "_last_refreshed": "2026-06-12",
+  "_source": "Manual snapshot from azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
   "_schema_version": "1.0",
-  "skus": []
+  "skus": [
+    {
+      "match": {"name": "gpt-4o", "region": "eastus2", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.0025,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; eastus2"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "eastus2", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.01,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; eastus2"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "eastus2", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.00015,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o-mini; PAYG; eastus2"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "eastus2", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.0006,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o-mini; PAYG; eastus2"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "eastus2", "tier": "PTU"},
+      "unit_price_usd": 260.0,
+      "unit": "per-PTU-month",
+      "notes": "gpt-4o PTU; eastus2; per provisioned throughput unit per month"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "swedencentral", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.0025,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; swedencentral"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "swedencentral", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.01,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; swedencentral"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "swedencentral", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.00015,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o-mini; PAYG; swedencentral"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "swedencentral", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.0006,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o-mini; PAYG; swedencentral"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "swedencentral", "tier": "PTU"},
+      "unit_price_usd": 260.0,
+      "unit": "per-PTU-month",
+      "notes": "gpt-4o PTU; swedencentral; per provisioned throughput unit per month"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "northcentralus", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.0025,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; northcentralus"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "northcentralus", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.01,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o 2024-08-06; PAYG; northcentralus"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "northcentralus", "tier": "PAYG", "meter_substring": "Input"},
+      "unit_price_usd": 0.00015,
+      "unit": "per-1k-input-tokens",
+      "notes": "gpt-4o-mini; PAYG; northcentralus"
+    },
+    {
+      "match": {"name": "gpt-4o-mini", "region": "northcentralus", "tier": "PAYG", "meter_substring": "Output"},
+      "unit_price_usd": 0.0006,
+      "unit": "per-1k-output-tokens",
+      "notes": "gpt-4o-mini; PAYG; northcentralus"
+    },
+    {
+      "match": {"name": "gpt-4o", "region": "northcentralus", "tier": "PTU"},
+      "unit_price_usd": 260.0,
+      "unit": "per-PTU-month",
+      "notes": "gpt-4o PTU; northcentralus; per provisioned throughput unit per month"
+    }
+  ]
 }
+

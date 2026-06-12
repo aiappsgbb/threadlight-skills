@@ -51,8 +51,8 @@ sys.path.insert(0, str(HERE))
 
 from discover import discover_resources  # noqa: E402
 from emitter import emit_artefacts  # noqa: E402
-from load_profile_wizard import load_or_prompt_profile  # noqa: E402
-from pricing_client import PricingClient  # noqa: E402
+from load_profile_wizard import load_or_prompt_profile, ProfileIncompleteError  # noqa: E402
+from pricing_client import PricingClient, PricingUnavailableError  # noqa: E402
 from recommender import score_and_rank  # noqa: E402
 from projectors import project_resource  # noqa: E402
 
@@ -272,14 +272,6 @@ def main(argv: list[str] | None = None) -> int:
     except PricingUnavailableError as exc:
         print(f"pricing unavailable: {exc}", file=sys.stderr)
         return 3
-
-
-class ProfileIncompleteError(RuntimeError):
-    """SPEC § 12 load_profile{} missing required fields after the wizard."""
-
-
-class PricingUnavailableError(RuntimeError):
-    """Azure-pricing MCP unavailable AND no fixture fallback for a required SKU."""
 
 
 if __name__ == "__main__":

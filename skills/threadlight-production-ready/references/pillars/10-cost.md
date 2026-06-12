@@ -14,7 +14,8 @@
 | `COST-002` | If `ptu`: capacity declared per region (PTU count); fallback to PAYG in case of overflow declared | `should-fix` if absent |
 | `COST-003` | Bicep declares a Budget resource (`Microsoft.Consumption/budgets`) OR `docs/budget.md` documents one set out-of-band | `should-fix` if absent |
 | `COST-004` | Anomaly alert declared (Azure Cost Management anomaly alert OR daily-spike alert rule) | `should-fix` if absent |
-| `COST-005` | Cost-projection artefact present (`docs/cost-projection.md` or eval-driven projection in `tests/`) | `should-fix` if absent |
+| `COST-005` | Cost-projection artefact present **and fresh**: `docs/cost-projection.md` exists AND `specs/cost-manifest.json` has `schema_version >= "1.0"` AND `generated_at` within 30 days of last deploy | `should-fix` if any condition missing |
+| `COST-006` | No unaddressed cost recommendations in `specs/cost-manifest.json`: walks `recommendations[]`; `>$100/mo` savings → `must-fix`, `>$25/mo` → `should-fix`. `not-verified` when manifest absent | `not-verified` if manifest missing |
 
 ### Live (tier 3 — `Cost Management Reader` on subscription)
 
@@ -54,7 +55,7 @@ projection" section.
 | PAYG/PTU analysis | `paygo-ptu-cost-analyzer` |
 | Budget / alert wiring | `azd-patterns` |
 | Idle resource cleanup | (manual) |
-| Cost projection authoring | `paygo-ptu-cost-analyzer` |
+| COST-005 tightened + COST-006 | `threadlight-consumption-iq` |
 
 ## Why this pillar matters
 

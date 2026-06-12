@@ -43,7 +43,7 @@ from typing import Any
 # Stage definitions — lockstep with SKILL.md § Resumption table
 # -----------------------------------------------------------------------------
 
-STAGES = ["preflight", "design", "deploy", "safe_check", "invoke"]
+STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke"]
 
 DEFAULT_STATE_PATH = ".threadlight/auto-state.json"
 DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
@@ -227,11 +227,145 @@ def _check_invoke(workspace: Path, _: dict[str, Any]) -> StageDecision:
     )
 
 
+# NOTE: cost_projection phase sits between safe_check and invoke.
+# It runs threadlight-consumption-iq to generate docs/cost-projection.md
+# and specs/cost-manifest.json. It is advisory — exit codes other than 0
+# are handled gracefully (see SKILL.md § cost-projection phase).
+# Resumability: skip when SPEC § 12 load_profile{} is complete AND
+# cost-manifest.json.generated_at > AZURE_LAST_DEPLOY_AT.
+
+_LOAD_PROFILE_REQUIRED_KEYS = {
+    "workload_class",
+    "peak_concurrent_sessions",
+    "avg_requests_per_session",
+    "avg_tokens_per_request",
+    "peak_requests_per_second",
+    "business_hours_only",
+    "cosmos_gb_year_one",
+    "storage_gb_year_one",
+    "ai_search_documents",
+    "monthly_growth_rate",
+}
+
+
+def _load_profile_complete(spec_text: str) -> bool:
+    """Return True if SPEC § 12 load_profile{} has all required keys filled in."""
+    import re as _re
+    m = _re.search(r"load_profile\s*:\s*\n((?:[ \t]+\S[^\n]*\n)*)", spec_text)
+    if not m:
+        return False
+    block = m.group(1)
+    found: set[str] = set()
+    for line in block.splitlines():
+        kv = line.strip()
+        if ":" in kv and not kv.startswith("#"):
+            key = kv.split(":")[0].strip()
+            val = kv.split(":", 1)[1].strip()
+            if val and not val.startswith("#") and "TBD" not in val.upper():
+                found.add(key)
+    return _LOAD_PROFILE_REQUIRED_KEYS.issubset(found)
+
+
+def _parse_iso(ts: str) -> datetime | None:
+    """Parse ISO-8601 UTC timestamp, return None on failure."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecision:
+    cost_manifest = workspace / "specs" / "cost-manifest.json"
+    spec_path = workspace / "specs" / "SPEC.md"
+
+    # --- read relevant inputs ---
+    spec_text = ""
+    if spec_path.exists():
+        try:
+            spec_text = spec_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+
+    manifest_generated_at: datetime | None = None
+    if cost_manifest.exists():
+        try:
+            import json as _json
+            data = _json.loads(cost_manifest.read_text(encoding="utf-8"))
+            manifest_generated_at = _parse_iso(data.get("generated_at", ""))
+        except (OSError, ValueError):
+            pass
+
+    # --- resumability check ---
+    # Skip if: load_profile{} complete AND manifest generated after last deploy
+    last_deploy_ts: str = state.get("cost_projection", {}).get("last_deploy_at", "") or ""
+    if not last_deploy_ts:
+        # Fall back to reading azd env AZURE_LAST_DEPLOY_AT
+        azure_dir = workspace / ".azure"
+        if azure_dir.exists():
+            for envfile in azure_dir.glob("*/.env"):
+                for line in (envfile.read_text(encoding="utf-8", errors="ignore")).splitlines():
+                    if line.startswith("AZURE_LAST_DEPLOY_AT="):
+                        last_deploy_ts = line.split("=", 1)[1].strip().strip('"')
+                        break
+
+    last_deploy_dt = _parse_iso(last_deploy_ts)
+
+    if (
+        _load_profile_complete(spec_text)
+        and manifest_generated_at is not None
+        and last_deploy_dt is not None
+        and manifest_generated_at >= last_deploy_dt
+    ):
+        passed_at = state.get("cost_projection", {}).get("passed_at", "")
+        return StageDecision(
+            "cost_projection",
+            "skip",
+            (
+                f"cost-projection: load_profile complete + manifest fresh (generated_at "
+                f"{manifest_generated_at.isoformat()} >= last_deploy {last_deploy_dt.isoformat()})."
+                + (f" Previously passed at {passed_at}." if passed_at else "")
+            ),
+            artifacts_seen=["specs/SPEC.md", "specs/cost-manifest.json"],
+        )
+
+    # --- decide whether to run ---
+    if not spec_path.exists():
+        return StageDecision(
+            "cost_projection",
+            "run",
+            "specs/SPEC.md missing — prerequisite for cost-projection. "
+            "Missing prereq treated same as other prereq cases; stage will attempt and degrade.",
+            artifacts_missing=["specs/SPEC.md"],
+        )
+
+    if not _load_profile_complete(spec_text):
+        return StageDecision(
+            "cost_projection",
+            "run",
+            "SPEC § 12 load_profile{} incomplete or absent — threadlight-consumption-iq wizard "
+            "will prompt for values (exit 4 sets state cost-projection: needs-wizard; advisory, "
+            "does not block chain).",
+            artifacts_seen=["specs/SPEC.md"],
+            artifacts_missing=["specs/SPEC.md#load_profile"],
+        )
+
+    return StageDecision(
+        "cost_projection",
+        "run",
+        "specs/cost-manifest.json missing or stale — running threadlight-consumption-iq.",
+        artifacts_seen=["specs/SPEC.md"],
+        artifacts_missing=["specs/cost-manifest.json"],
+    )
+
+
 STAGE_PROBES = {
     "preflight": _check_preflight,
     "design": _check_design,
     "deploy": _check_deploy,
     "safe_check": _check_safe_check,
+    "cost_projection": _check_cost_projection,
     "invoke": _check_invoke,
 }
 

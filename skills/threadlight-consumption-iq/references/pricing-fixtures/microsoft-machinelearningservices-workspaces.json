@@ -1,6 +1,6 @@
 {
-  "_comment": "Versioned fallback price snapshot for Microsoft.MachineLearningServices/workspaces (Foundry hosted-agent). PLACEHOLDER pending first refresh.",
   "_last_refreshed": null,
+  "_source": null,
   "_schema_version": "1.0",
   "skus": []
 }

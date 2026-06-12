@@ -9,27 +9,41 @@ field.
 
 ### Added
 
-- **NEW skill: `threadlight-consumption-iq` v0.1.0-alpha** — post-deploy
+- **NEW skill: `threadlight-consumption-iq` v0.1.0** — post-deploy
   Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`,
   reads SPEC § 12 `load_profile{}` (wizard writes it back if absent),
   hits the Azure Retail Prices API for each deployed SKU + 2–3
   alternatives per resource, emits `docs/cost-projection.md` (human) +
   `specs/cost-manifest.json` (machine).
-  - **v0.1.0-alpha is the scaffold + contracts release.** Full
+  - **v0.1.0 is the first feature-complete release.** Full
     `SKILL.md`, CLI dispatcher (`scripts/consumption_iq.py` with
     `discover`, `load-profile`, `price`, `project`, `recommend`, `emit`,
-    `run --all`), projector registry covering 7 v1 resource kinds
-    (AOAI, Foundry hosted-agent, ACA, Cosmos NoSQL, Storage, APIM, AI
-    Search), fully implemented `recommender.py` (constraint scoring +
-    ranking by $/mo, honors `pinned_region`), real cache plumbing +
-    fixture fallback in `pricing_client.py`, real `_build_manifest` in
-    `emitter.py`, full schema docs at
-    `references/load-profile-schema.md` + `cost-manifest-schema.md` +
-    `consumption-formulas.md`, fixture skeleton at
-    `references/fixtures/sample-pilot-consumption/`, and a passing
-    12-test scaffold-smoke suite (`tests/test_scaffold.py`).
-    Per-resource projector math + live pricing fetch + load-profile
-    wizard + emitter markdown rendering land in subsequent alphas.
+    `run --all`), full implementations of:
+    - `discover.py` — `az bicep build` + ARM walker + 7 per-kind
+      extractors + `az resource list` cross-check + drift warnings
+      against `deployment_manifest.expected_resource_types[]`.
+    - `load_profile_wizard.py` — hand-rolled YAML parser (no pyyaml
+      dep), workload_class-keyed defaults, idempotent on complete SPEC,
+      back-fills SPEC § 12 markdown.
+    - `pricing_client.py` — public Azure Retail Prices API
+      (`prices.azure.com`) via urllib + 24h cache + 7-resource fixture
+      fallback (AOAI populated; others empty skeletons ready for
+      live-fetch).
+    - 7 projectors (AOAI, Foundry hosted-agent, ACA, Cosmos NoSQL,
+      Storage, APIM, AI Search) implementing the formulas in
+      `references/consumption-formulas.md`.
+    - `recommender.py` — constraint scoring + ranking by savings desc,
+      honors `pinned_region` and `min_redundancy` (with
+      `REDUNDANCY_RANK` ordering: none/lrs < zrs < grs < gzrs).
+    - `emitter.py` — both `_build_manifest` (strict v1 schema) and
+      `_render_markdown` (totals table + mermaid pie + recommendations
+      table with priority badges + per-resource breakdown).
+  - **Test suite: 121 passing tests** across 11 test files
+    (`test_scaffold`, `test_recommender`, `test_emitter`,
+    `test_discover`, `test_load_profile`, `test_pricing_client`,
+    `test_projector_{aoai,foundry,aca,cosmos,storage,apim,ai_search}`).
+  - **Stdlib only.** No new repo dependencies. `az bicep` CLI is a hard
+    prereq (consistent with `threadlight-production-ready` v0.3.0).
 - Plugin manifest bumped to **1.2.0-alpha** with new keywords:
   `consumption-iq`, `cost-projection`, `sku-recommendation`,
   `azure-retail-pricing`, `load-profile`.
@@ -37,17 +51,51 @@ field.
   total), pipeline diagram now inserts `consumption-iq` between
   `safe-check` and `foundry-evals`.
 
-### Pending in subsequent alphas
+### Pending for v0.2
 
-- Per-resource projector implementations (currently `NotImplementedError`).
-- `pricing_client._fetch_live` against the `Azure-pricing` MCP.
-- `load_profile_wizard.py` interactive flow + SPEC § 12 markdown writer.
-- `emitter._render_markdown` rich rendering (per-resource sections,
-  side-by-side tables, mermaid donut, top-N recommendations).
-- Downstream wiring: `threadlight-production-ready` COST-005 tightening
-  + new COST-006, `threadlight-auto` new phase + resumability,
-  `threadlight-design` SPEC § 12 skeleton emission.
-- CI smoke / e2e against `sample-pilot-consumption` fixture.
+- Golden e2e fixture refresh — `sample-pilot-consumption/expected/`
+  `cost-projection.md` + `cost-manifest.json` populated with deterministic
+  numbers (mocked pricing client) and `tests/test_e2e.py` covering the
+  full `run --all` flow.
+- CI smoke workflow doc / GitHub Actions integration.
+- Live-pricing population for the 6 non-AOAI resource-kind fixtures
+  (currently empty skeletons; projectors fall back to hardcoded matrix).
+- Cosmos failover / multi-write redundancy modelling beyond v1 single-write.
+- Storage egress-tier math (currently treats first 100 GB free; v2
+  tiered pricing).
+
+### Changed
+
+- **`threadlight-production-ready` COST-005 tightened**: previously checked
+  only `docs/cost-projection.md` existence. Now requires ALL of:
+  `docs/cost-projection.md` present AND `specs/cost-manifest.json` present
+  with `schema_version >= "1.0"` AND `generated_at` within 30 days of the
+  latest deploy timestamp (`AZURE_LAST_DEPLOY_AT` from `azd env`, or current
+  time if absent). Status when any condition is missing: `should-fix`.
+- **`threadlight-auto` new `cost-projection` phase**: inserted between
+  `safe_check` and `invoke`. Runs
+  `threadlight-consumption-iq scripts/consumption_iq.py run --all`. Exit 4
+  (load profile incomplete) surfaces a wizard prompt and sets
+  `cost-projection: needs-wizard` in state (advisory, does not block chain).
+  Exit 3 (pricing unavailable) sets `cost-projection: degraded-no-pricing`
+  and continues. Resumability: skips phase when SPEC § 12 `load_profile{}`
+  is complete AND `cost-manifest.json.generated_at > AZURE_LAST_DEPLOY_AT`.
+- **`threadlight-design` SPEC § 12 skeleton**: the SpecKit template now emits
+  a `load_profile{}` subsection (with placeholder comments) that
+  `threadlight-consumption-iq` wizard fills in on first run.
+
+### Added
+
+- **`threadlight-production-ready` COST-006**: new finding that walks
+  `specs/cost-manifest.json → recommendations[]` and reports each entry
+  where the deployed SKU still matches `current_sku` (i.e., recommendation
+  not yet applied). `monthly_savings_usd > $100` → `must-fix`;
+  `> $25` → `should-fix`; `≤ $25` → `pass`. `not-verified` when manifest
+  absent (message: "Run threadlight-consumption-iq to populate
+  cost-manifest.json before scoring COST-006.").
+- **`skills/threadlight-production-ready/references/remediation-recipes/COST-006.md`**:
+  remediation recipe explaining what COST-006 checks, how to address
+  recommendations, and why auto-apply is not appropriate for PTU commitments.
 
 ## 2026-06-11 — `threadlight-production-ready` v0.5.0 — "production-ready cleanup"
 
