@@ -1,0 +1,7 @@
+{
+  "_comment": "Versioned fallback price snapshot for Microsoft.CognitiveServices/accounts/deployments. Refreshed quarterly by CI. Used by pricing_client.py when Azure-pricing MCP is unavailable. Numbers below are PLACEHOLDERS pending the first refresh CI run — see plan.md todo 'pricing-client'.",
+  "_source": "Azure Retail Prices API (planned: CI job refreshes from https://prices.azure.com/api/retail/prices)",
+  "_last_refreshed": null,
+  "_schema_version": "1.0",
+  "skus": []
+}

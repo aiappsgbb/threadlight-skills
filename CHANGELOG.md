@@ -7,6 +7,48 @@ field.
 
 ## [Unreleased]
 
+### Added
+
+- **NEW skill: `threadlight-consumption-iq` v0.1.0-alpha** — post-deploy
+  Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`,
+  reads SPEC § 12 `load_profile{}` (wizard writes it back if absent),
+  hits the Azure Retail Prices API for each deployed SKU + 2–3
+  alternatives per resource, emits `docs/cost-projection.md` (human) +
+  `specs/cost-manifest.json` (machine).
+  - **v0.1.0-alpha is the scaffold + contracts release.** Full
+    `SKILL.md`, CLI dispatcher (`scripts/consumption_iq.py` with
+    `discover`, `load-profile`, `price`, `project`, `recommend`, `emit`,
+    `run --all`), projector registry covering 7 v1 resource kinds
+    (AOAI, Foundry hosted-agent, ACA, Cosmos NoSQL, Storage, APIM, AI
+    Search), fully implemented `recommender.py` (constraint scoring +
+    ranking by $/mo, honors `pinned_region`), real cache plumbing +
+    fixture fallback in `pricing_client.py`, real `_build_manifest` in
+    `emitter.py`, full schema docs at
+    `references/load-profile-schema.md` + `cost-manifest-schema.md` +
+    `consumption-formulas.md`, fixture skeleton at
+    `references/fixtures/sample-pilot-consumption/`, and a passing
+    12-test scaffold-smoke suite (`tests/test_scaffold.py`).
+    Per-resource projector math + live pricing fetch + load-profile
+    wizard + emitter markdown rendering land in subsequent alphas.
+- Plugin manifest bumped to **1.2.0-alpha** with new keywords:
+  `consumption-iq`, `cost-projection`, `sku-recommendation`,
+  `azure-retail-pricing`, `load-profile`.
+- README updated: skill table (10 pipeline skills + 1 orchestrator = 11
+  total), pipeline diagram now inserts `consumption-iq` between
+  `safe-check` and `foundry-evals`.
+
+### Pending in subsequent alphas
+
+- Per-resource projector implementations (currently `NotImplementedError`).
+- `pricing_client._fetch_live` against the `Azure-pricing` MCP.
+- `load_profile_wizard.py` interactive flow + SPEC § 12 markdown writer.
+- `emitter._render_markdown` rich rendering (per-resource sections,
+  side-by-side tables, mermaid donut, top-N recommendations).
+- Downstream wiring: `threadlight-production-ready` COST-005 tightening
+  + new COST-006, `threadlight-auto` new phase + resumability,
+  `threadlight-design` SPEC § 12 skeleton emission.
+- CI smoke / e2e against `sample-pilot-consumption` fixture.
+
 ## 2026-06-11 — `threadlight-production-ready` v0.5.0 — "production-ready cleanup"
 
 Closes the v0.5.0 cleanup buckets on top of v0.4.0's 3-phase onboarding

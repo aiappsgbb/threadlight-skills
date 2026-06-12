@@ -1,0 +1,17 @@
+{
+  "_comment": "Expected cost-manifest.json for sample-pilot-consumption. PLACEHOLDER pending projector + emitter implementation. Once real, this becomes the diff target for tests/test_emitter.py.",
+  "schema_version": "1.0",
+  "generated_at": "<TIMESTAMP-PINNED-AT-TEST-TIME>",
+  "deploy_ref": "sample-pilot-consumption/<deployment-id>",
+  "pre_deploy": false,
+  "load_profile_ref": "specs/SPEC.md#section-12-load-profile",
+  "currency": "USD",
+  "price_basis": "retail",
+  "resources": [],
+  "recommendations": [],
+  "totals": {
+    "monthly_cost_current_usd": 0,
+    "monthly_cost_recommended_usd": 0,
+    "monthly_savings_potential_usd": 0
+  }
+}
