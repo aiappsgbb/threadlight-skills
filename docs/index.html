@@ -6,6 +6,18 @@
 <title>Threadlight — One paragraph to a deployed agent.</title>
 <meta name="description" content="Threadlight is how Microsoft GBB AI Apps compresses eight weeks of pilot into a single working session — two seller-run commands, a chain of supporting skills, a customer who can keep using the agent Monday morning.">
 <meta name="theme-color" content="#4f6dff">
+
+<!-- OpenGraph + Twitter card -->
+<meta property="og:type"        content="website">
+<meta property="og:title"       content="Threadlight — paragraph → deployed agent in one session.">
+<meta property="og:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production. One session.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/">
+<meta property="og:site_name"   content="Threadlight">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="Threadlight — paragraph → deployed agent in one session.">
+<meta name="twitter:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <style>
   /* ============================================================
      THREADLIGHT EXPERIENCE — single-file cinematic landing page
@@ -1117,6 +1129,227 @@
     border-color: rgba(168,255,96,.32);
   }
   .cowork-steps a:hover code { background: rgba(168,255,96,.22); }
+  /* ============================================================
+     COST INTELLIGENCE (scene-cost) — consumption-iq pitch widget
+     Deterministic numbers from the v0.1.0 golden manifest at
+     skills/threadlight-consumption-iq/.../sample-pilot-consumption.
+     ============================================================ */
+  #scene-cost {
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 96px 0 88px;
+  }
+  #scene-cost .copy { text-align: center; max-width: 760px; margin: 0 auto 36px; }
+  #scene-cost .badge-new {
+    display: inline-block; padding: 3px 10px;
+    background: var(--lime-soft); color: var(--lime-1);
+    border: 1px solid color-mix(in srgb, var(--lime) 40%, transparent);
+    border-radius: 999px;
+    font: 600 .68rem/1 var(--mono);
+    letter-spacing: .12em; text-transform: uppercase;
+    margin-right: 10px; vertical-align: middle;
+  }
+  #scene-cost .display {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(30px, 3.6vw, 50px);
+    line-height: 1.1; letter-spacing: -.015em;
+    margin: 14px auto 10px; color: var(--ink-0);
+  }
+  #scene-cost .display em {
+    font-style: italic;
+    background: linear-gradient(90deg, var(--accent-1), var(--lime));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  #scene-cost .lede {
+    font-family: var(--serif); font-size: 1.15rem; line-height: 1.65;
+    color: var(--ink-1); max-width: 700px; margin: 14px auto 0;
+  }
+
+  /* counter row */
+  .cost-counters {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 22px;
+    max-width: 880px;
+    margin: 36px auto 28px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 26px 30px;
+    box-shadow: var(--shadow-card);
+  }
+  .cost-counters .ctr {
+    text-align: center;
+  }
+  .cost-counters .ctr-label {
+    font: 600 .7rem/1 var(--mono);
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-2); margin-bottom: 8px;
+  }
+  .cost-counters .ctr-value {
+    font: 600 clamp(28px, 3.4vw, 44px)/1 var(--sans);
+    letter-spacing: -.02em;
+    color: var(--ink-0);
+    font-variant-numeric: tabular-nums;
+  }
+  .cost-counters .ctr-value.is-current { color: var(--ink-1); }
+  .cost-counters .ctr-value.is-recommended {
+    background: linear-gradient(90deg, var(--accent-1), var(--lime));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .cost-counters .ctr-sub {
+    font: 500 .75rem/1.3 var(--sans);
+    color: var(--ink-2); margin-top: 6px;
+  }
+  .cost-counters .arrow {
+    font-size: 1.6rem; color: var(--accent-1);
+    user-select: none;
+  }
+  .cost-savings-pill {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 4px 12px;
+    background: var(--lime-soft);
+    color: var(--lime-1);
+    border: 1px solid color-mix(in srgb, var(--lime) 35%, transparent);
+    border-radius: 999px;
+    font: 600 .72rem/1.2 var(--mono);
+    letter-spacing: .04em;
+  }
+
+  /* per-resource compact table */
+  .cost-table-wrap {
+    max-width: 980px;
+    margin: 0 auto 28px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg-1);
+    box-shadow: var(--shadow-card);
+  }
+  .cost-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: 500 .88rem/1.4 var(--sans);
+    color: var(--ink-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .cost-table thead th {
+    text-align: left;
+    padding: 14px 18px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+    font: 600 .7rem/1 var(--mono);
+    color: var(--ink-2);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .cost-table tbody td {
+    padding: 13px 18px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  .cost-table tbody tr:last-child td { border-bottom: 0; }
+  .cost-table tbody tr:hover { background: color-mix(in srgb, var(--accent-soft) 40%, transparent); }
+  .cost-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cost-table .sku { color: var(--ink-2); font: 500 .82rem/1.3 var(--mono); }
+  .cost-table .savings-cell { color: var(--lime-1); font-weight: 600; }
+  .cost-table .savings-cell.neutral { color: var(--ink-3); }
+
+  /* top-3 recommendation cards */
+  .cost-recs {
+    max-width: 980px;
+    margin: 0 auto 28px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .cost-rec {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+    position: relative;
+  }
+  .cost-rec .rank {
+    position: absolute; top: -10px; left: 16px;
+    background: var(--bg-0);
+    border: 1px solid var(--line-2);
+    color: var(--ink-1);
+    font: 700 .72rem/1 var(--mono);
+    padding: 4px 8px; border-radius: 6px;
+  }
+  .cost-rec .rec-title {
+    font: 600 1rem/1.3 var(--sans);
+    color: var(--ink-0);
+    margin: 0 0 6px;
+  }
+  .cost-rec .rec-swap {
+    font: 500 .82rem/1.4 var(--mono);
+    color: var(--ink-2);
+    margin: 0 0 10px;
+  }
+  .cost-rec .rec-swap .from { text-decoration: line-through; opacity: .7; }
+  .cost-rec .rec-swap .arr  { color: var(--accent-1); padding: 0 4px; }
+  .cost-rec .rec-swap .to   { color: var(--ink-1); }
+  .cost-rec .rec-saves {
+    font: 700 1.15rem/1 var(--sans);
+    color: var(--lime-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .cost-rec .rec-saves .pct {
+    font: 500 .72rem/1 var(--mono);
+    color: var(--ink-2); margin-left: 6px;
+    letter-spacing: .04em;
+  }
+
+  /* CTA strip */
+  .cost-cta-row {
+    text-align: center; margin-top: 22px;
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+  }
+  .cost-foot {
+    font: 500 .78rem/1.5 var(--mono);
+    color: var(--ink-3); text-align: center;
+    max-width: 720px; margin: 16px auto 0;
+  }
+
+  /* responsive */
+  @media (max-width: 720px) {
+    .cost-counters { grid-template-columns: 1fr; padding: 22px 18px; }
+    .cost-counters .arrow { transform: rotate(90deg); }
+    .cost-recs { grid-template-columns: 1fr; }
+    .cost-table-wrap { border-radius: 12px; -webkit-overflow-scrolling: touch; }
+    .cost-table thead th, .cost-table tbody td { padding: 10px 12px; }
+    .cost-table { min-width: 620px; }   /* force horizontal scroll instead of cramming */
+  }
+
+  /* Light-mode contrast for the cost widget's lime accents.
+     In light mode, the dark-theme pale-lime tokens disappear into white;
+     these overrides give the value, pill and savings cell real contrast. */
+  @media (prefers-color-scheme: light) {
+    .cost-counters .ctr-value.is-recommended {
+      background: linear-gradient(90deg, var(--accent), #2e7d32);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .cost-savings-pill {
+      color: #1f5c20;
+      background: rgba(168,255,96,.35);
+      border-color: rgba(46,125,50,.30);
+    }
+    .cost-table .savings-cell { color: #1f5c20; }
+    .cost-rec .rec-saves { color: #1f5c20; }
+  }
+
+  /* honour reduced motion — counters jump instantly */
+  @media (prefers-reduced-motion: reduce) {
+    .cost-counters .ctr-value { transition: none !important; }
+  }
 
 </style>
 </head>
@@ -1132,11 +1365,13 @@
   <nav class="nav" aria-label="Page sections">
     <a href="#scene-promise">Promise</a>
     <a href="#scene-chain">The chain</a>
-    <a href="#scene-setup">Setup</a>
+    <a href="#scene-prod-ready">Production-ready</a>
+    <a href="#scene-cost">Cost</a>
     <a href="#scene-proof">Proof</a>
     <a href="#scene-guardrails">Guardrails</a>
     <a href="#scene-flywheel">Flywheel</a>
     <a href="#scene-setup">Setup</a>
+    <a href="./skills.html">All skills</a>
     <a href="#scene-cta">Start</a>
   </nav>
 </header>
@@ -1522,19 +1757,19 @@
         <div class="setup-card">
           <h3><span class="setup-num">1</span> Install the building blocks</h3>
           <p>The <a href="https://aiappsgbb.github.io/awesome-gbb/" style="color:var(--accent-1);">awesome-gbb</a> plugin ships 27 foundational skills — Foundry agents, MCP servers, governance, deployment patterns. Threadlight orchestrates these.</p>
-          <pre><code>copilot plugin marketplace add aiappsgbb/awesome-gbb
+          <pre tabindex="0"><code>copilot plugin marketplace add aiappsgbb/awesome-gbb
 copilot plugin install awesome-gbb@awesome-gbb</code></pre>
         </div>
         <div class="setup-card">
           <h3><span class="setup-num">2</span> Install Threadlight</h3>
           <p>The pilot pipeline — nine skills that chain brief → design → deploy → demo → production-ready hand-off into one session.</p>
-          <pre><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
+          <pre tabindex="0"><code>copilot plugin marketplace add aiappsgbb/threadlight-skills
 copilot plugin install threadlight-skills@threadlight-skills</code></pre>
         </div>
         <div class="setup-card">
           <h3><span class="setup-num">3</span> Azure tenant isolation</h3>
           <p>If you target multiple Azure tenants, set up per-tenant config dirs before deploying. The <code>azure-tenant-isolation</code> skill (included in awesome-gbb) guides you.</p>
-          <pre><code>export AZURE_CONFIG_DIR=~/.azure-tenants/customer
+          <pre tabindex="0"><code>export AZURE_CONFIG_DIR=~/.azure-tenants/customer
 az login --tenant &lt;tenant-id&gt;</code></pre>
         </div>
       </div>
@@ -1548,9 +1783,9 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
         <p class="eyebrow"><span class="dot"></span>Proof points</p>
         <h2 id="proof-h">What the chain ships &mdash; <em>in one session.</em></h2>
         <p class="lede" style="margin: 18px auto 0;">
-          A recent engagement with a Tier-1 European telco. Same agent, three
-          surfaces, audit-grade citations &mdash; from paragraph brief to deployed
-          agent inside one working day.
+          A repeatable pattern, validated across LOB engagements in regulated
+          industries &mdash; same agent, three surfaces, audit-grade citations,
+          from paragraph brief to deployed agent inside one working day.
         </p>
       </div>
 
@@ -1599,6 +1834,158 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
         &ldquo;The artefact is the agent, not the deck.
         The proof is the telemetry, not the demo.
         The path to production is paved, not planned.&rdquo;
+      </p>
+    </div>
+  </section>
+
+  <!-- ====================== SCENE · COST INTELLIGENCE ======================
+       Pitches `threadlight-consumption-iq` (v0.1.0). Every number on this
+       widget comes from the deterministic golden manifest committed at
+       skills/threadlight-consumption-iq/references/fixtures/
+         sample-pilot-consumption/expected/cost-manifest.json
+       — change the golden, re-export the JS literal below.
+  -->
+  <section class="scene" id="scene-cost" aria-labelledby="cost-h">
+    <div class="wrap">
+      <div class="copy reveal">
+        <p class="eyebrow"><span class="dot"></span>Post-deploy &middot; before sign-off</p>
+        <h2 id="cost-h" class="display reveal" data-delay="1">
+          <span class="badge-new" aria-label="New in v1.2">v1.2 &middot; new</span>
+          Don&rsquo;t ship the SKU. Ship the cheapest SKU that <em>still fits.</em>
+        </h2>
+        <p class="lede reveal" data-delay="2">
+          <code>threadlight-consumption-iq</code> walks every deployed resource at the
+          customer&rsquo;s declared production load, prices it against 2&ndash;3
+          alternatives, and tells you the cheapest config that still meets
+          their constraints &mdash; before they sign off and turn on traffic.
+        </p>
+      </div>
+
+      <!-- counters: current vs recommended -->
+      <div class="cost-counters reveal" data-delay="3" role="figure" aria-label="Monthly cost: current versus recommended">
+        <div class="ctr">
+          <div class="ctr-label">Current</div>
+          <div class="ctr-value is-current" data-cost-counter data-to="397.57" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-sub">Deployed SKUs at declared load</div>
+        </div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div class="ctr">
+          <div class="ctr-label">Recommended</div>
+          <div class="ctr-value is-recommended" data-cost-counter data-to="341.19" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-sub">
+            Same constraints, lower bill
+            <span class="cost-savings-pill" aria-label="Potential monthly savings">&minus;$56.38 / &minus;14.2%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- per-resource breakdown -->
+      <div class="cost-table-wrap reveal" data-delay="4" role="region" aria-label="Per-resource cost breakdown">
+        <table class="cost-table">
+          <thead>
+            <tr>
+              <th scope="col">Resource</th>
+              <th scope="col">Current SKU</th>
+              <th scope="col" class="num">$ / mo</th>
+              <th scope="col">Top alternative</th>
+              <th scope="col" class="num">Saves</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>cosmos</strong><br><span class="sku">DocumentDB</span></td>
+              <td><span class="sku">Standard provisioned 4000 RU/s</span></td>
+              <td class="num">$246.10</td>
+              <td><span class="sku">keep &mdash; serverless trips 50 GB cap</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>ai-search</strong><br><span class="sku">Search</span></td>
+              <td><span class="sku">basic 1&times;1</span></td>
+              <td class="num">$73.00</td>
+              <td><span class="sku">keep &mdash; free tier doc cap below load</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>apim</strong><br><span class="sku">API Management</span></td>
+              <td><span class="sku">BasicV2 capacity=1</span></td>
+              <td class="num">$51.10</td>
+              <td><span class="sku">Consumption</span></td>
+              <td class="num savings-cell">&minus;$45.53</td>
+            </tr>
+            <tr>
+              <td><strong>bot</strong><br><span class="sku">Container Apps</span></td>
+              <td><span class="sku">Consumption 2 replicas</span></td>
+              <td class="num">$15.85</td>
+              <td><span class="sku">keep &mdash; already at min</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>foundry-agent</strong><br><span class="sku">Foundry hosted</span></td>
+              <td><span class="sku">Standard tier</span></td>
+              <td class="num">$10.56</td>
+              <td><span class="sku">Free tier</span></td>
+              <td class="num savings-cell">&minus;$10.56</td>
+            </tr>
+            <tr>
+              <td><strong>storage</strong><br><span class="sku">Storage</span></td>
+              <td><span class="sku">Standard_LRS hot</span></td>
+              <td class="num">$0.96</td>
+              <td><span class="sku">Standard_ZRS cool</span></td>
+              <td class="num savings-cell">&minus;$0.29</td>
+            </tr>
+            <tr>
+              <td><strong>aoai-chat</strong><br><span class="sku">AOAI deployment</span></td>
+              <td><span class="sku">gpt-4o PAYG eastus2</span></td>
+              <td class="num"><abbr title="Live retail price required; fallback fixture omitted to avoid stale claims">N/A</abbr></td>
+              <td><span class="sku">populated by live Retail Prices API</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- top 3 recommendation cards -->
+      <div class="cost-recs reveal" data-delay="5" aria-label="Top three recommendations">
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#1</span>
+          <p class="rec-title">apim &mdash; switch to Consumption tier</p>
+          <p class="rec-swap"><span class="from">BasicV2 capacity=1</span><span class="arr">&rarr;</span><span class="to">Consumption</span></p>
+          <p class="rec-saves">&minus;$45.53<span class="pct">/mo &middot; 89%</span></p>
+        </article>
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#2</span>
+          <p class="rec-title">foundry-agent &mdash; switch to Free tier</p>
+          <p class="rec-swap"><span class="from">Standard</span><span class="arr">&rarr;</span><span class="to">Free hosted-agent</span></p>
+          <p class="rec-saves">&minus;$10.56<span class="pct">/mo &middot; 100%</span></p>
+        </article>
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#3</span>
+          <p class="rec-title">storage &mdash; ZRS cool</p>
+          <p class="rec-swap"><span class="from">Standard_LRS hot</span><span class="arr">&rarr;</span><span class="to">Standard_ZRS cool</span></p>
+          <p class="rec-saves">&minus;$0.29<span class="pct">/mo &middot; 31%</span></p>
+        </article>
+      </div>
+
+      <div class="cost-cta-row reveal" data-delay="6">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md">
+          See the golden report <span class="arrow">&rarr;</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/SKILL.md">
+          SKILL.md <span class="arrow">&rarr;</span>
+        </a>
+        <a class="btn btn-ghost" href="./skills.html#threadlight-consumption-iq">
+          Open in catalog
+        </a>
+      </div>
+
+      <p class="cost-foot reveal" data-delay="7">
+        Numbers above are deterministic &mdash; generated from a mock pricing
+        client against a 7-resource synthetic pilot. Real runs hit the public
+        Azure Retail Prices API; every $ value carries a
+        <code>price_source: live | fixture | fallback</code> tag in the manifest.
+        Advisory only &mdash; <code>threadlight-deploy</code> is what actually
+        changes infrastructure.
       </p>
     </div>
   </section>
@@ -1693,7 +2080,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
           <div class="stage-name">Pilot</div>
           <p class="stage-tag">One session &rarr; working agent on your Azure. SPEC, code, Bicep, telemetry, evals &mdash; all generated.</p>
           <ul class="stage-list">
-            <li><span class="dot"></span><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">threadlight (&times;9 skills)</a></li>
+            <li><span class="dot"></span><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">threadlight (&times;11 skills)</a></li>
           </ul>
         </div>
 
@@ -1942,7 +2329,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
 
 <footer>
   <div class="row">
-    <div>Microsoft GBB · <code>awesome-gbb</code> · internal use</div>
+    <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
     <div class="right">
       <a href="https://github.com/aiappsgbb/awesome-gbb#readme">README.md</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
@@ -2046,6 +2433,46 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
   }
 
   // ---------------------------------------------------------------
+  // 3b · cost-counter: decimal-aware $ animator for scene-cost
+  //      Honours prefers-reduced-motion (paints final value once).
+  // ---------------------------------------------------------------
+  function animateCostCounter(el) {
+    const to     = parseFloat(el.getAttribute('data-to') || '0');
+    const prefix = el.getAttribute('data-prefix') || '';
+    const suffix = el.getAttribute('data-suffix') || '';
+    const fmt    = (v) => prefix + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + suffix;
+    if (isReducedMotion()) { el.textContent = fmt(to); return; }
+    const dur  = 1100;
+    const start = performance.now();
+    function tick(now) {
+      const t = Math.min(1, (now - start) / dur);
+      // ease-out cubic
+      const e = 1 - Math.pow(1 - t, 3);
+      el.textContent = fmt(to * e);
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function wireCostCounters() {
+    const els = document.querySelectorAll('[data-cost-counter]');
+    if (!els.length) return;
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(animateCostCounter);
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          animateCostCounter(e.target);
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.4 });
+    els.forEach(el => io.observe(el));
+  }
+
+  // ---------------------------------------------------------------
   // 4 · chain spine progress — fills as you scroll past skills
   //    Uses the chain-rail's bounding rect; updates a CSS var.
   // ---------------------------------------------------------------
@@ -2115,6 +2542,7 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     spawnParticles();
     wireReveal();
     wireCounters();
+    wireCostCounters();
     wireChainProgress();
     wireSmoothScroll();
     if (isReducedMotion()) {

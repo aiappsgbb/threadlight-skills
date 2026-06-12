@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threadlight skills catalog — 11 skills, one chain</title>
+<meta name="description" content="The full Threadlight skill catalog — 11 Copilot CLI / declarative-agent skills that compress an Azure agent pilot from eight weeks to one working session. Browse by lifecycle phase or audience.">
+<meta name="theme-color" content="#4f6dff">
+
+<!-- OpenGraph + Twitter card -->
+<meta property="og:type"        content="website">
+<meta property="og:title"       content="Threadlight skills catalog">
+<meta property="og:description" content="11 skills, one chain — paragraph → deployed agent on the customer's Azure in one session.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/skills.html">
+<meta property="og:site_name"   content="Threadlight">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="Threadlight skills catalog">
+<meta name="twitter:description" content="11 skills, one chain — paragraph → deployed agent on the customer's Azure in one session.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+
+<style>
+  /* ============================================================
+     THREADLIGHT SKILLS CATALOG — single-file vanilla
+     Mirrors the dark-first + light-fallback tokens from index.html
+     to stay visually consistent without a shared CSS file.
+     ============================================================ */
+  :root {
+    --bg-0:   #0a0d14;
+    --bg-1:   #11151f;
+    --bg-2:   #181c2a;
+    --bg-3:   #232a3d;
+    --line:   #2a3149;
+    --line-2: #3a4366;
+    --ink-0:  #f5f5f7;
+    --ink-1:  #cfd2dc;
+    --ink-2:  #8e95a8;
+    --ink-3:  #5a6178;
+    --accent:        #4f6dff;
+    --accent-1:      #6e87ff;
+    --accent-soft:   rgba(79,109,255,.18);
+    --accent-glow:   rgba(79,109,255,.42);
+    --lime:          #a8ff60;
+    --lime-1:        #c8ff8a;
+    --lime-soft:     rgba(168,255,96,.16);
+    --warn:          #ffb84a;
+    --serif:  "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
+    --sans:   "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono:   "Cascadia Mono", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-card: 0 18px 40px rgba(0,0,0,.40), 0 4px 12px rgba(0,0,0,.28);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg-0:   #f6f7fb;
+      --bg-1:   #ffffff;
+      --bg-2:   #eef0f7;
+      --bg-3:   #e2e6f1;
+      --line:   #d6dbe8;
+      --line-2: #b8bfd1;
+      --ink-0:  #0a0d14;
+      --ink-1:  #1c2236;
+      --ink-2:  #4a5168;
+      --ink-3:  #828aa4;
+      --accent-soft: rgba(79,109,255,.12);
+      --lime-soft:   rgba(168,255,96,.22);
+      --shadow-card: 0 12px 28px rgba(20,28,52,.10), 0 2px 8px rgba(20,28,52,.06);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-0);
+    color: var(--ink-1);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+  a { color: var(--accent-1); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* masthead */
+  header.masthead {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-0) 75%, transparent);
+    position: sticky; top: 0; z-index: 30;
+    backdrop-filter: blur(10px);
+  }
+  @media (max-width: 720px) {
+    header.masthead { padding: 12px 18px; gap: 14px; flex-wrap: wrap; }
+    .brand-name span { display: none; }
+    nav.nav { gap: 14px; }
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 7px;
+    background:
+      radial-gradient(circle at 30% 30%, var(--accent-1), var(--accent)),
+      var(--bg-2);
+    box-shadow: 0 0 0 1px var(--accent-soft), 0 0 16px var(--accent-glow);
+  }
+  .brand-name {
+    font: 600 1.05rem/1 var(--sans);
+    color: var(--ink-0);
+  }
+  .brand-name span {
+    display: block;
+    font: 500 .68rem/1 var(--mono);
+    color: var(--ink-2);
+    margin-top: 4px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  nav.nav { display: flex; gap: 18px; }
+  nav.nav a {
+    font: 500 .82rem/1 var(--sans);
+    color: var(--ink-1);
+    padding: 6px 0;
+    border-bottom: 1px solid transparent;
+  }
+  nav.nav a:hover { border-bottom-color: var(--accent-1); text-decoration: none; color: var(--ink-0); }
+  nav.nav a.is-here { color: var(--ink-0); border-bottom-color: var(--accent-1); }
+
+  /* hero */
+  .page-hero {
+    padding: 80px 0 40px;
+    background:
+      radial-gradient(1200px 400px at 50% 0%, var(--accent-soft) 0%, transparent 60%),
+      var(--bg-0);
+  }
+  .page-hero .eyebrow {
+    font: 600 .72rem/1 var(--mono);
+    color: var(--ink-2);
+    letter-spacing: .12em; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .page-hero .eyebrow .dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-1); box-shadow: 0 0 10px var(--accent-glow);
+  }
+  .page-hero h1 {
+    font: 500 clamp(34px, 4.4vw, 60px)/1.1 var(--serif);
+    letter-spacing: -.015em;
+    color: var(--ink-0);
+    margin: 14px 0 16px;
+    max-width: 820px;
+  }
+  .page-hero h1 em {
+    font-style: italic;
+    background: linear-gradient(90deg, var(--accent-1), var(--lime));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .page-hero p.lede {
+    font-family: var(--serif);
+    font-size: 1.2rem; line-height: 1.7;
+    max-width: 740px; color: var(--ink-1);
+    margin: 0 0 24px;
+  }
+
+  /* filter strip */
+  .filters {
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+    background: color-mix(in srgb, var(--bg-0) 90%, transparent);
+    backdrop-filter: blur(10px);
+    padding: 18px 0 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .filter-row {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    margin-bottom: 10px;
+  }
+  .filter-row:last-child { margin-bottom: 0; }
+  .filter-label {
+    font: 600 .7rem/1 var(--mono);
+    color: var(--ink-2);
+    letter-spacing: .1em; text-transform: uppercase;
+    width: 84px; flex-shrink: 0;
+  }
+  .chip {
+    display: inline-block;
+    padding: 6px 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font: 500 .82rem/1 var(--sans);
+    color: var(--ink-1);
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .chip:hover { border-color: var(--accent-1); color: var(--ink-0); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent-1);
+    color: var(--ink-0);
+  }
+  .filter-search {
+    flex-grow: 1;
+    min-width: 200px;
+    padding: 8px 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink-0);
+    font: 500 .92rem/1.2 var(--sans);
+  }
+  .filter-search:focus {
+    outline: none;
+    border-color: var(--accent-1);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .filter-meta {
+    font: 500 .8rem/1 var(--mono);
+    color: var(--ink-2);
+    margin-left: auto;
+  }
+
+  /* card grid */
+  .catalog {
+    padding: 32px 0 80px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 22px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-card);
+    transition: border-color .15s ease, transform .15s ease;
+  }
+  .card:hover {
+    border-color: var(--accent-1);
+    transform: translateY(-2px);
+  }
+  .card.is-hidden { display: none; }
+  .card-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  }
+  .card-name {
+    font: 600 1.05rem/1.3 var(--sans);
+    color: var(--ink-0);
+    margin: 0;
+  }
+  .card-name code {
+    font-family: var(--mono);
+    background: none;
+    color: inherit;
+    font-size: .98em;
+  }
+  .card-version {
+    font: 600 .7rem/1 var(--mono);
+    color: var(--ink-2);
+    padding: 4px 8px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .card-version.is-new {
+    color: var(--lime-1);
+    border-color: color-mix(in srgb, var(--lime) 35%, transparent);
+    background: var(--lime-soft);
+  }
+  .card-desc {
+    font: 400 .92rem/1.5 var(--sans);
+    color: var(--ink-1);
+    margin: 0;
+  }
+  .card-meta {
+    font: 500 .76rem/1.4 var(--mono);
+    color: var(--ink-2);
+    display: grid; gap: 4px;
+  }
+  .card-meta strong { color: var(--ink-1); font-weight: 600; }
+  .card-tags {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .card-tag {
+    font: 600 .68rem/1 var(--mono);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: var(--bg-2);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+  }
+  .card-tag.is-phase { color: var(--accent-1); border-color: var(--accent-soft); }
+  .card-tag.is-audience { color: var(--lime-1); border-color: color-mix(in srgb, var(--lime) 25%, transparent); }
+  .card-foot {
+    display: flex; gap: 10px; justify-content: space-between; align-items: center;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  .card-link {
+    font: 600 .82rem/1 var(--sans);
+    color: var(--accent-1);
+  }
+  .card-status {
+    font: 600 .68rem/1 var(--mono);
+    color: var(--ink-3);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .card-status.is-orchestrator { color: var(--warn); }
+
+  .empty {
+    grid-column: 1 / -1;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--ink-2);
+    border: 1px dashed var(--line);
+    border-radius: 14px;
+  }
+
+  /* footer */
+  footer {
+    padding: 28px 0;
+    border-top: 1px solid var(--line);
+    font: 500 .8rem/1.5 var(--mono);
+    color: var(--ink-3);
+  }
+  footer .row {
+    display: flex; gap: 18px; flex-wrap: wrap; justify-content: space-between;
+  }
+  footer code { color: var(--ink-2); }
+  footer a { color: var(--ink-2); }
+  footer a:hover { color: var(--accent-1); }
+
+  @media (max-width: 720px) {
+    .page-hero { padding: 56px 0 28px; }
+    .filter-row { gap: 8px; }
+    .filter-label { width: 100%; margin-bottom: 2px; }
+    .filter-meta { width: 100%; margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true"></div>
+    <div class="brand-name">Threadlight<span>by Microsoft GBB &middot; AI Apps</span></div>
+  </div>
+  <nav class="nav" aria-label="Page sections">
+    <a href="./index.html">Landing</a>
+    <a href="./skills.html" class="is-here" aria-current="page">All skills</a>
+    <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Briefing</a>
+    <a href="https://github.com/aiappsgbb/threadlight-skills">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="page-hero">
+  <div class="wrap">
+    <p class="eyebrow"><span class="dot"></span>Catalog &middot; 11 skills, one chain</p>
+    <h1>From a one-paragraph brief to <em>deployed agent</em> &mdash; eleven skills, one session.</h1>
+    <p class="lede">
+      Every Threadlight skill below is a self-contained Copilot CLI plugin /
+      declarative-agent skill. They compose. Sellers invoke them by name;
+      <code>threadlight-auto</code> chains them end-to-end. Click any card to
+      open its <code>SKILL.md</code>.
+    </p>
+  </div>
+</section>
+
+<section class="filters" aria-label="Filter the catalog">
+  <div class="wrap">
+    <div class="filter-row">
+      <span class="filter-label" id="phase-label">Phase</span>
+      <div role="group" aria-labelledby="phase-label" id="phase-chips"></div>
+      <input class="filter-search" type="search" id="search" placeholder="Search &mdash; name, description, keyword&hellip;" aria-label="Search skills">
+    </div>
+    <div class="filter-row">
+      <span class="filter-label" id="audience-label">Audience</span>
+      <div role="group" aria-labelledby="audience-label" id="audience-chips"></div>
+      <span class="filter-meta" id="count-meta" aria-live="polite">Showing 11 of 11</span>
+    </div>
+  </div>
+</section>
+
+<section class="catalog">
+  <div class="wrap">
+    <div class="grid" id="grid" role="list"></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap row">
+    <div>Microsoft GBB AI Apps &middot; <code>threadlight-skills</code> &middot; open guidance</div>
+    <div>
+      <a href="https://github.com/aiappsgbb/threadlight-skills">repo</a> &middot;
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/CHANGELOG.md">changelog</a> &middot;
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/LICENSE">license</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   THREADLIGHT SKILLS CATALOG — vanilla ES2020+, no framework
+   The SKILLS array below is the single source of truth. To
+   regenerate it after editing any skills SKILL.md, run:
+     python3 scripts/generate_skills_catalog.py
+   (the script is committed alongside this page).
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // Embedded catalog data — kept in sync with skills/*/SKILL.md frontmatter.
+  // Phase taxonomy:   design | local-test | deploy | safe-check | cost |
+  //                   prod-ready | hitl | workspace-ui | triggers | demo-data | orchestrator
+  // Audience taxonomy: seller | se | customer | dev
+  const SKILLS = [
+    {
+      id: 'threadlight-auto',
+      name: 'threadlight-auto',
+      version: '1.0.0',
+      phase: 'orchestrator',
+      audience: ['seller', 'se'],
+      isOrchestrator: true,
+      tagline: 'Full-auto driver of the whole chain.',
+      desc: 'One freeform prompt drives design → local-test → deploy → safe-check → live invoke → production-ready. Auto-continues at every gate, hard-stops on tenant assertion / quota; resumes from .threadlight/auto-state.json.',
+      inputs: 'one freeform pilot brief',
+      outputs: 'deployed agent + scorecard',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-auto/SKILL.md'
+    },
+    {
+      id: 'threadlight-design',
+      name: 'threadlight-design',
+      version: '1.7.0',
+      phase: 'design',
+      audience: ['seller', 'se', 'customer'],
+      tagline: 'Spec a regulated-industry process; emit AGENTS.md + skills.',
+      desc: 'SpecKit-first: process flow, business rules, data models, tool contracts, mock data, KPIs, governance — then implementation artefacts derived from the spec. Targets named LOB processes (FSI, Mfg, Retail, Telco, Healthcare, Utilities) where a customer SME judges the spec on industry realism before the demo runs.',
+      inputs: 'one paragraph + industry',
+      outputs: 'SPEC.md, AGENTS.md, skills/',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md'
+    },
+    {
+      id: 'threadlight-demo-data-factory',
+      name: 'threadlight-demo-data-factory',
+      version: '1.0.0',
+      phase: 'demo-data',
+      audience: ['se', 'dev'],
+      tagline: 'Per-domain Faker generators + Cosmos seed/reset scripts.',
+      desc: 'Reads SPEC § 11d demo-data and industry-realism rules; produces seed_data.py and reset_data.py plus seed JSON files in specs/sample-data/. Idempotent reset, golden test cases.',
+      inputs: 'SPEC § 11d demo-data',
+      outputs: 'seed/reset scripts + JSON',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md'
+    },
+    {
+      id: 'threadlight-local-test',
+      name: 'threadlight-local-test',
+      version: '1.2.0',
+      phase: 'local-test',
+      audience: ['se', 'dev'],
+      tagline: 'Run the pilot locally before any cloud cost.',
+      desc: '4 patterns — Quickstart (streamlit on :8501), MCP-direct, smoke-client (agent.run_async), and docker-compose local-stack. One LLM dep (Foundry, AOAI, or GitHub Models via GITHUB_TOKEN); zero Azure resources.',
+      inputs: 'a designed agent project',
+      outputs: 'live local UI / smoke output',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md'
+    },
+    {
+      id: 'threadlight-deploy',
+      name: 'threadlight-deploy',
+      version: '1.5.0',
+      phase: 'deploy',
+      audience: ['se', 'dev'],
+      tagline: 'Generate every deploy artefact; ship to Foundry hosted-agent.',
+      desc: 'Reads SPEC.md, AGENTS.md, and skills/ → produces container.py, Dockerfile, pyproject.toml, azd project, Bicep, deploy-notes.md. One-command `azd up` to a Microsoft Foundry hosted agent on the customer\u2019s tenant.',
+      inputs: 'designed agent project',
+      outputs: 'azd-deployable project + notes',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md'
+    },
+    {
+      id: 'threadlight-safe-check',
+      name: 'threadlight-safe-check',
+      version: '1.0.3',
+      phase: 'safe-check',
+      audience: ['se'],
+      tagline: 'Three-lifecycle completeness gate.',
+      desc: 'design / pre-deploy / post-deploy completeness checks. Reads SPEC § 11c selectors, asserts every selector maps to a deployed Microsoft.* type, every channel reaches, every job is wired. Post-deploy also probes placeholder images, ACA job failure streaks, App Insights wiring.',
+      inputs: 'specs/manifest.json + deploy',
+      outputs: 'safe-check-manifest.json',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md'
+    },
+    {
+      id: 'threadlight-consumption-iq',
+      name: 'threadlight-consumption-iq',
+      version: '0.1.0',
+      phase: 'cost',
+      audience: ['seller', 'se', 'customer'],
+      isNew: true,
+      tagline: 'Post-deploy SKU diff &mdash; cheapest config that still fits.',
+      desc: '7 projectors (AOAI, Foundry, ACA, Cosmos, Storage, APIM, AI Search) walk every deployed resource at the customer\u2019s declared production load, hit the public Azure Retail Prices API directly, and rank alternatives by $/mo savings subject to declared constraints (latency, redundancy, region, doc-cap). Emits cost-projection.md + cost-manifest.json; advisory, never mutates Bicep.',
+      inputs: 'deployed Bicep + SPEC § 12 load_profile',
+      outputs: 'cost-projection.md, cost-manifest.json',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/SKILL.md'
+    },
+    {
+      id: 'threadlight-production-ready',
+      name: 'threadlight-production-ready',
+      version: '0.5.0',
+      phase: 'prod-ready',
+      audience: ['seller', 'se', 'customer'],
+      tagline: 'Advisory scorecard across 13 production pillars.',
+      desc: 'Reads SPEC § 12 (posture, must-have pillars, residency, RTO/RPO, SLA, incident owner) and probes Azure to produce a production-readiness scorecard + uplift plan + customer-facing handoff package. Citadel-spoke recommended, AGT in-process middleware second, standard AI gateway / VNet third. Soft advisory; degrades gracefully on missing live-probe permissions.',
+      inputs: 'deployed pilot + SPEC § 12',
+      outputs: 'production-ready scorecard + handoff pkg',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md'
+    },
+    {
+      id: 'threadlight-hitl-patterns',
+      name: 'threadlight-hitl-patterns',
+      version: '1.0.0',
+      phase: 'hitl',
+      audience: ['se', 'dev'],
+      tagline: 'Teams Adaptive Cards for the seven canonical action gates.',
+      desc: 'approve / edit-and-approve / reject / escalate / signoff / audit-view / request-info \u2014 each declared in SPEC § 8 Human Interaction Points. Pairs with foundry-teams-bot for delivery.',
+      inputs: 'SPEC § 8 action gates',
+      outputs: 'Adaptive Card flows',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md'
+    },
+    {
+      id: 'threadlight-workspace-ui',
+      name: 'threadlight-workspace-ui',
+      version: '1.0.0',
+      phase: 'workspace-ui',
+      audience: ['se', 'dev', 'customer'],
+      tagline: 'One reference workspace UI per process.',
+      desc: 'Framework-agnostic: case-list / inbox / dashboard / console / kanban / map shapes, with detail pane, action toolbar, audit viewer. Reads SPEC § 8b Human Interaction (Workspace UX) and ships ONE reference implementation the customer can rebuild in their preferred framework.',
+      inputs: 'SPEC § 8b workspace UX',
+      outputs: 'workspace UI reference',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md'
+    },
+    {
+      id: 'threadlight-event-triggers',
+      name: 'threadlight-event-triggers',
+      version: '1.0.0',
+      phase: 'triggers',
+      audience: ['se', 'dev'],
+      tagline: 'Non-interactive trigger receivers; ACA-first, Functions only when needed.',
+      desc: 'Scaffolds ACA jobs, app HTTP receivers, KEDA-scaled consumers. Reads SPEC § 10b Triggers (receiver contract) and produces the receiver scaffold + idempotency / dead-letter wiring.',
+      inputs: 'SPEC § 10b triggers',
+      outputs: 'trigger receivers + DLQ wiring',
+      url: 'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md'
+    }
+  ];
+
+  const PHASE_ORDER = [
+    'orchestrator', 'design', 'demo-data', 'local-test', 'deploy',
+    'safe-check', 'cost', 'prod-ready', 'hitl', 'workspace-ui', 'triggers'
+  ];
+  const PHASE_LABELS = {
+    'orchestrator':  'Orchestrator',
+    'design':        'Design',
+    'demo-data':     'Demo data',
+    'local-test':    'Local test',
+    'deploy':        'Deploy',
+    'safe-check':    'Safe-check',
+    'cost':          'Cost',
+    'prod-ready':    'Prod-ready',
+    'hitl':          'HITL',
+    'workspace-ui':  'Workspace UI',
+    'triggers':      'Triggers'
+  };
+  const AUDIENCE_ORDER  = ['seller', 'se', 'customer', 'dev'];
+  const AUDIENCE_LABELS = { seller: 'Seller', se: 'SE', customer: 'Customer / SME', dev: 'Developer' };
+
+  // Filter state
+  const state = {
+    phases:    new Set(),   // empty = all
+    audiences: new Set(),
+    search:    ''
+  };
+
+  // ----- render helpers -----
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'class') node.className = v;
+        else if (k === 'text') node.textContent = v;
+        else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+        else if (v === true) node.setAttribute(k, '');
+        else if (v !== false && v != null) node.setAttribute(k, v);
+      }
+    }
+    for (const c of children) {
+      if (c == null) continue;
+      node.append(c.nodeType ? c : document.createTextNode(c));
+    }
+    return node;
+  }
+
+  function renderChips(containerId, items, order, labels, key) {
+    const host = document.getElementById(containerId);
+    host.innerHTML = '';
+    order.forEach((k) => {
+      if (!items.has(k)) return;
+      const chip = el('button', {
+        class: 'chip',
+        type: 'button',
+        'data-key': k,
+        'aria-pressed': 'false',
+        onclick: () => toggle(key, k)
+      }, labels[k] || k);
+      host.appendChild(chip);
+    });
+  }
+
+  function toggle(key, value) {
+    const set = state[key];
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+    syncChips();
+    renderGrid();
+  }
+
+  function syncChips() {
+    document.querySelectorAll('#phase-chips .chip').forEach((c) => {
+      c.setAttribute('aria-pressed', state.phases.has(c.dataset.key) ? 'true' : 'false');
+    });
+    document.querySelectorAll('#audience-chips .chip').forEach((c) => {
+      c.setAttribute('aria-pressed', state.audiences.has(c.dataset.key) ? 'true' : 'false');
+    });
+  }
+
+  function matches(skill) {
+    if (state.phases.size && !state.phases.has(skill.phase)) return false;
+    if (state.audiences.size && !skill.audience.some((a) => state.audiences.has(a))) return false;
+    if (state.search) {
+      const hay = (skill.name + ' ' + skill.tagline + ' ' + skill.desc + ' ' + skill.phase).toLowerCase();
+      if (!hay.includes(state.search)) return false;
+    }
+    return true;
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    const visible = SKILLS.filter(matches);
+    visible.forEach((s) => grid.appendChild(renderCard(s)));
+    if (!visible.length) {
+      grid.appendChild(el('div', { class: 'empty' }, 'No skills match the current filters.'));
+    }
+    document.getElementById('count-meta').textContent = 'Showing ' + visible.length + ' of ' + SKILLS.length;
+  }
+
+  function renderCard(s) {
+    const card = el('article', {
+      class: 'card',
+      id: s.id,
+      role: 'listitem',
+      'data-phase': s.phase,
+      'data-audience': s.audience.join(' ')
+    });
+    const head = el('div', { class: 'card-head' });
+    head.appendChild(el('h2', { class: 'card-name' }, el('code', {}, s.name)));
+    const versionClass = 'card-version' + (s.isNew ? ' is-new' : '');
+    head.appendChild(el('span', { class: versionClass, 'aria-label': 'Version ' + s.version }, 'v' + s.version + (s.isNew ? ' · new' : '')));
+    card.appendChild(head);
+
+    card.appendChild(el('p', { class: 'card-desc', text: s.tagline }));
+    card.appendChild(el('p', { class: 'card-desc', style: 'color:var(--ink-2);font-size:.85rem;', text: s.desc }));
+
+    const meta = el('div', { class: 'card-meta' });
+    meta.appendChild(el('div', {}, el('strong', {}, 'Inputs: '), s.inputs));
+    meta.appendChild(el('div', {}, el('strong', {}, 'Outputs: '), s.outputs));
+    card.appendChild(meta);
+
+    const tags = el('div', { class: 'card-tags', 'aria-label': 'Tags' });
+    tags.appendChild(el('span', { class: 'card-tag is-phase' }, PHASE_LABELS[s.phase] || s.phase));
+    s.audience.forEach((a) => tags.appendChild(el('span', { class: 'card-tag is-audience' }, AUDIENCE_LABELS[a] || a)));
+    card.appendChild(tags);
+
+    const foot = el('div', { class: 'card-foot' });
+    foot.appendChild(el('a', { class: 'card-link', href: s.url, rel: 'noopener', target: '_blank' }, 'SKILL.md →'));
+    if (s.isOrchestrator) foot.appendChild(el('span', { class: 'card-status is-orchestrator' }, 'Orchestrator'));
+    else if (s.isNew)     foot.appendChild(el('span', { class: 'card-status' }, 'New · v1.2'));
+    else                   foot.appendChild(el('span', { class: 'card-status' }, 'Stable'));
+    card.appendChild(foot);
+
+    return card;
+  }
+
+  // ----- boot -----
+  function init() {
+    const phases    = new Set(SKILLS.map((s) => s.phase));
+    const audiences = new Set();
+    SKILLS.forEach((s) => s.audience.forEach((a) => audiences.add(a)));
+
+    renderChips('phase-chips',    phases,    PHASE_ORDER,    PHASE_LABELS,    'phases');
+    renderChips('audience-chips', audiences, AUDIENCE_ORDER, AUDIENCE_LABELS, 'audiences');
+
+    const search = document.getElementById('search');
+    search.addEventListener('input', (e) => {
+      state.search = e.target.value.trim().toLowerCase();
+      renderGrid();
+    });
+
+    renderGrid();
+
+    // Honour anchors like /skills.html#threadlight-consumption-iq
+    if (location.hash && location.hash.length > 1) {
+      const target = document.getElementById(location.hash.slice(1));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</body>
+</html>
