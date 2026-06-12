@@ -1,6 +1,6 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Nine pipeline skills + one orchestrator (10 total)** that take a customer
+> **Ten pipeline skills + one orchestrator (11 total)** that take a customer
 > engagement from a one-paragraph brief through to a deployed, evaluated,
 > observable, **production-ready** Microsoft Foundry hosted agent — runnable
 > on the customer's tenant in a single working session, then handed off to
@@ -16,18 +16,20 @@
 | [`threadlight-event-triggers`](skills/threadlight-event-triggers/) | Wires ACA Jobs, Event Grid, and cron receivers into the deploy lifecycle |
 | [`threadlight-hitl-patterns`](skills/threadlight-hitl-patterns/) | Human-in-the-loop gates via Teams Adaptive Cards + audit trail |
 | [`threadlight-workspace-ui`](skills/threadlight-workspace-ui/) | Operator dashboard (React workspace) behind Easy Auth |
+| [`threadlight-consumption-iq`](skills/threadlight-consumption-iq/) | **NEW v0.1.0-alpha** — post-deploy Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`, reads SPEC § 12 `load_profile{}` (wizard writes it if absent), hits Azure Retail Prices for current SKUs + 2–3 alternatives per resource (AOAI, Foundry, ACA, Cosmos, Storage, APIM, AI Search), emits `docs/cost-projection.md` + `specs/cost-manifest.json`. Soft-advisory; consumed by `production-ready`'s tightened COST-005 + new COST-006. |
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. |
-| [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 9 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
+| [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 10 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow
 
 ```
 threadlight-design → threadlight-local-test → threadlight-deploy →
-threadlight-safe-check (gate) → foundry-evals + foundry-observability →
+threadlight-safe-check (gate) → threadlight-consumption-iq (cost) →
+foundry-evals + foundry-observability →
 threadlight-production-ready (advisory) → customer architecture review
 ```
 
-The 9-stage pipeline above is the spine. `threadlight-auto` drives the same
+The 10-stage pipeline above is the spine. `threadlight-auto` drives the same
 chain end-to-end when you want one-prompt automation (demos, resumption,
 template-from-scenario kickoffs).
 

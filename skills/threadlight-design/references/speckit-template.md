@@ -583,6 +583,29 @@ conflict and asks which wins.
 - **CISO sign-off required**: `yes` (regulated industry, customer-data) | `no` (internal automation, demo-only)
 - **Waiver acceptors**: list of names+titles (people who can sign off a waiver). Empty = nobody can; every gap is a hard block.
 
+### `load_profile{}` (consumed by `threadlight-consumption-iq`)
+
+> The `threadlight-consumption-iq` wizard fills this in on first run.
+> Until then, recommendations and projections are not produced.
+
+```yaml
+load_profile:
+  workload_class:               # chat-agent | batch | scheduled | hybrid
+  peak_concurrent_sessions:     # int >= 1
+  avg_requests_per_session:     # int >= 1
+  avg_tokens_per_request:       # int >= 1 (combined input + output)
+  peak_requests_per_second:     # float >= 0
+  business_hours_only:          # bool
+  cosmos_gb_year_one:           # float >= 0
+  storage_gb_year_one:          # float >= 0
+  ai_search_documents:          # int >= 0
+  monthly_growth_rate:          # float >= 0 (e.g. 0.15 = 15%/mo)
+  declared_constraints:
+    max_p95_latency_ms:         # int >= 0
+    min_redundancy:             # none | zone-redundant | geo-redundant
+    pinned_region:              # optional; ISO Azure region like eastus2
+```
+
 > See `skills/threadlight-production-ready/references/spec-section-12-template.md`
 > for two fully-worked examples (Citadel-spoke FSI customer and AGT-only
 > internal automation).

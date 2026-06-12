@@ -789,7 +789,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "COST-002": {"title": "Budget thresholds declared", "pillar": "cost", "severity": "must-fix", "tier": 0},
     "COST-003": {"title": "Cost owner documented", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-004": {"title": "Idle scale-down configured for ACA / Functions", "pillar": "cost", "severity": "should-fix", "tier": 0},
-    "COST-005": {"title": "Tagging strategy for cost allocation", "pillar": "cost", "severity": "should-fix", "tier": 0},
+    "COST-005": {"title": "Cost-projection artefact present and fresh (docs/cost-projection.md + specs/cost-manifest.json)", "pillar": "cost", "severity": "should-fix", "tier": 0},
+    "COST-006": {"title": "Unaddressed cost recommendations in specs/cost-manifest.json", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-101": {"title": "Live budget alert wired on target RG", "pillar": "cost", "severity": "must-fix", "tier": 3},
     "COST-102": {"title": "Live actuals vs forecast within 20%", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-103": {"title": "PAYG vs PTU recommendation matches observed usage", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
@@ -3110,23 +3111,106 @@ def _check_cost_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("COST-004",
         status="pass" if has_scale else "should-fix",
         detail="Scale-to-zero configured" if has_scale else "No scale-to-zero / idle scale-down in compute"))
-    # COST-005 — graph-verified tags applied on at least 60% of declared resources
-    g = ctx.bicep_graph
-    if g and g.resources:
-        tagged = [r for r in g.resources if r.get("tags")]
-        ratio = (len(tagged) * 100) // max(1, len(g.resources))
-        if ratio >= 60:
-            out.append(_mk_finding("COST-005", status="pass",
-                detail=f"{len(tagged)}/{len(g.resources)} ARM resources carry tags ({ratio}%)"))
-        elif ratio > 0:
-            out.append(_mk_finding("COST-005", status="should-fix",
-                detail=f"Only {len(tagged)}/{len(g.resources)} ARM resources carry tags ({ratio}%); target ≥60%"))
-        else:
-            out.append(_mk_finding("COST-005", status="should-fix",
-                detail=f"0/{len(g.resources)} ARM resources carry tags — apply cost-allocation tag strategy"))
+    # COST-005 — cost-projection artefact present and fresh (tightened v0.6.0)
+    # NOTE: previously checked only docs/cost-projection.md existence (and ARM tag
+    # coverage in early code). Now requires BOTH artefacts AND a freshness check:
+    #   1. docs/cost-projection.md exists
+    #   2. specs/cost-manifest.json exists with schema_version >= "1.0"
+    #   3. manifest generated_at within 30 days of AZURE_LAST_DEPLOY_AT (or now)
+    cost_projection_md = ctx.root / "docs" / "cost-projection.md"
+    cost_manifest_path = ctx.root / "specs" / "cost-manifest.json"
+    has_md = cost_projection_md.exists()
+    manifest_data: dict | None = None
+    if cost_manifest_path.exists():
+        try:
+            manifest_data = json.loads(cost_manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            manifest_data = None
+    # Check schema_version >= "1.0"
+    schema_ok = False
+    if manifest_data:
+        sv = manifest_data.get("schema_version", "")
+        try:
+            schema_ok = tuple(int(x) for x in str(sv).split(".")) >= (1, 0)
+        except (ValueError, TypeError):
+            schema_ok = False
+    # Check freshness: generated_at within 30 days of reference time
+    fresh = False
+    if manifest_data and schema_ok:
+        gen_at = manifest_data.get("generated_at", "")
+        last_deploy = ctx.azd_env.get("AZURE_LAST_DEPLOY_AT", "")
+        try:
+            gen_dt = datetime.fromisoformat(gen_at.replace("Z", "+00:00"))
+            if last_deploy:
+                ref_dt = datetime.fromisoformat(last_deploy.replace("Z", "+00:00"))
+            else:
+                ref_dt = datetime.now(timezone.utc)
+            age_days = abs((ref_dt - gen_dt).total_seconds()) / 86400.0
+            fresh = age_days <= 30.0
+        except (ValueError, TypeError):
+            fresh = False
+    if has_md and schema_ok and fresh:
+        out.append(_mk_finding("COST-005", status="pass",
+            detail="docs/cost-projection.md + specs/cost-manifest.json present and fresh (≤30 days)"))
+    elif not has_md:
+        out.append(_mk_finding("COST-005", status="should-fix",
+            detail="docs/cost-projection.md missing — run threadlight-consumption-iq to generate"))
+    elif manifest_data is None:
+        out.append(_mk_finding("COST-005", status="should-fix",
+            detail="specs/cost-manifest.json missing or unreadable — run threadlight-consumption-iq"))
+    elif not schema_ok:
+        sv_val = manifest_data.get("schema_version") if manifest_data else "n/a"
+        out.append(_mk_finding("COST-005", status="should-fix",
+            detail=f"specs/cost-manifest.json schema_version is {sv_val!r}; expected >= '1.0'"))
     else:
         out.append(_mk_finding("COST-005", status="should-fix",
-            detail="No Bicep resources compiled — cannot evaluate tag coverage"))
+            detail="specs/cost-manifest.json is stale (>30 days since last deploy); re-run threadlight-consumption-iq"))
+
+    # COST-006 — unaddressed cost recommendations in specs/cost-manifest.json
+    # NOTE: if cost-manifest.json is missing, status=not-verified with a pointer to
+    # threadlight-consumption-iq. Otherwise walks recommendations[] and emits
+    # must-fix (>$100/mo), should-fix (>$25/mo), or pass.
+    if manifest_data is None:
+        out.append(_mk_finding("COST-006", status="not-verified",
+            detail="Run threadlight-consumption-iq to populate cost-manifest.json before scoring COST-006."))
+    else:
+        recs = manifest_data.get("recommendations") if isinstance(manifest_data, dict) else None
+        if recs is None:
+            out.append(_mk_finding("COST-006", status="not-verified",
+                detail="Run threadlight-consumption-iq to populate cost-manifest.json before scoring COST-006."))
+        elif not recs:
+            out.append(_mk_finding("COST-006", status="pass",
+                detail="No unaddressed cost recommendations found in specs/cost-manifest.json."))
+        else:
+            must_fix_items: list[str] = []
+            should_fix_items: list[str] = []
+            info_items: list[str] = []
+            for rec in recs:
+                try:
+                    savings = float(rec.get("monthly_savings_usd", 0) or 0)
+                except (ValueError, TypeError):
+                    savings = 0.0
+                label = rec.get("logical_name") or rec.get("resource_id", "unknown")
+                if savings > 100:
+                    must_fix_items.append(f"{label} (${savings:.0f}/mo)")
+                elif savings > 25:
+                    should_fix_items.append(f"{label} (${savings:.0f}/mo)")
+                else:
+                    info_items.append(f"{label} (${savings:.0f}/mo)")
+            if must_fix_items:
+                out.append(_mk_finding("COST-006", status="must-fix",
+                    detail=(f"{len(must_fix_items)} recommendation(s) with >$100/mo savings unapplied: "
+                            f"{', '.join(must_fix_items[:3])}"
+                            + (" …" if len(must_fix_items) > 3 else ""))))
+            elif should_fix_items:
+                out.append(_mk_finding("COST-006", status="should-fix",
+                    detail=(f"{len(should_fix_items)} recommendation(s) with >$25/mo savings unapplied: "
+                            f"{', '.join(should_fix_items[:3])}"
+                            + (" …" if len(should_fix_items) > 3 else ""))))
+            else:
+                out.append(_mk_finding("COST-006", status="pass",
+                    detail=(f"{len(info_items)} low-savings recommendation(s) (<$25/mo) — advisory only; "
+                            "review docs/cost-projection.md for details")))
     return out
 
 

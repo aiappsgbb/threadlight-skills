@@ -1,0 +1,1132 @@
+{
+  "currency": "USD",
+  "deploy_ref": "sample-pilot-consumption/deployment-test",
+  "generated_at": "2026-06-12T12:00:00+00:00",
+  "load_profile_ref": "specs/SPEC.md#section-12-load-profile",
+  "pre_deploy": false,
+  "price_basis": "retail",
+  "recommendations": [
+    {
+      "caveats": [
+        "No guaranteed capacity; throughput throttled under burst."
+      ],
+      "current_sku": {
+        "capacity": 1,
+        "name": "BasicV2",
+        "region": "eastus2",
+        "tier": "BasicV2"
+      },
+      "logical_name": "apim",
+      "monthly_savings_pct": 0.891,
+      "monthly_savings_usd": 45.53,
+      "priority": "med",
+      "rationale": "Consumption tier: 1M free calls then $3.50/M overage.",
+      "recommended_sku": {
+        "capacity": null,
+        "extra": {},
+        "name": "Consumption",
+        "tier": "Consumption"
+      },
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.ApiManagement/service/apim-pilot",
+      "resource_kind": "Microsoft.ApiManagement/service"
+    },
+    {
+      "caveats": [
+        "Free tier feature set differs from Standard; verify SLA, quota limits, and included capabilities."
+      ],
+      "current_sku": {
+        "capacity": 1,
+        "name": "Standard",
+        "region": "eastus2",
+        "tier": "Standard"
+      },
+      "logical_name": "foundry-agent",
+      "monthly_savings_pct": 1.0,
+      "monthly_savings_usd": 10.56,
+      "priority": "low",
+      "rationale": "Switch to Free tier for 100% savings.",
+      "recommended_sku": {
+        "capacity": null,
+        "extra": {},
+        "name": "hosted-agent",
+        "region": "eastus2",
+        "tier": "Free"
+      },
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.MachineLearningServices/workspaces/foundry-pilot",
+      "resource_kind": "Microsoft.MachineLearningServices/workspaces"
+    },
+    {
+      "caveats": [],
+      "current_sku": {
+        "capacity": null,
+        "extra": {
+          "access_tier": "hot"
+        },
+        "name": "Standard_LRS",
+        "redundancy": "LRS",
+        "region": "eastus2",
+        "tier": "Standard"
+      },
+      "logical_name": "storage",
+      "monthly_savings_pct": 0.3073,
+      "monthly_savings_usd": 0.29,
+      "priority": "low",
+      "rationale": "ZRS cool storage at $0.0125/GB/month.",
+      "recommended_sku": {
+        "extra": {
+          "access_tier": "cool",
+          "redundancy": "ZRS"
+        },
+        "name": "Standard_ZRS",
+        "redundancy": "ZRS",
+        "tier": "Standard"
+      },
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/stpilot",
+      "resource_kind": "Microsoft.Storage/storageAccounts"
+    }
+  ],
+  "resources": [
+    {
+      "alternatives": [
+        {
+          "caveats": [
+            "No live or fixture price found for gpt-4o PAYG in eastus2. Update pricing fixtures or check model/region availability."
+          ],
+          "delta_pct": null,
+          "delta_usd": null,
+          "monthly_cost_usd": null,
+          "rationale": "Pricing unavailable for current SKU.",
+          "satisfies_constraints": false,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "gpt-4o",
+            "region": "eastus2",
+            "tier": "PAYG"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": null,
+        "name": "gpt-4o",
+        "region": "eastus2",
+        "tier": "PAYG"
+      },
+      "logical_name": "aoai-chat",
+      "monthly_cost_usd": null,
+      "monthly_units_consumed": {
+        "input_tokens": 7413120000,
+        "output_tokens": 3991679999
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-pilot/deployments/gpt-4o",
+      "resource_kind": "Microsoft.CognitiveServices/accounts/deployments"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [
+            "Free tier feature set differs from Standard; verify SLA, quota limits, and included capabilities."
+          ],
+          "delta_pct": -1.0,
+          "delta_usd": -10.56,
+          "monthly_cost_usd": 0.0,
+          "rationale": "Switch to Free tier for 100% savings.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "hosted-agent",
+            "region": "eastus2",
+            "tier": "Free"
+          }
+        },
+        {
+          "caveats": [
+            "Premium tier feature set differs from Standard; verify SLA, quota limits, and included capabilities."
+          ],
+          "delta_pct": 18.772727,
+          "delta_usd": 198.24,
+          "monthly_cost_usd": 208.8,
+          "rationale": "Switch to Premium tier for 1877% cost increase.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "hosted-agent",
+            "region": "eastus2",
+            "tier": "Premium"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": 1,
+        "name": "Standard",
+        "region": "eastus2",
+        "tier": "Standard"
+      },
+      "logical_name": "foundry-agent",
+      "monthly_cost_usd": 10.56,
+      "monthly_units_consumed": {
+        "agent_messages": 8800
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.MachineLearningServices/workspaces/foundry-pilot",
+      "resource_kind": "Microsoft.MachineLearningServices/workspaces"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [
+            "Dedicated profile D4 is always-on; billed continuously.",
+            "Workload profiles require a managed environment."
+          ],
+          "delta_pct": 8.211775,
+          "delta_usd": 130.1507,
+          "monthly_cost_usd": 146.0,
+          "rationale": "Dedicated D4 at $0.20/h \u00d7 730 h/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "Dedicated",
+            "region": "eastus2",
+            "tier": "D4"
+          }
+        },
+        {
+          "caveats": [
+            "Dedicated profile D8 is always-on; billed continuously.",
+            "Workload profiles require a managed environment."
+          ],
+          "delta_pct": 17.42355,
+          "delta_usd": 276.1507,
+          "monthly_cost_usd": 292.0,
+          "rationale": "Dedicated D8 at $0.40/h \u00d7 730 h/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "Dedicated",
+            "region": "eastus2",
+            "tier": "D8"
+          }
+        },
+        {
+          "caveats": [
+            "Dedicated profile E4 is always-on; billed continuously.",
+            "Workload profiles require a managed environment."
+          ],
+          "delta_pct": 10.05413,
+          "delta_usd": 159.3507,
+          "monthly_cost_usd": 175.2,
+          "rationale": "Dedicated E4 at $0.24/h \u00d7 730 h/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "Dedicated",
+            "region": "eastus2",
+            "tier": "E4"
+          }
+        },
+        {
+          "caveats": [
+            "Dedicated profile E8 is always-on; billed continuously.",
+            "Workload profiles require a managed environment."
+          ],
+          "delta_pct": 21.10826,
+          "delta_usd": 334.5507,
+          "monthly_cost_usd": 350.4,
+          "rationale": "Dedicated E8 at $0.48/h \u00d7 730 h/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "Dedicated",
+            "region": "eastus2",
+            "tier": "E8"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.0,
+          "delta_usd": 0.0,
+          "monthly_cost_usd": 15.8493,
+          "rationale": "Replica bounds (1\u20133) change.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {
+              "max_replicas": 3,
+              "min_replicas": 1
+            },
+            "name": "Consumption",
+            "region": "eastus2",
+            "tier": "Consumption"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.0,
+          "delta_usd": 0.0,
+          "monthly_cost_usd": 15.8493,
+          "rationale": "Replica bounds (2\u201320) change.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {
+              "max_replicas": 20,
+              "min_replicas": 2
+            },
+            "name": "Consumption",
+            "region": "eastus2",
+            "tier": "Consumption"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.599649,
+          "delta_usd": 9.504,
+          "monthly_cost_usd": 25.3533,
+          "rationale": "Replica bounds (3\u201330) change.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {
+              "max_replicas": 30,
+              "min_replicas": 3
+            },
+            "name": "Consumption",
+            "region": "eastus2",
+            "tier": "Consumption"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": null,
+        "extra": {
+          "max_replicas": 10,
+          "memory_gib": 1.0,
+          "min_replicas": 1,
+          "vcpu": 0.5
+        },
+        "name": "Consumption",
+        "region": "eastus2",
+        "tier": "Consumption"
+      },
+      "logical_name": "bot",
+      "monthly_cost_usd": 15.8493,
+      "monthly_units_consumed": {
+        "memory_gib_seconds": 1267200,
+        "requests": 7603200,
+        "vcpu_seconds": 633600
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.App/containerApps/bot-pilot",
+      "resource_kind": "Microsoft.App/containerApps"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [],
+          "delta_pct": -0.7119057293783014,
+          "delta_usd": -175.2,
+          "monthly_cost_usd": 70.9,
+          "rationale": "Provisioned throughput at 1,000 RU/s; flat billing.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1000,
+            "extra": {
+              "ru": 1000
+            },
+            "name": "provisioned",
+            "redundancy": "none",
+            "tier": "provisioned"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.0,
+          "delta_usd": 0.0,
+          "monthly_cost_usd": 246.1,
+          "rationale": "Provisioned throughput at 4,000 RU/s; flat billing.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4000,
+            "extra": {
+              "ru": 4000
+            },
+            "name": "provisioned",
+            "redundancy": "none",
+            "tier": "provisioned"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 1.4238114587566029,
+          "delta_usd": 350.4,
+          "monthly_cost_usd": 596.5,
+          "rationale": "Provisioned throughput at 10,000 RU/s; flat billing.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 10000,
+            "extra": {
+              "ru": 10000
+            },
+            "name": "provisioned",
+            "redundancy": "none",
+            "tier": "provisioned"
+          }
+        },
+        {
+          "caveats": [
+            "Serverless is limited to 50 GB storage per container.",
+            "No multi-region writes in serverless mode."
+          ],
+          "delta_pct": -0.9061094514425031,
+          "delta_usd": -222.993536,
+          "monthly_cost_usd": 23.106464000000003,
+          "rationale": "Serverless at $0.279/M RU; optimal for variable or low-traffic workloads.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {
+              "ru_per_op": 5
+            },
+            "name": "serverless",
+            "redundancy": "none",
+            "tier": "serverless"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": -0.7356359203575782,
+          "delta_usd": -181.04,
+          "monthly_cost_usd": 65.06,
+          "rationale": "Autoscale at 1,000 max RU/s with 60% utilization factor applied.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1000,
+            "extra": {
+              "max_ru": 1000
+            },
+            "name": "autoscale",
+            "redundancy": "none",
+            "tier": "autoscale"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": -0.09492076391710681,
+          "delta_usd": -23.359999999999985,
+          "monthly_cost_usd": 222.74,
+          "rationale": "Autoscale at 4,000 max RU/s with 60% utilization factor applied.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4000,
+            "extra": {
+              "max_ru": 4000
+            },
+            "name": "autoscale",
+            "redundancy": "none",
+            "tier": "autoscale"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 1.1865095489638358,
+          "delta_usd": 292.0,
+          "monthly_cost_usd": 538.1,
+          "rationale": "Autoscale at 10,000 max RU/s with 60% utilization factor applied.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 10000,
+            "extra": {
+              "max_ru": 10000
+            },
+            "name": "autoscale",
+            "redundancy": "none",
+            "tier": "autoscale"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": 4000,
+        "extra": {
+          "multi_write": false
+        },
+        "name": "Standard",
+        "region": "eastus2",
+        "tier": "provisioned"
+      },
+      "logical_name": "cosmos",
+      "monthly_cost_usd": 246.1,
+      "monthly_units_consumed": {
+        "ru_provisioned": 4000,
+        "storage_gb": 50.0
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-pilot",
+      "resource_kind": "Microsoft.DocumentDB/databaseAccounts"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [],
+          "delta_pct": -0.43749999999999994,
+          "delta_usd": -0.41999999999999993,
+          "monthly_cost_usd": 0.54,
+          "rationale": "LRS cool storage at $0.01/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "cool",
+              "redundancy": "LRS"
+            },
+            "name": "Standard_LRS",
+            "redundancy": "LRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": -0.7708333333333334,
+          "delta_usd": -0.74,
+          "monthly_cost_usd": 0.22,
+          "rationale": "LRS cold storage at $0.0036/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "cold",
+              "redundancy": "LRS"
+            },
+            "name": "Standard_LRS",
+            "redundancy": "LRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [
+            "Archive tier has hour-scale retrieval latency."
+          ],
+          "delta_pct": -0.9067708333333333,
+          "delta_usd": -0.8704999999999999,
+          "monthly_cost_usd": 0.0895,
+          "rationale": "LRS archive storage at $0.00099/GB/month.",
+          "satisfies_constraints": false,
+          "sku": {
+            "extra": {
+              "access_tier": "archive",
+              "redundancy": "LRS"
+            },
+            "name": "Standard_LRS",
+            "redundancy": "LRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.23958333333333331,
+          "delta_usd": 0.22999999999999998,
+          "monthly_cost_usd": 1.19,
+          "rationale": "ZRS hot storage at $0.023/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "hot",
+              "redundancy": "ZRS"
+            },
+            "name": "Standard_ZRS",
+            "redundancy": "ZRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": -0.30729166666666663,
+          "delta_usd": -0.29499999999999993,
+          "monthly_cost_usd": 0.665,
+          "rationale": "ZRS cool storage at $0.0125/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "cool",
+              "redundancy": "ZRS"
+            },
+            "name": "Standard_ZRS",
+            "redundancy": "ZRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.9583333333333333,
+          "delta_usd": 0.9199999999999999,
+          "monthly_cost_usd": 1.88,
+          "rationale": "GRS hot storage at $0.0368/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "hot",
+              "redundancy": "GRS"
+            },
+            "name": "Standard_GRS",
+            "redundancy": "GRS",
+            "tier": "Standard"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 0.08333333333333341,
+          "delta_usd": 0.08000000000000007,
+          "monthly_cost_usd": 1.04,
+          "rationale": "GRS cool storage at $0.02/GB/month.",
+          "satisfies_constraints": true,
+          "sku": {
+            "extra": {
+              "access_tier": "cool",
+              "redundancy": "GRS"
+            },
+            "name": "Standard_GRS",
+            "redundancy": "GRS",
+            "tier": "Standard"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": null,
+        "extra": {
+          "access_tier": "hot"
+        },
+        "name": "Standard_LRS",
+        "redundancy": "LRS",
+        "region": "eastus2",
+        "tier": "Standard"
+      },
+      "logical_name": "storage",
+      "monthly_cost_usd": 0.96,
+      "monthly_units_consumed": {
+        "egress_gb": 50,
+        "stored_gb_avg": 50.0,
+        "transactions": 100000
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/stpilot",
+      "resource_kind": "Microsoft.Storage/storageAccounts"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [
+            "No guaranteed capacity; throughput throttled under burst."
+          ],
+          "delta_pct": -0.890958904109589,
+          "delta_usd": -45.528,
+          "monthly_cost_usd": 5.572000000000001,
+          "rationale": "Consumption tier: 1M free calls then $3.50/M overage.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": null,
+            "extra": {},
+            "name": "Consumption",
+            "tier": "Consumption"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 1.0,
+          "delta_usd": 51.1,
+          "monthly_cost_usd": 102.2,
+          "rationale": "BasicV2 \u00d7 2 unit(s) at $0.07/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {},
+            "name": "BasicV2",
+            "tier": "BasicV2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 3.0,
+          "delta_usd": 153.3,
+          "monthly_cost_usd": 204.4,
+          "rationale": "BasicV2 \u00d7 4 unit(s) at $0.07/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {},
+            "name": "BasicV2",
+            "tier": "BasicV2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 1.9999999999999998,
+          "delta_usd": 102.19999999999999,
+          "monthly_cost_usd": 153.29999999999998,
+          "rationale": "StandardV2 \u00d7 1 unit(s) at $0.21/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1,
+            "extra": {},
+            "name": "StandardV2",
+            "tier": "StandardV2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 4.999999999999999,
+          "delta_usd": 255.49999999999997,
+          "monthly_cost_usd": 306.59999999999997,
+          "rationale": "StandardV2 \u00d7 2 unit(s) at $0.21/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {},
+            "name": "StandardV2",
+            "tier": "StandardV2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 10.999999999999998,
+          "delta_usd": 562.0999999999999,
+          "monthly_cost_usd": 613.1999999999999,
+          "rationale": "StandardV2 \u00d7 4 unit(s) at $0.21/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {},
+            "name": "StandardV2",
+            "tier": "StandardV2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 53.714285714285715,
+          "delta_usd": 2744.8,
+          "monthly_cost_usd": 2795.9,
+          "rationale": "Premium \u00d7 1 unit(s) at $3.83/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1,
+            "extra": {},
+            "name": "Premium",
+            "tier": "Premium"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 108.42857142857142,
+          "delta_usd": 5540.7,
+          "monthly_cost_usd": 5591.8,
+          "rationale": "Premium \u00d7 2 unit(s) at $3.83/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {},
+            "name": "Premium",
+            "tier": "Premium"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 217.85714285714286,
+          "delta_usd": 11132.5,
+          "monthly_cost_usd": 11183.6,
+          "rationale": "Premium \u00d7 4 unit(s) at $3.83/unit/hr \u00d7 730h.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {},
+            "name": "Premium",
+            "tier": "Premium"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": 1,
+        "name": "BasicV2",
+        "region": "eastus2",
+        "tier": "BasicV2"
+      },
+      "logical_name": "apim",
+      "monthly_cost_usd": 51.1,
+      "monthly_units_consumed": {
+        "tier_unit_hours": 730
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.ApiManagement/service/apim-pilot",
+      "resource_kind": "Microsoft.ApiManagement/service"
+    },
+    {
+      "alternatives": [
+        {
+          "caveats": [
+            "Tier doc cap (10,000) below declared ai_search_documents (50,000)."
+          ],
+          "delta_pct": -1.0,
+          "delta_usd": -73.0,
+          "monthly_cost_usd": 0.0,
+          "rationale": "free tier \u00d7 1R \u00d7 1P at $0.0/hr.",
+          "satisfies_constraints": false,
+          "sku": {
+            "capacity": 1,
+            "extra": {
+              "partitions": 1,
+              "replicas": 1
+            },
+            "name": "free",
+            "tier": "free"
+          }
+        },
+        {
+          "caveats": [
+            "Tier doc cap (10,000) below declared ai_search_documents (50,000)."
+          ],
+          "delta_pct": -1.0,
+          "delta_usd": -73.0,
+          "monthly_cost_usd": 0.0,
+          "rationale": "free tier \u00d7 2R \u00d7 1P at $0.0/hr.",
+          "satisfies_constraints": false,
+          "sku": {
+            "capacity": 2,
+            "extra": {
+              "partitions": 1,
+              "replicas": 2
+            },
+            "name": "free",
+            "tier": "free"
+          }
+        },
+        {
+          "caveats": [
+            "Tier doc cap (10,000) below declared ai_search_documents (50,000)."
+          ],
+          "delta_pct": -1.0,
+          "delta_usd": -73.0,
+          "monthly_cost_usd": 0.0,
+          "rationale": "free tier \u00d7 2R \u00d7 2P at $0.0/hr.",
+          "satisfies_constraints": false,
+          "sku": {
+            "capacity": 4,
+            "extra": {
+              "partitions": 2,
+              "replicas": 2
+            },
+            "name": "free",
+            "tier": "free"
+          }
+        },
+        {
+          "caveats": [
+            "Tier doc cap (10,000) below declared ai_search_documents (50,000)."
+          ],
+          "delta_pct": -1.0,
+          "delta_usd": -73.0,
+          "monthly_cost_usd": 0.0,
+          "rationale": "free tier \u00d7 3R \u00d7 3P at $0.0/hr.",
+          "satisfies_constraints": false,
+          "sku": {
+            "capacity": 9,
+            "extra": {
+              "partitions": 3,
+              "replicas": 3
+            },
+            "name": "free",
+            "tier": "free"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 1.0,
+          "delta_usd": 73.0,
+          "monthly_cost_usd": 146.0,
+          "rationale": "basic tier \u00d7 2R \u00d7 1P at $0.1/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {
+              "partitions": 1,
+              "replicas": 2
+            },
+            "name": "basic",
+            "tier": "basic"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 3.0,
+          "delta_usd": 219.0,
+          "monthly_cost_usd": 292.0,
+          "rationale": "basic tier \u00d7 2R \u00d7 2P at $0.1/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {
+              "partitions": 2,
+              "replicas": 2
+            },
+            "name": "basic",
+            "tier": "basic"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 8.000000000000002,
+          "delta_usd": 584.0000000000001,
+          "monthly_cost_usd": 657.0000000000001,
+          "rationale": "basic tier \u00d7 3R \u00d7 3P at $0.1/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 9,
+            "extra": {
+              "partitions": 3,
+              "replicas": 3
+            },
+            "name": "basic",
+            "tier": "basic"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 2.36,
+          "delta_usd": 172.28,
+          "monthly_cost_usd": 245.28,
+          "rationale": "S1 tier \u00d7 1R \u00d7 1P at $0.336/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1,
+            "extra": {
+              "partitions": 1,
+              "replicas": 1
+            },
+            "name": "S1",
+            "tier": "S1"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 5.72,
+          "delta_usd": 417.56,
+          "monthly_cost_usd": 490.56,
+          "rationale": "S1 tier \u00d7 2R \u00d7 1P at $0.336/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {
+              "partitions": 1,
+              "replicas": 2
+            },
+            "name": "S1",
+            "tier": "S1"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 12.44,
+          "delta_usd": 908.12,
+          "monthly_cost_usd": 981.12,
+          "rationale": "S1 tier \u00d7 2R \u00d7 2P at $0.336/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {
+              "partitions": 2,
+              "replicas": 2
+            },
+            "name": "S1",
+            "tier": "S1"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 29.24,
+          "delta_usd": 2134.52,
+          "monthly_cost_usd": 2207.52,
+          "rationale": "S1 tier \u00d7 3R \u00d7 3P at $0.336/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 9,
+            "extra": {
+              "partitions": 3,
+              "replicas": 3
+            },
+            "name": "S1",
+            "tier": "S1"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 12.44,
+          "delta_usd": 908.12,
+          "monthly_cost_usd": 981.12,
+          "rationale": "S2 tier \u00d7 1R \u00d7 1P at $1.344/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1,
+            "extra": {
+              "partitions": 1,
+              "replicas": 1
+            },
+            "name": "S2",
+            "tier": "S2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 25.88,
+          "delta_usd": 1889.24,
+          "monthly_cost_usd": 1962.24,
+          "rationale": "S2 tier \u00d7 2R \u00d7 1P at $1.344/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {
+              "partitions": 1,
+              "replicas": 2
+            },
+            "name": "S2",
+            "tier": "S2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 52.76,
+          "delta_usd": 3851.48,
+          "monthly_cost_usd": 3924.48,
+          "rationale": "S2 tier \u00d7 2R \u00d7 2P at $1.344/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {
+              "partitions": 2,
+              "replicas": 2
+            },
+            "name": "S2",
+            "tier": "S2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 119.96,
+          "delta_usd": 8757.08,
+          "monthly_cost_usd": 8830.08,
+          "rationale": "S2 tier \u00d7 3R \u00d7 3P at $1.344/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 9,
+            "extra": {
+              "partitions": 3,
+              "replicas": 3
+            },
+            "name": "S2",
+            "tier": "S2"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 25.88,
+          "delta_usd": 1889.24,
+          "monthly_cost_usd": 1962.24,
+          "rationale": "S3 tier \u00d7 1R \u00d7 1P at $2.688/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 1,
+            "extra": {
+              "partitions": 1,
+              "replicas": 1
+            },
+            "name": "S3",
+            "tier": "S3"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 52.76,
+          "delta_usd": 3851.48,
+          "monthly_cost_usd": 3924.48,
+          "rationale": "S3 tier \u00d7 2R \u00d7 1P at $2.688/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 2,
+            "extra": {
+              "partitions": 1,
+              "replicas": 2
+            },
+            "name": "S3",
+            "tier": "S3"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 106.52,
+          "delta_usd": 7775.96,
+          "monthly_cost_usd": 7848.96,
+          "rationale": "S3 tier \u00d7 2R \u00d7 2P at $2.688/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 4,
+            "extra": {
+              "partitions": 2,
+              "replicas": 2
+            },
+            "name": "S3",
+            "tier": "S3"
+          }
+        },
+        {
+          "caveats": [],
+          "delta_pct": 240.92,
+          "delta_usd": 17587.16,
+          "monthly_cost_usd": 17660.16,
+          "rationale": "S3 tier \u00d7 3R \u00d7 3P at $2.688/hr.",
+          "satisfies_constraints": true,
+          "sku": {
+            "capacity": 9,
+            "extra": {
+              "partitions": 3,
+              "replicas": 3
+            },
+            "name": "S3",
+            "tier": "S3"
+          }
+        }
+      ],
+      "current_sku": {
+        "capacity": 1,
+        "extra": {
+          "partitions": 1,
+          "replicas": 1
+        },
+        "name": "basic",
+        "region": "eastus2",
+        "tier": "basic"
+      },
+      "logical_name": "ai-search",
+      "monthly_cost_usd": 73.0,
+      "monthly_units_consumed": {
+        "indexed_documents": 50000,
+        "replica_partition_hours": 730
+      },
+      "price_source": "fallback",
+      "region": "eastus2",
+      "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Search/searchServices/search-pilot",
+      "resource_kind": "Microsoft.Search/searchServices"
+    }
+  ],
+  "schema_version": "1.0",
+  "totals": {
+    "monthly_cost_current_usd": 397.57,
+    "monthly_cost_recommended_usd": 341.19,
+    "monthly_savings_potential_usd": 56.38
+  }
+}
