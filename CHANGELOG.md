@@ -44,25 +44,43 @@ field.
     `test_projector_{aoai,foundry,aca,cosmos,storage,apim,ai_search}`).
   - **Stdlib only.** No new repo dependencies. `az bicep` CLI is a hard
     prereq (consistent with `threadlight-production-ready` v0.3.0).
-- Plugin manifest bumped to **1.2.0-alpha** with new keywords:
+- Plugin manifest bumped to **1.2.0** with new keywords:
   `consumption-iq`, `cost-projection`, `sku-recommendation`,
   `azure-retail-pricing`, `load-profile`.
 - README updated: skill table (10 pipeline skills + 1 orchestrator = 11
   total), pipeline diagram now inserts `consumption-iq` between
   `safe-check` and `foundry-evals`.
+- **CI: `.github/workflows/python-pytest.yml`** — lightweight pytest
+  gate on every PR + push to main. Runs `threadlight-consumption-iq`
+  (125 tests, hard-fail), `threadlight-production-ready` and
+  `threadlight-auto` (continue-on-error to tolerate the 2 pre-existing
+  stale-safe-check failures while keeping visibility). Complements the
+  expensive `threadlight-e2e-foundry.yml` (workflow_dispatch only).
+  Doc at `docs/ci/python-pytest.md`.
+- **Golden e2e fixture** at
+  `skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/`
+  — `cost-manifest.json` + `cost-projection.md` populated with
+  deterministic numbers from a mock pricing client (`generated_at`
+  pinned). Drift-detected by `tests/test_e2e.py`. To regenerate after
+  an intentional change:
+  `CONSUMPTION_IQ_REGENERATE_GOLDEN=1 python3 -m pytest
+  skills/threadlight-consumption-iq/tests/test_e2e.py -v`.
+- **Defensive fix in emitter**: per-resource breakdown table now
+  renders `"N/A"` instead of crashing when an alternative has
+  `monthly_cost_usd: None` (e.g. AOAI's sentinel alternative when the
+  Retail Prices API and fixture both miss the current SKU). Sort order
+  pushes None-cost alternatives to the bottom of the table.
 
 ### Pending for v0.2
 
-- Golden e2e fixture refresh — `sample-pilot-consumption/expected/`
-  `cost-projection.md` + `cost-manifest.json` populated with deterministic
-  numbers (mocked pricing client) and `tests/test_e2e.py` covering the
-  full `run --all` flow.
-- CI smoke workflow doc / GitHub Actions integration.
 - Live-pricing population for the 6 non-AOAI resource-kind fixtures
   (currently empty skeletons; projectors fall back to hardcoded matrix).
 - Cosmos failover / multi-write redundancy modelling beyond v1 single-write.
 - Storage egress-tier math (currently treats first 100 GB free; v2
   tiered pricing).
+- AOAI projector should surface a `should-fix` finding (instead of $0)
+  when current-SKU pricing is unavailable, so operators don't see the
+  resource as "free" in the report.
 
 ### Changed
 

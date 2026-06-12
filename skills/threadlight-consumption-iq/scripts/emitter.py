@@ -217,7 +217,10 @@ def _render_one_resource(r: dict[str, Any]) -> str:
         "| --- | --- | --- | --- | --- |",
         f"| **Current** ({_sku_short(sku)}) | ${current_cost:,.2f} | — | — | — |",
     ]
-    for alt in sorted(alternatives, key=lambda a: a.get("monthly_cost_usd") or 0.0):
+    for alt in sorted(
+        alternatives,
+        key=lambda a: a.get("monthly_cost_usd") if a.get("monthly_cost_usd") is not None else float("inf"),
+    ):
         delta_usd = alt.get("delta_usd")
         delta_pct = alt.get("delta_pct")
         delta_str = (
@@ -227,10 +230,12 @@ def _render_one_resource(r: dict[str, Any]) -> str:
         )
         ok = "✅" if alt.get("satisfies_constraints", True) else "⚠️"
         caveats = "; ".join(alt.get("caveats") or []) or "—"
+        cost = alt.get("monthly_cost_usd")
+        cost_cell = f"${cost:,.2f}" if cost is not None else "N/A"
         table.append(
-            "| {variant} | ${cost:,.2f} | {delta} | {ok} | {caveats} |".format(
+            "| {variant} | {cost} | {delta} | {ok} | {caveats} |".format(
                 variant=_sku_short(alt["sku"]),
-                cost=alt["monthly_cost_usd"],
+                cost=cost_cell,
                 delta=delta_str,
                 ok=ok,
                 caveats=_oneline(caveats),

@@ -8,8 +8,8 @@ description: >
   meets declared constraints before the customer signs off and turns on
   production traffic. Walks the deployed Bicep + `azd env`, reads SPEC § 12
   `load_profile{}` (interactive wizard fills it on first run + writes back to
-  SPEC), hits the Azure Retail Prices API via the `Azure-pricing` MCP with a
-  versioned fixture fallback, and emits `docs/cost-projection.md` (human-readable
+  SPEC), hits the public Azure Retail Prices API (`prices.azure.com`) directly
+  via stdlib urllib with a versioned fixture fallback, and emits `docs/cost-projection.md` (human-readable
   scorecard with side-by-side SKU comparisons + mermaid cost share donut +
   top-N recommendations) plus `specs/cost-manifest.json` (strict v1 schema
   consumed by `threadlight-production-ready`'s cost pillar). Covers AOAI model
