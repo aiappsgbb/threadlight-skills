@@ -1351,6 +1351,327 @@
     .cost-counters .ctr-value { transition: none !important; }
   }
 
+  /* ============================================================
+     EVOLUTION BAND — thin strip between stack-strip and Promise.
+     "Where the field has been → where we are." 4 chips + sentence.
+     ============================================================ */
+  .evolution-band {
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-1);
+    padding: 22px 0 24px;
+  }
+  .evolution-band .wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 24px; flex-wrap: wrap;
+  }
+  .evolution-band .evo-lede {
+    margin: 0; color: var(--ink-2); font-size: 13px;
+    text-transform: uppercase; letter-spacing: .14em;
+  }
+  .evolution-band .evo-lede strong { color: var(--ink-0); letter-spacing: .08em; }
+  .evo-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .evo-chip {
+    font-family: var(--mono); font-size: 12px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    color: var(--ink-1); white-space: nowrap;
+  }
+  .evo-chip.is-now {
+    background: linear-gradient(135deg, var(--accent-soft), var(--lime-soft));
+    border-color: var(--accent);
+    color: var(--ink-0); font-weight: 700;
+  }
+  .evo-arrow { color: var(--ink-3); font-family: var(--mono); }
+  @media (max-width: 720px) {
+    .evolution-band .wrap { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .evo-chips { font-size: 11px; }
+  }
+
+  /* ============================================================
+     FUNNEL HERO — 5-stage horizontal flow, the visual spine.
+     Each card links to the matching existing scene below.
+     ============================================================ */
+  #scene-funnel {
+    background: linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+    border-bottom: 1px solid var(--line);
+    padding: 84px 0 80px;
+  }
+  #scene-funnel .copy { text-align: center; max-width: 760px; margin: 0 auto 40px; }
+  .funnel-flow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    align-items: stretch;
+    position: relative;
+  }
+  .funnel-step {
+    display: flex; flex-direction: column;
+    padding: 18px 16px 16px;
+    border-radius: 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    position: relative;
+  }
+  .funnel-step:hover, .funnel-step:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-card);
+    outline: none;
+  }
+  .funnel-step .fs-num {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .funnel-step .fs-name {
+    font-family: var(--serif); font-size: 22px; line-height: 1.15;
+    color: var(--ink-0); margin: 6px 0 8px;
+    font-weight: 600;
+  }
+  .funnel-step .fs-desc {
+    font-size: 13px; color: var(--ink-2); line-height: 1.5;
+    margin: 0 0 14px;
+  }
+  .funnel-step .fs-skills {
+    margin-top: auto;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent-1);
+    border-top: 1px dashed var(--line);
+    padding-top: 10px;
+    word-break: break-word;
+  }
+  .funnel-step .fs-arrow {
+    position: absolute; right: -10px; top: 50%;
+    transform: translateY(-50%);
+    width: 18px; height: 18px;
+    display: grid; place-items: center;
+    color: var(--ink-2);
+    font-family: var(--mono); font-size: 18px; font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .funnel-step:last-child .fs-arrow { display: none; }
+  @media (max-width: 980px) {
+    .funnel-flow { grid-template-columns: repeat(2, 1fr); }
+    .funnel-step .fs-arrow { display: none; }
+  }
+  @media (max-width: 540px) {
+    .funnel-flow { grid-template-columns: 1fr; }
+  }
+
+  /* ============================================================
+     INDUSTRIES STRIP — 6 generic industry pilots in a tile grid.
+     Each tile is a deep-link into the skills catalog audience filter.
+     ============================================================ */
+  #scene-industries {
+    padding: 80px 0 76px;
+    background: var(--bg-0);
+  }
+  #scene-industries .copy { text-align: center; max-width: 760px; margin: 0 auto 36px; }
+  .industries-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .industry-tile {
+    padding: 22px 22px 20px;
+    border-radius: 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .industry-tile:hover, .industry-tile:focus-visible {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-card);
+    outline: none;
+  }
+  .industry-tile .it-glyph {
+    font-size: 22px; line-height: 1;
+    display: inline-block; margin-bottom: 12px;
+  }
+  .industry-tile .it-sector {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); letter-spacing: .14em; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .industry-tile .it-title {
+    font-family: var(--serif); font-size: 19px; line-height: 1.25;
+    color: var(--ink-0); margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .industry-tile .it-line {
+    font-size: 13.5px; color: var(--ink-1); line-height: 1.55;
+    margin: 0 0 12px;
+  }
+  .industry-tile .it-tail {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent-1);
+  }
+  .industries-footer {
+    margin-top: 26px; text-align: center;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .industries-footer a { color: var(--accent-1); }
+  @media (max-width: 980px) { .industries-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 580px) { .industries-grid { grid-template-columns: 1fr; } }
+
+  /* ============================================================
+     CHANNELS & KRATOS — "skills are runtime-agnostic; here's a
+     reference channel built on them". Two-col: copy + hero card.
+     ============================================================ */
+  #scene-channels {
+    padding: 88px 0 84px;
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .channels-grid {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    gap: 36px;
+    align-items: start;
+  }
+  .channels-copy h2 { margin-top: 4px; }
+  .channels-copy .lede { color: var(--ink-1); max-width: 480px; }
+  .channels-copy .channels-bullets {
+    list-style: none; padding: 0; margin: 22px 0 0;
+    display: grid; gap: 10px;
+  }
+  .channels-copy .channels-bullets li {
+    padding: 10px 14px;
+    border-left: 2px solid var(--accent);
+    background: var(--bg-2);
+    border-radius: 0 8px 8px 0;
+    font-size: 14px; color: var(--ink-1);
+  }
+  .channels-copy .channels-bullets strong { color: var(--ink-0); }
+
+  .kratos-card {
+    border-radius: 18px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .kratos-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); }
+  .kratos-card .kc-shot {
+    display: block; width: 100%; height: auto;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-3);
+  }
+  .kratos-card .kc-body { padding: 22px 24px 22px; }
+  .kratos-card .kc-eyebrow {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--lime); letter-spacing: .14em; text-transform: uppercase;
+    margin-bottom: 6px;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .kratos-card .kc-eyebrow .kc-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--lime);
+    box-shadow: 0 0 0 4px var(--lime-soft);
+    animation: pulse-dot 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 4px var(--lime-soft); }
+    50%      { box-shadow: 0 0 0 7px rgba(168,255,96,.06); }
+  }
+  .kratos-card h3 {
+    font-family: var(--serif); font-size: 26px; line-height: 1.15;
+    margin: 0 0 8px; color: var(--ink-0); font-weight: 700;
+  }
+  .kratos-card .kc-tag {
+    font-size: 14px; color: var(--ink-1); margin: 0 0 14px;
+  }
+  .kratos-card .kc-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 10px;
+    margin: 0 0 18px;
+  }
+  .kratos-card .kc-meta span {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-2);
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+  }
+  .kratos-card .kc-ctas { display: flex; gap: 10px; flex-wrap: wrap; }
+  .kratos-card .kc-ctas .btn { font-size: 14px; padding: 10px 16px; }
+
+  .channels-other {
+    margin-top: 36px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  .channels-other .co-tile {
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+  }
+  .channels-other .co-tile h4 {
+    margin: 0 0 4px;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    color: var(--ink-0);
+  }
+  .channels-other .co-tile p {
+    margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.5;
+  }
+  .channels-other .co-tile .co-status {
+    margin-top: 8px;
+    display: inline-block;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-3); letter-spacing: .12em; text-transform: uppercase;
+  }
+
+  @media (max-width: 980px) {
+    .channels-grid { grid-template-columns: 1fr; gap: 24px; }
+    .channels-other { grid-template-columns: 1fr; }
+  }
+
+  /* Light-mode tweaks for the new scenes. */
+  @media (prefers-color-scheme: light) {
+    .evo-chip.is-now { color: #1c2236; }
+
+    /* Funnel cards need denser bg + stronger border in light, otherwise the
+       near-white card melts into the near-white scene gradient. */
+    .funnel-step {
+      background: #ffffff;
+      border-color: #c7cee0;
+      box-shadow: 0 1px 3px rgba(20,28,52,.04);
+    }
+    .funnel-step:hover, .funnel-step:focus-visible {
+      border-color: var(--accent);
+      box-shadow: 0 14px 28px rgba(20,28,52,.10), 0 2px 6px rgba(20,28,52,.06);
+    }
+    .funnel-step .fs-arrow { color: #6b7390; }
+
+    /* Industries tiles get the same treatment. */
+    .industry-tile {
+      background: #ffffff;
+      border-color: #c7cee0;
+      box-shadow: 0 1px 3px rgba(20,28,52,.04);
+    }
+    .industry-tile:hover, .industry-tile:focus-visible {
+      box-shadow: 0 14px 28px rgba(20,28,52,.10), 0 2px 6px rgba(20,28,52,.06);
+    }
+
+    .kratos-card .kc-eyebrow { color: #2e7d32; }
+    .kratos-card .kc-eyebrow .kc-dot {
+      background: #2e7d32;
+      box-shadow: 0 0 0 4px rgba(46,125,50,.18);
+    }
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 0 4px rgba(46,125,50,.18); }
+      50%      { box-shadow: 0 0 0 7px rgba(46,125,50,.06); }
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -1363,14 +1684,12 @@
     <div class="brand-name">Threadlight<span>by Microsoft GBB · AI Apps</span></div>
   </div>
   <nav class="nav" aria-label="Page sections">
-    <a href="#scene-promise">Promise</a>
-    <a href="#scene-chain">The chain</a>
+    <a href="#scene-funnel">Funnel</a>
+    <a href="#scene-chain">Chain</a>
     <a href="#scene-prod-ready">Production-ready</a>
     <a href="#scene-cost">Cost</a>
-    <a href="#scene-proof">Proof</a>
-    <a href="#scene-guardrails">Guardrails</a>
-    <a href="#scene-flywheel">Flywheel</a>
-    <a href="#scene-setup">Setup</a>
+    <a href="#scene-industries">Industries</a>
+    <a href="#scene-channels">Channels</a>
     <a href="./skills.html">All skills</a>
     <a href="#scene-cta">Start</a>
   </nav>
@@ -1442,6 +1761,24 @@
     <strong>Bicep</strong><span class="sep">·</span>
     <strong>azd</strong><span class="sep">·</span>
     <strong>Managed&nbsp;Identity</strong>
+  </div>
+
+  <!-- ====================== EVOLUTION BAND ====================== -->
+  <div class="evolution-band" aria-label="Where the field has been and where we are now">
+    <div class="wrap">
+      <p class="evo-lede"><strong>Where the field has been</strong> &nbsp;·&nbsp; the path from LLMs to skill-based agents</p>
+      <div class="evo-chips" role="list">
+        <span class="evo-chip" role="listitem">LLMs</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">RAG</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">Multi-agent</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">MCP</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip is-now" role="listitem">Skills <span aria-hidden="true">●</span></span>
+      </div>
+    </div>
   </div>
 
 
@@ -1518,6 +1855,58 @@
         </aside>
 
       </div>
+    </div>
+  </section>
+
+  <!-- ====================== FUNNEL HERO ====================== -->
+  <section class="scene" id="scene-funnel" aria-labelledby="funnel-h">
+    <div class="wrap">
+      <div class="copy reveal">
+        <p class="eyebrow"><span class="dot"></span>The five-stage funnel</p>
+        <h2 id="funnel-h">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h2>
+        <p class="lede">
+          Every threadlight engagement walks the same five stages. Each one
+          has its own skills, its own artefacts, and its own exit criteria.
+          Click any stage to jump to the detail.
+        </p>
+      </div>
+
+      <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
+        <a class="funnel-step" href="#scene-promise">
+          <span class="fs-num">01 · Conversation</span>
+          <span class="fs-name">Describe the process</span>
+          <span class="fs-desc">Plain-language brief from the seller or customer SME. No template, no questionnaire.</span>
+          <span class="fs-skills">threadlight-auto · threadlight-design</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="#scene-chain">
+          <span class="fs-num">02 · Co-design</span>
+          <span class="fs-name">Spec &amp; scaffold</span>
+          <span class="fs-desc">SPEC.md, AGENTS.md, eval dataset and demo-data factory generated in-session.</span>
+          <span class="fs-skills">threadlight-design · threadlight-demo-data-factory</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="#scene-prod-ready">
+          <span class="fs-num">03 · Deploy</span>
+          <span class="fs-name">Land on your Azure</span>
+          <span class="fs-desc">Bicep + azd-up to the customer's subscription, Managed Identity wired from day zero.</span>
+          <span class="fs-skills">threadlight-deploy · threadlight-local-test</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="#scene-cost">
+          <span class="fs-num">04 · Safe-check</span>
+          <span class="fs-name">Cost &amp; readiness</span>
+          <span class="fs-desc">Project monthly cost, recommend cheaper SKUs, score against 10 production pillars.</span>
+          <span class="fs-skills">threadlight-safe-check · threadlight-consumption-iq</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="#scene-guardrails">
+          <span class="fs-num">05 · Production</span>
+          <span class="fs-name">Hand-off</span>
+          <span class="fs-desc">Governance, telemetry and runbooks already in the repo. Customer keeps the agent.</span>
+          <span class="fs-skills">threadlight-production-ready · threadlight-hitl-patterns</span>
+        </a>
+      </nav>
     </div>
   </section>
 
@@ -1990,6 +2379,71 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     </div>
   </section>
 
+  <!-- ====================== INDUSTRIES STRIP ====================== -->
+  <section class="scene" id="scene-industries" aria-labelledby="ind-h">
+    <div class="wrap">
+      <div class="copy reveal">
+        <p class="eyebrow"><span class="dot"></span>What it looks like in the field</p>
+        <h2 id="ind-h">Six industries. <em>One pattern.</em></h2>
+        <p class="lede">
+          The same five-stage funnel ships agents across regulated and
+          unregulated industries. The skills don't change &mdash; the SPEC
+          does.           Below: one example process per industry we work in.
+        </p>
+      </div>
+
+      <div class="industries-grid reveal" data-delay="1">
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">🏦</span>
+          <p class="it-sector">Financial services</p>
+          <h3 class="it-title">Claims triage</h3>
+          <p class="it-line">Route inbound claims by complexity and regulator exposure. Spec, deploy, evaluate &mdash; in-session.</p>
+          <span class="it-tail">spec → deploy → safe-check</span>
+        </a>
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">🏥</span>
+          <p class="it-sector">Healthcare</p>
+          <h3 class="it-title">Prior-authorization assistant</h3>
+          <p class="it-line">Generates structured payor submissions from the clinical narrative &mdash; with HITL gates wired from day zero.</p>
+          <span class="it-tail">spec → HITL patterns → deploy</span>
+        </a>
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">🏭</span>
+          <p class="it-sector">Manufacturing</p>
+          <h3 class="it-title">Field-service knowledge agent</h3>
+          <p class="it-line">Technicians ask the agent. The agent grounds against equipment manuals + service history &mdash; with cost-projected SKUs picked before go-live.</p>
+          <span class="it-tail">spec → deploy → cost</span>
+        </a>
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">🛍️</span>
+          <p class="it-sector">Retail</p>
+          <h3 class="it-title">Merchandising co-pilot</h3>
+          <p class="it-line">Buyer asks for promo plans; agent drafts them grounded in last-quarter SKU performance and store-cluster lift.</p>
+          <span class="it-tail">spec → demo-data → deploy</span>
+        </a>
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">🏛️</span>
+          <p class="it-sector">Public sector</p>
+          <h3 class="it-title">Citizen-facing case status</h3>
+          <p class="it-line">Public-language status updates with case-worker hand-off built in. Governance and audit trail are non-negotiable; the chain refuses to ship without them.</p>
+          <span class="it-tail">spec → HITL → production-ready</span>
+        </a>
+        <a class="industry-tile" href="./skills.html#threadlight-design">
+          <span class="it-glyph" aria-hidden="true">📡</span>
+          <p class="it-sector">Telco</p>
+          <h3 class="it-title">Network-incident triage</h3>
+          <p class="it-line">Cross-references SNMP, ticket history, and runbooks into a first-pass remediation &mdash; cost-projected against the production load profile.</p>
+          <span class="it-tail">spec → deploy → consumption-iq</span>
+        </a>
+      </div>
+
+      <p class="industries-footer reveal" data-delay="2">
+        All six follow the same five-stage funnel above. The differences live
+        in the SPEC, not the chain. <a href="./skills.html">Browse all 11 skills →</a>
+      </p>
+    </div>
+  </section>
+
   <!-- ====================== SCENE 4b · GUARDRAILS ====================== -->
   <section class="scene" id="scene-guardrails" aria-labelledby="guard-h">
     <div class="wrap">
@@ -2297,6 +2751,79 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
         <a class="btn btn-ghost reveal" data-delay="4" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/ci/threadlight-e2e.md" style="display:inline-block;">
           Read the operator runbook <span class="arrow">&rarr;</span>
         </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== CHANNELS & KRATOS ====================== -->
+  <section class="scene" id="scene-channels" aria-labelledby="ch-h">
+    <div class="wrap">
+      <div class="channels-grid">
+
+        <div class="channels-copy reveal">
+          <p class="eyebrow"><span class="dot"></span>Where the agent lives</p>
+          <h2 id="ch-h">Skills are runtime-agnostic. <em>Plug them into any channel.</em></h2>
+          <p class="lede">
+            The threadlight skills don't care which surface your customer
+            uses. Wire the same governed agent into a hosted web channel, an
+            existing copilot surface, or your own MCP host &mdash; the spec,
+            telemetry and cost projection follow it.
+          </p>
+
+          <ul class="channels-bullets">
+            <li><strong>One agent, many channels.</strong> Same SPEC, same evals, same governance regardless of the front door.</li>
+            <li><strong>Hosted reference channel below.</strong> Production-ready Next.js + Foundry hosted agent, MIT-licensed, fork-and-deploy.</li>
+            <li><strong>BYO surface stays viable.</strong> The MCP skills protocol means custom Copilot Studio agents, ASA, or in-house hosts all work.</li>
+          </ul>
+        </div>
+
+        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
+          <img class="kc-shot"
+               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
+               alt="Kratos Agent chat interface — conversational UI with persona switching, suggested prompts, and live skill indicators"
+               loading="lazy" decoding="async" width="1600" height="900">
+          <div class="kc-body">
+            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>Live reference channel</p>
+            <h3 id="kratos-h">Kratos Agent</h3>
+            <p class="kc-tag">
+              Production-ready Next.js + Microsoft Foundry hosted-agent reference.
+              One <code>azd up</code> provisions 15 Azure services, a hosted
+              agent, and a chat UI &mdash; with Managed Identity, VNet isolation
+              and OpenTelemetry traces from day zero.
+            </p>
+            <div class="kc-meta" aria-label="Kratos stack">
+              <span>Next.js 14</span>
+              <span>Foundry hosted agent</span>
+              <span>APIM AI gateway</span>
+              <span>Cosmos&nbsp;DB</span>
+              <span>OpenTelemetry</span>
+              <span>MIT license</span>
+            </div>
+            <div class="kc-ctas">
+              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try the live demo <span class="arrow">↗</span></a>
+              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
+            </div>
+          </div>
+        </article>
+
+      </div>
+
+      <div class="channels-other reveal" data-delay="2" aria-label="Other supported channel surfaces">
+        <div class="co-tile">
+          <h4>Microsoft Copilot Studio</h4>
+          <p>Expose threadlight skills as MCP tools from the studio surface; reuse the same governance and telemetry.</p>
+          <span class="co-status">Pattern available</span>
+        </div>
+        <div class="co-tile">
+          <h4>Azure SRE Agent</h4>
+          <p>Surface deployment + cost-projection skills directly inside the SRE Agent flows. Bring-your-own runbook.</p>
+          <span class="co-status">Pattern available</span>
+        </div>
+        <div class="co-tile">
+          <h4>Custom MCP host</h4>
+          <p>Anything that speaks the MCP protocol. The skills ship as portable MCP servers; the host is your call.</p>
+          <span class="co-status">Bring your own</span>
+        </div>
       </div>
     </div>
   </section>
