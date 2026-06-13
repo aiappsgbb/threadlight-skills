@@ -69,7 +69,7 @@
 
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
   body {
     background: var(--bg-0);
     color: var(--ink-0);
@@ -141,7 +141,7 @@
 
   /* ---------- masthead ---------- */
   .masthead {
-    position: relative; z-index: 5;
+    position: sticky; top: 0; z-index: 50;
     padding: 18px 32px;
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid var(--line);
@@ -178,12 +178,8 @@
   section.scene {
     min-height: 100vh; padding: 120px 0; position: relative;
     display: flex; align-items: center;
-    scroll-snap-align: start;
   }
-  /* enable scroll snap on the whole document body */
-  html { scroll-snap-type: y proximity; }
   @media (max-width: 900px) {
-    html { scroll-snap-type: none; }
     section.scene { padding: 80px 0; min-height: auto; }
   }
 
@@ -1672,7 +1668,7 @@
   @media (max-width: 1100px) {
     .floating-toc {
       position: sticky;
-      top: 64px;
+      top: 72px;
       transform: none;
       right: auto;
       left: auto;
