@@ -150,6 +150,24 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     await expect(shot).toHaveAttribute('alt', /kratos/i);
   });
 
+  test('kratos+threadlight relationship is framed as a ladder, not a parallel choice', async ({ page }) => {
+    await page.goto(LANDING);
+    const ch = page.locator('#scene-channels');
+    await ch.scrollIntoViewIfNeeded();
+    const h2  = (await ch.locator('h2').first().textContent()) || '';
+    const txt = (await ch.locator('.channels-copy').textContent()) || '';
+    // Headline must position the two as sequential stages of one journey
+    expect(h2).toMatch(/start in kratos/i);
+    expect(h2).toMatch(/build in threadlight/i);
+    // Body must explicitly say it's a ladder, not two equivalent products
+    expect(txt).toMatch(/two stages|same journey|not two|stages of the same|step 1/i);
+    // The old "two on-ramps, same destination" framing must not come back
+    expect(txt).not.toMatch(/two on-ramps/i);
+    expect(txt).not.toMatch(/same destination/i);
+    // No-code positioning for Kratos must be unambiguous
+    expect(txt).toMatch(/no[- ]code/i);
+  });
+
   test('other channels strip lists exactly 3 surfaces', async ({ page }) => {
     await page.goto(LANDING);
     const tiles = page.locator('#scene-channels .channels-other .co-tile');
@@ -167,7 +185,7 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(count).toBeLessThanOrEqual(8);
     const labels = await links.allTextContents();
     expect(labels.join(' | ')).toMatch(/Funnel/);
-    expect(labels.join(' | ')).toMatch(/Channels/);
+    expect(labels.join(' | ')).toMatch(/Start here/);
   });
 });
 
