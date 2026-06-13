@@ -12,7 +12,7 @@ test.describe('landing page (index.html)', () => {
     await page.goto(LANDING);
     await expect(page).toHaveTitle(/Threadlight/);
     await expect(page.getByRole('heading', { name: /Business process/i })).toBeVisible();
-    await expect(page.locator('.hero-cta-row .btn-primary').first()).toContainText(/Try the live preview/i);
+    await expect(page.locator('.hero-cta-row .btn-primary').first()).toContainText(/Open the technical briefing/i);
   });
 
   test('nav has no duplicate Setup link', async ({ page }) => {

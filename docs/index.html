@@ -321,86 +321,6 @@
     margin-top: 44px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
   }
 
-  /* ====================== HERO · LIVE PREVIEW STRIP ======================
-     The Process Library is the only piece of threadlight that is publicly
-     reachable today. Highlight it as a glassy banner just above the CTA
-     row so first-time visitors cannot miss it. */
-  .hero-live-strip {
-    margin: 36px auto 0;
-    max-width: 760px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 18px;
-    background: linear-gradient(135deg,
-      rgba(56, 159, 247, .10) 0%,
-      rgba(6, 182, 212, .08) 100%);
-    border: 1px solid rgba(56, 159, 247, .35);
-    border-radius: 12px;
-    box-shadow:
-      0 0 0 1px rgba(56, 159, 247, .05) inset,
-      0 12px 40px -16px rgba(56, 159, 247, .4);
-    backdrop-filter: blur(4px);
-    text-align: left;
-  }
-  .hero-live-strip .live-pip {
-    flex: 0 0 auto;
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--lime);
-    box-shadow: 0 0 14px var(--lime), 0 0 4px #fff inset;
-    animation: blink-pip 2s ease-in-out infinite;
-  }
-  .hero-live-strip .live-body {
-    flex: 1 1 auto;
-    display: flex; flex-direction: column; gap: 4px;
-    min-width: 0;
-  }
-  .hero-live-strip .live-label {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: var(--lime-1);
-    font-weight: 700;
-    display: inline-flex; align-items: center; gap: 8px;
-  }
-  .hero-live-strip .live-label .wip {
-    color: var(--accent-1);
-    border: 1px solid var(--accent-1);
-    border-radius: 999px;
-    padding: 1px 8px;
-    font-size: 9px;
-    letter-spacing: .18em;
-  }
-  .hero-live-strip .live-headline {
-    font-family: var(--sans);
-    font-size: 14px;
-    color: var(--ink-0);
-    font-weight: 600;
-    line-height: 1.4;
-  }
-  .hero-live-strip .live-headline a {
-    color: var(--accent-1);
-    text-decoration: none;
-    font-family: var(--mono);
-    font-size: 12.5px;
-    word-break: break-all;
-    border-bottom: 1px solid rgba(56, 159, 247, .35);
-    padding-bottom: 1px;
-  }
-  .hero-live-strip .live-headline a:hover {
-    color: #fff;
-    border-bottom-color: var(--accent-1);
-  }
-  .hero-live-strip .live-note {
-    font-size: 12px;
-    color: var(--ink-2);
-    font-style: italic;
-  }
-  @media (max-width: 640px) {
-    .hero-live-strip { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; }
-    .hero-live-strip .live-headline { font-size: 13px; }
-  }
   .btn {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 14px 24px; border-radius: 8px;
@@ -1728,21 +1648,9 @@
       </p>
 
       <div class="hero-cta-row">
-        <a class="btn btn-primary" href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener">Try the live preview <span class="arrow">↗</span></a>
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
         <a class="btn btn-ghost"   href="#scene-chain">See the chain <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Read the briefing</a>
-      </div>
-
-      <div class="hero-live-strip" role="status" aria-label="Live preview environment">
-        <span class="live-pip" aria-hidden="true"></span>
-        <div class="live-body">
-          <span class="live-label">Live now <span class="wip">WIP</span></span>
-          <span class="live-headline">
-            Threadlight Process Library &mdash;
-            <a href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener">threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io</a>
-          </span>
-          <span class="live-note">Browse the FSI / MFG / Retail / Telco process catalog today. Preconfigured live demos coming soon.</span>
-        </div>
+        <a class="btn btn-ghost"   href="#scene-cta">Start with one prompt <span class="arrow">↓</span></a>
       </div>
     </div>
 
@@ -2586,30 +2494,6 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     </div>
   </section>
 
-  <!-- ====================== LIBRARY CALLOUT ====================== -->
-  <section class="scene" style="padding:48px 0 40px;background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-    <div class="wrap" style="text-align:center;max-width:820px;">
-      <p class="eyebrow reveal"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>In a rush?</p>
-      <h2 class="reveal" data-delay="1" style="font-size:1.6rem;margin:12px 0 10px;color:var(--ink-0);">
-        Skip the custom design &mdash; <em>browse pre-built industry processes.</em>
-      </h2>
-      <p class="reveal" data-delay="2" style="color:var(--ink-2);font-size:.95rem;margin:0 auto 22px;max-width:600px;line-height:1.6;">
-        13 ready-to-demo processes across FSI, MFG, Retail, and Telco &mdash;
-        each with SPEC, demo prompts, and a workshop format. Pick one, deploy it,
-        then customize with the full skill chain when your customer says yes.
-      </p>
-      <a class="btn btn-primary reveal" data-delay="3" href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener" style="display:inline-block;">
-        Browse the process library <span class="arrow">&nearr;</span>
-      </a>
-      <p class="reveal" data-delay="4" style="color:var(--ink-2);font-size:.85rem;margin:18px auto 0;max-width:600px;line-height:1.6;">
-        Or run the <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md" style="color:var(--ink-1);text-decoration:underline;">1-hour quickstart workshop</a> &mdash;
-        Copilot CLI prompts, retail returns-triage PoC built live, local agent
-        on <code>localhost:8501</code>, and <code>azd up</code> to Azure inside
-        the hour (watch provisioning in the Azure Portal).
-      </p>
-    </div>
-  </section>
-
   <!-- ====================== ZAVA CALLOUT ====================== -->
   <section class="scene" style="padding:56px 0 48px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
     <div class="wrap" style="text-align:center;max-width:860px;">
@@ -2844,8 +2728,8 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
 
       <div class="hero-cta-row reveal" data-delay="4">
         <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
-        <a class="btn btn-ghost" href="https://threadlight-site-tl1.kindsmoke-427b5f0a.swedencentral.azurecontainerapps.io/" target="_blank" rel="noopener">Try the live preview <span class="arrow">↗</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/awesome-gbb#readme">Browse the catalog</a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills#readme">View the repo on GitHub <span class="arrow">↗</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/awesome-gbb#readme">Browse the awesome-gbb plugin <span class="arrow">↗</span></a>
       </div>
     </div>
   </section>
