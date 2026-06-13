@@ -2755,52 +2755,53 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
     </div>
   </section>
 
-  <!-- ====================== CHANNELS & KRATOS ====================== -->
+  <!-- ====================== TWO ON-RAMPS · KRATOS + THREADLIGHT ====================== -->
   <section class="scene" id="scene-channels" aria-labelledby="ch-h">
     <div class="wrap">
       <div class="channels-grid">
 
         <div class="channels-copy reveal">
-          <p class="eyebrow"><span class="dot"></span>Where the agent lives</p>
-          <h2 id="ch-h">Skills are runtime-agnostic. <em>Plug them into any channel.</em></h2>
+          <p class="eyebrow"><span class="dot"></span>Pick your starting point</p>
+          <h2 id="ch-h">Two on-ramps. <em>Same destination.</em></h2>
           <p class="lede">
-            The threadlight skills don't care which surface your customer
-            uses. Wire the same governed agent into a hosted web channel, an
-            existing copilot surface, or your own MCP host &mdash; the spec,
-            telemetry and cost projection follow it.
+            Need to feel what an agent looks like in the next ten minutes?
+            Start with <strong>Kratos</strong> &mdash; a quickstart demo
+            environment you can play with, customize in the browser, and
+            export when you&rsquo;re ready. Going from idea to a governed,
+            production-grade agent? That&rsquo;s what <strong>Threadlight
+            skills</strong> are for &mdash; the opinionated pro-code path.
           </p>
 
           <ul class="channels-bullets">
-            <li><strong>One agent, many channels.</strong> Same SPEC, same evals, same governance regardless of the front door.</li>
-            <li><strong>Hosted reference channel below.</strong> Production-ready Next.js + Foundry hosted agent, MIT-licensed, fork-and-deploy.</li>
-            <li><strong>BYO surface stays viable.</strong> The MCP skills protocol means custom Copilot Studio agents, ASA, or in-house hosts all work.</li>
+            <li><strong>Kratos &mdash; demo first.</strong> Try a working agent, tune persona and tools in-app, then export the spec when the conversation turns serious.</li>
+            <li><strong>Threadlight &mdash; production first.</strong> The skills on this page take you from a single prompt to a Foundry-hosted agent with evals, observability, cost projection and a customer hand-off pack.</li>
+            <li><strong>They compose.</strong> Drop a Kratos export into a Threadlight design loop. Or run Kratos for the first customer call while Threadlight builds the production version in parallel.</li>
           </ul>
         </div>
 
         <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
           <img class="kc-shot"
                src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
-               alt="Kratos Agent chat interface — conversational UI with persona switching, suggested prompts, and live skill indicators"
+               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
                loading="lazy" decoding="async" width="1600" height="900">
           <div class="kc-body">
-            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>Live reference channel</p>
+            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>Quickstart on-ramp &middot; live</p>
             <h3 id="kratos-h">Kratos Agent</h3>
             <p class="kc-tag">
-              Production-ready Next.js + Microsoft Foundry hosted-agent reference.
-              One <code>azd up</code> provisions 15 Azure services, a hosted
-              agent, and a chat UI &mdash; with Managed Identity, VNet isolation
-              and OpenTelemetry traces from day zero.
+              A demo-friendly conversational agent on Microsoft Foundry.
+              Pick a persona, wire up tools, talk to it&mdash;then export
+              the spec to take it further. Ideal for the first ten minutes
+              of a customer conversation, before you commit to a build.
             </p>
-            <div class="kc-meta" aria-label="Kratos stack">
-              <span>Next.js 14</span>
+            <div class="kc-meta" aria-label="What Kratos gives you">
+              <span>Browser-first</span>
               <span>Foundry hosted agent</span>
-              <span>APIM AI gateway</span>
-              <span>Cosmos&nbsp;DB</span>
-              <span>OpenTelemetry</span>
+              <span>Persona &amp; tool tuning</span>
+              <span>Export the spec</span>
               <span>MIT license</span>
             </div>
             <div class="kc-ctas">
-              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try the live demo <span class="arrow">↗</span></a>
+              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
               <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
             </div>
           </div>
@@ -2808,20 +2809,21 @@ az login --tenant &lt;tenant-id&gt;</code></pre>
 
       </div>
 
-      <div class="channels-other reveal" data-delay="2" aria-label="Other supported channel surfaces">
+      <p class="eyebrow reveal" data-delay="2" style="margin: 64px 0 16px;"><span class="dot"></span>Once shipped &middot; expose anywhere via MCP</p>
+      <div class="channels-other reveal" data-delay="3" aria-label="Runtime surfaces for a shipped Threadlight agent">
         <div class="co-tile">
           <h4>Microsoft Copilot Studio</h4>
-          <p>Expose threadlight skills as MCP tools from the studio surface; reuse the same governance and telemetry.</p>
+          <p>Expose a Threadlight-built agent as an MCP tool inside a Copilot Studio surface &mdash; same governance, same telemetry.</p>
           <span class="co-status">Pattern available</span>
         </div>
         <div class="co-tile">
           <h4>Azure SRE Agent</h4>
-          <p>Surface deployment + cost-projection skills directly inside the SRE Agent flows. Bring-your-own runbook.</p>
+          <p>Surface deployment + cost-projection skills inside SRE Agent flows. Bring your own runbook, keep the audit trail.</p>
           <span class="co-status">Pattern available</span>
         </div>
         <div class="co-tile">
           <h4>Custom MCP host</h4>
-          <p>Anything that speaks the MCP protocol. The skills ship as portable MCP servers; the host is your call.</p>
+          <p>Anything that speaks the MCP protocol. Threadlight ships portable MCP servers; the host stays your call.</p>
           <span class="co-status">Bring your own</span>
         </div>
       </div>
