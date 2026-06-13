@@ -1,10 +1,37 @@
 import { chromium } from '@playwright/test';
-const url = 'http://127.0.0.1:4173/index.html';
-const targets = [
-  { name: 'evo',        anchor: '.evolution-band' },
-  { name: 'funnel',     anchor: '#scene-funnel' },
-  { name: 'industries', anchor: '#scene-industries' },
-  { name: 'channels',   anchor: '#scene-channels' }
+
+const pages = [
+  {
+    url:     'http://127.0.0.1:4173/index.html',
+    prefix:  'landing',
+    targets: [
+      { name: 'hero',       anchor: '#scene-hero' },
+      { name: 'evo',        anchor: '.evolution-band' },
+      { name: 'funnel',     anchor: '#scene-funnel' },
+      { name: 'industries', anchor: '#scene-industries' },
+      { name: 'channels',   anchor: '#scene-channels' }
+    ]
+  },
+  {
+    url:     'http://127.0.0.1:4173/funnel.html',
+    prefix:  'funnel',
+    targets: [
+      { name: 'hero',         anchor: '.chapter-hero' },
+      { name: 'conversation', anchor: '#stage-conversation' },
+      { name: 'safecheck',    anchor: '#stage-safecheck' },
+      { name: 'recap',        anchor: '#stage-recap' }
+    ]
+  },
+  {
+    url:     'http://127.0.0.1:4173/industries.html',
+    prefix:  'industries',
+    targets: [
+      { name: 'hero',       anchor: '.chapter-hero' },
+      { name: 'fsi',        anchor: '#industry-fsi' },
+      { name: 'public',     anchor: '#industry-public' },
+      { name: 'recap',      anchor: '#industry-recap' }
+    ]
+  }
 ];
 const viewports = [
   { name: 'desktop', w: 1440, h: 900, scheme: 'dark' },
@@ -20,13 +47,15 @@ for (const vp of viewports) {
     reducedMotion: 'reduce'
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
-  for (const t of targets) {
-    const el = page.locator(t.anchor).first();
-    await el.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(400);
-    await el.screenshot({ path: `screenshots/${vp.name}-${t.name}.png` });
+  for (const pg of pages) {
+    await page.goto(pg.url, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(800);
+    for (const t of pg.targets) {
+      const el = page.locator(t.anchor).first();
+      await el.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(400);
+      await el.screenshot({ path: `screenshots/${vp.name}-${pg.prefix}-${t.name}.png` });
+    }
   }
   await ctx.close();
 }
