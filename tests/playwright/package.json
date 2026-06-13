@@ -1,7 +1,7 @@
 {
   "name": "threadlight-site-tests",
   "version": "1.0.0",
-  "description": "Local Playwright + axe-core smoke tests for docs/index.html and docs/skills.html.",
+  "description": "Local Playwright + axe-core smoke tests for docs/index.html.",
   "private": true,
   "type": "module",
   "scripts": {

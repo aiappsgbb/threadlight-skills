@@ -1,3 +1,7 @@
 
 __pycache__/
 smoke-outputs/
+
+# Skills catalog page deferred out of the initial release — keep it
+# locally for preview/iteration but never publish it.
+docs/skills.html

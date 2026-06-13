@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Threadlight funnel — five stages, one session.</title>
+<meta name="description" content="The Threadlight funnel: from a plain-language conversation to a governed agent running on the customer's Azure. Five named stages, each with its own skills, artefacts, and exit criteria.">
+<meta name="theme-color" content="#4f6dff">
+
+<meta property="og:type"        content="article">
+<meta property="og:title"       content="The Threadlight funnel — five stages, one session.">
+<meta property="og:description" content="Conversation → Co-design → Deploy → Safe-check → Production. Skills, artefacts, exit criteria — for each stage.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/funnel.html">
+<meta property="og:site_name"   content="Threadlight">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="The Threadlight funnel — five stages.">
+<meta name="twitter:description" content="Conversation → Co-design → Deploy → Safe-check → Production.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="chapter-page">
+
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name" style="text-decoration:none;color:inherit;">
+      <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
+    </a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./funnel.html" aria-current="page">Funnel</a>
+    <a href="./production.html">Production-ready</a>
+    <a href="./industries.html">Industries</a>
+  </nav>
+</header>
+
+<aside class="floating-toc" aria-label="Funnel stages">
+  <p class="toc-title">Stages</p>
+</aside>
+
+<main>
+
+  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+    <div class="wrap">
+      <p class="breadcrumb"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; The funnel</p>
+      <p class="eyebrow"><span class="dot"></span>Five named stages · one session</p>
+      <h1>From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h1>
+      <p class="lede">
+        Every Threadlight engagement walks the same five-stage funnel. Each stage has
+        its own skills, its own artefacts, and its own exit criteria. The skills do
+        the heavy lifting; the seller stays in control of the conversation.
+      </p>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-conversation" data-toc-id="stage-conversation" data-toc-label="01 · Conversation">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Stage 01</p>
+        <h2>Conversation &mdash; <em>describe the process.</em></h2>
+        <p class="section-lede">
+          A plain-language brief from the seller or customer SME. No template,
+          no questionnaire. Just enough fidelity that a coding agent can start
+          drafting a spec.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>What ships</h3>
+          <ul>
+            <li>Conversation transcript (markdown)</li>
+            <li>Draft problem statement</li>
+            <li>Inferred actors + data sources</li>
+            <li>First-cut success criteria</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Skills used</h3>
+          <p><code>threadlight-auto</code> · <code>threadlight-design</code></p>
+          <p>The first hands the seller a guided structure; the second turns
+          the conversation into a versioned SPEC.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Exit criteria</h3>
+          <ul>
+            <li>Process scope is named in one paragraph</li>
+            <li>Inputs / outputs are explicit</li>
+            <li>Regulator / data class is acknowledged</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>What it is <em>not</em></h3>
+          <p>It is not a discovery workshop. The seller does not need a
+          slideware deck before the customer sees the agent run.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-codesign" data-toc-id="stage-codesign" data-toc-label="02 · Co-design">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Stage 02</p>
+        <h2>Co-design &mdash; <em>spec &amp; scaffold.</em></h2>
+        <p class="section-lede">
+          The brief becomes a working agent on the seller's laptop. SPEC.md,
+          AGENTS.md, an eval dataset, and a demo-data factory &mdash; generated
+          in-session by the coding agent.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>What ships</h3>
+          <ul>
+            <li><code>SPEC.md</code> &mdash; versioned process spec</li>
+            <li><code>AGENTS.md</code> &mdash; agent contract</li>
+            <li>Agent code scaffold (Python/Node)</li>
+            <li>Synthetic demo data + eval dataset</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Skills used</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-demo-data-factory</code></p>
+          <p>Design owns the spec/scaffold loop. Demo-data-factory invents
+          customer-shaped data so the agent runs from minute one.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Exit criteria</h3>
+          <ul>
+            <li>Agent runs locally against demo data</li>
+            <li>Spec passes its own self-review</li>
+            <li>Eval cases cover the happy path + 1 HITL gate</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Why it matters</h3>
+          <p>The customer sees the agent move, in their domain, before
+          they have to commit to architecture or budget.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-deploy" data-toc-id="stage-deploy" data-toc-label="03 · Deploy">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Stage 03</p>
+        <h2>Deploy &mdash; <em>land on your Azure.</em></h2>
+        <p class="section-lede">
+          Bicep + <code>azd up</code> to the customer's subscription.
+          Managed Identity, App Insights, and the AI Citadel gateway wired
+          from day zero. No service principals; no shared secrets.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>What ships</h3>
+          <ul>
+            <li>Bicep modules per Azure resource</li>
+            <li><code>azure.yaml</code> + <code>azd</code> environment</li>
+            <li>Dockerfile + Container Apps job</li>
+            <li>App Insights + Log Analytics wired</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Skills used</h3>
+          <p><code>threadlight-deploy</code> · <code>threadlight-local-test</code></p>
+          <p>Local-test catches drift before the cloud bill arrives.
+          Deploy walks the agent from <code>az login</code> to a healthy
+          endpoint.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Exit criteria</h3>
+          <ul>
+            <li>Agent responds in the customer's tenant</li>
+            <li>App Insights shows the request trace</li>
+            <li>All identities are managed, not shared</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Day-zero invariants</h3>
+          <p>AI Citadel APIM gateway on the perimeter; AGT middleware
+          inside the agent. The CISO reviews Bicep before anything ships.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-safecheck" data-toc-id="stage-safecheck" data-toc-label="04 · Safe-check">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Stage 04</p>
+        <h2>Safe-check &mdash; <em>cost &amp; readiness.</em></h2>
+        <p class="section-lede">
+          Project a credible monthly cost for the production load profile.
+          Recommend cheaper SKUs where the headroom is real. Score the
+          agent against 10 production pillars.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>What ships</h3>
+          <ul>
+            <li>Cost projection by SKU + region</li>
+            <li>Cheaper-SKU recommendations with the maths</li>
+            <li>10-pillar readiness scorecard</li>
+            <li>Remediation backlog with owners</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Skills used</h3>
+          <p><code>threadlight-safe-check</code> · <code>threadlight-consumption-iq</code></p>
+          <p>Consumption-IQ does the cost arithmetic across Azure SKUs.
+          Safe-check is the soft-gate to production.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Exit criteria</h3>
+          <ul>
+            <li>Cost number the seller will defend to the CFO</li>
+            <li>Top 3 readiness gaps named with owners</li>
+            <li>No critical-pillar regressions vs the baseline</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Why a soft-gate</h3>
+          <p>The customer decides whether to ship. The agent shows them
+          exactly what they are signing up for &mdash; in their numbers,
+          not a Microsoft list price.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-production" data-toc-id="stage-production" data-toc-label="05 · Production">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Stage 05</p>
+        <h2>Production &mdash; <em>hand-off.</em></h2>
+        <p class="section-lede">
+          Governance, telemetry, and runbooks already in the repo. HITL
+          gates already wired. The customer keeps the agent &mdash; and the
+          repo &mdash; and can change it without us.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>What ships</h3>
+          <ul>
+            <li>Production runbook + on-call rota template</li>
+            <li>Eval pipeline wired into CI</li>
+            <li>SRE Agent hook-ups (optional)</li>
+            <li>Customer architecture-review pack</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Skills used</h3>
+          <p><code>threadlight-production-ready</code> · <code>threadlight-hitl-patterns</code></p>
+          <p>Production-ready scores the agent across 13 pillars and
+          produces the hand-off report. HITL-patterns documents the
+          escalation surface.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Exit criteria</h3>
+          <ul>
+            <li>Customer can deploy + roll back without us</li>
+            <li>Telemetry-driven alerts wired and tested</li>
+            <li>Architecture-review hand-off accepted</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>What hand-off means</h3>
+          <p>Threadlight is not a managed service. The customer owns the
+          agent, the repo, and the Azure subscription. We make sure they
+          can keep going on Monday.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-recap" data-toc-id="stage-recap" data-toc-label="Recap">
+    <div class="wrap" style="text-align:center;">
+      <div class="section-head" style="margin: 0 auto 24px;">
+        <h2>One funnel. <em>Five exit gates.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">
+          Each stage has a named exit. Each exit produces evidence.
+          When a stage closes, the seller and the customer agree on
+          what just shipped &mdash; before the next stage starts.
+        </p>
+      </div>
+      <div class="hero-cta-row" style="margin-top: 28px;">
+        <a class="btn btn-primary" href="./index.html#scene-cta">Start with one prompt <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="./industries.html">See industries &amp; pilots <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open the technical briefing <span class="arrow">↗</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="row">
+    <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
+    <div class="right">
+      <a href="./index.html">Home</a>
+      <a href="./industries.html">Industries</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

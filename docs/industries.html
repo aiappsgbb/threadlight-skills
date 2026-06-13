@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threadlight industries — six sectors, one pattern.</title>
+<meta name="description" content="One pattern, six sectors: FSI, Manufacturing, Retail, Telco, Healthcare, Public sector. The skills do not change — the SPEC does. Pilot stories, talk tracks, and the skills that ship them.">
+<meta name="theme-color" content="#4f6dff">
+
+<meta property="og:type"        content="article">
+<meta property="og:title"       content="Threadlight industries — six sectors, one pattern.">
+<meta property="og:description" content="Pilot stories per sector: FSI, MFG, Retail, Telco, Healthcare, Public. The chain doesn't change. The SPEC does.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/industries.html">
+<meta property="og:site_name"   content="Threadlight">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="Threadlight industries — six sectors, one pattern.">
+<meta name="twitter:description" content="FSI, MFG, Retail, Telco, Healthcare, Public sector. Same skills, different SPEC.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="chapter-page">
+
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name" style="text-decoration:none;color:inherit;">
+      <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
+    </a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./funnel.html">Funnel</a>
+    <a href="./production.html">Production-ready</a>
+    <a href="./industries.html" aria-current="page">Industries</a>
+  </nav>
+</header>
+
+<aside class="floating-toc" aria-label="Industries">
+  <p class="toc-title">Industries</p>
+</aside>
+
+<main>
+
+  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+    <div class="wrap">
+      <p class="breadcrumb"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Industries</p>
+      <p class="eyebrow"><span class="dot"></span>One pattern · six sectors</p>
+      <h1>Six industries. <em>One pattern.</em></h1>
+      <p class="lede">
+        The same five-stage funnel ships agents across regulated and
+        unregulated industries. The skills do not change &mdash; the
+        SPEC does. Below: one representative pilot per sector we work in,
+        with the skills it leans on and the talk track that opens the door.
+      </p>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-fsi" data-toc-id="industry-fsi" data-toc-label="🏦 Financial services">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Financial services</p>
+        <h2>Claims triage &mdash; <em>route by complexity &amp; regulator exposure.</em></h2>
+        <p class="section-lede">
+          Inbound claims (insurance, retail banking disputes) are scored
+          for complexity and regulator exposure, then routed to the right
+          desk with a structured pre-fill. Spec, deploy, evaluate &mdash; in-session.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>The agent reads the inbound claim, extracts the structured
+          fields the adjuster wants, scores complexity, and produces a
+          first-pass routing recommendation with the rationale. HITL on
+          high-exposure cases.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-safe-check</code> · <code>threadlight-hitl-patterns</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>Triage time per claim</li>
+            <li>Routing accuracy vs the desk's own backbook</li>
+            <li>HITL gate hit-rate (target band, not zero)</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;Show me one week of inbound claims. We can have
+          the spec drafted and an agent running on synthetic data in the
+          same session.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-healthcare" data-toc-id="industry-healthcare" data-toc-label="🏥 Healthcare">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Healthcare</p>
+        <h2>Prior-authorization assistant &mdash; <em>structured payor submissions.</em></h2>
+        <p class="section-lede">
+          The agent reads the clinical narrative and generates the
+          structured payor submission &mdash; with HITL gates wired before
+          anything leaves the building.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>Clinician's free-text note in; structured payor submission
+          out. The agent never sends; it stages, scores its own
+          confidence, and surfaces gaps for the human reviewer.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-hitl-patterns</code> · <code>threadlight-deploy</code> · <code>threadlight-production-ready</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>Reviewer minutes saved per submission</li>
+            <li>Submission rejection rate vs baseline</li>
+            <li>Audit trail completeness (100% required)</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;The agent does the typing. The clinician keeps the
+          judgement. Audit trail and HITL gates are wired before
+          deploy &mdash; not after.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-mfg" data-toc-id="industry-mfg" data-toc-label="🏭 Manufacturing">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Manufacturing</p>
+        <h2>Field-service knowledge agent &mdash; <em>grounded in the manuals.</em></h2>
+        <p class="section-lede">
+          Technicians ask the agent. The agent grounds against equipment
+          manuals + service history &mdash; with cost-projected SKUs picked
+          before go-live so the bill is the bill.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>The agent indexes equipment manuals + the customer's past
+          service tickets. A technician on the floor asks a natural-language
+          question and gets a grounded answer with the source paragraph
+          inline.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-consumption-iq</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>First-call-resolution rate</li>
+            <li>Time-to-answer on the floor</li>
+            <li>Projected monthly cost vs production load</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;Cost-projection runs before deploy. The customer
+          sees the bill before they sign for it.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-retail" data-toc-id="industry-retail" data-toc-label="🛍️ Retail">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Retail</p>
+        <h2>Merchandising co-pilot &mdash; <em>promo plans grounded in real lift.</em></h2>
+        <p class="section-lede">
+          The buyer asks for a promo plan; the agent drafts it grounded
+          in last-quarter SKU performance and store-cluster lift. The
+          buyer keeps the pen; the agent keeps the maths.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>The agent ingests SKU-level sales + store cluster metadata,
+          then drafts promo plans that name the lift it expects and the
+          confidence interval. The buyer accepts, edits, or rejects each
+          line.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-demo-data-factory</code> · <code>threadlight-deploy</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>Buyer minutes per plan</li>
+            <li>Plan acceptance rate by category</li>
+            <li>Forecast lift vs realized lift (post-mortem)</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;The agent shows the maths. The buyer keeps the
+          judgement. We run the agent against your own back-book before
+          you commit a single SKU.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-telco" data-toc-id="industry-telco" data-toc-label="📡 Telco">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Telco</p>
+        <h2>Network-incident triage &mdash; <em>first-pass remediation in minutes.</em></h2>
+        <p class="section-lede">
+          The agent cross-references SNMP, ticket history, and runbooks
+          into a first-pass remediation &mdash; cost-projected against the
+          production load profile so the NOC manager can size it before
+          rollout.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>Pager fires. The agent assembles SNMP context, recent
+          tickets on the same device, and the relevant runbook section
+          into a single first-pass remediation. The NOC engineer
+          approves, edits, or rejects.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-consumption-iq</code> · <code>threadlight-hitl-patterns</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>Time from pager to first-pass remediation</li>
+            <li>Engineer acceptance rate per incident class</li>
+            <li>Projected cost at production incident volume</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;The agent doesn't decide. It assembles. The
+          engineer keeps the keys to the network.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-public" data-toc-id="industry-public" data-toc-label="🏛️ Public sector">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Public sector</p>
+        <h2>Citizen case-status agent &mdash; <em>plain-language updates with audit.</em></h2>
+        <p class="section-lede">
+          Public-language status updates with case-worker hand-off built
+          in. Governance and audit trail are non-negotiable; the chain
+          refuses to ship without them.
+        </p>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>Pilot in one paragraph</h3>
+          <p>The agent reads the case-management system, summarises the
+          current status in citizen-readable language, and offers an
+          escalation path to a human case-worker. Every reply is logged.</p>
+        </div>
+        <div class="detail-card">
+          <h3>Skills it leans on</h3>
+          <p><code>threadlight-design</code> · <code>threadlight-hitl-patterns</code> · <code>threadlight-production-ready</code></p>
+        </div>
+        <div class="detail-card">
+          <h3>What we measure</h3>
+          <ul>
+            <li>Reduction in inbound contact-centre volume</li>
+            <li>Escalation rate to human case-workers</li>
+            <li>Audit-trail completeness (100% required)</li>
+          </ul>
+        </div>
+        <div class="detail-card">
+          <h3>Talk track</h3>
+          <p><em>&ldquo;Audit and HITL come before deploy. The chain
+          refuses to ship a public-facing agent without them &mdash; that's
+          a feature, not a friction.&rdquo;</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="industry-recap" data-toc-id="industry-recap" data-toc-label="Recap">
+    <div class="wrap" style="text-align:center;">
+      <div class="section-head" style="margin: 0 auto 24px;">
+        <h2>Same chain. <em>Different SPEC.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">
+          The six pilots above all walk the same five-stage funnel. What
+          changes is the SPEC &mdash; the customer's process, their data,
+          their regulator. The skills do not change.
+        </p>
+      </div>
+      <div class="hero-cta-row" style="margin-top: 28px;">
+        <a class="btn btn-primary" href="./index.html#scene-cta">Start with one prompt <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="./funnel.html">Read the funnel chapter <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open the technical briefing <span class="arrow">↗</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="row">
+    <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
+    <div class="right">
+      <a href="./index.html">Home</a>
+      <a href="./funnel.html">Funnel</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>
