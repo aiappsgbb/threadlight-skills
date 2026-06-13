@@ -30,14 +30,10 @@
       <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
     </a>
   </div>
-  <nav class="nav" aria-label="Page sections">
+  <nav class="nav" aria-label="Site chapters">
     <a href="./funnel.html">Funnel</a>
-    <a href="#scene-chain">Chain</a>
-    <a href="#scene-prod-ready">Production-ready</a>
-    <a href="#scene-cost">Cost</a>
+    <a href="./production.html">Production-ready</a>
     <a href="./industries.html">Industries</a>
-    <a href="#scene-channels">Start here</a>
-    <a href="#scene-cta">Get started</a>
   </nav>
 </header>
 
@@ -371,81 +367,28 @@
   </section>
 
   <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
-  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:60px 0 56px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-    <style>
-      .pr-pillar-tag {
-        font-family: var(--mono); font-size: 12px; letter-spacing: .03em;
-        color: var(--ink-1); background: var(--bg-2);
-        border: 1px solid var(--line); border-radius: 99px;
-        padding: 7px 14px; white-space: nowrap;
-        transition: border-color .2s ease, color .2s ease;
-      }
-      .pr-pillar-tag:hover { border-color: var(--accent-1); color: var(--ink-0); }
-    </style>
+  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
     <div class="wrap">
 
-      <div class="copy reveal" style="text-align:center; max-width:780px; margin:0 auto 44px;">
+      <div class="copy reveal" style="text-align:center; max-width:820px; margin:0 auto 36px;">
         <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>Paved path to production</p>
         <h2 id="prod-ready-h" class="display" data-delay="1" style="margin-top:14px;">Green safe-check isn&rsquo;t <em>go-live.</em></h2>
         <p class="sub" data-delay="2" style="margin-top:20px;">
-          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em> &mdash; every selector landed, every channel reaches, no placeholder image. That is not the same as <em>ready for the customer architecture review</em>. Without an evidence-backed answer to <strong>"what posture is this in, what&rsquo;s missing, who owns each gap, can we go live with waivers?"</strong> &mdash; pilots quietly settle into the <strong style="color:var(--warn);">lab graveyard</strong>.
-        </p>
-        <p class="sub" data-delay="3" style="margin-top:14px;">
-          <code>threadlight-production-ready</code> produces that answer in one command &mdash; across <strong>three postures</strong> and <strong>thirteen cross-cutting pillars</strong>, soft-advisory (never fails a build), gracefully degrading to <code>not-verified</code> when Azure permissions are missing.
+          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em>. That isn&rsquo;t the same as <em>ready for the customer architecture review</em>. <code>threadlight-production-ready</code> closes that gap &mdash; <strong>three postures</strong>, <strong>thirteen pillars</strong>, one scorecard you can read in seven minutes.
         </p>
       </div>
 
-      <!-- 3 POSTURES -->
-      <p class="eyebrow reveal" data-delay="3" style="display:block; text-align:center; margin:0 auto 22px;"><span class="dot"></span>Three postures &middot; resolved from SPEC § 12</p>
-      <div class="pillars reveal" data-delay="4" style="margin-bottom:52px;">
-        <article class="pillar" style="border-color:var(--lime-soft);">
-          <span style="position:absolute; top:14px; left:18px; font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--lime); background:var(--lime-soft); padding:3px 10px; border-radius:99px;">Default</span>
-          <div class="pillar-num">01</div>
-          <div class="pillar-icon" style="background:var(--lime-soft); color:var(--lime); border-color:var(--lime-soft);">🛡️</div>
-          <h3>Citadel spoke</h3>
-          <p>Customer&rsquo;s <strong>AI Citadel hub</strong> fronts every model call via APIM &mdash; JWT, rate-limit, content filter, semantic cache, ledger. Pilot Foundry project is onboarded as a spoke; AGT in-process middleware enforces fine-grained policy inside the agent itself.</p>
-          <div class="ref">Two layers · APIM perimeter <code>+</code> AGT in-process</div>
-        </article>
-        <article class="pillar">
-          <div class="pillar-num">02</div>
-          <div class="pillar-icon">🧬</div>
-          <h3>AGT-only, in-process</h3>
-          <p>No central AI gateway. <a href="https://github.com/microsoft/agent-governance-toolkit" style="color:var(--accent-1);">Agent Governance Toolkit</a> (v4.1 preview, detected automatically) sits <strong>inside the agent process</strong> &mdash; 8&ndash;12 &micro;s/eval, hash-chained audit, OWASP-ASI evidence. Right for greenfield or experimental tenants.</p>
-          <div class="ref">One layer · in-process middleware only</div>
-        </article>
-        <article class="pillar">
-          <div class="pillar-num">03</div>
-          <div class="pillar-icon">🌐</div>
-          <h3>Standard AI gateway / VNet</h3>
-          <p>Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot <strong>conforms to the established gateway pattern</strong> rather than introducing Citadel mid-flight.</p>
-          <div class="ref">Conform to existing perimeter</div>
-        </article>
+      <div class="reveal" data-delay="3" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:980px; margin:0 auto 36px;">
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Citadel spoke &middot; default</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">AGT-only, in-process</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Standard gateway / VNet</span>
       </div>
 
-      <!-- 13 PILLAR PILLS -->
-      <p class="eyebrow reveal" data-delay="5" style="display:block; text-align:center; margin:0 auto 22px;"><span class="dot"></span>Thirteen pillars &middot; one scorecard</p>
-      <div class="reveal" data-delay="6" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:980px; margin:0 auto 44px;">
-        <span class="pr-pillar-tag">01 &middot; network-posture</span>
-        <span class="pr-pillar-tag">02 &middot; agent-governance</span>
-        <span class="pr-pillar-tag">03 &middot; identity-access</span>
-        <span class="pr-pillar-tag">04 &middot; secrets</span>
-        <span class="pr-pillar-tag">05 &middot; observability</span>
-        <span class="pr-pillar-tag">06 &middot; continuous-evals</span>
-        <span class="pr-pillar-tag">07 &middot; responsible-ai</span>
-        <span class="pr-pillar-tag">08 &middot; hitl-audit</span>
-        <span class="pr-pillar-tag">09 &middot; supply-chain</span>
-        <span class="pr-pillar-tag">10 &middot; cost</span>
-        <span class="pr-pillar-tag">11 &middot; reliability</span>
-        <span class="pr-pillar-tag">12 &middot; sre-handover</span>
-        <span class="pr-pillar-tag">13 &middot; model-lifecycle</span>
-      </div>
-
-      <!-- CTA -->
-      <div class="reveal" data-delay="7" style="text-align:center;">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" style="display:inline-block;">
-          Read the full production-readiness guide <span class="arrow">&rarr;</span>
+      <div class="reveal" data-delay="4" style="text-align:center;">
+        <a class="btn btn-primary" href="./production.html" style="display:inline-block;">
+          Read the full production-ready chapter <span class="arrow">&rarr;</span>
         </a>
-        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars &middot; status taxonomy &middot; when to invoke &middot; CLI cheatsheet</p>
+        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; soft-advisory &middot; never fails a build</p>
       </div>
 
     </div>

@@ -31,6 +31,18 @@ const pages = [
       { name: 'public',     anchor: '#industry-public' },
       { name: 'recap',      anchor: '#industry-recap' }
     ]
+  },
+  {
+    url:     'http://127.0.0.1:4173/production.html',
+    prefix:  'production',
+    targets: [
+      { name: 'hero',          anchor: '.chapter-hero' },
+      { name: 'triggers',      anchor: '#governance-triggers' },
+      { name: 'postures',      anchor: '#posture-overview' },
+      { name: 'theme-network', anchor: '#theme-network-identity' },
+      { name: 'theme-gov',     anchor: '#theme-governance-hitl' },
+      { name: 'recap',         anchor: '#chapter-recap' }
+    ]
   }
 ];
 const viewports = [

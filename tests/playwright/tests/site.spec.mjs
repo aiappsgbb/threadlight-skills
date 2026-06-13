@@ -178,20 +178,30 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(text).toContain('mcp');
   });
 
-  test('nav contains the new Funnel + Channels anchors and stays under 9 links', async ({ page }) => {
-    await page.goto(LANDING);
-    const links = page.locator('header.masthead nav.nav a');
-    const count = await links.count();
-    expect(count).toBeLessThanOrEqual(8);
-    const labels = await links.allTextContents();
-    expect(labels.join(' | ')).toMatch(/Funnel/);
-    expect(labels.join(' | ')).toMatch(/Start here/);
+  test('top nav is chapter pages only — no in-page anchors', async ({ page }) => {
+    for (const url of [LANDING, '/funnel.html', '/industries.html', '/production.html']) {
+      await page.goto(url);
+      const hrefs = await page.locator('header.masthead nav.nav a').evaluateAll(
+        els => els.map(e => e.getAttribute('href') || '')
+      );
+      expect(hrefs.length, `${url} nav should have at least 3 links`).toBeGreaterThanOrEqual(3);
+      expect(hrefs.length, `${url} nav should stay under 6 links`).toBeLessThanOrEqual(6);
+      for (const h of hrefs) {
+        expect(h, `${url}: nav link "${h}" should be a chapter page, not an in-page anchor`)
+          .toMatch(/^(\.\/)?(index|funnel|industries|production)\.html$/);
+      }
+      // Page link labels must include all 3 chapters
+      const labels = (await page.locator('header.masthead nav.nav a').allTextContents()).join(' | ');
+      expect(labels).toMatch(/Funnel/);
+      expect(labels).toMatch(/Production-ready/);
+      expect(labels).toMatch(/Industries/);
+    }
   });
 });
 
 test.describe('public-safety audit (no leaks of internal-only phrasing)', () => {
-  test('no obvious leak terms on landing, funnel, or industries', async ({ page }) => {
-    for (const path of [LANDING, '/funnel.html', '/industries.html']) {
+  test('no obvious leak terms on landing, funnel, industries, or production', async ({ page }) => {
+    for (const path of [LANDING, '/funnel.html', '/industries.html', '/production.html']) {
       await page.goto(path);
       const body = (await page.locator('body').textContent()) || '';
       const forbidden = [
@@ -229,18 +239,35 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('floating ToC auto-builds on all three pages with the right link count', async ({ page }) => {
+  test('production.html renders the chapter hero + posture overview + 4 themes + recap', async ({ page }) => {
+    await page.goto('/production.html');
+    await expect(page).toHaveTitle(/production/i);
+    await expect(page.locator('h1')).toContainText(/(green safe-check|production-ready|go-live)/i);
+    const sections = [
+      '#chapter-top',
+      '#posture-overview',
+      '#theme-network-identity',
+      '#theme-governance-hitl',
+      '#theme-ops-cost',
+      '#theme-lifecycle-handover',
+      '#chapter-recap',
+    ];
+    for (const id of sections) {
+      await expect(page.locator(id), `production section ${id} should exist`).toHaveCount(1);
+    }
+  });
+
+  test('floating ToC auto-builds on all chapter pages with the right link count', async ({ page }) => {
     const expectations = [
-      { url: LANDING,            min: 6 },
-      { url: '/funnel.html',     min: 6 },
-      { url: '/industries.html', min: 7 },
+      { url: LANDING,             min: 6 },
+      { url: '/funnel.html',      min: 6 },
+      { url: '/industries.html',  min: 7 },
+      { url: '/production.html',  min: 8 },
     ];
     for (const { url, min } of expectations) {
       await page.goto(url);
-      // wait for the JS to wire the ToC (we add .is-ready synchronously after build)
       const toc = page.locator('.floating-toc');
       await expect(toc, `${url} should have a floating-toc element`).toHaveCount(1);
-      // Trigger a small scroll so IntersectionObserver fires
       await page.evaluate(() => window.scrollTo(0, 1));
       await page.waitForFunction(() => document.querySelector('.floating-toc.is-ready') !== null, null, { timeout: 4000 });
       const links = toc.locator('a[data-toc-link]');
@@ -251,32 +278,31 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
 
   test('landing teasers point at the new deep pages', async ({ page }) => {
     await page.goto(LANDING);
-    // funnel steps now go to funnel.html
     const funnelHrefs = await page.locator('#scene-funnel .funnel-step').evaluateAll(
       els => els.map(e => e.getAttribute('href'))
     );
     for (const h of funnelHrefs) {
       expect(h).toMatch(/^\.\/funnel\.html#stage-/);
     }
-    // industries scene has a "Read the full chapter" link
     await expect(page.locator('#scene-industries a[href="./industries.html"]')).toHaveCount(1);
+    // production-ready scene now teases the production.html chapter
+    await expect(page.locator('#scene-prod-ready a[href="./production.html"]')).toHaveCount(1);
   });
 
   test('deep pages link back to home + each other', async ({ page }) => {
-    for (const url of ['/funnel.html', '/industries.html']) {
+    for (const url of ['/funnel.html', '/industries.html', '/production.html']) {
       await page.goto(url);
-      // brand link goes home
       await expect(page.locator('header.masthead .brand a[href="./index.html"]')).toHaveCount(1);
-      // nav has Home, Funnel, Industries
       const navText = (await page.locator('header.masthead nav.nav').textContent()) || '';
       expect(navText).toMatch(/Home/);
       expect(navText).toMatch(/Funnel/);
+      expect(navText).toMatch(/Production-ready/);
       expect(navText).toMatch(/Industries/);
     }
   });
 
   test('axe-core: no serious or critical a11y violations on deep pages', async ({ page }) => {
-    for (const url of ['/funnel.html', '/industries.html']) {
+    for (const url of ['/funnel.html', '/industries.html', '/production.html']) {
       await page.goto(url);
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa'])
