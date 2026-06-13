@@ -1,10 +1,11 @@
-// End-to-end checks for docs/ — landing + catalog + a11y.
+// End-to-end checks for docs/index.html (landing) — public release scope.
 // Numbers in the cost widget come from the v0.1.0 golden manifest.
+// The skills catalog page (docs/skills.html) is deliberately out of scope
+// for the initial release — it lives untracked under .gitignore.
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const LANDING = '/index.html';
-const SKILLS  = '/skills.html';
 
 test.describe('landing page (index.html)', () => {
   test('renders the hero + has working title', async ({ page }) => {
@@ -42,7 +43,7 @@ test.describe('landing page (index.html)', () => {
     await expect(cost.locator('.cost-savings-pill')).toContainText(/56\.38/);
     await expect(cost.locator('.cost-recs .cost-rec')).toHaveCount(3);
     await expect(cost.locator('.cost-table tbody tr')).toHaveCount(7);
-    await expect(cost.locator('a[href$="/skills.html#threadlight-consumption-iq"]')).toBeVisible();
+    await expect(cost.locator('a[href*="/skills/threadlight-consumption-iq"]').first()).toBeVisible();
   });
 
   test('all internal anchors resolve', async ({ page }) => {
@@ -76,56 +77,10 @@ test.describe('landing page (index.html)', () => {
   });
 });
 
-test.describe('catalog page (skills.html)', () => {
-  test('renders all 11 skill cards initially', async ({ page }) => {
-    await page.goto(SKILLS);
-    await expect(page).toHaveTitle(/skills catalog/i);
-    await expect(page.locator('#grid .card')).toHaveCount(11);
-    await expect(page.locator('#count-meta')).toContainText('Showing 11 of 11');
-  });
-
-  test('exposes consumption-iq as new', async ({ page }) => {
-    await page.goto(SKILLS);
-    const card = page.locator('#threadlight-consumption-iq');
-    await expect(card).toBeVisible();
-    await expect(card.locator('.card-version.is-new')).toContainText(/new/i);
-    await expect(card.locator('.card-link')).toHaveAttribute('href', /consumption-iq\/SKILL\.md$/);
-  });
-
-  test('phase filter narrows the grid', async ({ page }) => {
-    await page.goto(SKILLS);
-    await page.getByRole('button', { name: 'Cost' }).click();
-    await expect(page.locator('#grid .card')).toHaveCount(1);
-    await expect(page.locator('#count-meta')).toContainText('Showing 1 of 11');
-    await page.getByRole('button', { name: 'Cost' }).click();
-    await expect(page.locator('#grid .card')).toHaveCount(11);
-  });
-
-  test('search filter is case-insensitive and substring', async ({ page }) => {
-    await page.goto(SKILLS);
-    await page.getByLabel('Search skills').fill('cosmos');
-    await expect(page.locator('#grid .card').first()).toBeVisible();
-    const visible = await page.locator('#grid .card').count();
-    expect(visible).toBeGreaterThan(0);
-    expect(visible).toBeLessThan(11);
-    await page.getByLabel('Search skills').fill('completely-nonexistent-zzz');
-    await expect(page.locator('#grid .empty')).toBeVisible();
-  });
-
-  test('deep-link anchor scrolls to the right card', async ({ page }) => {
-    await page.goto(SKILLS + '#threadlight-consumption-iq');
-    const card = page.locator('#threadlight-consumption-iq');
-    await expect(card).toBeInViewport();
-  });
-
-  test('axe-core: no serious or critical a11y violations on catalog', async ({ page }) => {
-    await page.goto(SKILLS);
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast'])
-      .analyze();
-    const offenders = results.violations.filter(v => ['serious', 'critical'].includes(v.impact));
-    expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
+test.describe('catalog page (skills.html) — DEFERRED out of initial release', () => {
+  test.skip('the docs/skills.html catalog is intentionally not shipped yet; its prior tests live in git history', () => {
+    // The catalog page lives untracked under .gitignore and may come back in
+    // a follow-up release. Reinstate the prior describe block when it does.
   });
 });
 
@@ -218,8 +173,8 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
 });
 
 test.describe('public-safety audit (no leaks of internal-only phrasing)', () => {
-  test('no obvious leak terms anywhere on landing or catalog', async ({ page }) => {
-    for (const path of [LANDING, SKILLS]) {
+  test('no obvious leak terms anywhere on landing', async ({ page }) => {
+    for (const path of [LANDING]) {
       await page.goto(path);
       const body = (await page.locator('body').textContent()) || '';
       const forbidden = [
