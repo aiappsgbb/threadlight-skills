@@ -19,7 +19,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css">
 </head>
-<body class="chapter-page">
+<body class="chapter-page chapter-funnel">
 
 <header class="masthead">
   <div class="brand">
@@ -43,14 +43,37 @@
 
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap">
-      <p class="breadcrumb"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; The funnel</p>
-      <p class="eyebrow"><span class="dot"></span>Five named stages · one session</p>
-      <h1>From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h1>
-      <p class="lede">
+      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; The funnel</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Five named stages · one session</p>
+      <h1 class="reveal" data-delay="2">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h1>
+      <p class="lede reveal" data-delay="3">
         Every Threadlight engagement walks the same five-stage funnel. Each stage has
         its own skills, its own artefacts, and its own exit criteria. The skills do
         the heavy lifting; the seller stays in control of the conversation.
       </p>
+
+      <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Funnel at a glance">
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>5</em></span>
+          <span class="stat-label">named stages</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>7</em></span>
+          <span class="stat-label">skills along the way</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>1</em></span>
+          <span class="stat-label">session, end-to-end</span>
+        </div>
+      </div>
+
+      <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
+        <a href="#stage-conversation">01 · Conversation</a>
+        <a href="#stage-codesign">02 · Co-design</a>
+        <a href="#stage-deploy">03 · Deploy</a>
+        <a href="#stage-safecheck">04 · Safe-check</a>
+        <a href="#stage-production">05 · Production</a>
+      </nav>
     </div>
   </section>
 
@@ -139,6 +162,9 @@
           they have to commit to architecture or budget.</p>
         </div>
       </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Co-design skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-design</span> <span class="flag">--brief</span> <span class="str">"weekly cohort handover, EHR → CRM, banker reviews"</span>
+<span class="out">SPEC.md  &middot;  AGENTS.md  &middot;  scaffold/  &middot;  data/demo.jsonl  &middot;  evals/  ready in 3m12s</span></pre>
     </div>
   </section>
 
@@ -184,6 +210,10 @@
           inside the agent. The CISO reviews Bicep before anything ships.</p>
         </div>
       </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Deploy skill invocation"><span class="prompt">$</span><span class="cmd">azd up</span> <span class="cmt"># Bicep → Foundry project → Container Apps</span>
+<span class="prompt">$</span><span class="cmd">threadlight-deploy</span> <span class="flag">--phase</span> <span class="arg">smoke</span>
+<span class="out">tenant: contoso.onmicrosoft.com  &middot;  endpoint: https://agt-cohort.azurewebsites.net  &middot;  trace: ai-XXX</span></pre>
     </div>
   </section>
 
@@ -229,6 +259,9 @@
           not a Microsoft list price.</p>
         </div>
       </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Safe-check skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-safe-check</span> <span class="flag">--phase</span> <span class="arg">post-deploy</span> <span class="flag">--load</span> <span class="arg">800rpm</span>
+<span class="out">scorecard: 13 pillars  &middot;  3 not-verified  &middot;  cost-est: $1,940/mo (Standard) &rarr; $1,170/mo (DataZone)</span></pre>
     </div>
   </section>
 

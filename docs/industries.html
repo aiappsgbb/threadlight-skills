@@ -19,7 +19,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css">
 </head>
-<body class="chapter-page">
+<body class="chapter-page chapter-industries">
 
 <header class="masthead">
   <div class="brand">
@@ -43,15 +43,39 @@
 
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap">
-      <p class="breadcrumb"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Industries</p>
-      <p class="eyebrow"><span class="dot"></span>One pattern · six sectors</p>
-      <h1>Six industries. <em>One pattern.</em></h1>
-      <p class="lede">
+      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Industries</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>One pattern · six sectors</p>
+      <h1 class="reveal" data-delay="2">Six industries. <em>One pattern.</em></h1>
+      <p class="lede reveal" data-delay="3">
         The same five-stage funnel ships agents across regulated and
         unregulated industries. The skills do not change &mdash; the
         SPEC does. Below: one representative pilot per sector we work in,
         with the skills it leans on and the talk track that opens the door.
       </p>
+
+      <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Industries at a glance">
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>6</em></span>
+          <span class="stat-label">sectors covered</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>1</em></span>
+          <span class="stat-label">pattern, reused</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>0</em></span>
+          <span class="stat-label">bespoke skills per sector</span>
+        </div>
+      </div>
+
+      <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
+        <a href="#industry-fsi">🏦 Financial</a>
+        <a href="#industry-healthcare">🏥 Healthcare</a>
+        <a href="#industry-mfg">🏭 Manufacturing</a>
+        <a href="#industry-retail">🛒 Retail</a>
+        <a href="#industry-telco">📡 Telco</a>
+        <a href="#industry-public">🏛️ Public sector</a>
+      </nav>
     </div>
   </section>
 
@@ -93,6 +117,9 @@
           same session.&rdquo;</em></p>
         </div>
       </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="FSI brief example"><span class="prompt">$</span><span class="cmd">threadlight-auto</span> <span class="flag">--brief</span> <span class="str">"claims triage, complexity score 1-5, HITL above 4"</span> <span class="flag">--industry</span> <span class="arg">fsi</span>
+<span class="out">SPEC + scaffold + 240 synthetic claims + 12 eval cases  &middot;  ready in 4m02s</span></pre>
     </div>
   </section>
 

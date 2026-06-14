@@ -1723,8 +1723,22 @@
     padding: 120px 0 56px;
     text-align: center;
     background:
-      radial-gradient(60% 80% at 50% 0%, rgba(79,109,255,.10), transparent 70%);
+      radial-gradient(60% 80% at 50% 0%, var(--chapter-accent-glow, rgba(79,109,255,.10)), transparent 70%);
+    position: relative;
+    overflow: hidden;
   }
+  .chapter-hero::after {
+    content: '';
+    position: absolute; inset: -10%;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .chapter-hero > .wrap { position: relative; z-index: 1; }
   .chapter-hero .eyebrow { justify-content: center; }
   .chapter-hero h1 {
     font-family: var(--serif);
@@ -1736,7 +1750,7 @@
     margin: 14px auto 18px;
     max-width: 860px;
   }
-  .chapter-hero h1 em { font-style: italic; color: var(--accent-1); }
+  .chapter-hero h1 em { font-style: italic; color: var(--chapter-accent, var(--accent-1)); }
   .chapter-hero .lede {
     max-width: 720px;
     margin: 0 auto;
@@ -1757,16 +1771,57 @@
     text-decoration: none;
     border-bottom: 1px solid transparent;
   }
-  .chapter-hero .breadcrumb a:hover { color: var(--ink-0); border-bottom-color: var(--accent-1); }
+  .chapter-hero .breadcrumb a:hover { color: var(--ink-0); border-bottom-color: var(--chapter-accent, var(--accent-1)); }
+
+  /* ----- "In this chapter" inline mini-ToC under the hero lede ----- */
+  .chapter-toc-inline {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    justify-content: center;
+    margin: 32px auto 0;
+    max-width: 760px;
+  }
+  .chapter-toc-inline a {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-1);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 99px;
+    padding: 7px 14px;
+    text-decoration: none;
+    transition: border-color .18s ease, color .18s ease, background .18s ease;
+  }
+  .chapter-toc-inline a:hover {
+    border-color: var(--chapter-accent, var(--accent-1));
+    color: var(--ink-0);
+    background: var(--bg-3);
+  }
 
   .chapter-section {
-    padding: 56px 0;
+    padding: 64px 0;
     border-top: 1px solid var(--line);
+    position: relative;
   }
   .chapter-section:first-of-type { border-top: 0; }
+  /* alternating section bands */
+  .chapter-section:nth-of-type(even) { background: var(--bg-1); }
+  /* small accent rail at the start of each section */
   .chapter-section .section-head {
     max-width: 780px;
     margin: 0 0 28px;
+    position: relative;
+    padding-left: 18px;
+  }
+  .chapter-section .section-head::before {
+    content: '';
+    position: absolute;
+    top: 6px; left: 0;
+    width: 3px; height: calc(100% - 8px);
+    background: var(--chapter-accent, var(--accent-1));
+    border-radius: 2px;
+    opacity: .75;
   }
   .chapter-section h2 {
     font-family: var(--serif);
@@ -1777,7 +1832,7 @@
     color: var(--ink-0);
     margin: 6px 0 12px;
   }
-  .chapter-section h2 em { font-style: italic; color: var(--accent-1); }
+  .chapter-section h2 em { font-style: italic; color: var(--chapter-accent, var(--accent-1)); }
   .chapter-section .section-lede {
     color: var(--ink-1);
     font-size: 1.02rem;
@@ -1857,4 +1912,118 @@
     body.chapter-page .chapter-hero    .wrap {
       padding-right: 240px;
     }
+  }
+
+  /* ============================================================
+     PER-CHAPTER ACCENT THEMES
+     ------------------------------------------------------------
+     Each chapter page gets a body class that flips one custom
+     property. Everything that uses --chapter-accent picks it up
+     for free (hero em, section h2 em, section head rail, stat
+     num em, code-callout left border, inline ToC hover).
+     ============================================================ */
+  body.chapter-funnel {
+    --chapter-accent:      var(--accent-1);
+    --chapter-accent-glow: rgba(110,135,255,.14);
+  }
+  body.chapter-production {
+    --chapter-accent:      var(--lime);
+    --chapter-accent-glow: rgba(168,255,96,.14);
+  }
+  body.chapter-industries {
+    --chapter-accent:      var(--warn);
+    --chapter-accent-glow: rgba(255,184,74,.14);
+  }
+
+  /* ============================================================
+     STAT STRIP — large numbers + tiny labels, sits under each
+     chapter hero as the at-a-glance landmark.
+     ============================================================ */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 28px;
+    max-width: 760px;
+    margin: 40px auto 0;
+    padding: 26px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .stat-strip .stat { text-align: center; }
+  .stat-strip .stat-num {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 3.4vw, 2.8rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -.01em;
+    color: var(--ink-0);
+    display: block;
+  }
+  .stat-strip .stat-num em {
+    font-style: italic;
+    color: var(--chapter-accent, var(--accent-1));
+  }
+  .stat-strip .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin-top: 8px;
+    display: block;
+  }
+  @media (prefers-color-scheme: light) {
+    .stat-strip { border-color: #d4dae7; }
+    .stat-strip .stat-label { color: #5f6680; }
+  }
+
+  /* ============================================================
+     CODE CALLOUT — terminal-style block for skill invocations.
+     Lives inside .chapter-section content alongside detail-grid.
+     ============================================================ */
+  .code-callout {
+    margin: 22px 0 0;
+    padding: 18px 22px;
+    background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--chapter-accent, var(--accent-1));
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--ink-1);
+    overflow-x: auto;
+  }
+  .code-callout .prompt {
+    color: var(--ink-3);
+    user-select: none;
+    margin-right: 8px;
+  }
+  .code-callout .cmd   { color: var(--ink-0); }
+  .code-callout .flag  { color: var(--chapter-accent, var(--accent-1)); }
+  .code-callout .arg   { color: var(--ink-1); }
+  .code-callout .str   { color: var(--lime-1); }
+  .code-callout .cmt   { color: var(--ink-3); }
+  .code-callout .out   {
+    display: block;
+    color: var(--ink-2);
+    padding-left: 0;
+    margin-top: 4px;
+  }
+  .code-callout .out::before {
+    content: '↳ ';
+    color: var(--ink-3);
+    margin-right: 4px;
+  }
+  @media (prefers-color-scheme: light) {
+    .code-callout {
+      background: linear-gradient(180deg, #f0f2f8 0%, #ffffff 100%);
+      border-color: #d4dae7;
+      color: #2b3146;
+    }
+    .code-callout .cmd { color: #0a0d14; }
+    .code-callout .arg { color: #2b3146; }
+    .code-callout .str { color: #2f7a1a; }
+    .code-callout .cmt { color: #828aa4; }
+    .code-callout .out { color: #4a5168; }
   }

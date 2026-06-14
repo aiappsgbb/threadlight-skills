@@ -312,4 +312,28 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       expect(offenders, `${url}\n${JSON.stringify(offenders, null, 2)}`).toEqual([]);
     }
   });
+
+  test('chapter visual toolkit: stat-strip, inline ToC, and code-callout render on each chapter', async ({ page }) => {
+    const pages = [
+      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 5, minCallouts: 1 },
+      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 6, minCallouts: 1 },
+      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 6, minCallouts: 1 },
+    ];
+    for (const p of pages) {
+      await page.goto(p.url);
+      const bodyClass = await page.locator('body').getAttribute('class');
+      expect(bodyClass, `${p.url} body class`).toContain(p.bodyClass);
+      const statStrip = page.locator('.chapter-hero .stat-strip');
+      await expect(statStrip, `${p.url} has stat-strip in hero`).toHaveCount(1);
+      const stats = page.locator('.chapter-hero .stat-strip .stat');
+      const statCount = await stats.count();
+      expect(statCount, `${p.url} stat count`).toBeGreaterThanOrEqual(3);
+      const tocLinks = page.locator('.chapter-hero .chapter-toc-inline a');
+      const tocCount = await tocLinks.count();
+      expect(tocCount, `${p.url} inline ToC link count`).toBeGreaterThanOrEqual(p.minTocLinks);
+      const callouts = page.locator('.code-callout');
+      const calloutCount = await callouts.count();
+      expect(calloutCount, `${p.url} code-callout count`).toBeGreaterThanOrEqual(p.minCallouts);
+    }
+  });
 });

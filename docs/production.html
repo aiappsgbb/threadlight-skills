@@ -19,7 +19,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css">
 </head>
-<body class="chapter-page">
+<body class="chapter-page chapter-production">
 
 <header class="masthead">
   <div class="brand">
@@ -43,10 +43,10 @@
 
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap">
-      <p class="breadcrumb"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
-      <p class="eyebrow"><span class="dot"></span>Three postures &middot; thirteen pillars &middot; one scorecard</p>
-      <h1>Green safe-check isn&rsquo;t <em>go-live.</em></h1>
-      <p class="lede">
+      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Three postures &middot; thirteen pillars &middot; one scorecard</p>
+      <h1 class="reveal" data-delay="2">Green safe-check isn&rsquo;t <em>go-live.</em></h1>
+      <p class="lede reveal" data-delay="3">
         A pilot that passes <code>threadlight-safe-check --phase post-deploy</code>
         is <em>structurally complete</em>: every selector landed, every channel
         reaches, no placeholder image. That is not the same as
@@ -55,7 +55,7 @@
         &ldquo;what posture is this in, what&rsquo;s missing, who owns each
         gap, can we go live with waivers?&rdquo;
       </p>
-      <p class="lede" style="margin-top:16px; color:var(--ink-2); font-size:.98rem;">
+      <p class="lede reveal" data-delay="4" style="margin-top:16px; color:var(--ink-2); font-size:.98rem;">
         <code>threadlight-production-ready</code> produces the answer in one
         command &mdash; <strong>soft-advisory</strong> (never fails a build),
         <strong>graceful</strong> when Azure permissions are partial
@@ -63,6 +63,30 @@
         <strong>posture-aware</strong> (it doesn&rsquo;t recommend Citadel
         if the customer is on a brownfield gateway).
       </p>
+
+      <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>3</em></span>
+          <span class="stat-label">postures</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>13</em></span>
+          <span class="stat-label">pillars, 4 themes</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>7</em><span style="font-size:.6em;color:var(--ink-2);">m</span></span>
+          <span class="stat-label">to read end-to-end</span>
+        </div>
+      </div>
+
+      <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
+        <a href="#governance-triggers">When to graduate</a>
+        <a href="#posture-overview">3 postures</a>
+        <a href="#theme-network-identity">Theme A</a>
+        <a href="#theme-governance-hitl">Theme B</a>
+        <a href="#theme-ops-cost">Theme C</a>
+        <a href="#theme-lifecycle-handover">Theme D</a>
+      </nav>
     </div>
   </section>
 
@@ -147,10 +171,11 @@
           <p>If detection finds an existing APIM-Foundry binding, posture 03 wins regardless of what the SPEC says.</p>
         </div>
       </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Production-ready skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-production-ready</span> <span class="flag">--posture</span> <span class="arg">auto</span> <span class="flag">--load</span> <span class="arg">800rpm</span>
+<span class="out">posture: citadel-spoke (detected via APIM binding)  &middot;  pillars: 10 verified, 3 not-verified  &middot;  ready in 6m44s</span></pre>
     </div>
   </section>
-
-  <!-- =================== THEME 1 · NETWORK & IDENTITY =================== -->
 
   <section class="chapter-section" id="theme-network-identity" data-toc-id="theme-network-identity" data-toc-label="Theme A &middot; Network &amp; identity">
     <div class="wrap">
