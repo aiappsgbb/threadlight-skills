@@ -6,8 +6,9 @@ const pages = [
     prefix:  'landing',
     targets: [
       { name: 'hero',       anchor: '#scene-hero' },
-      { name: 'evo',        anchor: '.evolution-band' },
+      { name: 'show',       anchor: '#scene-show' },
       { name: 'funnel',     anchor: '#scene-funnel' },
+      { name: 'posters',    anchor: '#scene-posters' },
       { name: 'industries', anchor: '#scene-industries' },
       { name: 'channels',   anchor: '#scene-channels' }
     ]
@@ -18,8 +19,8 @@ const pages = [
     targets: [
       { name: 'hero',         anchor: '.chapter-hero' },
       { name: 'ladder',       anchor: '#stage-ladder' },
-      { name: 'conversation', anchor: '#stage-conversation' },
-      { name: 'safecheck',    anchor: '#stage-safecheck' },
+      { name: 'show',         anchor: '#stage-show' },
+      { name: 'glance',       anchor: '#stage-glance' },
       { name: 'recap',        anchor: '#stage-recap' }
     ]
   },
@@ -29,8 +30,7 @@ const pages = [
     targets: [
       { name: 'hero',       anchor: '.chapter-hero' },
       { name: 'grid',       anchor: '#sector-grid' },
-      { name: 'fsi',        anchor: '#industry-fsi' },
-      { name: 'public',     anchor: '#industry-public' },
+      { name: 'spec',       anchor: '#ind-spec' },
       { name: 'recap',      anchor: '#industry-recap' }
     ]
   },
@@ -40,10 +40,8 @@ const pages = [
     targets: [
       { name: 'hero',          anchor: '.chapter-hero' },
       { name: 'triggers',      anchor: '#governance-triggers' },
-      { name: 'triptych',      anchor: '.poster-triptych' },
       { name: 'postures',      anchor: '#posture-overview' },
-      { name: 'theme-network', anchor: '#theme-network-identity' },
-      { name: 'theme-gov',     anchor: '#theme-governance-hitl' },
+      { name: 'scorecard',     anchor: '#prod-scorecard' },
       { name: 'recap',         anchor: '#chapter-recap' }
     ]
   }

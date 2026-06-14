@@ -52,6 +52,27 @@
   }
 
   // ---------------------------------------------------------------
+  // 2b · terminal cards: start the typing animation when in view
+  // ---------------------------------------------------------------
+  function wireTerminalTyping() {
+    const els = document.querySelectorAll('.terminal-card[data-typing]');
+    if (!els.length) return;
+    if (isReducedMotion() || !('IntersectionObserver' in window)) {
+      els.forEach(el => el.classList.add('is-typing'));
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add('is-typing');
+          io.unobserve(e.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -15% 0px', threshold: 0.25 });
+    els.forEach(el => io.observe(el));
+  }
+
+  // ---------------------------------------------------------------
   // 3 · animated counters for KPI / proof tiles
   //    `data-to` is the target integer; `data-suffix` is optional.
   // ---------------------------------------------------------------
@@ -263,6 +284,7 @@
     wireChainProgress();
     wireSmoothScroll();
     wireFloatingToc();
+    wireTerminalTyping();
     if (isReducedMotion()) {
       // Skip word-by-word hero animation; reveal immediately
       document.querySelectorAll('.hero-headline .word').forEach(w => w.classList.add('in'));

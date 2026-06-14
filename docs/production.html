@@ -86,10 +86,8 @@
       <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
         <a href="#governance-triggers">When to graduate</a>
         <a href="#posture-overview">3 postures</a>
-        <a href="#theme-network-identity">Theme A</a>
-        <a href="#theme-governance-hitl">Theme B</a>
-        <a href="#theme-ops-cost">Theme C</a>
-        <a href="#theme-lifecycle-handover">Theme D</a>
+        <a href="#prod-scorecard">The scorecard</a>
+        <a href="#chapter-recap">Recap</a>
       </nav>
     </div>
   </section>
@@ -221,135 +219,53 @@
     </div>
   </section>
 
-  <section class="chapter-section" id="theme-network-identity" data-toc-id="theme-network-identity" data-toc-label="Theme A &middot; Network &amp; identity">
+  <section class="chapter-section" id="prod-scorecard" data-toc-id="prod-scorecard" data-toc-label="The scorecard">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Pillars 01 &middot; 03 &middot; 04 &middot; 09</p>
-        <h2>Theme A &mdash; <em>network &amp; identity.</em></h2>
+        <p class="eyebrow"><span class="dot"></span>One artefact</p>
+        <h2>The scorecard &mdash; <em>what you take to ARB.</em></h2>
         <p class="section-lede">
-          The perimeter and the keys. The customer&rsquo;s NetSec team owns
-          most of this; our job is to surface evidence the agent respects
-          their boundaries, not to invent new ones.
+          Thirteen pillars. Three colours. One PDF. The customer&rsquo;s
+          architecture review board reads it in five minutes.
         </p>
       </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>01 &middot; Network posture</h3>
-          <p>Public endpoint vs. private endpoint vs. VNet injection &mdash; detected, not declared. We verify the Foundry project&rsquo;s ingress matches what the SPEC says it should be, and surface a delta if the team shipped a public IP to &ldquo;just unblock the demo.&rdquo;</p>
-        </div>
-        <div class="detail-card">
-          <h3>03 &middot; Identity &amp; access</h3>
-          <p>Managed identity, RBAC scope, Entra app registration, group membership. We list every role binding on the Foundry project and flag anything broader than the SPEC&rsquo;s declared scope (e.g. <code>Owner</code> where <code>Cognitive Services User</code> would do).</p>
-        </div>
-        <div class="detail-card">
-          <h3>04 &middot; Secrets</h3>
-          <p>Key Vault references vs. inline strings. Connection strings, API keys, function keys &mdash; all checked against the Vault registry. Inline material is flagged with the exact file:line so the fix is a 30-second edit, not a hunt.</p>
-        </div>
-        <div class="detail-card">
-          <h3>09 &middot; Supply chain</h3>
-          <p>NuGet / pip / npm versions, container base image digest, SBOM presence. Tied to <code>threadlight-deploy</code>&rsquo;s build manifest, so &ldquo;what shipped&rdquo; matches &ldquo;what we evaluated.&rdquo; If the manifest is missing, the pillar reports <code>not-verified</code> &mdash; never green.</p>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- =================== THEME 2 · GOVERNANCE & HITL =================== -->
+      <article class="scorecard-preview reveal">
+        <header class="sc-header">
+          <p class="sc-title">scorecard.pdf</p>
+          <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
+          <p class="sc-posture">Posture &mdash; <strong>Citadel spoke</strong> (perimeter &amp; core)</p>
+        </header>
 
-  <section class="chapter-section" id="theme-governance-hitl" data-toc-id="theme-governance-hitl" data-toc-label="Theme B &middot; Governance &amp; HITL">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Pillars 02 &middot; 06 &middot; 07 &middot; 08</p>
-        <h2>Theme B &mdash; <em>governance &amp; human-in-the-loop.</em></h2>
-        <p class="section-lede">
-          The agent&rsquo;s behaviour, evaluated and witnessed. This is where
-          the AI safety conversation lives &mdash; not in slides, in evidence.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>02 &middot; Agent governance</h3>
-          <p>AGT policy bundle present, signed, and loaded by the runtime. Hash-chained audit log emitting to the customer&rsquo;s sink. OWASP-ASI evidence pack generated &mdash; not as a PDF, as a queryable table.</p>
+        <div class="sc-grid">
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">01</span><span class="sc-name">Network posture</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">02</span><span class="sc-name">Agent governance</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">03</span><span class="sc-name">Identity & access</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">04</span><span class="sc-name">Secrets</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">05</span><span class="sc-name">Observability</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">Continuous evals</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">07</span><span class="sc-name">Responsible AI</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">08</span><span class="sc-name">HITL & audit</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">09</span><span class="sc-name">Supply chain</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">10</span><span class="sc-name">Cost</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">11</span><span class="sc-name">Reliability</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">12</span><span class="sc-name">SRE hand-over</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">13</span><span class="sc-name">Model lifecycle</span></div>
         </div>
-        <div class="detail-card">
-          <h3>06 &middot; Continuous evals</h3>
-          <p>Eval suite wired in CI <em>and</em> in the deployed runtime &mdash; sampled, not full-firehose. Pass / fail bands per metric, escalation when a band breaks. We surface the last 7 days of eval results next to the readiness scorecard.</p>
-        </div>
-        <div class="detail-card">
-          <h3>07 &middot; Responsible AI</h3>
-          <p>Content filters configured per channel, jailbreak / prompt-injection coverage in the eval suite, refusal patterns tested against the customer&rsquo;s named edge cases. Linked to <code>threadlight-safe-check --responsible-ai</code>.</p>
-        </div>
-        <div class="detail-card">
-          <h3>08 &middot; HITL &amp; audit</h3>
-          <p>For every high-risk action class declared in the SPEC, a human approval path exists, is enabled, and has been exercised at least once. The audit log shows who approved, when, and on what evidence.</p>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- =================== THEME 3 · OPS & COST =================== -->
+        <footer class="sc-footer">
+          <p class="sc-legend">
+            <span class="sc-dot is-green"></span> verified &middot;
+            <span class="sc-dot is-amber"></span> waiver with owner &middot;
+            <span class="sc-dot is-grey"></span> out of scope
+          </p>
+          <p class="sc-take">ARB take: <strong>ship with 3 waivers</strong>, owners named on page 2.</p>
+        </footer>
+      </article>
 
-  <section class="chapter-section" id="theme-ops-cost" data-toc-id="theme-ops-cost" data-toc-label="Theme C &middot; Operations &amp; cost">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Pillars 05 &middot; 10 &middot; 11</p>
-        <h2>Theme C &mdash; <em>operations &amp; cost.</em></h2>
-        <p class="section-lede">
-          What does it cost to keep running, and how do you know when it
-          breaks? The boring questions that decide whether the pilot makes
-          it to month three.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>05 &middot; Observability</h3>
-          <p>Trace context propagation through every hop (Studio &rarr; agent &rarr; tool &rarr; data). Log Analytics workspace wired and emitting. Dashboards seeded so day-one operators don&rsquo;t have to build them. Alert rules attached to the SLOs declared in the SPEC.</p>
-        </div>
-        <div class="detail-card">
-          <h3>10 &middot; Cost</h3>
-          <p>Hooked into <code>threadlight-consumption-iq</code> &mdash; current monthly spend, projected at the SPEC&rsquo;s declared load, cheaper-SKU recommendations with quality-impact tags. Surfaces the cost delta of a posture change (e.g. &ldquo;moving to gpt-4.1-mini saves $56/mo, eval delta &le; 1.2%&rdquo;).</p>
-        </div>
-        <div class="detail-card">
-          <h3>11 &middot; Reliability</h3>
-          <p>Region pair declared, fail-over runbook exists, throttling policy tested. Retry-with-backoff in the agent harness. We verify the runbook by walking it &mdash; not by checking it&rsquo;s present.</p>
-        </div>
-        <div class="detail-card">
-          <h3>What we don&rsquo;t do here</h3>
-          <p>We don&rsquo;t replace the customer&rsquo;s SRE team or their existing tooling. If they run Datadog, our hooks write OTLP and stop. If they run Azure Monitor end-to-end, we use it natively. The pillar reports posture and conformance, not opinions.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- =================== THEME 4 · LIFECYCLE & HANDOVER =================== -->
-
-  <section class="chapter-section" id="theme-lifecycle-handover" data-toc-id="theme-lifecycle-handover" data-toc-label="Theme D &middot; Lifecycle &amp; handover">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Pillars 12 &middot; 13</p>
-        <h2>Theme D &mdash; <em>lifecycle &amp; handover.</em></h2>
-        <p class="section-lede">
-          The pilot that nobody owns is the pilot that quietly dies. These
-          two pillars are about the boring moment when GBB walks out and
-          the customer&rsquo;s engineering team walks in.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>12 &middot; SRE hand-over</h3>
-          <p>Named on-call. Runbook in <em>their</em> repo, not ours. Alert routing into <em>their</em> paging system. The hand-over pack from <code>threadlight-deploy</code> includes an evidence bundle the customer&rsquo;s SRE lead can sign off without a call to us.</p>
-        </div>
-        <div class="detail-card">
-          <h3>13 &middot; Model lifecycle</h3>
-          <p>Pinned model version, declared deprecation cadence, rehearsed model-swap procedure. When OpenAI ships a new minor, we have an answer for &ldquo;do we adopt, and what&rsquo;s the eval delta?&rdquo; ready before the customer asks.</p>
-        </div>
-        <div class="detail-card">
-          <h3>How we keep this honest</h3>
-          <p>The pack is generated, not authored. If a hand-over field is empty, it&rsquo;s empty &mdash; we don&rsquo;t auto-fill plausible text. The customer&rsquo;s ops lead can tell from the pack alone whether anyone actually walked the runbook.</p>
-        </div>
-        <div class="detail-card">
-          <h3>The graveyard heuristic</h3>
-          <p>If <code>threadlight-production-ready</code> can&rsquo;t produce a one-page scorecard the customer&rsquo;s architecture-review board accepts on the spot, the pilot is in the lab graveyard &mdash; even if every other pillar is green.</p>
-        </div>
+      <div class="read-deeper">
+        <span class="rd-label">All 13 pillars, deeply explained:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
       </div>
     </div>
   </section>

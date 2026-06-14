@@ -73,11 +73,9 @@
 
       <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
         <a href="#stage-ladder">⬚ The ladder</a>
-        <a href="#stage-conversation">01 · Conversation</a>
-        <a href="#stage-codesign">02 · Co-design</a>
-        <a href="#stage-deploy">03 · Deploy</a>
-        <a href="#stage-safecheck">04 · Safe-check</a>
-        <a href="#stage-production">05 · Production</a>
+        <a href="#stage-show">See it run</a>
+        <a href="#stage-glance">Stages at a glance</a>
+        <a href="#stage-recap">Recap</a>
       </nav>
     </div>
   </section>
@@ -232,239 +230,81 @@
     </div>
   </section>
 
-  <section class="chapter-section" id="stage-conversation" data-toc-id="stage-conversation" data-toc-label="01 · Conversation">
+  <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="See it run">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Stage 01</p>
-        <h2>Conversation &mdash; <em>describe the process.</em></h2>
+        <p class="eyebrow"><span class="dot"></span>See it run</p>
+        <h2>One prompt &mdash; <em>the whole chain.</em></h2>
         <p class="section-lede">
-          A plain-language brief from the seller or customer SME. No template,
-          no questionnaire. Just enough fidelity that a coding agent can start
-          drafting a spec.
+          Skills fire in sequence. Each one produces evidence.
+          Below is one real session, shortened for the read.
         </p>
       </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What ships</h3>
-          <ul>
-            <li>Conversation transcript (markdown)</li>
-            <li>Draft problem statement</li>
-            <li>Inferred actors + data sources</li>
-            <li>First-cut success criteria</li>
-          </ul>
+
+      <article class="terminal-card reveal" data-typing>
+        <div class="term-bar">
+          <div class="term-dots"><span></span><span></span><span></span></div>
+          <p class="term-title">~/customer/claims-triage &mdash; threadlight</p>
         </div>
-        <div class="detail-card">
-          <h3>Skills used</h3>
-          <p><code>threadlight-auto</code> · <code>threadlight-design</code></p>
-          <p>The first hands the seller a guided structure; the second turns
-          the conversation into a versioned SPEC.</p>
+<pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">$</span><span class="cmd">threadlight-design</span> <span class="arg">"Inbound claims, regulator-exposed, route by complexity"</span></span>
+<span class="term-line"><span class="out">threadlight-design   wrote SPEC.md (12 sections, 4 HITL gates)</span></span>
+<span class="term-line"><span class="prompt">$</span><span class="cmd">threadlight-auto</span> <span class="flag">--from-spec</span> <span class="arg">SPEC.md</span></span>
+<span class="term-line"><span class="out">threadlight-demo-data-factory   produced 240 synthetic claims (3 personas)</span></span>
+<span class="term-line"><span class="out">threadlight-agt                 generated agent runbook (Bicep + Container Apps Job)</span></span>
+<span class="term-line"><span class="out">threadlight-deploy              deployed to customer subscription &mdash; agent responding in 41s</span></span>
+<span class="term-line"><span class="out">threadlight-safe-check          10 pillars scored &mdash; 8 green, 2 amber-with-waiver</span></span>
+<span class="term-line"><span class="out">threadlight-production-ready    scorecard.pdf ready for ARB</span></span>
+<span class="term-line"><span class="prompt">$</span> <span class="cmt"># one session, 7 skills, the customer owns the repo<span class="caret"></span></span></span></pre>
+      </article>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="stage-glance" data-toc-id="stage-glance" data-toc-label="Five stages at a glance">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Five stages at a glance</p>
+        <h2>Each stage <em>names its exit.</em></h2>
+        <p class="section-lede">
+          When a stage closes, the seller and the customer agree on
+          what just shipped before the next stage opens.
+        </p>
+      </div>
+
+      <div class="stage-glance">
+        <div class="gl-step reveal" data-delay="1">
+          <span class="gl-num">Stage 01</span>
+          <p class="gl-name">Conversation</p>
+          <p class="gl-exit"><strong>Exits with</strong> a versioned SPEC.md the customer signs.</p>
         </div>
-        <div class="detail-card">
-          <h3>Exit criteria</h3>
-          <ul>
-            <li>Process scope is named in one paragraph</li>
-            <li>Inputs / outputs are explicit</li>
-            <li>Regulator / data class is acknowledged</li>
-          </ul>
+        <div class="gl-step reveal" data-delay="2">
+          <span class="gl-num">Stage 02</span>
+          <p class="gl-name">Co-design</p>
+          <p class="gl-exit"><strong>Exits with</strong> agent contract + synthetic dataset on the seller&rsquo;s laptop.</p>
         </div>
-        <div class="detail-card">
-          <h3>What it is <em>not</em></h3>
-          <p>It is not a discovery workshop. The seller does not need a
-          slideware deck before the customer sees the agent run.</p>
+        <div class="gl-step reveal" data-delay="3">
+          <span class="gl-num">Stage 03</span>
+          <p class="gl-name">Deploy</p>
+          <p class="gl-exit"><strong>Exits with</strong> the agent live in the customer&rsquo;s Azure subscription.</p>
         </div>
+        <div class="gl-step reveal" data-delay="4">
+          <span class="gl-num">Stage 04</span>
+          <p class="gl-name">Safe-check</p>
+          <p class="gl-exit"><strong>Exits with</strong> a 10-pillar scorecard + per-amber waiver owners.</p>
+        </div>
+        <div class="gl-step reveal" data-delay="5">
+          <span class="gl-num">Stage 05</span>
+          <p class="gl-name">Production</p>
+          <p class="gl-exit"><strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</p>
+        </div>
+      </div>
+
+      <div class="read-deeper">
+        <span class="rd-label">Want the deep read?</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
       </div>
     </div>
   </section>
 
-  <section class="chapter-section" id="stage-codesign" data-toc-id="stage-codesign" data-toc-label="02 · Co-design">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Stage 02</p>
-        <h2>Co-design &mdash; <em>spec &amp; scaffold.</em></h2>
-        <p class="section-lede">
-          The brief becomes a working agent on the seller's laptop. SPEC.md,
-          AGENTS.md, an eval dataset, and a demo-data factory &mdash; generated
-          in-session by the coding agent.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What ships</h3>
-          <ul>
-            <li><code>SPEC.md</code> &mdash; versioned process spec</li>
-            <li><code>AGENTS.md</code> &mdash; agent contract</li>
-            <li>Agent code scaffold (Python/Node)</li>
-            <li>Synthetic demo data + eval dataset</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Skills used</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-demo-data-factory</code></p>
-          <p>Design owns the spec/scaffold loop. Demo-data-factory invents
-          customer-shaped data so the agent runs from minute one.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Exit criteria</h3>
-          <ul>
-            <li>Agent runs locally against demo data</li>
-            <li>Spec passes its own self-review</li>
-            <li>Eval cases cover the happy path + 1 HITL gate</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Why it matters</h3>
-          <p>The customer sees the agent move, in their domain, before
-          they have to commit to architecture or budget.</p>
-        </div>
-      </div>
-
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Co-design skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-design</span> <span class="flag">--brief</span> <span class="str">"weekly cohort handover, EHR → CRM, banker reviews"</span>
-<span class="out">SPEC.md  &middot;  AGENTS.md  &middot;  scaffold/  &middot;  data/demo.jsonl  &middot;  evals/  ready in 3m12s</span></pre>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="stage-deploy" data-toc-id="stage-deploy" data-toc-label="03 · Deploy">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Stage 03</p>
-        <h2>Deploy &mdash; <em>land on your Azure.</em></h2>
-        <p class="section-lede">
-          Bicep + <code>azd up</code> to the customer's subscription.
-          Managed Identity, App Insights, and the AI Citadel gateway wired
-          from day zero. No service principals; no shared secrets.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What ships</h3>
-          <ul>
-            <li>Bicep modules per Azure resource</li>
-            <li><code>azure.yaml</code> + <code>azd</code> environment</li>
-            <li>Dockerfile + Container Apps job</li>
-            <li>App Insights + Log Analytics wired</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Skills used</h3>
-          <p><code>threadlight-deploy</code> · <code>threadlight-local-test</code></p>
-          <p>Local-test catches drift before the cloud bill arrives.
-          Deploy walks the agent from <code>az login</code> to a healthy
-          endpoint.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Exit criteria</h3>
-          <ul>
-            <li>Agent responds in the customer's tenant</li>
-            <li>App Insights shows the request trace</li>
-            <li>All identities are managed, not shared</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Day-zero invariants</h3>
-          <p>AI Citadel APIM gateway on the perimeter; AGT middleware
-          inside the agent. The CISO reviews Bicep before anything ships.</p>
-        </div>
-      </div>
-
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Deploy skill invocation"><span class="prompt">$</span><span class="cmd">azd up</span> <span class="cmt"># Bicep → Foundry project → Container Apps</span>
-<span class="prompt">$</span><span class="cmd">threadlight-deploy</span> <span class="flag">--phase</span> <span class="arg">smoke</span>
-<span class="out">tenant: contoso.onmicrosoft.com  &middot;  endpoint: https://agt-cohort.azurewebsites.net  &middot;  trace: ai-XXX</span></pre>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="stage-safecheck" data-toc-id="stage-safecheck" data-toc-label="04 · Safe-check">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Stage 04</p>
-        <h2>Safe-check &mdash; <em>cost &amp; readiness.</em></h2>
-        <p class="section-lede">
-          Project a credible monthly cost for the production load profile.
-          Recommend cheaper SKUs where the headroom is real. Score the
-          agent against 10 production pillars.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What ships</h3>
-          <ul>
-            <li>Cost projection by SKU + region</li>
-            <li>Cheaper-SKU recommendations with the maths</li>
-            <li>10-pillar readiness scorecard</li>
-            <li>Remediation backlog with owners</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Skills used</h3>
-          <p><code>threadlight-safe-check</code> · <code>threadlight-consumption-iq</code></p>
-          <p>Consumption-IQ does the cost arithmetic across Azure SKUs.
-          Safe-check is the soft-gate to production.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Exit criteria</h3>
-          <ul>
-            <li>Cost number the seller will defend to the CFO</li>
-            <li>Top 3 readiness gaps named with owners</li>
-            <li>No critical-pillar regressions vs the baseline</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Why a soft-gate</h3>
-          <p>The customer decides whether to ship. The agent shows them
-          exactly what they are signing up for &mdash; in their numbers,
-          not a Microsoft list price.</p>
-        </div>
-      </div>
-
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Safe-check skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-safe-check</span> <span class="flag">--phase</span> <span class="arg">post-deploy</span> <span class="flag">--load</span> <span class="arg">800rpm</span>
-<span class="out">scorecard: 13 pillars  &middot;  3 not-verified  &middot;  cost-est: $1,940/mo (Standard) &rarr; $1,170/mo (DataZone)</span></pre>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="stage-production" data-toc-id="stage-production" data-toc-label="05 · Production">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Stage 05</p>
-        <h2>Production &mdash; <em>hand-off.</em></h2>
-        <p class="section-lede">
-          Governance, telemetry, and runbooks already in the repo. HITL
-          gates already wired. The customer keeps the agent &mdash; and the
-          repo &mdash; and can change it without us.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What ships</h3>
-          <ul>
-            <li>Production runbook + on-call rota template</li>
-            <li>Eval pipeline wired into CI</li>
-            <li>SRE Agent hook-ups (optional)</li>
-            <li>Customer architecture-review pack</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Skills used</h3>
-          <p><code>threadlight-production-ready</code> · <code>threadlight-hitl-patterns</code></p>
-          <p>Production-ready scores the agent across 13 pillars and
-          produces the hand-off report. HITL-patterns documents the
-          escalation surface.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Exit criteria</h3>
-          <ul>
-            <li>Customer can deploy + roll back without us</li>
-            <li>Telemetry-driven alerts wired and tested</li>
-            <li>Architecture-review hand-off accepted</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>What hand-off means</h3>
-          <p>Threadlight is not a managed service. The customer owns the
-          agent, the repo, and the Azure subscription. We make sure they
-          can keep going on Monday.</p>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <section class="chapter-section" id="stage-recap" data-toc-id="stage-recap" data-toc-label="Recap">
     <div class="wrap" style="text-align:center;">

@@ -178,6 +178,32 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(text).toContain('mcp');
   });
 
+  test('home posterizes the three artefacts: terminal mock + 3-up spec/ship/score posters', async ({ page }) => {
+    await page.goto(LANDING);
+    // 1. The terminal mock lives in #scene-show and has the typing switch
+    const term = page.locator('#scene-show .terminal-card[data-typing]');
+    await expect(term).toHaveCount(1);
+    // It contains at least 6 syntax-highlighted lines
+    const lines = term.locator('.term-line');
+    const lineCount = await lines.count();
+    expect(lineCount, 'terminal mock should have ≥6 lines').toBeGreaterThanOrEqual(6);
+    // 2. The 3-up poster triptych — locked to 3 columns + 3 cards
+    const triptych = page.locator('#scene-posters .poster-triptych.is-three');
+    await expect(triptych).toHaveCount(1);
+    const cards = triptych.locator('.poster-card');
+    await expect(cards).toHaveCount(3);
+    // Each card links to a chapter page (industries / funnel / production)
+    const hrefs = await cards.evaluateAll(els => els.map(a => a.getAttribute('href') || ''));
+    expect(hrefs.some(h => h.includes('industries.html'))).toBeTruthy();
+    expect(hrefs.some(h => h.includes('funnel.html'))).toBeTruthy();
+    expect(hrefs.some(h => h.includes('production.html'))).toBeTruthy();
+    // Each card carries a stage eyebrow + artefact pill
+    for (let i = 0; i < 3; i++) {
+      await expect(cards.nth(i).locator('.poster-eyebrow')).toHaveCount(1);
+      await expect(cards.nth(i).locator('.poster-foot')).toHaveCount(1);
+    }
+  });
+
   test('top nav is chapter pages only — no in-page anchors', async ({ page }) => {
     for (const url of [LANDING, '/funnel.html', '/industries.html', '/production.html']) {
       await page.goto(url);
@@ -219,50 +245,61 @@ test.describe('public-safety audit (no leaks of internal-only phrasing)', () => 
 });
 
 test.describe('deep pages (funnel.html + industries.html)', () => {
-  test('funnel.html renders the chapter hero + 5 stage sections + recap', async ({ page }) => {
+  test('funnel.html renders the chapter hero + new posterized sections', async ({ page }) => {
     await page.goto('/funnel.html');
     await expect(page).toHaveTitle(/funnel/i);
     await expect(page.locator('h1')).toContainText(/five named stages/i);
-    const stages = ['#stage-conversation', '#stage-codesign', '#stage-deploy', '#stage-safecheck', '#stage-production', '#stage-recap'];
-    for (const id of stages) {
+    const sections = ['#chapter-top', '#stage-ladder', '#stage-show', '#stage-glance', '#stage-recap'];
+    for (const id of sections) {
       await expect(page.locator(id), `funnel section ${id} should exist`).toHaveCount(1);
     }
+    // posterized: terminal mock + 5-step glance grid + read-deeper to operator MD
+    await expect(page.locator('#stage-show .terminal-card')).toHaveCount(1);
+    await expect(page.locator('#stage-glance .stage-glance .gl-step')).toHaveCount(5);
+    await expect(page.locator('#stage-glance .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
 
-  test('industries.html renders the chapter hero + 6 sector sections + recap', async ({ page }) => {
+  test('industries.html renders the chapter hero + posterized sections', async ({ page }) => {
     await page.goto('/industries.html');
     await expect(page).toHaveTitle(/industries/i);
-    await expect(page.locator('h1')).toContainText(/one pattern/i);
-    const sectors = ['#industry-fsi', '#industry-healthcare', '#industry-mfg', '#industry-retail', '#industry-telco', '#industry-public', '#industry-recap'];
-    for (const id of sectors) {
+    await expect(page.locator('.chapter-hero h1')).toContainText(/one pattern/i);
+    const sections = ['#chapter-top', '#sector-grid', '#ind-spec', '#industry-recap'];
+    for (const id of sections) {
       await expect(page.locator(id), `industry section ${id} should exist`).toHaveCount(1);
     }
+    // posterized: faux SPEC.md preview + read-deeper to operator MD
+    await expect(page.locator('#ind-spec .spec-preview')).toHaveCount(1);
+    await expect(page.locator('#ind-spec .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
 
-  test('production.html renders the chapter hero + posture overview + 4 themes + recap', async ({ page }) => {
+  test('production.html renders the chapter hero + posterized scorecard', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/production/i);
     await expect(page.locator('h1')).toContainText(/(green safe-check|production-ready|go-live)/i);
     const sections = [
       '#chapter-top',
+      '#governance-triggers',
       '#posture-overview',
-      '#theme-network-identity',
-      '#theme-governance-hitl',
-      '#theme-ops-cost',
-      '#theme-lifecycle-handover',
+      '#prod-scorecard',
       '#chapter-recap',
     ];
     for (const id of sections) {
       await expect(page.locator(id), `production section ${id} should exist`).toHaveCount(1);
     }
+    // posterized: 13-pillar scorecard preview + read-deeper to docs/production-readiness.md
+    await expect(page.locator('#prod-scorecard .scorecard-preview')).toHaveCount(1);
+    const pillars = page.locator('#prod-scorecard .sc-pillar');
+    const pillarCount = await pillars.count();
+    expect(pillarCount, 'scorecard should have at least 13 pillars').toBeGreaterThanOrEqual(13);
+    await expect(page.locator('#prod-scorecard .read-deeper a[href*="production-readiness.md"]')).toHaveCount(1);
   });
 
   test('floating ToC auto-builds on all chapter pages with the right link count', async ({ page }) => {
     const expectations = [
       { url: LANDING,             min: 6 },
-      { url: '/funnel.html',      min: 6 },
-      { url: '/industries.html',  min: 7 },
-      { url: '/production.html',  min: 8 },
+      { url: '/funnel.html',      min: 4 },
+      { url: '/industries.html',  min: 3 },
+      { url: '/production.html',  min: 4 },
     ];
     for (const { url, min } of expectations) {
       await page.goto(url);
@@ -282,10 +319,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       els => els.map(e => e.getAttribute('href'))
     );
     for (const h of funnelHrefs) {
-      expect(h).toMatch(/^\.\/funnel\.html#stage-/);
+      expect(h).toMatch(/^\.\/funnel\.html(#|$)/);
     }
     await expect(page.locator('#scene-industries a[href="./industries.html"]')).toHaveCount(1);
-    // production-ready scene now teases the production.html chapter
     await expect(page.locator('#scene-prod-ready a[href="./production.html"]')).toHaveCount(1);
   });
 
@@ -313,11 +349,14 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('chapter visual toolkit: stat-strip, inline ToC, and code-callout render on each chapter', async ({ page }) => {
+  test('chapter visual toolkit: stat-strip, inline ToC, and posterized artefact render on each chapter', async ({ page }) => {
+    // After the Route-A posterize, code-callouts moved into the artefact mocks
+    // (terminal / spec-preview / scorecard-preview) — every chapter must still
+    // carry exactly one signature artefact in addition to the hero strip + ToC.
     const pages = [
-      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 5, minCallouts: 1 },
-      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 6, minCallouts: 1 },
-      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 6, minCallouts: 1 },
+      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 4, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
     ];
     for (const p of pages) {
       await page.goto(p.url);
@@ -331,9 +370,8 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       const tocLinks = page.locator('.chapter-hero .chapter-toc-inline a');
       const tocCount = await tocLinks.count();
       expect(tocCount, `${p.url} inline ToC link count`).toBeGreaterThanOrEqual(p.minTocLinks);
-      const callouts = page.locator('.code-callout');
-      const calloutCount = await callouts.count();
-      expect(calloutCount, `${p.url} code-callout count`).toBeGreaterThanOrEqual(p.minCallouts);
+      const artefactCount = await page.locator(p.artefact).count();
+      expect(artefactCount, `${p.url} signature artefact count`).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -379,18 +417,17 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('industries sector grid shows six poster cards above the deep sections', async ({ page }) => {
+  test('industries sector grid shows six poster cards above the SPEC mock', async ({ page }) => {
     await page.goto('/industries.html');
     const grid = page.locator('#sector-grid .poster-triptych');
     await expect(grid).toHaveCount(1);
     const cards = grid.locator('.poster-card');
     await expect(cards).toHaveCount(6);
-    // each card must link to its sector section + carry a lucide icon
+    // posterized: each card now points at the shared SPEC.md mock
     const hrefs = await cards.evaluateAll(els => els.map(a => a.getAttribute('href')));
-    expect(hrefs).toEqual(expect.arrayContaining([
-      '#industry-fsi', '#industry-healthcare', '#industry-mfg',
-      '#industry-retail', '#industry-telco', '#industry-public',
-    ]));
+    for (const h of hrefs) {
+      expect(h, 'industries poster card should link to the shared SPEC mock').toBe('#ind-spec');
+    }
     for (let i = 0; i < 6; i++) {
       await expect(cards.nth(i).locator('svg.icon use')).toHaveCount(1);
     }

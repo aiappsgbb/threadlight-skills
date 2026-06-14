@@ -74,12 +74,8 @@
 
       <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
         <a href="#sector-grid">⬚ At a glance</a>
-        <a href="#industry-fsi">🏦 Financial</a>
-        <a href="#industry-healthcare">🏥 Healthcare</a>
-        <a href="#industry-mfg">🏭 Manufacturing</a>
-        <a href="#industry-retail">🛒 Retail</a>
-        <a href="#industry-telco">📡 Telco</a>
-        <a href="#industry-public">🏛️ Public sector</a>
+        <a href="#ind-spec">📄 One SPEC</a>
+        <a href="#industry-recap">Recap</a>
       </nav>
     </div>
   </section>
@@ -97,7 +93,7 @@
       </div>
 
       <div class="poster-triptych" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
-        <a href="#industry-fsi" class="poster-card reveal" data-delay="1" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="1" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-landmark"/></svg>
             <span>Financial services</span>
@@ -110,7 +106,7 @@
           </div>
         </a>
 
-        <a href="#industry-healthcare" class="poster-card reveal" data-delay="2" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="2" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-heart-pulse"/></svg>
             <span>Healthcare</span>
@@ -123,7 +119,7 @@
           </div>
         </a>
 
-        <a href="#industry-mfg" class="poster-card reveal" data-delay="3" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="3" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-factory"/></svg>
             <span>Manufacturing</span>
@@ -136,7 +132,7 @@
           </div>
         </a>
 
-        <a href="#industry-retail" class="poster-card reveal" data-delay="4" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="4" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-shopping-cart"/></svg>
             <span>Retail</span>
@@ -149,7 +145,7 @@
           </div>
         </a>
 
-        <a href="#industry-telco" class="poster-card reveal" data-delay="5" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="5" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-radio-tower"/></svg>
             <span>Telco</span>
@@ -162,7 +158,7 @@
           </div>
         </a>
 
-        <a href="#industry-public" class="poster-card reveal" data-delay="6" style="text-decoration:none;">
+        <a href="#ind-spec" class="poster-card reveal" data-delay="6" style="text-decoration:none;">
           <p class="poster-eyebrow">
             <svg class="icon poster-icon" aria-hidden="true"><use href="./assets/lucide-sprite.svg#icon-building2"/></svg>
             <span>Public sector</span>
@@ -178,251 +174,62 @@
     </div>
   </section>
 
-  <section class="chapter-section" id="industry-fsi" data-toc-id="industry-fsi" data-toc-label="🏦 Financial services">
+  <section class="chapter-section" id="ind-spec" data-toc-id="ind-spec" data-toc-label="One SPEC, one chain">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Financial services</p>
-        <h2>Claims triage &mdash; <em>route by complexity &amp; regulator exposure.</em></h2>
+        <p class="eyebrow"><span class="dot"></span>One artefact per scenario</p>
+        <h2>Each scenario starts with a <em>SPEC.md.</em></h2>
         <p class="section-lede">
-          Inbound claims (insurance, retail banking disputes) are scored
-          for complexity and regulator exposure, then routed to the right
-          desk with a structured pre-fill. Spec, deploy, evaluate &mdash; in-session.
+          Below is the document that comes out of stage one for a
+          regulator-exposed claims-triage agent. The rest of the chain
+          works from this file.
         </p>
       </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>The agent reads the inbound claim, extracts the structured
-          fields the adjuster wants, scores complexity, and produces a
-          first-pass routing recommendation with the rationale. HITL on
-          high-exposure cases.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-safe-check</code> · <code>threadlight-hitl-patterns</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
-          <ul>
-            <li>Triage time per claim</li>
-            <li>Routing accuracy vs the desk's own backbook</li>
-            <li>HITL gate hit-rate (target band, not zero)</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;Show me one week of inbound claims. We can have
-          the spec drafted and an agent running on synthetic data in the
-          same session.&rdquo;</em></p>
-        </div>
-      </div>
 
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="FSI brief example"><span class="prompt">$</span><span class="cmd">threadlight-auto</span> <span class="flag">--brief</span> <span class="str">"claims triage, complexity score 1-5, HITL above 4"</span> <span class="flag">--industry</span> <span class="arg">fsi</span>
-<span class="out">SPEC + scaffold + 240 synthetic claims + 12 eval cases  &middot;  ready in 4m02s</span></pre>
-    </div>
-  </section>
+      <article class="spec-preview reveal">
+        <div class="spec-meta">
+          <span>SPEC.md</span>
+          <span>FSI &middot; claims-triage &middot; v0.3</span>
+        </div>
+        <div class="spec-body">
+          <h1>Claims triage &mdash; <em>route by complexity.</em></h1>
+          <p class="spec-lede">
+            Inbound retail-banking claims arrive via two channels. The
+            agent ranks them on complexity and regulator exposure, then
+            routes each one. Anything above the bar lands in a human
+            queue with reasoning attached.
+          </p>
 
-  <section class="chapter-section" id="industry-healthcare" data-toc-id="industry-healthcare" data-toc-label="🏥 Healthcare">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Healthcare</p>
-        <h2>Prior-authorization assistant &mdash; <em>structured payor submissions.</em></h2>
-        <p class="section-lede">
-          The agent reads the clinical narrative and generates the
-          structured payor submission &mdash; with HITL gates wired before
-          anything leaves the building.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>Clinician's free-text note in; structured payor submission
-          out. The agent never sends; it stages, scores its own
-          confidence, and surfaces gaps for the human reviewer.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-hitl-patterns</code> · <code>threadlight-deploy</code> · <code>threadlight-production-ready</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
+          <h2>Process</h2>
           <ul>
-            <li>Reviewer minutes saved per submission</li>
-            <li>Submission rejection rate vs baseline</li>
-            <li>Audit trail completeness (100% required)</li>
+            <li>Ingest claim text + structured metadata from the case system.</li>
+            <li>Score complexity (1&ndash;5) and regulator exposure (flag).</li>
+            <li>Route: <code>auto-respond</code>, <code>assist-agent</code>, or <code>escalate</code>.</li>
+            <li>Persist the routing decision &amp; reasoning to the audit ledger.</li>
           </ul>
+
+          <h2>HITL gates</h2>
+          <ul>
+            <li>Every <code>escalate</code> requires a human signature before the customer reply.</li>
+            <li>Every regulator-exposed claim is mirrored to a 100% review queue.</li>
+          </ul>
+
+          <h2>Skills used</h2>
+  <pre class="spec-block" tabindex="0">threadlight-design          (this file)
+threadlight-demo-data-factory
+threadlight-hitl-patterns
+threadlight-safe-check
+threadlight-production-ready</pre>
         </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;The agent does the typing. The clinician keeps the
-          judgement. Audit trail and HITL gates are wired before
-          deploy &mdash; not after.&rdquo;</em></p>
-        </div>
+      </article>
+
+      <div class="read-deeper">
+        <span class="rd-label">Same shape, every other sector:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
       </div>
     </div>
   </section>
 
-  <section class="chapter-section" id="industry-mfg" data-toc-id="industry-mfg" data-toc-label="🏭 Manufacturing">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Manufacturing</p>
-        <h2>Field-service knowledge agent &mdash; <em>grounded in the manuals.</em></h2>
-        <p class="section-lede">
-          Technicians ask the agent. The agent grounds against equipment
-          manuals + service history &mdash; with cost-projected SKUs picked
-          before go-live so the bill is the bill.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>The agent indexes equipment manuals + the customer's past
-          service tickets. A technician on the floor asks a natural-language
-          question and gets a grounded answer with the source paragraph
-          inline.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-consumption-iq</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
-          <ul>
-            <li>First-call-resolution rate</li>
-            <li>Time-to-answer on the floor</li>
-            <li>Projected monthly cost vs production load</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;Cost-projection runs before deploy. The customer
-          sees the bill before they sign for it.&rdquo;</em></p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="industry-retail" data-toc-id="industry-retail" data-toc-label="🛍️ Retail">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Retail</p>
-        <h2>Merchandising co-pilot &mdash; <em>promo plans grounded in real lift.</em></h2>
-        <p class="section-lede">
-          The buyer asks for a promo plan; the agent drafts it grounded
-          in last-quarter SKU performance and store-cluster lift. The
-          buyer keeps the pen; the agent keeps the maths.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>The agent ingests SKU-level sales + store cluster metadata,
-          then drafts promo plans that name the lift it expects and the
-          confidence interval. The buyer accepts, edits, or rejects each
-          line.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-demo-data-factory</code> · <code>threadlight-deploy</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
-          <ul>
-            <li>Buyer minutes per plan</li>
-            <li>Plan acceptance rate by category</li>
-            <li>Forecast lift vs realized lift (post-mortem)</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;The agent shows the maths. The buyer keeps the
-          judgement. We run the agent against your own back-book before
-          you commit a single SKU.&rdquo;</em></p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="industry-telco" data-toc-id="industry-telco" data-toc-label="📡 Telco">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Telco</p>
-        <h2>Network-incident triage &mdash; <em>first-pass remediation in minutes.</em></h2>
-        <p class="section-lede">
-          The agent cross-references SNMP, ticket history, and runbooks
-          into a first-pass remediation &mdash; cost-projected against the
-          production load profile so the NOC manager can size it before
-          rollout.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>Pager fires. The agent assembles SNMP context, recent
-          tickets on the same device, and the relevant runbook section
-          into a single first-pass remediation. The NOC engineer
-          approves, edits, or rejects.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-deploy</code> · <code>threadlight-consumption-iq</code> · <code>threadlight-hitl-patterns</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
-          <ul>
-            <li>Time from pager to first-pass remediation</li>
-            <li>Engineer acceptance rate per incident class</li>
-            <li>Projected cost at production incident volume</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;The agent doesn't decide. It assembles. The
-          engineer keeps the keys to the network.&rdquo;</em></p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="industry-public" data-toc-id="industry-public" data-toc-label="🏛️ Public sector">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Public sector</p>
-        <h2>Citizen case-status agent &mdash; <em>plain-language updates with audit.</em></h2>
-        <p class="section-lede">
-          Public-language status updates with case-worker hand-off built
-          in. Governance and audit trail are non-negotiable; the chain
-          refuses to ship without them.
-        </p>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>Pilot in one paragraph</h3>
-          <p>The agent reads the case-management system, summarises the
-          current status in citizen-readable language, and offers an
-          escalation path to a human case-worker. Every reply is logged.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Skills it leans on</h3>
-          <p><code>threadlight-design</code> · <code>threadlight-hitl-patterns</code> · <code>threadlight-production-ready</code></p>
-        </div>
-        <div class="detail-card">
-          <h3>What we measure</h3>
-          <ul>
-            <li>Reduction in inbound contact-centre volume</li>
-            <li>Escalation rate to human case-workers</li>
-            <li>Audit-trail completeness (100% required)</li>
-          </ul>
-        </div>
-        <div class="detail-card">
-          <h3>Talk track</h3>
-          <p><em>&ldquo;Audit and HITL come before deploy. The chain
-          refuses to ship a public-facing agent without them &mdash; that's
-          a feature, not a friction.&rdquo;</em></p>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <section class="chapter-section" id="industry-recap" data-toc-id="industry-recap" data-toc-label="Recap">
     <div class="wrap" style="text-align:center;">

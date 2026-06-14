@@ -2208,6 +2208,15 @@
     gap: var(--s-4);
     margin-top: var(--s-5);
   }
+  /* Force three columns on wide viewports for the home-page poster row. */
+  .poster-triptych.is-three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  @media (max-width: 880px) {
+    .poster-triptych.is-three {
+      grid-template-columns: 1fr;
+    }
+  }
 
   /* --- .diagram-card ----------------------------------------
      Light surface for SVG diagrams. The diagram is the hero —
@@ -2417,3 +2426,375 @@
   }
   .icon-lg { width: 28px; height: 28px; }
   .icon-xl { width: 36px; height: 36px; }
+
+  /* ============================================================
+     ROUTE-A POSTERIZE — product-moment artefacts
+     ------------------------------------------------------------
+     Three primitives that ARE the story, not commentary on it:
+       .spec-preview      — faux rendered SPEC.md page
+       .scorecard-preview — faux ARB production-readiness PDF page
+       .term-typing       — typing-reveal helper for .terminal-card
+       .read-deeper       — minimal MD-link bar above the recap
+     ============================================================ */
+
+  /* --- .term-typing -----------------------------------------
+     Reveals each .term-line in sequence so the page feels live
+     (only when not prefers-reduced-motion). */
+  .terminal-card .term-line { display: block; opacity: 0; transform: translateY(2px); }
+  .terminal-card.is-typing .term-line {
+    animation: termLine 280ms var(--ease-out, ease-out) forwards;
+  }
+  .terminal-card.is-typing .term-line:nth-child(1) { animation-delay:  60ms; }
+  .terminal-card.is-typing .term-line:nth-child(2) { animation-delay: 320ms; }
+  .terminal-card.is-typing .term-line:nth-child(3) { animation-delay: 580ms; }
+  .terminal-card.is-typing .term-line:nth-child(4) { animation-delay: 840ms; }
+  .terminal-card.is-typing .term-line:nth-child(5) { animation-delay: 1100ms; }
+  .terminal-card.is-typing .term-line:nth-child(6) { animation-delay: 1360ms; }
+  .terminal-card.is-typing .term-line:nth-child(7) { animation-delay: 1620ms; }
+  .terminal-card.is-typing .term-line:nth-child(8) { animation-delay: 1880ms; }
+  .terminal-card.is-typing .term-line:nth-child(9) { animation-delay: 2140ms; }
+  @keyframes termLine {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .terminal-card .term-line { opacity: 1; transform: none; }
+    .terminal-card.is-typing .term-line { animation: none; }
+  }
+  /* Caret on the active line (the last commanded line) */
+  .terminal-card .term-line .caret {
+    display: inline-block;
+    width: 8px;
+    height: 1em;
+    vertical-align: -2px;
+    margin-left: 2px;
+    background: var(--chapter-accent, var(--accent-1));
+    animation: termCaret 900ms steps(2) infinite;
+  }
+  @keyframes termCaret { 50% { opacity: 0; } }
+
+  /* --- .spec-preview ----------------------------------------
+     Faux rendered Markdown page sized like printed paper.
+     Used on industries to SHOW what a pilot SPEC actually looks
+     like. Accent gradient bar at top, serif H1, mono code. */
+  .spec-preview {
+    max-width: 760px;
+    margin: var(--s-6) auto 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--e-2);
+    position: relative;
+  }
+  .spec-preview::before {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0;
+    height: 6px;
+    background: linear-gradient(90deg, var(--chapter-accent, var(--accent-1)), var(--accent-2));
+    z-index: 1;
+  }
+  .spec-preview .spec-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 32px 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .spec-preview .spec-body { padding: 16px 36px 32px; }
+  .spec-preview h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.8rem, 2.8vw, 2.4rem);
+    line-height: 1.18;
+    margin: 8px 0 12px;
+    color: var(--ink-0);
+    letter-spacing: -.01em;
+  }
+  .spec-preview h1 em { font-style: italic; color: var(--chapter-accent, var(--accent-1)); }
+  .spec-preview .spec-lede {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: var(--ink-1);
+    margin: 0 0 18px;
+    max-width: 56ch;
+  }
+  .spec-preview h2 {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 22px 0 8px;
+  }
+  .spec-preview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 12px;
+    font-family: var(--serif);
+    font-size: .98rem;
+    line-height: 1.55;
+    color: var(--ink-1);
+  }
+  .spec-preview ul li {
+    padding-left: 18px;
+    position: relative;
+    margin: 4px 0;
+  }
+  .spec-preview ul li::before {
+    content: '·';
+    position: absolute;
+    left: 4px;
+    color: var(--chapter-accent, var(--accent-1));
+    font-weight: 700;
+  }
+  .spec-preview code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink-0);
+  }
+  .spec-preview pre.spec-block {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    color: var(--ink-1);
+    margin: 8px 0 0;
+    overflow-x: auto;
+  }
+
+  /* --- .scorecard-preview -----------------------------------
+     Faux production-readiness scorecard page. 13 pillar chips
+     in a 3-color grid (green/amber/grey). Used on production. */
+  .scorecard-preview {
+    max-width: 880px;
+    margin: var(--s-6) auto 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--e-2);
+    position: relative;
+  }
+  .scorecard-preview::before {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0;
+    height: 6px;
+    background: linear-gradient(90deg, var(--chapter-accent, var(--accent-1)), var(--accent-2));
+  }
+  .scorecard-preview .sc-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 28px 12px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .scorecard-preview .sc-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0;
+  }
+  .scorecard-preview .sc-headline {
+    font-family: var(--serif);
+    font-size: clamp(1.3rem, 2.2vw, 1.7rem);
+    color: var(--ink-0);
+    margin: 4px 0 0;
+    letter-spacing: -.01em;
+  }
+  .scorecard-preview .sc-headline em { font-style: italic; color: var(--chapter-accent, var(--accent-1)); }
+  .scorecard-preview .sc-posture {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--ink-2);
+    text-align: right;
+  }
+  .scorecard-preview .sc-posture strong {
+    display: block;
+    color: var(--ink-0);
+    font-size: 13px;
+    letter-spacing: .06em;
+    margin-top: 2px;
+  }
+  .scorecard-preview .sc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+    padding: 18px 22px;
+  }
+  .scorecard-preview .sc-pillar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-1);
+    background: var(--bg-2);
+  }
+  .scorecard-preview .sc-pillar .sc-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: 0 0 10px;
+  }
+  .scorecard-preview .sc-pillar.is-green .sc-dot { background: #46c46e; box-shadow: 0 0 0 3px rgba(70,196,110,.12); }
+  .scorecard-preview .sc-pillar.is-amber .sc-dot { background: #f6b143; box-shadow: 0 0 0 3px rgba(246,177,67,.12); }
+  .scorecard-preview .sc-pillar.is-grey  .sc-dot { background: #6b7290; box-shadow: 0 0 0 3px rgba(107,114,144,.12); }
+  .scorecard-preview .sc-pillar.is-green { border-color: rgba(70,196,110,.35); }
+  .scorecard-preview .sc-pillar.is-amber { border-color: rgba(246,177,67,.35); }
+  .scorecard-preview .sc-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 24px 20px;
+    border-top: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .scorecard-preview .sc-legend {
+    display: flex;
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+    letter-spacing: .04em;
+  }
+  .scorecard-preview .sc-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .scorecard-preview .sc-legend i {
+    width: 9px; height: 9px; border-radius: 50%;
+  }
+  .scorecard-preview .sc-legend .lg-green { background: #46c46e; }
+  .scorecard-preview .sc-legend .lg-amber { background: #f6b143; }
+  .scorecard-preview .sc-legend .lg-grey  { background: #6b7290; }
+  .scorecard-preview .sc-take {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .scorecard-preview .sc-take strong { color: var(--ink-1); }
+
+  /* --- .read-deeper -----------------------------------------
+     Minimal pre-recap link bar pointing at the operator MDs. */
+  .read-deeper {
+    max-width: 760px;
+    margin: var(--s-6) auto 0;
+    padding: 18px 22px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .read-deeper .rd-label {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .read-deeper a {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-0);
+    text-decoration: none;
+    border-bottom: 1px solid var(--chapter-accent, var(--accent-1));
+    padding-bottom: 2px;
+  }
+  .read-deeper a:hover { color: var(--chapter-accent, var(--accent-1)); }
+
+  /* --- .stage-glance ---------------------------------------
+     The 5-step horizontal strip on the funnel that replaces
+     the 5 deep stage sections. Each step = number + name + 1
+     exit-criterion line. Wraps to 2 rows on mobile. */
+  .stage-glance {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-top: var(--s-6);
+  }
+  @media (max-width: 880px) {
+    .stage-glance { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stage-glance .gl-step {
+    padding: 18px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg-1);
+    position: relative;
+  }
+  .stage-glance .gl-step::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 28px; height: 2px;
+    background: var(--chapter-accent, var(--accent-1));
+    border-radius: 0 0 2px 0;
+  }
+  .stage-glance .gl-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .stage-glance .gl-name {
+    font-family: var(--serif);
+    font-size: 1.15rem;
+    color: var(--ink-0);
+    margin: 0 0 6px;
+    line-height: 1.2;
+  }
+  .stage-glance .gl-exit {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.45;
+    margin: 0;
+  }
+  .stage-glance .gl-exit strong { color: var(--ink-1); font-weight: 500; }
+
+  @media (prefers-color-scheme: light) {
+    .spec-preview      { background: #ffffff; border-color: #d4dae7; }
+    .spec-preview h1   { color: #0a0d14; }
+    .spec-preview .spec-lede { color: #2b3146; }
+    .spec-preview code,
+    .spec-preview pre.spec-block { background: #f6f7fb; border-color: #d4dae7; color: #2b3146; }
+    .scorecard-preview { background: #ffffff; border-color: #d4dae7; }
+    .scorecard-preview .sc-headline { color: #0a0d14; }
+    .scorecard-preview .sc-header,
+    .scorecard-preview .sc-footer  { border-color: #d4dae7; }
+    .scorecard-preview .sc-pillar  { background: #f6f7fb; border-color: #d4dae7; color: #2b3146; }
+    .stage-glance .gl-step { background: #ffffff; border-color: #d4dae7; }
+    .stage-glance .gl-name { color: #0a0d14; }
+    .stage-glance .gl-exit { color: #4a5168; }
+    .read-deeper { border-color: #d4dae7; }
+    .read-deeper a { color: #0a0d14; }
+  }
