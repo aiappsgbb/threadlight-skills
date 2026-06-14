@@ -17,6 +17,7 @@ const pages = [
     prefix:  'funnel',
     targets: [
       { name: 'hero',         anchor: '.chapter-hero' },
+      { name: 'ladder',       anchor: '#stage-ladder' },
       { name: 'conversation', anchor: '#stage-conversation' },
       { name: 'safecheck',    anchor: '#stage-safecheck' },
       { name: 'recap',        anchor: '#stage-recap' }
@@ -27,6 +28,7 @@ const pages = [
     prefix:  'industries',
     targets: [
       { name: 'hero',       anchor: '.chapter-hero' },
+      { name: 'grid',       anchor: '#sector-grid' },
       { name: 'fsi',        anchor: '#industry-fsi' },
       { name: 'public',     anchor: '#industry-public' },
       { name: 'recap',      anchor: '#industry-recap' }
@@ -38,6 +40,7 @@ const pages = [
     targets: [
       { name: 'hero',          anchor: '.chapter-hero' },
       { name: 'triggers',      anchor: '#governance-triggers' },
+      { name: 'triptych',      anchor: '.poster-triptych' },
       { name: 'postures',      anchor: '#posture-overview' },
       { name: 'theme-network', anchor: '#theme-network-identity' },
       { name: 'theme-gov',     anchor: '#theme-governance-hitl' },

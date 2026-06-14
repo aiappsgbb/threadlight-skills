@@ -336,4 +336,98 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       expect(calloutCount, `${p.url} code-callout count`).toBeGreaterThanOrEqual(p.minCallouts);
     }
   });
+
+  test('design-system tokens are loaded on every page', async ({ page }) => {
+    for (const url of ['/', '/funnel.html', '/production.html', '/industries.html']) {
+      await page.goto(url);
+      const tokens = await page.evaluate(() => {
+        const s = getComputedStyle(document.documentElement);
+        return {
+          s4: s.getPropertyValue('--s-4').trim(),
+          tDisplay: s.getPropertyValue('--t-display').trim(),
+          easeOut: s.getPropertyValue('--ease-out').trim(),
+        };
+      });
+      expect(tokens.s4, `${url} --s-4 token`).toBe('20px');
+      expect(tokens.tDisplay, `${url} --t-display token`).toMatch(/^clamp\(/);
+      expect(tokens.easeOut, `${url} --ease-out token`).toMatch(/cubic-bezier/);
+    }
+  });
+
+  test('funnel ladder centerpiece is present with five rails', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const ladder = page.locator('#stage-ladder');
+    await expect(ladder).toHaveCount(1);
+    const diagram = ladder.locator('.diagram-card svg');
+    await expect(diagram).toHaveCount(1);
+    const tocLadderLink = page.locator('.chapter-hero .chapter-toc-inline a[href="#stage-ladder"]');
+    await expect(tocLadderLink).toHaveCount(1);
+  });
+
+  test('production posture triptych replaces the old 4-up grid', async ({ page }) => {
+    await page.goto('/production.html');
+    const triptych = page.locator('#posture-overview .poster-triptych');
+    await expect(triptych).toHaveCount(1);
+    const posters = triptych.locator('.poster-card');
+    await expect(posters).toHaveCount(3);
+    // each poster must have a signature svg shape, an h3, and a poster-foot
+    for (let i = 0; i < 3; i++) {
+      const card = posters.nth(i);
+      await expect(card.locator('svg')).toHaveCount(1);
+      await expect(card.locator('h3')).toHaveCount(1);
+      await expect(card.locator('.poster-foot')).toHaveCount(1);
+    }
+  });
+
+  test('industries sector grid shows six poster cards above the deep sections', async ({ page }) => {
+    await page.goto('/industries.html');
+    const grid = page.locator('#sector-grid .poster-triptych');
+    await expect(grid).toHaveCount(1);
+    const cards = grid.locator('.poster-card');
+    await expect(cards).toHaveCount(6);
+    // each card must link to its sector section + carry a lucide icon
+    const hrefs = await cards.evaluateAll(els => els.map(a => a.getAttribute('href')));
+    expect(hrefs).toEqual(expect.arrayContaining([
+      '#industry-fsi', '#industry-healthcare', '#industry-mfg',
+      '#industry-retail', '#industry-telco', '#industry-public',
+    ]));
+    for (let i = 0; i < 6; i++) {
+      await expect(cards.nth(i).locator('svg.icon use')).toHaveCount(1);
+    }
+  });
+
+  test('chapter recap block carries scorecard, three metrics, and CTA bar', async ({ page }) => {
+    const cases = [
+      { url: '/funnel.html',     recap: '#stage-recap' },
+      { url: '/production.html', recap: '#chapter-recap' },
+      { url: '/industries.html', recap: '#industry-recap' },
+    ];
+    for (const c of cases) {
+      await page.goto(c.url);
+      const block = page.locator(`${c.recap} .chapter-recap-block`);
+      await expect(block, `${c.url} has chapter-recap-block`).toHaveCount(1);
+      await expect(block.locator('.recap-scorecard'), `${c.url} scorecard`).toHaveCount(1);
+      await expect(block.locator('.recap-metrics .metric-card'), `${c.url} metrics`).toHaveCount(3);
+      await expect(block.locator('.recap-cta .btn'), `${c.url} cta count`).toHaveCount(3);
+    }
+  });
+
+  test('every page advertises an OG image PNG', async ({ page }) => {
+    const cases = [
+      { url: '/',                 want: 'og-home.png' },
+      { url: '/funnel.html',      want: 'og-funnel.png' },
+      { url: '/production.html',  want: 'og-production.png' },
+      { url: '/industries.html',  want: 'og-industries.png' },
+    ];
+    for (const c of cases) {
+      await page.goto(c.url);
+      const og = await page.locator('meta[property="og:image"]').getAttribute('content');
+      const tw = await page.locator('meta[name="twitter:image"]').getAttribute('content');
+      expect(og, `${c.url} og:image`).toContain(c.want);
+      expect(tw, `${c.url} twitter:image`).toContain(c.want);
+      // og:image:width/height must exist
+      await expect(page.locator('meta[property="og:image:width"]')).toHaveCount(1);
+      await expect(page.locator('meta[property="og:image:height"]')).toHaveCount(1);
+    }
+  });
 });

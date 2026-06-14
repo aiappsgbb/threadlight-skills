@@ -12,9 +12,13 @@
 <meta property="og:description" content="Three postures. Thirteen pillars across network/identity, governance/HITL, ops/cost, and lifecycle/supply-chain. Soft-advisory, graceful degradation, one CLI.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
+<meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="Production-ready — postures + pillars.">
 <meta name="twitter:description" content="Green safe-check isn't go-live. Here's what we check before you walk into the customer architecture review.">
+<meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css">
@@ -149,26 +153,66 @@
           starts asking governance questions.
         </p>
       </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>01 &middot; Citadel spoke <span style="font-family:var(--mono); font-size:10px; color:var(--lime); margin-left:8px;">DEFAULT</span></h3>
-          <p>Customer&rsquo;s <strong>AI Citadel hub</strong> fronts every model call via APIM &mdash; JWT, rate-limit, content filter, semantic cache, ledger. Pilot Foundry project is onboarded as a spoke; <code>agent-governance-toolkit</code> in-process middleware enforces fine-grained policy <em>inside</em> the agent itself.</p>
-          <p>Two layers: APIM perimeter <code>+</code> AGT in-process. Use when the customer has (or is willing to stand up) a central AI gateway.</p>
-        </div>
-        <div class="detail-card">
-          <h3>02 &middot; AGT-only, in-process</h3>
-          <p>No central AI gateway. <a href="https://github.com/microsoft/agent-governance-toolkit">Agent Governance Toolkit</a> (v4.1 preview, detected automatically) sits inside the agent process. 8&ndash;12 &micro;s/eval, hash-chained audit, OWASP-ASI evidence.</p>
-          <p>One layer, in-process only. Right for greenfield or experimental tenants where the gateway investment hasn&rsquo;t happened yet.</p>
-        </div>
-        <div class="detail-card">
-          <h3>03 &middot; Standard AI gateway / VNet</h3>
-          <p>Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot <strong>conforms to the established gateway pattern</strong> rather than introducing Citadel mid-flight.</p>
-          <p>One layer, customer-owned. The safe-check verifies conformance instead of prescribing a target.</p>
-        </div>
+      <div class="poster-triptych">
+        <article class="poster-card reveal" data-delay="1">
+          <p class="poster-eyebrow"><span>01 · Citadel spoke</span><span style="font-family:var(--mono); font-size:9.5px; padding:2px 8px; border-radius:99px; background:var(--lime-soft); color:var(--lime); letter-spacing:.16em;">DEFAULT</span></p>
+          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
+            <rect x="4" y="4" width="152" height="62" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="48" y="20" width="64" height="30" rx="6" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
+            <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
+            <text x="80" y="14" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.7">APIM PERIMETER</text>
+          </svg>
+          <h3>Perimeter <em>plus</em> core.</h3>
+          <p class="poster-lede">
+            Customer&rsquo;s AI Citadel hub fronts every model call via APIM (JWT, rate-limit, content filter, semantic cache, ledger). Pilot Foundry project is onboarded as a spoke; <code>agent-governance-toolkit</code> enforces fine-grained policy <em>inside</em> the agent itself.
+          </p>
+          <div class="poster-foot">
+            <span class="pill">2 layers</span>
+            <span class="pill muted">pillars 01 · 03 · 04 · 09</span>
+            <span class="pill muted">pillars 02 · 05 · 07</span>
+          </div>
+        </article>
+
+        <article class="poster-card reveal" data-delay="2">
+          <p class="poster-eyebrow"><span>02 · AGT-only, in-process</span></p>
+          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
+            <rect x="40" y="14" width="80" height="42" rx="8" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
+            <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
+            <text x="80" y="66" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.6">CORE ONLY</text>
+          </svg>
+          <h3>Core <em>only</em>.</h3>
+          <p class="poster-lede">
+            No central AI gateway. Agent Governance Toolkit (v4.1 preview, detected automatically) sits inside the agent process. 8&ndash;12&nbsp;&micro;s/eval, hash-chained audit, OWASP-ASI evidence. Greenfield or experimental tenants where the gateway investment hasn&rsquo;t happened.
+          </p>
+          <div class="poster-foot">
+            <span class="pill">1 layer</span>
+            <span class="pill muted">pillars 03 · 04 · 07 · 11</span>
+          </div>
+        </article>
+
+        <article class="poster-card reveal" data-delay="3">
+          <p class="poster-eyebrow"><span>03 · Standard AI gateway / VNet</span></p>
+          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
+            <path d="M4 14 L156 14" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>
+            <text x="80" y="8" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="currentColor" letter-spacing="0.18em" opacity="0.7">CUSTOMER-OWNED EDGE</text>
+            <rect x="48" y="26" width="64" height="36" rx="7" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
+            <text x="80" y="48" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
+          </svg>
+          <h3>Customer-owned <em>boundary</em>.</h3>
+          <p class="poster-lede">
+            Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot conforms to the established gateway pattern rather than introducing Citadel mid-flight. The safe-check <em>verifies</em>, never prescribes.
+          </p>
+          <div class="poster-foot">
+            <span class="pill">1 layer</span>
+            <span class="pill muted">pillars 01 · 03 · 09 · 12 · 13</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="detail-grid" style="grid-template-columns: minmax(0,1fr); margin-top: var(--s-5);">
         <div class="detail-card">
           <h3>How we pick</h3>
-          <p>The SPEC&rsquo;s &sect; 12 (governance posture) is the source of truth. If the customer hasn&rsquo;t declared one, <code>threadlight-design</code> asks the question during co-design &mdash; explicitly, with the trade-offs &mdash; rather than picking silently.</p>
-          <p>If detection finds an existing APIM-Foundry binding, posture 03 wins regardless of what the SPEC says.</p>
+          <p>The SPEC&rsquo;s &sect; 12 (governance posture) is the source of truth. If the customer hasn&rsquo;t declared one, <code>threadlight-design</code> asks the question during co-design &mdash; explicitly, with the trade-offs &mdash; rather than picking silently. If detection finds an existing APIM-Foundry binding, posture 03 wins regardless of what the SPEC says.</p>
         </div>
       </div>
 
@@ -314,10 +358,10 @@
 
   <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap &middot; the scorecard">
     <div class="wrap">
-      <div class="section-head">
+      <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow"><span class="dot"></span>Recap</p>
         <h2>One scorecard &mdash; <em>three colours, no judgement.</em></h2>
-        <p class="section-lede">
+        <p class="section-lede" style="margin: 0 auto;">
           Each pillar resolves to <strong>green</strong> (evidence found, in
           posture), <strong>amber</strong> (gap with a named owner and a
           waiver path), or <strong>not-verified</strong> (we couldn&rsquo;t
@@ -325,22 +369,38 @@
           &mdash; we never fail a build, we surface a posture.
         </p>
       </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h3>What you take to the review</h3>
-          <p>One PDF the customer&rsquo;s architecture-review board can read in seven minutes: posture, per-pillar status, gaps with owners, the question we asked Azure and the answer we got back. No marketing language.</p>
+
+      <div class="chapter-recap-block">
+        <p class="recap-scorecard reveal" data-delay="1">
+          <span>You walked</span>
+          <span><em>3</em> postures</span><span class="sep">·</span>
+          <span><em>7</em> themes</span><span class="sep">·</span>
+          <span><em>1</em> scorecard</span><span class="sep">·</span>
+          <span><em>0</em> red flags</span>
+        </p>
+
+        <div class="recap-metrics">
+          <article class="metric-card reveal" data-delay="2">
+            <span class="metric-num"><em>~7</em> min</span>
+            <span class="metric-label">ARB read time</span>
+            <span class="metric-caption">One PDF the architecture-review board reads in seven minutes &mdash; posture, status, gaps, evidence.</span>
+          </article>
+          <article class="metric-card reveal" data-delay="3">
+            <span class="metric-num"><em>3</em></span>
+            <span class="metric-label">Colours, not red</span>
+            <span class="metric-caption">Green, amber, not-verified. Red is missing on purpose &mdash; we surface postures, never fail builds.</span>
+          </article>
+          <article class="metric-card reveal" data-delay="4">
+            <span class="metric-num"><em>1</em></span>
+            <span class="metric-label">Recognisable page</span>
+            <span class="metric-caption">After three engagements, the customer&rsquo;s board recognises the scorecard on sight.</span>
+          </article>
         </div>
-        <div class="detail-card">
-          <h3>What you take to the next pilot</h3>
-          <p>The same scorecard format. Customers compare like-for-like across pilots. After three Threadlight engagements, the architecture board recognises the page on sight.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Where the deeper doc lives</h3>
-          <p>The CLI reference, status taxonomy, when-to-invoke matrix, and the full pillar definitions are in <code>docs/production-readiness.md</code> in this repo. This chapter is the customer-facing read; the MD is the operator-facing read.</p>
-        </div>
-        <div class="detail-card">
-          <h3>What&rsquo;s next</h3>
-          <p>Walk the <a href="./funnel.html">funnel</a> to see how each stage feeds this scorecard, or visit <a href="./industries.html">industries</a> to see how the posture choice shifts by sector.</p>
+
+        <div class="recap-cta">
+          <a class="btn btn-primary" href="./funnel.html">See how stages feed the scorecard <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="./industries.html">See how sector shifts the posture <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the operator MD <span class="arrow">↗</span></a>
         </div>
       </div>
     </div>

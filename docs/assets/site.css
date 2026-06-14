@@ -40,6 +40,48 @@
     --shadow-card:  0 18px 40px rgba(0,0,0,.40), 0 4px 12px rgba(0,0,0,.28);
     --shadow-pop:   0 28px 64px rgba(0,0,0,.55), 0 8px 18px rgba(0,0,0,.40);
     --shadow-glow:  0 0 0 1px var(--accent-soft), 0 0 32px var(--accent-glow);
+
+    /* ====================================================
+       DESIGN TOKENS — scale, motion, elevation
+       ==================================================== */
+
+    /* Spacing scale (T-shirt, factor ~1.5) */
+    --s-1: 4px;
+    --s-2: 8px;
+    --s-3: 12px;
+    --s-4: 20px;
+    --s-5: 32px;
+    --s-6: 56px;
+    --s-7: 96px;
+    --s-8: 144px;
+
+    /* Type scale */
+    --t-meta:     11.5px;       /* eyebrow / mono caps */
+    --t-small:    13px;          /* mono code */
+    --t-body:     16px;
+    --t-lede:     clamp(17px, 1.2vw, 20px);
+    --t-h3:       clamp(20px, 1.8vw, 26px);
+    --t-h2:       clamp(28px, 3.4vw, 48px);
+    --t-h1:       clamp(40px, 5.6vw, 88px);
+    --t-display:  clamp(56px, 8.4vw, 132px);
+
+    /* Elevation tiers */
+    --e-0:  none;
+    --e-1:  0 8px 22px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.18);
+    --e-2:  0 18px 40px rgba(0,0,0,.40), 0 4px 12px rgba(0,0,0,.28);
+    --e-3:  0 28px 64px rgba(0,0,0,.55), 0 8px 18px rgba(0,0,0,.40);
+
+    /* Motion */
+    --ease-out:    cubic-bezier(.16, 1, .3, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+    --d-fast:   140ms;
+    --d-base:   280ms;
+    --d-slow:   560ms;
+
+    /* Per-chapter accent contract (overridden by body class) */
+    --chapter-accent:      var(--accent-1);
+    --chapter-accent-soft: var(--accent-soft);
+    --chapter-accent-glow: var(--accent-glow);
   }
 
   /* Light-mode fallback — same content, paler substrate. */
@@ -1902,15 +1944,20 @@
 
   /* ============================================================
      Reserve room on the right edge for the floating ToC.
-     Only applies to chapter pages on wide viewports (>1100px),
-     which is where the ToC actually floats. Below 1100px the
-     ToC collapses to a sticky pill bar above content, and below
-     560px it disappears entirely, so no reservation needed.
+     Applies to ANY page with a floating-toc (chapter pages AND
+     homepage) on wide viewports (>1100px). Uses :has() so we
+     don't need a body class flip. Below 1100px the ToC collapses
+     to a sticky pill bar above content, and below 560px it
+     disappears entirely, so no reservation needed.
      ============================================================ */
   @media (min-width: 1101px) {
     body.chapter-page .chapter-section .wrap,
     body.chapter-page .chapter-hero    .wrap {
       padding-right: 240px;
+    }
+    body:has(.floating-toc) main > section.scene .wrap,
+    body:has(.floating-toc) main > section > .wrap {
+      padding-right: 220px;
     }
   }
 
@@ -2027,3 +2074,346 @@
     .code-callout .cmt { color: #828aa4; }
     .code-callout .out { color: #4a5168; }
   }
+
+  /* ============================================================
+     DESIGN-SYSTEM CARD PRIMITIVES
+     ------------------------------------------------------------
+     Four card types — used to break up the "20 identical boxes"
+     pattern across chapter pages. Each carries its own visual
+     signature so mixing types in a section creates real hierarchy.
+     ============================================================ */
+
+  /* --- .metric-card -----------------------------------------
+     Display-size numeral + label + 1-line caption. No border —
+     stands alone via type weight. Used in recaps and stat rows. */
+  .metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding: var(--s-5) 0;
+    text-align: left;
+  }
+  .metric-card .metric-num {
+    font-family: var(--serif);
+    font-size: clamp(2.6rem, 4.6vw, 4.2rem);
+    line-height: 1;
+    letter-spacing: -.02em;
+    color: var(--ink-0);
+    font-weight: 400;
+  }
+  .metric-card .metric-num em {
+    font-style: italic;
+    color: var(--chapter-accent, var(--accent-1));
+  }
+  .metric-card .metric-label {
+    font-family: var(--mono);
+    font-size: var(--t-meta);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .metric-card .metric-caption {
+    font-family: var(--serif);
+    font-size: var(--t-lede);
+    line-height: 1.5;
+    color: var(--ink-1);
+    max-width: 28ch;
+  }
+
+  /* --- .poster-card -----------------------------------------
+     Full-bleed accent-tinted statement panel. Used as section
+     opener or as triptych member. Heavier than .detail-card. */
+  .poster-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    padding: var(--s-5) var(--s-5) var(--s-6);
+    border-radius: 18px;
+    background:
+      linear-gradient(160deg, var(--chapter-accent-soft, var(--accent-soft)) 0%, transparent 55%),
+      linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    border: 1px solid var(--line);
+    box-shadow: var(--e-1);
+    overflow: hidden;
+  }
+  .poster-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--chapter-accent, var(--accent-1)), transparent 70%);
+  }
+  .poster-card .poster-eyebrow {
+    font-family: var(--mono);
+    font-size: var(--t-meta);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--chapter-accent, var(--accent-1));
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .poster-card .poster-icon {
+    width: 36px;
+    height: 36px;
+    color: var(--chapter-accent, var(--accent-1));
+    flex-shrink: 0;
+  }
+  .poster-card h3 {
+    font-family: var(--serif);
+    font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+    line-height: 1.2;
+    letter-spacing: -.01em;
+    color: var(--ink-0);
+    margin: 0;
+  }
+  .poster-card h3 em {
+    font-style: italic;
+    color: var(--chapter-accent, var(--accent-1));
+  }
+  .poster-card .poster-lede {
+    font-family: var(--serif);
+    font-size: var(--t-lede);
+    line-height: 1.55;
+    color: var(--ink-1);
+  }
+  .poster-card .poster-foot {
+    margin-top: auto;
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  .poster-card .pill {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: var(--chapter-accent-soft, var(--accent-soft));
+    color: var(--chapter-accent, var(--accent-1));
+    letter-spacing: .03em;
+  }
+  .poster-card .pill.muted {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+  }
+
+  /* Triptych: 3 poster cards side-by-side. */
+  .poster-triptych {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--s-4);
+    margin-top: var(--s-5);
+  }
+
+  /* --- .diagram-card ----------------------------------------
+     Light surface for SVG diagrams. The diagram is the hero —
+     padding is generous, caption is small and below. */
+  .diagram-card {
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: var(--s-6) var(--s-5);
+    margin-top: var(--s-5);
+    box-shadow: var(--e-2);
+  }
+  .diagram-card .diagram-frame {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    display: block;
+  }
+  .diagram-card .diagram-frame svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .diagram-card .diagram-caption {
+    margin-top: var(--s-4);
+    text-align: center;
+    font-family: var(--mono);
+    font-size: var(--t-meta);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  /* --- .terminal-card ---------------------------------------
+     Realer terminal: Mac-window chrome (3 dots + title bar).
+     Wraps the existing .code-callout pattern with proper framing. */
+  .terminal-card {
+    margin: var(--s-5) 0 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--e-1);
+  }
+  .terminal-card .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .terminal-card .term-dots {
+    display: flex;
+    gap: 6px;
+  }
+  .terminal-card .term-dots span {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--line-2);
+  }
+  .terminal-card .term-dots span:nth-child(1) { background: #ff5f57; }
+  .terminal-card .term-dots span:nth-child(2) { background: #febc2e; }
+  .terminal-card .term-dots span:nth-child(3) { background: #28c840; }
+  .terminal-card .term-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+    letter-spacing: .04em;
+    margin: 0 auto;
+    padding-right: 60px;
+  }
+  .terminal-card pre.term-body {
+    margin: 0;
+    padding: 18px 22px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--ink-1);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow-x: auto;
+  }
+  .terminal-card .prompt { color: var(--ink-3); user-select: none; margin-right: 8px; }
+  .terminal-card .cmd    { color: var(--ink-0); }
+  .terminal-card .flag   { color: var(--chapter-accent, var(--accent-1)); }
+  .terminal-card .arg    { color: var(--ink-1); }
+  .terminal-card .str    { color: var(--lime-1); }
+  .terminal-card .cmt    { color: var(--ink-3); }
+  .terminal-card .out    { display: block; color: var(--ink-2); margin-top: 4px; }
+  .terminal-card .out::before { content: '↳ '; color: var(--ink-3); margin-right: 4px; }
+
+  @media (prefers-color-scheme: light) {
+    .poster-card {
+      background:
+        linear-gradient(160deg, var(--chapter-accent-soft, var(--accent-soft)) 0%, transparent 55%),
+        linear-gradient(180deg, #ffffff 0%, #f6f7fb 100%);
+      border-color: #d4dae7;
+    }
+    .poster-card .pill.muted { color: #4a5168; border-color: #d4dae7; }
+    .diagram-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f6f7fb 100%);
+      border-color: #d4dae7;
+    }
+    .terminal-card { background: #ffffff; border-color: #d4dae7; }
+    .terminal-card .term-bar { background: #eef0f7; border-color: #d4dae7; }
+    .terminal-card .term-title { color: #5f6680; }
+    .terminal-card pre.term-body { color: #2b3146; }
+    .terminal-card .cmd { color: #0a0d14; }
+    .terminal-card .arg { color: #2b3146; }
+    .terminal-card .str { color: #2f7a1a; }
+    .terminal-card .cmt { color: #828aa4; }
+    .terminal-card .out { color: #4a5168; }
+  }
+
+  /* ============================================================
+     STAT STRIP — strengthened: display-size, vertical rules,
+     accent-tinted numerals. Replaces the modest version above.
+     ============================================================ */
+  .chapter-hero .stat-strip {
+    margin-top: var(--s-5);
+    padding: var(--s-5) 0;
+    max-width: 880px;
+    gap: 0;
+  }
+  .chapter-hero .stat-strip .stat {
+    position: relative;
+    padding: 0 var(--s-4);
+  }
+  .chapter-hero .stat-strip .stat + .stat::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12%;
+    bottom: 12%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--line), transparent);
+  }
+  .chapter-hero .stat-strip .stat-num {
+    font-size: clamp(2.6rem, 5vw, 4rem);
+  }
+
+  /* ============================================================
+     CHAPTER RECAP — replaces "Same chain. Different SPEC." pattern.
+     Scorecard strip + 3 metric cards + CTA row.
+     ============================================================ */
+  .chapter-recap-block {
+    margin-top: var(--s-6);
+    padding: var(--s-6) 0;
+    border-top: 1px solid var(--line);
+  }
+  .chapter-recap-block .recap-scorecard {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-3);
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: var(--t-small);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin-bottom: var(--s-5);
+  }
+  .chapter-recap-block .recap-scorecard em {
+    font-style: normal;
+    color: var(--chapter-accent, var(--accent-1));
+    font-weight: 600;
+  }
+  .chapter-recap-block .recap-scorecard .sep { color: var(--ink-3); }
+  .chapter-recap-block .recap-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--s-5);
+    margin: var(--s-5) 0 var(--s-6);
+  }
+  .chapter-recap-block .recap-metrics .metric-card {
+    text-align: center;
+    align-items: center;
+  }
+  .chapter-recap-block .recap-metrics .metric-card .metric-caption {
+    text-align: center;
+    max-width: 26ch;
+  }
+  .chapter-recap-block .recap-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    justify-content: center;
+    margin-top: var(--s-5);
+  }
+
+  /* ============================================================
+     LUCIDE ICON SPRITE — inline <svg><use href="#icon-x"/></svg>
+     ============================================================ */
+  .icon {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: -.125em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .icon-lg { width: 28px; height: 28px; }
+  .icon-xl { width: 36px; height: 36px; }
