@@ -178,15 +178,20 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(text).toContain('mcp');
   });
 
-  test('home posterizes the three artefacts: terminal mock + 3-up spec/ship/score posters', async ({ page }) => {
+  test('home posterizes the three artefacts: SVG chain hero + 3-up spec/ship/score posters', async ({ page }) => {
     await page.goto(LANDING);
-    // 1. The terminal mock lives in #scene-show and has the typing switch
-    const term = page.locator('#scene-show .terminal-card[data-typing]');
-    await expect(term).toHaveCount(1);
-    // It contains at least 6 syntax-highlighted lines
-    const lines = term.locator('.term-line');
-    const lineCount = await lines.count();
-    expect(lineCount, 'terminal mock should have ≥6 lines').toBeGreaterThanOrEqual(6);
+    // 1. The chain SVG hero lives in #scene-show — three panels: paragraph, SPEC, deployed agent
+    const hero = page.locator('#scene-show .svg-hero svg.funnel-chain-svg');
+    await expect(hero).toHaveCount(1);
+    // The three panels each contribute a STAGE-prefixed label
+    const stageLabels = hero.locator('text.panel-num');
+    const stageCount = await stageLabels.count();
+    expect(stageCount, 'chain SVG should have 3 stage labels').toBe(3);
+    // Headline copy on each panel is what the seller sees end-to-end
+    const titles = (await hero.locator('text.panel-title').allTextContents()).join(' | ');
+    expect(titles).toMatch(/paragraph/i);
+    expect(titles).toMatch(/SPEC/i);
+    expect(titles).toMatch(/deployed agent/i);
     // 2. The 3-up poster triptych — locked to 3 columns + 3 cards
     const triptych = page.locator('#scene-posters .poster-triptych.is-three');
     await expect(triptych).toHaveCount(1);
@@ -201,6 +206,22 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     for (let i = 0; i < 3; i++) {
       await expect(cards.nth(i).locator('.poster-eyebrow')).toHaveCount(1);
       await expect(cards.nth(i).locator('.poster-foot')).toHaveCount(1);
+    }
+  });
+
+  test('skill-eyebrow disclaimer (.md, not commands) ships on every page', async ({ page }) => {
+    // Skills are .md files a coding agent reads — not bash commands. This eyebrow
+    // is the site-wide correction to the original framing and must appear above
+    // the signature artefact on every chapter page.
+    const pages = [LANDING, '/funnel.html', '/production.html', '/industries.html'];
+    for (const url of pages) {
+      await page.goto(url);
+      const eyebrow = page.locator('.skill-eyebrow');
+      await expect(eyebrow, `${url} should ship a .skill-eyebrow`).toHaveCount(1);
+      const text = (await eyebrow.textContent()) || '';
+      expect(text, `${url} eyebrow positions skills as .md`).toMatch(/\.md/);
+      expect(text, `${url} eyebrow positions skills against being commands`).toMatch(/not commands/i);
+      expect(text, `${url} eyebrow names coding-agent hosts`).toMatch(/copilot/i);
     }
   });
 
@@ -245,16 +266,20 @@ test.describe('public-safety audit (no leaks of internal-only phrasing)', () => 
 });
 
 test.describe('deep pages (funnel.html + industries.html)', () => {
-  test('funnel.html renders the chapter hero + new posterized sections', async ({ page }) => {
+  test('funnel.html renders the chapter hero + ladder SVG centerpiece', async ({ page }) => {
     await page.goto('/funnel.html');
     await expect(page).toHaveTitle(/funnel/i);
     await expect(page.locator('h1')).toContainText(/five named stages/i);
-    const sections = ['#chapter-top', '#stage-ladder', '#stage-show', '#stage-glance', '#stage-recap'];
+    // After the SVG pass the #stage-show terminal section is gone — the ladder
+    // SVG IS the centerpiece, sitting right after the chapter hero.
+    const sections = ['#chapter-top', '#stage-ladder', '#stage-glance', '#stage-recap'];
     for (const id of sections) {
       await expect(page.locator(id), `funnel section ${id} should exist`).toHaveCount(1);
     }
-    // posterized: terminal mock + 5-step glance grid + read-deeper to operator MD
-    await expect(page.locator('#stage-show .terminal-card')).toHaveCount(1);
+    // The ladder SVG hero is locked above the fold
+    await expect(page.locator('#stage-ladder.ladder-svg-hero')).toHaveCount(1);
+    await expect(page.locator('#stage-ladder svg')).toHaveCount(1);
+    // Stages glance grid stays + read-deeper to operator MD
     await expect(page.locator('#stage-glance .stage-glance .gl-step')).toHaveCount(5);
     await expect(page.locator('#stage-glance .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
@@ -272,12 +297,13 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     await expect(page.locator('#ind-spec .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
 
-  test('production.html renders the chapter hero + posterized scorecard', async ({ page }) => {
+  test('production.html renders the chapter hero + amber→green journey + scorecard', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/production/i);
     await expect(page.locator('h1')).toContainText(/(green safe-check|production-ready|go-live)/i);
     const sections = [
       '#chapter-top',
+      '#amber-green',
       '#governance-triggers',
       '#posture-overview',
       '#prod-scorecard',
@@ -286,7 +312,16 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     for (const id of sections) {
       await expect(page.locator(id), `production section ${id} should exist`).toHaveCount(1);
     }
-    // posterized: 13-pillar scorecard preview + read-deeper to docs/production-readiness.md
+    // The amber→green journey is the new centerpiece — six amber pillars, six green
+    const amber = page.locator('#amber-green .agt-column.is-amber .agt-pillar');
+    const green = page.locator('#amber-green .agt-column.is-green .agt-pillar');
+    expect(await amber.count(), 'amber column should have 6 pillars').toBeGreaterThanOrEqual(6);
+    expect(await green.count(), 'green column should have 6 pillars').toBeGreaterThanOrEqual(6);
+    // The track has both day labels
+    const labels = (await page.locator('#amber-green .agt-stage-labels .agt-day').allTextContents()).join(' | ');
+    expect(labels).toMatch(/Day\s+0/i);
+    expect(labels).toMatch(/Day\s+6/i);
+    // The scorecard is still the destination — 13-pillar preview + read-deeper
     await expect(page.locator('#prod-scorecard .scorecard-preview')).toHaveCount(1);
     const pillars = page.locator('#prod-scorecard .sc-pillar');
     const pillarCount = await pillars.count();
@@ -349,14 +384,14 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('chapter visual toolkit: stat-strip, inline ToC, and posterized artefact render on each chapter', async ({ page }) => {
-    // After the Route-A posterize, code-callouts moved into the artefact mocks
-    // (terminal / spec-preview / scorecard-preview) — every chapter must still
-    // carry exactly one signature artefact in addition to the hero strip + ToC.
+  test('chapter visual toolkit: stat-strip, inline ToC, and signature artefact render on each chapter', async ({ page }) => {
+    // After the Posterize-v2 SVG pass, funnel & production lift hand-authored
+    // SVG centerpieces (.ladder-svg-hero, .amber-green-track) into chapter heroes.
+    // Industries keeps its faux SPEC.md preview as its signature artefact.
     const pages = [
-      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 4, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 2, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
     ];
     for (const p of pages) {
       await page.goto(p.url);
@@ -396,10 +431,16 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     await page.goto('/funnel.html');
     const ladder = page.locator('#stage-ladder');
     await expect(ladder).toHaveCount(1);
-    const diagram = ladder.locator('.diagram-card svg');
+    await expect(ladder).toHaveClass(/ladder-svg-hero/);
+    const diagram = ladder.locator('svg').first();
     await expect(diagram).toHaveCount(1);
-    const tocLadderLink = page.locator('.chapter-hero .chapter-toc-inline a[href="#stage-ladder"]');
-    await expect(tocLadderLink).toHaveCount(1);
+    // Five named stages are inside the SVG ladder
+    const text = (await diagram.textContent()) || '';
+    expect(text).toMatch(/Conversation/i);
+    expect(text).toMatch(/Co-design/i);
+    expect(text).toMatch(/Deploy/i);
+    expect(text).toMatch(/Safe-check/i);
+    expect(text).toMatch(/Production/i);
   });
 
   test('production posture triptych replaces the old 4-up grid', async ({ page }) => {

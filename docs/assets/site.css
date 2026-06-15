@@ -2798,3 +2798,269 @@
     .read-deeper { border-color: #d4dae7; }
     .read-deeper a { color: #0a0d14; }
   }
+
+/* ============================================================
+   POSTERIZE-V2 — the SVG pass.
+   Skills are .md files for coding agents (not commands).
+   Visual primitives:
+     .skill-eyebrow      — site-wide framing strip
+     .svg-hero           — SVG-illustrated chapter hero
+     .svg-hero .frame    — the SVG container with proper aspect
+     .funnel-chain-svg   — home 3-panel SVG (paragraph → spec → agent)
+     .ladder-svg-hero    — funnel chapter hero (blown-up ladder)
+     .amber-green-track  — production chapter hero
+   ============================================================ */
+
+.skill-eyebrow {
+  display: block;
+  max-width: 980px;
+  margin: 0 auto var(--s-5);
+  padding: 14px 22px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent-1) 8%, transparent),
+    color-mix(in srgb, var(--accent-1) 2%, transparent));
+  border-left: 3px solid var(--accent-1);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: .02em;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.skill-eyebrow .se-tag {
+  display: inline-block;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent-1);
+  margin-right: 10px;
+}
+.skill-eyebrow code {
+  background: color-mix(in srgb, var(--accent-1) 14%, transparent);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  color: var(--ink-1);
+}
+.skill-eyebrow .se-not {
+  font-style: italic;
+  color: color-mix(in srgb, var(--ink-2) 70%, transparent);
+}
+
+/* --- .svg-hero — generic SVG-illustrated artefact wrapper ----
+   Generous breathing room. The SVG IS the message. */
+.svg-hero {
+  margin-top: var(--s-6);
+  margin-bottom: var(--s-6);
+}
+.svg-hero .frame {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-1) 60%, transparent),
+    color-mix(in srgb, var(--bg-0) 0%, transparent));
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 22px;
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  box-shadow: 0 24px 60px -30px rgba(0,0,0,.45);
+}
+.svg-hero .frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.svg-hero figcaption {
+  margin-top: var(--s-3);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* --- .funnel-chain-svg — home 3-panel SVG ------------------- */
+.funnel-chain-svg .panel-num     { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; fill: var(--accent-1); }
+.funnel-chain-svg .panel-title   { font-family: var(--serif); font-size: 26px; fill: var(--ink-1); }
+.funnel-chain-svg .panel-sub     { font-family: var(--sans); font-size: 13px; fill: var(--ink-2); }
+.funnel-chain-svg .panel-chip    { font-family: var(--mono); font-size: 11px; fill: var(--ink-2); }
+.funnel-chain-svg .panel-line    { stroke: var(--ink-2); stroke-width: 1; opacity: .35; }
+.funnel-chain-svg .panel-box     { fill: color-mix(in srgb, var(--accent-1) 6%, transparent); stroke: color-mix(in srgb, var(--accent-1) 40%, transparent); stroke-width: 1; }
+.funnel-chain-svg .panel-arrow   { stroke: var(--accent-1); stroke-width: 2; fill: none; opacity: .6; }
+.funnel-chain-svg .panel-stamp   { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; fill: var(--accent-1); }
+.funnel-chain-svg .panel-tick    { fill: none; stroke: var(--accent-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.funnel-chain-svg .panel-dot-ok  { fill: #2bd07a; }
+.funnel-chain-svg .panel-cost    { font-family: var(--mono); font-weight: 700; font-size: 14px; fill: var(--ink-1); }
+.funnel-chain-svg .panel-bubble  { fill: color-mix(in srgb, var(--accent-1) 4%, transparent); stroke: color-mix(in srgb, var(--accent-1) 28%, transparent); stroke-width: 1.5; }
+.funnel-chain-svg .panel-bubble-text { font-family: var(--serif); font-style: italic; font-size: 13.5px; fill: var(--ink-1); }
+.funnel-chain-svg .panel-azure   { fill: color-mix(in srgb, var(--accent-2, #5c8df6) 8%, transparent); stroke: color-mix(in srgb, var(--accent-2, #5c8df6) 48%, transparent); stroke-width: 1.2; }
+
+/* --- .ladder-svg-hero — funnel chapter hero ---------------- */
+.ladder-svg-hero {
+  margin-top: var(--s-5);
+}
+.ladder-svg-hero svg {
+  display: block;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  height: auto;
+}
+.ladder-svg-hero .ladder-prompt-bubble {
+  fill: color-mix(in srgb, var(--accent-1) 6%, transparent);
+  stroke: color-mix(in srgb, var(--accent-1) 36%, transparent);
+  stroke-width: 1.2;
+}
+
+/* --- .amber-green-track — production chapter hero ----------
+   Two columns: amber Day-0 → green After-safe-check.
+   Owners + dates render as cards inside each column. */
+.amber-green-track {
+  margin-top: var(--s-6);
+  margin-bottom: var(--s-6);
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.agt-stage-labels {
+  display: grid;
+  grid-template-columns: 1fr 80px 1fr;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.agt-stage-labels .agt-label.is-amber { grid-column: 1; }
+.agt-stage-labels .agt-label.is-green { grid-column: 3; text-align: right; }
+.agt-stage-labels .agt-label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.agt-stage-labels .agt-label .agt-day {
+  display: block;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-style: italic;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-top: 4px;
+}
+.agt-stage-labels .agt-label.is-amber .agt-day { color: #d49a2f; }
+.agt-stage-labels .agt-label.is-green .agt-day { color: #2bd07a; }
+
+.agt-track {
+  display: grid;
+  grid-template-columns: 1fr 80px 1fr;
+  gap: 0;
+  align-items: stretch;
+}
+.agt-column {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-1) 50%, transparent);
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agt-column.is-amber {
+  border-color: color-mix(in srgb, #d49a2f 50%, transparent);
+  background: color-mix(in srgb, #d49a2f 6%, transparent);
+}
+.agt-column.is-green {
+  border-color: color-mix(in srgb, #2bd07a 50%, transparent);
+  background: color-mix(in srgb, #2bd07a 6%, transparent);
+}
+.agt-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.agt-arrow svg { width: 64px; height: 64px; color: var(--accent-1); }
+.agt-arrow .agt-arrow-label {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.agt-pillar {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-0) 70%, transparent);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+.agt-pillar .agt-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  margin-left: 2px;
+}
+.agt-column.is-amber .agt-pillar .agt-dot { background: #d49a2f; box-shadow: 0 0 0 3px color-mix(in srgb, #d49a2f 18%, transparent); }
+.agt-column.is-green .agt-pillar .agt-dot { background: #2bd07a; box-shadow: 0 0 0 3px color-mix(in srgb, #2bd07a 18%, transparent); }
+.agt-pillar .agt-name {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  color: var(--ink-1);
+  line-height: 1.35;
+}
+.agt-pillar .agt-owner {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+.agt-pillar .agt-owner .agt-owner-name {
+  display: block;
+  color: var(--ink-2);
+  font-weight: 600;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+@media (max-width: 880px) {
+  .agt-track,
+  .agt-stage-labels {
+    grid-template-columns: 1fr;
+  }
+  .agt-stage-labels .agt-label.is-green { display: none; }
+  .agt-arrow { transform: rotate(90deg); margin: var(--s-3) auto; }
+  .agt-arrow .agt-arrow-label { transform: rotate(-90deg) translateX(0); position: static; margin-top: 12px; }
+}
+
+@media (prefers-color-scheme: light) {
+  .skill-eyebrow {
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--accent-1) 6%, white),
+      color-mix(in srgb, var(--accent-1) 2%, white));
+    color: #2b3146;
+  }
+  .skill-eyebrow code { color: #0a0d14; }
+  .svg-hero .frame {
+    background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+    border-color: #d4dae7;
+    box-shadow: 0 16px 40px -22px rgba(20,30,60,.18);
+  }
+  .funnel-chain-svg .panel-title { fill: #0a0d14; }
+  .funnel-chain-svg .panel-sub   { fill: #4a5168; }
+  .funnel-chain-svg .panel-chip  { fill: #4a5168; }
+  .funnel-chain-svg .panel-cost  { fill: #0a0d14; }
+  .funnel-chain-svg .panel-bubble-text { fill: #0a0d14; }
+  .agt-column { background: #ffffff; border-color: #d4dae7; }
+  .agt-column.is-amber { background: #fef6e6; border-color: #e7c98a; }
+  .agt-column.is-green { background: #e7f7ef; border-color: #84d9af; }
+  .agt-pillar { background: #ffffff; border-color: #d4dae7; }
+  .agt-pillar .agt-name { color: #0a0d14; }
+}
