@@ -494,9 +494,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     const svg = page.locator('#posture-overview svg.posture-trio-svg');
     await expect(svg).toHaveCount(1);
     const tags = (await svg.locator('text.pt-tag').allTextContents()).join(' | ');
-    expect(tags).toContain('01 · CITADEL SPOKE');
-    expect(tags).toContain('02 · AGT-ONLY, IN-PROCESS');
-    expect(tags).toContain('03 · STANDARD AI GATEWAY / VNET');
+    expect(tags).toContain('01 · GATEWAY-FRONTED');
+    expect(tags).toContain('02 · FOUNDRY-NATIVE');
+    expect(tags).toContain('03 · CUSTOMER-OWNED EDGE');
     // sits BEFORE the existing poster-triptych, not replacing it
     const fig = svg.locator('xpath=ancestor::figure[1]');
     await expect(fig).toHaveCount(1);

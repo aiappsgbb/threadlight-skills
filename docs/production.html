@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Production-ready — three postures, thirteen pillars, one scorecard.</title>
-<meta name="description" content="Threadlight's production-ready chapter: green safe-check isn't go-live. Three postures (Citadel spoke / AGT-only / Standard gateway) and thirteen cross-cutting pillars, grouped into four themes you can walk through with the customer's architecture team.">
+<meta name="description" content="Threadlight's production-ready chapter: green safe-check isn't go-live. Three postures (Gateway-fronted / Foundry-native / Customer-owned edge) and thirteen cross-cutting pillars, grouped into four themes you can walk through with the customer's architecture team.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=posterize-v9">
+<link rel="stylesheet" href="assets/site.css?v=wide-v11">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -46,7 +46,7 @@
 <main>
 
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
       <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Three postures &middot; thirteen pillars &middot; one scorecard</p>
       <h1 class="reveal" data-delay="2">Green safe-check isn&rsquo;t <em>go-live.</em></h1>
@@ -101,7 +101,7 @@
 
   <!-- ==================== AMBER → GREEN JOURNEY ==================== -->
   <section class="chapter-section" id="amber-green" data-toc-id="amber-green" data-toc-label="From amber to green">
-    <div class="wrap wrap-wide">
+    <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The story we tell ARB</p>
         <h2>Day-0 the scorecard was amber. <em>Six days later it was green.</em></h2>
@@ -206,7 +206,7 @@
   <!-- =================== 5 GOVERNANCE TRIGGERS =================== -->
 
   <section class="chapter-section" id="governance-triggers" data-toc-id="governance-triggers" data-toc-label="When to graduate">
-    <div class="wrap wrap-wide">
+    <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>When to graduate</p>
         <h2>Five questions a CISO asks. <em>If any one fires, you&rsquo;ve outgrown the laptop.</em></h2>
@@ -346,7 +346,7 @@
   <!-- =================== POSTURES =================== -->
 
   <section class="chapter-section" id="posture-overview" data-toc-id="posture-overview" data-toc-label="Postures &middot; the three shapes">
-    <div class="wrap wrap-wide">
+    <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Postures</p>
         <h2>Three shapes &mdash; <em>resolved from SPEC &sect; 12.</em></h2>
@@ -379,11 +379,11 @@
             </style>
           </defs>
 
-          <!-- ===== Posture 01: Citadel spoke — perimeter + core ===== -->
+          <!-- ===== Posture 01: Gateway-fronted (Citadel spoke) ===== -->
           <g transform="translate(20, 16)">
             <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">01 &middot; CITADEL SPOKE</text>
-            <text x="22" y="58" class="pt-name">Perimeter <tspan font-style="italic">plus</tspan> core.</text>
+            <text x="22" y="32" class="pt-tag">01 &middot; GATEWAY-FRONTED</text>
+            <text x="22" y="58" class="pt-name">Citadel <tspan font-style="italic">spoke</tspan>.</text>
 
             <!-- Outer APIM ring -->
             <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8"/>
@@ -403,10 +403,10 @@
             <text x="170" y="272" text-anchor="middle" class="pt-sub">2 LAYERS &middot; JWT &middot; LEDGER</text>
           </g>
 
-          <!-- ===== Posture 02: Core only ===== -->
+          <!-- ===== Posture 02: Foundry-native (core only) ===== -->
           <g transform="translate(370, 16)">
             <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">02 &middot; AGT-ONLY, IN-PROCESS</text>
+            <text x="22" y="32" class="pt-tag">02 &middot; FOUNDRY-NATIVE</text>
             <text x="22" y="58" class="pt-name">Core <tspan font-style="italic">only</tspan>.</text>
 
             <!-- Glowing standalone agent box -->
@@ -423,11 +423,11 @@
             <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; HASH-CHAIN AUDIT</text>
           </g>
 
-          <!-- ===== Posture 03: Customer-owned boundary ===== -->
+          <!-- ===== Posture 03: Customer-owned edge ===== -->
           <g transform="translate(720, 16)">
             <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">03 &middot; STANDARD AI GATEWAY / VNET</text>
-            <text x="22" y="58" class="pt-name">Customer-owned <tspan font-style="italic">boundary</tspan>.</text>
+            <text x="22" y="32" class="pt-tag">03 &middot; CUSTOMER-OWNED EDGE</text>
+            <text x="22" y="58" class="pt-name">Your gateway, <tspan font-style="italic">our agent</tspan>.</text>
 
             <!-- Dashed customer-owned outer edge -->
             <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8" stroke-dasharray="6 4"/>
@@ -453,14 +453,14 @@
 
       <div class="poster-triptych">
         <article class="poster-card reveal" data-delay="1">
-          <p class="poster-eyebrow"><span>01 · Citadel spoke</span><span style="font-family:var(--mono); font-size:9.5px; padding:2px 8px; border-radius:99px; background:var(--lime-soft); color:var(--lime); letter-spacing:.16em;">DEFAULT</span></p>
+          <p class="poster-eyebrow"><span>01 · Gateway-fronted (Citadel spoke)</span><span style="font-family:var(--mono); font-size:9.5px; padding:2px 8px; border-radius:99px; background:var(--lime-soft); color:var(--lime); letter-spacing:.16em;">DEFAULT</span></p>
           <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
             <rect x="4" y="4" width="152" height="62" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-width="1.5"/>
             <rect x="48" y="20" width="64" height="30" rx="6" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
             <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
             <text x="80" y="14" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.7">APIM PERIMETER</text>
           </svg>
-          <h3>Perimeter <em>plus</em> core.</h3>
+          <h3>Gateway-fronted &mdash; the <em>Citadel spoke</em>.</h3>
           <p class="poster-lede">
             Customer&rsquo;s AI Citadel hub fronts every model call via APIM (JWT, rate-limit, content filter, semantic cache, ledger). Pilot Foundry project is onboarded as a spoke; <code>agent-governance-toolkit</code> enforces fine-grained policy <em>inside</em> the agent itself.
           </p>
@@ -472,13 +472,13 @@
         </article>
 
         <article class="poster-card reveal" data-delay="2">
-          <p class="poster-eyebrow"><span>02 · AGT-only, in-process</span></p>
+          <p class="poster-eyebrow"><span>02 · Foundry-native (core only)</span></p>
           <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
             <rect x="40" y="14" width="80" height="42" rx="8" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
             <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
-            <text x="80" y="66" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.6">CORE ONLY</text>
+            <text x="80" y="66" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.6">FOUNDRY ONLY</text>
           </svg>
-          <h3>Core <em>only</em>.</h3>
+          <h3>Foundry-native &mdash; <em>core only</em>.</h3>
           <p class="poster-lede">
             No central AI gateway. Agent Governance Toolkit (v4.1 preview, detected automatically) sits inside the agent process. 8&ndash;12&nbsp;&micro;s/eval, hash-chained audit, OWASP-ASI evidence. Greenfield or experimental tenants where the gateway investment hasn&rsquo;t happened.
           </p>
@@ -489,14 +489,14 @@
         </article>
 
         <article class="poster-card reveal" data-delay="3">
-          <p class="poster-eyebrow"><span>03 · Standard AI gateway / VNet</span></p>
+          <p class="poster-eyebrow"><span>03 · Customer-owned edge</span></p>
           <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
             <path d="M4 14 L156 14" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>
             <text x="80" y="8" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="currentColor" letter-spacing="0.18em" opacity="0.7">CUSTOMER-OWNED EDGE</text>
             <rect x="48" y="26" width="64" height="36" rx="7" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
             <text x="80" y="48" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
           </svg>
-          <h3>Customer-owned <em>boundary</em>.</h3>
+          <h3>Customer-owned <em>edge</em>.</h3>
           <p class="poster-lede">
             Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot conforms to the established gateway pattern rather than introducing Citadel mid-flight. The safe-check <em>verifies</em>, never prescribes.
           </p>
@@ -520,7 +520,7 @@
   </section>
 
   <section class="chapter-section" id="prod-scorecard" data-toc-id="prod-scorecard" data-toc-label="The scorecard">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The artefact ARB reads</p>
         <h2>Day 6 &mdash; <em>this PDF closed it.</em></h2>
@@ -535,7 +535,7 @@
         <header class="sc-header">
           <p class="sc-title">scorecard.pdf</p>
           <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
-          <p class="sc-posture">Posture &mdash; <strong>Citadel spoke</strong> (perimeter &amp; core)</p>
+          <p class="sc-posture">Posture &mdash; <strong>Gateway-fronted</strong> (Citadel spoke)</p>
         </header>
 
         <div class="sc-grid">

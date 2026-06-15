@@ -146,12 +146,15 @@
   main { position: relative; z-index: 1; }
 
   /* Wide wrap for chapter pages: SVG heroes and amber-green tracks
-     want to breathe past the 1200px default. */
-  .wrap.wrap-wide { max-width: 1400px; }
+     want to breathe past the 1280px default. wrap-xl is for hero SVGs
+     that are themselves the message and want to dominate the viewport. */
+  .wrap.wrap-wide { max-width: 1480px; }
+  .wrap.wrap-xl   { max-width: 1720px; }
   .chapter-section.full-bleed > .wrap,
   .ladder-svg-hero > .wrap,
-  .chapter-section > .wrap-wide { max-width: 1400px; }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+  .chapter-section > .wrap-wide { max-width: 1480px; }
+  .chapter-section > .wrap-xl   { max-width: 1720px; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
   @media (max-width: 720px) { .wrap { padding: 0 22px; } }
 
   /* ---------- typography primitives ---------- */
@@ -317,10 +320,10 @@
   .hero-inner { position: relative; z-index: 2; text-align: center; padding: 60px 0; }
   .hero-inner .eyebrow { justify-content: center; display: inline-flex; align-items: center; }
   .hero-headline {
-    font-size: clamp(44px, 7vw, 108px); line-height: 1.0;
+    font-size: clamp(48px, 8vw, 132px); line-height: 1.0;
     font-family: var(--serif); font-weight: 500; letter-spacing: -.022em;
     color: var(--ink-0);
-    max-width: 1080px; margin: 6px auto 26px;
+    max-width: 1480px; margin: 6px auto 26px;
   }
   .hero-headline em {
     font-style: italic;
@@ -331,8 +334,8 @@
   .hero-headline .word { display: inline-block; opacity: 0; transform: translateY(40px); transition: opacity .9s, transform .9s; }
   .hero-headline .word.in { opacity: 1; transform: translateY(0); }
   .hero-sub {
-    font-family: var(--serif); font-size: clamp(18px, 1.8vw, 24px);
-    color: var(--ink-1); max-width: 760px; margin: 0 auto 38px; line-height: 1.5;
+    font-family: var(--serif); font-size: clamp(18px, 1.9vw, 28px);
+    color: var(--ink-1); max-width: 900px; margin: 0 auto 38px; line-height: 1.5;
   }
   .hero-sub em { color: var(--lime-1); font-style: italic; }
 
@@ -1798,20 +1801,20 @@
   .chapter-hero h1 {
     font-family: var(--serif);
     font-weight: 400;
-    font-size: clamp(2.2rem, 4.6vw, 3.6rem);
-    line-height: 1.08;
-    letter-spacing: -.01em;
+    font-size: clamp(2.4rem, 6vw, 5.4rem);
+    line-height: 1.06;
+    letter-spacing: -.012em;
     color: var(--ink-0);
-    margin: 14px auto 18px;
-    max-width: 860px;
+    margin: 16px auto 20px;
+    max-width: 1180px;
   }
   .chapter-hero h1 em { font-style: italic; color: var(--chapter-accent, var(--accent-1)); }
   .chapter-hero .lede {
-    max-width: 720px;
+    max-width: 880px;
     margin: 0 auto;
     color: var(--ink-1);
-    font-size: 1.1rem;
-    line-height: 1.65;
+    font-size: clamp(1.05rem, 1.4vw, 1.4rem);
+    line-height: 1.6;
   }
   .chapter-hero .breadcrumb {
     font-family: var(--mono);
@@ -1964,13 +1967,28 @@
      disappears entirely, so no reservation needed.
      ============================================================ */
   @media (min-width: 1101px) {
-    body.chapter-page .chapter-section .wrap,
-    body.chapter-page .chapter-hero    .wrap {
+    /* Default .wrap (text columns) reserves room for the ToC so prose
+       doesn't collide with it. wrap-wide and wrap-xl handle the ToC by
+       capping their max-width against the viewport instead, which lets
+       hero SVGs spread far wider while still clearing the ToC zone. */
+    body.chapter-page .chapter-section .wrap:not(.wrap-wide):not(.wrap-xl),
+    body.chapter-page .chapter-hero    .wrap:not(.wrap-wide):not(.wrap-xl) {
       padding-right: 240px;
     }
-    body:has(.floating-toc) main > section.scene .wrap,
-    body:has(.floating-toc) main > section > .wrap {
+    body:has(.floating-toc) main > section.scene .wrap:not(.wrap-wide):not(.wrap-xl),
+    body:has(.floating-toc) main > section > .wrap:not(.wrap-wide):not(.wrap-xl) {
       padding-right: 220px;
+    }
+    /* For wide and extra-wide wraps, constrain max-width so the right
+       edge stays out of the ToC zone (~240px) without padding the box.
+       This is the key to actually using horizontal space on chapter pages. */
+    body.chapter-page .chapter-section .wrap.wrap-wide,
+    body:has(.floating-toc) main > section > .wrap.wrap-wide {
+      max-width: min(1480px, calc(100vw - 280px));
+    }
+    body.chapter-page .chapter-section .wrap.wrap-xl,
+    body:has(.floating-toc) main > section > .wrap.wrap-xl {
+      max-width: min(1720px, calc(100vw - 280px));
     }
   }
 
@@ -2868,7 +2886,7 @@
 }
 .svg-hero .frame {
   width: 100%;
-  max-width: 1360px;
+  max-width: 1640px;
   margin: 0 auto;
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--bg-1) 60%, transparent),
@@ -2916,7 +2934,7 @@
 .ladder-svg-hero svg {
   display: block;
   width: 100%;
-  max-width: 1360px;
+  max-width: 1640px;
   margin: 0 auto;
   height: auto;
 }
@@ -2932,7 +2950,7 @@
 .amber-green-track {
   margin-top: var(--s-6);
   margin-bottom: var(--s-6);
-  max-width: 1360px;
+  max-width: 1640px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -2943,7 +2961,7 @@
 }
 .relay-svg-hero figure {
   margin: var(--s-5) auto 0;
-  max-width: 1240px;
+  max-width: 1640px;
 }
 .relay-svg-hero svg.artefact-relay-svg {
   width: 100%;
@@ -2954,7 +2972,7 @@
 /* --- .ciso-pentagon-svg — production CISO 5-question hero --- */
 .ciso-pentagon-svg {
   width: 100%;
-  max-width: 1120px;
+  max-width: 1640px;
   margin: var(--s-5) auto var(--s-3);
   height: auto;
   display: block;
@@ -2963,7 +2981,7 @@
 /* --- .posture-trio-svg — production 3-posture hero ---------- */
 .posture-trio-svg {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1640px;
   margin: var(--s-5) auto var(--s-3);
   height: auto;
   display: block;
