@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=posterize-v3">
+<link rel="stylesheet" href="assets/site.css?v=posterize-v9">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -101,7 +101,7 @@
 
   <!-- ==================== AMBER → GREEN JOURNEY ==================== -->
   <section class="chapter-section" id="amber-green" data-toc-id="amber-green" data-toc-label="From amber to green">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The story we tell ARB</p>
         <h2>Day-0 the scorecard was amber. <em>Six days later it was green.</em></h2>
@@ -206,7 +206,7 @@
   <!-- =================== 5 GOVERNANCE TRIGGERS =================== -->
 
   <section class="chapter-section" id="governance-triggers" data-toc-id="governance-triggers" data-toc-label="When to graduate">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>When to graduate</p>
         <h2>Five questions a CISO asks. <em>If any one fires, you&rsquo;ve outgrown the laptop.</em></h2>
@@ -218,6 +218,101 @@
           the laptop. This is the conversation production-ready opens with.
         </p>
       </div>
+
+      <figure aria-labelledby="ciso-caption" class="reveal" data-delay="1">
+        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five questions a CISO asks arranged as spokes around a central production-ready core">
+          <defs>
+            <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
+              <stop offset="70%" stop-color="currentColor" stop-opacity="0.12"/>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0.04"/>
+            </radialGradient>
+            <style>
+              .ciso-num    { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; fill: #8e95a8; }
+              .ciso-q      { font-family: var(--serif); font-size: 17px; fill: #f5f5f7; }
+              .ciso-q-sub  { font-family: var(--mono); font-size: 10.5px; fill: currentColor; opacity: 0.75; }
+              .ciso-core-h { font-family: var(--serif); font-size: 18px; fill: #f5f5f7; }
+              .ciso-core-s { font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; fill: currentColor; opacity: 0.85; }
+              @media (prefers-color-scheme: light) {
+                .ciso-q      { fill: #0a0d14; }
+                .ciso-num    { fill: #5f6680; }
+                .ciso-core-h { fill: #0a0d14; }
+              }
+            </style>
+          </defs>
+
+          <!-- 5 spokes from core (540, 190) to each label -->
+          <g class="ciso-spokes" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4" fill="none">
+            <line x1="540" y1="190" x2="180" y2="90"/>
+            <line x1="540" y1="190" x2="900" y2="90"/>
+            <line x1="540" y1="190" x2="240" y2="310"/>
+            <line x1="540" y1="190" x2="840" y2="310"/>
+            <line x1="540" y1="190" x2="540" y2="50"/>
+          </g>
+
+          <!-- Core: "Is this production-ready?" -->
+          <g transform="translate(540, 190)">
+            <circle r="90" fill="url(#ciso-core-fill)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.6"/>
+            <circle r="56" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>
+            <text x="0" y="-12" text-anchor="middle" class="ciso-core-s">ANY ONE FIRES &rarr;</text>
+            <text x="0" y="10" text-anchor="middle" class="ciso-core-h">You've outgrown</text>
+            <text x="0" y="32" text-anchor="middle" class="ciso-core-h"><tspan font-style="italic">the laptop.</tspan></text>
+          </g>
+
+          <!-- 01 Identity (top-left) -->
+          <g transform="translate(40, 50)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="40" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="22" cy="40" r="3.5" fill="currentColor"/>
+            <text x="44" y="28" class="ciso-num">01 &middot; IDENTITY</text>
+            <text x="44" y="50" class="ciso-q">Who is it acting as?</text>
+            <text x="44" y="68" class="ciso-q-sub">UAMI? Entra app? OBO?</text>
+          </g>
+
+          <!-- 02 Audit (top-right) -->
+          <g transform="translate(800, 50)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <rect x="14" y="30" width="16" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <line x1="18" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.4"/>
+            <line x1="18" y1="42" x2="26" y2="42" stroke="currentColor" stroke-width="1.4"/>
+            <line x1="18" y1="47" x2="22" y2="47" stroke="currentColor" stroke-width="1.4"/>
+            <text x="44" y="28" class="ciso-num">02 &middot; AUDIT</text>
+            <text x="44" y="50" class="ciso-q">What &mdash; when &mdash; for whom?</text>
+            <text x="44" y="68" class="ciso-q-sub">Append-only + OTel traces</text>
+          </g>
+
+          <!-- 03 RBAC (bottom-left) -->
+          <g transform="translate(100, 300)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <path d="M 22 32 L 32 28 L 32 44 Q 32 52 22 56 Q 12 52 12 44 L 12 28 Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <text x="44" y="28" class="ciso-num">03 &middot; RBAC</text>
+            <text x="44" y="50" class="ciso-q">Can it read this index?</text>
+            <text x="44" y="68" class="ciso-q-sub">Keyless RBAC, scoped to agent</text>
+          </g>
+
+          <!-- 04 Telemetry (bottom-right) -->
+          <g transform="translate(740, 300)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <polyline points="12,52 18,42 24,46 30,32 36,38" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <text x="44" y="28" class="ciso-num">04 &middot; TELEMETRY</text>
+            <text x="44" y="50" class="ciso-q">Is it running well?</text>
+            <text x="44" y="68" class="ciso-q-sub">App Insights from day-0</text>
+          </g>
+
+          <!-- 05 Evals (top center) -->
+          <g transform="translate(420, 8)">
+            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M 17 30 L 21 34 L 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
+            <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
+          </g>
+        </svg>
+        <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
+          Production-ready is a conversation, not a button. These are its five opening questions.
+        </figcaption>
+      </figure>
+
       <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>01 &middot; Identity</p>
@@ -251,7 +346,7 @@
   <!-- =================== POSTURES =================== -->
 
   <section class="chapter-section" id="posture-overview" data-toc-id="posture-overview" data-toc-label="Postures &middot; the three shapes">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Postures</p>
         <h2>Three shapes &mdash; <em>resolved from SPEC &sect; 12.</em></h2>
@@ -262,6 +357,100 @@
           starts asking governance questions.
         </p>
       </div>
+
+      <figure aria-labelledby="posture-trio-caption" class="reveal" data-delay="1">
+        <svg class="posture-trio-svg" viewBox="0 0 1080 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three production postures shown as distinct architectural shapes: APIM perimeter plus agent core, agent core only, and a customer-owned network boundary around the agent">
+          <defs>
+            <linearGradient id="posture-card-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
+            </linearGradient>
+            <style>
+              .pt-tag    { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; fill: #8e95a8; }
+              .pt-name   { font-family: var(--serif); font-size: 19px; fill: #f5f5f7; }
+              .pt-name em{ font-style: italic; }
+              .pt-sub    { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; fill: currentColor; opacity: 0.78; }
+              .pt-edge   { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; fill: currentColor; opacity: 0.75; }
+              .pt-pill   { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; fill: currentColor; }
+              @media (prefers-color-scheme: light) {
+                .pt-name { fill: #0a0d14; }
+                .pt-tag  { fill: #5f6680; }
+              }
+            </style>
+          </defs>
+
+          <!-- ===== Posture 01: Citadel spoke — perimeter + core ===== -->
+          <g transform="translate(20, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">01 &middot; CITADEL SPOKE</text>
+            <text x="22" y="58" class="pt-name">Perimeter <tspan font-style="italic">plus</tspan> core.</text>
+
+            <!-- Outer APIM ring -->
+            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8"/>
+            <rect x="56" y="74" width="84" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1"/>
+            <text x="98" y="88" text-anchor="middle" class="pt-edge">APIM GATEWAY</text>
+
+            <!-- Inner agent box -->
+            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.28" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">+ AGT in-process</text>
+
+            <!-- Flow arrows: into APIM, through to agent -->
+            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <line x1="60" y1="172" x2="110" y2="172" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3 3"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">2 LAYERS &middot; JWT &middot; LEDGER</text>
+          </g>
+
+          <!-- ===== Posture 02: Core only ===== -->
+          <g transform="translate(370, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">02 &middot; AGT-ONLY, IN-PROCESS</text>
+            <text x="22" y="58" class="pt-name">Core <tspan font-style="italic">only</tspan>.</text>
+
+            <!-- Glowing standalone agent box -->
+            <circle cx="170" cy="172" r="98" fill="currentColor" fill-opacity="0.06" stroke="none"/>
+            <circle cx="170" cy="172" r="78" fill="currentColor" fill-opacity="0.10" stroke="none"/>
+            <rect x="100" y="140" width="140" height="72" rx="12" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="192" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">+ AGT in-process</text>
+
+            <!-- Flow arrow direct -->
+            <line x1="20" y1="172" x2="98" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M94,168 L100,172 L94,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; HASH-CHAIN AUDIT</text>
+          </g>
+
+          <!-- ===== Posture 03: Customer-owned boundary ===== -->
+          <g transform="translate(720, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">03 &middot; STANDARD AI GATEWAY / VNET</text>
+            <text x="22" y="58" class="pt-name">Customer-owned <tspan font-style="italic">boundary</tspan>.</text>
+
+            <!-- Dashed customer-owned outer edge -->
+            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8" stroke-dasharray="6 4"/>
+            <rect x="48" y="74" width="160" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="128" y="88" text-anchor="middle" class="pt-edge">CUSTOMER-OWNED EDGE</text>
+
+            <!-- Inner agent conforming -->
+            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.6"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">conforms, never prescribes</text>
+
+            <!-- Flow arrow into customer edge -->
+            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; VERIFY, DON'T REPLACE</text>
+          </g>
+        </svg>
+        <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
+          Same agent &middot; three architectures &middot; the safe-check skill detects which one is live before it asks any governance question
+        </figcaption>
+      </figure>
+
       <div class="poster-triptych">
         <article class="poster-card reveal" data-delay="1">
           <p class="poster-eyebrow"><span>01 · Citadel spoke</span><span style="font-family:var(--mono); font-size:9.5px; padding:2px 8px; border-radius:99px; background:var(--lime-soft); color:var(--lime); letter-spacing:.16em;">DEFAULT</span></p>

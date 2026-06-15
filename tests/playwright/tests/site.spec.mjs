@@ -458,6 +458,70 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
+  test('funnel artefact-relay SVG shows the 5 named files flowing left-to-right', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const relay = page.locator('#stage-relay.relay-svg-hero');
+    await expect(relay).toHaveCount(1);
+    const svg = relay.locator('svg.artefact-relay-svg');
+    await expect(svg).toHaveCount(1);
+    // Five stage tags STAGE 01..STAGE 05 must all appear inside the SVG
+    const tags = (await svg.locator('text.ar-stage').allTextContents()).join(' | ');
+    for (const want of ['STAGE 01', 'STAGE 02', 'STAGE 03', 'STAGE 04', 'STAGE 05']) {
+      expect(tags, `relay SVG must include ${want}`).toContain(want);
+    }
+    // Five artefact names: Paragraph / SPEC.md / Agent + IaC / Scorecard / Hand-off
+    const names = (await svg.locator('text.ar-name').allTextContents()).join(' | ');
+    for (const want of ['Paragraph', 'SPEC.md', 'Agent', 'Scorecard', 'Hand-off']) {
+      expect(names, `relay SVG must include artefact ${want}`).toContain(want);
+    }
+  });
+
+  test('production CISO pentagon SVG shows 5 trigger questions around a core', async ({ page }) => {
+    await page.goto('/production.html');
+    const svg = page.locator('#governance-triggers svg.ciso-pentagon-svg');
+    await expect(svg).toHaveCount(1);
+    // Five numbered question tags
+    const tags = (await svg.locator('text.ciso-num').allTextContents()).join(' | ');
+    for (const want of ['01 · IDENTITY', '02 · AUDIT', '03 · RBAC', '04 · TELEMETRY', '05 · EVALS']) {
+      expect(tags, `CISO SVG must include ${want}`).toContain(want);
+    }
+    // Five spoke lines from the core
+    await expect(svg.locator('g.ciso-spokes > line')).toHaveCount(5);
+  });
+
+  test('production posture-trio hero SVG renders 3 distinct architectural shapes', async ({ page }) => {
+    await page.goto('/production.html');
+    const svg = page.locator('#posture-overview svg.posture-trio-svg');
+    await expect(svg).toHaveCount(1);
+    const tags = (await svg.locator('text.pt-tag').allTextContents()).join(' | ');
+    expect(tags).toContain('01 · CITADEL SPOKE');
+    expect(tags).toContain('02 · AGT-ONLY, IN-PROCESS');
+    expect(tags).toContain('03 · STANDARD AI GATEWAY / VNET');
+    // sits BEFORE the existing poster-triptych, not replacing it
+    const fig = svg.locator('xpath=ancestor::figure[1]');
+    await expect(fig).toHaveCount(1);
+  });
+
+  test('reveal animation does NOT strand content for real visitors (no JS required for visibility)', async ({ page }) => {
+    // This test is the regression guard for the .reveal opacity:0 bug.
+    // If .reveal stays hidden on initial paint without scrolling, 11+ elements
+    // on funnel and production pages become invisible to real users.
+    for (const url of ['/funnel.html', '/production.html', '/index.html', '/industries.html']) {
+      await page.goto(url);
+      // wait for safety-net sweep (1.2s) to fire
+      await page.waitForTimeout(1500);
+      const result = await page.evaluate(() => {
+        const reveals = [...document.querySelectorAll('.reveal')];
+        // Bug regression: any .reveal without .in stays at opacity:0 forever
+        // (the html.js .reveal:not(.in) rule). The safety net must add .in
+        // to every element so the transition (1.1s + delay) can complete.
+        const notIn = reveals.filter(el => !el.classList.contains('in')).length;
+        return { total: reveals.length, notIn };
+      });
+      expect(result.notIn, `${url} should have .in on every .reveal after safety-net sweep (had ${result.notIn}/${result.total} still missing .in)`).toBe(0);
+    }
+  });
+
   test('industries sector grid shows six poster cards above the SPEC mock', async ({ page }) => {
     await page.goto('/industries.html');
     const grid = page.locator('#sector-grid .poster-triptych');

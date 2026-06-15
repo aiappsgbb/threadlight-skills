@@ -35,6 +35,11 @@
   // 2 · IntersectionObserver-based reveal animations
   // ---------------------------------------------------------------
   function wireReveal() {
+    // Flag <html> with .js BEFORE we run any animation — this makes the
+    // CSS lift its visible-default and hide reveal items so they can fade in.
+    // Without JS the default stays visible, so broken observers never strand
+    // content as opacity:0.
+    document.documentElement.classList.add('js');
     const els = document.querySelectorAll('.reveal');
     if (!('IntersectionObserver' in window)) {
       els.forEach(el => el.classList.add('in'));
@@ -47,8 +52,14 @@
           io.unobserve(e.target);
         }
       });
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.08 });
+    }, { rootMargin: '0px 0px 0px 0px', threshold: 0.01 });
     els.forEach(el => io.observe(el));
+    // Safety net: anything still not revealed after 1.2s gets shown, so a
+    // mis-firing observer (e.g. zero-height container, deep scroll position)
+    // never leaves a section blank.
+    setTimeout(() => {
+      document.querySelectorAll('.reveal:not(.in)').forEach(el => el.classList.add('in'));
+    }, 1200);
   }
 
   // ---------------------------------------------------------------
