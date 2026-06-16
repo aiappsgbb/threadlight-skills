@@ -382,6 +382,30 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     await expect(prod.locator('a[href="./production.html"]')).toHaveCount(1);
   });
 
+  test('skills chain block lives on home with all 3 primary skill cards + supporting chips', async ({ page }) => {
+    await page.goto(LANDING);
+    const chain = page.locator('#scene-chain');
+    await chain.scrollIntoViewIfNeeded();
+    // 3 primary skill cards: design, deploy, production-ready
+    const cards = chain.locator('.skill-card');
+    await expect(cards).toHaveCount(3);
+    const skillNames = (await cards.locator('.skill-name').allTextContents()).join(' | ').toLowerCase();
+    expect(skillNames).toMatch(/threadlight-design/);
+    expect(skillNames).toMatch(/threadlight-deploy/);
+    expect(skillNames).toMatch(/threadlight-production-ready/);
+    // Supporting chips: 3 always-wired + 3 conditional
+    const chips = chain.locator('.aux-chip');
+    await expect(chips).toHaveCount(6);
+    // Each chip names a real threadlight-* skill
+    const chipNames = (await chips.locator('.aux-name').allTextContents()).join(' | ').toLowerCase();
+    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers']) {
+      expect(chipNames, `skills chain should name ${s}`).toContain(s);
+    }
+    // Hero CTA "See the chain" should land on this block
+    const ctaHref = await page.locator('#scene-hero .hero-cta-row a[href="#scene-chain"]').getAttribute('href');
+    expect(ctaHref).toBe('#scene-chain');
+  });
+
   test('landing teasers point at the deep pages', async ({ page }) => {
     await page.goto(LANDING);
     await expect(page.locator('#scene-funnel a[href^="./funnel.html"]').first()).toHaveCount(1);
