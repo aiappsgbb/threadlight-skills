@@ -230,6 +230,9 @@
     min-height: 100vh; padding: 120px 0; position: relative;
     display: flex; align-items: center;
   }
+  /* As flex items, .wrap children must fill the main axis up to their
+     max-width instead of shrinking to the content's intrinsic width. */
+  section.scene > .wrap { width: 100%; }
   @media (max-width: 900px) {
     section.scene { padding: 80px 0; min-height: auto; }
   }
@@ -1973,22 +1976,22 @@
        hero SVGs spread far wider while still clearing the ToC zone. */
     body.chapter-page .chapter-section .wrap:not(.wrap-wide):not(.wrap-xl),
     body.chapter-page .chapter-hero    .wrap:not(.wrap-wide):not(.wrap-xl) {
-      padding-right: 240px;
+      padding-right: 220px;
     }
     body:has(.floating-toc) main > section.scene .wrap:not(.wrap-wide):not(.wrap-xl),
     body:has(.floating-toc) main > section > .wrap:not(.wrap-wide):not(.wrap-xl) {
-      padding-right: 220px;
+      padding-right: 200px;
     }
     /* For wide and extra-wide wraps, constrain max-width so the right
-       edge stays out of the ToC zone (~240px) without padding the box.
+       edge stays out of the ToC zone (~220px) without padding the box.
        This is the key to actually using horizontal space on chapter pages. */
     body.chapter-page .chapter-section .wrap.wrap-wide,
     body:has(.floating-toc) main > section > .wrap.wrap-wide {
-      max-width: min(1480px, calc(100vw - 280px));
+      max-width: min(1480px, calc(100vw - 240px));
     }
     body.chapter-page .chapter-section .wrap.wrap-xl,
     body:has(.floating-toc) main > section > .wrap.wrap-xl {
-      max-width: min(1720px, calc(100vw - 280px));
+      max-width: min(1720px, calc(100vw - 220px));
     }
   }
 
@@ -2893,7 +2896,7 @@
     color-mix(in srgb, var(--bg-0) 0%, transparent));
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   border-radius: 22px;
-  padding: var(--s-5) var(--s-4) var(--s-4);
+  padding: var(--s-4) var(--s-2) var(--s-3);
   box-shadow: 0 24px 60px -30px rgba(0,0,0,.45);
 }
 .svg-hero .frame svg {

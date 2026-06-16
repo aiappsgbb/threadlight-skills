@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=content-v12">
+<link rel="stylesheet" href="assets/site.css?v=ia-v13">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -88,6 +88,7 @@
         <a href="#governance-triggers">When to graduate</a>
         <a href="#posture-overview">3 postures</a>
         <a href="#prod-scorecard">The scorecard</a>
+        <a href="#prod-cost">Cost forecast</a>
         <a href="#chapter-recap">Recap</a>
       </nav>
 
@@ -569,6 +570,147 @@
         <span class="rd-label">All 13 pillars, deeply explained:</span>
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
       </div>
+    </div>
+  </section>
+
+  <!-- =================== COST FORECAST (pillar 10 deep-dive) =================== -->
+  <section class="chapter-section" id="prod-cost" data-toc-id="prod-cost" data-toc-label="Cost forecast">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Pillar 10 &middot; deep-dive</p>
+        <h2>Forecast the bill <em>before you turn on traffic.</em></h2>
+        <p class="section-lede">
+          <code>threadlight-consumption-iq</code> walks every deployed resource at the
+          customer&rsquo;s declared production load and prices it against the public
+          <strong>Azure Retail Prices API</strong> &mdash; so the monthly cost is a number
+          on the ARB scorecard, not a surprise three weeks in. Soft-advisory, deterministic,
+          re-runnable.
+        </p>
+      </div>
+
+      <!-- counters: default vs right-sized -->
+      <div class="cost-counters reveal" data-delay="3" role="figure" aria-label="Monthly cost forecast: default vs right-sized">
+        <div class="ctr">
+          <div class="ctr-label">Default config</div>
+          <div class="ctr-value is-current" data-cost-counter data-to="397.57" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-sub">What the scaffold ships at the declared load</div>
+        </div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div class="ctr">
+          <div class="ctr-label">Right-sized</div>
+          <div class="ctr-value is-recommended" data-cost-counter data-to="341.19" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-sub">
+            Same constraints, projection holds
+            <span class="cost-savings-pill" aria-label="Delta vs default config">&Delta; &minus;$56.38 / &minus;14.2%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- per-resource breakdown -->
+      <div class="cost-table-wrap reveal" data-delay="4" role="region" aria-label="Per-resource cost forecast" tabindex="0">
+        <table class="cost-table">
+          <thead>
+            <tr>
+              <th scope="col">Resource</th>
+              <th scope="col">Default SKU</th>
+              <th scope="col" class="num">$ / mo</th>
+              <th scope="col">Right-size option</th>
+              <th scope="col" class="num">&Delta;</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>cosmos</strong><br><span class="sku">DocumentDB</span></td>
+              <td><span class="sku">Standard provisioned 4000 RU/s</span></td>
+              <td class="num">$246.10</td>
+              <td><span class="sku">keep &mdash; serverless trips 50 GB cap</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>ai-search</strong><br><span class="sku">Search</span></td>
+              <td><span class="sku">basic 1&times;1</span></td>
+              <td class="num">$73.00</td>
+              <td><span class="sku">keep &mdash; free tier doc cap below load</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>apim</strong><br><span class="sku">API Management</span></td>
+              <td><span class="sku">BasicV2 capacity=1</span></td>
+              <td class="num">$51.10</td>
+              <td><span class="sku">Consumption</span></td>
+              <td class="num savings-cell">&minus;$45.53</td>
+            </tr>
+            <tr>
+              <td><strong>bot</strong><br><span class="sku">Container Apps</span></td>
+              <td><span class="sku">Consumption 2 replicas</span></td>
+              <td class="num">$15.85</td>
+              <td><span class="sku">keep &mdash; already at min</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+            <tr>
+              <td><strong>foundry-agent</strong><br><span class="sku">Foundry hosted</span></td>
+              <td><span class="sku">Standard tier</span></td>
+              <td class="num">$10.56</td>
+              <td><span class="sku">Free tier</span></td>
+              <td class="num savings-cell">&minus;$10.56</td>
+            </tr>
+            <tr>
+              <td><strong>storage</strong><br><span class="sku">Storage</span></td>
+              <td><span class="sku">Standard_LRS hot</span></td>
+              <td class="num">$0.96</td>
+              <td><span class="sku">Standard_ZRS cool</span></td>
+              <td class="num savings-cell">&minus;$0.29</td>
+            </tr>
+            <tr>
+              <td><strong>aoai-chat</strong><br><span class="sku">AOAI deployment</span></td>
+              <td><span class="sku">gpt-4o PAYG eastus2</span></td>
+              <td class="num"><abbr title="Live retail price required; fallback fixture omitted to avoid stale claims">N/A</abbr></td>
+              <td><span class="sku">populated by live Retail Prices API</span></td>
+              <td class="num savings-cell neutral">&mdash;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- top 3 right-sizing opportunities -->
+      <div class="cost-recs reveal" data-delay="5" aria-label="Top three right-sizing opportunities">
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#1</span>
+          <p class="rec-title">apim &mdash; Consumption tier holds at declared load</p>
+          <p class="rec-swap"><span class="from">BasicV2 capacity=1</span><span class="arr">&rarr;</span><span class="to">Consumption</span></p>
+          <p class="rec-saves">&Delta; &minus;$45.53<span class="pct">/mo &middot; 89%</span></p>
+        </article>
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#2</span>
+          <p class="rec-title">foundry-agent &mdash; Free tier fits the projected volume</p>
+          <p class="rec-swap"><span class="from">Standard</span><span class="arr">&rarr;</span><span class="to">Free hosted-agent</span></p>
+          <p class="rec-saves">&Delta; &minus;$10.56<span class="pct">/mo &middot; 100%</span></p>
+        </article>
+        <article class="cost-rec">
+          <span class="rank" aria-hidden="true">#3</span>
+          <p class="rec-title">storage &mdash; ZRS cool matches the access pattern</p>
+          <p class="rec-swap"><span class="from">Standard_LRS hot</span><span class="arr">&rarr;</span><span class="to">Standard_ZRS cool</span></p>
+          <p class="rec-saves">&Delta; &minus;$0.29<span class="pct">/mo &middot; 31%</span></p>
+        </article>
+      </div>
+
+      <div class="cost-cta-row reveal" data-delay="6">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md" target="_blank" rel="noopener">
+          See the golden forecast <span class="arrow">↗</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">
+          Browse the skill <span class="arrow">↗</span>
+        </a>
+      </div>
+
+      <p class="cost-foot reveal" data-delay="7">
+        Numbers above are deterministic &mdash; generated from a mock pricing
+        client against a 7-resource synthetic pilot. Real runs hit the public
+        Azure Retail Prices API; every $ value carries a
+        <code>price_source: live | fixture | fallback</code> tag in the manifest.
+        Advisory only &mdash; <code>threadlight-deploy</code> is what actually
+        changes infrastructure.
+      </p>
     </div>
   </section>
 

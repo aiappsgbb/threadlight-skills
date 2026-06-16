@@ -22,7 +22,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=content-v12">
+<link rel="stylesheet" href="assets/site.css?v=ia-v13">
 </head>
 <body>
 
@@ -80,7 +80,7 @@
 
       <div class="hero-cta-row">
         <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="#scene-chain">See the chain <span class="arrow">→</span></a>
+        <a class="btn btn-ghost"   href="#scene-show">See the chain <span class="arrow">→</span></a>
         <a class="btn btn-ghost"   href="#scene-cta">Start with one prompt <span class="arrow">↓</span></a>
       </div>
     </div>
@@ -120,13 +120,67 @@
   </div>
 
 
+  <!-- ====================== KRATOS: SIMPLER PATH (slot 2) ====================== -->
+  <section class="scene" id="scene-kratos" aria-labelledby="kratos-h" data-toc-id="scene-kratos" data-toc-label="No-code first">
+    <div class="wrap wrap-xl">
+      <div class="channels-grid">
+
+        <div class="channels-copy reveal">
+          <p class="eyebrow"><span class="dot"></span>No customization needed? Start here.</p>
+          <h2 id="ch-h"><em>Pick a persona, talk to a working agent</em> &mdash; in your browser, in ten minutes.</h2>
+          <p class="lede">
+            If your customer just wants a working AI agent with a familiar shape &mdash;
+            chat UI, persona switching, a few tools wired in &mdash;
+            <strong>Kratos</strong> ships one on Microsoft Foundry, ready to use,
+            no setup, no dev skills. Try it live, customize in-app, export the spec when the conversation gets serious.
+          </p>
+
+          <ul class="channels-bullets">
+            <li><strong>Kratos &mdash; the simpler path.</strong> Browser-first, MIT-licensed, hosted on Microsoft Foundry. Talk to it now, hand the link to your customer, iterate on persona and tools live.</li>
+            <li><strong>Threadlight &mdash; when you need customization.</strong> Your data, your governance, your Azure subscription, an end-to-end paved path to a deployed agent &mdash; covered by the rest of this page.</li>
+            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
+          </ul>
+        </div>
+
+        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
+          <img class="kc-shot"
+               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
+               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
+               loading="lazy" decoding="async" width="1600" height="900">
+          <div class="kc-body">
+            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>No-code &middot; ready-to-use &middot; live</p>
+            <h3 id="kratos-h">Kratos Agent</h3>
+            <p class="kc-tag">
+              A demo-friendly conversational agent on Microsoft Foundry.
+              Pick a persona, wire up tools, talk to it&mdash;then export
+              the spec to take it further with Threadlight when you need
+              your own data, governance, or deployment.
+            </p>
+            <div class="kc-meta" aria-label="What Kratos gives you">
+              <span>Browser-first</span>
+              <span>Foundry hosted agent</span>
+              <span>Persona &amp; tool tuning</span>
+              <span>Export the spec</span>
+              <span>MIT license</span>
+            </div>
+            <div class="kc-ctas">
+              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
+              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
   <!-- ====================== SVG CHAIN (paragraph → SPEC → agent) ====================== -->
   <section class="scene" id="scene-show" data-toc-id="scene-show" data-toc-label="See the chain">
     <div class="wrap wrap-xl">
       <div class="copy reveal" style="max-width:760px;margin:0 auto 18px;text-align:center;">
         <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>What ships</p>
         <h2 style="margin-top:14px;">From a paragraph &mdash; <em>to a deployed agent.</em></h2>
-        <p class="sub" style="margin-top:14px;">No CLI. No new IDE. The seller stays in chat &mdash; the skills do the chain.</p>
+        <p class="sub" style="margin-top:14px;">No new IDE. No new CLI of our own. <strong>You stay in your coding agent</strong> &mdash; the skills do the chain.</p>
       </div>
 
       <p class="skill-eyebrow reveal" data-delay="1">
@@ -156,7 +210,7 @@
               <text x="18" y="122" class="panel-bubble-text">regulator-exposed,</text>
               <text x="18" y="144" class="panel-bubble-text">route by complexity.</text>
               <text x="18" y="166" class="panel-bubble-text">HITL on every escalate."</text>
-              <text x="18" y="186" class="panel-chip" opacity=".7">— seller, in chat</text>
+              <text x="18" y="186" class="panel-chip" opacity=".7">&mdash; you, in chat</text>
             </g>
 
             <!-- ARROW 01 → 02 -->
@@ -231,180 +285,6 @@
     </div>
   </section>
 
-  <!-- ====================== FUNNEL HERO (teaser) ====================== -->
-  <section class="scene" id="scene-funnel" aria-labelledby="funnel-h" data-toc-id="scene-funnel" data-toc-label="Funnel">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal">
-        <p class="eyebrow"><span class="dot"></span>The five-stage funnel</p>
-        <h2 id="funnel-h">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h2>
-        <p class="lede">
-          Every threadlight engagement walks the same five stages. Each stage has its
-          own skills, its own artefacts, and its own exit criteria.
-        </p>
-      </div>
-
-      <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
-        <a class="funnel-step" href="./funnel.html#stage-glance">
-          <span class="fs-num">01 · Conversation</span>
-          <span class="fs-name">Describe the process</span>
-          <span class="fs-desc">Plain-language brief from you or a customer SME. No template, no questionnaire.</span>
-          <span class="fs-skills">threadlight-auto · threadlight-design</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-glance">
-          <span class="fs-num">02 · Co-design</span>
-          <span class="fs-name">Spec &amp; scaffold</span>
-          <span class="fs-desc">SPEC.md, AGENTS.md, eval dataset and demo-data factory generated in-session.</span>
-          <span class="fs-skills">threadlight-design · threadlight-demo-data-factory</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-glance">
-          <span class="fs-num">03 · Deploy</span>
-          <span class="fs-name">Land on your Azure</span>
-          <span class="fs-desc">Bicep + azd-up to the customer's subscription, Managed Identity wired from day zero.</span>
-          <span class="fs-skills">threadlight-deploy · threadlight-local-test</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-glance">
-          <span class="fs-num">04 · Safe-check</span>
-          <span class="fs-name">Cost &amp; readiness</span>
-          <span class="fs-desc">Project monthly cost, recommend cheaper SKUs, score against 10 production pillars.</span>
-          <span class="fs-skills">threadlight-safe-check · threadlight-consumption-iq</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-glance">
-          <span class="fs-num">05 · Production</span>
-          <span class="fs-name">Hand-off</span>
-          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in five minutes.</span>
-          <span class="fs-skills">threadlight-production-ready · threadlight-hitl-patterns</span>
-        </a>
-      </nav>
-
-      <p class="industries-footer reveal" data-delay="2" style="margin-top:28px;">
-        <a class="btn btn-ghost" href="./funnel.html">Read the full funnel chapter <span class="arrow">→</span></a>
-      </p>
-    </div>
-  </section>
-
-  <!-- ====================== SCENE 3 · THE CHAIN ====================== -->
-  <section class="scene" id="scene-chain" aria-labelledby="chain-h" data-toc-id="scene-chain" data-toc-label="Chain">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal">
-        <p class="eyebrow"><span class="dot"></span>The skills chain</p>
-        <h2 id="chain-h">You prompt. The coding agent <em>picks up the right skills.</em></h2>
-        <p class="lede" style="margin-left:auto;margin-right:auto;text-align:left;">
-          Skills are composable building blocks — Markdown instructions that any
-          coding agent (GitHub Copilot CLI, VS Code, Claude Code) reads and follows.
-          You describe what you need in a prompt. The agent discovers the matching
-          skill, runs it, and hands you the artefacts — all the way to a
-          <strong>governed agent on your Azure</strong> with a paved path to production
-          via <strong>AI Citadel</strong> (the governance hub) and the <strong>Agent Governance Toolkit</strong>.
-        </p>
-      </div>
-
-      <div class="chain-rail" id="chain-rail">
-
-        <!-- 1 — DESIGN (seller-facing entry) -->
-        <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-design</div>
-            <span class="skill-tag is-blue">Cowork-safe</span>
-            <span class="skill-tag is-grey">Entry skill</span>
-          </div>
-          <p class="skill-purpose">Turn a paragraph brief into a durable SpecKit spec &mdash; numbered business rules, data models, tool contracts, eval scenarios, governance &mdash; and derive the agent surface from it.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Free-text brief · industry primer (optional)</span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
-          </div>
-          <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
-          <div class="skill-footer">
-            <span>The coding agent reads the skill instructions and generates all artefacts.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-        <!-- Supporting chain — six skills that run between design and deploy -->
-        <div class="chain-aux reveal">
-          <div class="aux-group">
-            <div class="aux-label">Always wired</div>
-            <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
-                <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
-                <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
-                <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
-              </a>
-            </div>
-          </div>
-          <div class="aux-group">
-            <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
-            <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
-                <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
-                <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
-                <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2 — DEPLOY (seller-facing exit) -->
-        <article class="skill-card reveal" data-step="02" data-skill="threadlight-deploy">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-deploy</div>
-            <span class="skill-tag is-blue">azd up</span>
-          </div>
-          <p class="skill-purpose">Generate every artefact needed to deploy as a Microsoft Foundry hosted agent &mdash; Foundry-hosted by default, with a portable Microsoft Agent Framework (MAF) fallback when the customer needs to self-host, plus Bicep, Dockerfile, and the <code>azd ai agent</code> extension wired end-to-end.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC · <code>AGENTS.md</code> · <code>manifest.json</code> · <code>src/agent/skills/</code></span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>container.py</code> · <code>Dockerfile</code> · <code>infra/</code> · <code>agent.yaml</code> · <code>azure.yaml</code></span></div>
-          </div>
-          <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
-          <div class="skill-footer">
-            <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-        <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
-        <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
-            <span class="skill-tag is-blue">Advisory · soft-gate</span>
-            <span class="skill-tag is-grey">Hand-off package</span>
-          </div>
-          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to <strong>AI Citadel spoke</strong>; falls back to <strong>Foundry-native (core only)</strong> or a customer-owned gateway when SPEC &sect; 12 declares a different target.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
-          </div>
-          <div class="skill-invoke"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
-          <div class="skill-footer">
-            <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-      </div>
-    </div>
-  </section>
-
   <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
   <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
     <div class="wrap">
@@ -430,195 +310,6 @@
         <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; soft-advisory &middot; never fails a build</p>
       </div>
 
-    </div>
-  </section>
-
-  <!-- ====================== POSTERS: SPEC IT · SHIP IT · SCORE IT ====================== -->
-  <section class="scene" id="scene-posters" data-toc-id="scene-posters" data-toc-label="What ships">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal" style="max-width:780px;margin:0 auto 32px;text-align:center;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>What ships</p>
-        <h2 style="margin-top:14px;">Spec it. Ship it. <em>Score it.</em></h2>
-        <p class="sub" style="margin-top:18px;">Three artefacts, three pages. Every customer gets the same shape.</p>
-      </div>
-
-      <div class="poster-triptych is-three">
-        <a class="poster-card reveal" data-delay="1" href="./industries.html#ind-spec" style="text-decoration:none;">
-          <p class="poster-eyebrow"><span>Stage 01 &middot; output</span></p>
-          <h3>Spec <em>it.</em></h3>
-          <p class="poster-lede">A signed <code>SPEC.md</code> &mdash; process, HITL gates, skills used. The customer reads it once.</p>
-          <div class="poster-foot">
-            <span class="pill muted">Artefact: SPEC.md</span>
-          </div>
-        </a>
-
-        <a class="poster-card reveal" data-delay="2" href="./funnel.html#stage-show" style="text-decoration:none;">
-          <p class="poster-eyebrow"><span>Stage 03 &middot; output</span></p>
-          <h3>Ship <em>it.</em></h3>
-          <p class="poster-lede">Agent live in the customer&rsquo;s Azure. Bicep + Container Apps. Managed Identity wired from day zero.</p>
-          <div class="poster-foot">
-            <span class="pill muted">Artefact: deploy log</span>
-          </div>
-        </a>
-
-        <a class="poster-card reveal" data-delay="3" href="./production.html#prod-scorecard" style="text-decoration:none;">
-          <p class="poster-eyebrow"><span>Stage 05 &middot; output</span></p>
-          <h3>Score <em>it.</em></h3>
-          <p class="poster-lede">A 13-pillar <code>scorecard.pdf</code> &mdash; three colours, owners named for every amber. ARB reads it in five minutes.</p>
-          <div class="poster-foot">
-            <span class="pill muted">Artefact: scorecard.pdf</span>
-          </div>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ====================== SCENE · COST INTELLIGENCE ======================
-       Pitches `threadlight-consumption-iq` (v0.1.0). Every number on this
-       widget comes from the deterministic golden manifest committed at
-       skills/threadlight-consumption-iq/references/fixtures/
-         sample-pilot-consumption/expected/cost-manifest.json
-       — change the golden, re-export the JS literal below.
-  -->
-  <section class="scene" id="scene-cost" aria-labelledby="cost-h" data-toc-id="scene-cost" data-toc-label="Cost">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal">
-        <p class="eyebrow"><span class="dot"></span>Post-deploy &middot; before sign-off</p>
-        <h2 id="cost-h" class="display reveal" data-delay="1">
-          <span class="badge-new" aria-label="New in v1.2">v1.2 &middot; new</span>
-          Don&rsquo;t ship the SKU. Ship the cheapest SKU that <em>still fits.</em>
-        </h2>
-        <p class="lede reveal" data-delay="2">
-          <code>threadlight-consumption-iq</code> walks every deployed resource at the
-          customer&rsquo;s declared production load, prices it against 2&ndash;3
-          alternatives, and tells you the cheapest config that still meets
-          their constraints &mdash; before they sign off and turn on traffic.
-        </p>
-      </div>
-
-      <!-- counters: current vs recommended -->
-      <div class="cost-counters reveal" data-delay="3" role="figure" aria-label="Monthly cost: current versus recommended">
-        <div class="ctr">
-          <div class="ctr-label">Current</div>
-          <div class="ctr-value is-current" data-cost-counter data-to="397.57" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
-          <div class="ctr-sub">Deployed SKUs at declared load</div>
-        </div>
-        <div class="arrow" aria-hidden="true">&rarr;</div>
-        <div class="ctr">
-          <div class="ctr-label">Recommended</div>
-          <div class="ctr-value is-recommended" data-cost-counter data-to="341.19" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
-          <div class="ctr-sub">
-            Same constraints, lower bill
-            <span class="cost-savings-pill" aria-label="Potential monthly savings">&minus;$56.38 / &minus;14.2%</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- per-resource breakdown -->
-      <div class="cost-table-wrap reveal" data-delay="4" role="region" aria-label="Per-resource cost breakdown">
-        <table class="cost-table">
-          <thead>
-            <tr>
-              <th scope="col">Resource</th>
-              <th scope="col">Current SKU</th>
-              <th scope="col" class="num">$ / mo</th>
-              <th scope="col">Top alternative</th>
-              <th scope="col" class="num">Saves</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>cosmos</strong><br><span class="sku">DocumentDB</span></td>
-              <td><span class="sku">Standard provisioned 4000 RU/s</span></td>
-              <td class="num">$246.10</td>
-              <td><span class="sku">keep &mdash; serverless trips 50 GB cap</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
-            </tr>
-            <tr>
-              <td><strong>ai-search</strong><br><span class="sku">Search</span></td>
-              <td><span class="sku">basic 1&times;1</span></td>
-              <td class="num">$73.00</td>
-              <td><span class="sku">keep &mdash; free tier doc cap below load</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
-            </tr>
-            <tr>
-              <td><strong>apim</strong><br><span class="sku">API Management</span></td>
-              <td><span class="sku">BasicV2 capacity=1</span></td>
-              <td class="num">$51.10</td>
-              <td><span class="sku">Consumption</span></td>
-              <td class="num savings-cell">&minus;$45.53</td>
-            </tr>
-            <tr>
-              <td><strong>bot</strong><br><span class="sku">Container Apps</span></td>
-              <td><span class="sku">Consumption 2 replicas</span></td>
-              <td class="num">$15.85</td>
-              <td><span class="sku">keep &mdash; already at min</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
-            </tr>
-            <tr>
-              <td><strong>foundry-agent</strong><br><span class="sku">Foundry hosted</span></td>
-              <td><span class="sku">Standard tier</span></td>
-              <td class="num">$10.56</td>
-              <td><span class="sku">Free tier</span></td>
-              <td class="num savings-cell">&minus;$10.56</td>
-            </tr>
-            <tr>
-              <td><strong>storage</strong><br><span class="sku">Storage</span></td>
-              <td><span class="sku">Standard_LRS hot</span></td>
-              <td class="num">$0.96</td>
-              <td><span class="sku">Standard_ZRS cool</span></td>
-              <td class="num savings-cell">&minus;$0.29</td>
-            </tr>
-            <tr>
-              <td><strong>aoai-chat</strong><br><span class="sku">AOAI deployment</span></td>
-              <td><span class="sku">gpt-4o PAYG eastus2</span></td>
-              <td class="num"><abbr title="Live retail price required; fallback fixture omitted to avoid stale claims">N/A</abbr></td>
-              <td><span class="sku">populated by live Retail Prices API</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- top 3 recommendation cards -->
-      <div class="cost-recs reveal" data-delay="5" aria-label="Top three recommendations">
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#1</span>
-          <p class="rec-title">apim &mdash; switch to Consumption tier</p>
-          <p class="rec-swap"><span class="from">BasicV2 capacity=1</span><span class="arr">&rarr;</span><span class="to">Consumption</span></p>
-          <p class="rec-saves">&minus;$45.53<span class="pct">/mo &middot; 89%</span></p>
-        </article>
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#2</span>
-          <p class="rec-title">foundry-agent &mdash; switch to Free tier</p>
-          <p class="rec-swap"><span class="from">Standard</span><span class="arr">&rarr;</span><span class="to">Free hosted-agent</span></p>
-          <p class="rec-saves">&minus;$10.56<span class="pct">/mo &middot; 100%</span></p>
-        </article>
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#3</span>
-          <p class="rec-title">storage &mdash; ZRS cool</p>
-          <p class="rec-swap"><span class="from">Standard_LRS hot</span><span class="arr">&rarr;</span><span class="to">Standard_ZRS cool</span></p>
-          <p class="rec-saves">&minus;$0.29<span class="pct">/mo &middot; 31%</span></p>
-        </article>
-      </div>
-
-      <div class="cost-cta-row reveal" data-delay="6">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md" target="_blank" rel="noopener">
-          See the golden report <span class="arrow">↗</span>
-        </a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">
-          Browse the skill <span class="arrow">↗</span>
-        </a>
-      </div>
-
-      <p class="cost-foot reveal" data-delay="7">
-        Numbers above are deterministic &mdash; generated from a mock pricing
-        client against a 7-resource synthetic pilot. Real runs hit the public
-        Azure Retail Prices API; every $ value carries a
-        <code>price_source: live | fixture | fallback</code> tag in the manifest.
-        Advisory only &mdash; <code>threadlight-deploy</code> is what actually
-        changes infrastructure.
-      </p>
     </div>
   </section>
 
@@ -685,85 +376,6 @@
         not the chain.
         <a class="btn btn-ghost" href="./industries.html" style="margin-left:8px;">Read the full industries chapter <span class="arrow">→</span></a>
       </p>
-    </div>
-  </section>
-
-  <!-- ====================== KRATOS → THREADLIGHT LADDER + RUNTIME CHANNELS ====================== -->
-  <section class="scene" id="scene-channels" aria-labelledby="ch-h" data-toc-id="scene-channels" data-toc-label="Start here">
-    <div class="wrap">
-      <div class="channels-grid">
-
-        <div class="channels-copy reveal">
-          <p class="eyebrow"><span class="dot"></span>Demo first, build second</p>
-          <h2 id="ch-h">Start in Kratos. <em>Build in Threadlight.</em></h2>
-          <p class="lede">
-            Two stages of the same journey, not two competing products.
-            <strong>Kratos</strong> is the no-code quickstart &mdash; pick a
-            persona, wire tools, talk to a working agent in the browser, all
-            in the first ten minutes of a customer conversation.
-            <strong>Threadlight</strong> is the pro-code path that follows
-            &mdash; when the demo turns into a commitment, the skills on
-            this page take that idea from one paragraph to a Foundry-hosted
-            agent with evals, observability, cost projection, and a customer
-            hand-off pack.
-          </p>
-
-          <ul class="channels-bullets">
-            <li><strong>Kratos &mdash; first ten minutes, zero code.</strong> Try a working agent live, customize persona and tools in-app, export the spec when the conversation gets serious.</li>
-            <li><strong>Threadlight &mdash; what follows, when it gets real.</strong> Take that spec (or a fresh prompt) all the way through specify &rarr; design &rarr; build &rarr; safe-check &rarr; deploy &mdash; opinionated, pro-code, production-grade.</li>
-            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
-          </ul>
-        </div>
-
-        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
-          <img class="kc-shot"
-               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
-               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
-               loading="lazy" decoding="async" width="1600" height="900">
-          <div class="kc-body">
-            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>Step 1 &middot; No-code quickstart &middot; live</p>
-            <h3 id="kratos-h">Kratos Agent</h3>
-            <p class="kc-tag">
-              A demo-friendly conversational agent on Microsoft Foundry.
-              Pick a persona, wire up tools, talk to it&mdash;then export
-              the spec to take it further with Threadlight. Built for the
-              first ten minutes of a customer conversation, before you
-              commit to a build.
-            </p>
-            <div class="kc-meta" aria-label="What Kratos gives you">
-              <span>Browser-first</span>
-              <span>Foundry hosted agent</span>
-              <span>Persona &amp; tool tuning</span>
-              <span>Export the spec</span>
-              <span>MIT license</span>
-            </div>
-            <div class="kc-ctas">
-              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
-              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
-            </div>
-          </div>
-        </article>
-
-      </div>
-
-      <p class="eyebrow reveal" data-delay="2" style="margin: 64px 0 16px;"><span class="dot"></span>Once shipped &middot; expose anywhere via MCP</p>
-      <div class="channels-other reveal" data-delay="3" aria-label="Runtime surfaces for a shipped Threadlight agent">
-        <div class="co-tile">
-          <h4>Microsoft Copilot Studio</h4>
-          <p>Expose a Threadlight-built agent as an MCP tool inside a Copilot Studio surface &mdash; same governance, same telemetry.</p>
-          <span class="co-status">On the roadmap</span>
-        </div>
-        <div class="co-tile">
-          <h4>Azure SRE Agent</h4>
-          <p>Surface deployment + cost-projection skills inside SRE Agent flows. Bring your own runbook, keep the audit trail.</p>
-          <span class="co-status">On the roadmap</span>
-        </div>
-        <div class="co-tile">
-          <h4>Custom MCP host</h4>
-          <p>Anything that speaks the MCP protocol. Threadlight ships portable MCP servers; the host stays your call.</p>
-          <span class="co-status">Bring your own</span>
-        </div>
-      </div>
     </div>
   </section>
 

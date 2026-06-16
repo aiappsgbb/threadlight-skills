@@ -30,12 +30,15 @@ test.describe('landing page (index.html)', () => {
     await expect(footer).toContainText(/open guidance/i);
   });
 
-  test('cost intelligence section is present and animates to the golden numbers', async ({ page }) => {
-    await page.goto(LANDING);
-    const cost = page.locator('#scene-cost');
-    await cost.scrollIntoViewIfNeeded();
-    // Wait for counter animation (~1.1s + buffer)
-    await page.waitForTimeout(1500);
+  test('cost forecast section lives on production.html and animates to the golden numbers', async ({ page }) => {
+    await page.goto('/production.html');
+    const cost = page.locator('#prod-cost');
+    // Scroll the COUNTER block (not the whole section) into view so the
+    // IntersectionObserver fires on mobile viewports too.
+    const counters = cost.locator('.cost-counters');
+    await counters.scrollIntoViewIfNeeded();
+    // Counter animation is ~1.1s + buffer; mobile needs a tad more.
+    await page.waitForTimeout(2000);
     const current     = cost.locator('.ctr-value.is-current');
     const recommended = cost.locator('.ctr-value.is-recommended');
     await expect(current).toContainText('$397.57 /mo');
@@ -44,6 +47,10 @@ test.describe('landing page (index.html)', () => {
     await expect(cost.locator('.cost-recs .cost-rec')).toHaveCount(3);
     await expect(cost.locator('.cost-table tbody tr')).toHaveCount(7);
     await expect(cost.locator('a[href*="/skills/threadlight-consumption-iq"]').first()).toBeVisible();
+    // Framing: forecast, not "save money"
+    const head = (await cost.locator('.section-head').textContent()) || '';
+    expect(head).toMatch(/forecast/i);
+    expect(head).not.toMatch(/cheapest|cut/i);
   });
 
   test('all internal anchors resolve', async ({ page }) => {
@@ -99,9 +106,9 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     await expect(chips.nth(4)).toHaveClass(/is-now/);
   });
 
-  test('funnel hero shows exactly 5 stages with valid internal targets', async ({ page }) => {
-    await page.goto(LANDING);
-    const funnel = page.locator('#scene-funnel');
+  test('funnel chapter shows exactly 5 stages with skill chips', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const funnel = page.locator('#stage-glance');
     await funnel.scrollIntoViewIfNeeded();
     const steps = funnel.locator('.funnel-step');
     await expect(steps).toHaveCount(5);
@@ -109,11 +116,11 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     for (let i = 0; i < expected.length; i++) {
       await expect(steps.nth(i)).toContainText(expected[i]);
     }
-    // every step links to the funnel deep page anchor
-    const hrefs = await steps.evaluateAll(els => els.map(e => e.getAttribute('href')));
-    for (const h of hrefs) {
-      expect(h, 'funnel step should link to the funnel chapter').toMatch(/^\.\/funnel\.html#stage-/);
-    }
+    // Every step names the skill(s) it fires
+    const allText = (await steps.allTextContents()).join(' | ');
+    expect(allText).toMatch(/threadlight-design/);
+    expect(allText).toMatch(/threadlight-deploy/);
+    expect(allText).toMatch(/threadlight-production-ready/);
   });
 
   test('industries strip renders all 6 sectors with non-empty pilots', async ({ page }) => {
@@ -135,7 +142,7 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
 
   test('kratos showcase links out to live demo + GitHub repo', async ({ page }) => {
     await page.goto(LANDING);
-    const ch = page.locator('#scene-channels');
+    const ch = page.locator('#scene-kratos');
     await ch.scrollIntoViewIfNeeded();
     await expect(ch.getByRole('heading', { name: /Kratos Agent/i })).toBeVisible();
     const live = ch.locator('a[href="https://aka.ms/kratos"]');
@@ -150,63 +157,44 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     await expect(shot).toHaveAttribute('alt', /kratos/i);
   });
 
-  test('kratos+threadlight relationship is framed as a ladder, not a parallel choice', async ({ page }) => {
+  test('kratos sits in slot 2 (right after hero) and is framed as the simpler-path option', async ({ page }) => {
     await page.goto(LANDING);
-    const ch = page.locator('#scene-channels');
-    await ch.scrollIntoViewIfNeeded();
-    const h2  = (await ch.locator('h2').first().textContent()) || '';
-    const txt = (await ch.locator('.channels-copy').textContent()) || '';
-    // Headline must position the two as sequential stages of one journey
-    expect(h2).toMatch(/start in kratos/i);
-    expect(h2).toMatch(/build in threadlight/i);
-    // Body must explicitly say it's a ladder, not two equivalent products
-    expect(txt).toMatch(/two stages|same journey|not two|stages of the same|step 1/i);
-    // The old "two on-ramps, same destination" framing must not come back
-    expect(txt).not.toMatch(/two on-ramps/i);
-    expect(txt).not.toMatch(/same destination/i);
-    // No-code positioning for Kratos must be unambiguous
-    expect(txt).toMatch(/no[- ]code/i);
+    // Order: scene-hero must come BEFORE scene-kratos must come BEFORE scene-show
+    const ids = await page.locator('main section.scene').evaluateAll(
+      els => els.map(e => e.id)
+    );
+    const heroIdx   = ids.indexOf('scene-hero');
+    const kratosIdx = ids.indexOf('scene-kratos');
+    const showIdx   = ids.indexOf('scene-show');
+    expect(heroIdx,   'scene-hero present').toBeGreaterThanOrEqual(0);
+    expect(kratosIdx, 'scene-kratos present').toBeGreaterThanOrEqual(0);
+    expect(showIdx,   'scene-show present').toBeGreaterThanOrEqual(0);
+    expect(kratosIdx, 'kratos immediately follows hero').toBe(heroIdx + 1);
+    expect(showIdx,   'chain SVG follows kratos').toBe(kratosIdx + 1);
+
+    // Framing: "no customization needed? start here" — simpler path
+    const ch  = page.locator('#scene-kratos');
+    const txt = ((await ch.locator('.channels-copy').textContent()) || '').toLowerCase();
+    expect(txt).toMatch(/no[- ]code|no customization|simpler/);
+    expect(txt).toMatch(/customization/);
+    expect(txt).toMatch(/threadlight/);
   });
 
-  test('other channels strip lists exactly 3 surfaces', async ({ page }) => {
+  test('home chain SVG hero shows three panels: paragraph, SPEC, deployed agent', async ({ page }) => {
     await page.goto(LANDING);
-    const tiles = page.locator('#scene-channels .channels-other .co-tile');
-    await expect(tiles).toHaveCount(3);
-    const text = (await tiles.allTextContents()).join(' | ').toLowerCase();
-    expect(text).toContain('copilot studio');
-    expect(text).toContain('sre agent');
-    expect(text).toContain('mcp');
-  });
-
-  test('home posterizes the three artefacts: SVG chain hero + 3-up spec/ship/score posters', async ({ page }) => {
-    await page.goto(LANDING);
-    // 1. The chain SVG hero lives in #scene-show — three panels: paragraph, SPEC, deployed agent
+    // The chain SVG hero lives in #scene-show — three panels: paragraph, SPEC, deployed agent
     const hero = page.locator('#scene-show .svg-hero svg.funnel-chain-svg');
     await expect(hero).toHaveCount(1);
-    // The three panels each contribute a STAGE-prefixed label
     const stageLabels = hero.locator('text.panel-num');
-    const stageCount = await stageLabels.count();
-    expect(stageCount, 'chain SVG should have 3 stage labels').toBe(3);
-    // Headline copy on each panel is what the seller sees end-to-end
+    expect(await stageLabels.count(), 'chain SVG should have 3 stage labels').toBe(3);
     const titles = (await hero.locator('text.panel-title').allTextContents()).join(' | ');
     expect(titles).toMatch(/paragraph/i);
     expect(titles).toMatch(/SPEC/i);
     expect(titles).toMatch(/deployed agent/i);
-    // 2. The 3-up poster triptych — locked to 3 columns + 3 cards
-    const triptych = page.locator('#scene-posters .poster-triptych.is-three');
-    await expect(triptych).toHaveCount(1);
-    const cards = triptych.locator('.poster-card');
-    await expect(cards).toHaveCount(3);
-    // Each card links to a chapter page (industries / funnel / production)
-    const hrefs = await cards.evaluateAll(els => els.map(a => a.getAttribute('href') || ''));
-    expect(hrefs.some(h => h.includes('industries.html'))).toBeTruthy();
-    expect(hrefs.some(h => h.includes('funnel.html'))).toBeTruthy();
-    expect(hrefs.some(h => h.includes('production.html'))).toBeTruthy();
-    // Each card carries a stage eyebrow + artefact pill
-    for (let i = 0; i < 3; i++) {
-      await expect(cards.nth(i).locator('.poster-eyebrow')).toHaveCount(1);
-      await expect(cards.nth(i).locator('.poster-foot')).toHaveCount(1);
-    }
+    // Sub-copy must be public-readable, not promise a CLI we don't ship
+    const sub = (await page.locator('#scene-show .sub').first().textContent()) || '';
+    expect(sub).not.toMatch(/^\s*no cli\b/i);  // bare "No CLI" claim is false (Copilot CLI exists)
+    expect(sub).not.toMatch(/the seller/i);
   });
 
   test('skill-eyebrow disclaimer (.md, not commands) ships on every page', async ({ page }) => {
@@ -279,8 +267,8 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     // The ladder SVG hero is locked above the fold
     await expect(page.locator('#stage-ladder.ladder-svg-hero')).toHaveCount(1);
     await expect(page.locator('#stage-ladder svg')).toHaveCount(1);
-    // Stages glance grid stays + read-deeper to operator MD
-    await expect(page.locator('#stage-glance .stage-glance .gl-step')).toHaveCount(5);
+    // Stages-at-a-glance now uses the rich funnel-step cards (was gl-step)
+    await expect(page.locator('#stage-glance .funnel-flow .funnel-step')).toHaveCount(5);
     await expect(page.locator('#stage-glance .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
 
@@ -350,12 +338,6 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
 
   test('landing teasers point at the new deep pages', async ({ page }) => {
     await page.goto(LANDING);
-    const funnelHrefs = await page.locator('#scene-funnel .funnel-step').evaluateAll(
-      els => els.map(e => e.getAttribute('href'))
-    );
-    for (const h of funnelHrefs) {
-      expect(h).toMatch(/^\.\/funnel\.html(#|$)/);
-    }
     await expect(page.locator('#scene-industries a[href="./industries.html"]')).toHaveCount(1);
     await expect(page.locator('#scene-prod-ready a[href="./production.html"]')).toHaveCount(1);
   });
