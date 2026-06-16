@@ -125,16 +125,23 @@
   //      Honours prefers-reduced-motion (paints final value once).
   // ---------------------------------------------------------------
   function animateCostCounter(el) {
-    const to     = parseFloat(el.getAttribute('data-to') || '0');
-    const prefix = el.getAttribute('data-prefix') || '';
-    const suffix = el.getAttribute('data-suffix') || '';
-    const fmt    = (v) => prefix + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + suffix;
+    const to       = parseFloat(el.getAttribute('data-to') || '0');
+    const prefix   = el.getAttribute('data-prefix') || '';
+    const suffix   = el.getAttribute('data-suffix') || '';
+    // 'auto' (default) → 2 decimals for amounts <1000, none for big rounded
+    // values (e.g., $20,000); explicit 'data-decimals' wins.
+    const dAttr    = el.getAttribute('data-decimals');
+    const decimals = dAttr !== null
+      ? parseInt(dAttr, 10)
+      : (Math.abs(to) >= 1000 && Number.isInteger(to)) ? 0 : 2;
+    const fmt = (v) => prefix
+      + v.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      + suffix;
     if (isReducedMotion()) { el.textContent = fmt(to); return; }
     const dur  = 1100;
     const start = performance.now();
     function tick(now) {
       const t = Math.min(1, (now - start) / dur);
-      // ease-out cubic
       const e = 1 - Math.pow(1 - t, 3);
       el.textContent = fmt(to * e);
       if (t < 1) requestAnimationFrame(tick);

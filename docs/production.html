@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v18">
+<link rel="stylesheet" href="assets/site.css?v=ia-v19">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -598,8 +598,37 @@
         </p>
       </div>
 
+      <!-- realistic compare-pair: unreviewed prod vs tailored, reviewed prod -->
+      <div class="cost-counters reveal" data-delay="2" role="figure" aria-label="Monthly prod-load cost: unreviewed default vs tailored, reviewed config">
+        <div class="ctr">
+          <div class="ctr-label">Unreviewed prod setup</div>
+          <div class="ctr-value is-current" data-cost-counter data-to="20000" data-prefix="$" data-suffix="/mo">$0/mo</div>
+          <div class="ctr-sub">
+            Pilot SKUs left as-is at prod load &mdash; LLM PAYG, gateway
+            standard, replicas uncapped. Order-of-magnitude indicative.
+          </div>
+        </div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div class="ctr">
+          <div class="ctr-label">Tailored &amp; reviewed</div>
+          <div class="ctr-value is-recommended" data-cost-counter data-to="12000" data-prefix="$" data-suffix="/mo">$0/mo</div>
+          <div class="ctr-sub">
+            Same agent at prod load with LLM tier, replica caps, retention
+            sized to declared SLA.
+            <span class="cost-savings-pill" aria-label="Tailoring delta">forecast delta &middot; <strong>&minus;40%</strong> at design-time</span>
+          </div>
+        </div>
+      </div>
+      <p class="cost-foot reveal" data-delay="2" style="margin-top:-12px; margin-bottom:24px; font-style: italic;">
+        Numbers above are <strong>order-of-magnitude</strong> for a
+        mid-volume agent at 800 rpm in eastus2 &mdash; <em>not</em>
+        a quote. The forecast lives in the artefact below, line by line,
+        with a <code>price_source</code> tag per row that the FinOps
+        owner can audit and re-run.
+      </p>
+
       <!-- artefact preview: faux cost-projection.md card -->
-      <article class="scorecard-preview reveal" data-delay="2" aria-label="Cost projection artefact preview">
+      <article class="scorecard-preview reveal" data-delay="3" aria-label="Cost projection artefact preview">
         <header class="sc-header">
           <p class="sc-title">cost-projection.md</p>
           <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
@@ -661,9 +690,9 @@
       <div class="cost-recs reveal" data-delay="5" aria-label="Three forecast signals for governance">
         <article class="cost-rec">
           <span class="rank" aria-hidden="true">#1</span>
-          <p class="rec-title">Forecast &mdash; <em>pilot &ne; prod</em></p>
-          <p class="rec-swap"><span class="from">pilot config</span><span class="arr">&rarr;</span><span class="to">prod SKUs sized to declared load</span></p>
-          <p class="rec-saves">single number<span class="pct">the ARB signs the budget against</span></p>
+          <p class="rec-title">Forecast &mdash; <em>tailored review pays off</em></p>
+          <p class="rec-swap"><span class="from">unreviewed prod</span><span class="arr">&rarr;</span><span class="to">tailored, reviewed config</span></p>
+          <p class="rec-saves">~40% delta<span class="pct">order-of-magnitude, design-time, the ARB signs the budget against it</span></p>
         </article>
         <article class="cost-rec">
           <span class="rank" aria-hidden="true">#2</span>
