@@ -30,27 +30,41 @@ test.describe('landing page (index.html)', () => {
     await expect(footer).toContainText(/open guidance/i);
   });
 
-  test('cost forecast section lives on production.html and animates to the golden numbers', async ({ page }) => {
+  test('cost forecast section on production.html — framed as forecast/scale/governance, not savings', async ({ page }) => {
     await page.goto('/production.html');
     const cost = page.locator('#prod-cost');
-    // Scroll the COUNTER block (not the whole section) into view so the
-    // IntersectionObserver fires on mobile viewports too.
     const counters = cost.locator('.cost-counters');
     await counters.scrollIntoViewIfNeeded();
-    // Counter animation is ~1.1s + buffer; mobile needs a tad more.
     await page.waitForTimeout(2000);
-    const current     = cost.locator('.ctr-value.is-current');
-    const recommended = cost.locator('.ctr-value.is-recommended');
-    await expect(current).toContainText('$397.57 /mo');
-    await expect(recommended).toContainText('$341.19 /mo');
-    await expect(cost.locator('.cost-savings-pill')).toContainText(/56\.38/);
-    await expect(cost.locator('.cost-recs .cost-rec')).toHaveCount(3);
+    // Counters compare pilot load → production load (not "current" → "cheaper")
+    const labels = (await cost.locator('.cost-counters .ctr-label').allTextContents()).join(' | ').toLowerCase();
+    expect(labels).toMatch(/pilot load/);
+    expect(labels).toMatch(/production load/);
+    // Numbers still animate (deterministic golden values)
+    await expect(cost.locator('.ctr-value.is-current')).toContainText('$341.19 /mo');
+    await expect(cost.locator('.ctr-value.is-recommended')).toContainText('$397.57 /mo');
+    // Per-resource table has 7 rows and both pilot + prod cost columns
     await expect(cost.locator('.cost-table tbody tr')).toHaveCount(7);
+    const headers = (await cost.locator('.cost-table thead th').allTextContents()).join(' | ').toLowerCase();
+    expect(headers).toMatch(/pilot/);
+    expect(headers).toMatch(/prod/);
+    expect(headers).toMatch(/scale|readiness/);
+    // 3 governance signals replace the savings leaderboard
+    const recs = cost.locator('.cost-recs .cost-rec');
+    await expect(recs).toHaveCount(3);
+    const recText = (await recs.allTextContents()).join(' | ').toLowerCase();
+    expect(recText).toMatch(/forecast/);
+    expect(recText).toMatch(/scale/);
+    expect(recText).toMatch(/governance/);
+    // Skill link still present
     await expect(cost.locator('a[href*="/skills/threadlight-consumption-iq"]').first()).toBeVisible();
-    // Framing: forecast, not "save money"
-    const head = (await cost.locator('.section-head').textContent()) || '';
-    expect(head).toMatch(/forecast/i);
-    expect(head).not.toMatch(/cheapest|cut/i);
+    // Framing audit: no "cheapest/save/savings/cut" language anywhere
+    const sectionText = ((await cost.textContent()) || '').toLowerCase();
+    expect(sectionText, 'must NOT promise savings').not.toMatch(/cheapest|saves|savings|cut the bill|right-sized|recommended/);
+    // Must contain the three explicit goals
+    expect(sectionText).toMatch(/forecast/);
+    expect(sectionText).toMatch(/scale/);
+    expect(sectionText).toMatch(/governance/);
   });
 
   test('all internal anchors resolve', async ({ page }) => {

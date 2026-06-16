@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v16">
+<link rel="stylesheet" href="assets/site.css?v=ia-v17">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -578,44 +578,54 @@
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Pillar 10 &middot; deep-dive</p>
-        <h2>Forecast the bill <em>before you turn on traffic.</em></h2>
+        <h2>Forecast the bill at <em>production load</em> &mdash; before turning on traffic.</h2>
         <p class="section-lede">
-          <code>threadlight-consumption-iq</code> walks every deployed resource at the
-          customer&rsquo;s declared production load and prices it against the public
-          <strong>Azure Retail Prices API</strong> &mdash; so the monthly cost is a number
-          on the ARB scorecard, not a surprise three weeks in. Soft-advisory, deterministic,
-          re-runnable.
+          <code>threadlight-consumption-iq</code> walks every deployed
+          resource, projects it to the customer&rsquo;s <strong>declared
+          production load</strong>, prices it against the public
+          <strong>Azure Retail Prices API</strong>, and emits a manifest the
+          ARB and FinOps can govern against. The number on the scorecard is
+          a <em>forecast</em>, not an invoice surprise.
+        </p>
+        <p class="section-lede" style="margin-top:10px;">
+          <strong>Three things this answers</strong> &mdash;
+          (1)&nbsp;does the pilot SKU mix <em>scale</em> from PoC traffic to
+          production load without breaking constraints? &nbsp;
+          (2)&nbsp;what&rsquo;s the <em>governance</em> tag the customer&rsquo;s
+          FinOps needs (budget, owner, posture)? &nbsp;
+          (3)&nbsp;is every line traceable to a <em>real Azure price</em> we
+          can re-run on demand?
         </p>
       </div>
 
-      <!-- counters: default vs right-sized -->
-      <div class="cost-counters reveal" data-delay="3" role="figure" aria-label="Monthly cost forecast: default vs right-sized">
+      <!-- counters: pilot load vs production load -->
+      <div class="cost-counters reveal" data-delay="3" role="figure" aria-label="Monthly cost forecast: pilot load vs production load">
         <div class="ctr">
-          <div class="ctr-label">Default config</div>
-          <div class="ctr-value is-current" data-cost-counter data-to="397.57" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
-          <div class="ctr-sub">What the scaffold ships at the declared load</div>
+          <div class="ctr-label">Pilot load</div>
+          <div class="ctr-value is-current" data-cost-counter data-to="341.19" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-sub">What the agent costs today, at PoC traffic</div>
         </div>
         <div class="arrow" aria-hidden="true">&rarr;</div>
         <div class="ctr">
-          <div class="ctr-label">Right-sized</div>
-          <div class="ctr-value is-recommended" data-cost-counter data-to="341.19" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
+          <div class="ctr-label">Production load</div>
+          <div class="ctr-value is-recommended" data-cost-counter data-to="397.57" data-prefix="$" data-suffix=" /mo">$0 /mo</div>
           <div class="ctr-sub">
-            Same constraints, projection holds
-            <span class="cost-savings-pill" aria-label="Delta vs default config">&Delta; &minus;$56.38 / &minus;14.2%</span>
+            Same SKU mix, scaled to declared production traffic
+            <span class="cost-savings-pill" aria-label="Projected growth at production load">forecast &middot; +$56.38 / +16.5%</span>
           </div>
         </div>
       </div>
 
-      <!-- per-resource breakdown -->
-      <div class="cost-table-wrap reveal" data-delay="4" role="region" aria-label="Per-resource cost forecast" tabindex="0">
+      <!-- per-resource forecast: pilot vs production -->
+      <div class="cost-table-wrap reveal" data-delay="4" role="region" aria-label="Per-resource production-load forecast" tabindex="0">
         <table class="cost-table">
           <thead>
             <tr>
               <th scope="col">Resource</th>
-              <th scope="col">Default SKU</th>
-              <th scope="col" class="num">$ / mo</th>
-              <th scope="col">Right-size option</th>
-              <th scope="col" class="num">&Delta;</th>
+              <th scope="col">SKU</th>
+              <th scope="col" class="num">Pilot $ / mo</th>
+              <th scope="col" class="num">Prod-load $ / mo</th>
+              <th scope="col">Scale-readiness signal</th>
             </tr>
           </thead>
           <tbody>
@@ -623,74 +633,74 @@
               <td><strong>cosmos</strong><br><span class="sku">DocumentDB</span></td>
               <td><span class="sku">Standard provisioned 4000 RU/s</span></td>
               <td class="num">$246.10</td>
-              <td><span class="sku">keep &mdash; serverless trips 50 GB cap</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
+              <td class="num">$246.10</td>
+              <td><span class="sku">headroom OK &mdash; serverless trips 50 GB cap at prod</span></td>
             </tr>
             <tr>
               <td><strong>ai-search</strong><br><span class="sku">Search</span></td>
               <td><span class="sku">basic 1&times;1</span></td>
               <td class="num">$73.00</td>
-              <td><span class="sku">keep &mdash; free tier doc cap below load</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
+              <td class="num">$73.00</td>
+              <td><span class="sku">scales to declared doc count, free tier blocks at 50&nbsp;k</span></td>
             </tr>
             <tr>
               <td><strong>apim</strong><br><span class="sku">API Management</span></td>
-              <td><span class="sku">BasicV2 capacity=1</span></td>
+              <td><span class="sku">Consumption (no fixed capacity)</span></td>
+              <td class="num">$5.57</td>
               <td class="num">$51.10</td>
-              <td><span class="sku">Consumption</span></td>
-              <td class="num savings-cell">&minus;$45.53</td>
+              <td><span class="sku">9&times; growth tracks RPS; capacity governed at gateway</span></td>
             </tr>
             <tr>
               <td><strong>bot</strong><br><span class="sku">Container Apps</span></td>
-              <td><span class="sku">Consumption 2 replicas</span></td>
+              <td><span class="sku">Consumption, 2&ndash;5 replicas autoscale</span></td>
               <td class="num">$15.85</td>
-              <td><span class="sku">keep &mdash; already at min</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
+              <td class="num">$15.85</td>
+              <td><span class="sku">KEDA rules in repo, replica ceiling = governance lever</span></td>
             </tr>
             <tr>
               <td><strong>foundry-agent</strong><br><span class="sku">Foundry hosted</span></td>
-              <td><span class="sku">Standard tier</span></td>
+              <td><span class="sku">Free hosted-agent</span></td>
+              <td class="num">$0.00</td>
               <td class="num">$10.56</td>
-              <td><span class="sku">Free tier</span></td>
-              <td class="num savings-cell">&minus;$10.56</td>
+              <td><span class="sku">Free tier exhausts at prod volume &mdash; SKU upgrade planned</span></td>
             </tr>
             <tr>
               <td><strong>storage</strong><br><span class="sku">Storage</span></td>
-              <td><span class="sku">Standard_LRS hot</span></td>
-              <td class="num">$0.96</td>
               <td><span class="sku">Standard_ZRS cool</span></td>
-              <td class="num savings-cell">&minus;$0.29</td>
+              <td class="num">$0.67</td>
+              <td class="num">$0.96</td>
+              <td><span class="sku">tier matches access pattern (read-cold, write-rare)</span></td>
             </tr>
             <tr>
               <td><strong>aoai-chat</strong><br><span class="sku">AOAI deployment</span></td>
               <td><span class="sku">gpt-4o PAYG eastus2</span></td>
               <td class="num"><abbr title="Live retail price required; fallback fixture omitted to avoid stale claims">N/A</abbr></td>
-              <td><span class="sku">populated by live Retail Prices API</span></td>
-              <td class="num savings-cell neutral">&mdash;</td>
+              <td class="num"><abbr title="Live retail price required; fallback fixture omitted to avoid stale claims">N/A</abbr></td>
+              <td><span class="sku">live retail price + token-budget governance at prod load</span></td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <!-- top 3 right-sizing opportunities -->
-      <div class="cost-recs reveal" data-delay="5" aria-label="Top three right-sizing opportunities">
+      <!-- governance signals replacing "savings" leaderboard -->
+      <div class="cost-recs reveal" data-delay="5" aria-label="Three forecast signals for governance">
         <article class="cost-rec">
           <span class="rank" aria-hidden="true">#1</span>
-          <p class="rec-title">apim &mdash; Consumption tier holds at declared load</p>
-          <p class="rec-swap"><span class="from">BasicV2 capacity=1</span><span class="arr">&rarr;</span><span class="to">Consumption</span></p>
-          <p class="rec-saves">&Delta; &minus;$45.53<span class="pct">/mo &middot; 89%</span></p>
+          <p class="rec-title">Forecast &mdash; <em>+16.5%</em> at production load</p>
+          <p class="rec-swap"><span class="from">$341 /mo pilot</span><span class="arr">&rarr;</span><span class="to">$398 /mo prod</span></p>
+          <p class="rec-saves">+$56.38<span class="pct">/mo &middot; budget the ARB signs</span></p>
         </article>
         <article class="cost-rec">
           <span class="rank" aria-hidden="true">#2</span>
-          <p class="rec-title">foundry-agent &mdash; Free tier fits the projected volume</p>
-          <p class="rec-swap"><span class="from">Standard</span><span class="arr">&rarr;</span><span class="to">Free hosted-agent</span></p>
-          <p class="rec-saves">&Delta; &minus;$10.56<span class="pct">/mo &middot; 100%</span></p>
+          <p class="rec-title">Scale &mdash; <em>2 SKUs</em> need an upgrade at prod load</p>
+          <p class="rec-swap"><span class="from">foundry-agent Free</span><span class="arr">&rarr;</span><span class="to">Standard tier</span></p>
+          <p class="rec-saves">named SKU<span class="pct">upgrades planned, not surprises</span></p>
         </article>
         <article class="cost-rec">
           <span class="rank" aria-hidden="true">#3</span>
-          <p class="rec-title">storage &mdash; ZRS cool matches the access pattern</p>
-          <p class="rec-swap"><span class="from">Standard_LRS hot</span><span class="arr">&rarr;</span><span class="to">Standard_ZRS cool</span></p>
-          <p class="rec-saves">&Delta; &minus;$0.29<span class="pct">/mo &middot; 31%</span></p>
+          <p class="rec-title">Governance &mdash; <em>every line</em> carries a price source</p>
+          <p class="rec-swap"><span class="from">price_source</span><span class="arr">=</span><span class="to">live | fixture | fallback</span></p>
+          <p class="rec-saves">100% traceable<span class="pct">re-runnable, auditable</span></p>
         </article>
       </div>
 
@@ -708,8 +718,10 @@
         client against a 7-resource synthetic pilot. Real runs hit the public
         Azure Retail Prices API; every $ value carries a
         <code>price_source: live | fixture | fallback</code> tag in the manifest.
-        Advisory only &mdash; <code>threadlight-deploy</code> is what actually
-        changes infrastructure.
+        <strong>Forecasting only</strong> &mdash; <code>threadlight-deploy</code>
+        is what changes infrastructure; <code>threadlight-consumption-iq</code>
+        never edits SKUs on its own, it produces evidence the FinOps owner
+        can act on.
       </p>
     </div>
   </section>

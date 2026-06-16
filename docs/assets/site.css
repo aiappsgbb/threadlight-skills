@@ -1169,9 +1169,9 @@
     display: inline-block;
     margin-top: 8px;
     padding: 4px 12px;
-    background: var(--lime-soft);
-    color: var(--lime-1);
-    border: 1px solid color-mix(in srgb, var(--lime) 35%, transparent);
+    background: color-mix(in srgb, var(--accent-1) 12%, transparent);
+    color: var(--accent-1);
+    border: 1px solid color-mix(in srgb, var(--accent-1) 35%, transparent);
     border-radius: 999px;
     font: 600 .72rem/1.2 var(--mono);
     letter-spacing: .04em;
