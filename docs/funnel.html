@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v19">
+<link rel="stylesheet" href="assets/site.css?v=ia-v20">
 </head>
 <body class="chapter-page chapter-funnel">
 
@@ -72,8 +72,8 @@
       </div>
 
       <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
-        <a href="#stage-glance">Stages at a glance</a>
-        <a href="#stage-show">See it run</a>
+        <a href="#stage-relay">What each stage ships</a>
+        <a href="#stage-show">The skills in detail</a>
         <a href="#stage-recap">Recap</a>
       </nav>
 
@@ -82,148 +82,6 @@
         <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
         <span class="se-not">Not commands. Not a CLI of our own.</span>
       </p>
-    </div>
-  </section>
-
-  <!-- ==================== THE LADDER (chapter centerpiece) ==================== -->
-  <section class="chapter-section ladder-svg-hero" id="stage-ladder" data-toc-id="stage-ladder" data-toc-label="The ladder">
-    <div class="wrap wrap-xl" style="color: var(--chapter-accent, var(--accent-1));">
-      <figure aria-labelledby="ladder-caption">
-        <svg viewBox="0 0 1080 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Threadlight five-stage funnel as a ladder of horizontal rails">
-          <defs>
-            <linearGradient id="ladder-rail-fill" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.14"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.04"/>
-            </linearGradient>
-            <linearGradient id="ladder-spine" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0"/>
-              <stop offset="10%" stop-color="currentColor" stop-opacity="0.6"/>
-              <stop offset="90%" stop-color="currentColor" stop-opacity="0.6"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0"/>
-            </linearGradient>
-            <style>
-              .ladder-stage-num { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; fill: #8e95a8; }
-              .ladder-stage-name { font-family: var(--serif); font-size: 22px; fill: #f5f5f7; }
-              .ladder-stage-sub  { font-family: var(--serif); font-size: 14px; font-style: italic; fill: #cfd2dc; }
-              .ladder-chip       { font-family: var(--mono); font-size: 11.5px; fill: currentColor; }
-              .ladder-arrow      { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; fill: #8e95a8; text-transform: uppercase; }
-              .ladder-bubble-text { font-family: var(--serif); font-size: 12.5px; font-style: italic; fill: #f5f5f7; }
-              @media (prefers-color-scheme: light) {
-                .ladder-stage-name { fill: #0a0d14; }
-                .ladder-stage-sub  { fill: #2b3146; }
-                .ladder-stage-num  { fill: #5f6680; }
-                .ladder-arrow      { fill: #5f6680; }
-                .ladder-bubble-text { fill: #0a0d14; }
-              }
-            </style>
-          </defs>
-
-          <!-- spine -->
-          <line x1="56" y1="40" x2="56" y2="520" stroke="url(#ladder-spine)" stroke-width="2"/>
-
-          <!-- seller-paragraph chat bubble at top -->
-          <g transform="translate(70, 6)">
-            <path class="ladder-prompt-bubble" d="M 0 8 Q 0 0 10 0 L 410 0 Q 420 0 420 8 L 420 56 Q 420 64 410 64 L 70 64 L 56 76 L 58 64 L 10 64 Q 0 64 0 56 Z"/>
-            <text x="14" y="22" class="ladder-bubble-text">"Inbound claims, regulator-exposed,</text>
-            <text x="14" y="40" class="ladder-bubble-text">route by complexity. HITL on every escalate."</text>
-            <text x="14" y="56" class="ladder-chip" opacity=".7">&mdash; you, in chat</text>
-          </g>
-          <path d="M120 76 L120 96" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6"/>
-          <path d="M116 92 L120 100 L124 92" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.6"/>
-
-          <!-- rails -->
-          <!-- 01 Conversation -->
-          <g transform="translate(0, 100)">
-            <rect x="40" y="0" width="1000" height="68" rx="10" fill="url(#ladder-rail-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <rect x="40" y="0" width="4" height="68" fill="currentColor"/>
-            <circle cx="56" cy="34" r="6" fill="currentColor"/>
-            <text x="80"  y="28" class="ladder-stage-num">STAGE 01</text>
-            <text x="80"  y="52" class="ladder-stage-name">Conversation <tspan class="ladder-stage-sub">— describe the process</tspan></text>
-            <g transform="translate(620, 22)">
-              <rect width="180" height="26" rx="13" fill="currentColor" fill-opacity="0.18"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-auto</text>
-            </g>
-            <g transform="translate(810, 22)">
-              <rect width="200" height="26" rx="13" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.4"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-design</text>
-            </g>
-          </g>
-
-          <!-- 02 Co-design -->
-          <g transform="translate(0, 188)">
-            <rect x="40" y="0" width="1000" height="68" rx="10" fill="url(#ladder-rail-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <rect x="40" y="0" width="4" height="68" fill="currentColor"/>
-            <circle cx="56" cy="34" r="6" fill="currentColor"/>
-            <text x="80"  y="28" class="ladder-stage-num">STAGE 02</text>
-            <text x="80"  y="52" class="ladder-stage-name">Co-design <tspan class="ladder-stage-sub">— spec &amp; scaffold</tspan></text>
-            <g transform="translate(560, 22)">
-              <rect width="200" height="26" rx="13" fill="currentColor" fill-opacity="0.18"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-design</text>
-            </g>
-            <g transform="translate(770, 22)">
-              <rect width="240" height="26" rx="13" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.4"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-demo-data-factory</text>
-            </g>
-          </g>
-
-          <!-- 03 Deploy -->
-          <g transform="translate(0, 276)">
-            <rect x="40" y="0" width="1000" height="68" rx="10" fill="url(#ladder-rail-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <rect x="40" y="0" width="4" height="68" fill="currentColor"/>
-            <circle cx="56" cy="34" r="6" fill="currentColor"/>
-            <text x="80"  y="28" class="ladder-stage-num">STAGE 03</text>
-            <text x="80"  y="52" class="ladder-stage-name">Deploy <tspan class="ladder-stage-sub">— land on your Azure</tspan></text>
-            <g transform="translate(600, 22)">
-              <rect width="190" height="26" rx="13" fill="currentColor" fill-opacity="0.18"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-deploy</text>
-            </g>
-            <g transform="translate(800, 22)">
-              <rect width="210" height="26" rx="13" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.4"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-local-test</text>
-            </g>
-          </g>
-
-          <!-- 04 Safe-check -->
-          <g transform="translate(0, 364)">
-            <rect x="40" y="0" width="1000" height="68" rx="10" fill="url(#ladder-rail-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <rect x="40" y="0" width="4" height="68" fill="currentColor"/>
-            <circle cx="56" cy="34" r="6" fill="currentColor"/>
-            <text x="80"  y="28" class="ladder-stage-num">STAGE 04</text>
-            <text x="80"  y="52" class="ladder-stage-name">Safe-check <tspan class="ladder-stage-sub">— cost &amp; readiness</tspan></text>
-            <g transform="translate(570, 22)">
-              <rect width="210" height="26" rx="13" fill="currentColor" fill-opacity="0.18"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-safe-check</text>
-            </g>
-            <g transform="translate(790, 22)">
-              <rect width="220" height="26" rx="13" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.4"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-consumption-iq</text>
-            </g>
-          </g>
-
-          <!-- 05 Production -->
-          <g transform="translate(0, 452)">
-            <rect x="40" y="0" width="1000" height="68" rx="10" fill="url(#ladder-rail-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <rect x="40" y="0" width="4" height="68" fill="currentColor"/>
-            <circle cx="56" cy="34" r="6" fill="currentColor"/>
-            <text x="80"  y="28" class="ladder-stage-num">STAGE 05</text>
-            <text x="80"  y="52" class="ladder-stage-name">Production <tspan class="ladder-stage-sub">— hand-off</tspan></text>
-            <g transform="translate(540, 22)">
-              <rect width="240" height="26" rx="13" fill="currentColor" fill-opacity="0.18"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-production-ready</text>
-            </g>
-            <g transform="translate(790, 22)">
-              <rect width="220" height="26" rx="13" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.4"/>
-              <text x="14" y="17" class="ladder-chip">threadlight-hitl-patterns</text>
-            </g>
-          </g>
-
-          <!-- side: "in one session" annotation -->
-          <text x="1050" y="105" class="ladder-arrow" text-anchor="end" transform="rotate(90 1050 105)">ONE SESSION ↓</text>
-        </svg>
-        <figcaption id="ladder-caption" class="diagram-caption">
-          The five-stage chain &middot; read top-to-bottom &middot; chips show the skills that fire on each rail
-        </figcaption>
-      </figure>
     </div>
   </section>
 
@@ -375,55 +233,8 @@
     </div>
   </section>
 
-  <section class="chapter-section" id="stage-glance" data-toc-id="stage-glance" data-toc-label="Five stages at a glance">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Five stages at a glance</p>
-        <h2>Each stage <em>names its exit.</em></h2>
-        <p class="section-lede">
-          When a stage closes, you and the customer agree on
-          what just shipped before the next stage opens.
-        </p>
-      </div>
-
-      <div class="stage-glance">
-        <div class="gl-step reveal" data-delay="1">
-          <span class="gl-num">Stage 01</span>
-          <p class="gl-name">Conversation</p>
-          <p class="gl-exit"><strong>Exits with</strong> a versioned SPEC.md the customer signs.</p>
-        </div>
-        <div class="gl-step reveal" data-delay="2">
-          <span class="gl-num">Stage 02</span>
-          <p class="gl-name">Co-design</p>
-          <p class="gl-exit"><strong>Exits with</strong> agent contract + synthetic dataset running on your laptop.</p>
-        </div>
-        <div class="gl-step reveal" data-delay="3">
-          <span class="gl-num">Stage 03</span>
-          <p class="gl-name">Deploy</p>
-          <p class="gl-exit"><strong>Exits with</strong> the agent live in the customer&rsquo;s Azure subscription.</p>
-        </div>
-        <div class="gl-step reveal" data-delay="4">
-          <span class="gl-num">Stage 04</span>
-          <p class="gl-name">Safe-check</p>
-          <p class="gl-exit"><strong>Exits with</strong> a 10-pillar scorecard + per-amber waiver owners + cost manifest.</p>
-        </div>
-        <div class="gl-step reveal" data-delay="5">
-          <span class="gl-num">Stage 05</span>
-          <p class="gl-name">Production</p>
-          <p class="gl-exit"><strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</p>
-        </div>
-      </div>
-
-      <div class="read-deeper">
-        <span class="rd-label">Want the deep read?</span>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
-      </div>
-    </div>
-  </section>
-
-
   <!-- ===================== SEE IT RUN — sequential skill flow ===================== -->
-  <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="See it run">
+  <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="The skills in detail">
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The skills in detail</p>
@@ -553,8 +364,8 @@
         <p class="recap-scorecard reveal" data-delay="1">
           <span>You walked</span>
           <span><em>5</em> stages</span><span class="sep">·</span>
-          <span><em>7</em> skills</span><span class="sep">·</span>
-          <span><em>10</em> artefacts</span><span class="sep">·</span>
+          <span><em>11</em> skills</span><span class="sep">·</span>
+          <span><em>5</em> artefacts</span><span class="sep">·</span>
           <span><em>1</em> session</span>
         </p>
 

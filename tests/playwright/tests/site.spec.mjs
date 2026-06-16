@@ -181,11 +181,13 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     }
   });
 
-  test('funnel chapter keeps the slim stage-glance grid (gl-step)', async ({ page }) => {
+  test('funnel chapter keeps the rich funnel-step cards (5 stages w/ skill chips) on home only', async ({ page }) => {
+    // The rich funnel-step teaser lives on home; funnel.html doesn't
+    // duplicate it. Sanity-check both: home has 5, funnel has 0.
+    await page.goto(LANDING);
+    await expect(page.locator('#scene-funnel .funnel-step')).toHaveCount(5);
     await page.goto('/funnel.html');
-    const funnel = page.locator('#stage-glance');
-    await funnel.scrollIntoViewIfNeeded();
-    await expect(funnel.locator('.stage-glance .gl-step')).toHaveCount(5);
+    await expect(page.locator('.funnel-step')).toHaveCount(0);
   });
 
   test('industries strip renders all 6 sectors with non-empty pilots', async ({ page }) => {
@@ -332,23 +334,24 @@ test.describe('public-safety audit (no leaks of internal-only phrasing)', () => 
 });
 
 test.describe('deep pages (funnel.html + industries.html)', () => {
-  test('funnel.html renders the chapter hero + ladder SVG centerpiece', async ({ page }) => {
+  test('funnel.html renders the chapter hero + relay SVG + skills-chain centerpiece', async ({ page }) => {
     await page.goto('/funnel.html');
     await expect(page).toHaveTitle(/funnel/i);
     await expect(page.locator('h1')).toContainText(/five named stages/i);
-    // After the SVG pass the #stage-show terminal section is gone — the ladder
-    // SVG IS the centerpiece, sitting right after the chapter hero.
-    const sections = ['#chapter-top', '#stage-ladder', '#stage-glance', '#stage-recap'];
+    // After the v20 cleanup the chapter is just: hero → relay SVG → skills
+    // chain → recap. The ladder and the stages-at-a-glance grid are gone.
+    const sections = ['#chapter-top', '#stage-relay', '#stage-show', '#stage-recap'];
     for (const id of sections) {
       await expect(page.locator(id), `funnel section ${id} should exist`).toHaveCount(1);
     }
-    // The ladder SVG hero is locked above the fold
-    await expect(page.locator('#stage-ladder.ladder-svg-hero')).toHaveCount(1);
-    await expect(page.locator('#stage-ladder svg')).toHaveCount(1);
-    // Stage-glance grid is back to the slim gl-step layout (the rich
-    // funnel-step cards live on the homepage teaser instead).
-    await expect(page.locator('#stage-glance .stage-glance .gl-step')).toHaveCount(5);
-    await expect(page.locator('#stage-glance .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
+    // The relay SVG hero is the artefact strip (5 stage exits)
+    await expect(page.locator('#stage-relay.relay-svg-hero')).toHaveCount(1);
+    await expect(page.locator('#stage-relay svg')).toHaveCount(1);
+    // The skills-in-detail chain-rail is the centerpiece
+    await expect(page.locator('#stage-show .chain-rail')).toHaveCount(1);
+    // Deleted sections must NOT come back
+    await expect(page.locator('#stage-ladder'),  'stage-ladder should be deleted').toHaveCount(0);
+    await expect(page.locator('#stage-glance'),  'stage-glance should be deleted').toHaveCount(0);
   });
 
   test('industries.html renders the chapter hero + posterized sections', async ({ page }) => {
@@ -495,9 +498,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     // SVG centerpieces (.ladder-svg-hero, .amber-green-track) into chapter heroes.
     // Industries keeps its faux SPEC.md preview as its signature artefact.
     const pages = [
-      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 2, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.ladder-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 2, artefact: '.relay-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview,.chain-rail' },
+      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
     ];
     for (const p of pages) {
       await page.goto(p.url);
@@ -533,20 +536,18 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('funnel ladder centerpiece is present with five rails', async ({ page }) => {
+  test('funnel relay strip is present with five stage exits', async ({ page }) => {
     await page.goto('/funnel.html');
-    const ladder = page.locator('#stage-ladder');
-    await expect(ladder).toHaveCount(1);
-    await expect(ladder).toHaveClass(/ladder-svg-hero/);
-    const diagram = ladder.locator('svg').first();
+    const relay = page.locator('#stage-relay');
+    await expect(relay).toHaveCount(1);
+    await expect(relay).toHaveClass(/relay-svg-hero/);
+    const diagram = relay.locator('svg').first();
     await expect(diagram).toHaveCount(1);
-    // Five named stages are inside the SVG ladder
-    const text = (await diagram.textContent()) || '';
-    expect(text).toMatch(/Conversation/i);
-    expect(text).toMatch(/Co-design/i);
-    expect(text).toMatch(/Deploy/i);
-    expect(text).toMatch(/Safe-check/i);
-    expect(text).toMatch(/Production/i);
+    // Five stage tags STAGE 01..STAGE 05 in the SVG
+    const tags = (await diagram.locator('text.ar-stage').allTextContents()).join(' | ');
+    for (const want of ['STAGE 01', 'STAGE 02', 'STAGE 03', 'STAGE 04', 'STAGE 05']) {
+      expect(tags, `relay SVG must include ${want}`).toContain(want);
+    }
   });
 
   test('production posture triptych replaces the old 4-up grid', async ({ page }) => {
