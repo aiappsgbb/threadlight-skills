@@ -2732,6 +2732,62 @@
   }
   .scorecard-preview .sc-take strong { color: var(--ink-1); }
 
+  /* --- .cost-artefact-grid (production.html #prod-cost) -------
+     Posture-shaped cost forecast: 4 columns × 7 rows (1 header
+     + 6 layers). NO specific $ amounts; only $/$$/$$$ shapes. */
+  .scorecard-preview .cost-artefact-grid {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) 1.4fr 1.4fr 2fr;
+    column-gap: 0;
+    row-gap: 0;
+    padding: 6px 0;
+  }
+  .scorecard-preview .ca-cell {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    font: 500 .92rem/1.4 var(--sans);
+    color: var(--ink-1);
+  }
+  .scorecard-preview .ca-cell strong {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 1.02rem;
+    color: var(--ink-0);
+    letter-spacing: -.005em;
+  }
+  .scorecard-preview .ca-cell-head {
+    background: color-mix(in srgb, var(--bg-2) 60%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .scorecard-preview .ca-cell-head .ca-label {
+    font: 600 11px/1 var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .scorecard-preview .ca-sku {
+    font: 500 .82rem/1.35 var(--mono);
+    color: var(--ink-2);
+  }
+  .scorecard-preview .ca-note {
+    font: 400 .85rem/1.45 var(--sans);
+    color: var(--ink-1);
+  }
+  .scorecard-preview .ca-note strong {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: .9rem;
+    color: var(--chapter-accent, var(--accent-1));
+    letter-spacing: 0;
+  }
+  @media (max-width: 900px) {
+    .scorecard-preview .cost-artefact-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .scorecard-preview .ca-cell-head { display: none; }
+    .scorecard-preview .ca-cell { border-bottom: 1px dashed var(--line); }
+  }
+
   /* --- .read-deeper -----------------------------------------
      Minimal pre-recap link bar pointing at the operator MDs. */
   .read-deeper {

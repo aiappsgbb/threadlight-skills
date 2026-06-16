@@ -33,38 +33,49 @@ test.describe('landing page (index.html)', () => {
   test('cost forecast section on production.html — framed as forecast/scale/governance, not savings', async ({ page }) => {
     await page.goto('/production.html');
     const cost = page.locator('#prod-cost');
-    const counters = cost.locator('.cost-counters');
-    await counters.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(2000);
-    // Counters compare pilot load → production load (not "current" → "cheaper")
-    const labels = (await cost.locator('.cost-counters .ctr-label').allTextContents()).join(' | ').toLowerCase();
-    expect(labels).toMatch(/pilot load/);
-    expect(labels).toMatch(/production load/);
-    // Numbers still animate (deterministic golden values)
-    await expect(cost.locator('.ctr-value.is-current')).toContainText('$341.19 /mo');
-    await expect(cost.locator('.ctr-value.is-recommended')).toContainText('$397.57 /mo');
-    // Per-resource table has 7 rows and both pilot + prod cost columns
-    await expect(cost.locator('.cost-table tbody tr')).toHaveCount(7);
-    const headers = (await cost.locator('.cost-table thead th').allTextContents()).join(' | ').toLowerCase();
-    expect(headers).toMatch(/pilot/);
-    expect(headers).toMatch(/prod/);
-    expect(headers).toMatch(/scale|readiness/);
-    // 3 governance signals replace the savings leaderboard
+    await cost.scrollIntoViewIfNeeded();
+
+    // Section is a posture-shaped artefact, not a fixture savings table.
+    // No counter widgets, no per-resource $ table.
+    await expect(cost.locator('.cost-counters'), 'no animated counters').toHaveCount(0);
+    await expect(cost.locator('.cost-table'), 'no per-resource $ table').toHaveCount(0);
+
+    // It uses the .scorecard-preview shell with a .cost-artefact-grid inside
+    await expect(cost.locator('.scorecard-preview')).toHaveCount(1);
+    const grid = cost.locator('.cost-artefact-grid');
+    await expect(grid).toHaveCount(1);
+    // 4 header cells + 6 layers × 4 cells = 28 total
+    await expect(grid.locator('.ca-cell')).toHaveCount(28);
+    // Each layer named
+    const layers = (await grid.locator('.ca-cell:not(.ca-cell-head) strong').allTextContents()).join(' | ').toLowerCase();
+    for (const layer of ['llm', 'vector', 'data plane', 'gateway', 'compute', 'observability']) {
+      expect(layers, `forecast artefact must name layer: ${layer}`).toContain(layer);
+    }
+
+    // 3 forecast signals (forecast / scale / governance) replace any savings leaderboard
     const recs = cost.locator('.cost-recs .cost-rec');
     await expect(recs).toHaveCount(3);
     const recText = (await recs.allTextContents()).join(' | ').toLowerCase();
     expect(recText).toMatch(/forecast/);
     expect(recText).toMatch(/scale/);
     expect(recText).toMatch(/governance/);
+
     // Skill link still present
     await expect(cost.locator('a[href*="/skills/threadlight-consumption-iq"]').first()).toBeVisible();
-    // Framing audit: no "cheapest/save/savings/cut" language anywhere
+
+    // Framing audit: no savings/cheapest language anywhere
     const sectionText = ((await cost.textContent()) || '').toLowerCase();
-    expect(sectionText, 'must NOT promise savings').not.toMatch(/cheapest|saves|savings|cut the bill|right-sized|recommended/);
+    expect(sectionText, 'must NOT promise savings').not.toMatch(/cheapest|saves|savings|cut the bill|right-sized/);
     // Must contain the three explicit goals
     expect(sectionText).toMatch(/forecast/);
     expect(sectionText).toMatch(/scale/);
     expect(sectionText).toMatch(/governance/);
+
+    // Numeric-honesty audit: no specific $ amounts in the displayed copy
+    // ($246.10, $341.19, $397.57 were the fixture leftovers — gone now).
+    // Allowed: $$$ / $$ / $ shape markers in the artefact.
+    expect(sectionText, 'no fake fixture dollar amounts on a public page')
+      .not.toMatch(/\$\d/);
   });
 
   test('all internal anchors resolve', async ({ page }) => {
