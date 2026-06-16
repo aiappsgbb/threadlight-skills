@@ -8,12 +8,12 @@ description: >
   implementation the customer can rebuild in their preferred framework.
   USE FOR: workspace UI, case management UI, agent operator console,
   case list with detail pane, action toolbar, audit viewer, threadlight
-  workspace, demo workspace, operator dashboard.
+  workspace, demo workspace, operator dashboard, add workspace to Kratos export.
   DO NOT USE FOR: experience.html cinematic (use threadlight-design),
   Teams Adaptive Cards (use threadlight-hitl-patterns), real-time chat UI,
   framework-specific scaffolds (we ship pattern, not framework).
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Threadlight Workspace UI
@@ -82,6 +82,19 @@ src/workspace/
 
 The reference is **opinionated** — one polished implementation per workspace
 shape — not a flexible framework.
+
+> **Kratos-export mode.** A **Kratos-exported project** (`src/hosted-agent/` +
+> `use-cases/<x>/`, trimmed `infra/` — see
+> [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)) intentionally ships
+> **without** a multi-tenant frontend module. This skill is the on-demand way to
+> add an operator workspace on top of it. Output still lands under
+> `src/workspace/`. Since the export has no `specs/SPEC.md` § 8b/§ 4, take the
+> workspace shape, filters, and detail-pane sections **from the operator**, seed
+> the demo from the export's `mocks/` directory (in place of
+> `specs/sample-data/`), and read the agent identity from
+> `use-cases/<x>/SYSTEM_PROMPT.md` + `agent.manifest.yaml`. Any agent skill the
+> workspace references resolves at the skills root `use-cases/<x>/skills/`
+> (override with `--skills-root`).
 
 ---
 

@@ -4,15 +4,20 @@ description: >
   Take a designed agent project (from threadlight-design or manually crafted) and generate
   all deployment artifacts for Microsoft Foundry Hosted Agents. Reads specs/SPEC.md,
   AGENTS.md, and skills to produce container.py, Dockerfile, pyproject.toml, azd project,
-  and deploy-notes.md. One-command deployment via `azd up`.
+  and deploy-notes.md. One-command deployment via `azd up`. Also runs in
+  Kratos-export mode: when handed a Kratos-exported full-clone project
+  (src/hosted-agent/ + use-cases/<x>/), it enriches/validates only — it does
+  NOT regenerate the Dockerfile/main.py/azure.yaml Kratos already shipped — and
+  backfills the missing evals/ directory.
   USE FOR: deploy to Foundry, make this deployable, generate deployment files, Foundry hosted agent,
   containerize agent, prepare for Foundry, package agent, deploy agent, hosted deployment,
-  agent deployment, azd deploy, azd up.
+  agent deployment, azd deploy, azd up, Kratos export, Kratos-exported project, foundry-agent.zip,
+  enrich Kratos export, backfill evals, use-cases skills bundle.
   DO NOT USE FOR: designing the process (use threadlight-design), running evals (use foundry-evals),
   Teams bot deep dive (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
   GHCP SDK variant (use ghcp-hosted-agents), tenant/subscription isolation for azd (use azure-tenant-isolation).
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -41,6 +46,32 @@ agent configuration, model deployments, and container resources; `azd up` handle
 - User wants to containerize their agent for hosted deployment
 - User asks for Dockerfile, container runtime, or deployment files
 - User asks about MCP tools in Foundry hosted agents
+- User hands you a **Kratos-exported project** and wants to harden it for production
+
+## Input Modes
+
+This skill accepts **two starting points**. Detect which one you're in **before
+Phase 1** and branch accordingly — they are additive, with no change to the
+existing design-driven path.
+
+| Mode | Detection signal | What this skill does |
+|------|------------------|----------------------|
+| **threadlight-design mode** (default) | `AGENTS.md` + `src/agent/skills/` present; no `src/hosted-agent/` | Generate all deploy artifacts from scratch (Phases 0–7, unchanged). |
+| **Kratos-export mode** | `src/hosted-agent/` **and** `use-cases/<x>/` both present | **Enrich/validate only.** The runtime (`Dockerfile`, `main.py`, `pyproject.toml`, `agent.yaml`, `azure.yaml`) already exists — do **not** regenerate it. Backfill `evals/`, validate, and hand off to the production-hardening skills. |
+
+> [!IMPORTANT]
+> **Kratos-export mode skips Phase 2 (Generate Deployment Artifacts).** Kratos's
+> exporter already ships a deployable full-clone project; re-running the
+> generators would clobber `src/hosted-agent/main.py`, `Dockerfile`, and
+> `azure.yaml`. In this mode the skill enriches and validates in place. See the
+> full runbook in [`references/kratos-export-mode.md`](references/kratos-export-mode.md)
+> and the bridge overview in [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md).
+
+**Skills root.** Kratos puts skills under `use-cases/<x>/skills/`;
+`threadlight-design` puts them under `src/agent/skills/`. Resolve the skills root
+with this precedence: (1) explicit `--skills-root <path>` override, (2)
+`use-cases/<x>/skills/` if present (Kratos-export mode), (3) `src/agent/skills/`
+(design mode). No symlinks, no moving files.
 
 ## Why Hosted Agents (not Prompt/Declarative Agents)
 
@@ -57,6 +88,12 @@ For any agent that uses **skills, custom middleware, or complex logic**, you MUS
 `HostedAgentDefinition` with a custom container.
 
 ## Prerequisites
+
+> **Kratos-export mode (alternative input).** When starting from a Kratos export,
+> the inputs below live under `use-cases/<x>/` instead: `SYSTEM_PROMPT.md` (in
+> place of `AGENTS.md`), `use-cases/<x>/skills/*/SKILL.md`, `apm.yml`, and
+> `.mcp.json`. The hosted-agent runtime is under `src/hosted-agent/`. See
+> [`references/kratos-export-mode.md`](references/kratos-export-mode.md).
 
 The input folder MUST have:
 - `AGENTS.md` — agent identity, skills, tools, behavioral guidelines
@@ -198,6 +235,16 @@ For data stores not covered by Foundry built-ins, deploy your own MCP server:
 ---
 
 ## Phase 1: Analyze the Design
+
+> **Phase 1.0 — Detect input mode (do this first).** Check for
+> `src/hosted-agent/` **and** `use-cases/<x>/`. If both exist, you are in
+> **Kratos-export mode**: the runtime is already generated. Read
+> [`references/kratos-export-mode.md`](references/kratos-export-mode.md), then
+> **skip Phase 2 entirely** and resume at Phase 3 (Validate) — but first run the
+> Kratos-mode enrichment steps in that reference (skills-root resolution, evals
+> backfill, `azd env` cross-check). If only `AGENTS.md` + `src/agent/skills/`
+> are present (no `src/hosted-agent/`), you are in **design mode** — proceed with
+> Phase 1 below as usual.
 
 Read all available input files in this priority order:
 
@@ -442,6 +489,14 @@ already exist:
 
 ## Phase 2: Generate Deployment Artifacts
 
+> **Kratos-export mode gate.** If `src/hosted-agent/` and `use-cases/<x>/` are
+> present (see Phase 1.0), **skip Phase 2 entirely** — the Dockerfile,
+> `main.py`, `pyproject.toml`, `agent.yaml`, and `azure.yaml` were shipped by
+> Kratos's exporter and must not be regenerated. Run the enrichment steps in
+> [`references/kratos-export-mode.md`](references/kratos-export-mode.md)
+> (resolve the skills root under `use-cases/<x>/skills/`, backfill
+> `use-cases/<x>/evals/`, validate selectors) and resume at Phase 3.
+>
 > **Workflow model gate.** If SPEC § 11e sets `workflow_model: "workflow"`,
 > **delegate container generation to the `threadlight-workflow` skill** and
 > skip Phase 2 entirely. `threadlight-workflow` generates `container.py`,

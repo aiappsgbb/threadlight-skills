@@ -33,6 +33,16 @@ Invoke this skill when the user wants to:
 - Mock backend systems they can't access yet (SAP, CRM, core banking, OSS/BSS)
 - Turn vague requirements into a concrete, reviewable spec with cited industry data
 
+> **From-scratch path vs Kratos-export path.** This skill is the **"from scratch"**
+> entry point — it produces `specs/SPEC.md`, `AGENTS.md`, and `src/agent/skills/`
+> that the rest of the Threadlight chain consumes. If you are instead starting
+> from a **Kratos-exported project** (`src/hosted-agent/` + `use-cases/<x>/`,
+> from the Kratos Deploy tab), you **bypass `threadlight-design` entirely**: the
+> bundle is already designed, so go straight to `threadlight-deploy`
+> (Kratos-export mode) and the production-hardening skills. See
+> [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md). No change to this skill
+> is needed for that path — the two starting points are intentionally separate.
+
 ## Using this skill in Microsoft Copilot Cowork
 
 This skill is designed for two personas:

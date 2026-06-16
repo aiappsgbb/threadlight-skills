@@ -9,12 +9,12 @@ description: >
   USE FOR: scheduled trigger, event-driven trigger, ACA job scaffold,
   ACA app webhook, ACA consumer, KEDA scaler, Service Bus consumer, Event
   Grid subscription, cron trigger, idempotency key, dead-letter queue,
-  threadlight triggers.
+  threadlight triggers, add trigger to Kratos export.
   DO NOT USE FOR: chat / on-demand triggers (those go through the agent
   directly), bot infrastructure (use foundry-teams-bot), MCP server
   deployment (use foundry-mcp-aca).
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Threadlight Event Triggers
@@ -110,6 +110,18 @@ Plus updates to:
 - `azure.yaml` — register the new service
 - `infra/main.bicep` — wire the trigger module
 - `scripts/postdeploy.py` — for ACA Job image updates (per `azd-patterns`)
+
+> **Kratos-export mode.** This skill layers cleanly onto a **Kratos-exported
+> project** (`src/hosted-agent/` + `use-cases/<x>/`, trimmed `infra/` — see
+> [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)). The receiver scaffold
+> still lands under `src/triggers/` and `infra/triggers/`, and the trimmed Kratos
+> `infra/main.bicep` + `azure.yaml` are the registration targets. There is no
+> `specs/SPEC.md` § 10b in an export, so take the receiver contract (source,
+> type, idempotency key, dedup window, dead-letter rule) **from the operator**,
+> and point the receiver's agent invocation at the export's hosted agent
+> (`src/hosted-agent/` / `agent.manifest.yaml`). If the trigger also needs a new
+> agent skill, scaffold it at the resolved skills root (`use-cases/<x>/skills/`
+> in export mode; `--skills-root` to override).
 
 ---
 

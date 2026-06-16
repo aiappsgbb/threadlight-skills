@@ -7,12 +7,12 @@ description: >
   Points. Pairs with foundry-teams-bot for delivery.
   USE FOR: human-in-the-loop, approval cards, Teams Adaptive Cards for
   agent decisions, action gate UX, edit-and-approve flow, escalation
-  card, signoff flow, threadlight HITL.
+  card, signoff flow, threadlight HITL, add gate to Kratos export.
   DO NOT USE FOR: bot infrastructure (use foundry-teams-bot), workspace
   UI (use threadlight-workspace-ui), agent runtime logic (use
   threadlight-deploy).
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Threadlight HITL Patterns
@@ -56,7 +56,7 @@ action gates declared in `specs/SPEC.md` § 8 Human Interaction Points.
 **Output**:
 
 ```
-src/agent/skills/{skill-using-gate}/cards/
+<skills-root>/{skill-using-gate}/cards/
 ├── {gate-name}.json           # Adaptive Card template
 └── {gate-name}-handler.py     # Action.Submit response handler
 src/bot/cards/
@@ -64,6 +64,16 @@ src/bot/cards/
 ├── audit_trail.py             # Writes gate outcomes to Cosmos (or AppInsights)
 └── card_registry.json         # Map of card name → handler module
 ```
+
+> **Skills root + Kratos-export mode.** `<skills-root>` resolves per the
+> [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md) convention:
+> `use-cases/<x>/skills/` for a **Kratos-exported project** (`src/hosted-agent/`
+> + `use-cases/<x>/`), otherwise `src/agent/skills/` (design mode). Override with
+> `--skills-root <path>`. In Kratos-export mode the gate scaffold is written
+> **next to the existing use-case skills** so it travels with the same bundle.
+> If the export has no `specs/SPEC.md` § 8, take the gate type + linked fields
+> from the operator (or infer from `use-cases/<x>/SYSTEM_PROMPT.md`) instead of
+> failing on the missing SPEC.
 
 ---
 
