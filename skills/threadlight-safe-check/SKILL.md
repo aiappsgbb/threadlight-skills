@@ -14,12 +14,13 @@ description: >
   missing bot/workspace/aca-job, deployment_manifest, manifest.json,
   placeholder image, helloworld image, image probe, job execution
   failed, cron rot, app insights missing, telemetry not flowing,
-  blank appin.
+  blank appin, Kratos export gate, trimmed infra, derive expected
+  types from infra.
   DO NOT USE FOR: invocation/runtime tests (foundry-evals), `azd up`
   orchestration (threadlight-deploy), schema authoring
   (threadlight-design).
 metadata:
-  version: "1.0.3"
+  version: "1.1.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -80,6 +81,36 @@ and re-readable later (CI, demo prep, postmortem):
   the prior `threadlight-deploy` Phase 3.5 manifest)*
 
 All three manifests have a top-level `"gaps": []`. **Empty array = pass.**
+
+---
+
+## Kratos-export mode (valid input without `specs/manifest.json`)
+
+A **Kratos-exported project** (`src/hosted-agent/` + `use-cases/<x>/`, trimmed
+`infra/`) is a **valid input shape** even though it has no `specs/manifest.json`
+`deployment_manifest{}` block. Detect it the same way `threadlight-deploy` does
+(see [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)) and adapt:
+
+- **Derive `expected_resource_types` from the export itself**, not from a SPEC
+  manifest: walk the export's `infra/` (compiled Bicep) + `azure.yaml` services.
+  Pass `--from-infra` (or point `--manifest` at a derived manifest) so the gate
+  checks against what Kratos actually shipped, not a `threadlight-design` SPEC
+  that does not exist here. This means **exit code 2 ("no `specs/manifest.json`")
+  is NOT raised** for a recognized Kratos export.
+- **Trimmed infra is intentional — do NOT flag as "missing module".** The Kratos
+  exporter deliberately drops **APIM / AI Gateway** and the **multi-tenant
+  frontend** module. Their absence is a **pass**, not a gap. Only treat APIM as
+  expected if `citadel-spoke-onboarding` has since been layered on. Likewise a
+  missing `workspace` ACA is only a gap once `threadlight-workspace-ui` has been
+  invoked.
+- **`required_aca_roles` collapses to `{"agent"}`** for a bare export — the
+  single hosted-agent service. `bot` / `workspace` roles are required only after
+  the corresponding Threadlight extension skill has been added.
+- **`evals/` absence is expected** pre-backfill (Kratos `_SKIP_DIRS`); it is not
+  a deploy defect. `threadlight-deploy` Kratos-export mode backfills it.
+
+In short: recognize the export, check it against its own shipped infra, and treat
+the documented trims as informational — never as gate failures.
 
 ---
 
@@ -237,6 +268,12 @@ expected_types = set(manifest["deployment_manifest"]["expected_resource_types"])
 deployed_types = {r["type"] for r in deployed_resources}
 missing_types = expected_types - deployed_types
 ```
+
+> **Kratos-export mode.** When there is no `specs/manifest.json` but the project
+> is a recognized Kratos export, derive `expected_types` from the export's own
+> compiled `infra/` + `azure.yaml` services instead (see § Kratos-export mode).
+> Do **not** add APIM / multi-tenant-FE to `expected_types` — they are
+> intentionally trimmed, so their absence must not surface in `missing_types`.
 
 ### Step 3 — required-role check (catches "right type wrong name")
 

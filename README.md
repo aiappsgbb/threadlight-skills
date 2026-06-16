@@ -35,6 +35,27 @@ template-from-scenario kickoffs).
 
 The full technical briefing is in [`THREADLIGHT.md`](THREADLIGHT.md).
 
+## Starting from a Kratos export
+
+Threadlight skills also compose on a **Kratos-exported agent project**. An SE
+can run the Kratos `Agent Manager → Deploy tab` export, `azd up` the bundle, then
+layer in Threadlight production-hardening — no rewrite, additive to the
+`threadlight-design` flow above.
+
+```bash
+unzip <use-case>-foundry-agent.zip && cd <use-case>-agent
+azd auth login
+azd up -e <use-case>-prod
+```
+
+Then invoke, in order: `threadlight-safe-check` → `threadlight-deploy`
+(Kratos-export mode: enrich/validate + backfill `evals/`) → `foundry-evals` →
+`threadlight-consumption-iq` → `threadlight-production-ready`, plus on-demand
+`threadlight-hitl-patterns` / `threadlight-event-triggers` /
+`threadlight-workspace-ui`. The canonical reference — detection signal,
+skills-root convention, what's intentionally trimmed, and the full invocation
+order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
+
 ## Install
 
 ### As a plugin (recommended)

@@ -9,6 +9,49 @@ field.
 
 ### Added
 
+- **Kratos-export bridge (issue #39)** — Threadlight skills now compose
+  cleanly on a **Kratos-exported agent project** (`<use-case>-foundry-agent.zip`:
+  `src/hosted-agent/` + `use-cases/<x>/` + trimmed `infra/`), so an SE can
+  `azd up` the export and then layer in production-hardening skills without a
+  rewrite. Additive — the existing `threadlight-design`-driven flow is unchanged.
+  - **NEW doc: [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md)** — canonical
+    bridge reference: export shape, detection signal (`src/hosted-agent/` +
+    `use-cases/<x>/`), the **skills-root convention** (auto-detect
+    `use-cases/<x>/skills/` vs `src/agent/skills/`, `--skills-root` override —
+    no symlinks, option (b)), the 3-command deploy, what's intentionally trimmed
+    (APIM / multi-tenant FE / `evals/`), and the TL-skill invocation order.
+  - **`threadlight-deploy` v1.6.0** — detects Kratos-export mode and
+    **skips Phase 2 generation** (Dockerfile / `main.py` / `azure.yaml` already
+    shipped); enrich/validate only. NEW
+    [`references/kratos-export-mode.md`](skills/threadlight-deploy/references/kratos-export-mode.md)
+    with the do-NOT-regenerate list, skills-root resolution, and **one-command
+    `evals/` backfill** (Kratos's exporter excludes `evals/` per `_SKIP_DIRS`;
+    running still delegates to `foundry-evals`).
+  - **`threadlight-safe-check` v1.1.0** — recognizes the Kratos-export shape as a
+    valid input without `specs/manifest.json` (derives `expected_resource_types`
+    from the export's own `infra/` + `azure.yaml`); trimmed infra (no APIM /
+    multi-tenant FE) is intentional, never a "missing module" finding.
+  - **`threadlight-production-ready`** (v0.5.0, additive — `v0.6.0` is reserved
+    for the deferred milestone) — Kratos-export mode: framing wizard supplies
+    SPEC § 12 when there is no SPEC (no exit 2); trimmed infra scored
+    `not-applicable` (informational), not `must-fix`, so the scorecard is real
+    uplift items rather than a wall of findings.
+  - **`threadlight-consumption-iq` v0.2.0** — discovers resources from the
+    export's `infra/` + `azd env` (no SPEC manifest), tolerates Kratos resource
+    naming (match by ARM type), and persists `load_profile{}` to
+    `use-cases/<x>/load-profile.yml`.
+  - **`threadlight-hitl-patterns` v1.1.0**, **`threadlight-event-triggers`
+    v1.1.0**, **`threadlight-workspace-ui` v1.1.0** — scaffold next to the
+    existing `use-cases/<x>/skills/` via the skills-root convention; take their
+    contract from the operator / `SYSTEM_PROMPT.md` when there is no SPEC.
+  - **`threadlight-local-test` v1.3.0** — Pattern 0 boots a Kratos export
+    (skills from `use-cases/<x>/skills/`, seed from `mocks/`).
+  - **`threadlight-auto` v1.1.0** — NEW "start from Kratos export" entry path:
+    skips Design, runs deploy in enrich-only mode, then safe-check → cost →
+    invoke → production-ready.
+  - **`threadlight-design`** — docs-only note: it is the from-scratch path; the
+    Kratos-export path bypasses it (no behavioral change).
+
 - **NEW skill: `threadlight-consumption-iq` v0.1.0** — post-deploy
   Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`,
   reads SPEC § 12 `load_profile{}` (wizard writes it back if absent),

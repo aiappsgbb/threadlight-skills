@@ -15,7 +15,9 @@ description: >
   uplift, AGT uplift, AI gateway uplift, production checklist, production
   scorecard, go-live readiness, lab graveyard, hand-off package, residual risk,
   go-live recommendation, would-fail-hard-gate, evidence register, waiver
-  register, model lifecycle, retirement notice, SRE handover, RACI.
+  register, model lifecycle, retirement notice, SRE handover, RACI,
+  Kratos export readiness, Kratos-exported agent scorecard, trimmed infra
+  intentional.
   DO NOT USE FOR: deployment itself (threadlight-deploy), structural
   completeness gate (threadlight-safe-check), invocation testing (foundry-evals),
   in-process middleware authoring (foundry-agt), citadel hub provisioning
@@ -344,13 +346,42 @@ the `AzureCliCredential` for free.
 
 | Source | Used for | Required? |
 |---|---|---|
-| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Yes** (skill exits 2 without it) |
-| `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes |
+| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Yes** (skill exits 2 without it) — **except Kratos-export mode**, where the framing wizard supplies § 12 instead (see below) |
+| `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes — in Kratos-export mode, derived from the export's `infra/` + `azure.yaml` |
 | `tests/postdeploy-manifest.json` | Latest `safe-check --phase post-deploy` output; **pre-flight checks freshness, RG/sub match, hash** | Yes |
 | `infra/**/*.bicep`, `azure.yaml`, `src/**/Dockerfile` | Static analysis (pillars 4, 9, 10, 11, 13) | Yes |
 | `tests/production-readiness-waivers.json` | Customer-accepted findings | Optional |
 | `azd env get-values` | Current deployment binding (subscription, resource group, region) | Yes for live mode |
 | Live Azure via `az` | Live probes (tiered per pillar — see [`references/live-probe-permissions.md`](references/live-probe-permissions.md)) | Optional (default on); missing perms → `not-verified` |
+
+### Kratos-export mode (no SPEC § 12; trimmed infra is intentional)
+
+A **Kratos-exported project** (`src/hosted-agent/` + `use-cases/<x>/`, trimmed
+`infra/`) is a valid target. Detect it as `threadlight-deploy` does (see
+[`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)) and adapt so the scorecard
+stays useful instead of becoming a wall of "missing module" findings:
+
+- **No `specs/SPEC.md` § 12 → run the framing wizard, do NOT exit 2.** When the
+  export has no SPEC, gather § 12 inputs (posture target, residency, RTO/RPO,
+  SLA, incident owner) via the interactive framing wizard
+  (`--full-onboarding`), or accept them headless via flags. The export is a
+  legitimate starting point, not a malformed project.
+- **Trimmed infra is intentional — score it `not-applicable`, not `must-fix`.**
+  The Kratos exporter deliberately drops **APIM / AI Gateway** and the
+  **multi-tenant frontend**. For **pillar 1 (network posture)**, the absence of
+  APIM is a `must-fix` **only if** the resolved posture target requires a Citadel
+  spoke / AI Gateway. For a `pilot` / AGT / standard-VNet target, absent APIM is
+  `not-applicable` (intentional trim) with a one-line justification — it must not
+  read as a missing module. The multi-tenant FE is never scored against a bare
+  export; it appears only after `threadlight-workspace-ui` is invoked.
+- **Derive the deployment binding from `azd env` + the export's `infra/`** — the
+  Kratos infra names Cosmos / Foundry / ACA resources differently than a
+  `threadlight-design` deployment, so resolve them from compiled Bicep outputs
+  and `azd env get-values`, not from a SPEC manifest.
+
+Net effect: a freshly-exported, freshly-deployed Kratos agent produces a
+scorecard whose findings are **real uplift items** (governance, observability,
+evals backfill, cost) — not noise about infra that was trimmed on purpose.
 
 ### Pre-flight: safe-check manifest validation
 

@@ -10,12 +10,13 @@ description: >
   (3) Local-stack — docker-compose + Cosmos emulator (Linux/Win x86 only).
   USE FOR: local test, smoke test, run agent locally, dev loop, no azd,
   copilot cli mcp, faster iteration, prompt tuning, cowork iteration,
-  demo rehearsal, screen-shareable PoC, streamlit demo, GitHub Models.
+  demo rehearsal, screen-shareable PoC, streamlit demo, GitHub Models,
+  boot Kratos export locally.
   DO NOT USE FOR: prod deployment (use threadlight-deploy), pre-pilot
   validation (use threadlight-safe-check), hosted-agent runtime testing
   in cloud (use foundry-evals).
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Threadlight — Local Test Loop (no azd up)
@@ -60,6 +61,16 @@ to see it run." Consumes what design already emits — `specs/sample-data/`,
 `src/agent/skills/<name>/SKILL.md` — and gives you a MAF agent + a
 chat UI on `localhost:8501` without ever touching Docker, the MCP
 server, or a real Cosmos.
+
+> **Kratos-export mode.** Pattern 0 also boots a **Kratos-exported project**
+> (`src/hosted-agent/` + `use-cases/<x>/` — see
+> [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)) — the hosted-agent
+> contract is identical, so the same MAF `Agent + SkillsProvider` recipe applies.
+> Two path differences: load skills from the resolved skills root
+> `use-cases/<x>/skills/` (auto-detected; `--skills-root` to override) instead of
+> `src/agent/skills/`, and seed the in-memory store from the export's `mocks/`
+> directory in place of `specs/sample-data/`. The agent identity/system prompt
+> comes from `use-cases/<x>/SYSTEM_PROMPT.md`. No `azd up`, same fast loop.
 
 ### What you need
 

@@ -30,7 +30,9 @@ description: >
   consumption outcome, customer FinOps conversation, pre-production cost
   scorecard, monthly cost recommendation, retail prices API, Azure-pricing
   MCP, paygo-ptu beyond LLMs, generalize cost analysis across resources,
-  monthly savings recommendation, cost rationale, cost caveat.
+  monthly savings recommendation, cost rationale, cost caveat,
+  Kratos export cost projection, discover from infra, tolerate Kratos
+  resource naming.
   DO NOT USE FOR: AOAI-only PAYG-vs-PTU break-even (use `paygo-ptu-cost-analyzer`
   in awesome-gbb directly if you don't have a deployed pilot); the static cost
   pillar checks (Budget declared? anomaly alert wired? projection artefact
@@ -42,7 +44,7 @@ description: >
   Savings Plans modelling (out of scope v1, deferred to v2); EA / MCA discount
   modelling (out of scope v1, user-provided multiplier in v2).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight Consumption IQ — post-deploy cost projection + SKU diff
@@ -116,12 +118,34 @@ threadlight-production-ready
 
 | Input | Source | Required |
 |---|---|---|
-| `specs/manifest.json → deployment_manifest{}` | `threadlight-design` | yes |
+| `specs/manifest.json → deployment_manifest{}` | `threadlight-design` | yes — **or** derived from the export's `infra/` + `azure.yaml` in Kratos-export mode |
 | `infra/main.bicep` + modules | repo | yes |
 | `azd env get-values` | live azd env | yes (skip with `--pre-deploy` to read Bicep only) |
-| `specs/SPEC.md § 11c` (tech-stack selectors) | `threadlight-design` | yes |
-| `specs/SPEC.md § 12 → load_profile{}` (NEW sub-block) | this skill's wizard OR hand-authored | yes (skill writes it back if absent) |
+| `specs/SPEC.md § 11c` (tech-stack selectors) | `threadlight-design` | yes — not present in a Kratos export; resources come from `infra/` instead |
+| `specs/SPEC.md § 12 → load_profile{}` (NEW sub-block) | this skill's wizard OR hand-authored | yes (skill writes it back if absent; in Kratos-export mode it writes to `use-cases/<x>/load-profile.yml` since there's no SPEC) |
 | Recent Application Insights / `foundry-observability` traces | live monitor | optional (fidelity boost post-launch) |
+
+### Kratos-export mode (discover from `infra/`, not from a SPEC)
+
+For a **Kratos-exported project** (`src/hosted-agent/` + `use-cases/<x>/`,
+trimmed `infra/` — see [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md))
+there is no `specs/SPEC.md` and no `specs/manifest.json`. Adapt the `discover`
+phase:
+
+- **Walk the export's `infra/` (`az bicep build` → ARM JSON) + `azd env
+  get-values`** to enumerate deployed resources, instead of reading a
+  `deployment_manifest{}`. This is the same ARM-walker path the skill already
+  uses — just sourced from the export's own Bicep.
+- **Tolerate Kratos resource naming.** The trimmed Kratos infra names Cosmos /
+  Foundry / ACA resources differently than a `threadlight-design` deployment.
+  Match resources by **ARM type** (e.g. `Microsoft.DocumentDB/databaseAccounts`,
+  `Microsoft.App/containerApps`, `Microsoft.CognitiveServices/accounts`) and by
+  `azd env` output keys, **not** by hard-coded `threadlight-design` names. The
+  trimmed infra has **no APIM** — simply omit the APIM projector rather than
+  reporting it missing.
+- **`load_profile{}` has no SPEC to write back to.** Run the wizard as usual,
+  but persist the result to `use-cases/<x>/load-profile.yml` (and still emit
+  `specs/cost-manifest.json` + `docs/cost-projection.md`). Idempotent on re-run.
 
 ### NEW: SPEC § 12 `load_profile{}` sub-block
 

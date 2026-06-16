@@ -10,11 +10,11 @@ description: >
   `.threadlight/auto-state.json`. Smart-recovers from quota, RBAC race, and
   ImagePull deploy failures. Wraps existing threadlight-* skills.
   USE FOR: full-auto pilot drive, one-prompt threadlight, resume failed deploy,
-  demo-in-one-session, autopilot, threadlight orchestrator.
+  demo-in-one-session, autopilot, threadlight orchestrator, start from Kratos export.
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -105,6 +105,41 @@ Use threadlight-auto with:
   workspace: ~/Repos/contoso-claim-triage
 ```
 
+### Kratos-export entry path (start from an exported bundle)
+
+`threadlight-auto` has a **second entry path** alongside the freeform/structured
+"from-scratch" flow above: starting from a **Kratos-exported project**. It is
+selected automatically when the workspace already contains a Kratos export
+(`src/hosted-agent/` **and** `use-cases/<x>/` — see
+[`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)), or explicitly:
+
+```
+Use threadlight-auto with:
+  mode: kratos-export
+  workspace: ~/Repos/wealth-management-agent   # unzipped <use-case>-foundry-agent.zip
+  tenant: acme
+  env: wealth-management-prod
+```
+
+In this mode the orchestrator **does not run Design (stage 1)** and **does not
+regenerate runtime files in Deploy (stage 3)** — Kratos already shipped a
+deployable project. The chain becomes:
+
+```
+Stage 0 Preflight
+  → (deploy: enrich/validate only + backfill evals/ — threadlight-deploy Kratos-export mode)
+  → azd up (if not already deployed)
+  → Safe-check (post-deploy, accepts trimmed infra)
+  → Cost-projection (discover from export infra/)
+  → Invoke
+  → Production-ready (advisory; trimmed infra = informational)
+```
+
+The skills root resolves to `use-cases/<x>/skills/` for every stage. Optional
+extension skills (`threadlight-hitl-patterns`, `threadlight-event-triggers`,
+`threadlight-workspace-ui`, `citadel-spoke-onboarding`) run on demand, writing
+next to the existing use-case skills.
+
 ## Stage 0 — Preflight
 
 **Always runs**, mirroring the agentic-loop bootstrap pattern. Checks:
@@ -147,9 +182,9 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 
 | # | Stage | Invokes via Skill tool | Closing report we parse |
 |---|---|---|---|
-| 1 | Design | `threadlight-design` | `specs/SPEC.md` + `specs/manifest.json` + `AGENTS.md` + `skills/*` + `docs/{demo-deck,prep-guide}` |
+| 1 | Design | `threadlight-design` | `specs/SPEC.md` + `specs/manifest.json` + `AGENTS.md` + `skills/*` + `docs/{demo-deck,prep-guide}` — **skipped in Kratos-export mode** (the bundle is already designed) |
 | 2 | Local-test (OPTIONAL) | `threadlight-local-test` | `src/agent/main.py` runs via Pattern 0; smoke test passes |
-| 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active` |
+| 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active`. **In Kratos-export mode** `threadlight-deploy` runs enrich/validate only (no regen) + backfills `use-cases/<x>/evals/` |
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + behavioral gates green |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
