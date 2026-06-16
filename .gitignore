@@ -1,3 +1,10 @@
 
 __pycache__/
 smoke-outputs/
+
+# Playwright MCP scratch snapshots — local browser-tool state, not source
+.playwright-mcp/
+
+# Skills catalog page deferred out of the initial release — keep it
+# locally for preview/iteration but never publish it.
+docs/skills.html

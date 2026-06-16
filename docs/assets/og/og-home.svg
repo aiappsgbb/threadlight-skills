@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#101a3a"/>
+      <stop offset="100%" stop-color="#1b1140"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c5cff"/>
+      <stop offset="100%" stop-color="#00d4ff"/>
+    </linearGradient>
+    <style>
+      .display { font-family: 'Source Serif Pro', 'Source Serif 4', 'Georgia', serif; font-weight: 600; fill: #f4f4f8; }
+      .em      { fill: #ffffff; font-style: italic; }
+      .meta    { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 22px; fill: #c8c8d8; letter-spacing: 0.04em; }
+      .brand   { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 26px; fill: #ffffff; letter-spacing: 0.06em; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+
+  <g transform="translate(72, 88)">
+    <circle cx="14" cy="14" r="14" fill="url(#accent)"/>
+    <text x="46" y="22" class="brand">THREADLIGHT</text>
+    <text x="46" y="58" class="meta">microsoft · gbb · ai apps</text>
+  </g>
+
+  <g transform="translate(72, 280)">
+    <text class="display" font-size="84" y="0">One paragraph.</text>
+    <text class="display em" font-size="84" y="98">A deployed agent.</text>
+    <text class="display" font-size="84" y="196">One session.</text>
+  </g>
+
+  <g transform="translate(72, 562)">
+    <rect x="0" y="0" width="32" height="2" fill="url(#accent)"/>
+    <text x="44" y="6" class="meta">aiappsgbb.github.io/threadlight-skills</text>
+  </g>
+</svg>

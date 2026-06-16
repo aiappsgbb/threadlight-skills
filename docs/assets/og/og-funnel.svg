@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#101a3a"/>
+      <stop offset="100%" stop-color="#1b1140"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c5cff"/>
+      <stop offset="100%" stop-color="#00d4ff"/>
+    </linearGradient>
+    <style>
+      .display { font-family: 'Source Serif Pro', 'Source Serif 4', 'Georgia', serif; font-weight: 600; fill: #f4f4f8; }
+      .em      { fill: #ffffff; font-style: italic; }
+      .meta    { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 22px; fill: #c8c8d8; letter-spacing: 0.04em; }
+      .brand   { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 26px; fill: #ffffff; letter-spacing: 0.06em; font-weight: 700; }
+      .stage   { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 18px; fill: #e7e7f0; letter-spacing: 0.05em; }
+      .rail    { stroke: url(#accent); stroke-width: 2; opacity: 0.7; }
+      .node    { fill: url(#accent); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+
+  <g transform="translate(72, 88)">
+    <circle cx="14" cy="14" r="14" fill="url(#accent)"/>
+    <text x="46" y="22" class="brand">THREADLIGHT &middot; FUNNEL</text>
+    <text x="46" y="58" class="meta">five stages &middot; one session</text>
+  </g>
+
+  <g transform="translate(72, 240)">
+    <text class="display" font-size="78" y="0">Conversation</text>
+    <text class="display em" font-size="78" y="92">→ deployed agent.</text>
+  </g>
+
+  <g transform="translate(72, 460)">
+    <line x1="0" y1="20" x2="1056" y2="20" class="rail"/>
+    <circle cx="0"    cy="20" r="12" class="node"/>
+    <circle cx="264"  cy="20" r="12" class="node"/>
+    <circle cx="528"  cy="20" r="12" class="node"/>
+    <circle cx="792"  cy="20" r="12" class="node"/>
+    <circle cx="1056" cy="20" r="12" class="node"/>
+    <text x="0"    y="64" class="stage">CONVERSE</text>
+    <text x="244"  y="64" class="stage">CO-DESIGN</text>
+    <text x="510"  y="64" class="stage">DEPLOY</text>
+    <text x="772"  y="64" class="stage">SAFE-CHECK</text>
+    <text x="1024" y="64" class="stage" text-anchor="end">PRODUCTION</text>
+  </g>
+</svg>
