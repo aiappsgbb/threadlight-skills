@@ -106,9 +106,9 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     await expect(chips.nth(4)).toHaveClass(/is-now/);
   });
 
-  test('funnel chapter shows exactly 5 stages with skill chips', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const funnel = page.locator('#stage-glance');
+  test('funnel teaser on home shows exactly 5 stages with skill chips', async ({ page }) => {
+    await page.goto(LANDING);
+    const funnel = page.locator('#scene-funnel');
     await funnel.scrollIntoViewIfNeeded();
     const steps = funnel.locator('.funnel-step');
     await expect(steps).toHaveCount(5);
@@ -116,11 +116,23 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     for (let i = 0; i < expected.length; i++) {
       await expect(steps.nth(i)).toContainText(expected[i]);
     }
-    // Every step names the skill(s) it fires
+    // every step links to the funnel deep page
+    const hrefs = await steps.evaluateAll(els => els.map(e => e.getAttribute('href')));
+    for (const h of hrefs) {
+      expect(h, 'funnel step should link to the funnel chapter').toMatch(/^\.\/funnel\.html(#|$)/);
+    }
+    // skill chips per stage make the teaser more than a label
     const allText = (await steps.allTextContents()).join(' | ');
     expect(allText).toMatch(/threadlight-design/);
     expect(allText).toMatch(/threadlight-deploy/);
     expect(allText).toMatch(/threadlight-production-ready/);
+  });
+
+  test('funnel chapter keeps the slim stage-glance grid (gl-step)', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const funnel = page.locator('#stage-glance');
+    await funnel.scrollIntoViewIfNeeded();
+    await expect(funnel.locator('.stage-glance .gl-step')).toHaveCount(5);
   });
 
   test('industries strip renders all 6 sectors with non-empty pilots', async ({ page }) => {
@@ -157,25 +169,38 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     await expect(shot).toHaveAttribute('alt', /kratos/i);
   });
 
-  test('kratos sits in slot 2 (right after hero) and is framed as the simpler-path option', async ({ page }) => {
+  test('kratos sits in the no-code-alt slot (near the end, NOT slot 2) and is framed as the simpler-path option', async ({ page }) => {
     await page.goto(LANDING);
-    // Order: scene-hero must come BEFORE scene-kratos must come BEFORE scene-show
+    // Order: hero → show → funnel → prod-ready → industries → kratos → cta
+    // Kratos must NOT be slot 2 (that pushes a competitor before the chain message)
     const ids = await page.locator('main section.scene').evaluateAll(
       els => els.map(e => e.id)
     );
     const heroIdx   = ids.indexOf('scene-hero');
     const kratosIdx = ids.indexOf('scene-kratos');
     const showIdx   = ids.indexOf('scene-show');
+    const ctaIdx    = ids.indexOf('scene-cta');
     expect(heroIdx,   'scene-hero present').toBeGreaterThanOrEqual(0);
     expect(kratosIdx, 'scene-kratos present').toBeGreaterThanOrEqual(0);
     expect(showIdx,   'scene-show present').toBeGreaterThanOrEqual(0);
-    expect(kratosIdx, 'kratos immediately follows hero').toBe(heroIdx + 1);
-    expect(showIdx,   'chain SVG follows kratos').toBe(kratosIdx + 1);
+    expect(ctaIdx,    'scene-cta present').toBeGreaterThanOrEqual(0);
+    // Chain SVG must come BEFORE Kratos (we tell the threadlight story first)
+    expect(showIdx,   'chain SVG before kratos').toBeLessThan(kratosIdx);
+    // Kratos must sit late in the page, immediately before the CTA
+    expect(kratosIdx, 'kratos immediately precedes CTA').toBe(ctaIdx - 1);
 
-    // Framing: "no customization needed? start here" — simpler path
+    // The hero MUST surface a small no-code banner linking to kratos (so the
+    // reader sees the alternative without scrolling past the whole chain)
+    const banner = page.locator('#scene-hero .hero-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner.locator('a[href="#scene-kratos"]')).toHaveCount(1);
+    const bannerText = (await banner.textContent() || '').toLowerCase();
+    expect(bannerText).toMatch(/no[- ]code|no customization/);
+    expect(bannerText).toMatch(/kratos/);
+
+    // Kratos block framing
     const ch  = page.locator('#scene-kratos');
     const txt = ((await ch.locator('.channels-copy').textContent()) || '').toLowerCase();
-    expect(txt).toMatch(/no[- ]code|no customization|simpler/);
     expect(txt).toMatch(/customization/);
     expect(txt).toMatch(/threadlight/);
   });
@@ -267,8 +292,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     // The ladder SVG hero is locked above the fold
     await expect(page.locator('#stage-ladder.ladder-svg-hero')).toHaveCount(1);
     await expect(page.locator('#stage-ladder svg')).toHaveCount(1);
-    // Stages-at-a-glance now uses the rich funnel-step cards (was gl-step)
-    await expect(page.locator('#stage-glance .funnel-flow .funnel-step')).toHaveCount(5);
+    // Stage-glance grid is back to the slim gl-step layout (the rich
+    // funnel-step cards live on the homepage teaser instead).
+    await expect(page.locator('#stage-glance .stage-glance .gl-step')).toHaveCount(5);
     await expect(page.locator('#stage-glance .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
   });
 
@@ -336,8 +362,29 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('landing teasers point at the new deep pages', async ({ page }) => {
+  test('production teaser on home introduces the 4 themes + 13 pillars', async ({ page }) => {
     await page.goto(LANDING);
+    const prod = page.locator('#scene-prod-ready');
+    await prod.scrollIntoViewIfNeeded();
+    // 4 theme cards
+    const themes = prod.locator('.theme-quad .theme-card');
+    await expect(themes).toHaveCount(4);
+    // Theme names cover the 13 pillars
+    const allText = (await themes.allTextContents()).join(' | ').toLowerCase();
+    expect(allText).toMatch(/network/);
+    expect(allText).toMatch(/observability|governance/);
+    expect(allText).toMatch(/supply chain|cost/);
+    expect(allText).toMatch(/lifecycle|hand-off/);
+    // Pillar number chips render
+    const chips = await themes.locator('.th-pillars span').count();
+    expect(chips, 'all 13 pillar chips should render across the 4 themes').toBe(13);
+    // Teaser still links out to the deep chapter
+    await expect(prod.locator('a[href="./production.html"]')).toHaveCount(1);
+  });
+
+  test('landing teasers point at the deep pages', async ({ page }) => {
+    await page.goto(LANDING);
+    await expect(page.locator('#scene-funnel a[href^="./funnel.html"]').first()).toHaveCount(1);
     await expect(page.locator('#scene-industries a[href="./industries.html"]')).toHaveCount(1);
     await expect(page.locator('#scene-prod-ready a[href="./production.html"]')).toHaveCount(1);
   });

@@ -22,7 +22,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v13">
+<link rel="stylesheet" href="assets/site.css?v=ia-v14">
 </head>
 <body>
 
@@ -78,6 +78,11 @@
         <span>FSI &middot; Healthcare &middot; Manufacturing &middot; Retail &middot; Public sector &middot; Telco &mdash; each tailored to domain-specific rules and data</span>
       </p>
 
+      <aside class="hero-banner reveal" data-delay="3" role="note" aria-label="No-code alternative">
+        <span class="hb-mark" aria-hidden="true">⚡</span>
+        <span class="hb-text"><strong>No customization needed?</strong> Try <a href="#scene-kratos">Kratos</a> &mdash; no-code, MIT-licensed, in your browser. Or <strong>read on</strong> for Threadlight, the customizable path.</span>
+      </aside>
+
       <div class="hero-cta-row">
         <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
         <a class="btn btn-ghost"   href="#scene-show">See the chain <span class="arrow">→</span></a>
@@ -119,60 +124,6 @@
     </div>
   </div>
 
-
-  <!-- ====================== KRATOS: SIMPLER PATH (slot 2) ====================== -->
-  <section class="scene" id="scene-kratos" aria-labelledby="kratos-h" data-toc-id="scene-kratos" data-toc-label="No-code first">
-    <div class="wrap wrap-xl">
-      <div class="channels-grid">
-
-        <div class="channels-copy reveal">
-          <p class="eyebrow"><span class="dot"></span>No customization needed? Start here.</p>
-          <h2 id="ch-h"><em>Pick a persona, talk to a working agent</em> &mdash; in your browser, in ten minutes.</h2>
-          <p class="lede">
-            If your customer just wants a working AI agent with a familiar shape &mdash;
-            chat UI, persona switching, a few tools wired in &mdash;
-            <strong>Kratos</strong> ships one on Microsoft Foundry, ready to use,
-            no setup, no dev skills. Try it live, customize in-app, export the spec when the conversation gets serious.
-          </p>
-
-          <ul class="channels-bullets">
-            <li><strong>Kratos &mdash; the simpler path.</strong> Browser-first, MIT-licensed, hosted on Microsoft Foundry. Talk to it now, hand the link to your customer, iterate on persona and tools live.</li>
-            <li><strong>Threadlight &mdash; when you need customization.</strong> Your data, your governance, your Azure subscription, an end-to-end paved path to a deployed agent &mdash; covered by the rest of this page.</li>
-            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
-          </ul>
-        </div>
-
-        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
-          <img class="kc-shot"
-               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
-               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
-               loading="lazy" decoding="async" width="1600" height="900">
-          <div class="kc-body">
-            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>No-code &middot; ready-to-use &middot; live</p>
-            <h3 id="kratos-h">Kratos Agent</h3>
-            <p class="kc-tag">
-              A demo-friendly conversational agent on Microsoft Foundry.
-              Pick a persona, wire up tools, talk to it&mdash;then export
-              the spec to take it further with Threadlight when you need
-              your own data, governance, or deployment.
-            </p>
-            <div class="kc-meta" aria-label="What Kratos gives you">
-              <span>Browser-first</span>
-              <span>Foundry hosted agent</span>
-              <span>Persona &amp; tool tuning</span>
-              <span>Export the spec</span>
-              <span>MIT license</span>
-            </div>
-            <div class="kc-ctas">
-              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
-              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
-            </div>
-          </div>
-        </article>
-
-      </div>
-    </div>
-  </section>
 
   <!-- ====================== SVG CHAIN (paragraph → SPEC → agent) ====================== -->
   <section class="scene" id="scene-show" data-toc-id="scene-show" data-toc-label="See the chain">
@@ -285,29 +236,113 @@
     </div>
   </section>
 
-  <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
-  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-    <div class="wrap">
-
-      <div class="copy reveal" style="text-align:center; max-width:820px; margin:0 auto 36px;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>Paved path to production</p>
-        <h2 id="prod-ready-h" class="display" data-delay="1" style="margin-top:14px;">Green safe-check isn&rsquo;t <em>go-live.</em></h2>
-        <p class="sub" data-delay="2" style="margin-top:20px;">
-          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em>. That isn&rsquo;t the same as <em>ready for the customer architecture review</em>. <code>threadlight-production-ready</code> closes that gap &mdash; <strong>three postures</strong>, <strong>thirteen pillars</strong>, one scorecard you can read in seven minutes.
+  <!-- ====================== FUNNEL TEASER (rich cards) ====================== -->
+  <section class="scene" id="scene-funnel" aria-labelledby="funnel-h" data-toc-id="scene-funnel" data-toc-label="Funnel">
+    <div class="wrap wrap-xl">
+      <div class="copy reveal" style="max-width:880px;margin:0 auto 28px;text-align:center;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>The five-stage funnel</p>
+        <h2 id="funnel-h" style="margin-top:14px;">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h2>
+        <p class="sub" style="margin-top:18px;">
+          Every Threadlight engagement walks the same five stages. Each stage has its
+          own skills, its own artefacts, and its own exit criteria.
         </p>
       </div>
 
-      <div class="reveal" data-delay="3" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:980px; margin:0 auto 36px;">
+      <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
+        <a class="funnel-step" href="./funnel.html#stage-ladder">
+          <span class="fs-num">01 &middot; Conversation</span>
+          <span class="fs-name">Describe the process</span>
+          <span class="fs-desc">Plain-language brief from you or a customer SME. No template, no questionnaire. <strong>Exits with</strong> a versioned <code>SPEC.md</code> the customer signs.</span>
+          <span class="fs-skills">threadlight-auto &middot; threadlight-design</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./funnel.html#stage-ladder">
+          <span class="fs-num">02 &middot; Co-design</span>
+          <span class="fs-name">Spec &amp; scaffold</span>
+          <span class="fs-desc"><code>SPEC.md</code>, <code>AGENTS.md</code>, eval dataset and demo-data factory generated in-session. <strong>Exits with</strong> the agent contract + dataset running on your laptop.</span>
+          <span class="fs-skills">threadlight-design &middot; threadlight-demo-data-factory</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./funnel.html#stage-ladder">
+          <span class="fs-num">03 &middot; Deploy</span>
+          <span class="fs-name">Land on your Azure</span>
+          <span class="fs-desc">Bicep + <code>azd up</code> to the customer&rsquo;s subscription, Managed Identity wired from day zero. <strong>Exits with</strong> the agent live in the customer&rsquo;s Azure.</span>
+          <span class="fs-skills">threadlight-deploy &middot; threadlight-local-test</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./funnel.html#stage-ladder">
+          <span class="fs-num">04 &middot; Safe-check</span>
+          <span class="fs-name">Structural completeness + cost forecast</span>
+          <span class="fs-desc"><strong>10-pillar structural scorecard</strong> + monthly cost projected against the Azure Retail Prices API. <strong>Exits with</strong> the advisory + cost manifest + per-amber waiver owners.</span>
+          <span class="fs-skills">threadlight-safe-check &middot; threadlight-consumption-iq</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./funnel.html#stage-ladder">
+          <span class="fs-num">05 &middot; Production</span>
+          <span class="fs-name">Hand-off</span>
+          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in five minutes. <strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</span>
+          <span class="fs-skills">threadlight-production-ready &middot; threadlight-hitl-patterns</span>
+        </a>
+      </nav>
+
+      <p class="industries-footer reveal" data-delay="2" style="margin-top:28px;text-align:center;">
+        <a class="btn btn-ghost" href="./funnel.html">Read the full funnel chapter <span class="arrow">→</span></a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
+  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+    <div class="wrap wrap-xl">
+
+      <div class="copy reveal" style="text-align:center; max-width:900px; margin:0 auto 28px;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>Paved path to production</p>
+        <h2 id="prod-ready-h" class="display" data-delay="1" style="margin-top:14px;">Green safe-check isn&rsquo;t <em>go-live.</em></h2>
+        <p class="sub" data-delay="2" style="margin-top:20px;">
+          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em>. That isn&rsquo;t the same as <em>ready for the customer architecture review</em>.
+          <code>threadlight-production-ready</code> closes that gap &mdash; <strong>thirteen pillars</strong> across <strong>four themes</strong>, scored against the customer&rsquo;s actual posture, with a cost forecast attached. One PDF the ARB reads in seven minutes.
+        </p>
+      </div>
+
+      <!-- 4 themes grouping the 13 pillars -->
+      <div class="theme-quad reveal" data-delay="3" role="list" aria-label="Production-readiness themes">
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 1</p>
+          <h3 class="th-name">Network &amp; identity</h3>
+          <p class="th-desc">Posture, agent governance, identity &amp; access, secrets &mdash; the gates the perimeter watches.</p>
+          <p class="th-pillars"><span>01</span> <span>02</span> <span>03</span> <span>04</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 2</p>
+          <h3 class="th-name">Observability &amp; governance</h3>
+          <p class="th-desc">App-insights traces, continuous evals, responsible AI, HITL &amp; audit &mdash; what proves the agent behaves.</p>
+          <p class="th-pillars"><span>05</span> <span>06</span> <span>07</span> <span>08</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 3</p>
+          <h3 class="th-name">Supply chain &amp; ops</h3>
+          <p class="th-desc">SBOM &amp; SLSA, cost forecast, reliability &mdash; what FinOps and SRE sign off on.</p>
+          <p class="th-pillars"><span>09</span> <span>10</span> <span>11</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 4</p>
+          <h3 class="th-name">Hand-off &amp; lifecycle</h3>
+          <p class="th-desc">SRE hand-over package, model-lifecycle plan &mdash; what keeps the agent alive after we leave.</p>
+          <p class="th-pillars"><span>12</span> <span>13</span></p>
+        </article>
+      </div>
+
+      <div class="reveal" data-delay="4" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:1100px; margin:36px auto 28px;">
         <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Gateway-fronted (Citadel spoke) &middot; default</span>
         <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Foundry-native (core only)</span>
         <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Customer-owned edge</span>
       </div>
 
-      <div class="reveal" data-delay="4" style="text-align:center;">
+      <div class="reveal" data-delay="5" style="text-align:center;">
         <a class="btn btn-primary" href="./production.html" style="display:inline-block;">
           Read the full production-ready chapter <span class="arrow">&rarr;</span>
         </a>
-        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; soft-advisory &middot; never fails a build</p>
+        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; cost forecast &middot; soft-advisory, never fails a build</p>
       </div>
 
     </div>
@@ -376,6 +411,62 @@
         not the chain.
         <a class="btn btn-ghost" href="./industries.html" style="margin-left:8px;">Read the full industries chapter <span class="arrow">→</span></a>
       </p>
+    </div>
+  </section>
+
+
+  <!-- ====================== KRATOS (no-code alt) ====================== -->
+  <section class="scene" id="scene-kratos" aria-labelledby="kratos-h" data-toc-id="scene-kratos" data-toc-label="No-code alt">
+    <div class="wrap wrap-xl">
+      <div class="channels-grid">
+
+        <div class="channels-copy reveal">
+          <p class="eyebrow"><span class="dot"></span>The no-code on-ramp</p>
+          <h2 id="ch-h">Skipped this whole page? <em>Try Kratos instead.</em></h2>
+          <p class="lede">
+            If your customer just wants a working AI agent &mdash; chat UI,
+            persona switching, a few tools wired in &mdash;
+            <strong>Kratos</strong> ships one on Microsoft Foundry, ready
+            to use, no setup, no dev skills. Try it live, customize in-app,
+            export the spec when the conversation gets serious.
+          </p>
+
+          <ul class="channels-bullets">
+            <li><strong>Kratos &mdash; the simpler path.</strong> Browser-first, MIT-licensed, hosted on Microsoft Foundry. Hand the link to your customer, iterate on persona and tools live.</li>
+            <li><strong>Threadlight &mdash; when you need customization.</strong> Your data, your governance, your Azure subscription &mdash; covered by everything above this section.</li>
+            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
+          </ul>
+        </div>
+
+        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
+          <img class="kc-shot"
+               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
+               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
+               loading="lazy" decoding="async" width="1600" height="900">
+          <div class="kc-body">
+            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>No-code &middot; ready-to-use &middot; live</p>
+            <h3 id="kratos-h">Kratos Agent</h3>
+            <p class="kc-tag">
+              A demo-friendly conversational agent on Microsoft Foundry.
+              Pick a persona, wire up tools, talk to it&mdash;then export
+              the spec to take it further with Threadlight when you need
+              your own data, governance, or deployment.
+            </p>
+            <div class="kc-meta" aria-label="What Kratos gives you">
+              <span>Browser-first</span>
+              <span>Foundry hosted agent</span>
+              <span>Persona &amp; tool tuning</span>
+              <span>Export the spec</span>
+              <span>MIT license</span>
+            </div>
+            <div class="kc-ctas">
+              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
+              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
+            </div>
+          </div>
+        </article>
+
+      </div>
     </div>
   </section>
 
