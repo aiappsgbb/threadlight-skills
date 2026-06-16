@@ -128,24 +128,26 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(allText).toMatch(/threadlight-production-ready/);
   });
 
-  test('funnel chapter has stage-show terminal flow with all 5 named skills in sequence', async ({ page }) => {
+  test('funnel chapter has stage-show vertical chain-rail with 3 primary skill cards + 6 supporting chips', async ({ page }) => {
     await page.goto('/funnel.html');
     const show = page.locator('#stage-show');
     await show.scrollIntoViewIfNeeded();
-    await expect(show.locator('.terminal-card')).toHaveCount(1);
-    const body = (await show.locator('.terminal-card .term-body').textContent()) || '';
-    for (const skill of [
-      'threadlight-design',
-      'threadlight-demo-data-factory',
-      'threadlight-deploy',
-      'threadlight-safe-check',
-      'threadlight-production-ready',
-    ]) {
-      expect(body, `stage-show must name ${skill}`).toContain(skill);
+    const rail = show.locator('.chain-rail');
+    await expect(rail).toHaveCount(1);
+    // 3 primary skill cards (design / deploy / production-ready)
+    const cards = rail.locator('.skill-card');
+    await expect(cards).toHaveCount(3);
+    const names = (await cards.locator('.skill-name').allTextContents()).join(' | ').toLowerCase();
+    expect(names).toMatch(/threadlight-design/);
+    expect(names).toMatch(/threadlight-deploy/);
+    expect(names).toMatch(/threadlight-production-ready/);
+    // 6 supporting chips between primary cards
+    const chips = rail.locator('.aux-chip');
+    await expect(chips).toHaveCount(6);
+    const chipNames = (await chips.locator('.aux-name').allTextContents()).join(' | ').toLowerCase();
+    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers']) {
+      expect(chipNames, `funnel chain should name ${s}`).toContain(s);
     }
-    // Reframed as agent-driven chat ("> ..."), not bash commands ("$ ...")
-    expect(body).toMatch(/^\s*&gt;|^\s*>/m);
-    expect(body).not.toMatch(/^\s*\$\s*threadlight-/m);
   });
 
   test('funnel chapter keeps the slim stage-glance grid (gl-step)', async ({ page }) => {

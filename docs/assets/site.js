@@ -165,38 +165,42 @@
   //    Uses the chain-rail's bounding rect; updates a CSS var.
   // ---------------------------------------------------------------
   function wireChainProgress() {
-    const rail  = document.getElementById('chain-rail');
-    const cards = rail ? rail.querySelectorAll('.skill-card') : [];
-    if (!rail || !cards.length) return;
+    // Wire EVERY .chain-rail on the page (we have one on home and one on
+    // funnel.html), not just the first one with id="chain-rail". This stays
+    // backward-compatible: the home rail still keeps its id, the funnel
+    // rail can omit it without breaking the spine animation.
+    const rails = document.querySelectorAll('.chain-rail');
+    if (!rails.length) return;
+    rails.forEach((rail) => {
+      const cards = rail.querySelectorAll('.skill-card');
+      if (!cards.length) return;
 
-    let raf = 0;
-    function update() {
-      raf = 0;
-      const rect = rail.getBoundingClientRect();
-      const vh   = window.innerHeight || document.documentElement.clientHeight;
-      // 0 = rail bottom hasn't entered viewport yet
-      // 1 = rail top has scrolled above viewport top
-      const start = vh * 0.55;
-      const end   = -rect.height + vh * 0.45;
-      const span  = (start - end) || 1;
-      const t     = Math.max(0, Math.min(1, (start - rect.top) / span));
-      rail.style.setProperty('--chain-progress', (t * 100) + '%');
+      let raf = 0;
+      function update() {
+        raf = 0;
+        const rect = rail.getBoundingClientRect();
+        const vh   = window.innerHeight || document.documentElement.clientHeight;
+        const start = vh * 0.55;
+        const end   = -rect.height + vh * 0.45;
+        const span  = (start - end) || 1;
+        const t     = Math.max(0, Math.min(1, (start - rect.top) / span));
+        rail.style.setProperty('--chain-progress', (t * 100) + '%');
 
-      // light up the skill nodes whose top has crossed 60% of viewport
-      cards.forEach((c) => {
-        const r = c.getBoundingClientRect();
-        if (r.top < vh * 0.6) c.classList.add('is-on');
-        else c.classList.remove('is-on');
-      });
-    }
+        cards.forEach((c) => {
+          const r = c.getBoundingClientRect();
+          if (r.top < vh * 0.6) c.classList.add('is-on');
+          else c.classList.remove('is-on');
+        });
+      }
 
-    function onScroll() {
-      if (raf) return;
-      raf = requestAnimationFrame(update);
-    }
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    update();
+      function onScroll() {
+        if (raf) return;
+        raf = requestAnimationFrame(update);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      update();
+    });
   }
 
   // ---------------------------------------------------------------

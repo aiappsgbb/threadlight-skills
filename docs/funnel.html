@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v15">
+<link rel="stylesheet" href="assets/site.css?v=ia-v16">
 </head>
 <body class="chapter-page chapter-funnel">
 
@@ -426,46 +426,118 @@
   <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="See it run">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>See it run</p>
-        <h2>One chat &mdash; <em>the whole chain fires.</em></h2>
+        <p class="eyebrow"><span class="dot"></span>The skills in detail</p>
+        <h2>You prompt. The coding agent <em>picks up the right skills.</em></h2>
         <p class="section-lede">
-          You ask the coding agent for what you need. It picks up the
-          matching skills in sequence &mdash; each one reads the previous
-          stage&rsquo;s artefact and writes the next. Three prompts, five
-          skills, one repo the customer keeps.
+          Skills are composable building blocks &mdash; Markdown instructions
+          that any coding agent (GitHub Copilot CLI, VS Code, Claude Code)
+          reads and follows. Below: the three named gates and the supporting
+          skills that fire between them.
         </p>
       </div>
 
-      <article class="terminal-card reveal" data-typing aria-label="Sequential skill flow in one chat">
-        <div class="term-bar">
-          <div class="term-dots"><span></span><span></span><span></span></div>
-          <p class="term-title">~/customer/claims-triage &mdash; threadlight chain in one chat</p>
-        </div>
-<pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design</span> <span class="arg">&mdash; inbound claims, regulator-exposed, route by complexity. HITL on every escalate."</span></span>
-<span class="term-line"><span class="out">  threadlight-design          wrote SPEC.md (12 sections, 4 HITL gates)</span></span>
-<span class="term-line">&nbsp;</span>
-<span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Now scaffold the dataset and deploy to the customer&rsquo;s Azure."</span></span>
-<span class="term-line"><span class="out">  threadlight-demo-data-factory   produced 240 synthetic claims (3 personas)</span></span>
-<span class="term-line"><span class="out">  threadlight-deploy              landed in customer Azure &mdash; agent responding in 41s</span></span>
-<span class="term-line">&nbsp;</span>
-<span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Run safe-check then walk the ARB review."</span></span>
-<span class="term-line"><span class="out">  threadlight-safe-check          10 pillars scored &mdash; 8 green, 2 amber + cost manifest</span></span>
-<span class="term-line"><span class="out">  threadlight-production-ready    scorecard.pdf (13 pillars, 2 waivers) ready for ARB</span></span>
-<span class="term-line">&nbsp;</span>
-<span class="term-line"><span class="prompt">&gt;</span> <span class="cmt"># 3 prompts &middot; 5 skills &middot; 1 chat &middot; the customer owns the repo<span class="caret"></span></span></span></pre>
-      </article>
+            <div class="chain-rail">
 
-      <p class="cost-foot reveal" data-delay="1" style="margin-top:18px;">
-        <strong>How to read this:</strong> <code>&gt;</code> lines are what you
-        type to the coding agent in chat. The indented lines are what the
-        agent reports back as each skill finishes. No CLI of ours, no new
-        IDE &mdash; you stay in <a href="https://docs.github.com/copilot" target="_blank" rel="noopener">GitHub Copilot</a>,
-        the skills do the chain.
-      </p>
+              <!-- 1 — DESIGN (seller-facing entry) -->
+              <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">
+                <div class="skill-head">
+                  <div class="skill-name"><span class="accent">threadlight</span>-design</div>
+                  <span class="skill-tag is-blue">Cowork-safe</span>
+                  <span class="skill-tag is-grey">Entry skill</span>
+                </div>
+                <p class="skill-purpose">Turn a paragraph brief into a durable SpecKit spec &mdash; numbered business rules, data models, tool contracts, eval scenarios, governance &mdash; and derive the agent surface from it.</p>
+                <div class="skill-io" aria-label="Inputs and outputs">
+                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Free-text brief · industry primer (optional)</span></div>
+                  <div class="io-arrow">→</div>
+                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
+                </div>
+                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
+                <div class="skill-footer">
+                  <span>The coding agent reads the skill instructions and generates all artefacts.</span>
+                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
+                </div>
+              </article>
+
+              <!-- Supporting chain — six skills that run between design and deploy -->
+              <div class="chain-aux reveal">
+                <div class="aux-group">
+                  <div class="aux-label">Always wired</div>
+                  <div class="aux-row">
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
+                      <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
+                    </a>
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
+                      <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
+                    </a>
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
+                      <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
+                    </a>
+                  </div>
+                </div>
+                <div class="aux-group">
+                  <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
+                  <div class="aux-row">
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
+                      <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
+                    </a>
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
+                      <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
+                    </a>
+                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
+                      <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
+                      <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2 — DEPLOY (seller-facing exit) -->
+              <article class="skill-card reveal" data-step="02" data-skill="threadlight-deploy">
+                <div class="skill-head">
+                  <div class="skill-name"><span class="accent">threadlight</span>-deploy</div>
+                  <span class="skill-tag is-blue">azd up</span>
+                </div>
+                <p class="skill-purpose">Generate every artefact needed to deploy as a Microsoft Foundry hosted agent &mdash; Foundry-hosted by default, with a portable Microsoft Agent Framework (MAF) fallback when the customer needs to self-host, plus Bicep, Dockerfile, and the <code>azd ai agent</code> extension wired end-to-end.</p>
+                <div class="skill-io" aria-label="Inputs and outputs">
+                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC · <code>AGENTS.md</code> · <code>manifest.json</code> · <code>src/agent/skills/</code></span></div>
+                  <div class="io-arrow">→</div>
+                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>container.py</code> · <code>Dockerfile</code> · <code>infra/</code> · <code>agent.yaml</code> · <code>azure.yaml</code></span></div>
+                </div>
+                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
+                <div class="skill-footer">
+                  <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
+                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
+                </div>
+              </article>
+
+              <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
+              <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
+                <div class="skill-head">
+                  <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
+                  <span class="skill-tag is-blue">Advisory · soft-gate</span>
+                  <span class="skill-tag is-grey">Hand-off package</span>
+                </div>
+                <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to <strong>AI Citadel spoke</strong>; falls back to <strong>Foundry-native (core only)</strong> or a customer-owned gateway when SPEC &sect; 12 declares a different target.</p>
+                <div class="skill-io" aria-label="Inputs and outputs">
+                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
+                  <div class="io-arrow">→</div>
+                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
+                </div>
+                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
+                <div class="skill-footer">
+                  <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
+                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
+                </div>
+              </article>
+
+            </div>
     </div>
   </section>
-
-
   <section class="chapter-section" id="stage-recap" data-toc-id="stage-recap" data-toc-label="Recap">
     <div class="wrap" style="text-align:center;">
       <div class="section-head" style="margin: 0 auto 24px;">
