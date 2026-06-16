@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v22">
+<link rel="stylesheet" href="assets/site.css?v=ia-v23">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -354,8 +354,8 @@
         <p class="section-lede">
           The right answer for &ldquo;is this production-ready?&rdquo; depends
           on the customer&rsquo;s estate. We support three postures explicitly,
-          and the safe-check skill resolves which one applies before it
-          starts asking governance questions.
+          and <code>threadlight-production-ready</code> resolves which one
+          applies before it starts asking governance questions.
         </p>
       </div>
 
@@ -448,7 +448,7 @@
           </g>
         </svg>
         <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Same agent &middot; three architectures &middot; the safe-check skill detects which one is live before it asks any governance question
+          Same agent &middot; three architectures &middot; <code>threadlight-production-ready</code> detects which one is live before it asks any governance question
         </figcaption>
       </figure>
 
@@ -529,7 +529,7 @@
         <p class="section-lede">
           Same scorecard, end of the journey above. Thirteen pillars, three
           colours, two signed waivers. The customer&rsquo;s architecture review
-          board reads it in five minutes.
+          board reads it in seven minutes.
         </p>
       </div>
 
@@ -709,19 +709,22 @@
       </div>
 
       <div class="cost-cta-row reveal" data-delay="6">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md" target="_blank" rel="noopener">
-          See the golden forecast <span class="arrow">↗</span>
-        </a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">
           Browse the skill <span class="arrow">↗</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md" target="_blank" rel="noopener">
+          See a deterministic golden fixture <span class="arrow">↗</span>
         </a>
       </div>
 
       <p class="cost-foot reveal" data-delay="7">
         SKUs above are <strong>shapes</strong>, not specific resource picks &mdash;
         the actual SKU depends on the customer&rsquo;s declared load, posture,
-        and region. Real runs hit the Azure Retail Prices API and emit a
-        deterministic manifest with <code>price_source</code> tags per line.
+        and region. The $20k/$12k pair is an order-of-magnitude illustration
+        for a mid-volume LLM-dominant agent; the linked golden fixture is a
+        deterministic <em>small</em> example used in tests &mdash; same shape,
+        different scale. Real runs hit the Azure Retail Prices API and emit
+        a manifest with <code>price_source</code> tags per line.
         <strong>Forecasting only</strong> &mdash; <code>threadlight-deploy</code>
         is what changes infrastructure; <code>threadlight-consumption-iq</code>
         never edits SKUs on its own, it produces evidence the FinOps owner

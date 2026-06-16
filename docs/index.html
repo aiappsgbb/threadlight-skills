@@ -22,7 +22,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v22">
+<link rel="stylesheet" href="assets/site.css?v=ia-v23">
 </head>
 <body>
 
@@ -249,38 +249,38 @@
       </div>
 
       <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
-        <a class="funnel-step" href="./funnel.html#stage-ladder">
+        <a class="funnel-step" href="./funnel.html#stage-relay">
           <span class="fs-num">01 &middot; Conversation</span>
           <span class="fs-name">Describe the process</span>
           <span class="fs-desc">Plain-language brief from you or a customer SME. No template, no questionnaire. <strong>Exits with</strong> a versioned <code>SPEC.md</code> the customer signs.</span>
           <span class="fs-skills">threadlight-auto &middot; threadlight-design</span>
           <span class="fs-arrow" aria-hidden="true">›</span>
         </a>
-        <a class="funnel-step" href="./funnel.html#stage-ladder">
+        <a class="funnel-step" href="./funnel.html#stage-relay">
           <span class="fs-num">02 &middot; Co-design</span>
           <span class="fs-name">Spec &amp; scaffold</span>
           <span class="fs-desc"><code>SPEC.md</code>, <code>AGENTS.md</code>, eval dataset and demo-data factory generated in-session. <strong>Exits with</strong> the agent contract + dataset running on your laptop.</span>
           <span class="fs-skills">threadlight-design &middot; threadlight-demo-data-factory</span>
           <span class="fs-arrow" aria-hidden="true">›</span>
         </a>
-        <a class="funnel-step" href="./funnel.html#stage-ladder">
+        <a class="funnel-step" href="./funnel.html#stage-relay">
           <span class="fs-num">03 &middot; Deploy</span>
           <span class="fs-name">Land on your Azure</span>
           <span class="fs-desc">Bicep + <code>azd up</code> to the customer&rsquo;s subscription, Managed Identity wired from day zero. <strong>Exits with</strong> the agent live in the customer&rsquo;s Azure.</span>
           <span class="fs-skills">threadlight-deploy &middot; threadlight-local-test</span>
           <span class="fs-arrow" aria-hidden="true">›</span>
         </a>
-        <a class="funnel-step" href="./funnel.html#stage-ladder">
+        <a class="funnel-step" href="./funnel.html#stage-relay">
           <span class="fs-num">04 &middot; Safe-check</span>
           <span class="fs-name">Structural completeness + cost forecast</span>
-          <span class="fs-desc"><strong>10-pillar structural scorecard</strong> + monthly cost projected against the Azure Retail Prices API. <strong>Exits with</strong> the advisory + cost manifest + per-amber waiver owners.</span>
+          <span class="fs-desc"><strong>Three-lifecycle completeness gate</strong> (design / pre-deploy / post-deploy) + monthly cost projected against the Azure Retail Prices API. <strong>Exits with</strong> the completeness manifest, the cost forecast, and per-amber waiver owners.</span>
           <span class="fs-skills">threadlight-safe-check &middot; threadlight-consumption-iq</span>
           <span class="fs-arrow" aria-hidden="true">›</span>
         </a>
-        <a class="funnel-step" href="./funnel.html#stage-ladder">
+        <a class="funnel-step" href="./funnel.html#stage-relay">
           <span class="fs-num">05 &middot; Production</span>
           <span class="fs-name">Hand-off</span>
-          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in five minutes. <strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</span>
+          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in seven minutes. <strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</span>
           <span class="fs-skills">threadlight-production-ready &middot; threadlight-hitl-patterns</span>
         </a>
       </nav>
@@ -304,6 +304,13 @@
           skill, runs it, and hands you the artefacts — all the way to a
           <strong>governed agent on your Azure</strong> with a paved path to production
           via <strong>AI Citadel</strong> (the governance hub) and the <strong>Agent Governance Toolkit</strong>.
+        </p>
+        <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
+          Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
+          <strong>six skills</strong> wired between them. Two more &mdash;
+          <code>threadlight-auto</code> (entry orchestrator) and
+          <code>threadlight-consumption-iq</code> (cost forecast) &mdash; round out the
+          <strong>11-skill library</strong>; they fire on demand, not on every chain.
         </p>
       </div>
 
@@ -393,7 +400,7 @@
             <span class="skill-tag is-blue">Advisory · soft-gate</span>
             <span class="skill-tag is-grey">Hand-off package</span>
           </div>
-          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to <strong>AI Citadel spoke</strong>; falls back to <strong>Foundry-native (core only)</strong> or a customer-owned gateway when SPEC &sect; 12 declares a different target.</p>
+          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. <strong>AI Citadel spoke</strong> is the recommended enterprise posture; the skill resolves the actual posture from SPEC &sect; 12, deployed evidence, and finally falls back to a customer-owned gateway when nothing is declared.</p>
           <div class="skill-io" aria-label="Inputs and outputs">
             <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
             <div class="io-arrow">→</div>
@@ -600,8 +607,10 @@
 <span class="cmt"># Tell the coding agent which skill to use and what you need</span>
 <br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design to design a claims-triage process for an FSI customer."</span>
 <br>
-<br><span class="cmt"># When you're happy with the spec, deploy it</span>
-<br><br><span class="cmt"># Then walk it to a customer architecture review — advisory, soft-gate, hand-off package</span>
+<br><span class="cmt"># When you're happy with the spec, deploy it to the customer's Azure</span>
+<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-deploy to land this agent on the customer's Azure with governance and telemetry."</span>
+<br>
+<br><span class="cmt"># Then walk it to a customer architecture review — advisory, soft-gate, hand-off package</span>
 <br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-production-ready to score this pilot across 13 pillars and produce the customer hand-off report."</span>
       </div>
 

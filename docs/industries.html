@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-industries.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v22">
+<link rel="stylesheet" href="assets/site.css?v=ia-v23">
 </head>
 <body class="chapter-page chapter-industries">
 
@@ -59,11 +59,12 @@
         you can describe in a paragraph.</strong>
       </p>
       <p class="lede reveal" data-delay="3" style="margin-top:14px; font-size:.98rem; color:var(--ink-2);">
-        We&rsquo;re publishing curated, sector-specific examples through the
+        We&rsquo;re curating sector-specific examples in the
         <strong>Threadlight Library</strong> &mdash; an opinionated catalog
         of pre-shaped SPECs you can copy, tune, and deploy. The picks below
-        are <em>what we ship in the library today</em>; treat them as starting
-        points, not boundaries.
+        are <em>what the library covers today</em>; treat them as starting
+        points, not boundaries. Catalog access is rolling out through your
+        Microsoft GBB SE &mdash; the chain itself is public on this repo.
       </p>
 
       <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Industries at a glance">
@@ -104,7 +105,8 @@
           Each card lists the processes we&rsquo;ve already shaped into a
           ready-to-deploy SPEC. Same chain runs every one of them &mdash;
           the SPEC carries the customer&rsquo;s rules, data, and regulator.
-          High-level only here; deep specs live in the Threadlight Library.
+          High-level only here; deep SPECs live in the catalog &mdash; ask
+          your Microsoft GBB SE for access.
         </p>
       </div>
 
@@ -220,7 +222,7 @@
       <article class="spec-shape reveal" aria-label="Shape of a Threadlight SPEC.md (universal sections)">
         <header class="ss-bar">
           <span class="ss-name">SPEC.md</span>
-          <span class="ss-meta">12 sections &middot; SpecKit shape &middot; ~5&ndash;7&nbsp;min read</span>
+          <span class="ss-meta">12 of 13 sections shown &middot; SpecKit shape &middot; ~5&ndash;7&nbsp;min read</span>
         </header>
 
         <div class="ss-grid">
@@ -231,58 +233,58 @@
           </article>
           <article class="ss-cell">
             <p class="ss-num">§ 2</p>
-            <p class="ss-name-row">Business rules</p>
-            <p class="ss-desc">Numbered, testable rules. The audit trail traces every action back here.</p>
-          </article>
-          <article class="ss-cell">
-            <p class="ss-num">§ 3</p>
-            <p class="ss-name-row">Data models</p>
-            <p class="ss-desc">Inputs, outputs, intermediate state. Schemas for what flows through.</p>
-          </article>
-          <article class="ss-cell">
-            <p class="ss-num">§ 4</p>
-            <p class="ss-name-row">Tool contracts</p>
-            <p class="ss-desc">Named tools the agent calls. Input/output JSON shape per tool.</p>
-          </article>
-          <article class="ss-cell">
-            <p class="ss-num">§ 5</p>
             <p class="ss-name-row">Process flow</p>
             <p class="ss-desc">Sequence of agent actions. Decision points, branching, error paths.</p>
           </article>
           <article class="ss-cell">
+            <p class="ss-num">§ 3</p>
+            <p class="ss-name-row">Business rules</p>
+            <p class="ss-desc">Numbered, testable rules. The audit trail traces every action back here.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 4</p>
+            <p class="ss-name-row">Data models</p>
+            <p class="ss-desc">Inputs, outputs, intermediate state. Schemas for what flows through.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 5</p>
+            <p class="ss-name-row">System integrations</p>
+            <p class="ss-desc">Source systems, downstream targets, mock/live swap conventions.</p>
+          </article>
+          <article class="ss-cell">
             <p class="ss-num">§ 6</p>
-            <p class="ss-name-row">Skills</p>
-            <p class="ss-desc">Composable agent capabilities. SPEC declares which ones are wired.</p>
+            <p class="ss-name-row">Tool contracts</p>
+            <p class="ss-desc">Named tools the agent calls. Input/output JSON shape per tool.</p>
           </article>
           <article class="ss-cell">
             <p class="ss-num">§ 7</p>
-            <p class="ss-name-row">Eval scenarios</p>
-            <p class="ss-desc">Golden examples + edge cases. The continuous-eval gate runs against these.</p>
+            <p class="ss-name-row">Knowledge sources</p>
+            <p class="ss-desc">Grounded retrieval against rules, runbooks, policy, regulator text.</p>
           </article>
           <article class="ss-cell ss-cell-accent">
             <p class="ss-num">§ 8</p>
-            <p class="ss-name-row">HITL gates</p>
+            <p class="ss-name-row">Human interaction points</p>
             <p class="ss-desc">Every consequential step a human approves. Named, signed, audited.</p>
           </article>
           <article class="ss-cell">
             <p class="ss-num">§ 9</p>
-            <p class="ss-name-row">Observability</p>
-            <p class="ss-desc">Traces, metrics, dashboards the SRE owner can act on day-1.</p>
+            <p class="ss-name-row">Success criteria</p>
+            <p class="ss-desc">Eval scenarios + KPIs. The continuous-eval gate runs against these.</p>
           </article>
           <article class="ss-cell">
             <p class="ss-num">§ 10</p>
-            <p class="ss-name-row">Event triggers</p>
+            <p class="ss-name-row">Trigger &amp; run model</p>
             <p class="ss-desc">How the agent runs &mdash; chat, schedule, queue, event &mdash; with idempotency.</p>
           </article>
-          <article class="ss-cell">
-            <p class="ss-num">§ 11</p>
-            <p class="ss-name-row">Cost &amp; load</p>
-            <p class="ss-desc">Declared production load. Drives the consumption-iq forecast manifest.</p>
-          </article>
           <article class="ss-cell ss-cell-accent">
+            <p class="ss-num">§ 11</p>
+            <p class="ss-name-row">Security, compliance &amp; governance</p>
+            <p class="ss-desc">Identity, secrets, posture, residency, regulator obligations.</p>
+          </article>
+          <article class="ss-cell">
             <p class="ss-num">§ 12</p>
-            <p class="ss-name-row">Governance posture</p>
-            <p class="ss-desc">Citadel spoke / Foundry-native / customer-owned edge. Resolved here.</p>
+            <p class="ss-name-row">Production readiness</p>
+            <p class="ss-desc">Declared load, 13-pillar scorecard targets, cost forecast inputs.</p>
           </article>
         </div>
 

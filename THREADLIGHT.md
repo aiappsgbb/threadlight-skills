@@ -1,12 +1,12 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the nine-skill pilot pipeline.**
-> The narrative / pitch version of this material lives in
-> [`threadlight-experience.html`](threadlight-experience.html). This file is
+> **Engineering reference for the eleven-skill pilot pipeline.**
+> The narrative / pitch version of this material lives in the
+> [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **chain of nine `threadlight-*` skills** that take a
+Threadlight is a **library of eleven `threadlight-*` skills** that take a
 customer engagement from a one-paragraph brief through to a deployed,
 evaluated, observable, **production-ready** Microsoft Foundry hosted agent
 — runnable on the customer's tenant in a single working session, then
@@ -16,15 +16,16 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 → SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
-The nine skills (alphabetical, but the canonical flow order is given in
+The eleven skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-design              threadlight-hitl-patterns
-threadlight-demo-data-factory   threadlight-local-test
-threadlight-deploy              threadlight-production-ready
-threadlight-event-triggers      threadlight-safe-check
-                                threadlight-workspace-ui
+threadlight-auto                threadlight-hitl-patterns
+threadlight-consumption-iq      threadlight-local-test
+threadlight-demo-data-factory   threadlight-production-ready
+threadlight-deploy              threadlight-safe-check
+threadlight-design              threadlight-workspace-ui
+threadlight-event-triggers
 ```
 
 ---

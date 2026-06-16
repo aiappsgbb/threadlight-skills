@@ -147,10 +147,24 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     for (let i = 0; i < expected.length; i++) {
       await expect(steps.nth(i)).toContainText(expected[i]);
     }
-    // every step links to the funnel deep page
+    // every step links to a REAL anchor on the funnel chapter (no
+    // dead #stage-ladder leftovers from v20 cleanup)
     const hrefs = await steps.evaluateAll(els => els.map(e => e.getAttribute('href')));
     for (const h of hrefs) {
       expect(h, 'funnel step should link to the funnel chapter').toMatch(/^\.\/funnel\.html(#|$)/);
+      expect(h, 'funnel step href must NOT reference deleted #stage-ladder').not.toContain('#stage-ladder');
+      expect(h, 'funnel step href must NOT reference deleted #stage-glance').not.toContain('#stage-glance');
+    }
+    // The actual anchors must resolve to real sections on funnel.html
+    const targets = hrefs
+      .map(h => h && h.includes('#') ? h.split('#')[1] : null)
+      .filter(Boolean);
+    if (targets.length) {
+      await page.goto('/funnel.html');
+      for (const id of targets) {
+        await expect(page.locator('#' + id), `funnel.html must have #${id}`).toHaveCount(1);
+      }
+      await page.goto(LANDING);
     }
     // skill chips per stage make the teaser more than a label
     const allText = (await steps.allTextContents()).join(' | ');

@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v22">
+<link rel="stylesheet" href="assets/site.css?v=ia-v23">
 </head>
 <body class="chapter-page chapter-funnel">
 
@@ -200,7 +200,7 @@
               <line x1="14" y1="56" x2="44" y2="56" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
               <line x1="14" y1="64" x2="40" y2="64" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
             </g>
-            <text x="14" y="152" class="ar-file" opacity="0.7">10-pillar advisory</text>
+            <text x="14" y="152" class="ar-file" opacity="0.7">3-lifecycle gate</text>
           </g>
 
           <!-- arrow 4 -->
@@ -227,7 +227,7 @@
           </g>
         </svg>
         <figcaption id="relay-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Five gates &middot; five artefacts &middot; <strong>10-pillar advisory</strong> at safe-check (stage 04), <strong>13-pillar PDF</strong> at hand-off (stage 05)
+          Five gates &middot; five artefacts &middot; <strong>3-lifecycle completeness gate</strong> at safe-check (stage 04), <strong>13-pillar PDF</strong> at hand-off (stage 05)
         </figcaption>
       </figure>
     </div>
@@ -242,8 +242,12 @@
         <p class="section-lede">
           Skills are composable building blocks &mdash; Markdown instructions
           that any coding agent (GitHub Copilot CLI, VS Code, Claude Code)
-          reads and follows. Below: the three named gates and the supporting
-          skills that fire between them.
+          reads and follows. Below: the <strong>three named gates</strong>
+          (design → deploy → production-ready) and the <strong>six skills</strong>
+          wired between them. Two more &mdash; <code>threadlight-auto</code>
+          (entry orchestrator) and <code>threadlight-consumption-iq</code>
+          (cost forecast) &mdash; round out the <strong>11-skill library</strong>;
+          they fire on demand, not on every chain.
         </p>
       </div>
 
@@ -333,7 +337,7 @@
                   <span class="skill-tag is-blue">Advisory · soft-gate</span>
                   <span class="skill-tag is-grey">Hand-off package</span>
                 </div>
-                <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to <strong>AI Citadel spoke</strong>; falls back to <strong>Foundry-native (core only)</strong> or a customer-owned gateway when SPEC &sect; 12 declares a different target.</p>
+                <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. <strong>AI Citadel spoke</strong> is the recommended enterprise posture; the skill resolves the actual posture from SPEC &sect; 12, deployed evidence, and finally falls back to a customer-owned gateway when nothing is declared.</p>
                 <div class="skill-io" aria-label="Inputs and outputs">
                   <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
                   <div class="io-arrow">→</div>
