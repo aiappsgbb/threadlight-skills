@@ -128,6 +128,26 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     expect(allText).toMatch(/threadlight-production-ready/);
   });
 
+  test('funnel chapter has stage-show terminal flow with all 5 named skills in sequence', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const show = page.locator('#stage-show');
+    await show.scrollIntoViewIfNeeded();
+    await expect(show.locator('.terminal-card')).toHaveCount(1);
+    const body = (await show.locator('.terminal-card .term-body').textContent()) || '';
+    for (const skill of [
+      'threadlight-design',
+      'threadlight-demo-data-factory',
+      'threadlight-deploy',
+      'threadlight-safe-check',
+      'threadlight-production-ready',
+    ]) {
+      expect(body, `stage-show must name ${skill}`).toContain(skill);
+    }
+    // Reframed as agent-driven chat ("> ..."), not bash commands ("$ ...")
+    expect(body).toMatch(/^\s*&gt;|^\s*>/m);
+    expect(body).not.toMatch(/^\s*\$\s*threadlight-/m);
+  });
+
   test('funnel chapter keeps the slim stage-glance grid (gl-step)', async ({ page }) => {
     await page.goto('/funnel.html');
     const funnel = page.locator('#stage-glance');

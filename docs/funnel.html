@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v14b">
+<link rel="stylesheet" href="assets/site.css?v=ia-v15">
 </head>
 <body class="chapter-page chapter-funnel">
 
@@ -73,6 +73,7 @@
 
       <nav class="chapter-toc-inline reveal" data-delay="5" aria-label="In this chapter">
         <a href="#stage-glance">Stages at a glance</a>
+        <a href="#stage-show">See it run</a>
         <a href="#stage-recap">Recap</a>
       </nav>
 
@@ -417,6 +418,50 @@
         <span class="rd-label">Want the deep read?</span>
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
       </div>
+    </div>
+  </section>
+
+
+  <!-- ===================== SEE IT RUN — sequential skill flow ===================== -->
+  <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="See it run">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>See it run</p>
+        <h2>One chat &mdash; <em>the whole chain fires.</em></h2>
+        <p class="section-lede">
+          You ask the coding agent for what you need. It picks up the
+          matching skills in sequence &mdash; each one reads the previous
+          stage&rsquo;s artefact and writes the next. Three prompts, five
+          skills, one repo the customer keeps.
+        </p>
+      </div>
+
+      <article class="terminal-card reveal" data-typing aria-label="Sequential skill flow in one chat">
+        <div class="term-bar">
+          <div class="term-dots"><span></span><span></span><span></span></div>
+          <p class="term-title">~/customer/claims-triage &mdash; threadlight chain in one chat</p>
+        </div>
+<pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design</span> <span class="arg">&mdash; inbound claims, regulator-exposed, route by complexity. HITL on every escalate."</span></span>
+<span class="term-line"><span class="out">  threadlight-design          wrote SPEC.md (12 sections, 4 HITL gates)</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Now scaffold the dataset and deploy to the customer&rsquo;s Azure."</span></span>
+<span class="term-line"><span class="out">  threadlight-demo-data-factory   produced 240 synthetic claims (3 personas)</span></span>
+<span class="term-line"><span class="out">  threadlight-deploy              landed in customer Azure &mdash; agent responding in 41s</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="prompt">&gt;</span> <span class="cmd">"Run safe-check then walk the ARB review."</span></span>
+<span class="term-line"><span class="out">  threadlight-safe-check          10 pillars scored &mdash; 8 green, 2 amber + cost manifest</span></span>
+<span class="term-line"><span class="out">  threadlight-production-ready    scorecard.pdf (13 pillars, 2 waivers) ready for ARB</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="prompt">&gt;</span> <span class="cmt"># 3 prompts &middot; 5 skills &middot; 1 chat &middot; the customer owns the repo<span class="caret"></span></span></span></pre>
+      </article>
+
+      <p class="cost-foot reveal" data-delay="1" style="margin-top:18px;">
+        <strong>How to read this:</strong> <code>&gt;</code> lines are what you
+        type to the coding agent in chat. The indented lines are what the
+        agent reports back as each skill finishes. No CLI of ours, no new
+        IDE &mdash; you stay in <a href="https://docs.github.com/copilot" target="_blank" rel="noopener">GitHub Copilot</a>,
+        the skills do the chain.
+      </p>
     </div>
   </section>
 
