@@ -1,0 +1,473 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "Threadlightby Microsoft GBB · AI Apps" [ref=e4] [cursor=pointer]:
+      - /url: ./index.html
+      - text: Threadlightby Microsoft GBB · AI Apps
+    - navigation "Site chapters" [ref=e6]:
+      - link "Home" [ref=e7] [cursor=pointer]:
+        - /url: ./index.html
+      - link "Funnel" [ref=e8] [cursor=pointer]:
+        - /url: ./funnel.html
+      - link "Production-ready" [ref=e9] [cursor=pointer]:
+        - /url: ./production.html
+      - link "Industries" [ref=e10] [cursor=pointer]:
+        - /url: ./industries.html
+  - complementary "Production-ready chapter" [ref=e11]:
+    - paragraph [ref=e12]: Chapter
+    - list [ref=e13]:
+      - listitem [ref=e14]:
+        - link "Overview" [ref=e15] [cursor=pointer]:
+          - /url: "#chapter-top"
+      - listitem [ref=e16]:
+        - link "From amber to green" [ref=e17] [cursor=pointer]:
+          - /url: "#amber-green"
+      - listitem [ref=e18]:
+        - link "When to graduate" [ref=e19] [cursor=pointer]:
+          - /url: "#governance-triggers"
+      - listitem [ref=e20]:
+        - link "Postures · the three shapes" [ref=e21] [cursor=pointer]:
+          - /url: "#posture-overview"
+      - listitem [ref=e22]:
+        - link "The scorecard" [ref=e23] [cursor=pointer]:
+          - /url: "#prod-scorecard"
+      - listitem [ref=e24]:
+        - link "Recap · the scorecard" [ref=e25] [cursor=pointer]:
+          - /url: "#chapter-recap"
+  - main [ref=e26]:
+    - generic [ref=e28]:
+      - paragraph [ref=e29]:
+        - link "Threadlight" [ref=e30] [cursor=pointer]:
+          - /url: ./index.html
+        - text: / Production-ready
+      - paragraph [ref=e31]: Three postures · thirteen pillars · one scorecard
+      - heading "Green safe-check isn’t go-live." [level=1] [ref=e33]:
+        - text: Green safe-check isn’t
+        - emphasis [ref=e34]: go-live.
+      - paragraph [ref=e35]:
+        - text: A pilot that passes
+        - code [ref=e36]: threadlight-safe-check --phase post-deploy
+        - text: is
+        - emphasis [ref=e37]: structurally complete
+        - text: ": every selector landed, every channel reaches, no placeholder image. That is not the same as"
+        - emphasis [ref=e38]: ready for the customer architecture review
+        - text: . This chapter is what we walk through with the customer to answer “what posture is this in, what’s missing, who owns each gap, can we go live with waivers?”
+      - paragraph [ref=e39]:
+        - code [ref=e40]: threadlight-production-ready
+        - text: produces the answer in one command —
+        - strong [ref=e41]: soft-advisory
+        - text: (never fails a build),
+        - strong [ref=e42]: graceful
+        - text: when Azure permissions are partial (degrades to
+        - code [ref=e43]: not-verified
+        - text: ", never invents a green), and"
+        - strong [ref=e44]: posture-aware
+        - text: (it doesn’t recommend Citadel if the customer is on a brownfield gateway).
+      - list "Production-ready at a glance" [ref=e45]:
+        - listitem [ref=e46]:
+          - emphasis [ref=e48]: "3"
+          - generic [ref=e49]: postures
+        - listitem [ref=e50]:
+          - emphasis [ref=e52]: "13"
+          - generic [ref=e53]: pillars, 4 themes
+        - listitem [ref=e54]:
+          - generic [ref=e55]:
+            - emphasis [ref=e56]: "7"
+            - text: m
+          - generic [ref=e57]: to read end-to-end
+      - navigation "In this chapter" [ref=e58]:
+        - link "Amber → green" [ref=e59] [cursor=pointer]:
+          - /url: "#amber-green"
+        - link "When to graduate" [ref=e60] [cursor=pointer]:
+          - /url: "#governance-triggers"
+        - link "3 postures" [ref=e61] [cursor=pointer]:
+          - /url: "#posture-overview"
+        - link "The scorecard" [ref=e62] [cursor=pointer]:
+          - /url: "#prod-scorecard"
+        - link "Recap" [ref=e63] [cursor=pointer]:
+          - /url: "#chapter-recap"
+      - paragraph [ref=e64]:
+        - generic [ref=e65]: Threadlight skills
+        - code [ref=e66]: .md
+        - text: files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows. Not commands. Not a CLI of our own.
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - paragraph [ref=e70]: The story we tell ARB
+        - heading "Day-0 the scorecard was amber. Six days later it was green." [level=2] [ref=e72]:
+          - text: Day-0 the scorecard was amber.
+          - emphasis [ref=e73]: Six days later it was green.
+        - paragraph [ref=e74]:
+          - text: Pattern from a recent engagement.
+          - code [ref=e75]: threadlight-safe-check
+          - text: opened with
+          - strong [ref=e76]: six amber pillars
+          - text: . Six days later
+          - code [ref=e77]: threadlight-production-ready
+          - text: closed with
+          - strong [ref=e78]: two waivers signed
+          - text: and the rest green. Here is what we did, who owned each gap, and what went on the scorecard.
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - paragraph [ref=e81]:
+            - generic [ref=e82]: Day 0
+            - text: safe-check opened the conversation
+          - paragraph [ref=e83]:
+            - generic [ref=e84]: Day 6
+            - text: production-ready closed it
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - article [ref=e87]:
+              - paragraph [ref=e89]: Identity
+              - paragraph [ref=e90]:
+                - text: User-assigned managed identity missing ·
+                - generic [ref=e91]: Platform · Marco T.
+            - article [ref=e92]:
+              - paragraph [ref=e94]: Network
+              - paragraph [ref=e95]:
+                - text: Container App on public ingress ·
+                - generic [ref=e96]: Cloud Ops · Sara K.
+            - article [ref=e97]:
+              - paragraph [ref=e99]: Continuous evals
+              - paragraph [ref=e100]:
+                - text: No nightly eval run scheduled ·
+                - generic [ref=e101]: AI Apps · Priya R.
+            - article [ref=e102]:
+              - paragraph [ref=e104]: Cost
+              - paragraph [ref=e105]:
+                - text: No budget alert · $341/mo unbounded ·
+                - generic [ref=e106]: FinOps · Jens H.
+            - article [ref=e107]:
+              - paragraph [ref=e109]: HITL audit
+              - paragraph [ref=e110]:
+                - text: Approvals captured, not signed ·
+                - generic [ref=e111]: Compliance · Lina B.
+            - article [ref=e112]:
+              - paragraph [ref=e114]: Supply chain
+              - paragraph [ref=e115]:
+                - text: No SBOM on container image ·
+                - generic [ref=e116]: Platform · Marco T.
+          - generic [ref=e117]:
+            - img [ref=e118]
+            - paragraph [ref=e120]: Safe-check ran. Waivers signed. Owners did the work.
+          - generic [ref=e121]:
+            - article [ref=e122]:
+              - paragraph [ref=e124]: Identity
+              - paragraph [ref=e125]:
+                - text: UAMI scoped to KV + ACR + ACA ·
+                - generic [ref=e126]: Marco T. · landed
+            - article [ref=e127]:
+              - paragraph [ref=e129]: Network
+              - paragraph [ref=e130]:
+                - text: Private endpoint + APIM front ·
+                - generic [ref=e131]: Sara K. · landed
+            - article [ref=e132]:
+              - paragraph [ref=e134]: Continuous evals
+              - paragraph [ref=e135]:
+                - text: Nightly GitHub Action + dashboard ·
+                - generic [ref=e136]: Priya R. · landed
+            - article [ref=e137]:
+              - paragraph [ref=e139]: Cost
+              - paragraph [ref=e140]:
+                - text: Budget alert + $500/mo cap ·
+                - generic [ref=e141]: Jens H. · signed waiver
+            - article [ref=e142]:
+              - paragraph [ref=e144]: HITL audit
+              - paragraph [ref=e145]:
+                - text: Append-only ledger + signoff ·
+                - generic [ref=e146]: Lina B. · landed
+            - article [ref=e147]:
+              - paragraph [ref=e149]: Supply chain
+              - paragraph [ref=e150]:
+                - text: SBOM in pipeline · SLSA L2 ·
+                - generic [ref=e151]: Marco T. · signed waiver
+    - generic [ref=e153]:
+      - generic [ref=e154]:
+        - paragraph [ref=e155]: When to graduate
+        - heading "Five questions a CISO asks. If any one fires, you’ve outgrown the laptop." [level=2] [ref=e157]:
+          - text: Five questions a CISO asks.
+          - emphasis [ref=e158]: If any one fires, you’ve outgrown the laptop.
+        - paragraph [ref=e159]:
+          - text: Threadlight skills run cleanly from a developer’s machine for early-stage co-design. The moment any of these five triggers turns red, the pilot needs a
+          - strong [ref=e160]: hosted runtime, governed identity, and a paved-path posture
+          - text: — not another iteration on the laptop. This is the conversation production-ready opens with.
+      - figure "Production-ready is a conversation, not a button. These are its five opening questions." [ref=e161]:
+        - img "Five questions a CISO asks arranged as spokes around a central production-ready core" [ref=e162]:
+          - generic [ref=e168]:
+            - generic [ref=e171]: ANY ONE FIRES →
+            - generic [ref=e172]: You've outgrown
+            - generic [ref=e173]: the laptop.
+          - generic [ref=e174]:
+            - generic [ref=e178]: 01 · IDENTITY
+            - generic [ref=e179]: Who is it acting as?
+            - generic [ref=e180]: UAMI? Entra app? OBO?
+          - generic [ref=e181]:
+            - generic [ref=e184]: 02 · AUDIT
+            - generic [ref=e185]: What — when — for whom?
+            - generic [ref=e186]: Append-only + OTel traces
+          - generic [ref=e187]:
+            - generic [ref=e190]: 03 · RBAC
+            - generic [ref=e191]: Can it read this index?
+            - generic [ref=e192]: Keyless RBAC, scoped to agent
+          - generic [ref=e193]:
+            - generic [ref=e196]: 04 · TELEMETRY
+            - generic [ref=e197]: Is it running well?
+            - generic [ref=e198]: App Insights from day-0
+          - generic [ref=e199]:
+            - generic [ref=e203]: 05 · EVALS
+            - generic [ref=e204]: Did the next deploy regress?
+        - generic [ref=e205]: Production-ready is a conversation, not a button. These are its five opening questions.
+      - generic [ref=e206]:
+        - article [ref=e207]:
+          - paragraph [ref=e208]: 01 · Identity
+          - heading "Who is the agent acting as?" [level=3] [ref=e210]
+          - paragraph [ref=e211]: If you can’t answer in one sentence — UAMI, Entra app, on-behalf-of — you’re past laptop scope.
+        - article [ref=e212]:
+          - paragraph [ref=e213]: 02 · Audit
+          - heading "What did it do, when, for whom?" [level=3] [ref=e215]
+          - paragraph [ref=e216]: Append-only audit and OTel traces are the difference between a demo and a defensible deployment.
+        - article [ref=e217]:
+          - paragraph [ref=e218]: 03 · RBAC
+          - heading "Can it read this index / container / API?" [level=3] [ref=e220]
+          - paragraph [ref=e221]: Keyless RBAC per service, scoped to the agent identity — not a developer’s personal token.
+        - article [ref=e222]:
+          - paragraph [ref=e223]: 04 · Telemetry
+          - heading "How do we know it’s running well?" [level=3] [ref=e225]
+          - paragraph [ref=e226]: App Insights + OTel from day one, not bolted on after the first incident.
+        - article [ref=e227]:
+          - paragraph [ref=e228]: 05 · Evals
+          - heading "How do we know the next deploy didn’t regress?" [level=3] [ref=e230]
+          - paragraph [ref=e231]: Foundry Evals as a continuous gate — quality is a release criterion, not a vibe-check.
+    - generic [ref=e233]:
+      - generic [ref=e234]:
+        - paragraph [ref=e235]: Postures
+        - heading "Three shapes — resolved from SPEC § 12." [level=2] [ref=e237]:
+          - text: Three shapes —
+          - emphasis [ref=e238]: resolved from SPEC § 12.
+        - paragraph [ref=e239]: The right answer for “is this production-ready?” depends on the customer’s estate. We support three postures explicitly, and the safe-check skill resolves which one applies before it starts asking governance questions.
+      - figure "Same agent · three architectures · the safe-check skill detects which one is live before it asks any governance question" [ref=e240]:
+        - 'img "Three production postures shown as distinct architectural shapes: APIM perimeter plus agent core, agent core only, and a customer-owned network boundary around the agent" [ref=e241]':
+          - generic [ref=e242]:
+            - generic [ref=e244]: 01 · GATEWAY-FRONTED
+            - generic [ref=e245]: Citadel spoke.
+            - generic [ref=e248]: APIM GATEWAY
+            - generic [ref=e250]: AGENT
+            - generic [ref=e251]: + AGT in-process
+            - generic [ref=e253]: 2 LAYERS · JWT · LEDGER
+          - generic [ref=e254]:
+            - generic [ref=e256]: 02 · FOUNDRY-NATIVE
+            - generic [ref=e257]: Core only.
+            - generic [ref=e261]: AGENT
+            - generic [ref=e262]: + AGT in-process
+            - generic [ref=e264]: 1 LAYER · HASH-CHAIN AUDIT
+          - generic [ref=e265]:
+            - generic [ref=e267]: 03 · CUSTOMER-OWNED EDGE
+            - generic [ref=e268]: Your gateway, our agent.
+            - generic [ref=e271]: CUSTOMER-OWNED EDGE
+            - generic [ref=e273]: AGENT
+            - generic [ref=e274]: conforms, never prescribes
+            - generic [ref=e276]: 1 LAYER · VERIFY, DON'T REPLACE
+        - generic [ref=e277]: Same agent · three architectures · the safe-check skill detects which one is live before it asks any governance question
+      - generic [ref=e278]:
+        - article [ref=e279]:
+          - paragraph [ref=e280]:
+            - generic [ref=e281]: 01 · Gateway-fronted (Citadel spoke)
+            - generic [ref=e282]: DEFAULT
+          - img [ref=e283]:
+            - generic [ref=e286]: AGENT
+            - generic [ref=e287]: APIM PERIMETER
+          - heading "Gateway-fronted — the Citadel spoke." [level=3] [ref=e288]:
+            - text: Gateway-fronted — the
+            - emphasis [ref=e289]: Citadel spoke
+            - text: .
+          - paragraph [ref=e290]:
+            - text: Customer’s AI Citadel hub fronts every model call via APIM (JWT, rate-limit, content filter, semantic cache, ledger). Pilot Foundry project is onboarded as a spoke;
+            - code [ref=e291]: agent-governance-toolkit
+            - text: enforces fine-grained policy
+            - emphasis [ref=e292]: inside
+            - text: the agent itself.
+          - generic [ref=e293]:
+            - generic [ref=e294]: 2 layers
+            - generic [ref=e295]: pillars 01 · 03 · 04 · 09
+            - generic [ref=e296]: pillars 02 · 05 · 07
+        - article [ref=e297]:
+          - paragraph [ref=e298]:
+            - generic [ref=e299]: 02 · Foundry-native (core only)
+          - img [ref=e300]:
+            - generic [ref=e302]: AGENT
+            - generic [ref=e303]: FOUNDRY ONLY
+          - heading "Foundry-native — core only." [level=3] [ref=e304]:
+            - text: Foundry-native —
+            - emphasis [ref=e305]: core only
+            - text: .
+          - paragraph [ref=e306]: No central AI gateway. Agent Governance Toolkit (v4.1 preview, detected automatically) sits inside the agent process. 8–12 µs/eval, hash-chained audit, OWASP-ASI evidence. Greenfield or experimental tenants where the gateway investment hasn’t happened.
+          - generic [ref=e307]:
+            - generic [ref=e308]: 1 layer
+            - generic [ref=e309]: pillars 03 · 04 · 07 · 11
+        - article [ref=e310]:
+          - paragraph [ref=e311]:
+            - generic [ref=e312]: 03 · Customer-owned edge
+          - img [ref=e313]:
+            - generic [ref=e314]: CUSTOMER-OWNED EDGE
+            - generic [ref=e316]: AGENT
+          - heading "Customer-owned edge." [level=3] [ref=e317]:
+            - text: Customer-owned
+            - emphasis [ref=e318]: edge
+            - text: .
+          - paragraph [ref=e319]:
+            - text: Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot conforms to the established gateway pattern rather than introducing Citadel mid-flight. The safe-check
+            - emphasis [ref=e320]: verifies
+            - text: ", never prescribes."
+          - generic [ref=e321]:
+            - generic [ref=e322]: 1 layer
+            - generic [ref=e323]: pillars 01 · 03 · 09 · 12 · 13
+      - generic [ref=e325]:
+        - heading "How we pick" [level=3] [ref=e326]
+        - paragraph [ref=e327]:
+          - text: The SPEC’s § 12 (governance posture) is the source of truth. If the customer hasn’t declared one,
+          - code [ref=e328]: threadlight-design
+          - text: asks the question during co-design — explicitly, with the trade-offs — rather than picking silently. If detection finds a
+          - strong [ref=e329]: Citadel-pattern
+          - text: APIM–Foundry binding, posture 01 resolves automatically; an APIM binding
+          - emphasis [ref=e330]: outside
+          - text: the Citadel pattern resolves to posture 03 (customer-owned edge) regardless of what the SPEC says.
+      - generic "How the coding agent invokes threadlight-production-ready" [ref=e331]:
+        - text: "> \"Use threadlight-production-ready on this pilot. Detect posture; production load is 800 rpm.\""
+        - generic [ref=e332]:
+          - text: ↳ — coding agent reads
+          - code [ref=e333]: skills/threadlight-production-ready/SKILL.md
+          - text: ", walks 13 pillars, writes"
+          - code [ref=e334]: docs/production-readiness-report.md
+          - text: "— posture: gateway-fronted (Citadel spoke, detected via APIM binding) · pillars: 10 verified, 2 amber, 1 not-verified · ready in 6m44s"
+    - generic [ref=e336]:
+      - generic [ref=e337]:
+        - paragraph [ref=e338]: The artefact ARB reads
+        - heading "Day 6 — this PDF closed it." [level=2] [ref=e340]:
+          - text: Day 6 —
+          - emphasis [ref=e341]: this PDF closed it.
+        - paragraph [ref=e342]: Same scorecard, end of the journey above. Thirteen pillars, three colours, two signed waivers. The customer’s architecture review board reads it in five minutes.
+      - article [ref=e343]:
+        - generic [ref=e344]:
+          - paragraph [ref=e345]: scorecard.pdf
+          - paragraph [ref=e346]: Customer · Claims-triage agent · v1.2
+          - paragraph [ref=e347]:
+            - text: Posture —
+            - strong [ref=e348]: Gateway-fronted
+            - text: (Citadel spoke)
+        - generic [ref=e349]:
+          - generic [ref=e350]:
+            - generic [ref=e352]: "01"
+            - generic [ref=e353]: Network posture
+          - generic [ref=e354]:
+            - generic [ref=e356]: "02"
+            - generic [ref=e357]: Agent governance
+          - generic [ref=e358]:
+            - generic [ref=e360]: "03"
+            - generic [ref=e361]: Identity & access
+          - generic [ref=e362]:
+            - generic [ref=e364]: "04"
+            - generic [ref=e365]: Secrets
+          - generic [ref=e366]:
+            - generic [ref=e368]: "05"
+            - generic [ref=e369]: Observability
+          - generic [ref=e370]:
+            - generic [ref=e372]: "06"
+            - generic [ref=e373]: Continuous evals
+          - generic [ref=e374]:
+            - generic [ref=e376]: "07"
+            - generic [ref=e377]: Responsible AI
+          - generic [ref=e378]:
+            - generic [ref=e380]: "08"
+            - generic [ref=e381]: HITL & audit
+          - generic [ref=e382]:
+            - generic [ref=e384]: "09"
+            - generic [ref=e385]: Supply chain
+          - generic [ref=e386]:
+            - generic [ref=e388]: "10"
+            - generic [ref=e389]: Cost
+          - generic [ref=e390]:
+            - generic [ref=e392]: "11"
+            - generic [ref=e393]: Reliability
+          - generic [ref=e394]:
+            - generic [ref=e396]: "12"
+            - generic [ref=e397]: SRE hand-over
+          - generic [ref=e398]:
+            - generic [ref=e400]: "13"
+            - generic [ref=e401]: Model lifecycle
+        - generic [ref=e402]:
+          - paragraph [ref=e403]:
+            - text: verified ·
+            - text: waiver with owner ·
+            - text: not-verified (couldn’t observe)
+          - paragraph [ref=e404]:
+            - text: "ARB take:"
+            - strong [ref=e405]: ship with 2 waivers
+            - text: (cost cap, SBOM lag); model-lifecycle marked
+            - emphasis [ref=e406]: not-verified
+            - text: ", owner named on page 2."
+      - generic [ref=e407]:
+        - generic [ref=e408]: "All 13 pillars, deeply explained:"
+        - link "Open production-readiness.md →" [ref=e409] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md
+    - generic [ref=e411]:
+      - generic [ref=e412]:
+        - paragraph [ref=e413]: Recap
+        - heading "One scorecard — three colours, no judgement." [level=2] [ref=e415]:
+          - text: One scorecard —
+          - emphasis [ref=e416]: three colours, no judgement.
+        - paragraph [ref=e417]:
+          - text: Each pillar resolves to
+          - strong [ref=e418]: green
+          - text: (evidence found, in posture),
+          - strong [ref=e419]: amber
+          - text: (gap with a named owner and a waiver path), or
+          - strong [ref=e420]: not-verified
+          - text: (we couldn’t observe, here’s why). Red doesn’t exist on purpose — we never fail a build, we surface a posture.
+      - generic [ref=e421]:
+        - paragraph [ref=e422]:
+          - generic [ref=e423]: You walked
+          - generic [ref=e424]:
+            - emphasis [ref=e425]: "3"
+            - text: postures
+          - generic [ref=e426]: ·
+          - generic [ref=e427]:
+            - emphasis [ref=e428]: "4"
+            - text: themes
+          - generic [ref=e429]: ·
+          - generic [ref=e430]:
+            - emphasis [ref=e431]: "1"
+            - text: scorecard
+          - generic [ref=e432]: ·
+          - generic [ref=e433]:
+            - emphasis [ref=e434]: "0"
+            - text: red flags
+        - generic [ref=e435]:
+          - article [ref=e436]:
+            - generic [ref=e437]:
+              - emphasis [ref=e438]: ~7
+              - text: min
+            - generic [ref=e439]: ARB read time
+            - generic [ref=e440]: One PDF the architecture-review board reads in seven minutes — posture, status, gaps, evidence.
+          - article [ref=e441]:
+            - emphasis [ref=e443]: "3"
+            - generic [ref=e444]: Colours, not red
+            - generic [ref=e445]: Green, amber, not-verified. Red is missing on purpose — we surface postures, never fail builds.
+          - article [ref=e446]:
+            - emphasis [ref=e448]: "1"
+            - generic [ref=e449]: Recognisable page
+            - generic [ref=e450]: After three engagements, the customer’s board recognises the scorecard on sight.
+        - generic [ref=e451]:
+          - link "See how stages feed the scorecard →" [ref=e452] [cursor=pointer]:
+            - /url: ./funnel.html
+            - text: See how stages feed the scorecard
+            - generic [ref=e453]: →
+          - link "See how sector shifts the posture →" [ref=e454] [cursor=pointer]:
+            - /url: ./industries.html
+            - text: See how sector shifts the posture
+            - generic [ref=e455]: →
+          - link "Read the technical reference ↗" [ref=e456] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md
+            - text: Read the technical reference
+            - generic [ref=e457]: ↗
+  - contentinfo [ref=e458]:
+    - text: Threadlight · open guidance, opinionated tools ·
+    - link "repo" [ref=e459] [cursor=pointer]:
+      - /url: https://github.com/aiappsgbb/threadlight-skills

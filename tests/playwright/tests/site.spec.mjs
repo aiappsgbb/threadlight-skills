@@ -469,9 +469,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     for (const want of ['STAGE 01', 'STAGE 02', 'STAGE 03', 'STAGE 04', 'STAGE 05']) {
       expect(tags, `relay SVG must include ${want}`).toContain(want);
     }
-    // Five artefact names: Paragraph / SPEC.md / Agent + IaC / Scorecard / Hand-off
+    // Five artefact names per stage exit: SPEC.md / Agent+dataset / Live agent / Scorecard / Hand-off
     const names = (await svg.locator('text.ar-name').allTextContents()).join(' | ');
-    for (const want of ['Paragraph', 'SPEC.md', 'Agent', 'Scorecard', 'Hand-off']) {
+    for (const want of ['SPEC.md', 'Agent + dataset', 'Live agent', 'Scorecard', 'Hand-off']) {
       expect(names, `relay SVG must include artefact ${want}`).toContain(want);
     }
   });

@@ -9,7 +9,7 @@
 
 <meta property="og:type"        content="article">
 <meta property="og:title"       content="Production-ready — three postures, thirteen pillars, one scorecard.">
-<meta property="og:description" content="Three postures. Thirteen pillars across network/identity, governance/HITL, ops/cost, and lifecycle/supply-chain. Soft-advisory, graceful degradation, one CLI.">
+<meta property="og:description" content="Three postures. Thirteen pillars across network/identity, governance/HITL, ops/cost, and lifecycle/supply-chain. Soft-advisory, graceful degradation, one Markdown skill the coding agent runs for you.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=wide-v11">
+<link rel="stylesheet" href="assets/site.css?v=content-v12">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -106,11 +106,11 @@
         <p class="eyebrow"><span class="dot"></span>The story we tell ARB</p>
         <h2>Day-0 the scorecard was amber. <em>Six days later it was green.</em></h2>
         <p class="section-lede">
-          Real engagement. Real customer. <code>threadlight-safe-check</code>
-          opened with five amber pillars. Six days later
-          <code>threadlight-production-ready</code> closed with two waivers signed
-          and the rest green. Here is what we did, who owned each gap, and what
-          went on the scorecard.
+          Pattern from a recent engagement. <code>threadlight-safe-check</code>
+          opened with <strong>six amber pillars</strong>. Six days later
+          <code>threadlight-production-ready</code> closed with
+          <strong>two waivers signed</strong> and the rest green. Here is what we did,
+          who owned each gap, and what went on the scorecard.
         </p>
       </div>
 
@@ -510,12 +510,13 @@
       <div class="detail-grid" style="grid-template-columns: minmax(0,1fr); margin-top: var(--s-5);">
         <div class="detail-card">
           <h3>How we pick</h3>
-          <p>The SPEC&rsquo;s &sect; 12 (governance posture) is the source of truth. If the customer hasn&rsquo;t declared one, <code>threadlight-design</code> asks the question during co-design &mdash; explicitly, with the trade-offs &mdash; rather than picking silently. If detection finds an existing APIM-Foundry binding, posture 03 wins regardless of what the SPEC says.</p>
+          <p>The SPEC&rsquo;s &sect; 12 (governance posture) is the source of truth. If the customer hasn&rsquo;t declared one, <code>threadlight-design</code> asks the question during co-design &mdash; explicitly, with the trade-offs &mdash; rather than picking silently. If detection finds a <strong>Citadel-pattern</strong> APIM&ndash;Foundry binding, posture 01 resolves automatically; an APIM binding <em>outside</em> the Citadel pattern resolves to posture 03 (customer-owned edge) regardless of what the SPEC says.</p>
         </div>
       </div>
 
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="Production-ready skill invocation"><span class="prompt">$</span><span class="cmd">threadlight-production-ready</span> <span class="flag">--posture</span> <span class="arg">auto</span> <span class="flag">--load</span> <span class="arg">800rpm</span>
-<span class="out">posture: citadel-spoke (detected via APIM binding)  &middot;  pillars: 10 verified, 3 not-verified  &middot;  ready in 6m44s</span></pre>
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="How the coding agent invokes threadlight-production-ready"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready on this pilot. Detect posture; production load is 800 rpm."</span>
+<span class="out">&mdash; coding agent reads <code>skills/threadlight-production-ready/SKILL.md</code>, walks 13 pillars, writes <code>docs/production-readiness-report.md</code>
+&mdash; posture: gateway-fronted (Citadel spoke, detected via APIM binding) &middot; pillars: 10 verified, 2 amber, 1 not-verified &middot; ready in 6m44s</span></pre>
     </div>
   </section>
 
@@ -544,23 +545,23 @@
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">03</span><span class="sc-name">Identity & access</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">04</span><span class="sc-name">Secrets</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">05</span><span class="sc-name">Observability</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">Continuous evals</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">Continuous evals</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">07</span><span class="sc-name">Responsible AI</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">08</span><span class="sc-name">HITL & audit</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">09</span><span class="sc-name">Supply chain</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">09</span><span class="sc-name">Supply chain</span></div>
           <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">10</span><span class="sc-name">Cost</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">11</span><span class="sc-name">Reliability</span></div>
           <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">12</span><span class="sc-name">SRE hand-over</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">13</span><span class="sc-name">Model lifecycle</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">13</span><span class="sc-name">Model lifecycle</span></div>
         </div>
 
         <footer class="sc-footer">
           <p class="sc-legend">
             <span class="sc-dot is-green"></span> verified &middot;
             <span class="sc-dot is-amber"></span> waiver with owner &middot;
-            <span class="sc-dot is-grey"></span> out of scope
+            <span class="sc-dot is-grey"></span> not-verified (couldn&rsquo;t observe)
           </p>
-          <p class="sc-take">ARB take: <strong>ship with 3 waivers</strong>, owners named on page 2.</p>
+          <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> (cost cap, SBOM lag); model-lifecycle marked <em>not-verified</em>, owner named on page 2.</p>
         </footer>
       </article>
 
@@ -591,7 +592,7 @@
         <p class="recap-scorecard reveal" data-delay="1">
           <span>You walked</span>
           <span><em>3</em> postures</span><span class="sep">·</span>
-          <span><em>7</em> themes</span><span class="sep">·</span>
+          <span><em>4</em> themes</span><span class="sep">·</span>
           <span><em>1</em> scorecard</span><span class="sep">·</span>
           <span><em>0</em> red flags</span>
         </p>
@@ -617,7 +618,7 @@
         <div class="recap-cta">
           <a class="btn btn-primary" href="./funnel.html">See how stages feed the scorecard <span class="arrow">→</span></a>
           <a class="btn btn-ghost" href="./industries.html">See how sector shifts the posture <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the operator MD <span class="arrow">↗</span></a>
+          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the technical reference <span class="arrow">↗</span></a>
         </div>
       </div>
     </div>

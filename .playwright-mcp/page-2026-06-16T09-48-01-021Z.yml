@@ -1,0 +1,709 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "Threadlightby Microsoft GBB · AI Apps" [ref=e4] [cursor=pointer]:
+      - /url: ./index.html
+      - text: Threadlightby Microsoft GBB · AI Apps
+    - navigation "Site chapters" [ref=e6]:
+      - link "Funnel" [ref=e7] [cursor=pointer]:
+        - /url: ./funnel.html
+      - link "Production-ready" [ref=e8] [cursor=pointer]:
+        - /url: ./production.html
+      - link "Industries" [ref=e9] [cursor=pointer]:
+        - /url: ./industries.html
+  - complementary "On this page" [ref=e10]:
+    - paragraph [ref=e11]: On this page
+    - list [ref=e12]:
+      - listitem [ref=e13]:
+        - link "Top" [ref=e14] [cursor=pointer]:
+          - /url: "#scene-hero"
+      - listitem [ref=e15]:
+        - link "See the chain" [ref=e16] [cursor=pointer]:
+          - /url: "#scene-show"
+      - listitem [ref=e17]:
+        - link "Funnel" [ref=e18] [cursor=pointer]:
+          - /url: "#scene-funnel"
+      - listitem [ref=e19]:
+        - link "Chain" [ref=e20] [cursor=pointer]:
+          - /url: "#scene-chain"
+      - listitem [ref=e21]:
+        - link "Production-ready" [ref=e22] [cursor=pointer]:
+          - /url: "#scene-prod-ready"
+      - listitem [ref=e23]:
+        - link "What ships" [ref=e24] [cursor=pointer]:
+          - /url: "#scene-posters"
+      - listitem [ref=e25]:
+        - link "Cost" [ref=e26] [cursor=pointer]:
+          - /url: "#scene-cost"
+      - listitem [ref=e27]:
+        - link "Industries" [ref=e28] [cursor=pointer]:
+          - /url: "#scene-industries"
+      - listitem [ref=e29]:
+        - link "Start here" [ref=e30] [cursor=pointer]:
+          - /url: "#scene-channels"
+      - listitem [ref=e31]:
+        - link "Get started" [ref=e32] [cursor=pointer]:
+          - /url: "#scene-cta"
+  - main [ref=e33]:
+    - region "Business process → working agent." [ref=e34]:
+      - generic [ref=e63]:
+        - paragraph [ref=e64]: AI agent PoCs, demos, and MVPs — dramatically simplified
+        - heading "Business process → working agent." [level=1] [ref=e66]:
+          - generic [ref=e67]: Business
+          - generic [ref=e68]: process
+          - generic [ref=e69]: →
+          - emphasis [ref=e71]: working
+          - emphasis [ref=e73]: agent.
+        - paragraph [ref=e74]:
+          - text: Describe a business process to a coding agent. It drafts the spec, scaffolds the agent code, validates it locally, and deploys it to
+          - emphasis [ref=e75]: your Azure
+          - text: — with governance, telemetry, and evals generated as auditable artefacts.
+          - strong [ref=e76]: One guided session.
+        - paragraph [ref=e77]:
+          - generic [ref=e79]: FSI · MFG · Retail · Telco · Healthcare — each tailored to domain-specific rules and data
+        - generic [ref=e80]:
+          - link "Open the technical briefing →" [ref=e81] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md
+            - text: Open the technical briefing
+            - generic [ref=e82]: →
+          - link "See the chain →" [ref=e83] [cursor=pointer]:
+            - /url: "#scene-chain"
+            - text: See the chain
+            - generic [ref=e84]: →
+          - link "Start with one prompt ↓" [ref=e85] [cursor=pointer]:
+            - /url: "#scene-cta"
+            - text: Start with one prompt
+            - generic [ref=e86]: ↓
+      - generic [ref=e87]: Scroll
+    - generic "Microsoft Azure services that threadlight composes" [ref=e88]:
+      - text: Built on Microsoft
+      - strong [ref=e89]: Foundry
+      - text: ·
+      - strong [ref=e90]: Container Apps
+      - text: ·
+      - strong [ref=e91]: Cosmos DB
+      - text: ·
+      - strong [ref=e92]: AI Search
+      - text: ·
+      - strong [ref=e93]: App Insights
+      - text: ·
+      - strong [ref=e94]: Bicep
+      - text: ·
+      - strong [ref=e95]: azd
+      - text: ·
+      - strong [ref=e96]: Managed Identity
+    - generic "Where the field has been and where we are now" [ref=e97]:
+      - generic [ref=e98]:
+        - paragraph [ref=e99]:
+          - strong [ref=e100]: Where the field has been
+          - text: · the path from LLMs to skill-based agents
+        - list [ref=e101]:
+          - listitem [ref=e102]: LLMs
+          - generic [ref=e103]: →
+          - listitem [ref=e104]: RAG
+          - generic [ref=e105]: →
+          - listitem [ref=e106]: Multi-agent
+          - generic [ref=e107]: →
+          - listitem [ref=e108]: MCP
+          - generic [ref=e109]: →
+          - listitem [ref=e110]: Skills ●
+    - generic [ref=e112]:
+      - generic [ref=e113]:
+        - paragraph [ref=e114]: What ships
+        - heading "From a paragraph — to a deployed agent." [level=2] [ref=e116]:
+          - text: From a paragraph —
+          - emphasis [ref=e117]: to a deployed agent.
+        - paragraph [ref=e118]: No CLI. No new IDE. The seller stays in chat — the skills do the chain.
+      - paragraph [ref=e119]:
+        - generic [ref=e120]: Threadlight skills
+        - code [ref=e121]: .md
+        - text: files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows. Not a CLI of our own. Not commands.
+      - figure "The threadlight chain · what the seller sees, end-to-end" [ref=e122]:
+        - 'img "Three panels: a paragraph becomes a signed SPEC document which becomes a deployed agent on Azure" [ref=e124]':
+          - generic [ref=e125]:
+            - generic [ref=e126]: STAGE 01
+            - generic [ref=e127]: A paragraph.
+            - generic [ref=e128]: What the seller types in chat.
+            - generic [ref=e130]: "\"Inbound claims,"
+            - generic [ref=e131]: regulator-exposed,
+            - generic [ref=e132]: route by complexity.
+            - generic [ref=e133]: HITL on every escalate."
+            - generic [ref=e134]: — seller, in chat
+          - generic [ref=e135]:
+            - generic [ref=e136]: STAGE 02
+            - generic [ref=e137]: A signed SPEC.
+            - generic [ref=e138]: What threadlight-design writes.
+            - generic [ref=e141]: SPEC.md · v0.3
+            - generic [ref=e142]: Claims triage
+            - generic [ref=e144]: Process & HITL gates
+            - generic [ref=e146]: Skills used
+            - generic [ref=e148]: Exit criteria
+            - generic [ref=e151]: SIGNED · v0.3
+          - generic [ref=e152]:
+            - generic [ref=e153]: STAGE 04–05
+            - generic [ref=e154]: A deployed agent.
+            - generic [ref=e155]: Live in the customer's Azure.
+            - generic [ref=e158]: azure · westeurope
+            - generic [ref=e159]: claims-triage
+            - generic [ref=e161]: healthy · responding in 41s
+            - generic [ref=e162]:
+              - generic [ref=e164]: cost
+              - generic [ref=e165]: $341/mo
+            - generic [ref=e166]:
+              - generic [ref=e168]: scorecard
+              - generic [ref=e169]: 11/13 green
+          - generic [ref=e170]: 7 skills walk the chain · 1 paragraph in · 1 deployed agent out
+        - generic [ref=e171]: The threadlight chain · what the seller sees, end-to-end
+    - region "From a paragraph to a governed agent — in five named stages." [ref=e172]:
+      - generic [ref=e173]:
+        - generic [ref=e174]:
+          - paragraph [ref=e175]: The five-stage funnel
+          - heading "From a paragraph to a governed agent — in five named stages." [level=2] [ref=e177]:
+            - text: From a paragraph to a governed agent — in
+            - emphasis [ref=e178]: five named stages.
+          - paragraph [ref=e179]: Every threadlight engagement walks the same five stages. Each stage has its own skills, its own artefacts, and its own exit criteria.
+        - navigation "Threadlight funnel stages" [ref=e180]:
+          - link "01 · Conversation Describe the process Plain-language brief from the seller or customer SME. No template, no questionnaire. threadlight-auto · threadlight-design" [ref=e181] [cursor=pointer]:
+            - /url: ./funnel.html#stage-glance
+            - generic [ref=e182]: 01 · Conversation
+            - generic [ref=e183]: Describe the process
+            - generic [ref=e184]: Plain-language brief from the seller or customer SME. No template, no questionnaire.
+            - generic [ref=e185]: threadlight-auto · threadlight-design
+            - generic: ›
+          - link "02 · Co-design Spec & scaffold SPEC.md, AGENTS.md, eval dataset and demo-data factory generated in-session. threadlight-design · threadlight-demo-data-factory" [ref=e186] [cursor=pointer]:
+            - /url: ./funnel.html#stage-glance
+            - generic [ref=e187]: 02 · Co-design
+            - generic [ref=e188]: Spec & scaffold
+            - generic [ref=e189]: SPEC.md, AGENTS.md, eval dataset and demo-data factory generated in-session.
+            - generic [ref=e190]: threadlight-design · threadlight-demo-data-factory
+            - generic: ›
+          - link "03 · Deploy Land on your Azure Bicep + azd-up to the customer's subscription, Managed Identity wired from day zero. threadlight-deploy · threadlight-local-test" [ref=e191] [cursor=pointer]:
+            - /url: ./funnel.html#stage-glance
+            - generic [ref=e192]: 03 · Deploy
+            - generic [ref=e193]: Land on your Azure
+            - generic [ref=e194]: Bicep + azd-up to the customer's subscription, Managed Identity wired from day zero.
+            - generic [ref=e195]: threadlight-deploy · threadlight-local-test
+            - generic: ›
+          - link "04 · Safe-check Cost & readiness Project monthly cost, recommend cheaper SKUs, score against 10 production pillars. threadlight-safe-check · threadlight-consumption-iq" [ref=e196] [cursor=pointer]:
+            - /url: ./funnel.html#stage-glance
+            - generic [ref=e197]: 04 · Safe-check
+            - generic [ref=e198]: Cost & readiness
+            - generic [ref=e199]: Project monthly cost, recommend cheaper SKUs, score against 10 production pillars.
+            - generic [ref=e200]: threadlight-safe-check · threadlight-consumption-iq
+            - generic: ›
+          - link "05 · Production Hand-off Governance, telemetry and runbooks already in the repo. Customer keeps the agent. threadlight-production-ready · threadlight-hitl-patterns" [ref=e201] [cursor=pointer]:
+            - /url: ./funnel.html#stage-glance
+            - generic [ref=e202]: 05 · Production
+            - generic [ref=e203]: Hand-off
+            - generic [ref=e204]: Governance, telemetry and runbooks already in the repo. Customer keeps the agent.
+            - generic [ref=e205]: threadlight-production-ready · threadlight-hitl-patterns
+        - paragraph [ref=e206]:
+          - link "Read the full funnel chapter →" [ref=e207] [cursor=pointer]:
+            - /url: ./funnel.html
+            - text: Read the full funnel chapter
+            - generic [ref=e208]: →
+    - region "You prompt. The coding agent picks up the right skills." [ref=e209]:
+      - generic [ref=e210]:
+        - generic [ref=e211]:
+          - paragraph [ref=e212]: The skills chain
+          - heading "You prompt. The coding agent picks up the right skills." [level=2] [ref=e214]:
+            - text: You prompt. The coding agent
+            - emphasis [ref=e215]: picks up the right skills.
+          - paragraph [ref=e216]:
+            - text: Skills are composable building blocks — Markdown instructions that any coding agent (GitHub Copilot CLI, VS Code, Claude Code) reads and follows. You describe what you need in a prompt. The agent discovers the matching skill, runs it, and hands you the artefacts — all the way to a
+            - strong [ref=e217]: governed agent on your Azure
+            - text: with a paved path to production via AI Citadel and AGT.
+        - generic [ref=e218]:
+          - article [ref=e219]:
+            - text: "01"
+            - generic [ref=e220]:
+              - generic [ref=e221]: threadlight-design
+              - generic [ref=e222]: Cowork-safe
+              - generic [ref=e223]: Entry skill
+            - paragraph [ref=e224]: Turn a paragraph brief into a durable SpecKit spec — numbered business rules, data models, tool contracts, eval scenarios, governance — and derive the agent surface from it.
+            - generic "Inputs and outputs" [ref=e225]:
+              - generic [ref=e226]:
+                - generic [ref=e227]: Inputs
+                - generic [ref=e228]: Free-text brief · industry primer (optional)
+              - generic [ref=e229]: →
+              - generic [ref=e230]:
+                - generic [ref=e231]: Outputs
+                - generic [ref=e232]:
+                  - code [ref=e233]: specs/SPEC.md
+                  - text: ·
+                  - code [ref=e234]: manifest.json
+                  - text: ·
+                  - code [ref=e235]: AGENTS.md
+                  - text: ·
+                  - code [ref=e236]: skills/
+                  - text: ·
+                  - code [ref=e237]: overview.html
+            - generic [ref=e238]: "> \"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode.\""
+            - generic [ref=e239]:
+              - generic [ref=e240]: The coding agent reads the skill instructions and generates all artefacts.
+              - link "SKILL.md →" [ref=e241] [cursor=pointer]:
+                - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md
+          - generic [ref=e242]:
+            - text: ↓
+            - generic [ref=e243]:
+              - generic [ref=e244]: Always wired
+              - generic [ref=e245]:
+                - link "threadlight-demo-data-factory Per-domain synthetic data & idempotent Cosmos seed / reset, anchored to industry realism canon." [ref=e246] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md
+                  - generic [ref=e247]: threadlight-demo-data-factory
+                  - generic [ref=e248]: Per-domain synthetic data & idempotent Cosmos seed / reset, anchored to industry realism canon.
+                - link "threadlight-local-test Inner loop — MAF Agent + Streamlit on localhost:8501 in under 30 minutes." [ref=e249] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md
+                  - generic [ref=e250]: threadlight-local-test
+                  - generic [ref=e251]:
+                    - text: Inner loop — MAF Agent + Streamlit on
+                    - code [ref=e252]: localhost:8501
+                    - text: in under 30 minutes.
+                - link "threadlight-safe-check The single completeness gate — runs after design, before azd up, and after." [ref=e253] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md
+                  - generic [ref=e254]: threadlight-safe-check
+                  - generic [ref=e255]:
+                    - text: The single completeness gate — runs after design, before
+                    - code [ref=e256]: azd up
+                    - text: ", and after."
+            - generic [ref=e257]:
+              - generic [ref=e258]: Conditional — only when the SPEC asks
+              - generic [ref=e259]:
+                - link "threadlight-hitl-patterns SPEC § 8 · Teams Adaptive Cards for the seven canonical action gates." [ref=e260] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md
+                  - generic [ref=e261]: threadlight-hitl-patterns
+                  - generic [ref=e262]: SPEC § 8 · Teams Adaptive Cards for the seven canonical action gates.
+                - link "threadlight-workspace-ui SPEC § 8b · framework-agnostic workspace UI reference (case-list, inbox, dashboard, …)." [ref=e263] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md
+                  - generic [ref=e264]: threadlight-workspace-ui
+                  - generic [ref=e265]: SPEC § 8b · framework-agnostic workspace UI reference (case-list, inbox, dashboard, …).
+                - link "threadlight-event-triggers SPEC § 10 · ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring." [ref=e266] [cursor=pointer]:
+                  - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md
+                  - generic [ref=e267]: threadlight-event-triggers
+                  - generic [ref=e268]: SPEC § 10 · ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.
+          - article [ref=e269]:
+            - text: "02"
+            - generic [ref=e270]:
+              - generic [ref=e271]: threadlight-deploy
+              - generic [ref=e272]: azd up
+            - paragraph [ref=e273]:
+              - text: Generate every artefact needed to deploy as a Microsoft Foundry hosted agent — GHCP-SDK runtime by default, MAF fallback when needed, with Bicep, Dockerfile, and the
+              - code [ref=e274]: azd ai agent
+              - text: extension wired end-to-end.
+            - generic "Inputs and outputs" [ref=e275]:
+              - generic [ref=e276]:
+                - generic [ref=e277]: Inputs
+                - generic [ref=e278]:
+                  - text: SPEC ·
+                  - code [ref=e279]: AGENTS.md
+                  - text: ·
+                  - code [ref=e280]: manifest.json
+                  - text: ·
+                  - code [ref=e281]: src/agent/skills/
+              - generic [ref=e282]: →
+              - generic [ref=e283]:
+                - generic [ref=e284]: Outputs
+                - generic [ref=e285]:
+                  - code [ref=e286]: container.py
+                  - text: ·
+                  - code [ref=e287]: Dockerfile
+                  - text: ·
+                  - code [ref=e288]: infra/
+                  - text: ·
+                  - code [ref=e289]: agent.yaml
+                  - text: ·
+                  - code [ref=e290]: azure.yaml
+            - generic [ref=e291]: "> \"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry.\""
+            - generic [ref=e292]:
+              - generic [ref=e293]:
+                - text: The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs
+                - code [ref=e294]: azd up
+                - text: .
+              - link "SKILL.md →" [ref=e295] [cursor=pointer]:
+                - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md
+          - article [ref=e296]:
+            - text: "03"
+            - generic [ref=e297]:
+              - generic [ref=e298]: threadlight-production-ready
+              - generic [ref=e299]: Advisory · soft-gate
+              - generic [ref=e300]: Hand-off package
+            - paragraph [ref=e301]:
+              - text: Take a pilot that just passed
+              - code [ref=e302]: threadlight-safe-check --phase post-deploy
+              - text: and walk it across 13 cross-cutting production-readiness pillars — network, AGT, IAM, secrets, observability, continuous evals, RAI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. Posture defaults to
+              - strong [ref=e303]: AI Citadel spoke
+              - text: ; falls back to AGT-only or standard AI gateway when SPEC § 12 declares a different target.
+            - generic "Inputs and outputs" [ref=e304]:
+              - generic [ref=e305]:
+                - generic [ref=e306]: Inputs
+                - generic [ref=e307]:
+                  - text: SPEC § 12 ·
+                  - code [ref=e308]: specs/manifest.json
+                  - text: ·
+                  - code [ref=e309]: tests/postdeploy-manifest.json
+                  - text: · live Azure (tiered, best-effort)
+              - generic [ref=e310]: →
+              - generic [ref=e311]:
+                - generic [ref=e312]: Outputs
+                - generic [ref=e313]:
+                  - code [ref=e314]: docs/production-readiness-report.md
+                  - text: ·
+                  - code [ref=e315]: tests/production-readiness-manifest.json
+            - generic [ref=e316]: "> \"Use threadlight-production-ready to walk this pilot to a customer architecture review.\""
+            - generic [ref=e317]:
+              - generic [ref=e318]:
+                - text: Soft-advisory — never fails the deploy. Missing Azure permissions degrade to
+                - code [ref=e319]: not-verified
+                - text: findings with verification coverage reported separately.
+              - link "SKILL.md →" [ref=e320] [cursor=pointer]:
+                - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md
+    - region "Green safe-check isn’t go-live." [ref=e321]:
+      - generic [ref=e322]:
+        - generic [ref=e323]:
+          - paragraph [ref=e324]: Paved path to production
+          - heading "Green safe-check isn’t go-live." [level=2] [ref=e326]:
+            - text: Green safe-check isn’t
+            - emphasis [ref=e327]: go-live.
+          - paragraph [ref=e328]:
+            - text: A pilot that passes
+            - code [ref=e329]: threadlight-safe-check --phase post-deploy
+            - text: is
+            - emphasis [ref=e330]: structurally complete
+            - text: . That isn’t the same as
+            - emphasis [ref=e331]: ready for the customer architecture review
+            - text: .
+            - code [ref=e332]: threadlight-production-ready
+            - text: closes that gap —
+            - strong [ref=e333]: three postures
+            - text: ","
+            - strong [ref=e334]: thirteen pillars
+            - text: ", one scorecard you can read in seven minutes."
+        - generic [ref=e335]:
+          - generic [ref=e336]: Citadel spoke · default
+          - generic [ref=e337]: AGT-only, in-process
+          - generic [ref=e338]: Standard gateway / VNet
+        - generic [ref=e339]:
+          - link "Read the full production-ready chapter →" [ref=e340] [cursor=pointer]:
+            - /url: ./production.html
+          - paragraph [ref=e341]: 3 postures · 13 pillars in 4 themes · soft-advisory · never fails a build
+    - generic [ref=e343]:
+      - generic [ref=e344]:
+        - paragraph [ref=e345]: What ships
+        - heading "Spec it. Ship it. Score it." [level=2] [ref=e347]:
+          - text: Spec it. Ship it.
+          - emphasis [ref=e348]: Score it.
+        - paragraph [ref=e349]: Three artefacts, three pages. Every customer gets the same shape.
+      - generic [ref=e350]:
+        - 'link "Stage 01 · output Spec it. A signed SPEC.md — process, HITL gates, skills used. The customer reads it once. Artefact: SPEC.md" [ref=e351] [cursor=pointer]':
+          - /url: ./industries.html#ind-spec
+          - paragraph [ref=e352]:
+            - generic [ref=e353]: Stage 01 · output
+          - heading "Spec it." [level=3] [ref=e354]:
+            - text: Spec
+            - emphasis [ref=e355]: it.
+          - paragraph [ref=e356]:
+            - text: A signed
+            - code [ref=e357]: SPEC.md
+            - text: — process, HITL gates, skills used. The customer reads it once.
+          - generic [ref=e359]: "Artefact: SPEC.md"
+        - 'link "Stage 03 · output Ship it. Agent live in the customer’s Azure. Bicep + Container Apps. Managed Identity wired from day zero. Artefact: deploy log" [ref=e360] [cursor=pointer]':
+          - /url: ./funnel.html#stage-show
+          - paragraph [ref=e361]:
+            - generic [ref=e362]: Stage 03 · output
+          - heading "Ship it." [level=3] [ref=e363]:
+            - text: Ship
+            - emphasis [ref=e364]: it.
+          - paragraph [ref=e365]: Agent live in the customer’s Azure. Bicep + Container Apps. Managed Identity wired from day zero.
+          - generic [ref=e367]: "Artefact: deploy log"
+        - 'link "Stage 05 · output Score it. A 13-pillar scorecard.pdf — three colours, owners named for every amber. ARB reads it in five minutes. Artefact: scorecard.pdf" [ref=e368] [cursor=pointer]':
+          - /url: ./production.html#prod-scorecard
+          - paragraph [ref=e369]:
+            - generic [ref=e370]: Stage 05 · output
+          - heading "Score it." [level=3] [ref=e371]:
+            - text: Score
+            - emphasis [ref=e372]: it.
+          - paragraph [ref=e373]:
+            - text: A 13-pillar
+            - code [ref=e374]: scorecard.pdf
+            - text: — three colours, owners named for every amber. ARB reads it in five minutes.
+          - generic [ref=e376]: "Artefact: scorecard.pdf"
+    - region "New in v1.2 Don’t ship the SKU. Ship the cheapest SKU that still fits." [ref=e377]:
+      - generic [ref=e378]:
+        - generic [ref=e379]:
+          - paragraph [ref=e380]: Post-deploy · before sign-off
+          - heading "New in v1.2 Don’t ship the SKU. Ship the cheapest SKU that still fits." [level=2] [ref=e382]:
+            - generic "New in v1.2" [ref=e383]: v1.2 · new
+            - text: Don’t ship the SKU. Ship the cheapest SKU that
+            - emphasis [ref=e384]: still fits.
+          - paragraph [ref=e385]:
+            - code [ref=e386]: threadlight-consumption-iq
+            - text: walks every deployed resource at the customer’s declared production load, prices it against 2–3 alternatives, and tells you the cheapest config that still meets their constraints — before they sign off and turn on traffic.
+        - 'figure "Monthly cost: current versus recommended" [ref=e387]':
+          - generic [ref=e388]:
+            - generic [ref=e389]: Current
+            - generic [ref=e390]: $0 /mo
+            - generic [ref=e391]: Deployed SKUs at declared load
+          - generic [ref=e392]: →
+          - generic [ref=e393]:
+            - generic [ref=e394]: Recommended
+            - generic [ref=e395]: $0 /mo
+            - generic [ref=e396]:
+              - text: Same constraints, lower bill
+              - generic "Potential monthly savings" [ref=e397]: −$56.38 / −14.2%
+        - region "Per-resource cost breakdown" [ref=e398]:
+          - table [ref=e399]:
+            - rowgroup [ref=e400]:
+              - row "Resource Current SKU $ / mo Top alternative Saves" [ref=e401]:
+                - columnheader "Resource" [ref=e402]
+                - columnheader "Current SKU" [ref=e403]
+                - columnheader "$ / mo" [ref=e404]
+                - columnheader "Top alternative" [ref=e405]
+                - columnheader "Saves" [ref=e406]
+            - rowgroup [ref=e407]:
+              - row "cosmos DocumentDB Standard provisioned 4000 RU/s $246.10 keep — serverless trips 50 GB cap —" [ref=e408]:
+                - cell "cosmos DocumentDB" [ref=e409]:
+                  - strong [ref=e410]: cosmos
+                  - text: DocumentDB
+                - cell "Standard provisioned 4000 RU/s" [ref=e411]
+                - cell "$246.10" [ref=e412]
+                - cell "keep — serverless trips 50 GB cap" [ref=e413]
+                - cell "—" [ref=e414]
+              - row "ai-search Search basic 1×1 $73.00 keep — free tier doc cap below load —" [ref=e415]:
+                - cell "ai-search Search" [ref=e416]:
+                  - strong [ref=e417]: ai-search
+                  - text: Search
+                - cell "basic 1×1" [ref=e418]
+                - cell "$73.00" [ref=e419]
+                - cell "keep — free tier doc cap below load" [ref=e420]
+                - cell "—" [ref=e421]
+              - row "apim API Management BasicV2 capacity=1 $51.10 Consumption −$45.53" [ref=e422]:
+                - cell "apim API Management" [ref=e423]:
+                  - strong [ref=e424]: apim
+                  - text: API Management
+                - cell "BasicV2 capacity=1" [ref=e425]
+                - cell "$51.10" [ref=e426]
+                - cell "Consumption" [ref=e427]
+                - cell "−$45.53" [ref=e428]
+              - row "bot Container Apps Consumption 2 replicas $15.85 keep — already at min —" [ref=e429]:
+                - cell "bot Container Apps" [ref=e430]:
+                  - strong [ref=e431]: bot
+                  - text: Container Apps
+                - cell "Consumption 2 replicas" [ref=e432]
+                - cell "$15.85" [ref=e433]
+                - cell "keep — already at min" [ref=e434]
+                - cell "—" [ref=e435]
+              - row "foundry-agent Foundry hosted Standard tier $10.56 Free tier −$10.56" [ref=e436]:
+                - cell "foundry-agent Foundry hosted" [ref=e437]:
+                  - strong [ref=e438]: foundry-agent
+                  - text: Foundry hosted
+                - cell "Standard tier" [ref=e439]
+                - cell "$10.56" [ref=e440]
+                - cell "Free tier" [ref=e441]
+                - cell "−$10.56" [ref=e442]
+              - row "storage Storage Standard_LRS hot $0.96 Standard_ZRS cool −$0.29" [ref=e443]:
+                - cell "storage Storage" [ref=e444]:
+                  - strong [ref=e445]: storage
+                  - text: Storage
+                - cell "Standard_LRS hot" [ref=e446]
+                - cell "$0.96" [ref=e447]
+                - cell "Standard_ZRS cool" [ref=e448]
+                - cell "−$0.29" [ref=e449]
+              - row "aoai-chat AOAI deployment gpt-4o PAYG eastus2 N/A populated by live Retail Prices API —" [ref=e450]:
+                - cell "aoai-chat AOAI deployment" [ref=e451]:
+                  - strong [ref=e452]: aoai-chat
+                  - text: AOAI deployment
+                - cell "gpt-4o PAYG eastus2" [ref=e453]
+                - cell "N/A" [ref=e454]
+                - cell "populated by live Retail Prices API" [ref=e455]
+                - cell "—" [ref=e456]
+        - generic "Top three recommendations" [ref=e457]:
+          - article [ref=e458]:
+            - generic [ref=e459]: "#1"
+            - paragraph [ref=e460]: apim — switch to Consumption tier
+            - paragraph [ref=e461]: BasicV2 capacity=1→Consumption
+            - paragraph [ref=e462]: −$45.53/mo · 89%
+          - article [ref=e463]:
+            - generic [ref=e464]: "#2"
+            - paragraph [ref=e465]: foundry-agent — switch to Free tier
+            - paragraph [ref=e466]: Standard→Free hosted-agent
+            - paragraph [ref=e467]: −$10.56/mo · 100%
+          - article [ref=e468]:
+            - generic [ref=e469]: "#3"
+            - paragraph [ref=e470]: storage — ZRS cool
+            - paragraph [ref=e471]: Standard_LRS hot→Standard_ZRS cool
+            - paragraph [ref=e472]: −$0.29/mo · 31%
+        - generic [ref=e473]:
+          - link "See the golden report ↗" [ref=e474] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md
+            - text: See the golden report
+            - generic [ref=e475]: ↗
+          - link "Browse the skill ↗" [ref=e476] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq
+            - text: Browse the skill
+            - generic [ref=e477]: ↗
+        - paragraph [ref=e478]:
+          - text: Numbers above are deterministic — generated from a mock pricing client against a 7-resource synthetic pilot. Real runs hit the public Azure Retail Prices API; every $ value carries a
+          - code [ref=e479]: "price_source: live | fixture | fallback"
+          - text: tag in the manifest. Advisory only —
+          - code [ref=e480]: threadlight-deploy
+          - text: is what actually changes infrastructure.
+    - region "Six industries. One pattern." [ref=e481]:
+      - generic [ref=e482]:
+        - generic [ref=e483]:
+          - paragraph [ref=e484]: What it looks like in the field
+          - heading "Six industries. One pattern." [level=2] [ref=e486]:
+            - text: Six industries.
+            - emphasis [ref=e487]: One pattern.
+          - paragraph [ref=e488]: "The same five-stage funnel ships agents across regulated and unregulated industries. The skills don't change — the SPEC does. Below: one example process per industry we work in."
+        - generic [ref=e489]:
+          - link "Financial services Claims triage Route inbound claims by complexity and regulator exposure. Spec, deploy, evaluate — in-session. spec → deploy → safe-check" [ref=e490] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e491]: 🏦
+            - paragraph [ref=e492]: Financial services
+            - heading "Claims triage" [level=3] [ref=e493]
+            - paragraph [ref=e494]: Route inbound claims by complexity and regulator exposure. Spec, deploy, evaluate — in-session.
+            - text: spec → deploy → safe-check
+          - link "Healthcare Prior-authorization assistant Generates structured payor submissions from the clinical narrative — with HITL gates wired from day zero. spec → HITL patterns → deploy" [ref=e495] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e496]: 🏥
+            - paragraph [ref=e497]: Healthcare
+            - heading "Prior-authorization assistant" [level=3] [ref=e498]
+            - paragraph [ref=e499]: Generates structured payor submissions from the clinical narrative — with HITL gates wired from day zero.
+            - text: spec → HITL patterns → deploy
+          - link "Manufacturing Field-service knowledge agent Technicians ask the agent. The agent grounds against equipment manuals + service history — with cost-projected SKUs picked before go-live. spec → deploy → cost" [ref=e500] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e501]: 🏭
+            - paragraph [ref=e502]: Manufacturing
+            - heading "Field-service knowledge agent" [level=3] [ref=e503]
+            - paragraph [ref=e504]: Technicians ask the agent. The agent grounds against equipment manuals + service history — with cost-projected SKUs picked before go-live.
+            - text: spec → deploy → cost
+          - link "Retail Merchandising co-pilot Buyer asks for promo plans; agent drafts them grounded in last-quarter SKU performance and store-cluster lift. spec → demo-data → deploy" [ref=e505] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e506]: 🛍️
+            - paragraph [ref=e507]: Retail
+            - heading "Merchandising co-pilot" [level=3] [ref=e508]
+            - paragraph [ref=e509]: Buyer asks for promo plans; agent drafts them grounded in last-quarter SKU performance and store-cluster lift.
+            - text: spec → demo-data → deploy
+          - link "Public sector Citizen-facing case status Public-language status updates with case-worker hand-off built in. Governance and audit trail are non-negotiable; the chain refuses to ship without them. spec → HITL → production-ready" [ref=e510] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e511]: 🏛️
+            - paragraph [ref=e512]: Public sector
+            - heading "Citizen-facing case status" [level=3] [ref=e513]
+            - paragraph [ref=e514]: Public-language status updates with case-worker hand-off built in. Governance and audit trail are non-negotiable; the chain refuses to ship without them.
+            - text: spec → HITL → production-ready
+          - link "Telco Network-incident triage Cross-references SNMP, ticket history, and runbooks into a first-pass remediation — cost-projected against the production load profile. spec → deploy → consumption-iq" [ref=e515] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-design
+            - generic [ref=e516]: 📡
+            - paragraph [ref=e517]: Telco
+            - heading "Network-incident triage" [level=3] [ref=e518]
+            - paragraph [ref=e519]: Cross-references SNMP, ticket history, and runbooks into a first-pass remediation — cost-projected against the production load profile.
+            - text: spec → deploy → consumption-iq
+        - paragraph [ref=e520]:
+          - text: All six follow the same five-stage funnel. The differences live in the SPEC, not the chain.
+          - link "Read the full industries chapter →" [ref=e521] [cursor=pointer]:
+            - /url: ./industries.html
+            - text: Read the full industries chapter
+            - generic [ref=e522]: →
+    - region "Start in Kratos. Build in Threadlight." [ref=e523]:
+      - generic [ref=e524]:
+        - generic [ref=e525]:
+          - generic [ref=e526]:
+            - paragraph [ref=e527]: Demo first, build second
+            - heading "Start in Kratos. Build in Threadlight." [level=2] [ref=e529]:
+              - text: Start in Kratos.
+              - emphasis [ref=e530]: Build in Threadlight.
+            - paragraph [ref=e531]:
+              - text: Two stages of the same journey, not two competing products.
+              - strong [ref=e532]: Kratos
+              - text: is the no-code quickstart — pick a persona, wire tools, talk to a working agent in the browser, all in the first ten minutes of a customer conversation.
+              - strong [ref=e533]: Threadlight
+              - text: is the pro-code path that follows — when the demo turns into a commitment, the skills on this page take that idea from one paragraph to a Foundry-hosted agent with evals, observability, cost projection, and a customer hand-off pack.
+            - list [ref=e534]:
+              - listitem [ref=e535]:
+                - strong [ref=e536]: Kratos — first ten minutes, zero code.
+                - text: Try a working agent live, customize persona and tools in-app, export the spec when the conversation gets serious.
+              - listitem [ref=e537]:
+                - strong [ref=e538]: Threadlight — what follows, when it gets real.
+                - text: Take that spec (or a fresh prompt) all the way through specify → design → build → safe-check → deploy — opinionated, pro-code, production-grade.
+              - listitem [ref=e539]:
+                - strong [ref=e540]: Same Foundry. Same governance.
+                - text: What you demo in Kratos is what you build with Threadlight — one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.
+          - article "Kratos Agent" [ref=e541]:
+            - img "Kratos Agent chat interface — conversational UI with persona switching, suggested prompts, and live skill indicators" [ref=e542]
+            - generic [ref=e543]:
+              - paragraph [ref=e544]: Step 1 · No-code quickstart · live
+              - heading "Kratos Agent" [level=3] [ref=e546]
+              - paragraph [ref=e547]: A demo-friendly conversational agent on Microsoft Foundry. Pick a persona, wire up tools, talk to it—then export the spec to take it further with Threadlight. Built for the first ten minutes of a customer conversation, before you commit to a build.
+              - generic "What Kratos gives you" [ref=e548]:
+                - generic [ref=e549]: Browser-first
+                - generic [ref=e550]: Foundry hosted agent
+                - generic [ref=e551]: Persona & tool tuning
+                - generic [ref=e552]: Export the spec
+                - generic [ref=e553]: MIT license
+              - generic [ref=e554]:
+                - link "Try Kratos live ↗" [ref=e555] [cursor=pointer]:
+                  - /url: https://aka.ms/kratos
+                  - text: Try Kratos live
+                  - generic [ref=e556]: ↗
+                - link "View on GitHub ↗" [ref=e557] [cursor=pointer]:
+                  - /url: https://github.com/kmavrodis/kratos-agent
+                  - text: View on GitHub
+                  - generic [ref=e558]: ↗
+        - paragraph [ref=e559]: Once shipped · expose anywhere via MCP
+        - generic "Runtime surfaces for a shipped Threadlight agent" [ref=e561]:
+          - generic [ref=e562]:
+            - heading "Microsoft Copilot Studio" [level=4] [ref=e563]
+            - paragraph [ref=e564]: Expose a Threadlight-built agent as an MCP tool inside a Copilot Studio surface — same governance, same telemetry.
+            - generic [ref=e565]: Pattern available
+          - generic [ref=e566]:
+            - heading "Azure SRE Agent" [level=4] [ref=e567]
+            - paragraph [ref=e568]: Surface deployment + cost-projection skills inside SRE Agent flows. Bring your own runbook, keep the audit trail.
+            - generic [ref=e569]: Pattern available
+          - generic [ref=e570]:
+            - heading "Custom MCP host" [level=4] [ref=e571]
+            - paragraph [ref=e572]: Anything that speaks the MCP protocol. Threadlight ships portable MCP servers; the host stays your call.
+            - generic [ref=e573]: Bring your own
+    - region "See the artefacts. Then try it yourself." [ref=e574]:
+      - generic [ref=e575]:
+        - paragraph [ref=e576]: Get started
+        - heading "See the artefacts. Then try it yourself." [level=2] [ref=e578]:
+          - text: See the artefacts.
+          - emphasis [ref=e579]: Then try it yourself.
+        - paragraph [ref=e580]: One prompt. One session. Governed agent on your Azure.
+        - note "Example invocations" [ref=e581]:
+          - text: "# Tell the coding agent which skill to use and what you need"
+          - text: "> \"Use threadlight-design to design a claims-triage process for an FSI customer.\""
+          - text: "# When you're happy with the spec, deploy it"
+          - text: "# Then walk it to a customer architecture review — advisory, soft-gate, hand-off package"
+          - text: "> \"Use threadlight-production-ready to score this pilot across 13 pillars and produce the customer hand-off report.\""
+        - generic [ref=e582]:
+          - link "Open the technical briefing →" [ref=e583] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md
+            - text: Open the technical briefing
+            - generic [ref=e584]: →
+          - link "View the repo on GitHub ↗" [ref=e585] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/threadlight-skills#readme
+            - text: View the repo on GitHub
+            - generic [ref=e586]: ↗
+          - link "Browse the awesome-gbb plugin ↗" [ref=e587] [cursor=pointer]:
+            - /url: https://github.com/aiappsgbb/awesome-gbb#readme
+            - text: Browse the awesome-gbb plugin
+            - generic [ref=e588]: ↗
+  - contentinfo [ref=e589]:
+    - generic [ref=e590]:
+      - generic [ref=e591]:
+        - text: Microsoft GBB AI Apps ·
+        - code [ref=e592]: threadlight-skills
+        - text: · open guidance
+      - generic [ref=e593]:
+        - link "README.md" [ref=e594] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/awesome-gbb#readme
+        - link "THREADLIGHT.md" [ref=e595] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md
+        - link "WORKSHOP-1H-QUICKSTART.md" [ref=e596] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md
+        - link "production-readiness.md" [ref=e597] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md
+        - link "ZAVA.md" [ref=e598] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/zava-constellation/blob/main/ZAVA.md
+        - link "AGENTS.md" [ref=e599] [cursor=pointer]:
+          - /url: https://github.com/aiappsgbb/awesome-gbb/blob/main/AGENTS.md
