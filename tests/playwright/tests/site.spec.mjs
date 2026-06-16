@@ -371,8 +371,13 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       await expect(page.locator(id), `industry section ${id} should exist`).toHaveCount(1);
     }
     // posterized: faux SPEC.md preview + read-deeper to operator MD
-    await expect(page.locator('#ind-spec .spec-preview')).toHaveCount(1);
+    // posterized: universal SPEC.md shape (was hardcoded FSI claims-triage mock)
+    await expect(page.locator('#ind-spec .spec-shape')).toHaveCount(1);
+    await expect(page.locator('#ind-spec .spec-shape .ss-cell')).toHaveCount(12);
     await expect(page.locator('#ind-spec .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
+    // No customer-specific copy on the public industries page
+    const indSpec = ((await page.locator('#ind-spec').textContent()) || '').toLowerCase();
+    expect(indSpec, 'no hardcoded FSI mock anymore').not.toMatch(/claims triage.*route by complexity/);
   });
 
   test('production.html renders the chapter hero + amber→green journey + scorecard', async ({ page }) => {
@@ -508,7 +513,7 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     const pages = [
       { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 2, artefact: '.relay-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview,.chain-rail' },
       { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.terminal-card,.scorecard-preview,.spec-preview' },
+      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.spec-shape,.terminal-card,.scorecard-preview,.spec-preview' },
     ];
     for (const p of pages) {
       await page.goto(p.url);

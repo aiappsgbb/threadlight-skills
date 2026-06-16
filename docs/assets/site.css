@@ -2244,6 +2244,110 @@
     color: var(--ink-0);
     font-weight: 600;
   }
+
+  /* --- .ind-sector-grid — LOCKED 3-column grid for the 6 industries
+     (no auto-fit; we always want a clean 3 × 2 at desktop). */
+  .poster-triptych.ind-sector-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  @media (max-width: 1100px) {
+    .poster-triptych.ind-sector-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .poster-triptych.ind-sector-grid { grid-template-columns: 1fr; }
+  }
+
+  /* --- .spec-shape — universal SPEC.md anatomy (12-cell grid) -- */
+  .spec-shape {
+    margin: var(--s-6) auto 0;
+    max-width: 1480px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .spec-shape .ss-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-1) 60%, transparent);
+  }
+  .spec-shape .ss-name {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ink-0);
+    letter-spacing: 0;
+  }
+  .spec-shape .ss-meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .spec-shape .ss-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+  }
+  @media (max-width: 1100px) {
+    .spec-shape .ss-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .spec-shape .ss-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .spec-shape .ss-grid { grid-template-columns: 1fr; }
+  }
+  .spec-shape .ss-cell {
+    padding: 18px 22px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    transition: background .2s ease;
+  }
+  .spec-shape .ss-cell:hover {
+    background: color-mix(in srgb, var(--chapter-accent, var(--accent-1)) 5%, transparent);
+  }
+  .spec-shape .ss-cell-accent {
+    background: color-mix(in srgb, var(--chapter-accent, var(--accent-1)) 6%, transparent);
+  }
+  .spec-shape .ss-num {
+    font: 700 11px/1 var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--chapter-accent, var(--accent-1));
+    margin: 0 0 6px;
+  }
+  .spec-shape .ss-name-row {
+    font: 500 1.02rem/1.25 var(--serif);
+    color: var(--ink-0);
+    margin: 0 0 8px;
+    letter-spacing: -.005em;
+  }
+  .spec-shape .ss-desc {
+    font: 400 .85rem/1.5 var(--sans);
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .spec-shape .ss-foot {
+    padding: 18px 24px;
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-1) 60%, transparent);
+  }
+  .spec-shape .ss-foot-line {
+    font: 400 .92rem/1.5 var(--sans);
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .spec-shape .ss-foot-line strong {
+    color: var(--ink-0);
+    font-weight: 600;
+  }
   .poster-card .poster-foot {
     margin-top: auto;
     padding-top: var(--s-3);

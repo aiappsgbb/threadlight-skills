@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-industries.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v21">
+<link rel="stylesheet" href="assets/site.css?v=ia-v22">
 </head>
 <body class="chapter-page chapter-industries">
 
@@ -108,7 +108,7 @@
         </p>
       </div>
 
-      <div class="poster-triptych" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+      <div class="poster-triptych ind-sector-grid">
 
         <article class="poster-card reveal" data-delay="1">
           <p class="poster-eyebrow">
@@ -204,58 +204,100 @@
     </div>
   </section>
 
-  <section class="chapter-section" id="ind-spec" data-toc-id="ind-spec" data-toc-label="One SPEC, one chain">
-    <div class="wrap">
+  <section class="chapter-section" id="ind-spec" data-toc-id="ind-spec" data-toc-label="What a SPEC looks like">
+    <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>What a SPEC looks like</p>
         <h2>Every pilot starts with a <em>SPEC.md.</em></h2>
         <p class="section-lede">
           The library ships one of these per process &mdash; the document
-          that comes out of stage one. The rest of the chain works from
-          this file. Below is the shape, drawn from an FSI claims-triage
-          example.
+          that comes out of stage one. Same shape every time; the
+          customer&rsquo;s rules, data, and regulator fill it in. Below
+          is the universal shape, not a specific example.
         </p>
       </div>
 
-      <article class="spec-preview reveal">
-        <div class="spec-meta">
-          <span>SPEC.md</span>
-          <span>FSI &middot; claims-triage &middot; v0.3</span>
+      <article class="spec-shape reveal" aria-label="Shape of a Threadlight SPEC.md (universal sections)">
+        <header class="ss-bar">
+          <span class="ss-name">SPEC.md</span>
+          <span class="ss-meta">12 sections &middot; SpecKit shape &middot; ~5&ndash;7&nbsp;min read</span>
+        </header>
+
+        <div class="ss-grid">
+          <article class="ss-cell">
+            <p class="ss-num">§ 1</p>
+            <p class="ss-name-row">Process overview</p>
+            <p class="ss-desc">Customer · domain · target persona · goals · in/out of scope · participants.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 2</p>
+            <p class="ss-name-row">Business rules</p>
+            <p class="ss-desc">Numbered, testable rules. The audit trail traces every action back here.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 3</p>
+            <p class="ss-name-row">Data models</p>
+            <p class="ss-desc">Inputs, outputs, intermediate state. Schemas for what flows through.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 4</p>
+            <p class="ss-name-row">Tool contracts</p>
+            <p class="ss-desc">Named tools the agent calls. Input/output JSON shape per tool.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 5</p>
+            <p class="ss-name-row">Process flow</p>
+            <p class="ss-desc">Sequence of agent actions. Decision points, branching, error paths.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 6</p>
+            <p class="ss-name-row">Skills</p>
+            <p class="ss-desc">Composable agent capabilities. SPEC declares which ones are wired.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 7</p>
+            <p class="ss-name-row">Eval scenarios</p>
+            <p class="ss-desc">Golden examples + edge cases. The continuous-eval gate runs against these.</p>
+          </article>
+          <article class="ss-cell ss-cell-accent">
+            <p class="ss-num">§ 8</p>
+            <p class="ss-name-row">HITL gates</p>
+            <p class="ss-desc">Every consequential step a human approves. Named, signed, audited.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 9</p>
+            <p class="ss-name-row">Observability</p>
+            <p class="ss-desc">Traces, metrics, dashboards the SRE owner can act on day-1.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 10</p>
+            <p class="ss-name-row">Event triggers</p>
+            <p class="ss-desc">How the agent runs &mdash; chat, schedule, queue, event &mdash; with idempotency.</p>
+          </article>
+          <article class="ss-cell">
+            <p class="ss-num">§ 11</p>
+            <p class="ss-name-row">Cost &amp; load</p>
+            <p class="ss-desc">Declared production load. Drives the consumption-iq forecast manifest.</p>
+          </article>
+          <article class="ss-cell ss-cell-accent">
+            <p class="ss-num">§ 12</p>
+            <p class="ss-name-row">Governance posture</p>
+            <p class="ss-desc">Citadel spoke / Foundry-native / customer-owned edge. Resolved here.</p>
+          </article>
         </div>
-        <div class="spec-body">
-          <h1>Claims triage &mdash; <em>route by complexity.</em></h1>
-          <p class="spec-lede">
-            Inbound retail-banking claims arrive via two channels. The
-            agent ranks them on complexity and regulator exposure, then
-            routes each one. Anything above the bar lands in a human
-            queue with reasoning attached.
+
+        <footer class="ss-foot">
+          <p class="ss-foot-line">
+            <strong>The chain reads this file, not your prompt.</strong>
+            <code>threadlight-design</code> writes it; <code>threadlight-deploy</code>,
+            <code>threadlight-safe-check</code> and <code>threadlight-production-ready</code>
+            all read it.
           </p>
-
-          <h2>Process</h2>
-          <ul>
-            <li>Ingest claim text + structured metadata from the case system.</li>
-            <li>Score complexity (1&ndash;5) and regulator exposure (flag).</li>
-            <li>Route: <code>auto-respond</code>, <code>assist-agent</code>, or <code>escalate</code>.</li>
-            <li>Persist the routing decision &amp; reasoning to the audit ledger.</li>
-          </ul>
-
-          <h2>HITL gates</h2>
-          <ul>
-            <li>Every <code>escalate</code> requires a human signature before the customer reply.</li>
-            <li>Every regulator-exposed claim is mirrored to a 100% review queue.</li>
-          </ul>
-
-          <h2>Skills used</h2>
-  <pre class="spec-block" tabindex="0">threadlight-design          (this file)
-threadlight-demo-data-factory
-threadlight-hitl-patterns
-threadlight-safe-check
-threadlight-production-ready</pre>
-        </div>
+        </footer>
       </article>
 
       <div class="read-deeper">
-        <span class="rd-label">Same shape, every other sector:</span>
+        <span class="rd-label">Want the full SpecKit method?</span>
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
       </div>
     </div>
