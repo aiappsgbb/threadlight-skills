@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Lucide icon sprite — hand-picked subset, MIT licensed.
+  Source: https://lucide.dev   v0.460.0
+  Use: <svg class="icon"><use href="/assets/lucide-sprite.svg#icon-building2"/></svg>
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+
+  <!-- Sector icons -->
+  <symbol id="icon-building2" viewBox="0 0 24 24">
+    <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
+    <path d="M6 12H4a2 2 0 0 0-2 2v8h4"/>
+    <path d="M18 9h2a2 2 0 0 1 2 2v11h-4"/>
+    <path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>
+  </symbol>
+
+  <symbol id="icon-heart-pulse" viewBox="0 0 24 24">
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/>
+    <path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/>
+  </symbol>
+
+  <symbol id="icon-factory" viewBox="0 0 24 24">
+    <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>
+    <path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>
+  </symbol>
+
+  <symbol id="icon-shopping-cart" viewBox="0 0 24 24">
+    <circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/>
+    <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
+  </symbol>
+
+  <symbol id="icon-radio-tower" viewBox="0 0 24 24">
+    <path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9"/>
+    <path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"/>
+    <circle cx="12" cy="9" r="2"/>
+    <path d="M16.2 4.8c2 2 2.26 5.11.8 7.47"/>
+    <path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1"/>
+    <path d="M9.5 18h5"/>
+    <path d="m8 22 4-11 4 11"/>
+  </symbol>
+
+  <symbol id="icon-landmark" viewBox="0 0 24 24">
+    <line x1="3" x2="21" y1="22" y2="22"/>
+    <line x1="6" x2="6" y1="18" y2="11"/>
+    <line x1="10" x2="10" y1="18" y2="11"/>
+    <line x1="14" x2="14" y1="18" y2="11"/>
+    <line x1="18" x2="18" y1="18" y2="11"/>
+    <polygon points="12 2 20 7 4 7"/>
+  </symbol>
+
+  <!-- Stage / posture / misc icons -->
+  <symbol id="icon-message-circle" viewBox="0 0 24 24">
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+  </symbol>
+
+  <symbol id="icon-file-text" viewBox="0 0 24 24">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" x2="8" y1="13" y2="13"/>
+    <line x1="16" x2="8" y1="17" y2="17"/>
+    <line x1="10" x2="8" y1="9" y2="9"/>
+  </symbol>
+
+  <symbol id="icon-cloud-upload" viewBox="0 0 24 24">
+    <path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+    <path d="m8 17 4-4 4 4"/>
+  </symbol>
+
+  <symbol id="icon-shield-check" viewBox="0 0 24 24">
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+    <path d="m9 12 2 2 4-4"/>
+  </symbol>
+
+  <symbol id="icon-trophy" viewBox="0 0 24 24">
+    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+    <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+    <path d="M4 22h16"/>
+    <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+    <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+    <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+  </symbol>
+
+  <!-- Posture-signature shapes (used in production triptych) -->
+  <symbol id="icon-shield" viewBox="0 0 24 24">
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+  </symbol>
+
+  <symbol id="icon-layers" viewBox="0 0 24 24">
+    <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>
+    <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/>
+    <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>
+  </symbol>
+
+  <symbol id="icon-network" viewBox="0 0 24 24">
+    <rect x="16" y="16" width="6" height="6" rx="1"/>
+    <rect x="2" y="16" width="6" height="6" rx="1"/>
+    <rect x="9" y="2" width="6" height="6" rx="1"/>
+    <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/>
+    <path d="M12 12V8"/>
+  </symbol>
+
+  <!-- Misc -->
+  <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+    <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+  </symbol>
+
+  <symbol id="icon-arrow-down" viewBox="0 0 24 24">
+    <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+  </symbol>
+
+  <symbol id="icon-sparkles" viewBox="0 0 24 24">
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+  </symbol>
+
+  <symbol id="icon-check-circle" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+  </symbol>
+
+  <symbol id="icon-zap" viewBox="0 0 24 24">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+  </symbol>
+
+</svg>
