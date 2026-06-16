@@ -197,13 +197,20 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
     const tiles = ind.locator('.industry-tile');
     await expect(tiles).toHaveCount(6);
     const sectors = await ind.locator('.industry-tile .it-sector').allTextContents();
-    for (const s of ['Financial services', 'Healthcare', 'Manufacturing', 'Retail', 'Public sector', 'Telco']) {
+    for (const s of ['Financial services', 'Healthcare', 'Manufacturing', 'Retail', 'Energy', 'Telco']) {
       expect(sectors.join(' | ').toLowerCase()).toContain(s.toLowerCase());
     }
+    // No "Public sector" tile — was removed in v21 (no library content)
+    expect(sectors.join(' | ').toLowerCase()).not.toContain('public sector');
     // each tile has a one-line pilot description, not empty
     for (let i = 0; i < 6; i++) {
       const line = await tiles.nth(i).locator('.it-line').textContent();
       expect((line || '').trim().length, `industry ${i} should have copy`).toBeGreaterThan(20);
+    }
+    // Each home tile links to the industries chapter for the full library
+    for (let i = 0; i < 6; i++) {
+      const href = await tiles.nth(i).getAttribute('href');
+      expect(href, `tile ${i} should link to industries.html`).toMatch(/industries\.html/);
     }
   });
 
@@ -357,7 +364,8 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
   test('industries.html renders the chapter hero + posterized sections', async ({ page }) => {
     await page.goto('/industries.html');
     await expect(page).toHaveTitle(/industries/i);
-    await expect(page.locator('.chapter-hero h1')).toContainText(/one pattern/i);
+    // Hero h1 reframed from "one pattern" → "any business process, any industry"
+    await expect(page.locator('.chapter-hero h1')).toContainText(/any business process|any industry/i);
     const sections = ['#chapter-top', '#sector-grid', '#ind-spec', '#industry-recap'];
     for (const id of sections) {
       await expect(page.locator(id), `industry section ${id} should exist`).toHaveCount(1);
@@ -629,20 +637,28 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('industries sector grid shows six poster cards above the SPEC mock', async ({ page }) => {
+  test('industries sector grid shows the 6 library industries with process lists', async ({ page }) => {
     await page.goto('/industries.html');
     const grid = page.locator('#sector-grid .poster-triptych');
     await expect(grid).toHaveCount(1);
     const cards = grid.locator('.poster-card');
     await expect(cards).toHaveCount(6);
-    // posterized: each card now points at the shared SPEC.md mock
-    const hrefs = await cards.evaluateAll(els => els.map(a => a.getAttribute('href')));
-    for (const h of hrefs) {
-      expect(h, 'industries poster card should link to the shared SPEC mock').toBe('#ind-spec');
-    }
+    // Each card carries the new .ind-proc-list (process bullets)
     for (let i = 0; i < 6; i++) {
       await expect(cards.nth(i).locator('svg.icon use')).toHaveCount(1);
+      const items = cards.nth(i).locator('.ind-proc-list li');
+      const n = await items.count();
+      expect(n, `card ${i} should list >=3 processes`).toBeGreaterThanOrEqual(3);
     }
+    // Across all 6 cards: exactly 19 curated SPECs in the library today
+    const totalProcs = await grid.locator('.ind-proc-list li').count();
+    expect(totalProcs, 'library = 19 SPECs total across 6 sectors').toBe(19);
+    // 6 sectors named (Energy & utilities replaces Public sector)
+    const sectors = (await grid.locator('.poster-eyebrow span').allTextContents()).join(' | ').toLowerCase();
+    for (const s of ['financial', 'retail', 'telco', 'manufacturing', 'healthcare', 'energy']) {
+      expect(sectors, `sector grid must include ${s}`).toContain(s);
+    }
+    expect(sectors, 'no public sector — removed in v21').not.toContain('public sector');
   });
 
   test('chapter recap block carries scorecard, three metrics, and CTA bar', async ({ page }) => {

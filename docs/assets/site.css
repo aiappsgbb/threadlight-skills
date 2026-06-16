@@ -2212,6 +2212,38 @@
     line-height: 1.55;
     color: var(--ink-1);
   }
+
+  /* --- .ind-proc-list — process bullets per industry card ---- */
+  .poster-card .ind-proc-list {
+    list-style: none;
+    margin: var(--s-3) 0 0;
+    padding: var(--s-3) 0 0;
+    border-top: 1px dashed var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .poster-card .ind-proc-list li {
+    font-family: var(--sans);
+    font-size: .9rem;
+    line-height: 1.4;
+    color: var(--ink-2);
+    padding-left: 14px;
+    position: relative;
+  }
+  .poster-card .ind-proc-list li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--chapter-accent, var(--accent-1));
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .poster-card .ind-proc-list li strong {
+    color: var(--ink-0);
+    font-weight: 600;
+  }
   .poster-card .poster-foot {
     margin-top: auto;
     padding-top: var(--s-3);
