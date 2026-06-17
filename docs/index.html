@@ -308,11 +308,12 @@
         </p>
         <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
           Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
-          <strong>six skills</strong> wired between them. Three more &mdash;
+          <strong>six skills</strong> wired between them. Four more &mdash;
           <code>threadlight-auto</code> (entry orchestrator),
-          <code>threadlight-consumption-iq</code> (cost forecast) and
-          <code>threadlight-cicd</code> (production deploy pipeline) &mdash; round out the
-          <strong>12-skill library</strong>; they fire on demand, not on every chain.
+          <code>threadlight-consumption-iq</code> (cost forecast),
+          <code>threadlight-cicd</code> (production deploy pipeline) and
+          <code>threadlight-customize</code> (fork &amp; customer onboarding) &mdash; round out the
+          <strong>13-skill library</strong>; they fire on demand, not on every chain.
         </p>
       </div>
 
@@ -415,14 +416,18 @@
           </div>
         </article>
 
-        <!-- Manual handoff after green — the production deploy pipeline -->
+        <!-- Manual handoff after green — prod pipeline, then customer onboarding -->
         <div class="chain-aux reveal">
           <div class="aux-group">
-            <div class="aux-label">After green &mdash; manual handoff, not part of the chain</div>
+            <div class="aux-label">After green &mdash; two manual handoff legs, not part of the chain</div>
             <div class="aux-row">
               <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-cicd</span>
                 <span class="aux-role">Generates the prod deploy pipeline (GitHub Actions / Azure DevOps) + env-setup runbooks &mdash; OIDC/WIF identity, scoped RBAC, private-VNet runners. Scoped to the spoke RG; separate from <code>citadel-hub-deploy</code>.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize">
+                <span class="aux-name"><span class="accent">threadlight</span>-customize</span>
+                <span class="aux-role">The final leg &mdash; fork the pipeline and onboard it into <em>one</em> customer&rsquo;s environment (landing zones, RBAC, private VNet). Instructions, not automation; production onboarding first.</span>
               </a>
             </div>
           </div>
