@@ -1,0 +1,36 @@
+# 03 — Private-VNet runners
+
+> **Owner: central platform team.** Needed when the deployment target is on a
+> private network (private endpoints, no public ingress). Public Microsoft-hosted
+> runners cannot reach private endpoints, so the pipeline must run on a runner
+> with a NIC in (or peered to) the target VNet.
+
+This pilot's network exposure: **private = {{PRIVATE_NETWORK}}**.
+
+## GitHub Actions options
+- **Self-hosted runners** on a VM / VM scale set joined to the VNet — label the
+  workflow `runs-on: [ self-hosted, threadlight-prod ]`.
+- **GitHub-hosted larger runners with Azure private networking** — managed by
+  GitHub, with a NIC injected into your VNet (a managed "larger runner" option,
+  no infra to patch).
+
+## Azure DevOps options
+- **Managed DevOps Pool** with VNet injection — Microsoft-managed agents placed
+  on your subnet; referenced from the pipeline as `pool: { name: <pool> }`.
+- **Self-hosted agents** (VMSS agent pool) joined to the VNet.
+
+## Provisioning sketch (self-hosted VMSS, either platform)
+```bash
+# Create a VNet-joined VM scale set to host self-hosted runners/agents.
+az vmss create \
+  --name vmss-{{ENV_NAME}}-runners \
+  --resource-group {{TARGET_RESOURCE_GROUP}} \
+  --subscription {{TARGET_SUBSCRIPTION_ID}} \
+  --image Ubuntu2204 \
+  --vnet-name <target-vnet> --subnet <runners-subnet> \
+  --instance-count 2 --orchestration-mode Uniform
+# Then install the GitHub runner / ADO agent and register it to the repo/pool.
+```
+
+> The platform team owns this infrastructure. The pilot pipeline only references
+> the runner label / pool name — it never creates network or platform resources.

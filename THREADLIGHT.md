@@ -1,12 +1,12 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the eleven-skill pilot pipeline.**
+> **Engineering reference for the twelve-skill pilot pipeline.**
 > The narrative / pitch version of this material lives in the
 > [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **library of eleven `threadlight-*` skills** that take a
+Threadlight is a **library of twelve `threadlight-*` skills** that take a
 customer engagement from a one-paragraph brief through to a deployed,
 evaluated, observable, **production-ready** Microsoft Foundry hosted agent
 — runnable on the customer's tenant in a single working session, then
@@ -16,16 +16,16 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 → SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
-The eleven skills (alphabetical, but the canonical flow order is given in
+The twelve skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-auto                threadlight-hitl-patterns
+threadlight-auto                threadlight-event-triggers
+threadlight-cicd                threadlight-hitl-patterns
 threadlight-consumption-iq      threadlight-local-test
 threadlight-demo-data-factory   threadlight-production-ready
 threadlight-deploy              threadlight-safe-check
 threadlight-design              threadlight-workspace-ui
-threadlight-event-triggers
 ```
 
 ---
@@ -44,6 +44,7 @@ skill sounds most exciting.
 | You inherited an existing deploy and need to know what's broken | `threadlight-safe-check --phase post-deploy` | deploy (re-run) → safe-check |
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
+| Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `citadel-hub-deploy`) |
 | SPEC § 8 declares HITL action gates | `threadlight-hitl-patterns` | (paired with `foundry-teams-bot`) |
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
 | SPEC § 10 declares scheduled / event-driven triggers | `threadlight-event-triggers` | (paired with deploy) |
@@ -381,7 +382,78 @@ is for your records.
 
 ---
 
+### 10. `threadlight-cicd` ([SKILL.md](skills/threadlight-cicd/SKILL.md))
+
+The production-leg companion for the common real-world case where the
+agent **cannot** run `azd up` directly: prod deploys go through a CI/CD
+pipeline, under a federated identity with scoped RBAC, often from
+private-VNet runners. Where `threadlight-deploy` assumes a permissive
+sandbox, this skill assumes a **locked-down customer environment** and the
+agent has no standing deploy rights.
+
+It opens with an **onboarding-path decision gate** before generating
+anything:
+
+| Is a central platform env required? | Already deployed? | Resolves to | Posture · RBAC scope |
+|---|---|---|---|
+| no | — | `standalone` (validate target sub/RG, shared-resource usage, network exposure first) | standard-ai-gateway/agt/direct · target-rg |
+| yes | yes | `spoke-onboard` (consume hub via Access Contract → `citadel-spoke-onboarding`) | citadel-spoke · spoke-rg |
+| yes | no | `hub-deploy-then-spoke` (stand up hub on the **separate** central track → `citadel-hub-deploy`, then spoke-onboard) | citadel-spoke · spoke-rg |
+
+```bash
+# interactive onboarding-path gate, then generate
+python skills/threadlight-cicd/scripts/generate_pipeline.py --onboard
+
+# GitHub Actions, standalone, non-interactive
+python skills/threadlight-cicd/scripts/generate_pipeline.py \
+  --platform github-actions --central-env-required no \
+  --repo-full-name owner/repo --target-sub <sub> --target-rg <rg> --tenant-id <tid>
+
+# Azure DevOps, private VNet
+python skills/threadlight-cicd/scripts/generate_pipeline.py \
+  --platform azure-devops --private-network \
+  --ado-org <org> --ado-project <proj> --ado-service-connection <sc> \
+  --target-sub <sub> --target-rg <rg> --tenant-id <tid>
+```
+
+**Outputs (deterministic, offline, secret-free).**
+- Pipeline: `.github/workflows/azd-deploy-prod.yml` (GitHub OIDC) **or**
+  `azure-pipelines.yml` (Azure DevOps Workload Identity Federation).
+- `docs/threadlight-cicd/env-setup/` runbooks + `.sh` scripts for the
+  platform team: `01` UAMI + federated creds, `02` least-privilege RBAC
+  (scoped to the target/spoke RG only), `03` private-VNet runners
+  (managed **and** self-hosted), plus a `README.md`.
+- `docs/threadlight-cicd/central-platform-boundary.md` and
+  `onboarding-path.json` (auditable decision record).
+
+**The must-tell (parallel-track boundary).** The pilot pipeline is a
+**separate repo/pipeline** from central-platform deployment. It deploys
+**only** use-case resources into the spoke/target RG and **must never**
+deploy or modify the Citadel hub, shared APIM, shared networking, or
+platform Key Vault — those belong to `citadel-hub-deploy` (awesome-gbb).
+For `citadel-spoke` posture the pilot consumes the hub via an Access
+Contract (`citadel-spoke-onboarding`); the deploy identity's RBAC is
+scoped to the spoke RG, never hub scope.
+
+**Soft handoff, not a gate.** Generation is offline and never touches
+Azure. The env-setup runbooks are executed by the customer's platform
+team — the skill never assumes deploy rights and never emits a long-lived
+secret (OIDC / WIF only; the test-suite fails the build if a secret or PAT
+lands in any emitted file).
+
+**Relationship to production-ready.** `threadlight-production-ready`
+Phase 3 (`--scaffold-cicd`) still ships a *basic* GitHub-Actions-only
+scaffold for backward-compat; **this skill is the authoritative, expanded
+home** (both platforms, the gate, the env runbooks, the boundary). Run it
+after the readiness scorecard is green.
+
+**Not driven by `threadlight-auto`.** Auto is a pilot driver, not a prod
+pipeline orchestrator — this is a manual handoff step.
+
+---
+
 ## Appendix A — `threadlight-auto` (the orchestrator)
+
 
 The nine skills above are the **spine**. They're invoked individually
 when an SE wants stage-by-stage control: design today, deploy tomorrow,

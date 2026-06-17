@@ -129,6 +129,14 @@ The skill drives **production onboarding** in three phases:
    explaining exactly which UAMI + federated credential to provision so
    future pushes to `main` deploy without long-lived secrets.
 
+   > **This is the *basic* scaffold (GitHub Actions only).** The authoritative,
+   > expanded CI/CD home is the dedicated **`threadlight-cicd`** skill: GitHub
+   > Actions **and** Azure DevOps, an onboarding-path decision gate, env-setup
+   > runbooks (UAMI/federated creds, least-privilege RBAC, private-VNet runners),
+   > and an explicit central-platform boundary (keeps the pilot pipeline separate
+   > from `citadel-hub-deploy`). After this readiness gate is green, hand off to
+   > `threadlight-cicd` for the production pipeline.
+
 **The Python script is assessor-only for remediation findings.** It never mutates your repo or
 subscription for findings — fixes are dispatched to the agent as apply-plan tasks. The single
 documented exception is `--scaffold-cicd`, which writes 2 files (`.github/workflows/azd-deploy-prod.yml`

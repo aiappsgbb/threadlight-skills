@@ -16,6 +16,8 @@ name: python-pytest
 #     existing pillar tests)
 #   - skills/threadlight-auto/tests/             (orchestrator state
 #     machine, includes the new cost_projection stage probe)
+#   - skills/threadlight-cicd/tests/             (prod CI/CD pipeline +
+#     env-setup runbook generator — deterministic, secret-free, no network)
 #
 # 2 e2e tests in threadlight-production-ready/tests/test_end_to_end.py
 # are pre-existing failures caused by stale safe-check fixtures and are
@@ -48,3 +50,5 @@ jobs:
       - name: Run threadlight-auto tests
         run: python -m pytest skills/threadlight-auto/tests/ -v
         continue-on-error: true
+      - name: Run threadlight-cicd tests
+        run: python -m pytest skills/threadlight-cicd/tests/ -v

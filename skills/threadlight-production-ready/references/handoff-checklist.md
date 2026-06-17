@@ -80,6 +80,23 @@ in at least one prior GBB engagement, so push hard against waiving them.
 | ☐ | Foundry account capacity available in the target region | Product | `MDL-111` |
 | ☐ | Declared `target_posture` matches detected live evidence (no `POS-001`) | SE | `POS-001` |
 
+## G — The production deploy path exists (CI/CD)
+
+When the customer's prod environment is locked down (no direct `azd up`, the
+agent has no standing deploy rights), the pilot ships through a pipeline. Generate
+these with the dedicated **`threadlight-cicd`** skill — they are deliberately a
+**separate repo/pipeline** from the central platform (`citadel-hub-deploy`).
+
+| ☐ | Item | Owner |
+|---|---|---|
+| ☐ | Onboarding path resolved (standalone / spoke-onboard / hub-deploy-then-spoke) and `onboarding-path.json` recorded | SE |
+| ☐ | Prod deploy pipeline generated (`threadlight-cicd`) for the target platform (GitHub Actions or Azure DevOps) | SE |
+| ☐ | Pipeline authenticates with **OIDC / Workload Identity Federation** — no `AZURE_CREDENTIALS`, client secret, or PAT | Platform team |
+| ☐ | UAMI + federated credentials provisioned from `env-setup/01` runbook | Platform team |
+| ☐ | Deploy-identity RBAC scoped to the **target/spoke resource group only** (no hub or subscription scope) — `env-setup/02` | Platform team |
+| ☐ | If private VNet: managed-or-self-hosted runners provisioned and wired (`env-setup/03`) | Platform team |
+| ☐ | `central-platform-boundary.md` reviewed — pipeline makes **no** central-platform writes | Both |
+
 ---
 
 > **If any box is unchecked at cutover time, the answer to "are we
