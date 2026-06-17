@@ -589,6 +589,10 @@
   }
   .skill-invoke .prompt { color: var(--accent-1); user-select: none; }
   .skill-invoke .arg    { color: var(--ink-2); }
+  .skill-note {
+    margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3);
+  }
+  .skill-note strong { color: var(--ink-2); font-weight: 600; }
 
   .skill-footer {
     display: flex; justify-content: space-between; align-items: center;

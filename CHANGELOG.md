@@ -127,6 +127,21 @@ field.
 
 ### Changed
 
+- **`threadlight-design` v1.8.0 — Fast-PoC scoped to basic scenarios +
+  mode-selection triage**: Fast-PoC is no longer a blanket default. The skill now runs a
+  **complexity triage** before locking a mode — a scenario is "basic"
+  (Fast-PoC OK) only when it is read-only/trivially-reversible, stateless or
+  session-based, agent-shaped, free of heavy compliance weight, narrow-surface,
+  and not facing SME review. If any non-basic signal is present (regulated
+  domain, consequential actions, case lifecycle, multi-phase workflow), the
+  skill asks **one triage question** naming the signal and defaults to Full
+  mode (Step 1.5) so the extra round improves the outcome; the user can still
+  force Fast-PoC. Docs updated to match: `THREADLIGHT.md` mode summary +
+  quick-ref, `docs/WORKSHOP-1H-QUICKSTART.md` basic-scenario note, and the
+  `docs/index.html` / `docs/funnel.html` entry cards (FSI claims-triage example
+  no longer says "Fast PoC mode"; a note explains Fast-PoC is for basic
+  scenarios). New `.skill-note` style in `assets/site.css` (cache-buster
+  `ia-v24`).
 - **`threadlight-production-ready` COST-005 tightened**: previously checked
   only `docs/cost-projection.md` existence. Now requires ALL of:
   `docs/cost-projection.md` present AND `specs/cost-manifest.json` present

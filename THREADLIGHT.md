@@ -88,8 +88,11 @@ should not duplicate skill internals.
   is `threadlight-demo-data-factory`'s job).
 
 **Depends on.** Nothing upstream. The two operating modes are **Full**
-(stakeholder review, checkpoint after interview) and **Fast-PoC** (2–3
-questions then proceed directly).
+(stakeholder review, checkpoint after interview — the default for anything
+non-basic) and **Fast-PoC** (2–3 questions then proceed directly — **basic
+scenarios only**). The skill runs a complexity triage first and steers
+regulated, consequential-action, case-based, or multi-phase briefs to Full
+mode so the triage round can improve the outcome.
 
 **Persona note.** This is the only skill that runs cleanly inside
 Microsoft Copilot Cowork. Everything below this line needs a real shell.
@@ -553,7 +556,8 @@ The five most-used incantations, copy-pasteable. Each one assumes a real
 shell (not Cowork) for the runtime ones.
 
 ```bash
-# Spec a brand-new process in Fast-PoC mode
+# Spec a brand-new process in Fast-PoC mode (basic scenarios only — the skill
+# triages first and steers regulated / multi-phase / consequential briefs to Full mode)
 > threadlight-design   # then: "Design a {process} for a {industry} customer. Fast PoC mode."
 
 # Bring up the inner-loop in <30 min
