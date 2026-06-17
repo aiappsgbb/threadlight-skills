@@ -275,34 +275,91 @@
         </p>
       </div>
 
-      <div class="detail-grid reveal" data-delay="1">
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>What the pilot proved</p>
-          <h3>The agent is real</h3>
-          <p>
-            Design, deploy, evals, a green production-ready scorecard &mdash; the
-            idea works and is production-<em>shaped</em>. That earns the next
-            conversation; it does not finish it.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>What it didn&rsquo;t</p>
-          <h3>It never met their estate</h3>
-          <p>
-            A sandbox run says nothing about private DNS, scoped identity,
-            mandated IaC, change-management gates, or whether deploy even reaches
-            the customer&rsquo;s private endpoints. That is where onboarding lives.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Why fork, not rebuild</p>
-          <h3>Make it theirs &mdash; keep upstream</h3>
-          <p>
-            Forking lets you tailor the pipeline to one customer <em>and</em> still
-            pull upstream Threadlight fixes later, because every customer change
-            lives in an overlay &mdash; not in edited skill files.
-          </p>
-        </article>
+      <div class="amber-green-track reveal" data-delay="1">
+        <div class="agt-stage-labels">
+          <p class="agt-label is-amber"><span class="agt-day">On a sandbox</span> what the green pilot proved</p>
+          <p class="agt-label is-green"><span class="agt-day">In their estate</span> what production onboarding lands</p>
+        </div>
+
+        <div class="agt-track">
+          <!-- SANDBOX (amber) -->
+          <div class="agt-column is-amber">
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Identity</p>
+              <p class="agt-owner">Your SE login &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Network</p>
+              <p class="agt-owner">Public endpoints &middot; <span class="agt-owner-name">Cloud Ops</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Regions</p>
+              <p class="agt-owner">Any region &middot; <span class="agt-owner-name">Cloud Ops</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Landing zone</p>
+              <p class="agt-owner">Greenfield RG &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Governance</p>
+              <p class="agt-owner">None &middot; <span class="agt-owner-name">Security</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">IaC</p>
+              <p class="agt-owner">azd defaults &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+          </div>
+
+          <!-- ARROW -->
+          <div class="agt-arrow" aria-hidden="true">
+            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+              <path d="M 10 32 L 50 32 M 38 18 L 54 32 L 38 46"
+                    fill="none" stroke="currentColor" stroke-width="3"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <p class="agt-arrow-label">The four moves<br>close the gap</p>
+          </div>
+
+          <!-- ESTATE (green) -->
+          <div class="agt-column is-green">
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Identity</p>
+              <p class="agt-owner">UAMI + scoped RBAC &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Network</p>
+              <p class="agt-owner">Private endpoint + DNS &middot; <span class="agt-owner-name">Cloud Ops</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Regions</p>
+              <p class="agt-owner">Allow-listed only &middot; <span class="agt-owner-name">Cloud Ops</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Landing zone</p>
+              <p class="agt-owner">Their hub-spoke &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">Governance</p>
+              <p class="agt-owner">Change-mgmt gates &middot; <span class="agt-owner-name">Security</span></p>
+            </article>
+            <article class="agt-pillar">
+              <span class="agt-dot" aria-hidden="true"></span>
+              <p class="agt-name">IaC</p>
+              <p class="agt-owner">Mandated modules &middot; <span class="agt-owner-name">Platform team</span></p>
+            </article>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -322,26 +379,45 @@
         </p>
       </div>
 
-      <div class="detail-grid reveal" data-delay="1">
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Bounded &rarr; automate</p>
-          <h3>What the pipeline already generates</h3>
-          <p>
-            Design, deploy, safe-check, evals, the production-ready scorecard,
-            the CI/CD pipeline &mdash; all deterministic, all tested, because the
-            shape of the input is known. Those skills stay exactly as they are.
+      <div class="poster-triptych">
+        <article class="poster-card reveal" data-delay="1">
+          <p class="poster-eyebrow"><span>Bounded &rarr; automate</span></p>
+          <svg class="poster-icon" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="5" y="5" width="26" height="26" rx="5" fill="currentColor" fill-opacity="0.30" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M12 18 L16 22 L24 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h3>What the pipeline <em>already generates</em>.</h3>
+          <p class="poster-lede">
+            Design, deploy, safe-check, evals, the production-ready scorecard, the
+            CI/CD pipeline &mdash; all deterministic, all tested, because the shape
+            of the input is known. These skills stay exactly as they are.
           </p>
+          <div class="poster-foot">
+            <span class="pill">deterministic</span>
+            <span class="pill muted">design &middot; deploy &middot; safe-check</span>
+            <span class="pill muted">evals &middot; cicd</span>
+          </div>
         </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Unbounded &rarr; instruct</p>
-          <h3>What no generator can own</h3>
-          <p>
+
+        <article class="poster-card reveal" data-delay="2">
+          <p class="poster-eyebrow"><span>Unbounded &rarr; instruct</span></p>
+          <svg class="poster-icon" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="5" y="5" width="26" height="26" rx="5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3" stroke-opacity="0.85"/>
+            <path d="M18 11 L18 25 M11 18 L25 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          <h3>What no generator <em>can own</em>.</h3>
+          <p class="poster-lede">
             Landing-zone topology, identity model, allowed regions, private DNS,
             egress rules, mandated IaC modules, change-management gates, approval
             chains &mdash; all theirs, all different. So this leg is
             <strong>prose&nbsp;+&nbsp;templates</strong>: capture, classify, test,
             and name the boundary.
           </p>
+          <div class="poster-foot">
+            <span class="pill">per-customer</span>
+            <span class="pill muted">landing zone &middot; identity &middot; regions</span>
+            <span class="pill muted">DNS &middot; IaC &middot; governance</span>
+          </div>
         </article>
       </div>
 
