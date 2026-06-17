@@ -181,9 +181,10 @@ Fork Threadlight the way that survives upstream updates. The full runbook is
 
 1. **Fork** the `threadlight-skills` repo (or install the plugin and overlay
    alongside it) into the customer's org / your engagement repo.
-2. **Pin upstream.** Record the upstream commit you forked from — mirror the
-   existing `references/upstream-pin.md` convention that `threadlight-deploy`
-   and `threadlight-local-test` already use.
+2. **Pin upstream.** Record the upstream commit you forked from — a lightweight
+   fork-pin analogous in spirit to the `references/upstream-pin.md` freshness
+   records that `threadlight-deploy` and `threadlight-local-test` keep for the
+   sources they vendor.
 3. **Overlay, don't fork-edit.** Keep customer overrides (selectors, env
    hooks, thresholds, mandated IaC) in a separate overlay directory layered
    over the pinned upstream, so a later `git merge` of upstream Threadlight

@@ -73,9 +73,10 @@ git add overlay/upstream-pin.md
 git commit -m "chore: pin upstream threadlight"
 ```
 
-This mirrors the `references/upstream-pin.md` convention `threadlight-deploy`
-and `threadlight-local-test` already use. Re-pin whenever you intentionally
-pull upstream (Step 6).
+This is analogous in spirit to the `references/upstream-pin.md` freshness
+records `threadlight-deploy` and `threadlight-local-test` keep for the sources
+they vendor — except here you pin the Threadlight fork's own upstream. Re-pin
+whenever you intentionally pull upstream (Step 6).
 
 ## Step 3 — Scaffold the overlay
 
@@ -119,26 +120,36 @@ folder. Three worked examples — the priority-#1 skills:
 ### `threadlight-production-ready` — the customer's policy baseline
 
 The scorecard already accepts a `customer-overrides.yaml` (real schema in
-`skills/threadlight-production-ready/references/customer-overrides-schema.md`;
-status-flips only, must-fix findings cannot be flipped). Put the customer's
-version in the overlay:
+`skills/threadlight-production-ready/references/customer-overrides-schema.md`).
+Overrides are **status flips only** (`pass` ↔ `fail`) on `should-fix` findings,
+each with a written reason for the audit trail. **`must-fix` findings cannot be
+flipped** — the scorecard exits 2 and names the one you tried. Put the
+customer's version in the overlay:
 
 ```yaml
 # overlay/production-ready/customer-overrides.yaml
 customer: <customer-name>
 overrides:
-  - recipe_id: SEC-103
-    status: pass            # customer uses an approved equivalent vault
-    reason: "Org-approved secret store is an equivalent control; reviewed by security 2026-Q2."
-  - recipe_id: NET-201
-    status: fail            # customer is STRICTER than default
-    reason: "Customer policy mandates private endpoints on all PaaS (compliance mandate)."
+  - recipe_id: SEC-105            # should-fix: KV access via RBAC, not legacy policies
+    status: pass                  # customer uses an approved equivalent control
+    reason: "Access policies are governed by the customer's audited PIM workflow; equivalent control, reviewed by security 2026-Q2."
+  - recipe_id: NET-103            # should-fix: NSG flow logs on spoke subnets
+    status: fail                  # customer is STRICTER than the default
+    reason: "Customer audit policy mandates NSG flow logs on every spoke subnet."
 ```
 
-Run the scorecard against it:
+> Pick **real, `should-fix`** recipe IDs from the pillar catalogs
+> (`skills/threadlight-production-ready/references/pillars/*.md`). Hard
+> requirements such as private endpoints (`NET-102`) or Key Vault public-access
+> (`SEC-103`) are `must-fix` and will be rejected — remediate those, don't flip
+> them.
+
+Run the scorecard against the customer's pilot project (where its
+`specs/manifest.json` lives — **not** the fork root):
 
 ```bash
 python3 skills/threadlight-production-ready/scripts/production_ready.py \
+  --root <path-to-customer-pilot> \
   --customer-overrides overlay/production-ready/customer-overrides.yaml
 ```
 
@@ -153,12 +164,13 @@ the skill:
 azd env set AZURE_SUBSCRIPTION_ID  <customer-sub-id>
 azd env set AZURE_LOCATION         <customer-allowed-region>
 azd env set AZURE_RESOURCE_GROUP   <customer-spoke-rg>
-azd env set USE_PRIVATE_ENDPOINTS  true
 ```
 
-Record the manifest selector changes (region allow-list, private-DNS wiring,
-mandated IaC modules from profile Block D) under `overlay/deploy/` and
-reference them from the customization map.
+Private networking is **not** an `azd` flag — it is driven by the SPEC
+`target_posture` (`citadel-spoke` / `hybrid` / `vnet`) and the Bicep module
+selectors in `specs/manifest.json`. Record the customer's posture, region
+allow-list, private-DNS wiring, and mandated IaC modules (profile Block D)
+under `overlay/deploy/` and reference them from the customization map.
 
 ### `threadlight-cicd` — identity, RBAC, runners
 
@@ -199,6 +211,7 @@ Then re-validate and re-pin:
 ```bash
 # confirm the overlay still passes against the new upstream
 python3 skills/threadlight-production-ready/scripts/production_ready.py \
+  --root <path-to-customer-pilot> \
   --customer-overrides overlay/production-ready/customer-overrides.yaml
 
 git rev-parse upstream/main   # update overlay/upstream-pin.md 'commit:' to this value
