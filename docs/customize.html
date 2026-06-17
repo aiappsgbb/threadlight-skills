@@ -418,6 +418,34 @@
           <span class="move-art">&rarr; non-coverage.md</span>
         </div>
       </div>
+
+      <article class="scorecard-preview reveal" data-delay="2" aria-label="customer-profile.md intake workbook preview">
+        <header class="sc-header">
+          <p class="sc-title">customer-profile.md</p>
+          <p class="sc-headline">Move&nbsp;1 output &mdash; <em>onboarding intake</em></p>
+          <p class="sc-posture">Status &mdash; <strong>6 received &middot; 2 partial &middot; 2 blockers</strong></p>
+        </header>
+        <div class="sc-grid">
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">DOC</span><span class="sc-name">Architecture docs</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">LZ</span><span class="sc-name">Landing-zone topology</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">IDN</span><span class="sc-name">Identity model</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">RGN</span><span class="sc-name">Allowed regions</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">RBAC</span><span class="sc-name">Scoped roles</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">CMG</span><span class="sc-name">Change-mgmt gates</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">ENV</span><span class="sc-name">azd env setup</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">DNS</span><span class="sc-name">Private DNS / egress</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">IAC</span><span class="sc-name">Mandated IaC modules</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">REQ</span><span class="sc-name">Requirements sign-off</span></div>
+        </div>
+        <footer class="sc-footer">
+          <p class="sc-legend">
+            <span><i class="lg-green"></i> received</span>
+            <span><i class="lg-amber"></i> partial</span>
+            <span><i class="lg-grey"></i> missing &mdash; blocker</span>
+          </p>
+          <p class="sc-take">Intake take: <strong>2 blockers before kickoff</strong> &mdash; mandated IaC + requirements. Every blank is a blocker.</p>
+        </footer>
+      </article>
     </div>
   </section>
 
@@ -434,7 +462,32 @@
         </p>
       </div>
 
-      <div class="detail-grid reveal" data-delay="1">
+      <article class="scorecard-preview reveal" data-delay="1" aria-label="customization-map.md preview" style="margin-bottom: 8px;">
+        <header class="sc-header">
+          <p class="sc-title">customization-map.md</p>
+          <p class="sc-headline">Move&nbsp;2 output &mdash; <em>what to override</em></p>
+          <p class="sc-posture">Map &mdash; <strong>4 override &middot; rest stays upstream</strong></p>
+        </header>
+        <div class="sc-grid">
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">01</span><span class="sc-name">deploy &mdash; LZ, regions, DNS</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">02</span><span class="sc-name">safe-check &mdash; selectors</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">03</span><span class="sc-name">cicd &mdash; identity, RBAC</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">04</span><span class="sc-name">production-ready &mdash; thresholds</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">05</span><span class="sc-name">design &mdash; keep</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">local-test &mdash; keep</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">07</span><span class="sc-name">evals &mdash; keep</span></div>
+          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">08</span><span class="sc-name">consumption-iq &mdash; keep</span></div>
+        </div>
+        <footer class="sc-footer">
+          <p class="sc-legend">
+            <span><i class="lg-amber"></i> per-customer override</span>
+            <span><i class="lg-green"></i> agnostic &mdash; keep upstream</span>
+          </p>
+          <p class="sc-take">Map take: <strong>the override surface is small &amp; named</strong> &mdash; selectors, azd env, thresholds, mandated IaC.</p>
+        </footer>
+      </article>
+
+      <div class="detail-grid reveal" data-delay="2">
         <article class="detail-card">
           <h3><code>threadlight-deploy</code> <span class="prio">priority</span></h3>
           <p>
@@ -740,7 +793,7 @@
 
   <!-- ==================== THE BOUNDARY ==================== -->
   <section class="chapter-section" id="boundary" data-toc-id="boundary" data-toc-label="The boundary">
-    <div class="wrap">
+    <div class="wrap wrap-xl">
       <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>Move 4, restated</p>
         <h2>The boundary <em>is the deliverable.</em></h2>
@@ -753,6 +806,31 @@
           keeps as instructions.
         </p>
       </div>
+
+      <article class="scorecard-preview reveal" data-delay="1" aria-label="non-coverage.md preview">
+        <header class="sc-header">
+          <p class="sc-title">non-coverage.md</p>
+          <p class="sc-headline">Move&nbsp;4 output &mdash; <em>what stays human</em></p>
+          <p class="sc-posture">Boundary &mdash; <strong>named &middot; owned &middot; logged</strong></p>
+        </header>
+        <div class="sc-grid">
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">P1</span><span class="sc-name">Production onboarding runbook</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">LZ</span><span class="sc-name">Landing-zone / VNet topology</span></div>
+          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">IDN</span><span class="sc-name">Identity &amp; RBAC model</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">DNS</span><span class="sc-name">Private DNS / egress rules</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">CMG</span><span class="sc-name">Change-mgmt &amp; approvals</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">IAC</span><span class="sc-name">Mandated IaC wiring</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">RES</span><span class="sc-name">Data residency / regions</span></div>
+          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">SEC</span><span class="sc-name">Customer security exceptions</span></div>
+        </div>
+        <footer class="sc-footer">
+          <p class="sc-legend">
+            <span><i class="lg-amber"></i> owner named &middot; decision logged</span>
+            <span><i class="lg-grey"></i> instructions, not automation</span>
+          </p>
+          <p class="sc-take">Boundary take: <strong>this list is the deliverable</strong> &mdash; the calibration the architecture review signs off.</p>
+        </footer>
+      </article>
     </div>
   </section>
 
