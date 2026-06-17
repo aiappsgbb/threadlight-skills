@@ -733,6 +733,60 @@
     </div>
   </section>
 
+  <!-- =================== SHIP IT (CI/CD) =================== -->
+
+  <section class="chapter-section" id="prod-cicd" data-toc-id="prod-cicd" data-toc-label="Ship it &middot; the pipeline">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>After green &middot; the handoff</p>
+        <h2>Green scorecard &mdash; <em>now ship it through a pipeline, not your laptop.</em></h2>
+        <p class="section-lede">
+          The scorecard proves the pilot is <em>production-shaped</em>. It does
+          <strong>not</strong> prove that by running <code>azd up</code> from a
+          laptop &mdash; in a real customer tenant the agent rarely has those
+          rights. Prod deploys go through CI/CD, run by a <strong>federated
+          identity</strong> with <strong>scoped RBAC</strong>, often from a
+          <strong>private-VNet runner</strong>. <code>threadlight-cicd</code>
+          generates that pipeline and the env-setup runbooks the platform team
+          executes &mdash; it never assumes deploy rights of its own. It&rsquo;s a
+          deliberate <em>manual handoff</em>, not part of the one-session chain.
+        </p>
+      </div>
+
+      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>01 &middot; Two platforms</p>
+          <h3>Your CI of choice.</h3>
+          <p>Ready-to-run <code>azd-deploy-prod.yml</code> (GitHub Actions) or <code>azure-pipelines.yml</code> (Azure DevOps) &mdash; gated on an environment approval, re-running production-ready post-deploy.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>02 &middot; Secret-free identity</p>
+          <h3>OIDC / Workload Identity Federation.</h3>
+          <p>A UAMI plus federated credentials &mdash; no <code>AZURE_CREDENTIALS</code>, no client secret in the repo. Runbooks and <code>az</code> scripts the platform team runs; a test asserts no secret ever ships in a template.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>03 &middot; Scoped RBAC</p>
+          <h3>Least-privilege, spoke-RG only.</h3>
+          <p>Role assignments scoped to the target resource group &mdash; the same Identity and RBAC questions the scorecard asks, answered in IaC. Private-VNet deployments wire managed or self-hosted runners.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>04 &middot; Parallel track</p>
+          <h3>Separate from the central platform.</h3>
+          <p>The pilot pipeline is its own repo and pipeline. It never deploys or edits the Citadel hub, shared APIM, or platform networking &mdash; those stay with <code>citadel-hub-deploy</code>. A spoke posture consumes the hub through an Access Contract.</p>
+        </article>
+      </div>
+
+      <div class="cost-cta-row reveal" data-delay="6">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">
+          Browse the skill <span class="arrow">↗</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/references/onboarding-path-decision.md" target="_blank" rel="noopener">
+          See the onboarding-path decision tree <span class="arrow">↗</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- =================== RECAP =================== -->
 
   <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap &middot; the scorecard">
