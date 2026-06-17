@@ -126,12 +126,14 @@
       </div>
 
       <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
+        <a href="#why-fork">Why this leg</a>
         <a href="#why-prose">Why not a generator</a>
         <a href="#four-moves">The four moves</a>
         <a href="#priority">Priority #1</a>
         <a href="#in-env">Test in their env</a>
         <a href="#fork">Fork mechanics</a>
         <a href="#boundary">The boundary</a>
+        <a href="#getting-started">Getting started</a>
         <a href="#chapter-recap">Recap</a>
       </nav>
 
@@ -140,6 +142,54 @@
         <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
         <span class="se-not">Not commands. Not a CLI of our own.</span>
       </p>
+    </div>
+  </section>
+
+  <!-- ==================== WHY THIS LEG ==================== -->
+  <section class="chapter-section" id="why-fork" data-toc-id="why-fork" data-toc-label="Why this leg">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Why this leg exists</p>
+        <h2>A green pilot is not a production system. <em>The gap is the customer&rsquo;s environment.</em></h2>
+        <p class="section-lede">
+          The pilot proved the agent works &mdash; on an SE sandbox, with public
+          endpoints and your subscription. &ldquo;Production&rdquo; means the same
+          agent living inside <em>their</em> estate: their landing zones, their
+          identity model, their RBAC, their private network, their governance.
+          Closing that gap is the whole job &mdash; and it is different for every
+          customer.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>What the pilot proved</p>
+          <h3>The agent is real</h3>
+          <p>
+            Design, deploy, evals, a green production-ready scorecard &mdash; the
+            idea works and is production-<em>shaped</em>. That earns the next
+            conversation; it does not finish it.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>What it didn&rsquo;t</p>
+          <h3>It never met their estate</h3>
+          <p>
+            A sandbox run says nothing about private DNS, scoped identity,
+            mandated IaC, change-management gates, or whether deploy even reaches
+            the customer&rsquo;s private endpoints. That is where onboarding lives.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Why fork, not rebuild</p>
+          <h3>Make it theirs &mdash; keep upstream</h3>
+          <p>
+            Forking lets you tailor the pipeline to one customer <em>and</em> still
+            pull upstream Threadlight fixes later, because every customer change
+            lives in an overlay &mdash; not in edited skill files.
+          </p>
+        </article>
+      </div>
     </div>
   </section>
 
@@ -430,6 +480,67 @@
           customer&rsquo;s landing zone, stop: that seam is exactly what this skill
           keeps as instructions.
         </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== GETTING STARTED ==================== -->
+  <section class="chapter-section" id="getting-started" data-toc-id="getting-started" data-toc-label="Getting started">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>How to start</p>
+        <h2>Day one. <em>Fork, pin, and open the intake.</em></h2>
+        <p class="section-lede">
+          You don&rsquo;t need the whole customization map to begin. Three commands
+          stand up the fork and the pin; one conversation opens the intake &mdash;
+          the long pole. Here is the literal first hour.
+        </p>
+      </div>
+
+      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="The first commands to fork and pin Threadlight"><span class="cmt"># 1 · fork into the customer org and clone (gh wires origin + upstream)</span>
+<span class="prompt">&gt;</span> <span class="cmd">gh</span> <span class="arg">repo fork aiappsgbb/threadlight-skills</span> <span class="flag">--org</span> <span class="arg">&lt;customer-org&gt;</span> <span class="flag">--clone --remote</span>
+<span class="prompt">&gt;</span> <span class="cmd">cd</span> <span class="arg">threadlight-skills</span>
+
+<span class="cmt"># 2 · pin the exact upstream commit you forked from</span>
+<span class="prompt">&gt;</span> <span class="cmd">git</span> <span class="arg">rev-parse upstream/main</span>   <span class="cmt"># → record this SHA in overlay/upstream-pin.md</span>
+
+<span class="cmt"># 3 · scaffold the overlay — customer inputs live here, never in skill files</span>
+<span class="prompt">&gt;</span> <span class="cmd">mkdir</span> <span class="flag">-p</span> <span class="arg">overlay/{deploy,production-ready,cicd,safe-check} docs/threadlight-customize</span></pre>
+
+      <div class="detail-grid reveal" data-delay="2" style="margin-top:26px;">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Then, in order</p>
+          <h3>Open the intake <span class="prio">start here</span></h3>
+          <p>
+            Copy <code>customer-profile.md.tmpl</code> and work it <em>with</em>
+            the customer&rsquo;s platform owner. Start it in parallel with the
+            pilot &mdash; it is the long pole, and every blank field is a future
+            blocked deploy.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Next</p>
+          <h3>Map fork-vs-keep</h3>
+          <p>
+            Fill the customization map: per skill, keep or override. The four
+            production-onboarding skills get your override budget first; each
+            override drops a file into the matching <code>overlay/</code> folder.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Then prove it</p>
+          <h3>Test inside their boundary</h3>
+          <p>
+            Stand up the in-env loop (Azure ML VS Code or Codespaces), clear the
+            private-VNet pre-flight, and run deploy from <em>inside</em> the
+            customer&rsquo;s perimeter &mdash; not your sandbox.
+          </p>
+        </article>
+      </div>
+
+      <div class="recap-cta" style="margin-top:30px;">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Open the fork runbook <span class="arrow">↗</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/customer-profile.md.tmpl" target="_blank" rel="noopener">Start the intake workbook <span class="arrow">↗</span></a>
       </div>
     </div>
   </section>
