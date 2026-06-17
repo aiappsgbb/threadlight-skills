@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Customize — fork Threadlight, onboard a real customer.</title>
+<meta name="description" content="The final leg. How to fork the Threadlight pipeline and stand it up inside one customer's environment — landing zones, RBAC, pipelines, governance — with production onboarding as priority #1. Instructions and runbooks, not automation: four moves (intake gate, customization map, test-in-customer-env, non-coverage boundary).">
+<meta name="theme-color" content="#36c8a8">
+
+<meta property="og:type"        content="article">
+<meta property="og:title"       content="Customize — fork Threadlight, onboard a real customer.">
+<meta property="og:description" content="The final leg: fork the pipeline and onboard it into the customer's own environment, production onboarding first. Instructions, not automation — four moves: intake, customization map, test-in-customer-env, non-coverage boundary.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/customize.html">
+<meta property="og:site_name"   content="Threadlight">
+<meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-customize.svg">
+<meta property="og:image:type"  content="image/svg+xml">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="Customize — fork Threadlight, onboard a real customer.">
+<meta name="twitter:description" content="The final leg. Fork + onboard into the customer's own environment, production onboarding first. Instructions, not automation.">
+<meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-customize.svg">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=ia-v23">
+<style>
+  /* Chapter accent for the final leg — a teal/mint that reads as
+     "the customer's own environment / hand-over", distinct from the
+     blue funnel and the lime production chapter. Scoped to this page;
+     no global CSS changes. */
+  body.chapter-customize {
+    --chapter-accent:      #36c8a8;
+    --chapter-accent-soft: rgba(54,200,168,.16);
+  }
+  body.chapter-customize .chapter-hero .eyebrow .dot,
+  body.chapter-customize .chapter-section .eyebrow .dot {
+    background: var(--chapter-accent);
+    box-shadow: 0 0 10px rgba(54,200,168,.6);
+  }
+  /* The global `h1 em / h2 em` rule paints a blue gradient via
+     background-clip + transparent text-fill, which overrides plain
+     `color`. Re-point that gradient at the chapter accent so the
+     headline emphases match the teal chapter, not the default blue. */
+  body.chapter-customize .chapter-hero h1 em,
+  body.chapter-customize .chapter-section h2 em {
+    background: linear-gradient(180deg, var(--chapter-accent) 0%, #1c9e86 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--chapter-accent);
+  }
+  /* a "priority #1" flag chip reused in the map + moves */
+  body.chapter-customize .prio {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #06241e;
+    background: var(--chapter-accent);
+    border-radius: 99px;
+    padding: 2px 9px;
+    margin-left: 8px;
+    vertical-align: middle;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body class="chapter-page chapter-customize">
+
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name" style="text-decoration:none;color:inherit;">
+      <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
+    </a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./funnel.html">Funnel</a>
+    <a href="./production.html">Production-ready</a>
+    <a href="./customize.html" aria-current="page">Customize</a>
+    <a href="./industries.html">Industries</a>
+  </nav>
+</header>
+
+<aside class="floating-toc" aria-label="Customize chapter">
+  <p class="toc-title">Chapter</p>
+</aside>
+
+<main>
+
+  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+    <div class="wrap wrap-wide">
+      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Customize</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>The final leg &middot; fork &amp; onboard</p>
+      <h1 class="reveal" data-delay="2">Make Threadlight <em>the customer&rsquo;s own.</em></h1>
+      <p class="lede reveal" data-delay="3">
+        The pilot proved the agent works. The next conversation is harder:
+        &ldquo;now stand this up inside <em>our</em> environment &mdash; our
+        landing zones, our identity model, our RBAC, our pipelines, our
+        governance &mdash; and test it on <em>our</em> tenant.&rdquo; That is
+        <strong>production onboarding</strong>, and it is
+        <strong>priority&nbsp;#1</strong>.
+      </p>
+      <p class="lede reveal" data-delay="4" style="margin-top:16px; color:var(--ink-2); font-size:.98rem;">
+        <code>threadlight-customize</code> is the leg that gets you there &mdash;
+        deliberately as <strong>instructions and fill-in runbooks, not
+        automation</strong>. No two customers&rsquo; onboarding is the same, so
+        we don&rsquo;t pretend to generate it. We give you the frame, the
+        intake, and the in-environment test loop, then get out of the way.
+      </p>
+
+      <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Customize at a glance">
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>4</em></span>
+          <span class="stat-label">moves, in order</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>1</em></span>
+          <span class="stat-label">priority: prod onboarding</span>
+        </div>
+        <div class="stat" role="listitem">
+          <span class="stat-num"><em>0</em></span>
+          <span class="stat-label">magic buttons</span>
+        </div>
+      </div>
+
+      <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
+        <a href="#why-prose">Why not a generator</a>
+        <a href="#four-moves">The four moves</a>
+        <a href="#priority">Priority #1</a>
+        <a href="#in-env">Test in their env</a>
+        <a href="#fork">Fork mechanics</a>
+        <a href="#boundary">The boundary</a>
+        <a href="#chapter-recap">Recap</a>
+      </nav>
+
+      <p class="skill-eyebrow reveal" data-delay="7">
+        <span class="se-tag">Threadlight skills</span>
+        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
+        <span class="se-not">Not commands. Not a CLI of our own.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ==================== WHY NOT A GENERATOR ==================== -->
+  <section class="chapter-section" id="why-prose" data-toc-id="why-prose" data-toc-label="Why not a generator">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Scope, on purpose</p>
+        <h2>Every other skill is a generator. <em>This one isn&rsquo;t &mdash; by design.</em></h2>
+        <p class="section-lede">
+          The rest of Threadlight is opinionated and deterministic because its
+          inputs are bounded &mdash; a SPEC section, a set of selectors, an
+          <code>azd env</code>. A customer&rsquo;s production onboarding is
+          <em>not</em> bounded. Trying to cover every permutation in code
+          produces a generator that is wrong for everyone.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Bounded &rarr; automate</p>
+          <h3>What the pipeline already generates</h3>
+          <p>
+            Design, deploy, safe-check, evals, the production-ready scorecard,
+            the CI/CD pipeline &mdash; all deterministic, all tested, because the
+            shape of the input is known. Those skills stay exactly as they are.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Unbounded &rarr; instruct</p>
+          <h3>What no generator can own</h3>
+          <p>
+            Landing-zone topology, identity model, allowed regions, private DNS,
+            egress rules, mandated IaC modules, change-management gates, approval
+            chains &mdash; all theirs, all different. So this leg is
+            <strong>prose&nbsp;+&nbsp;templates</strong>: capture, classify, test,
+            and name the boundary.
+          </p>
+        </article>
+      </div>
+
+      <p class="reveal" data-delay="2" style="max-width:880px; margin:24px auto 0; text-align:center; color:var(--ink-2); font-size:1.02rem; line-height:1.7;">
+        It deliberately does <strong>not</strong> generate the onboarding for
+        you. That honesty is a feature &mdash; it keeps the customer&rsquo;s
+        architecture review calibrated and stops the next engagement from
+        assuming the work is turnkey.
+      </p>
+    </div>
+  </section>
+
+  <!-- ==================== THE FOUR MOVES ==================== -->
+  <section class="chapter-section" id="four-moves" data-toc-id="four-moves" data-toc-label="The four moves">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Run them in order</p>
+        <h2>Four moves. <em>Each produces one durable artifact.</em></h2>
+        <p class="section-lede">
+          Every move drops a file under <code>docs/threadlight-customize/</code>,
+          so the engagement is auditable and resumable. Start Move&nbsp;1 early
+          &mdash; intake is the long pole, and you can run it in parallel with the
+          pilot.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Move 1 &middot; the long pole</p>
+          <h3>Intake gate</h3>
+          <p>
+            You cannot customize what you have not been given. Fill the
+            customer-profile workbook <em>with</em> the customer&rsquo;s platform
+            owner: <strong>documents</strong>, <strong>environment setup</strong>,
+            <strong>requirements</strong>, and <strong>mandated template /
+            starter code</strong>. Treat every blank as a blocker, not a TODO.
+          </p>
+          <p style="color:var(--ink-3); font-size:.86rem; margin-top:10px;">
+            &rarr; <code>customer-profile.md</code>
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Move 2 &middot; fork vs keep</p>
+          <h3>Customization map</h3>
+          <p>
+            Decide, per skill, what you override and what you leave alone. The map
+            classifies every Threadlight skill as <strong>customer-agnostic</strong>
+            or <strong>needs per-customer override</strong>, and names the exact
+            SPEC section / selector / <code>azd env</code> hook to change.
+          </p>
+          <p style="color:var(--ink-3); font-size:.86rem; margin-top:10px;">
+            &rarr; <code>customization-map.md</code>
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Move 3 &middot; the stuck point</p>
+          <h3>Test in the customer&rsquo;s env</h3>
+          <p>
+            A pilot that only ever ran on your sandbox is not onboarded. Run the
+            <code>local-test</code> / <code>deploy</code> loop <strong>inside the
+            customer&rsquo;s boundary</strong> &mdash; usually a fully-private VNet
+            with no public egress. Two patterns work; a pre-flight checklist gates
+            the deploy.
+          </p>
+          <p style="color:var(--ink-3); font-size:.86rem; margin-top:10px;">
+            &rarr; green private-VNet pre-flight + a run inside the env
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Move 4 &middot; close honestly</p>
+          <h3>Name the boundary</h3>
+          <p>
+            Write down the <strong>seams you customized</strong> (so the next SE
+            can read the diff) and what Threadlight <strong>deliberately does not
+            automate</strong> for this customer, with a short decision log. The
+            non-coverage doc is what keeps the CISO/architecture review calibrated.
+          </p>
+          <p style="color:var(--ink-3); font-size:.86rem; margin-top:10px;">
+            &rarr; <code>non-coverage.md</code>
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== PRIORITY #1 ==================== -->
+  <section class="chapter-section" id="priority" data-toc-id="priority" data-toc-label="Priority #1">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Where the environment bites</p>
+        <h2>Production onboarding is <em>priority&nbsp;#1.</em></h2>
+        <p class="section-lede">
+          The customization map flags four skills as priority &mdash; they are the
+          production-onboarding leg, and they are where the customer&rsquo;s real
+          environment first pushes back. These get your override budget first.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <h3><code>threadlight-deploy</code> <span class="prio">priority</span></h3>
+          <p>
+            Landing-zone targeting (sub / RG), resource selectors, region
+            allow-list, and the <strong>private-endpoint + private-DNS</strong>
+            wiring that turns a public pilot into something that lives behind the
+            customer&rsquo;s perimeter.
+          </p>
+        </article>
+        <article class="detail-card">
+          <h3><code>threadlight-safe-check</code> <span class="prio">priority</span></h3>
+          <p>
+            The customer&rsquo;s resource selectors and naming standard that the
+            pre/post-deploy gate validates against &mdash; so &ldquo;green&rdquo;
+            means green <em>in their tenant</em>, not on your sandbox.
+          </p>
+        </article>
+        <article class="detail-card">
+          <h3><code>threadlight-cicd</code> <span class="prio">priority</span></h3>
+          <p>
+            Pipeline shape, federated-identity model, scoped RBAC, runner topology.
+            This skill <em>generates</em> the pipeline &mdash; you feed it the
+            customer&rsquo;s constraints from intake.
+          </p>
+        </article>
+        <article class="detail-card">
+          <h3><code>threadlight-production-ready</code> <span class="prio">priority</span></h3>
+          <p>
+            Pillar thresholds and <code>customer_overrides</code> tuned to the
+            customer&rsquo;s policy baseline, so the scorecard speaks their
+            standard at the architecture review.
+          </p>
+        </article>
+      </div>
+
+      <p class="reveal" data-delay="2" style="max-width:860px; margin:22px auto 0; text-align:center; color:var(--ink-3); font-size:.95rem; line-height:1.7;">
+        Keep these overrides in an <strong>overlay</strong>, never by editing
+        forked skills in place &mdash; so you can still pull upstream Threadlight
+        fixes. That&rsquo;s the fork mechanics below.
+      </p>
+    </div>
+  </section>
+
+  <!-- ==================== TEST IN THEIR ENV ==================== -->
+  <section class="chapter-section" id="in-env" data-toc-id="in-env" data-toc-label="Test in their env">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>The part the field kept getting stuck on</p>
+        <h2>Run the loop <em>inside the customer&rsquo;s boundary.</em></h2>
+        <p class="section-lede">
+          Fully-private (private-VNet) environments with no public egress are
+          where onboarding actually proves out &mdash; and where an SE laptop
+          can&rsquo;t reach. Two patterns make the dev/test loop work from
+          <em>inside</em> the perimeter, gated by one pre-flight.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Recommended</p>
+          <h3>Azure ML compute instance + VS Code</h3>
+          <p>
+            A compute instance with <strong>no public IP</strong>, joined to the
+            customer&rsquo;s VNet, driven over VS Code Remote. Reaches the Foundry,
+            ACR, Cosmos, and Key Vault private endpoints the way the real workload
+            will &mdash; the closest thing to running &ldquo;on their tenant.&rdquo;
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Quick box</p>
+          <h3>GitHub Codespaces</h3>
+          <p>
+            A fast, disposable dev box for the loop. With Codespaces private
+            networking it reaches into the customer&rsquo;s estate &mdash; honestly
+            hedged: availability depends on the customer&rsquo;s GitHub plan and
+            network posture, so the runbook says when to reach for Azure&nbsp;ML
+            instead.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>The gate</p>
+          <h3>Private-VNet pre-flight</h3>
+          <p>
+            Before any deploy: confirm <strong>private DNS resolution</strong>,
+            egress posture, and reachability of every private endpoint. A
+            half-resolved DNS zone fails the deploy in a way that
+            <em>looks like an auth error</em> and burns an afternoon &mdash; the
+            checklist catches it first.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== FORK MECHANICS ==================== -->
+  <section class="chapter-section" id="fork" data-toc-id="fork" data-toc-label="Fork mechanics">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Do this once, up front</p>
+        <h2>Fork the way that <em>survives upstream updates.</em></h2>
+        <p class="section-lede">
+          The point of forking is to customize <em>and</em> still pull upstream
+          Threadlight fixes later. Three steps keep both true.
+        </p>
+      </div>
+
+      <div class="detail-grid reveal" data-delay="1">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Step 1</p>
+          <h3>Fork</h3>
+          <p>
+            Fork <code>threadlight-skills</code> (or install the plugin and
+            overlay alongside it) into the customer&rsquo;s org or your engagement
+            repo.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Step 2</p>
+          <h3>Pin upstream</h3>
+          <p>
+            Record the upstream commit you forked from &mdash; mirror the
+            <code>upstream-pin.md</code> convention <code>threadlight-deploy</code>
+            and <code>threadlight-local-test</code> already use.
+          </p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Step 3</p>
+          <h3>Overlay, don&rsquo;t fork-edit</h3>
+          <p>
+            Keep customer overrides (selectors, env hooks, thresholds, mandated
+            IaC) in a separate <strong>overlay</strong> layered over the pinned
+            upstream, so a later <code>git merge</code> of upstream doesn&rsquo;t
+            clobber the customizations.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== THE BOUNDARY ==================== -->
+  <section class="chapter-section" id="boundary" data-toc-id="boundary" data-toc-label="The boundary">
+    <div class="wrap">
+      <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
+        <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>Move 4, restated</p>
+        <h2>The boundary <em>is the deliverable.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">
+          Closing the engagement honestly is not an afterthought &mdash; it is the
+          artifact that keeps expectations true. Name what you customized, name
+          what Threadlight does not automate for this customer, and log the
+          decisions. If you find yourself writing a generator that branches on the
+          customer&rsquo;s landing zone, stop: that seam is exactly what this skill
+          keeps as instructions.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== RECAP =================== -->
+  <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap">
+    <div class="wrap">
+      <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
+        <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>Recap</p>
+        <h2>The final leg, <em>in one frame.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">
+          Fork once, run four moves, keep the customizations in an overlay, and be
+          honest about the boundary. Instructions, not automation &mdash; because
+          production onboarding is the one thing we can never pre-build.
+        </p>
+      </div>
+
+      <div class="chapter-recap-block">
+        <p class="recap-scorecard reveal" data-delay="1">
+          <span>You ran</span>
+          <span><em>4</em> moves</span><span class="sep">·</span>
+          <span><em>1</em> priority</span><span class="sep">·</span>
+          <span><em>1</em> overlay</span><span class="sep">·</span>
+          <span><em>0</em> generators</span>
+        </p>
+
+        <div class="recap-metrics">
+          <article class="metric-card reveal" data-delay="2">
+            <span class="metric-num"><em>1</em></span>
+            <span class="metric-label">Intake workbook</span>
+            <span class="metric-caption">The long pole. Start it in parallel with the pilot &mdash; every blank field is a future blocked deploy.</span>
+          </article>
+          <article class="metric-card reveal" data-delay="3">
+            <span class="metric-num"><em>4</em></span>
+            <span class="metric-label">Priority skills</span>
+            <span class="metric-caption">deploy, safe-check, cicd, production-ready &mdash; the production-onboarding leg gets your override budget first.</span>
+          </article>
+          <article class="metric-card reveal" data-delay="4">
+            <span class="metric-num"><em>2</em></span>
+            <span class="metric-label">In-env patterns</span>
+            <span class="metric-caption">Azure ML VS Code (recommended) or Codespaces &mdash; so the loop runs inside the customer&rsquo;s private VNet, not just your sandbox.</span>
+          </article>
+        </div>
+
+        <div class="recap-cta">
+          <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">See the fork runbook <span class="arrow">↗</span></a>
+          <a class="btn btn-ghost" href="./production.html">Back to production-ready <span class="arrow">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer style="padding:48px 32px 64px; border-top:1px solid var(--line); text-align:center; color:var(--ink-3); font-size:13px;">
+  Threadlight &middot; open guidance, opinionated tools &middot;
+  <a href="https://github.com/aiappsgbb/threadlight-skills" style="color:var(--ink-2);">repo</a>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>
