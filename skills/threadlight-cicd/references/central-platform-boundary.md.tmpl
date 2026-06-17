@@ -20,8 +20,7 @@ Resolved onboarding path for this pilot: **{{ONBOARDING_PATH}}** (posture **{{PO
 ## How the two tracks meet
 - **Central platform** (separate repo / separate pipeline): `citadel-hub-deploy`
   stands up the hub; the platform team runs it.
-- **This pilot** (citadel-spoke posture): consumes the hub through an Access
-  Contract via `citadel-spoke-onboarding`. No hub writes originate here.
+- **This pilot**: consumes the hub through an Access Contract via
+  `citadel-spoke-onboarding`. No hub writes originate here.
 
-If a central environment is required but missing, the hub is stood up on that
-separate central track first — this pilot pipeline still never deploys it.
+{{BOUNDARY_PATH_GUIDANCE}}

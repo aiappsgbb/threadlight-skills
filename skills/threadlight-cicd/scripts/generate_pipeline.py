@@ -146,6 +146,42 @@ def build_context(framing: dict, resolved: dict) -> dict:
 
     rbac_scope_id = f"/subscriptions/{sub}/resourceGroups/{rg}"
     rbac_role = framing.get("rbac_role", "Contributor")
+    # Keyless Foundry azd templates assign data-plane roles to the app identity
+    # during `azd provision` (Microsoft.Authorization/roleAssignments/write), which
+    # Contributor cannot do. The deploy identity therefore also needs RBAC admin,
+    # scoped to the SAME resource group (least privilege preserved).
+    rbac_ra_admin_role = "Role Based Access Control Administrator"
+    rbac_ra_admin_role_id = "f58310d9-a9f6-439a-9e8d-f62e7b41a168"
+
+    path = resolved.get("path", "")
+    hub_sub = framing.get("hub_subscription_id", "<hub-subscription-id>")
+    hub_apim = framing.get("hub_apim_resource_id", "<hub-apim-resource-id>")
+    access_contract = framing.get("access_contract_product", "<access-contract-product>")
+    if path == "spoke-onboard":
+        boundary_guidance = (
+            "## Your onboarding path: the hub already exists\n\n"
+            "Onboard this pilot as a **spoke** via `citadel-spoke-onboarding` — consume the "
+            "hub through an Access Contract. **Do not run citadel-hub-deploy**: the central "
+            "hub already exists and is owned by the platform team.\n\n"
+            f"- Access Contract product: `{access_contract}`\n"
+            f"- Hub APIM resource id: `{hub_apim}`\n"
+            f"- Hub subscription: `{hub_sub}`\n"
+        )
+    elif path == "hub-deploy-then-spoke":
+        boundary_guidance = (
+            "## Your onboarding path: the hub is required but not yet deployed\n\n"
+            "The central hub does **not yet** exist. The platform team stands it up via "
+            "`citadel-hub-deploy` on the **separate** central-platform track first; then "
+            "onboard this pilot via `citadel-spoke-onboarding`. This pilot pipeline never "
+            "deploys the hub.\n"
+        )
+    else:  # standalone
+        boundary_guidance = (
+            "## Your onboarding path: standalone\n\n"
+            "This pilot is **standalone** — there is no central hub to consume. Before "
+            "go-live, validate it uses no shared/central resources; if it does, set "
+            "`central_env_required=yes` and re-run the gate.\n"
+        )
 
     # Runner wiring — public hosted vs private self-hosted / managed pool.
     runner_runs_on = "[ self-hosted, threadlight-prod ]" if private else "ubuntu-latest"
@@ -179,6 +215,9 @@ def build_context(framing: dict, resolved: dict) -> dict:
         "RBAC_SCOPE": resolved.get("rbac_scope", ""),
         "RBAC_SCOPE_ID": rbac_scope_id,
         "RBAC_ROLE": rbac_role,
+        "RBAC_RA_ADMIN_ROLE": rbac_ra_admin_role,
+        "RBAC_RA_ADMIN_ROLE_ID": rbac_ra_admin_role_id,
+        "BOUNDARY_PATH_GUIDANCE": boundary_guidance,
         "RUNNER_RUNS_ON": runner_runs_on,
         "ADO_POOL_SPEC": ado_pool_spec,
         "ADO_POOL_NAME": ado_pool_name,
@@ -363,6 +402,10 @@ def _parse_args(argv):
     p.add_argument("--tenant-id")
     p.add_argument("--hub-sub", dest="hub_subscription_id")
     p.add_argument("--hub-apim-id", dest="hub_apim_resource_id")
+    p.add_argument("--access-contract-product", dest="access_contract_product",
+                   help="Citadel Access Contract product the spoke consumes (e.g. unified-ai).")
+    p.add_argument("--ado-pool-name", dest="ado_pool_name",
+                   help="Managed DevOps Pool / self-hosted pool name for private-network runs.")
     p.add_argument("--env-name", default="prod")
     p.add_argument("--out", default=os.getcwd(), help="Output root (default: cwd).")
     return p.parse_args(argv)
@@ -385,6 +428,8 @@ def _framing_from_args(args) -> dict:
         "tenant_id": args.tenant_id,
         "hub_subscription_id": args.hub_subscription_id,
         "hub_apim_resource_id": args.hub_apim_resource_id,
+        "access_contract_product": args.access_contract_product,
+        "ado_pool_name": args.ado_pool_name,
         "env_name": args.env_name,
     }
     for k, v in cli.items():

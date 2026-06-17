@@ -70,3 +70,36 @@ def test_ado_private_network_references_pool():
     # not the hosted vmImage
     assert "pool:" in pipe
     assert "name:" in pipe
+
+
+def test_ado_pipeline_seeds_env_and_separates_provision_and_deploy():
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_ado_framing(), out_root=tmp)
+    pipe = (tmp / "azure-pipelines.yml").read_text()
+    assert "azd env new" in pipe
+    # install azd + provision + deploy = at least three AzureCLI@2 tasks
+    assert pipe.count("AzureCLI@2") >= 3
+    i_prov, i_dep = pipe.index("azd provision"), pipe.index("azd deploy")
+    assert i_prov < i_dep
+    # provision and deploy live in separate steps (a new displayName between them)
+    assert "displayName" in pipe[i_prov:i_dep]
+
+
+def test_ado_uami_runbook_has_portal_field_guidance():
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_ado_framing(), out_root=tmp)
+    md = (tmp / "docs/threadlight-cicd/env-setup/01-uami-federated-credentials.md").read_text().lower()
+    assert "issuer" in md
+    assert "subject identifier" in md
+    assert "copy" in md
+
+
+def test_cli_accepts_access_contract_and_pool_flags():
+    args = mod._parse_args([
+        "--platform", "azure-devops",
+        "--access-contract-product", "unified-ai",
+        "--ado-pool-name", "my-prod-pool",
+    ])
+    framing = mod._framing_from_args(args)
+    assert framing["access_contract_product"] == "unified-ai"
+    assert framing["ado_pool_name"] == "my-prod-pool"

@@ -87,3 +87,12 @@ def test_onboarding_path_json_is_valid_and_records_decision():
     assert data["posture"] == "citadel-spoke"
     assert data["rbac_scope"] == "spoke-rg"
     assert "generator_version" in data
+
+
+def test_github_workflow_seeds_azd_environment_before_provision():
+    # azd provision on a clean CI checkout has no .azure env -> seed it first.
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_gh_framing(), out_root=tmp)
+    wf = (tmp / ".github/workflows/azd-deploy-prod.yml").read_text()
+    assert "azd env new" in wf
+    assert wf.index("azd env new") < wf.index("azd provision")

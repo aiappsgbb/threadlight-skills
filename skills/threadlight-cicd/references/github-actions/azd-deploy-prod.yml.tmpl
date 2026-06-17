@@ -48,12 +48,15 @@ jobs:
           tenant-id: {{TENANT_ID}}
           subscription-id: {{TARGET_SUBSCRIPTION_ID}}
 
-      - name: azd auth login (federated, no secret)
+      - name: Reuse az login session for azd (no second token exchange)
+        run: azd config set auth.useAzCliAuth true
+
+      - name: Seed azd environment (idempotent on a clean CI checkout)
         run: >
-          azd auth login
-          --client-id "$AZURE_CLIENT_ID"
-          --federated-credential-provider github
-          --tenant-id "$AZURE_TENANT_ID"
+          azd env new "$AZURE_ENV_NAME"
+          --subscription "$AZURE_SUBSCRIPTION_ID"
+          --location "$AZURE_LOCATION"
+          --no-prompt || true
 
       - name: Provision infrastructure
         run: azd provision --no-prompt

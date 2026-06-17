@@ -68,6 +68,16 @@ subscription scope "to be safe", and never at hub scope.
   when the customer's separation-of-duties policy requires it.
 - Prefer built-in roles over a custom role unless the customer mandates one;
   document every assignment in runbook `02` so it is auditable and revocable.
+- **Keyless (managed-identity) targets need RBAC-write too.** Modern Foundry azd
+  templates assign data-plane roles (e.g. *Cognitive Services OpenAI User*,
+  *Search Index Data Contributor*) to the app's managed identity **during
+  `azd provision`** via `Microsoft.Authorization/roleAssignments/write` —
+  something `Contributor` explicitly cannot do. Grant the deploy identity **Role
+  Based Access Control Administrator** (`f58310d9-a9f6-439a-9e8d-f62e7b41a168`)
+  at the **same target-RG scope** (optionally constrained with a `--condition`
+  limiting which roles it may grant). Without it, provisioning fails with
+  `AuthorizationFailed`. This stays least-privilege: still RG-scoped, never the
+  subscription or hub.
 - Deployment-identity pattern (AVM contribution flow, transferable):
   <https://azure.github.io/Azure-Verified-Modules/contributing/bicep/bicep-contribution-flow/#2-configure-a-deployment-identity-in-azure>
 

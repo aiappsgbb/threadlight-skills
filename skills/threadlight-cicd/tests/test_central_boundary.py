@@ -50,3 +50,36 @@ def test_boundary_doc_emitted_even_for_standalone():
     doc = tmp / "docs/threadlight-cicd/central-platform-boundary.md"
     assert doc.exists()
     assert "standalone" in doc.read_text().lower()
+
+
+def test_boundary_doc_spoke_onboard_forbids_running_hub_deploy():
+    # hub already exists -> onboard as a spoke; the doc must explicitly say
+    # NOT to run citadel-hub-deploy (the apply-test caught this contradiction).
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(central_env_required=True, central_env_exists=True), out_root=tmp)
+    low = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text().lower()
+    assert "citadel-spoke-onboarding" in low
+    assert "already exists" in low
+    assert "do not run citadel-hub-deploy" in low
+
+
+def test_boundary_doc_hub_missing_instructs_central_track():
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(central_env_required=True, central_env_exists=False), out_root=tmp)
+    low = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text().lower()
+    assert "citadel-hub-deploy" in low
+    assert "not yet" in low
+
+
+def test_spoke_boundary_surfaces_hub_coordinates_and_access_contract():
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(
+        central_env_required=True, central_env_exists=True,
+        hub_subscription_id="hub-sub-1234",
+        hub_apim_resource_id="/subscriptions/h/resourceGroups/rg-hub/providers/Microsoft.ApiManagement/service/apim-hub",
+        access_contract_product="unified-ai",
+    ), out_root=tmp)
+    doc = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text()
+    assert "unified-ai" in doc
+    assert "apim-hub" in doc
+    assert "hub-sub-1234" in doc

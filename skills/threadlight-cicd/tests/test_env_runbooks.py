@@ -68,6 +68,40 @@ def test_runner_runbook_has_managed_and_self_hosted_options():
     assert ("managed devops pool" in low) or ("larger runner" in low) or ("private networking" in low)
 
 
+def test_runner_runbook_documents_concrete_vnet_requirements():
+    # apply-test flagged the runner doc was only a sketch: a real platform
+    # engineer needs the networking prerequisites spelled out.
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(private_network=True), out_root=tmp)
+    low = (tmp / "docs/threadlight-cicd/env-setup/03-runners-private-vnet.md").read_text().lower()
+    assert "managed devops pool" in low
+    assert "subnet" in low
+    assert ("outbound" in low) or ("egress" in low)
+    assert "dns" in low
+
+
+def test_rbac_runbook_grants_roleassignments_write_for_keyless_provision():
+    # BLOCKER fix: Contributor alone cannot do Microsoft.Authorization/roleAssignments/write,
+    # which keyless Foundry azd provision needs to assign data-plane roles to the app identity.
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(), out_root=tmp)
+    rbac = (tmp / "docs/threadlight-cicd/env-setup/02-rbac-role-assignments.md").read_text()
+    low = rbac.lower()
+    assert "role based access control administrator" in low
+    assert "roleassignments" in low
+    # still scoped to the target RG (least privilege preserved)
+    assert "resourceGroups/rg-pilot-prod" in rbac
+
+
+def test_rbac_script_ensures_target_rg_and_assigns_both_roles():
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    mod.generate(_framing(), out_root=tmp)
+    sh = (tmp / "docs/threadlight-cicd/env-setup/02-rbac-role-assignments.sh").read_text()
+    assert "az group create" in sh
+    assert sh.count("az role assignment create") >= 2
+    assert "{{" not in sh
+
+
 def test_shell_scripts_have_safety_header():
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(_framing(), out_root=tmp)

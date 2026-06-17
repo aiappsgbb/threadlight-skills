@@ -46,7 +46,7 @@ stages:
                       set -euo pipefail
                       curl -fsSL https://aka.ms/install-azd.sh | bash
                 - task: AzureCLI@2
-                  displayName: Provision and deploy (azd)
+                  displayName: Provision infrastructure (azd)
                   inputs:
                     azureSubscription: {{ADO_SERVICE_CONNECTION}}
                     scriptType: bash
@@ -56,5 +56,18 @@ stages:
                       # AzureCLI@2 already established a federated az session via
                       # the WIF service connection; let azd reuse it.
                       azd config set auth.useAzCliAuth "true"
+                      azd env new "$AZURE_ENV_NAME" \
+                        --subscription "$AZURE_SUBSCRIPTION_ID" \
+                        --location "$AZURE_LOCATION" \
+                        --no-prompt || true
                       azd provision --no-prompt
+                - task: AzureCLI@2
+                  displayName: Deploy services (azd)
+                  inputs:
+                    azureSubscription: {{ADO_SERVICE_CONNECTION}}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      azd config set auth.useAzCliAuth "true"
                       azd deploy --no-prompt

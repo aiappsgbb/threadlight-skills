@@ -16,6 +16,10 @@ you what to hand the dev team vs the platform team).
 ## RBAC
 - [ ] Role assignments are **least-privilege** and scoped to the
       **target/spoke RG only** (runbook `02`) — not subscription, never hub.
+- [ ] For **keyless** (managed-identity) Foundry targets, the deploy identity
+      also has **Role Based Access Control Administrator** at the **same RG
+      scope** — `azd provision` performs `roleAssignments/write` to grant the app
+      identity its data-plane roles, which `Contributor` alone cannot do.
 - [ ] Every assignment is documented and revocable.
 - [ ] For `citadel-spoke`: the pilot identity has **no** role on the hub,
       shared APIM, shared networking, or platform Key Vault.
@@ -23,6 +27,8 @@ you what to hand the dev team vs the platform team).
 ## Gates & stages
 - [ ] Production deploy runs behind an **environment approval** (required
       reviewers / checks), not on every push.
+- [ ] The azd environment is **seeded** (`azd env new ... || true`) before
+      `provision` so a clean CI checkout (no `.azure/`) doesn't abort.
 - [ ] `provision` and `deploy` are **separate stages** so a reviewer can
       inspect changes before resources mutate.
 - [ ] Post-deploy step re-runs the readiness re-assessment where applicable.

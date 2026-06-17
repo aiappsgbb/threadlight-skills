@@ -46,8 +46,25 @@ field.
     new **section G** in `references/handoff-checklist.md`: "The production
     deploy path exists (CI/CD)"). No behavior change — existing tests stay
     green.
-  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's 25
+  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's 35
     tests as a hard-fail step (deterministic, secret-free, no network).
+  - **Hardening (pre-merge adversarial review).** Two adverse passes (security
+    review + a fresh-agent apply-test against a private-VNet bank scenario)
+    drove fixes now pinned by tests: (1) **RBAC** — the deploy identity also
+    gets *Role Based Access Control Administrator* at the **same target-RG
+    scope** so keyless Foundry `azd provision` can perform
+    `roleAssignments/write` (Contributor alone → `AuthorizationFailed`);
+    (2) **azd env seeding** — pipelines run `azd env new ... || true` before
+    `provision` so a clean CI checkout doesn't abort; (3) **ADO** now uses
+    **separate** provision and deploy `AzureCLI@2` tasks (matches the
+    checklist) and reuses the az session (`auth.useAzCliAuth`); (4) **GitHub**
+    drops the redundant `azd auth login` token exchange; (5) **path-aware
+    boundary doc** — on the spoke-onboard path it explicitly says *do not run
+    `citadel-hub-deploy`* and surfaces the hub coordinates + Access Contract
+    product (`--hub-sub` / `--hub-apim-id` / `--access-contract-product`);
+    (6) **private-runner runbook** now spells out Managed DevOps Pool / subnet
+    delegation / egress / private-DNS prerequisites and adds `--ado-pool-name`;
+    (7) **RBAC runbook** ensures the target RG exists first.
   - **Docs:** `README.md` (now **eleven pipeline skills + one orchestrator**,
     skills table, pipeline-flow note) and `THREADLIGHT.md` (new chain
     section 10 + entry-skill picker row + twelve-skill count) updated.

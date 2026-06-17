@@ -125,22 +125,34 @@ flowchart LR
 |---|---|
 | Interactive onboarding-path gate + generate | `python scripts/generate_pipeline.py --onboard` |
 | GitHub Actions, standalone (public) | `python scripts/generate_pipeline.py --platform github-actions --central-env-required no --repo-full-name owner/repo --target-sub <sub> --target-rg <rg> --tenant-id <tid>` |
-| Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid>` |
-| Private-VNet target (self-hosted / managed pool) | add `--private-network` |
+| Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid> --hub-sub <hsub> --hub-apim-id <apim-id> --access-contract-product <product>` |
+| Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
 | From a saved framing file | `--framing-file framing.json` |
 | Run the test suite | `python -m pytest tests/ -v` |
+
+> If `python` resolves to Python 2 on your machine, use `python3` (the generator
+> is pure Python 3 stdlib).
+
+**Spoke flags:** `--hub-sub` / `--hub-apim-id` / `--access-contract-product` surface
+the hub coordinates the platform team needs to wire the Access Contract; they are
+echoed into `central-platform-boundary.md` and the runbooks (never used to deploy
+the hub).
 
 ## What it emits
 
 Rendered deterministically (offline, no Azure calls, no secrets) into the pilot repo:
 
 - **Pipeline** — `.github/workflows/azd-deploy-prod.yml` (GitHub, OIDC, `environment:`
-  approval gate, `azd provision`/`deploy`) **or** `azure-pipelines.yml` (Azure DevOps,
-  WIF service connection, `AzureCLI@2` + azd, environment approvals, pool ref).
+  approval gate, seeds the azd env, then **separate** `azd provision` / `azd deploy`
+  steps) **or** `azure-pipelines.yml` (Azure DevOps, WIF service connection, three
+  `AzureCLI@2` tasks — install azd, provision, deploy — environment approvals, pool ref).
 - **Env-setup runbooks** — `docs/threadlight-cicd/env-setup/`:
   - `01-uami-federated-credentials.md` + `.sh` (UAMI + GH OIDC or ADO WIF — no secrets)
-  - `02-rbac-role-assignments.md` + `.sh` (least-privilege, scoped to the target RG)
-  - `03-runners-private-vnet.md` + `.sh` (managed **and** self-hosted options)
+  - `02-rbac-role-assignments.md` + `.sh` (target-RG-scoped: deploy role **plus**
+    *Role Based Access Control Administrator* so keyless `azd provision` can assign
+    the app identity's data-plane roles; ensures the target RG exists)
+  - `03-runners-private-vnet.md` + `.sh` (managed **and** self-hosted options, with
+    subnet/egress/private-DNS prerequisites)
   - `README.md` (what to hand the dev team vs the platform team)
 - **Boundary + decision record** — `central-platform-boundary.md`, `onboarding-path.json`.
 
