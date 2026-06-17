@@ -227,6 +227,15 @@ When you're ready to harden:
     in the executive summary when the oldest evidence is older than
     `--freshness-hours` (default 24h). Run the skill again before the
     customer call if your safe-check evidence is stale from a previous day.
+- **Ship to prod through a pipeline** — `threadlight-cicd` generates the
+  production deploy pipeline (GitHub Actions / Azure DevOps) plus the
+  env-setup runbooks the customer's platform team runs: a UAMI with
+  federated credentials (OIDC/WIF — no client secret), least-privilege RBAC
+  scoped to the spoke RG, and managed or self-hosted private-VNet runners.
+  For real customer tenants where the agent can't run `azd up` itself. A
+  deliberate **manual handoff** after a green scorecard, and a **separate
+  repo/pipeline** from the central platform — it never touches the Citadel
+  hub, shared APIM, or platform networking (those stay `citadel-hub-deploy`).
 - **Governance / model routing** — `citadel-spoke-onboarding` skill in
   `awesome-gbb`. Routes model traffic through a shared APIM AI Gateway and
   flips `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the `connectionName/deploymentName`
