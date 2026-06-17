@@ -1,12 +1,12 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the twelve-skill pilot pipeline.**
+> **Engineering reference for the thirteen-skill pilot pipeline.**
 > The narrative / pitch version of this material lives in the
 > [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **library of twelve `threadlight-*` skills** that take a
+Threadlight is a **library of thirteen `threadlight-*` skills** that take a
 customer engagement from a one-paragraph brief through to a deployed,
 evaluated, observable, **production-ready** Microsoft Foundry hosted agent
 — runnable on the customer's tenant in a single working session, then
@@ -16,16 +16,17 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 → SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
-The twelve skills (alphabetical, but the canonical flow order is given in
+The thirteen skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
 threadlight-auto                threadlight-event-triggers
 threadlight-cicd                threadlight-hitl-patterns
 threadlight-consumption-iq      threadlight-local-test
-threadlight-demo-data-factory   threadlight-production-ready
-threadlight-deploy              threadlight-safe-check
-threadlight-design              threadlight-workspace-ui
+threadlight-customize           threadlight-production-ready
+threadlight-demo-data-factory   threadlight-safe-check
+threadlight-deploy              threadlight-workspace-ui
+threadlight-design
 ```
 
 ---
@@ -45,6 +46,7 @@ skill sounds most exciting.
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
 | Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `citadel-hub-deploy`) |
+| The pilot is proven and you need to **fork Threadlight and onboard it into one specific customer's environment** (landing zones, RBAC, pipelines, governance) — especially the **production onboarding** | `threadlight-customize` (intake gate → customization map → test-in-customer-env runbook → non-coverage boundary; instructions/runbooks, **not** automation) | (manual handoff; SE-led first. `threadlight-auto` does **not** drive it) |
 | SPEC § 8 declares HITL action gates | `threadlight-hitl-patterns` | (paired with `foundry-teams-bot`) |
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
 | SPEC § 10 declares scheduled / event-driven triggers | `threadlight-event-triggers` | (paired with deploy) |
@@ -449,6 +451,51 @@ after the readiness scorecard is green.
 
 **Not driven by `threadlight-auto`.** Auto is a pilot driver, not a prod
 pipeline orchestrator — this is a manual handoff step.
+
+---
+
+### 11. `threadlight-customize` ([SKILL.md](skills/threadlight-customize/SKILL.md))
+
+**Purpose.** The final leg: **fork the Threadlight pipeline and onboard it
+into one specific customer's environment** — landing zones, identity, RBAC,
+deploy pipelines, governance — with **production onboarding as priority #1**.
+It is **instructions/runbooks, not automation**: production onboarding is too
+high-variance to encode, so this skill frames *how* to clone and adapt the
+process rather than generating it.
+
+**Four moves**, each emitting one durable artifact under
+`docs/threadlight-customize/`:
+
+1. **Intake gate** — a fill-in customer-profile workbook (documents, environment
+   setup, requirements, **mandated template/starter code**). The long pole; an
+   unfilled field is a future blocked deploy.
+2. **Customization map** — classifies every Threadlight skill as
+   customer-agnostic (keep) vs needs-per-customer-override, naming the SPEC §/
+   selector/`azd env` hook. The production-onboarding skills (`deploy`,
+   `safe-check`, `cicd`, `production-ready`) are flagged priority.
+3. **Test-in-customer-env runbook** — run the dev/test loop **inside the
+   customer boundary** for fully-private (private-VNet) envs: **Azure ML compute
+   instance + VS Code** (recommended for no-egress) or **GitHub Codespaces**,
+   gated by a private-VNet pre-flight (private DNS + endpoint reachability).
+4. **Non-coverage boundary** — names the seams you customized and what
+   Threadlight deliberately does **not** automate, plus a decision log for the
+   architecture review.
+
+**Also ships.** A fork-runbook (fork + `upstream-pin.md` + **overlay, don't
+fork-edit** so upstream updates stay mergeable) and anonymized telco-pilot
+field notes.
+
+**Outputs.** Filled `customer-profile.md`, `customization-map.md`, and
+`non-coverage.md` under `docs/threadlight-customize/`; a forked repo with an
+upstream pin + overlay; a green private-VNet pre-flight and a test run inside
+the customer env.
+
+**Depends on.** A proven pilot (any prior leg) and, for the pipeline it tunes,
+`threadlight-cicd` / `threadlight-production-ready`. Consumes the customer
+profile; produces no code generation.
+
+**Not driven by `threadlight-auto`.** Like `threadlight-cicd`, this is a
+human-led manual handoff — `auto` stops at the pilot.
 
 ---
 

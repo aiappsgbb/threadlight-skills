@@ -9,7 +9,43 @@ field.
 
 ### Added
 
-- **`threadlight-cicd` v0.1.0 — production-leg CI/CD pipeline + env-setup
+- **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
+  1.4.0).** Closes the last unstated assumption in the pipeline: that an SE
+  can stand Threadlight up **inside one specific customer's environment** and
+  adapt its production onboarding. We deliberately ship **instructions, not
+  automation** — per-customer prod onboarding is too high-variance to encode,
+  so the deliverables are fill-in workbooks + runbooks, informed by a real
+  large-European-telco AI pilot (anonymized).
+  - **NEW skill: [`skills/threadlight-customize/`](skills/threadlight-customize/SKILL.md)**
+    — a four-move meta-skill after `threadlight-cicd`: **Move 1 intake gate**
+    (a `customer-profile.md.tmpl` workbook capturing customer documents,
+    environment setup, requirements, and mandated template/starter code);
+    **Move 2 customization map** (classifies every Threadlight skill as
+    customer-agnostic *keep* vs needs-per-customer *override*, with the
+    **production-onboarding leg flagged priority** — `deploy`, `safe-check`,
+    `cicd`, `production-ready`); **Move 3 test-in-customer-env runbook** for
+    fully-private VNet envs (**Azure ML compute instance + VS Code Remote**
+    recommended, **GitHub Codespaces** quick-box, plus a private-VNet
+    pre-flight reachability checklist); **Move 4 non-coverage boundary** +
+    decision log that keeps expectations honest.
+  - **Fork mechanics: [`references/fork-runbook.md`](skills/threadlight-customize/references/fork-runbook.md)**
+    — fork the plugin, **pin upstream**, and keep customer changes in an
+    **overlay** (not in-place forks of skill files) so upstream Threadlight
+    updates still merge.
+  - **Anonymized field notes** — the telco-pilot learnings ship under
+    *"a large European telco AI pilot"*, never naming the customer (public
+    MIT repo); enforced by `tests/test_no_secrets_in_templates.py` (secret
+    literals **and** a customer-name denylist).
+  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's
+    instructions-only test suite (version + structure + no-secrets) as a
+    hard-fail step (deterministic, secret-free, no network).
+  - **Docs:** `README.md` (now **twelve pipeline skills + one orchestrator,
+    13 total**, skills table, pipeline-flow + manual-handoff note) and
+    `THREADLIGHT.md` (new chain section 11 + entry-skill picker row +
+    thirteen-skill count) updated. `threadlight-auto` deliberately does
+    **not** drive this skill — like `cicd`, it's a manual handoff leg.
+
+
   skill (plugin 1.3.0).** Closes the biggest unstated assumption in the
   production leg: that the coding agent can run `azd up` with broad rights.
   Real customer prod environments deploy through a **CI/CD pipeline**, under

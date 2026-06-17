@@ -37,6 +37,7 @@
   <nav class="nav" aria-label="Site chapters">
     <a href="./funnel.html">Funnel</a>
     <a href="./production.html">Production-ready</a>
+    <a href="./customize.html">Customize</a>
     <a href="./industries.html">Industries</a>
   </nav>
 </header>
@@ -307,11 +308,12 @@
         </p>
         <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
           Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
-          <strong>six skills</strong> wired between them. Three more &mdash;
+          <strong>six skills</strong> wired between them. Four more &mdash;
           <code>threadlight-auto</code> (entry orchestrator),
-          <code>threadlight-consumption-iq</code> (cost forecast) and
-          <code>threadlight-cicd</code> (production deploy pipeline) &mdash; round out the
-          <strong>12-skill library</strong>; they fire on demand, not on every chain.
+          <code>threadlight-consumption-iq</code> (cost forecast),
+          <code>threadlight-cicd</code> (production deploy pipeline) and
+          <code>threadlight-customize</code> (fork &amp; customer onboarding) &mdash; round out the
+          <strong>13-skill library</strong>; they fire on demand, not on every chain.
         </p>
       </div>
 
@@ -414,14 +416,18 @@
           </div>
         </article>
 
-        <!-- Manual handoff after green — the production deploy pipeline -->
+        <!-- Manual handoff after green — prod pipeline, then customer onboarding -->
         <div class="chain-aux reveal">
           <div class="aux-group">
-            <div class="aux-label">After green &mdash; manual handoff, not part of the chain</div>
+            <div class="aux-label">After green &mdash; two manual handoff legs, not part of the chain</div>
             <div class="aux-row">
               <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">
                 <span class="aux-name"><span class="accent">threadlight</span>-cicd</span>
                 <span class="aux-role">Generates the prod deploy pipeline (GitHub Actions / Azure DevOps) + env-setup runbooks &mdash; OIDC/WIF identity, scoped RBAC, private-VNet runners. Scoped to the spoke RG; separate from <code>citadel-hub-deploy</code>.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize">
+                <span class="aux-name"><span class="accent">threadlight</span>-customize</span>
+                <span class="aux-role">The final leg &mdash; fork the pipeline and onboard it into <em>one</em> customer&rsquo;s environment (landing zones, RBAC, private VNet). Instructions, not automation; production onboarding first.</span>
               </a>
             </div>
           </div>
@@ -483,6 +489,41 @@
           Read the full production-ready chapter <span class="arrow">&rarr;</span>
         </a>
         <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; cost forecast &middot; soft-advisory, never fails a build</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ====================== SCENE · THE FINAL LEG (CUSTOMIZE) ====================== -->
+  <section class="scene" id="scene-customize" aria-labelledby="customize-h" data-toc-id="scene-customize" data-toc-label="Customize" style="padding:80px 0 72px;border-bottom:1px solid var(--line);">
+    <div class="wrap wrap-xl">
+
+      <div class="copy reveal" style="text-align:center; max-width:840px; margin:0 auto 26px;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:#36c8a8;box-shadow:0 0 10px rgba(54,200,168,.6);"></span>The final leg</p>
+        <h2 id="customize-h" class="display" data-delay="1" style="margin-top:14px;">Then make it <em>the customer&rsquo;s own.</em></h2>
+        <p class="sub" data-delay="2" style="margin-top:20px;">
+          The pilot proved the agent works. The last leg stands it up inside
+          <em>one customer&rsquo;s</em> environment &mdash; landing zones, RBAC,
+          pipelines, governance &mdash; with <strong>production onboarding as
+          priority&nbsp;#1</strong>. <code>threadlight-customize</code> ships this
+          as <strong>instructions and runbooks, not automation</strong>: no two
+          customers&rsquo; onboarding is the same, so we give you the frame and the
+          in-environment test loop instead of a generator that&rsquo;s wrong for everyone.
+        </p>
+      </div>
+
+      <div class="reveal" data-delay="3" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:840px; margin:0 auto 28px;">
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">01 &middot; Intake gate</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">02 &middot; Customization map</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">03 &middot; Test in their env</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">04 &middot; Name the boundary</span>
+      </div>
+
+      <div class="reveal" data-delay="4" style="text-align:center; max-width:840px; margin:0 auto;">
+        <a class="btn btn-primary" href="./customize.html" style="display:inline-block;">
+          Read the full customize chapter <span class="arrow">&rarr;</span>
+        </a>
+        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">4 moves &middot; fork + upstream-pin + overlay &middot; private-VNet dev via Azure ML VS Code / Codespaces &middot; manual handoff, not driven by auto</p>
       </div>
 
     </div>
