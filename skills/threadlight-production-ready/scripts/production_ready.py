@@ -443,6 +443,12 @@ def _scaffold_cicd(framing: dict, repo_full_name: str, out_root) -> list:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(_render_template(tmpl, ctx))
         written.append(dest)
+    _eprint(
+        "note: this is the *basic* GitHub-Actions scaffold. For the authoritative, "
+        "expanded pipeline (GitHub Actions AND Azure DevOps, UAMI/federated-credential "
+        "+ least-privilege RBAC + private-VNet runner runbooks, onboarding-path gate, and "
+        "the central-platform boundary), use the dedicated `threadlight-cicd` skill."
+    )
     return written
 
 

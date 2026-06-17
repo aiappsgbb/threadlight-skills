@@ -1,7 +1,7 @@
 {
   "name": "threadlight-skills",
-  "version": "1.2.0",
-  "description": "Threadlight pilot pipeline — 10 pipeline skills + threadlight-auto orchestrator (11 total) that take a customer engagement from brief to deployed, production-ready Foundry agent. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), operator workspace UI, post-deploy Azure consumption projection + SKU-diff recommender (consumption-iq), the paved path to production (Citadel spoke + AGT v4 + AI Gateway / VNet checklist with live Azure probes), and a full-auto orchestrator that drives the chain end-to-end behind one freeform prompt. Also bridges Kratos-exported agent projects: detect a Kratos export (src/hosted-agent/ + use-cases/<x>/), enrich/validate without regenerating the runtime, backfill evals/, and layer in the production-hardening skills (see docs/KRATOS-BRIDGE.md). USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, consumption projection, cost projection, SKU diff, SKU recommendation, PAYG vs PTU, Azure retail pricing, load profile, production readiness, paved path to production, citadel spoke, AGT, AI gateway, lab graveyard, customer architecture review, CISO sign-off, go-live readiness, seller enablement, one-prompt threadlight, autopilot, orchestrator, resume failed deploy, Kratos export, Kratos-exported project, foundry-agent.zip, compose on Kratos export, Kratos bridge, enrich exported agent, backfill evals. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation).",
+  "version": "1.3.0",
+  "description": "Threadlight pilot pipeline — 11 pipeline skills + threadlight-auto orchestrator (12 total) that take a customer engagement from brief to deployed, production-ready Foundry agent. Covers process design (SPEC.md, demo deck, prep guide), local test (Pattern 0 quickstart), 7-phase azd deploy, pre/post-deploy gate, demo data factory, event triggers (ACA Jobs, Event Grid, cron), human-in-the-loop gates (Teams Adaptive Cards, audit trail), operator workspace UI, post-deploy Azure consumption projection + SKU-diff recommender (consumption-iq), the paved path to production (Citadel spoke + AGT v4 + AI Gateway / VNet checklist with live Azure probes), a CI/CD pipeline generator for locked-down customer envs (threadlight-cicd: GitHub Actions + Azure DevOps prod-deploy pipelines via OIDC / Workload Identity Federation, UAMI + federated-credential / least-privilege RBAC / private-VNet runner runbooks, onboarding-path gate, and a central-platform boundary that keeps the pilot pipeline separate from citadel-hub-deploy), and a full-auto orchestrator that drives the chain end-to-end behind one freeform prompt. Also bridges Kratos-exported agent projects: detect a Kratos export (src/hosted-agent/ + use-cases/<x>/), enrich/validate without regenerating the runtime, backfill evals/, and layer in the production-hardening skills (see docs/KRATOS-BRIDGE.md). USE FOR: threadlight, pilot pipeline, process design, demo deck, prep guide, local test, azd deploy, safe check, demo data, event triggers, HITL, workspace UI, consumption projection, cost projection, SKU diff, SKU recommendation, PAYG vs PTU, Azure retail pricing, load profile, production readiness, paved path to production, citadel spoke, AGT, AI gateway, lab graveyard, customer architecture review, CISO sign-off, go-live readiness, seller enablement, ci/cd pipeline, github actions pipeline, azure devops pipeline, OIDC, workload identity federation, federated credentials, UAMI, least-privilege RBAC, self-hosted runners, managed devops pool, private vnet runners, restricted environment deploy, platform team handoff, central platform boundary, one-prompt threadlight, autopilot, orchestrator, resume failed deploy, Kratos export, Kratos-exported project, foundry-agent.zip, compose on Kratos export, Kratos bridge, enrich exported agent, backfill evals. DO NOT USE FOR: Foundry agent reference (use awesome-gbb), Zava digital-clone (use zava-constellation), central Citadel hub / shared AI gateway deployment (use citadel-hub-deploy in awesome-gbb).",
   "author": {
     "name": "Microsoft AI Apps GBB",
     "url": "https://github.com/aiappsgbb"
@@ -43,6 +43,16 @@
     "remediate",
     "trend-csv",
     "oidc-ci",
+    "cicd",
+    "github-actions",
+    "azure-devops",
+    "workload-identity-federation",
+    "federated-credentials",
+    "uami",
+    "self-hosted-runners",
+    "managed-devops-pools",
+    "least-privilege-rbac",
+    "central-platform-boundary",
     "kratos-bridge",
     "kratos-export",
     "foundry-agent-zip",

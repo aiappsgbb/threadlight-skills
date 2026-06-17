@@ -1,6 +1,6 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Ten pipeline skills + one orchestrator (11 total)** that take a customer
+> **Eleven pipeline skills + one orchestrator (12 total)** that take a customer
 > engagement from a one-paragraph brief through to a deployed, evaluated,
 > observable, **production-ready** Microsoft Foundry hosted agent — runnable
 > on the customer's tenant in a single working session, then handed off to
@@ -18,6 +18,7 @@
 | [`threadlight-workspace-ui`](skills/threadlight-workspace-ui/) | Operator dashboard (React workspace) behind Easy Auth |
 | [`threadlight-consumption-iq`](skills/threadlight-consumption-iq/) | **NEW v0.1.0-alpha** — post-deploy Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`, reads SPEC § 12 `load_profile{}` (wizard writes it if absent), hits Azure Retail Prices for current SKUs + 2–3 alternatives per resource (AOAI, Foundry, ACA, Cosmos, Storage, APIM, AI Search), emits `docs/cost-projection.md` + `specs/cost-manifest.json`. Soft-advisory; consumed by `production-ready`'s tightened COST-005 + new COST-006. |
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. |
+| [`threadlight-cicd`](skills/threadlight-cicd/) | **NEW v0.1.0** — production deploy pipeline + env-setup runbooks for locked-down customer envs (no direct `azd up`). Onboarding-path gate (standalone / spoke-onboard / hub-deploy-then-spoke), then generates **GitHub Actions or Azure DevOps** OIDC/WIF pipelines + UAMI/federated-credential, least-privilege RBAC, and private-VNet runner runbooks. Secret-free; ships a `central-platform-boundary.md` that keeps the pilot pipeline **separate** from `citadel-hub-deploy`. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 10 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow
@@ -26,12 +27,16 @@
 threadlight-design → threadlight-local-test → threadlight-deploy →
 threadlight-safe-check (gate) → threadlight-consumption-iq (cost) →
 foundry-evals + foundry-observability →
-threadlight-production-ready (advisory) → customer architecture review
+threadlight-production-ready (advisory) → customer architecture review →
+threadlight-cicd (prod deploy pipeline, when the customer env is locked down)
 ```
 
 The 10-stage pipeline above is the spine. `threadlight-auto` drives the same
 chain end-to-end when you want one-prompt automation (demos, resumption,
-template-from-scenario kickoffs).
+template-from-scenario kickoffs). **`threadlight-cicd` is a manual handoff
+step** after the readiness gate — `threadlight-auto` does **not** drive it
+(auto is a pilot driver, not a prod-pipeline orchestrator). It runs on a
+**separate repo/pipeline** from central-platform deployment (`citadel-hub-deploy`).
 
 The full technical briefing is in [`THREADLIGHT.md`](THREADLIGHT.md).
 

@@ -1,0 +1,51 @@
+# 02 — RBAC role assignments (least privilege)
+
+> **Owner: central platform team.** Grants the pilot deploy identity the minimum
+> it needs to provision + deploy use-case resources — scoped to the
+> **{{RBAC_SCOPE}}** (`{{TARGET_RESOURCE_GROUP}}`), never the subscription and
+> never the central hub.
+
+## Principle
+- Scope: the target resource group only — `{{RBAC_SCOPE_ID}}`.
+- Roles (both at the **same** RG scope — least privilege preserved):
+  - `{{RBAC_ROLE}}` — create/manage the use-case resources.
+  - `{{RBAC_RA_ADMIN_ROLE}}` (`{{RBAC_RA_ADMIN_ROLE_ID}}`) — keyless Foundry azd
+    templates perform `Microsoft.Authorization/roleAssignments/write` during
+    `azd provision` to grant the app's managed identity its data-plane roles
+    (e.g. *Cognitive Services OpenAI User*, *Search Index Data Contributor*).
+    **`{{RBAC_ROLE}}` alone cannot create role assignments**, so provisioning
+    fails with `AuthorizationFailed` unless this second role is also granted.
+- For `citadel-spoke` posture the pilot consumes the hub via an Access Contract
+  (`citadel-spoke-onboarding`); it receives **no** role on hub resources.
+
+## Commands
+```bash
+# Ensure the target resource group exists (idempotent)
+az group create \
+  --name {{TARGET_RESOURCE_GROUP}} \
+  --subscription {{TARGET_SUBSCRIPTION_ID}} \
+  --location {{TARGET_LOCATION}}
+
+# Resolve the UAMI principal (object) id
+PRINCIPAL_ID=$(az identity show \
+  --name {{UAMI_NAME}} --resource-group {{UAMI_RESOURCE_GROUP}} \
+  --query principalId -o tsv)
+
+# 1) Assign the deploy role, scoped to the target resource group ONLY
+az role assignment create \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "{{RBAC_ROLE}}" \
+  --scope "{{RBAC_SCOPE_ID}}"
+
+# 2) Allow keyless provision to assign data-plane roles within this RG.
+#    Optionally add --condition to restrict which roles it may grant.
+az role assignment create \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "{{RBAC_RA_ADMIN_ROLE}}" \
+  --scope "{{RBAC_SCOPE_ID}}"
+```
+
+> Do **not** widen `--scope` to the subscription or to any central-platform
+> resource group. See `../central-platform-boundary.md`.

@@ -1,0 +1,26 @@
+# Central-platform boundary (parallel-track guardrails)
+
+**This pilot pipeline is a separate repo and a separate pipeline from the central
+platform.** The central Citadel platform (hub) is deployed and owned by the
+platform team via the **citadel-hub-deploy** track in its own repository.
+
+Resolved onboarding path for this pilot: **{{ONBOARDING_PATH}}** (posture **{{POSTURE}}**).
+
+## The pilot pipeline MUST
+- Deploy **only** use-case resources into the target resource group
+  `{{TARGET_RESOURCE_GROUP}}` (RBAC scope: {{RBAC_SCOPE}}).
+- Authenticate with a UAMI whose RBAC is scoped to that resource group.
+
+## The pilot pipeline MUST NOT
+- Deploy or modify the central Citadel **hub**, the shared APIM AI gateway,
+  shared networking, or the platform Key Vault. Those are **never** in this
+  pipeline's scope — they belong to **citadel-hub-deploy**.
+- Grant its deploy identity any role at hub scope or subscription scope.
+
+## How the two tracks meet
+- **Central platform** (separate repo / separate pipeline): `citadel-hub-deploy`
+  stands up the hub; the platform team runs it.
+- **This pilot**: consumes the hub through an Access Contract via
+  `citadel-spoke-onboarding`. No hub writes originate here.
+
+{{BOUNDARY_PATH_GUIDANCE}}

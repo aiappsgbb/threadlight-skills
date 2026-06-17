@@ -9,6 +9,68 @@ field.
 
 ### Added
 
+- **`threadlight-cicd` v0.1.0 — production-leg CI/CD pipeline + env-setup
+  skill (plugin 1.3.0).** Closes the biggest unstated assumption in the
+  production leg: that the coding agent can run `azd up` with broad rights.
+  Real customer prod environments deploy through a **CI/CD pipeline**, under
+  a **federated identity** with **scoped RBAC**, often from **private-VNet
+  runners**. The new skill generates that pipeline plus the env-setup
+  runbooks the customer's platform team runs.
+  - **NEW skill: [`skills/threadlight-cicd/`](skills/threadlight-cicd/SKILL.md)**
+    — opens with an **onboarding-path decision gate** (is a central platform
+    env required? already deployed?) that resolves to one of three paths:
+    `standalone`, `spoke-onboard` (consume an existing hub via an Access
+    Contract → `citadel-spoke-onboarding`), or `hub-deploy-then-spoke`
+    (stand the hub up on the **separate** central track → `citadel-hub-deploy`,
+    then onboard). The resolved path is written to an auditable
+    `onboarding-path.json`.
+  - **Generates `.github/workflows/azd-deploy-prod.yml` (GitHub OIDC) or
+    `azure-pipelines.yml` (Azure DevOps Workload Identity Federation)** plus
+    `docs/threadlight-cicd/env-setup/` runbooks + `.sh` scripts — `01` UAMI +
+    federated credentials, `02` least-privilege RBAC (scoped to the
+    target/spoke RG only), `03` private-VNet runners (managed **and**
+    self-hosted) — and a `central-platform-boundary.md`. Generation is
+    **deterministic, offline, and secret-free** (OIDC/WIF only; no
+    `AZURE_CREDENTIALS`, client secret, or PAT ever emitted — enforced by the
+    test suite).
+  - **Parallel-track boundary (the must-tell).** The pilot pipeline is a
+    **separate repo/pipeline** from central-platform deployment. It deploys
+    **only** use-case resources into the spoke/target RG and **must never**
+    deploy or modify the Citadel hub, shared APIM, shared networking, or
+    platform Key Vault — those are owned by `citadel-hub-deploy` (awesome-gbb).
+    Documented in `SKILL.md`, the generated boundary doc, and `THREADLIGHT.md`.
+  - **`threadlight-production-ready`** — Phase 3 (`--scaffold-cicd`) keeps its
+    *basic* GitHub-Actions-only scaffold for backward-compat but now
+    **delegates** to `threadlight-cicd` as the authoritative/expanded home
+    (stderr pointer after the scaffold write, SKILL.md Phase 3 pointer, and a
+    new **section G** in `references/handoff-checklist.md`: "The production
+    deploy path exists (CI/CD)"). No behavior change — existing tests stay
+    green.
+  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's 35
+    tests as a hard-fail step (deterministic, secret-free, no network).
+  - **Hardening (pre-merge adversarial review).** Two adverse passes (security
+    review + a fresh-agent apply-test against a private-VNet bank scenario)
+    drove fixes now pinned by tests: (1) **RBAC** — the deploy identity also
+    gets *Role Based Access Control Administrator* at the **same target-RG
+    scope** so keyless Foundry `azd provision` can perform
+    `roleAssignments/write` (Contributor alone → `AuthorizationFailed`);
+    (2) **azd env seeding** — pipelines run `azd env new ... || true` before
+    `provision` so a clean CI checkout doesn't abort; (3) **ADO** now uses
+    **separate** provision and deploy `AzureCLI@2` tasks (matches the
+    checklist) and reuses the az session (`auth.useAzCliAuth`); (4) **GitHub**
+    drops the redundant `azd auth login` token exchange; (5) **path-aware
+    boundary doc** — on the spoke-onboard path it explicitly says *do not run
+    `citadel-hub-deploy`* and surfaces the hub coordinates + Access Contract
+    product (`--hub-sub` / `--hub-apim-id` / `--access-contract-product`);
+    (6) **private-runner runbook** now spells out Managed DevOps Pool / subnet
+    delegation / egress / private-DNS prerequisites and adds `--ado-pool-name`;
+    (7) **RBAC runbook** ensures the target RG exists first.
+  - **Docs:** `README.md` (now **eleven pipeline skills + one orchestrator**,
+    skills table, pipeline-flow note) and `THREADLIGHT.md` (new chain
+    section 10 + entry-skill picker row + twelve-skill count) updated.
+    `threadlight-auto` deliberately does **not** drive this skill — it's a
+    manual handoff step, not part of the pilot-driver state machine.
+
 - **Kratos-export bridge (issue #39)** — Threadlight skills now compose
   cleanly on a **Kratos-exported agent project** (`<use-case>-foundry-agent.zip`:
   `src/hosted-agent/` + `use-cases/<x>/` + trimmed `infra/`), so an SE can
