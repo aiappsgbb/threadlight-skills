@@ -836,132 +836,6 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </figcaption>
       </figure>
 
-      <!-- Into production: the governed Citadel spoke (what actually landed) -->
-      <div class="section-head" style="margin-top:64px;">
-        <p class="eyebrow"><span class="dot"></span>Into production</p>
-        <h2>The governed Citadel spoke &mdash; <em>what actually landed.</em></h2>
-        <p class="section-lede">
-          This is the part that makes it production, not a demo. The prod agent took <strong>no model
-          of its own</strong> &mdash; it onboarded to the bank&rsquo;s existing <strong>Citadel AI
-          gateway</strong> as an isolated, allow-listed spoke: keyless, metered, reversible &mdash; then
-          proved the wall holds against a live call.
-        </p>
-      </div>
-
-      <div class="cs-postures reveal" data-delay="1">
-        <div class="cs-posture is-lime">
-          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13l-3-3"/><path d="M20 17H7l3 3"/></svg></div>
-          <div><h5>Borrows the model, owns none</h5><p>The prod agent deploys <strong>no model of its own</strong> &mdash; it calls the hub&rsquo;s current-generation model through the gateway, consuming <strong>zero new quota</strong>.</p></div>
-        </div>
-        <div class="cs-posture">
-          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="4"/><path d="M11 12l9 9"/><path d="M19 20l2-2"/><path d="M16 17l2-2"/></svg></div>
-          <div><h5>Keyless &amp; least-privileged</h5><p>A managed identity authenticates &mdash; no keys, no secrets. The deploy identity holds <strong>exactly two roles</strong>, both scoped to the prod resource group.</p></div>
-        </div>
-        <div class="cs-posture is-lime">
-          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></div>
-          <div><h5>Additive, reversible onboarding</h5><p>Registered as an IaC access contract: <code>6 create &middot; 0 modify &middot; 0 delete</code>. The hub&rsquo;s <strong>23 existing products were untouched</strong>.</p></div>
-        </div>
-      </div>
-
-      <figure class="cs-arch reveal" data-delay="1" aria-labelledby="prodarch-cap">
-        <div class="frame">
-          <svg viewBox="0 0 1120 446" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. VNet and private endpoints, Cosmos, Key Vault and AI Search are deferred to a later hardening backlog.">
-            <defs>
-              <marker id="cs-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
-              </marker>
-              <marker id="cs-a3c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#6e87ff"/>
-              </marker>
-              <linearGradient id="cs-accent3" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#4f6dff"/><stop offset="1" stop-color="#6e87ff"/>
-              </linearGradient>
-            </defs>
-
-            <!-- additive contract banner -->
-            <rect x="36" y="12" width="1048" height="34" rx="10" fill="#0a0d14" stroke="#3a4366"/>
-            <text x="560" y="34" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#cfd2dc">Onboarded as an additive IaC access contract &mdash; <tspan fill="#a8ff60">6 create</tspan> &middot; 0 modify &middot; 0 delete &middot; 23 existing hub products untouched</text>
-
-            <!-- ===== PROD boundary (rg-prod) ===== -->
-            <rect x="36" y="68" width="540" height="308" rx="16" fill="#0a0d14" stroke="url(#cs-accent3)" stroke-opacity="0.7"/>
-            <text x="56" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">rg-prod <tspan fill="#8e95a8" font-weight="400">&mdash; the deployed spoke</tspan></text>
-            <text x="56" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">lean governed pilot &middot; public ingress &middot; single replica &middot; keyless MI</text>
-
-            <!-- hosted agent -->
-            <rect x="56" y="122" width="500" height="58" rx="12" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
-            <text x="306" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Hosted agent &middot; Azure AI Foundry</text>
-            <text x="306" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">agentsv2 runtime &middot; <tspan fill="#a8ff60">no model of its own</tspan> &middot; managed identity</text>
-
-            <!-- agent -> tools / observability connectors -->
-            <line x1="178" y1="180" x2="178" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
-            <line x1="434" y1="180" x2="434" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
-
-            <!-- tools -->
-            <rect x="56" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
-            <text x="72" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Agent tools</text>
-            <text x="72" y="240" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">get_credit_case</text>
-            <text x="72" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">compute_credit_metrics</text>
-            <text x="72" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">load_skill</text>
-
-            <!-- observability -->
-            <rect x="312" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
-            <text x="328" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Observability</text>
-            <text x="328" y="240" font-family="Inter,system-ui,sans-serif" font-size="10.5" fill="#8e95a8">App Insights + Log Analytics</text>
-            <text x="328" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#6e87ff">OpenTelemetry spans</text>
-            <text x="328" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#a8ff60">2,306 trace records</text>
-
-            <!-- HITL gate -->
-            <rect x="56" y="300" width="500" height="40" rx="10" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.5"/>
-            <text x="306" y="325" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.5" fill="#cfd2dc">Human-in-the-loop gate &mdash; every memo emitted <tspan font-family="Cascadia Mono,monospace" font-size="11" fill="#ffb84a">status: pending_review</tspan></text>
-
-            <!-- deployed-resources note -->
-            <text x="306" y="362" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">deployed in rg-prod: Foundry &middot; ACR &middot; App Insights &middot; Log Analytics</text>
-
-            <!-- ===== HUB boundary (shared Citadel hub) ===== -->
-            <rect x="612" y="68" width="472" height="308" rx="16" fill="#0a0d14" stroke="#3a4366"/>
-            <text x="632" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">Bank&rsquo;s Citadel hub <tspan fill="#8e95a8" font-weight="400">&mdash; shared, governed</tspan></text>
-            <text x="632" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">rg-citadel-hub &middot; bank-owned &middot; current-gen model pool</text>
-
-            <!-- gateway -->
-            <rect x="632" y="122" width="432" height="70" rx="12" fill="#11151f" stroke="url(#cs-accent3)"/>
-            <text x="848" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Citadel AI gateway</text>
-            <text x="848" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">JWT auth &middot; metered &middot; <tspan fill="#6e87ff">model allow-list</tspan></text>
-            <text x="848" y="183" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#8e95a8">2 approved &middot; current-gen</text>
-
-            <line x1="848" y1="192" x2="848" y2="204" stroke="#4f6dff" stroke-width="1.5" marker-end="url(#cs-a3c)"/>
-
-            <!-- hub model pool -->
-            <rect x="632" y="204" width="432" height="54" rx="12" fill="#11151f" stroke="#3a4366"/>
-            <text x="848" y="227" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13.5" font-weight="600" fill="#f5f5f7">Hub model pool</text>
-            <text x="848" y="246" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">current-generation &middot; gpt-5 family</text>
-
-            <line x1="848" y1="258" x2="848" y2="294" stroke="#3a4366" stroke-width="1.4" marker-end="url(#cs-a3)"/>
-
-            <!-- allow / deny proof -->
-            <rect x="664" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.55"/>
-            <text x="754" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#a8ff60">approved &rarr; 200</text>
-            <rect x="852" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.55"/>
-            <text x="942" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#ffb84a">deprecated &rarr; 403</text>
-
-            <text x="848" y="360" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">hub logs attribute every prod model turn to our product</text>
-
-            <!-- ===== governed egress (the model path) — drawn last so it sits above both boundaries ===== -->
-            <line x1="556" y1="151" x2="630" y2="151" stroke="#6e87ff" stroke-width="2" marker-end="url(#cs-a3c)"/>
-            <rect x="566" y="135" width="56" height="15" rx="4" fill="#0a0d14" stroke="#3a4366"/>
-            <text x="594" y="146" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9" fill="#9fb0ff">model calls</text>
-
-            <!-- hardening backlog footnote -->
-            <rect x="36" y="398" width="1048" height="36" rx="10" fill="#0a0d14" stroke="#2a3149"/>
-            <text x="560" y="420" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">Deferred to the 6-week hardening backlog (not in this pilot): <tspan fill="#cfd2dc">VNet + private endpoints &middot; Cosmos &middot; Key Vault &middot; AI Search</tspan></text>
-          </svg>
-        </div>
-        <figcaption id="prodarch-cap">
-          The production topology that actually landed: a Foundry-hosted agent in <strong>rg-prod</strong> that owns
-          <strong>no model</strong>, fully traced to App Insights and gated by a human sign-off &mdash; every model
-          call leaving <strong>keyless</strong> through the bank&rsquo;s Citadel gateway, which allow-lists the approved
-          current-generation model (<strong>200</strong>) and refuses deprecated ones (<strong>403</strong>).
-        </figcaption>
-      </figure>
     </div>
   </section>
 
@@ -1528,59 +1402,6 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   </section>
 
   <!-- ==================== CROSS-CUTTING FINDINGS ==================== -->
-  <section class="chapter-section" id="findings" data-toc-id="findings" data-toc-label="What we sent back">
-    <div class="wrap wrap-wide">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The point of running it for real</p>
-        <h2>~58 findings &mdash; <em>and not one a patch in flight.</em></h2>
-        <p class="section-lede">
-          The real output of running the pipeline for real isn&rsquo;t the agent. It&rsquo;s the pile of
-          concrete, fixable findings the run surfaced &mdash; <strong>none of which blocked production</strong>.
-          Here is the shape of it; the worst few are dissected in the next section.
-        </p>
-      </div>
-
-      <div class="cs-principles reveal" data-delay="1">
-        <div class="cs-principle">
-          <div class="big">~58<small>~15 High</small></div>
-          <h4>Surfaced, not swept.</h4>
-          <p>Every finding logged in the run repo with a root cause and a home &mdash; ready to file as upstream PRs across the seven skills it touched.</p>
-        </div>
-        <div class="cs-principle is-clean">
-          <div class="big">0</div>
-          <h4>Edits in flight.</h4>
-          <p>Not one skill file changed mid-run. Dogfooding only stays honest if you don&rsquo;t fix the tool while you&rsquo;re grading it. Worktrees stayed pristine.</p>
-        </div>
-        <div class="cs-principle is-warn">
-          <div class="big">4</div>
-          <h4>Cut against the brief.</h4>
-          <p>Four defects bear directly on the project&rsquo;s own rules &mdash; two quietly allow deprecated gpt-4 models; the worst fails completely silent. Detailed just below.</p>
-        </div>
-      </div>
-
-      <!-- findings-by-skill stacked chart -->
-      <div class="cs-chart reveal" data-delay="1" style="margin-top:50px;">
-        <div class="section-head" style="margin-bottom:18px;">
-          <p class="eyebrow"><span class="dot"></span>Where the run pushed hardest</p>
-          <h3 style="font-family:var(--serif);font-weight:600;font-size:clamp(22px,3vw,34px);margin:0;color:var(--ink-0);">Findings by skill.</h3>
-        </div>
-        <div class="cs-bars" role="img" aria-label="Findings by skill, High versus Medium-and-Low. Consumption-IQ 12 findings of which 3 High. Observability 10, 3 High. Deploy 8, 2 High. Citadel-spoke 8, 2 High. Customize 8, 3 High. Evals 7, 2 High. CI/CD 7, 0 High.">
-          <div class="cs-bar"><div class="bl">consumption-iq</div><div class="track"><div class="fill is-stack" style="--w:100%"><div class="seg-h" style="width:25%"></div><div class="seg-r" style="width:75%"></div></div></div><div class="bv">12 <small style="color:var(--warn)">&middot;3H</small></div></div>
-          <div class="cs-bar"><div class="bl">observability</div><div class="track"><div class="fill is-stack" style="--w:83.3%"><div class="seg-h" style="width:30%"></div><div class="seg-r" style="width:70%"></div></div></div><div class="bv">10 <small style="color:var(--warn)">&middot;3H</small></div></div>
-          <div class="cs-bar"><div class="bl">deploy</div><div class="track"><div class="fill is-stack" style="--w:66.7%"><div class="seg-h" style="width:25%"></div><div class="seg-r" style="width:75%"></div></div></div><div class="bv">8 <small style="color:var(--warn)">&middot;2H</small></div></div>
-          <div class="cs-bar"><div class="bl">citadel-spoke</div><div class="track"><div class="fill is-stack" style="--w:66.7%"><div class="seg-h" style="width:25%"></div><div class="seg-r" style="width:75%"></div></div></div><div class="bv">8 <small style="color:var(--warn)">&middot;2H</small></div></div>
-          <div class="cs-bar"><div class="bl">customize</div><div class="track"><div class="fill is-stack" style="--w:66.7%"><div class="seg-h" style="width:37.5%"></div><div class="seg-r" style="width:62.5%"></div></div></div><div class="bv">8 <small style="color:var(--warn)">&middot;3H</small></div></div>
-          <div class="cs-bar"><div class="bl">evals</div><div class="track"><div class="fill is-stack" style="--w:58.3%"><div class="seg-h" style="width:28.6%"></div><div class="seg-r" style="width:71.4%"></div></div></div><div class="bv">7 <small style="color:var(--warn)">&middot;2H</small></div></div>
-          <div class="cs-bar"><div class="bl">cicd</div><div class="track"><div class="fill is-stack" style="--w:58.3%"><div class="seg-h" style="width:0%"></div><div class="seg-r" style="width:100%"></div></div></div><div class="bv">7 <small style="color:var(--ink-3)">&middot;0H</small></div></div>
-        </div>
-        <div class="cs-legend">
-          <span><i class="h"></i> High severity</span>
-          <span><i class="r"></i> Medium &amp; Low</span>
-          <span style="color:var(--ink-3);font-family:var(--mono);font-size:.78rem;">7 skills &middot; ~15 High &middot; worktrees untouched</span>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <!-- ==================== ADVERSE / LIMITS ==================== -->
   <section class="chapter-section" id="limits" data-toc-id="limits" data-toc-label="Where it breaks">
@@ -1593,6 +1414,11 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           stated plainly &mdash; two of them cut directly against the project&rsquo;s own hard rule.
         </p>
       </div>
+
+      <p class="cs-hownote reveal">
+        <span class="k">Self-improving</span>Every issue here &mdash; and the <strong>~54 lower-severity findings</strong> alongside them &mdash; was logged in the run repo with a root cause, then fed straight back as <strong>upstream fixes to the skills themselves</strong>. Dog-fooding the pipeline is how the pipeline gets better.
+        <span class="r">~58 findings &middot; logged &amp; routed upstream &middot; none blocked production</span>
+      </p>
 
       <div class="cs-adverse reveal" data-delay="1">
         <div class="cs-adv">
@@ -1664,6 +1490,137 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           </ul>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ==================== WHAT SHIPPED — the climax ==================== -->
+  <section class="chapter-section" id="shipped" data-toc-id="shipped" data-toc-label="What shipped">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>What shipped to production</p>
+        <h2>This is what went live &mdash; <em>governed, keyless, reversible.</em></h2>
+        <p class="section-lede">
+          The whole run, in one diagram. The production agent holds <strong>no model of its own</strong> &mdash;
+          it onboarded to the bank&rsquo;s existing <strong>Citadel AI gateway</strong> as an isolated, allow-listed
+          spoke: keyless, metered, fully traced, and gated by a human sign-off &mdash; then proved the governance
+          wall holds against a live call. <strong>This is the finish line.</strong>
+        </p>
+      </div>
+
+      <div class="cs-postures reveal" data-delay="1">
+        <div class="cs-posture is-lime">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13l-3-3"/><path d="M20 17H7l3 3"/></svg></div>
+          <div><h5>Borrows the model, owns none</h5><p>The prod agent deploys <strong>no model of its own</strong> &mdash; it calls the hub&rsquo;s current-generation model through the gateway, consuming <strong>zero new quota</strong>.</p></div>
+        </div>
+        <div class="cs-posture">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="4"/><path d="M11 12l9 9"/><path d="M19 20l2-2"/><path d="M16 17l2-2"/></svg></div>
+          <div><h5>Keyless &amp; least-privileged</h5><p>A managed identity authenticates &mdash; no keys, no secrets. The deploy identity holds <strong>exactly two roles</strong>, both scoped to the prod resource group.</p></div>
+        </div>
+        <div class="cs-posture is-lime">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></div>
+          <div><h5>Additive, reversible onboarding</h5><p>Registered as an IaC access contract: <code>6 create &middot; 0 modify &middot; 0 delete</code>. The hub&rsquo;s <strong>23 existing products were untouched</strong>.</p></div>
+        </div>
+      </div>
+
+      <figure class="cs-arch reveal" data-delay="1" aria-labelledby="prodarch-cap">
+        <div class="frame">
+          <svg viewBox="0 0 1120 446" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. VNet and private endpoints, Cosmos, Key Vault and AI Search are deferred to a later hardening backlog.">
+            <defs>
+              <marker id="cs-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
+              </marker>
+              <marker id="cs-a3c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#6e87ff"/>
+              </marker>
+              <linearGradient id="cs-accent3" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#4f6dff"/><stop offset="1" stop-color="#6e87ff"/>
+              </linearGradient>
+            </defs>
+
+            <!-- additive contract banner -->
+            <rect x="36" y="12" width="1048" height="34" rx="10" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="560" y="34" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#cfd2dc">Onboarded as an additive IaC access contract &mdash; <tspan fill="#a8ff60">6 create</tspan> &middot; 0 modify &middot; 0 delete &middot; 23 existing hub products untouched</text>
+
+            <!-- ===== PROD boundary (rg-prod) ===== -->
+            <rect x="36" y="68" width="540" height="308" rx="16" fill="#0a0d14" stroke="url(#cs-accent3)" stroke-opacity="0.7"/>
+            <text x="56" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">rg-prod <tspan fill="#8e95a8" font-weight="400">&mdash; the deployed spoke</tspan></text>
+            <text x="56" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">lean governed pilot &middot; public ingress &middot; single replica &middot; keyless MI</text>
+
+            <!-- hosted agent -->
+            <rect x="56" y="122" width="500" height="58" rx="12" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
+            <text x="306" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Hosted agent &middot; Azure AI Foundry</text>
+            <text x="306" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">agentsv2 runtime &middot; <tspan fill="#a8ff60">no model of its own</tspan> &middot; managed identity</text>
+
+            <!-- agent -> tools / observability connectors -->
+            <line x1="178" y1="180" x2="178" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
+            <line x1="434" y1="180" x2="434" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
+
+            <!-- tools -->
+            <rect x="56" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="72" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Agent tools</text>
+            <text x="72" y="240" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">get_credit_case</text>
+            <text x="72" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">compute_credit_metrics</text>
+            <text x="72" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">load_skill</text>
+
+            <!-- observability -->
+            <rect x="312" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="328" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Observability</text>
+            <text x="328" y="240" font-family="Inter,system-ui,sans-serif" font-size="10.5" fill="#8e95a8">App Insights + Log Analytics</text>
+            <text x="328" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#6e87ff">OpenTelemetry spans</text>
+            <text x="328" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#a8ff60">2,306 trace records</text>
+
+            <!-- HITL gate -->
+            <rect x="56" y="300" width="500" height="40" rx="10" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.5"/>
+            <text x="306" y="325" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.5" fill="#cfd2dc">Human-in-the-loop gate &mdash; every memo emitted <tspan font-family="Cascadia Mono,monospace" font-size="11" fill="#ffb84a">status: pending_review</tspan></text>
+
+            <!-- deployed-resources note -->
+            <text x="306" y="362" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">deployed in rg-prod: Foundry &middot; ACR &middot; App Insights &middot; Log Analytics</text>
+
+            <!-- ===== HUB boundary (shared Citadel hub) ===== -->
+            <rect x="612" y="68" width="472" height="308" rx="16" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="632" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">Bank&rsquo;s Citadel hub <tspan fill="#8e95a8" font-weight="400">&mdash; shared, governed</tspan></text>
+            <text x="632" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">rg-citadel-hub &middot; bank-owned &middot; current-gen model pool</text>
+
+            <!-- gateway -->
+            <rect x="632" y="122" width="432" height="70" rx="12" fill="#11151f" stroke="url(#cs-accent3)"/>
+            <text x="848" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Citadel AI gateway</text>
+            <text x="848" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">JWT auth &middot; metered &middot; <tspan fill="#6e87ff">model allow-list</tspan></text>
+            <text x="848" y="183" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#8e95a8">2 approved &middot; current-gen</text>
+
+            <line x1="848" y1="192" x2="848" y2="204" stroke="#4f6dff" stroke-width="1.5" marker-end="url(#cs-a3c)"/>
+
+            <!-- hub model pool -->
+            <rect x="632" y="204" width="432" height="54" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="848" y="227" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13.5" font-weight="600" fill="#f5f5f7">Hub model pool</text>
+            <text x="848" y="246" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">current-generation &middot; gpt-5 family</text>
+
+            <line x1="848" y1="258" x2="848" y2="294" stroke="#3a4366" stroke-width="1.4" marker-end="url(#cs-a3)"/>
+
+            <!-- allow / deny proof -->
+            <rect x="664" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.55"/>
+            <text x="754" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#a8ff60">approved &rarr; 200</text>
+            <rect x="852" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.55"/>
+            <text x="942" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#ffb84a">deprecated &rarr; 403</text>
+
+            <text x="848" y="360" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">hub logs attribute every prod model turn to our product</text>
+
+            <!-- ===== governed egress (the model path) — drawn last so it sits above both boundaries ===== -->
+            <line x1="556" y1="151" x2="630" y2="151" stroke="#6e87ff" stroke-width="2" marker-end="url(#cs-a3c)"/>
+            <rect x="566" y="135" width="56" height="15" rx="4" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="594" y="146" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9" fill="#9fb0ff">model calls</text>
+
+            <!-- hardening backlog footnote -->
+            <rect x="36" y="398" width="1048" height="36" rx="10" fill="#0a0d14" stroke="#2a3149"/>
+            <text x="560" y="420" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">Deferred to the 6-week hardening backlog (not in this pilot): <tspan fill="#cfd2dc">VNet + private endpoints &middot; Cosmos &middot; Key Vault &middot; AI Search</tspan></text>
+          </svg>
+        </div>
+        <figcaption id="prodarch-cap">
+          The production topology that actually landed: a Foundry-hosted agent in <strong>rg-prod</strong> that owns
+          <strong>no model</strong>, fully traced to App Insights and gated by a human sign-off &mdash; every model
+          call leaving <strong>keyless</strong> through the bank&rsquo;s Citadel gateway, which allow-lists the approved
+          current-generation model (<strong>200</strong>) and refuses deprecated ones (<strong>403</strong>).
+        </figcaption>
+      </figure>
     </div>
   </section>
 
