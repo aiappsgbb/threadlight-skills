@@ -2018,6 +2018,10 @@
     --chapter-accent:      var(--warn);
     --chapter-accent-glow: rgba(255,184,74,.14);
   }
+  body.chapter-casestudy {
+    --chapter-accent:      var(--accent);
+    --chapter-accent-glow: rgba(79,109,255,.16);
+  }
 
   /* ============================================================
      STAT STRIP — large numbers + tiny labels, sits under each
