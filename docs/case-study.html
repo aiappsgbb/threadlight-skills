@@ -131,7 +131,7 @@
   .cs-stage.is-cond .cs-finding .tag { color: var(--warn); }
 
   /* — proof grid ——————————————————————————————————————————— */
-  .cs-proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 8px; }
+  .cs-proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
   .cs-proof { background: var(--bg-1); border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 20px; }
   .cs-proof .eyebrow { margin-bottom: 10px; }
   .cs-proof h3 { margin: 0 0 8px; font-size: 1.06rem; }
@@ -438,6 +438,16 @@
   .cs-how .see a { font-family: var(--mono); font-size: .8rem; color: var(--lime); text-decoration: none; border-bottom: 1px solid rgba(168,255,96,.32); white-space: nowrap; }
   .cs-how .see a:hover { border-bottom-color: var(--lime); }
 
+  /* — "how we did this": a compact note, not a section ————————————— */
+  .cs-hownote { position: relative; margin: 0 0 40px; padding: 15px 20px 15px 22px; border: 1px solid var(--line); border-left: 3px solid var(--lime); border-radius: 12px; background: var(--bg-1); color: var(--ink-2); font-size: .92rem; line-height: 1.62; }
+  .cs-hownote .k { font-family: var(--mono); font-size: .67rem; letter-spacing: .14em; text-transform: uppercase; color: var(--lime); margin-right: 10px; white-space: nowrap; }
+  .cs-hownote em { font-style: italic; color: var(--ink-1); }
+  .cs-hownote strong { color: var(--ink-0); font-weight: 600; }
+  .cs-hownote code { font-family: var(--mono); font-size: .85em; color: var(--ink-1); }
+  .cs-hownote .r { display: inline-block; margin-top: 7px; font-family: var(--mono); font-size: .74rem; color: var(--ink-3); letter-spacing: .02em; }
+  .cs-hownote a { font-family: var(--mono); font-size: .8rem; color: var(--lime); text-decoration: none; border-bottom: 1px solid rgba(168,255,96,.32); white-space: nowrap; margin-left: 10px; }
+  .cs-hownote a:hover { border-bottom-color: var(--lime); }
+
   /* — Act-break stat strip (de-flatten the act bands) ——————————— */
   .cs-actstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 36px auto 0; max-width: 880px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg-1); text-align: center; }
   .cs-astat { padding: 22px 14px; border-right: 1px solid var(--line); }
@@ -467,6 +477,7 @@
     .cs-astat:nth-child(odd) { border-right: 1px solid var(--line); }
     .cs-astat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
     .cs-postures { grid-template-columns: 1fr; }
+    .cs-proof-grid { grid-template-columns: repeat(2, 1fr); }
     .cs-flow { grid-template-columns: 1fr; gap: 8px; }
     .cs-arrow { width: 100%; height: 26px; transform: rotate(90deg); }
     .cs-demos-frame { grid-template-columns: 1fr; }
@@ -479,6 +490,7 @@
     .cs-stage { grid-template-columns: 40px 1fr; gap: 14px; }
     .cs-marker { width: 40px; height: 40px; font-size: 1rem; }
     .cs-timeline::before { left: 19px; }
+    .cs-proof-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -555,39 +567,11 @@
   <section class="chapter-section" id="glance" data-toc-id="glance" data-toc-label="At a glance">
     <div class="wrap wrap-wide">
 
-      <!-- How we did this — grounds the real run before any numbers -->
-      <div class="cs-how reveal">
-        <p class="ey">How we did this</p>
-        <h2>We didn&rsquo;t write <em>about</em> Threadlight &mdash; we <em>ran it</em>, for real.</h2>
-        <div class="cs-flow">
-          <div class="cs-step">
-            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>Step 1 &middot; the operator</p>
-            <b>Writes the stage prompt.</b>
-            <span>A GitHub Copilot session types each stage&rsquo;s instruction by hand &mdash; and writes no application code itself.</span>
-          </div>
-          <div class="cs-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
-          <div class="cs-step is-agent">
-            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1.2" fill="currentColor"/><circle cx="15" cy="13" r="1.2" fill="currentColor"/></svg></span>Step 2 &middot; the inner agent</p>
-            <b>Runs the real skills.</b>
-            <span>A separate <code>copilot</code> on <strong>Claude Opus 4.8</strong> executes the Threadlight skills against a <strong>live Azure subscription</strong> &mdash; not a mock.</span>
-          </div>
-          <div class="cs-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
-          <div class="cs-step">
-            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/><path d="M9 14l2 2 4-4"/></svg></span>Step 3 &middot; captured &amp; checked</p>
-            <b>Every artifact reviewed.</b>
-            <span>Transcript, OTel traces and Azure evidence are logged, then the operator <strong>re-derives the numbers</strong> before the next stage runs.</span>
-          </div>
-        </div>
-        <div class="cs-receipts">
-          <span class="r ok">real Azure subscription</span>
-          <span class="r">Citadel AI gateway</span>
-          <span class="r">2 copilot agents</span>
-          <span class="r">14 stages captured</span>
-          <span class="r">2,306 OTel records</span>
-          <span class="r ok">nothing mocked</span>
-        </div>
-        <p class="see">That loop ran <strong>&times;14 stages</strong>, idea &rarr; governed production. <a href="#setup">See the exact first prompt &amp; method &darr;</a></p>
-      </div>
+      <!-- How we did this — a compact note (not a section): grounds the real run up front -->
+      <p class="cs-hownote reveal">
+        <span class="k">How we did this</span>This isn&rsquo;t a write-up <em>about</em> Threadlight &mdash; we <strong>ran it</strong>. An operator typed each stage&rsquo;s prompt by hand; a separate <code>copilot</code> on <strong>Claude Opus 4.8</strong> executed the real skills against a <strong>live Azure subscription</strong>; every artifact was captured and re-checked before the next stage ran.
+        <span class="r">live subscription &middot; Citadel gateway &middot; 14 stages &middot; 2,306 OTel records &middot; nothing mocked</span><a href="#setup">See the method &darr;</a>
+      </p>
 
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>At a glance</p>
@@ -685,8 +669,7 @@ reviews and signs off. <b>A human-in-the-loop approval gate is required before a
 is finalized, and every step must be auditable.</b>
 
 CONSTRAINTS
-<b>MODEL POLICY (HARD RULE):</b> Do NOT use any gpt-4* model &mdash; gpt-4o, gpt-4.1, gpt-4-turbo
-etc. are ALL DEPRECATED and forbidden. Use the gpt-5 family&hellip; The production
+<b>MODEL POLICY (HARD RULE):</b> Use a current-generation model (gpt-5 family)&hellip; The production
 deployment will route LLM calls through an existing Citadel AI gateway&hellip;</span><span class="cmd">"</span>
         </div>
       </div>
@@ -880,66 +863,103 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </div>
       </div>
 
-      <figure class="cs-arch reveal" data-delay="1" aria-labelledby="onb-cap">
+      <figure class="cs-arch reveal" data-delay="1" aria-labelledby="prodarch-cap">
         <div class="frame">
-          <svg viewBox="0 0 1120 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production agent onboards to the bank's Citadel AI gateway as an isolated spoke with no model of its own. It authenticates with a keyless managed identity and borrows the hub's current-generation model through the gateway, which authenticates, meters and allow-lists every call: an approved current model returns 200, a banned deprecated model is refused with 403. Onboarding was additive — six resources created, none modified or deleted, twenty-three existing hub products untouched.">
+          <svg viewBox="0 0 1120 446" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. VNet and private endpoints, Cosmos, Key Vault and AI Search are deferred to a later hardening backlog.">
             <defs>
-              <marker id="cs-arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <marker id="cs-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
               </marker>
-              <linearGradient id="cs-accent2" x1="0" y1="0" x2="1" y2="1">
+              <marker id="cs-a3c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#6e87ff"/>
+              </marker>
+              <linearGradient id="cs-accent3" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0" stop-color="#4f6dff"/><stop offset="1" stop-color="#6e87ff"/>
               </linearGradient>
             </defs>
 
             <!-- additive contract banner -->
-            <rect x="40" y="14" width="1040" height="38" rx="10" fill="#0a0d14" stroke="#3a4366"/>
-            <text x="560" y="38" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#cfd2dc">Onboarded as an additive IaC access contract &mdash; <tspan fill="#a8ff60">6 create</tspan> &middot; 0 modify &middot; 0 delete &middot; 23 existing hub products untouched</text>
+            <rect x="36" y="12" width="1048" height="34" rx="10" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="560" y="34" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#cfd2dc">Onboarded as an additive IaC access contract &mdash; <tspan fill="#a8ff60">6 create</tspan> &middot; 0 modify &middot; 0 delete &middot; 23 existing hub products untouched</text>
 
-            <!-- spoke -->
-            <g>
-              <rect x="40" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
-              <text x="190" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Production agent</text>
-              <text x="190" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">the governed spoke</text>
-              <text x="190" y="176" text-anchor="middle" fill="#a8ff60" font-family="Inter,system-ui,sans-serif" font-size="11.5">no model of its own</text>
-              <text x="190" y="196" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">keyless managed identity</text>
-            </g>
-            <line x1="340" y1="154" x2="408" y2="154" stroke="#8e95a8" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
-            <text x="374" y="144" text-anchor="middle" fill="#8e95a8" font-family="Cascadia Mono,monospace" font-size="9.5">calls</text>
+            <!-- ===== PROD boundary (rg-prod) ===== -->
+            <rect x="36" y="68" width="540" height="308" rx="16" fill="#0a0d14" stroke="url(#cs-accent3)" stroke-opacity="0.7"/>
+            <text x="56" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">rg-prod <tspan fill="#8e95a8" font-weight="400">&mdash; the deployed spoke</tspan></text>
+            <text x="56" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">lean governed pilot &middot; public ingress &middot; single replica &middot; keyless MI</text>
+
+            <!-- hosted agent -->
+            <rect x="56" y="122" width="500" height="58" rx="12" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
+            <text x="306" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Hosted agent &middot; Azure AI Foundry</text>
+            <text x="306" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">agentsv2 runtime &middot; <tspan fill="#a8ff60">no model of its own</tspan> &middot; managed identity</text>
+
+            <!-- agent -> tools / observability connectors -->
+            <line x1="178" y1="180" x2="178" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
+            <line x1="434" y1="180" x2="434" y2="196" stroke="#3a4366" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#cs-a3)"/>
+
+            <!-- tools -->
+            <rect x="56" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="72" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Agent tools</text>
+            <text x="72" y="240" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">get_credit_case</text>
+            <text x="72" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">compute_credit_metrics</text>
+            <text x="72" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#8e95a8">load_skill</text>
+
+            <!-- observability -->
+            <rect x="312" y="196" width="244" height="92" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="328" y="218" font-family="Inter,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#cfd2dc">Observability</text>
+            <text x="328" y="240" font-family="Inter,system-ui,sans-serif" font-size="10.5" fill="#8e95a8">App Insights + Log Analytics</text>
+            <text x="328" y="259" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#6e87ff">OpenTelemetry spans</text>
+            <text x="328" y="278" font-family="Cascadia Mono,monospace" font-size="10.5" fill="#a8ff60">2,306 trace records</text>
+
+            <!-- HITL gate -->
+            <rect x="56" y="300" width="500" height="40" rx="10" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.5"/>
+            <text x="306" y="325" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11.5" fill="#cfd2dc">Human-in-the-loop gate &mdash; every memo emitted <tspan font-family="Cascadia Mono,monospace" font-size="11" fill="#ffb84a">status: pending_review</tspan></text>
+
+            <!-- deployed-resources note -->
+            <text x="306" y="362" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">deployed in rg-prod: Foundry &middot; ACR &middot; App Insights &middot; Log Analytics</text>
+
+            <!-- ===== HUB boundary (shared Citadel hub) ===== -->
+            <rect x="612" y="68" width="472" height="308" rx="16" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="632" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">Bank&rsquo;s Citadel hub <tspan fill="#8e95a8" font-weight="400">&mdash; shared, governed</tspan></text>
+            <text x="632" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">rg-citadel-hub &middot; bank-owned &middot; current-gen model pool</text>
 
             <!-- gateway -->
-            <g>
-              <rect x="410" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="url(#cs-accent2)"/>
-              <text x="560" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Citadel AI gateway</text>
-              <text x="560" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">JWT auth &middot; metered</text>
-              <text x="560" y="176" text-anchor="middle" fill="#6e87ff" font-family="Inter,system-ui,sans-serif" font-size="11.5">model allow-list</text>
-              <text x="560" y="196" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">2 approved &middot; current-gen</text>
-            </g>
-            <line x1="710" y1="154" x2="778" y2="154" stroke="#8e95a8" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
-            <text x="744" y="144" text-anchor="middle" fill="#8e95a8" font-family="Cascadia Mono,monospace" font-size="9.5">borrow</text>
+            <rect x="632" y="122" width="432" height="70" rx="12" fill="#11151f" stroke="url(#cs-accent3)"/>
+            <text x="848" y="146" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="14.5" font-weight="600" fill="#f5f5f7">Citadel AI gateway</text>
+            <text x="848" y="166" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">JWT auth &middot; metered &middot; <tspan fill="#6e87ff">model allow-list</tspan></text>
+            <text x="848" y="183" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#8e95a8">2 approved &middot; current-gen</text>
 
-            <!-- hub -->
-            <g>
-              <rect x="780" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="#3a4366"/>
-              <text x="930" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Bank&rsquo;s Citadel hub</text>
-              <text x="930" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">current-gen model pool</text>
-              <text x="930" y="176" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">shared &middot; governed</text>
-            </g>
+            <line x1="848" y1="192" x2="848" y2="204" stroke="#4f6dff" stroke-width="1.5" marker-end="url(#cs-a3c)"/>
+
+            <!-- hub model pool -->
+            <rect x="632" y="204" width="432" height="54" rx="12" fill="#11151f" stroke="#3a4366"/>
+            <text x="848" y="227" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="13.5" font-weight="600" fill="#f5f5f7">Hub model pool</text>
+            <text x="848" y="246" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">current-generation &middot; gpt-5 family</text>
+
+            <line x1="848" y1="258" x2="848" y2="294" stroke="#3a4366" stroke-width="1.4" marker-end="url(#cs-a3)"/>
 
             <!-- allow / deny proof -->
-            <line x1="560" y1="216" x2="560" y2="244" stroke="#4f6dff" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
-            <g>
-              <rect x="404" y="252" width="150" height="30" rx="8" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.55"/>
-              <text x="479" y="271" text-anchor="middle" fill="#a8ff60" font-family="Cascadia Mono,monospace" font-size="11.5">approved &rarr; 200</text>
-              <rect x="566" y="252" width="150" height="30" rx="8" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.55"/>
-              <text x="641" y="271" text-anchor="middle" fill="#ffb84a" font-family="Cascadia Mono,monospace" font-size="11.5">banned &rarr; 403</text>
-            </g>
+            <rect x="664" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.55"/>
+            <text x="754" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#a8ff60">approved &rarr; 200</text>
+            <rect x="852" y="296" width="180" height="34" rx="9" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.55"/>
+            <text x="942" y="318" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="11.5" fill="#ffb84a">deprecated &rarr; 403</text>
+
+            <text x="848" y="360" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">hub logs attribute every prod model turn to our product</text>
+
+            <!-- ===== governed egress (the model path) — drawn last so it sits above both boundaries ===== -->
+            <line x1="556" y1="151" x2="630" y2="151" stroke="#6e87ff" stroke-width="2" marker-end="url(#cs-a3c)"/>
+            <rect x="566" y="135" width="56" height="15" rx="4" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="594" y="146" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9" fill="#9fb0ff">model calls</text>
+
+            <!-- hardening backlog footnote -->
+            <rect x="36" y="398" width="1048" height="36" rx="10" fill="#0a0d14" stroke="#2a3149"/>
+            <text x="560" y="420" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">Deferred to the 6-week hardening backlog (not in this pilot): <tspan fill="#cfd2dc">VNet + private endpoints &middot; Cosmos &middot; Key Vault &middot; AI Search</tspan></text>
           </svg>
         </div>
-        <figcaption id="onb-cap">
-          Same gateway, proven both ways: the approved current-generation model answers <strong>200</strong>;
-          a deprecated model is refused at the door <strong>403</strong> &mdash; while the spoke stays isolated
-          from shared infrastructure and holds no model of its own.
+        <figcaption id="prodarch-cap">
+          The production topology that actually landed: a Foundry-hosted agent in <strong>rg-prod</strong> that owns
+          <strong>no model</strong>, fully traced to App Insights and gated by a human sign-off &mdash; every model
+          call leaving <strong>keyless</strong> through the bank&rsquo;s Citadel gateway, which allow-lists the approved
+          current-generation model (<strong>200</strong>) and refuses deprecated ones (<strong>403</strong>).
         </figcaption>
       </figure>
     </div>
@@ -1289,7 +1309,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <p class="eyebrow"><span class="dot"></span>Observability</p>
           <div class="cs-chips"><span class="cs-chip ok">2,306 traces</span></div>
           <h3>Telemetry, independently confirmed</h3>
-          <p>2,306 trace records, dependency spans, all fifteen eval runs, full prompt/response content, every tool call its own span &mdash; and a second confirmation the agent runs gpt-5, never gpt-4.</p>
+          <p>2,306 trace records, dependency spans, all fifteen eval runs, full prompt/response content, every tool call its own span &mdash; and an independent confirmation of exactly which model answered each turn.</p>
         </div>
         <div class="cs-proof">
           <p class="eyebrow"><span class="dot"></span>Discipline</p>
