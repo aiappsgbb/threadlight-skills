@@ -83,17 +83,31 @@ def _utc_now() -> str:
 
 
 def _az(*args: str, capture: bool = True) -> str:
-    """Run `az <args>` with shell=True so `az.cmd` resolves on Windows."""
-    cmd = "az " + " ".join(args)
+    """Run `az <args>` safely across platforms.
+
+    On POSIX (macOS/Linux) the args are passed as an argv list with
+    ``shell=False`` so JMESPath ``--query`` values such as
+    ``{t:tenantId,s:name,sid:id}`` are NOT mangled by shell brace/comma
+    expansion (which would split a single ``--query`` value into multiple
+    args and make `az` fail). On Windows we keep ``shell=True`` with a joined
+    string so ``az.cmd`` resolves on PATH.
+    """
+    display = "az " + " ".join(args)
+    if os.name == "nt":
+        cmd: str | list[str] = display
+        use_shell = True
+    else:
+        cmd = ["az", *args]
+        use_shell = False
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=capture,
+            cmd, shell=use_shell, capture_output=capture,
             text=True, check=True,
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
         stderr = (e.stderr or "").strip()
-        print(f"[ERROR] {cmd}\n        {stderr}", file=sys.stderr)
+        print(f"[ERROR] {display}\n        {stderr}", file=sys.stderr)
         raise SystemExit(3)
     except FileNotFoundError:
         print("[ERROR] `az` not on PATH. Install Azure CLI and re-run.",
@@ -315,8 +329,8 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     if not rg:
         try:
             rg = subprocess.run(
-                "azd env get-value AZURE_RESOURCE_GROUP",
-                shell=True, capture_output=True, text=True, check=True,
+                ["azd", "env", "get-value", "AZURE_RESOURCE_GROUP"],
+                shell=False, capture_output=True, text=True, check=True,
             ).stdout.strip()
         except subprocess.CalledProcessError:
             rg = ""
