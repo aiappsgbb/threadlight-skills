@@ -35,7 +35,7 @@
   /* — KPI band ————————————————————————————————————————————— */
   .cs-kpis {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1px;
     background: var(--line);
     border: 1px solid var(--line);
@@ -43,6 +43,8 @@
     overflow: hidden;
     margin-top: 8px;
   }
+  @media (max-width: 1000px) { .cs-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 520px) { .cs-kpis { grid-template-columns: 1fr; } }
   .cs-kpi { background: var(--bg-1); padding: 28px 24px; }
   .cs-kpi .num {
     font-family: var(--serif);
@@ -294,8 +296,123 @@
   .cs-refuse div { background: var(--bg-1); padding: 16px 18px; font-size: .88rem; color: var(--ink-1); }
   .cs-refuse div b { display: block; color: var(--ink-0); margin-bottom: 3px; }
 
+  /* ============================================================
+     REVISION COMPONENTS — method actors, stage scan-coding, OTel
+     trace, demo framing, findings scoreboard, split, digest
+     ============================================================ */
+
+  /* — method: artifact inventory + three actors ——————————————— */
+  .cs-artifacts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+  .cs-artifact { display: inline-flex; align-items: baseline; gap: 9px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--bg-1); }
+  .cs-artifact .d { align-self: center; width: 7px; height: 7px; border-radius: 50%; background: var(--chapter-accent); box-shadow: 0 0 8px var(--chapter-accent-glow); }
+  .cs-artifact b { color: var(--ink-0); font-size: .92rem; font-weight: 620; }
+  .cs-artifact span { color: var(--ink-3); font-family: var(--mono); font-size: .73rem; }
+  .cs-actors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; }
+  .cs-actor { position: relative; border: 1px solid var(--line); border-radius: 16px; padding: 24px 22px 22px; background: linear-gradient(180deg, var(--bg-1), var(--bg-0)); }
+  .cs-actor .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 14px; border: 1px solid var(--line-2); color: var(--chapter-accent); background: var(--bg-2); }
+  .cs-actor .ic svg { width: 21px; height: 21px; display: block; }
+  .cs-actor .role { font-family: var(--mono); font-size: .71rem; letter-spacing: .12em; text-transform: uppercase; color: var(--chapter-accent); margin: 0 0 6px; }
+  .cs-actor h4 { margin: 0 0 9px; font-size: 1.08rem; color: var(--ink-0); letter-spacing: -.01em; }
+  .cs-actor p { margin: 0; color: var(--ink-2); font-size: .9rem; line-height: 1.6; }
+  .cs-actor p code { font-family: var(--mono); font-size: .82em; color: var(--ink-1); }
+  .cs-actor.is-agent { border-color: rgba(168,255,96,.28); }
+  .cs-actor.is-agent .ic { color: var(--lime); border-color: rgba(168,255,96,.32); }
+  .cs-actor.is-agent .role { color: var(--lime); }
+
+  /* — stage scannability: category kicker + outcome coding ——— */
+  .cs-cat { font-family: var(--mono); font-size: .69rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 7px; display: inline-flex; align-items: center; gap: 8px; }
+  .cs-cat::before { content: ""; width: 15px; height: 2px; border-radius: 2px; background: currentColor; }
+  .cs-stage.is-pass .cs-card { border-left: 3px solid rgba(168,255,96,.5); }
+  .cs-stage.is-cond .cs-card { border-left: 3px solid rgba(255,184,74,.6); }
+  .cs-stage.is-op   .cs-card { border-left: 3px dashed var(--line-2); }
+  .cs-stage.is-pass .cs-cat { color: var(--lime); }
+  .cs-stage.is-cond .cs-cat { color: var(--warn); }
+  .cs-stage.is-pass .cs-marker { border-color: rgba(168,255,96,.5); color: var(--lime); }
+
+  /* — OTel span waterfall —————————————————————————————————————— */
+  .cs-trace { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg-0); margin-top: 8px; }
+  .cs-trace .th { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: .74rem; color: var(--ink-2); }
+  .cs-trace .th b { color: var(--ink-0); }
+  .cs-trace .th .dur { color: var(--lime); }
+  .cs-trace .rows { padding: 16px 16px 6px; display: flex; flex-direction: column; gap: 8px; }
+  .cs-span { display: grid; grid-template-columns: 226px 1fr; gap: 14px; align-items: center; }
+  .cs-span .nm { font-family: var(--mono); font-size: .79rem; color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cs-span .nm .op { color: var(--ink-3); }
+  .cs-span .nm .kind { color: var(--chapter-accent); }
+  .cs-span.is-llm .nm .kind { color: var(--lime); }
+  .cs-span.lvl-1 .nm { padding-left: 14px; }
+  .cs-span.lvl-2 .nm { padding-left: 28px; }
+  .cs-span .lane { position: relative; height: 22px; background: var(--bg-2); border-radius: 5px; }
+  .cs-span .seg { position: absolute; top: 0; height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--accent-1)); display: flex; align-items: center; padding: 0 8px; font-family: var(--mono); font-size: .67rem; color: #07101f; font-weight: 700; overflow: hidden; }
+  .cs-span.is-llm .seg { background: linear-gradient(90deg, var(--lime), #d6ff9e); }
+  .cs-trace .attrs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); margin-top: 8px; }
+  .cs-trace .attrs span { font-family: var(--mono); font-size: .72rem; color: var(--ink-2); border: 1px solid var(--line); border-radius: 7px; padding: 4px 9px; }
+  .cs-trace .attrs span b { color: var(--ink-0); }
+  .cs-trace .attrs span.ok { color: var(--lime); border-color: rgba(168,255,96,.3); background: rgba(168,255,96,.05); }
+  .cs-trace .cap { margin: 10px 2px 0; font-family: var(--mono); font-size: .76rem; color: var(--ink-3); }
+
+  /* — demo validation framing + spec-match —————————————————— */
+  .cs-demos-frame { border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; background: linear-gradient(180deg, var(--bg-1), var(--bg-0)); margin: 0 0 18px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+  .cs-demos-frame h3 { margin: 0 0 5px; font-size: 1.04rem; color: var(--ink-0); }
+  .cs-demos-frame p { margin: 0; color: var(--ink-2); font-size: .9rem; line-height: 1.55; }
+  .cs-demos-frame .badge { font-family: var(--mono); font-size: .73rem; color: var(--lime); border: 1px solid rgba(168,255,96,.3); background: rgba(168,255,96,.06); border-radius: 999px; padding: 8px 15px; white-space: nowrap; }
+  .cs-match { margin-top: 14px; display: grid; grid-template-columns: auto 1fr; gap: 11px; align-items: start; padding: 12px 14px; border-radius: 10px; font-size: .88rem; line-height: 1.5; color: var(--ink-1); border: 1px solid var(--line); background: var(--bg-2); }
+  .cs-match .ck { margin-top: 1px; font-family: var(--mono); font-weight: 700; }
+  .cs-match b { color: var(--ink-0); }
+  .cs-demo.is-approve  .cs-match { background: rgba(168,255,96,.06); border-color: rgba(168,255,96,.22); }
+  .cs-demo.is-approve  .cs-match .ck { color: var(--lime); }
+  .cs-demo.is-escalate .cs-match { background: rgba(255,184,74,.06); border-color: rgba(255,184,74,.22); }
+  .cs-demo.is-escalate .cs-match .ck { color: var(--warn); }
+
+  /* — findings scoreboard (principle stat cards) ——————————————— */
+  .cs-principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px; }
+  .cs-principle { border: 1px solid var(--line); border-radius: 16px; padding: 24px 24px 22px; background: var(--bg-1); }
+  .cs-principle .big { font-family: var(--serif); font-weight: 600; font-size: clamp(2.1rem, 4.4vw, 3rem); line-height: 1; color: var(--ink-0); letter-spacing: -.02em; }
+  .cs-principle .big small { font-size: .42em; font-family: var(--mono); letter-spacing: 0; color: var(--warn); margin-left: 6px; }
+  .cs-principle.is-clean .big { color: var(--lime); }
+  .cs-principle.is-warn .big { color: var(--warn); }
+  .cs-principle h4 { margin: 12px 0 7px; font-size: 1.04rem; color: var(--ink-0); letter-spacing: -.01em; }
+  .cs-principle p { margin: 0; color: var(--ink-2); font-size: .9rem; line-height: 1.58; }
+
+  /* — split contrast (automated vs. human-owned) ——————————————— */
+  .cs-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+  .cs-col { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg-1); }
+  .cs-col .ch { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 11px; }
+  .cs-col .ch .ic { width: 24px; height: 24px; display: grid; place-items: center; }
+  .cs-col .ch .ic svg { width: 22px; height: 22px; }
+  .cs-col .ch b { font-size: 1.04rem; color: var(--ink-0); }
+  .cs-col .ch .meta { margin-left: auto; font-family: var(--mono); font-size: .71rem; color: var(--ink-3); }
+  .cs-col.is-auto  .ch { background: rgba(168,255,96,.05); }
+  .cs-col.is-auto  .ch .ic { color: var(--lime); }
+  .cs-col.is-human .ch { background: rgba(79,109,255,.06); }
+  .cs-col.is-human .ch .ic { color: var(--chapter-accent); }
+  .cs-col ul { list-style: none; margin: 0; padding: 6px 0; }
+  .cs-col li { display: grid; grid-template-columns: 18px 1fr; gap: 12px; align-items: start; padding: 11px 20px; font-size: .9rem; color: var(--ink-2); line-height: 1.5; border-top: 1px solid var(--line); }
+  .cs-col li:first-child { border-top: 0; }
+  .cs-col li .m { margin-top: 1px; font-family: var(--mono); font-weight: 700; }
+  .cs-col.is-auto  li .m { color: var(--lime); }
+  .cs-col.is-human li .m { color: var(--chapter-accent); }
+  .cs-col li b { color: var(--ink-0); }
+
+  /* — executive digest grid ——————————————————————————————————— */
+  .cs-digest { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 6px 0 30px; text-align: left; }
+  .cs-dig { border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px 18px; background: var(--bg-1); }
+  .cs-dig .h { font-family: var(--mono); font-size: .71rem; letter-spacing: .12em; text-transform: uppercase; color: var(--chapter-accent); margin: 0 0 12px; }
+  .cs-dig.is-proof .h { color: var(--lime); }
+  .cs-dig.is-honest .h { color: var(--warn); }
+  .cs-dig ul { list-style: none; margin: 0; padding: 0; }
+  .cs-dig li { position: relative; padding: 9px 0 9px 20px; color: var(--ink-1); font-size: .9rem; line-height: 1.5; border-top: 1px solid var(--line); }
+  .cs-dig li:first-child { border-top: 0; }
+  .cs-dig li::before { content: ""; position: absolute; left: 0; top: 15px; width: 8px; height: 8px; border-radius: 2px; background: var(--chapter-accent); }
+  .cs-dig.is-proof li::before { background: var(--lime); }
+  .cs-dig.is-honest li::before { background: var(--warn); }
+  .cs-dig li b { color: var(--ink-0); }
+
   @media (max-width: 820px) {
-    .cs-two, .cs-demos { grid-template-columns: 1fr; }
+    .cs-two, .cs-demos, .cs-actors, .cs-principles, .cs-split, .cs-digest { grid-template-columns: 1fr; }
+    .cs-demos-frame { grid-template-columns: 1fr; }
+    .cs-span { grid-template-columns: 150px 1fr; gap: 10px; }
+    .cs-span .nm { font-size: .72rem; }
     .cs-bar { grid-template-columns: 116px 1fr 56px; gap: 9px; }
     .cs-bar .bl { font-size: .78rem; }
   }
@@ -488,37 +605,41 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
       <div class="section-head" style="margin-top:64px;">
         <p class="eyebrow"><span class="dot"></span>The method</p>
         <h2>Dogfooded, <em>not demoed.</em></h2>
+        <p class="section-lede">
+          One paragraph went in. A whole pilot came out &mdash; and every piece of it was
+          produced by an agent and <em>independently checked</em> by a human before the next stage ran.
+        </p>
       </div>
 
-      <div class="cs-two reveal" data-delay="1">
-        <div class="cs-panel">
-          <p class="eyebrow"><span class="dot"></span>What came out</p>
-          <h3>From one sentence &mdash; a whole pilot.</h3>
-          <p>
-            The pipeline turned that paragraph into a <strong>958-line specification</strong>,
-            a working agent with a real tool contract, a live Azure deployment, an eval
-            suite, a defensible cost model, a governance contract, and a CI/CD pipeline.
-          </p>
-          <p>
-            It chose the model (<code>gpt-5.4</code>), the architecture (hosted Foundry agent &rarr;
-            governed spoke), and the seed data &mdash; then wrote down every assumption it made,
-            so the operator could check its work instead of trusting it.
-          </p>
+      <p class="eyebrow reveal" data-delay="1" style="margin-bottom:12px;"><span class="dot"></span>What came out of one sentence</p>
+      <div class="cs-artifacts reveal" data-delay="1">
+        <span class="cs-artifact"><i class="d"></i><b>Specification</b><span>958 lines</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>Working agent</b><span>real tool contract</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>Live deployment</b><span>azd &middot; Azure</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>Eval suite</b><span>15 scenarios</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>Cost model</b><span>defensible</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>Governance contract</b><span>Citadel spoke</span></span>
+        <span class="cs-artifact"><i class="d"></i><b>CI/CD pipeline</b><span>OIDC, least-priv</span></span>
+      </div>
+
+      <div class="cs-actors reveal" data-delay="1">
+        <div class="cs-actor">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg></div>
+          <p class="role">The operator</p>
+          <h4>Composes, then checks.</h4>
+          <p>A GitHub Copilot session acting as the field engineer &mdash; writing each stage&rsquo;s prompt, then <strong>independently reviewing</strong> every artifact and gate before advancing. It owns go / no-go.</p>
         </div>
-        <div class="cs-panel">
-          <p class="eyebrow"><span class="dot"></span>How this was run</p>
-          <h3>An operator and an inner agent.</h3>
-          <ul class="cs-roles">
-            <li><strong>Operator</strong> &mdash; a GitHub Copilot session acting as the field
-              engineer: composing each stage&rsquo;s prompt, then <em>independently reviewing</em>
-              every artifact and gate before advancing.</li>
-            <li><strong>Inner agent</strong> &mdash; a separate <code>copilot</code> process driven
-              by <strong>Claude Opus 4.8</strong>, running the actual Threadlight skills against a
-              live Azure subscription.</li>
-            <li><strong>Captured</strong> &mdash; every inner conversation, artifact, timing, and
-              piece of Azure evidence. A hard rule held throughout: <strong>no gpt-4-class model</strong>,
-              anywhere, as agent or judge.</li>
-          </ul>
+        <div class="cs-actor is-agent">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1.2" fill="currentColor"/><circle cx="15" cy="13" r="1.2" fill="currentColor"/></svg></div>
+          <p class="role">The inner agent</p>
+          <h4>Runs it for real.</h4>
+          <p>A separate <code>copilot</code> process driven by <strong>Claude Opus 4.8</strong>, running the actual Threadlight skills against a live Azure subscription &mdash; not a mock.</p>
+        </div>
+        <div class="cs-actor">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/><path d="M8 14h8M8 17h5"/></svg></div>
+          <p class="role">Everything captured</p>
+          <h4>Nothing taken on trust.</h4>
+          <p>Every inner conversation, artifact, timing, and piece of Azure evidence &mdash; logged. One rule held throughout: <strong>no gpt-4-class model</strong>, anywhere, as agent or judge.</p>
         </div>
       </div>
     </div>
@@ -650,9 +771,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
       <div class="cs-timeline reveal" data-delay="1">
 
         <!-- 1 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">1</div>
           <div class="cs-card">
+            <p class="cs-cat">Design</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-design</span><span class="cs-wall">~23 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Design &mdash; one paragraph becomes a 958-line spec</h3>
             <p>
@@ -667,9 +789,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 2 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">2</div>
           <div class="cs-card">
+            <p class="cs-cat">Local test</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-local-test</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Local test &mdash; run it before you deploy it</h3>
             <p>
@@ -682,9 +805,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 3 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">3</div>
           <div class="cs-card">
+            <p class="cs-cat">Deploy &middot; MVP</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-deploy</span><span class="cs-wall">azd up -e dev</span><span class="cs-pill is-pass">Pass &middot; live</span></div>
             <h3>Deploy &mdash; the idea is now live on Azure</h3>
             <p>
@@ -701,6 +825,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         <article class="cs-stage is-cond">
           <div class="cs-marker">4</div>
           <div class="cs-card">
+            <p class="cs-cat">Safety gate</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-safe-check</span><span class="cs-pill is-cond">Conditional</span></div>
             <h3>Safe-check &mdash; the gate that tells the truth</h3>
             <p>
@@ -714,9 +839,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 5 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">5</div>
           <div class="cs-card">
+            <p class="cs-cat">Cost</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-consumption-iq</span><span class="cs-wall">17.5 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>What will this cost? &mdash; and the report that corrected itself</h3>
             <p>
@@ -730,9 +856,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 6 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">6</div>
           <div class="cs-card">
+            <p class="cs-cat">Evaluate</p>
             <div class="cs-meta"><span class="cs-skill">foundry-evals</span><span class="cs-wall">30 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Does the agent actually work? &mdash; 14 / 15</h3>
             <p>
@@ -746,9 +873,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 7 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">7</div>
           <div class="cs-card">
+            <p class="cs-cat">Observe</p>
             <div class="cs-meta"><span class="cs-skill">foundry-observability</span><span class="cs-wall">21 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Can we see what it&rsquo;s doing?</h3>
             <p>
@@ -762,9 +890,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 8 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">8</div>
           <div class="cs-card">
+            <p class="cs-cat">Live demo</p>
             <div class="cs-meta"><span class="cs-skill">azd ai agent invoke &times;2</span><span class="cs-pill is-pass">MVP capstone</span></div>
             <h3>The demo &mdash; one clean loan, one that sets off every alarm</h3>
             <p>
@@ -778,9 +907,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 9 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">9</div>
           <div class="cs-card">
+            <p class="cs-cat">Readiness</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-production-ready</span><span class="cs-wall">18.7 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Is it ready? &mdash; not ready, 45%, and that&rsquo;s correct</h3>
             <p>
@@ -796,6 +926,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         <article class="cs-stage is-op">
           <div class="cs-marker">10</div>
           <div class="cs-card">
+            <p class="cs-cat">Architecture</p>
             <div class="cs-meta"><span class="cs-skill">operator</span><span class="cs-pill is-op">Architecture review</span></div>
             <h3>Drawing the production map</h3>
             <p>
@@ -809,9 +940,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 11 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">11</div>
           <div class="cs-card">
+            <p class="cs-cat">Govern &middot; spoke</p>
             <div class="cs-meta"><span class="cs-skill">citadel-spoke-onboarding</span><span class="cs-wall">13.8 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Building the spoke &mdash; and proving the wall holds</h3>
             <p>
@@ -826,9 +958,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 12 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">12</div>
           <div class="cs-card">
+            <p class="cs-cat">Ship &middot; prod</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-deploy &middot; prod</span><span class="cs-wall">36.2 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Production, routed through the gateway &mdash; and proven</h3>
             <p>
@@ -843,9 +976,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 13 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">13</div>
           <div class="cs-card">
+            <p class="cs-cat">CI / CD</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-cicd</span><span class="cs-wall">5.8 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Handing the keys to a pipeline, not a person</h3>
             <p>
@@ -860,9 +994,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 14 -->
-        <article class="cs-stage">
+        <article class="cs-stage is-pass">
           <div class="cs-marker">14</div>
           <div class="cs-card">
+            <p class="cs-cat">Handoff</p>
             <div class="cs-meta"><span class="cs-skill">threadlight-customize</span><span class="cs-wall">9.9 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Handing it to a real customer</h3>
             <p>
@@ -1017,6 +1152,44 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </blockquote>
         <p class="src"><span class="who">inner agent &middot; Claude Opus 4.8</span><span class="tag">stage 07 &middot; observability</span><span class="tag">transcript.md</span></p>
       </div>
+
+      <!-- OTel span waterfall — one real invoke -->
+      <div class="reveal" data-delay="1" style="margin-top:40px;">
+        <p class="eyebrow" style="margin-bottom:10px;"><span class="dot"></span>One invoke, as the trace saw it</p>
+        <div class="cs-trace">
+          <div class="th"><span><b>trace</b> &middot; one credit-memo invoke &middot; role <b>meridiancredit</b></span><span class="dur">&asymp; 19.4 s end&ndash;to&ndash;end</span></div>
+          <div class="rows">
+            <div class="cs-span">
+              <div class="nm"><span class="kind">invoke_agent</span></div>
+              <div class="lane"><div class="seg" style="left:0;width:100%;">root span</div></div>
+            </div>
+            <div class="cs-span lvl-1">
+              <div class="nm"><span class="op">execute_tool</span> load_skill</div>
+              <div class="lane"><div class="seg" style="left:3%;width:7%;"></div></div>
+            </div>
+            <div class="cs-span lvl-1">
+              <div class="nm"><span class="op">execute_tool</span> get_credit_case</div>
+              <div class="lane"><div class="seg" style="left:11%;width:9%;"></div></div>
+            </div>
+            <div class="cs-span lvl-1">
+              <div class="nm"><span class="op">execute_tool</span> compute_credit_metrics</div>
+              <div class="lane"><div class="seg" style="left:21%;width:10%;"></div></div>
+            </div>
+            <div class="cs-span lvl-1 is-llm">
+              <div class="nm"><span class="kind">chat</span> gpt-5.4</div>
+              <div class="lane"><div class="seg" style="left:33%;width:64%;">draft memo</div></div>
+            </div>
+          </div>
+          <div class="attrs">
+            <span>gen_ai.request.model <b>gpt-5.4-2026-03-05</b></span>
+            <span>input <b>289K</b> tok</span>
+            <span>output <b>15K</b> tok</span>
+            <span>tool spans <b>3</b></span>
+            <span class="ok">model cross-check &middot; no gpt-4*</span>
+          </div>
+        </div>
+        <p class="cs-note" style="margin-top:12px;color:var(--ink-3);font-size:.8rem;font-family:var(--mono);line-height:1.5;">Span names, model, and token counts are verbatim from the captured <code>gen_ai</code> telemetry (2,306 trace records total); bar widths are illustrative of where the time goes &mdash; the model call dominates, the tools are sub-second.</p>
+      </div>
     </div>
   </section>
   <!-- ==================== GOLDEN DEMOS ==================== -->
@@ -1025,7 +1198,19 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The two cases that tell the whole story</p>
         <h2>One loan should sail through. <em>One should set off every alarm.</em></h2>
-        <p class="section-lede">Both run live against the deployed agent. The machine drafts; a human decides.</p>
+        <p class="section-lede">
+          These are the two realistic scenarios we used to <em>validate</em> the agent against the spec.
+          Each has an expected outcome the brief demands &mdash; and the live agent&rsquo;s result has to match it.
+        </p>
+      </div>
+
+      <div class="cs-demos-frame reveal" data-delay="1">
+        <div>
+          <h3>Validation, not theatre.</h3>
+          <p>Both ran live against the deployed agent. The machine drafts; a human decides. For each case
+          we wrote down what the policy <em>requires</em> first &mdash; then checked the output against it.</p>
+        </div>
+        <span class="badge">expected &rarr; actual &middot; matched</span>
       </div>
 
       <div class="cs-demos reveal" data-delay="1">
@@ -1038,6 +1223,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="cs-metric"><span class="k">Routing</span><span class="v">Credit Officer</span></div>
           <div class="cs-metric"><span class="k">Final status</span><span class="v">pending_review</span></div>
           <div class="cs-outcome"><strong>Recommend</strong> &mdash; a complete, cited memo in ~30s, routed for sign-off. The agent pointedly did <em>not</em> approve it itself.</div>
+          <div class="cs-match"><span class="ck">&#10003;</span><span><b>Spec requirement met:</b> a clean borrower should yield a recommend, fully cited, routed for human sign-off &mdash; never auto-finalized. <b>Actual matched.</b></span></div>
         </div>
 
         <div class="cs-demo is-escalate">
@@ -1049,6 +1235,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="cs-metric"><span class="k">Each exception</span><span class="v">threshold + value + clause</span></div>
           <div class="cs-metric"><span class="k">Routing</span><span class="v">Senior Credit Officer</span></div>
           <div class="cs-outcome"><strong>Refer &amp; escalate</strong> &mdash; three policy breaches caught at once, each with mitigants. Escalated a level up because an exception case can&rsquo;t be signed off normally.</div>
+          <div class="cs-match"><span class="ck">&#10003;</span><span><b>Spec requirement met:</b> every breach should be caught, named with its clause, and escalated &mdash; not waved through. <b>Actual matched:</b> 3 / 3 exceptions flagged, escalated.</span></div>
         </div>
       </div>
     </div>
@@ -1135,43 +1322,29 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     <div class="wrap wrap-wide">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The point of running it for real</p>
-        <h2>~58 findings. <em>The five that matter most.</em></h2>
+        <h2>~58 findings &mdash; <em>and not one a patch in flight.</em></h2>
         <p class="section-lede">
-          None blocked reaching production &mdash; but each is a real seam a maintainer should see first.
-          The report you can trust is the one honest about where it can&rsquo;t be trusted yet.
+          The real output of running the pipeline for real isn&rsquo;t the agent. It&rsquo;s the pile of
+          concrete, fixable findings the run surfaced &mdash; <strong>none of which blocked production</strong>.
+          Here is the shape of it; the worst few are dissected in the next section.
         </p>
       </div>
 
-      <div class="cs-themes reveal" data-delay="1">
-        <div class="cs-theme is-top">
-          <div class="n">01</div>
-          <h3>gpt-4 lurks in shipped defaults</h3>
-          <p>The accelerator&rsquo;s default gateway policy allow-lists deprecated gpt-4-class models. A spoke copying the default silently permits them &mdash; directly against the project&rsquo;s own hard rule. Highest-priority fix.</p>
+      <div class="cs-principles reveal" data-delay="1">
+        <div class="cs-principle">
+          <div class="big">~58<small>~15 High</small></div>
+          <h4>Surfaced, not swept.</h4>
+          <p>Every finding logged in the run repo with a root cause and a home &mdash; ready to file as upstream PRs across the seven skills it touched.</p>
         </div>
-        <div class="cs-theme">
-          <div class="n">02</div>
-          <h3>The gateway routing 404 trap</h3>
-          <p>Hosted-agent gateway routing needs the OpenAI-style body surface (<code>/models</code>), but the shipped example points at the path-based <code>/openai</code> surface &mdash; silent empty output. The run&rsquo;s costliest, headline technical result.</p>
+        <div class="cs-principle is-clean">
+          <div class="big">0</div>
+          <h4>Edits in flight.</h4>
+          <p>Not one skill file changed mid-run. Dogfooding only stays honest if you don&rsquo;t fix the tool while you&rsquo;re grading it. Worktrees stayed pristine.</p>
         </div>
-        <div class="cs-theme">
-          <div class="n">03</div>
-          <h3>Queries for a runtime that&rsquo;s gone</h3>
-          <p>The stock observability KQL assumes a classic schema and role names this Foundry runtime no longer uses &mdash; zero rows on a healthy agent. The telemetry flows; the queries just can&rsquo;t see it.</p>
-        </div>
-        <div class="cs-theme">
-          <div class="n">04</div>
-          <h3>Generators are posture-agnostic</h3>
-          <p>Both the CI/CD generator and the customize map under-model the gateway-routed spoke posture the production leg actually used &mdash; a seam only visible by running the whole chain end to end.</p>
-        </div>
-        <div class="cs-theme">
-          <div class="n">05</div>
-          <h3>JSON-in-env is a deploy foot-gun</h3>
-          <p>Connection and credential env vars must be backslash-escaped or <code>azd provision</code> dies cryptically &mdash; a recurring trap worth a guardrail in the tooling.</p>
-        </div>
-        <div class="cs-theme">
-          <div class="n">&plus;</div>
-          <h3>&hellip;and 53 more, all logged</h3>
-          <p>Across 7 skills, ~15 rated High, each with a root cause and a home in the run repo &mdash; and not one of them an edit to a skill in flight. Dogfooding, captured for upstream PRs.</p>
+        <div class="cs-principle is-warn">
+          <div class="big">4</div>
+          <h4>Cut against the brief.</h4>
+          <p>Four defects bear directly on the project&rsquo;s own rules &mdash; two quietly allow deprecated gpt-4 models; the worst fails completely silent. Detailed just below.</p>
         </div>
       </div>
 
@@ -1246,36 +1419,83 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 
       <div class="section-head" style="margin-top:62px;">
         <p class="eyebrow"><span class="dot"></span>Drawing the line</p>
-        <h2>What it <em>refuses</em> to automate.</h2>
+        <h2>It automated the pilot. <em>It refuses to automate your platform.</em></h2>
         <p class="section-lede">
-          The most honest artifact of the run is a non-coverage statement: the seams Threadlight
-          deliberately leaves to a human platform team, by design.
+          The clearest way to read the run: everything on the left, Threadlight built and proved
+          on its own. Everything on the right it <em>deliberately</em> hands to your platform team &mdash;
+          and naming that boundary out loud is itself the deliverable.
         </p>
       </div>
-      <div class="cs-refuse reveal" data-delay="1">
-        <div><b>Landing-zone &amp; network design</b>The spoke VNet, subnets, firewall, and private DNS are the customer platform team&rsquo;s. It deploys <em>into</em> the network, never designs it.</div>
-        <div><b>The shared AI gateway</b>The Citadel hub is consumed read-only as a spoke via an Access Contract &mdash; never written. Hub ownership stays with the platform team.</div>
-        <div><b>Identity &amp; RBAC provisioning</b>The deploy identity, federated credential, and role grants are created by humans via runbooks. The pipeline only consumes them.</div>
-        <div><b>Hub-global JWT auth</b>An additive spoke can&rsquo;t turn tenant-wide auth on. It ships JWT-ready-but-disabled and hands the switch to the platform team.</div>
-        <div><b>Change management &amp; approvals</b>Freeze windows, CAB, sign-off chains, required reviewers &mdash; the pipeline slots into the customer&rsquo;s process, it doesn&rsquo;t replace it.</div>
-        <div><b>The 6-week hardening stack</b>VNet-private networking, HA, 7-yr retention/DR, WAF &mdash; documented as intent, deliberately <em>not</em> built by the pilot.</div>
+      <div class="cs-split reveal" data-delay="1">
+        <div class="cs-col is-auto">
+          <div class="ch">
+            <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <b>Threadlight automated this</b>
+            <span class="meta">the pilot</span>
+          </div>
+          <ul>
+            <li><span class="m">&#10003;</span><span>The <b>958-line spec</b>, the agent, and its tool contract &mdash; from one paragraph.</span></li>
+            <li><span class="m">&#10003;</span><span>A <b>live deployment</b> on Azure, dev and a gateway-routed prod spoke.</span></li>
+            <li><span class="m">&#10003;</span><span>The <b>eval suite</b> and graders, the <b>cost model</b>, the observability wiring.</span></li>
+            <li><span class="m">&#10003;</span><span>The <b>governance contract</b> and a secret-free <b>CI/CD pipeline</b>, authored to spec.</span></li>
+          </ul>
+        </div>
+        <div class="cs-col is-human">
+          <div class="ch">
+            <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+            <b>Your platform team owns this</b>
+            <span class="meta">by design</span>
+          </div>
+          <ul>
+            <li><span class="m">&#8210;</span><span><b>Landing-zone &amp; network design.</b> It deploys <em>into</em> the VNet, subnets and DNS &mdash; never designs them.</span></li>
+            <li><span class="m">&#8210;</span><span><b>The shared AI gateway.</b> The Citadel hub is consumed read-only via an Access Contract, never written.</span></li>
+            <li><span class="m">&#8210;</span><span><b>Identity, RBAC &amp; hub-global auth.</b> Humans provision the deploy identity and grants; JWT ships ready-but-disabled.</span></li>
+            <li><span class="m">&#8210;</span><span><b>Change management &amp; the 6-week hardening stack.</b> CAB, sign-off, HA, DR, WAF &mdash; documented as intent, not built by a pilot.</span></li>
+          </ul>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ==================== VERDICT ==================== -->
   <section class="chapter-section" id="verdict" data-toc-id="verdict" data-toc-label="The verdict">
-    <div class="wrap">
+    <div class="wrap wrap-wide">
       <div class="cs-verdict reveal">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>Executive verdict</p>
-        <h2>The pipeline works end to end &mdash; <em>and the artifacts are good enough.</em></h2>
+        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>Executive verdict &middot; the digest</p>
+        <h2>Idea to governed production &mdash; <em>proven, and honest about the seams.</em></h2>
         <p>
-          All fourteen stages completed. We reached the very end &mdash; MVP deployed <em>and invoked live</em>,
-          production hardened, governed, and CI/CD-wired. We tested at every gate, and the operator independently
-          reviewed every stage rather than trusting the inner agent&rsquo;s assertions. The run did its real job:
-          surfacing ~58 concrete, fixable findings, <strong>none of which blocked reaching production</strong>.
-          No huge issues.
+          All fourteen stages completed: MVP deployed <em>and invoked live</em>, then hardened into a
+          governed, gateway-routed production spoke with CI/CD. Tested at every gate, reviewed independently
+          at every stage. <strong>No huge issues.</strong>
         </p>
+
+        <div class="cs-digest">
+          <div class="cs-dig">
+            <p class="h">What ran</p>
+            <ul>
+              <li><b>Idea &rarr; live MVP &rarr; governed prod</b> in one unbroken chain.</li>
+              <li><b>14 / 14</b> stages &middot; ~3 h 46 m of wall-clock.</li>
+              <li>The operator <b>re-derived every number</b> by hand, never trusting the agent.</li>
+            </ul>
+          </div>
+          <div class="cs-dig is-proof">
+            <p class="h">What&rsquo;s proven</p>
+            <ul>
+              <li>Gateway <b>blocks gpt-4 (403)</b>, serves the approved gpt-5 (200).</li>
+              <li><b>14 / 15</b> evals &middot; 100% exceptions caught &middot; 41 / 41 lines cited.</li>
+              <li><b>2</b> RBAC grants, both prod-scoped &middot; the model is <b>&asymp; $11/mo</b>.</li>
+            </ul>
+          </div>
+          <div class="cs-dig is-honest">
+            <p class="h">What&rsquo;s honest</p>
+            <ul>
+              <li><b>~58 findings</b> sent upstream &mdash; none blocked production.</li>
+              <li><b>4</b> cut against the brief; two allow gpt-4 by default.</li>
+              <li><b>6 platform jobs</b> left to humans, on purpose.</li>
+            </ul>
+          </div>
+        </div>
+
         <div class="cs-quote" style="text-align:left;margin:0 auto 30px;max-width:760px;">
           <blockquote>
             MeridianCredit v2 is <span class="lime">pilot-ready</span>: <b>14/15 scenarios pass,
