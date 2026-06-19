@@ -408,8 +408,40 @@
   .cs-dig.is-honest li::before { background: var(--warn); }
   .cs-dig li b { color: var(--ink-0); }
 
+  /* — "how we did this": real-run method strip, up front ————————— */
+  .cs-how { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; padding: 26px 28px 22px; margin: 0 0 44px; background: linear-gradient(180deg, var(--bg-2), var(--bg-1)); }
+  .cs-how::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, var(--chapter-accent), var(--lime)); opacity: .75; }
+  .cs-how .ey { font-family: var(--mono); font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--chapter-accent); margin: 0 0 9px; display: inline-flex; align-items: center; gap: 9px; }
+  .cs-how .ey::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 8px rgba(168,255,96,.6); }
+  .cs-how h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(1.35rem, 2.4vw, 1.85rem); line-height: 1.18; letter-spacing: -.01em; color: var(--ink-0); margin: 0 0 22px; }
+  .cs-how h2 em { font-style: italic; color: var(--lime); }
+  .cs-flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 0; margin: 0 0 20px; }
+  .cs-step { border: 1px solid var(--line); border-radius: 14px; padding: 16px 17px 15px; background: var(--bg-0); display: flex; flex-direction: column; gap: 8px; }
+  .cs-step.is-agent { border-color: rgba(168,255,96,.3); background: linear-gradient(180deg, rgba(168,255,96,.06), var(--bg-0)); }
+  .cs-step .n { font-family: var(--mono); font-size: .67rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 10px; margin: 0; }
+  .cs-step .n .ic { width: 27px; height: 27px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--line-2); color: var(--chapter-accent); background: var(--bg-2); flex: none; }
+  .cs-step.is-agent .n .ic { color: var(--lime); border-color: rgba(168,255,96,.32); }
+  .cs-step .n .ic svg { width: 15px; height: 15px; display: block; }
+  .cs-step b { color: var(--ink-0); font-size: .98rem; font-weight: 600; letter-spacing: -.01em; }
+  .cs-step span { color: var(--ink-2); font-size: .84rem; line-height: 1.5; }
+  .cs-step span code { font-family: var(--mono); font-size: .84em; color: var(--ink-1); }
+  .cs-step span strong { color: var(--ink-0); font-weight: 600; }
+  .cs-arrow { display: grid; place-items: center; width: 44px; color: var(--ink-3); }
+  .cs-arrow svg { width: 20px; height: 20px; display: block; }
+  .cs-receipts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .cs-receipts .r { font-family: var(--mono); font-size: .74rem; padding: 5px 11px; border-radius: 7px; border: 1px solid var(--line); color: var(--ink-1); background: var(--bg-0); display: inline-flex; align-items: center; gap: 7px; }
+  .cs-receipts .r::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--chapter-accent); flex: none; }
+  .cs-receipts .r.ok { color: var(--lime); border-color: rgba(168,255,96,.3); background: rgba(168,255,96,.06); }
+  .cs-receipts .r.ok::before { background: var(--lime); }
+  .cs-how .see { margin: 16px 0 0; color: var(--ink-2); font-size: .86rem; }
+  .cs-how .see strong { color: var(--ink-0); }
+  .cs-how .see a { font-family: var(--mono); font-size: .8rem; color: var(--lime); text-decoration: none; border-bottom: 1px solid rgba(168,255,96,.32); white-space: nowrap; }
+  .cs-how .see a:hover { border-bottom-color: var(--lime); }
+
   @media (max-width: 820px) {
     .cs-two, .cs-demos, .cs-actors, .cs-principles, .cs-split, .cs-digest { grid-template-columns: 1fr; }
+    .cs-flow { grid-template-columns: 1fr; gap: 8px; }
+    .cs-arrow { width: 100%; height: 26px; transform: rotate(90deg); }
     .cs-demos-frame { grid-template-columns: 1fr; }
     .cs-span { grid-template-columns: 150px 1fr; gap: 10px; }
     .cs-span .nm { font-size: .72rem; }
@@ -495,6 +527,41 @@
   <!-- ==================== KPI BAND ==================== -->
   <section class="chapter-section" id="glance" data-toc-id="glance" data-toc-label="At a glance">
     <div class="wrap wrap-wide">
+
+      <!-- How we did this — grounds the real run before any numbers -->
+      <div class="cs-how reveal">
+        <p class="ey">How we did this</p>
+        <h2>We didn&rsquo;t write <em>about</em> Threadlight &mdash; we <em>ran it</em>, for real.</h2>
+        <div class="cs-flow">
+          <div class="cs-step">
+            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>Step 1 &middot; the operator</p>
+            <b>Writes the stage prompt.</b>
+            <span>A GitHub Copilot session types each stage&rsquo;s instruction by hand &mdash; and writes no application code itself.</span>
+          </div>
+          <div class="cs-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+          <div class="cs-step is-agent">
+            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1.2" fill="currentColor"/><circle cx="15" cy="13" r="1.2" fill="currentColor"/></svg></span>Step 2 &middot; the inner agent</p>
+            <b>Runs the real skills.</b>
+            <span>A separate <code>copilot</code> on <strong>Claude Opus 4.8</strong> executes the Threadlight skills against a <strong>live Azure subscription</strong> &mdash; not a mock.</span>
+          </div>
+          <div class="cs-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+          <div class="cs-step">
+            <p class="n"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/><path d="M9 14l2 2 4-4"/></svg></span>Step 3 &middot; captured &amp; checked</p>
+            <b>Every artifact reviewed.</b>
+            <span>Transcript, OTel traces and Azure evidence are logged, then the operator <strong>re-derives the numbers</strong> before the next stage runs.</span>
+          </div>
+        </div>
+        <div class="cs-receipts">
+          <span class="r ok">real Azure subscription</span>
+          <span class="r">Citadel AI gateway</span>
+          <span class="r">2 copilot agents</span>
+          <span class="r">14 stages captured</span>
+          <span class="r">2,306 OTel records</span>
+          <span class="r ok">nothing mocked</span>
+        </div>
+        <p class="see">That loop ran <strong>&times;14 stages</strong>, idea &rarr; governed production. <a href="#setup">See the exact first prompt &amp; method &darr;</a></p>
+      </div>
+
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>At a glance</p>
         <h2>One run, end to end &mdash; <em>and the receipts.</em></h2>
