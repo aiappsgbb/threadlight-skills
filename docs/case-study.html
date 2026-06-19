@@ -1524,7 +1524,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 
       <figure class="cs-arch reveal" data-delay="1" aria-labelledby="prodarch-cap">
         <div class="frame">
-          <svg viewBox="0 0 1120 446" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. VNet and private endpoints, Cosmos, Key Vault and AI Search are deferred to a later hardening backlog.">
+          <svg viewBox="0 0 1120 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. The hub runs fully private on the backend: a dedicated VNet with every model endpoint behind private endpoints and private DNS, and only the gateway is public. Today the spoke reaches it over that public gateway, keyless, with TLS, JWT and an allow-list, without touching the shared VNet. The fully private spoke-to-hub link — bidirectional VNet peering plus a Private Link into the hub VNet — is the next hardening step and is already covered by the foundry-vnet-deploy and citadel-spoke-onboarding Option B skills. Cosmos, Key Vault and AI Search remain on the hardening backlog.">
             <defs>
               <marker id="cs-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
@@ -1544,7 +1544,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
             <!-- ===== PROD boundary (rg-prod) ===== -->
             <rect x="36" y="68" width="540" height="308" rx="16" fill="#0a0d14" stroke="url(#cs-accent3)" stroke-opacity="0.7"/>
             <text x="56" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">rg-prod <tspan fill="#8e95a8" font-weight="400">&mdash; the deployed spoke</tspan></text>
-            <text x="56" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">lean governed pilot &middot; public ingress &middot; single replica &middot; keyless MI</text>
+            <text x="56" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">lean governed pilot &middot; keyless MI &middot; single replica &middot; <tspan fill="#6e87ff">public ingress &mdash; VNet-isolation next</tspan></text>
 
             <!-- hosted agent -->
             <rect x="56" y="122" width="500" height="58" rx="12" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
@@ -1579,7 +1579,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
             <!-- ===== HUB boundary (shared Citadel hub) ===== -->
             <rect x="612" y="68" width="472" height="308" rx="16" fill="#0a0d14" stroke="#3a4366"/>
             <text x="632" y="92" font-family="Inter,system-ui,sans-serif" font-size="13" font-weight="600" fill="#f5f5f7">Bank&rsquo;s Citadel hub <tspan fill="#8e95a8" font-weight="400">&mdash; shared, governed</tspan></text>
-            <text x="632" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">rg-citadel-hub &middot; bank-owned &middot; current-gen model pool</text>
+            <text x="632" y="110" font-family="Cascadia Mono,monospace" font-size="10" fill="#8e95a8">rg-citadel-hub &middot; bank-owned &middot; <tspan fill="#6e87ff">private VNet</tspan> &middot; private-endpoint backends</text>
 
             <!-- gateway -->
             <rect x="632" y="122" width="432" height="70" rx="12" fill="#11151f" stroke="url(#cs-accent3)"/>
@@ -1609,9 +1609,19 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
             <rect x="566" y="135" width="56" height="15" rx="4" fill="#0a0d14" stroke="#3a4366"/>
             <text x="594" y="146" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9" fill="#9fb0ff">model calls</text>
 
-            <!-- hardening backlog footnote -->
-            <rect x="36" y="398" width="1048" height="36" rx="10" fill="#0a0d14" stroke="#2a3149"/>
-            <text x="560" y="420" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#8e95a8">Deferred to the 6-week hardening backlog (not in this pilot): <tspan fill="#cfd2dc">VNet + private endpoints &middot; Cosmos &middot; Key Vault &middot; AI Search</tspan></text>
+            <!-- ===== the spoke <-> hub network connection ===== -->
+            <rect x="36" y="392" width="1048" height="94" rx="12" fill="#0a0d14" stroke="#2a3149"/>
+            <text x="52" y="414" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="600" fill="#f5f5f7">The spoke &harr; hub connection <tspan fill="#8e95a8" font-weight="400">&mdash; private by design</tspan></text>
+
+            <circle cx="60" cy="439" r="4" fill="#a8ff60"/>
+            <text x="74" y="443" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#a8ff60">LANDED</text>
+            <text x="140" y="443" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#cfd2dc">Keyless call to the hub&rsquo;s <tspan fill="#9fb0ff">public gateway endpoint</tspan> &mdash; TLS &middot; JWT &middot; allow-list. Backends stay private; no shared-VNet change.</text>
+
+            <circle cx="60" cy="466" r="4" fill="none" stroke="#6e87ff" stroke-width="1.4"/>
+            <text x="74" y="470" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#6e87ff">NEXT</text>
+            <text x="140" y="470" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#cfd2dc">Fully private: <tspan fill="#9fb0ff">VNet peering + Private Link</tspan>, spoke VNet &harr; hub VNet &mdash; <tspan fill="#8e95a8">skill-covered by</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">foundry-vnet-deploy</tspan> <tspan fill="#8e95a8">+</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">citadel-spoke-onboarding</tspan> <tspan fill="#8e95a8">Option B.</tspan></text>
+
+            <text x="560" y="505" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">also on the hardening backlog: Cosmos &middot; Key Vault &middot; AI Search &middot; HA / DR</text>
           </svg>
         </div>
         <figcaption id="prodarch-cap">
@@ -1619,8 +1629,16 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <strong>no model</strong>, fully traced to App Insights and gated by a human sign-off &mdash; every model
           call leaving <strong>keyless</strong> through the bank&rsquo;s Citadel gateway, which allow-lists the approved
           current-generation model (<strong>200</strong>) and refuses deprecated ones (<strong>403</strong>).
+          Today the link is the hub&rsquo;s <strong>public gateway</strong> (TLS + JWT, keyless); the fully-private
+          <strong>VNet peering</strong> between spoke and hub is the next hardening step &mdash; already covered by the
+          <code>foundry-vnet-deploy</code> + <code>citadel-spoke-onboarding</code> skills.
         </figcaption>
       </figure>
+
+      <p class="cs-hownote reveal">
+        <span class="k">Private by design</span>The hub already runs <strong>fully private on the backend</strong> &mdash; a dedicated VNet with every model endpoint behind <strong>private endpoints + private DNS</strong>; only the gateway faces out. The matching <strong>spoke-side private VNet + peering</strong> wasn&rsquo;t stood up in this low-risk pilot &mdash; but it&rsquo;s <strong>a first-class, skill-covered path</strong>, not a backlog wish: <code>foundry-vnet-deploy</code> stands up the isolated spoke VNet + Private Link and <code>citadel-spoke-onboarding</code> Option B peers it into the hub.
+        <span class="r">Option A (public gateway) shipped &middot; Option B (VNet-isolated) skill-ready &middot; shared hub VNet never touched</span>
+      </p>
     </div>
   </section>
 
