@@ -124,7 +124,7 @@
   }
   .cs-finding b { color: var(--ink-0); }
   .cs-finding .tag {
-    display: inline-block; font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
     color: var(--chapter-accent); margin-right: 8px;
   }
   .cs-stage.is-cond .cs-finding { border-left-color: var(--warn); }
@@ -438,8 +438,35 @@
   .cs-how .see a { font-family: var(--mono); font-size: .8rem; color: var(--lime); text-decoration: none; border-bottom: 1px solid rgba(168,255,96,.32); white-space: nowrap; }
   .cs-how .see a:hover { border-bottom-color: var(--lime); }
 
+  /* — Act-break stat strip (de-flatten the act bands) ——————————— */
+  .cs-actstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 36px auto 0; max-width: 880px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg-1); text-align: center; }
+  .cs-astat { padding: 22px 14px; border-right: 1px solid var(--line); }
+  .cs-astat:last-child { border-right: 0; }
+  .cs-astat .v { font-family: var(--serif); font-weight: 600; font-size: clamp(26px, 3.6vw, 42px); line-height: 1; letter-spacing: -.02em; color: var(--ink-0); }
+  .cs-astat .v em { font-style: normal; color: var(--chapter-accent); }
+  .cs-astat.is-lime .v em { color: var(--lime); }
+  .cs-astat .l { margin: 11px 0 0; font-family: var(--mono); font-size: .67rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); line-height: 1.45; }
+
+  /* — finding tag leading icon ————————————————————————————————— */
+  .cs-finding .tag svg { width: 13px; height: 13px; flex: none; }
+
+  /* — production landing: posture cards ————————————————————————— */
+  .cs-postures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 22px 0 28px; }
+  .cs-posture { border: 1px solid var(--line); border-radius: 13px; padding: 16px 16px 14px; background: var(--bg-1); display: flex; gap: 13px; align-items: flex-start; }
+  .cs-posture .ic { width: 33px; height: 33px; border-radius: 9px; display: grid; place-items: center; border: 1px solid var(--line-2); color: var(--accent-1); background: var(--bg-2); flex: none; }
+  .cs-posture .ic svg { width: 17px; height: 17px; display: block; }
+  .cs-posture.is-lime .ic { color: var(--lime); border-color: rgba(168,255,96,.32); }
+  .cs-posture h5 { margin: 0 0 5px; font-size: .94rem; color: var(--ink-0); letter-spacing: -.01em; }
+  .cs-posture p { margin: 0; font-size: .83rem; color: var(--ink-2); line-height: 1.5; }
+  .cs-posture p code { font-family: var(--mono); font-size: .82em; color: var(--ink-1); }
+
   @media (max-width: 820px) {
     .cs-two, .cs-demos, .cs-actors, .cs-principles, .cs-split, .cs-digest { grid-template-columns: 1fr; }
+    .cs-actstats { grid-template-columns: repeat(2, 1fr); }
+    .cs-astat { border-right: 0; border-bottom: 0; }
+    .cs-astat:nth-child(odd) { border-right: 1px solid var(--line); }
+    .cs-astat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .cs-postures { grid-template-columns: 1fr; }
     .cs-flow { grid-template-columns: 1fr; gap: 8px; }
     .cs-arrow { width: 100%; height: 26px; transform: rotate(90deg); }
     .cs-demos-frame { grid-template-columns: 1fr; }
@@ -706,22 +733,28 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/><path d="M8 14h8M8 17h5"/></svg></div>
           <p class="role">Everything captured</p>
           <h4>Nothing taken on trust.</h4>
-          <p>Every inner conversation, artifact, timing, and piece of Azure evidence &mdash; logged. One rule held throughout: <strong>no gpt-4-class model</strong>, anywhere, as agent or judge.</p>
+          <p>Every inner conversation, artifact, timing, and piece of Azure evidence &mdash; <strong>logged and replayable</strong>. Nothing in this case study rests on the agent&rsquo;s word; each number was re-derived from what was captured.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ==================== ACT II ==================== -->
-  <section class="cs-act" id="act-2" aria-label="Act two — the build">
+  <section class="cs-act" id="act-2" data-act="II" aria-label="Act two — the build">
     <div class="inner reveal">
       <p class="kicker">Act II</p>
       <h2>Fourteen stages. <em>Three hours, forty-six minutes.</em></h2>
       <p>
-        The operator never wrote code. They wrote prompts, then read back everything the
-        inner agent did &mdash; spec, Bicep, evals, traces &mdash; and re-derived the numbers
-        by hand. This is the shape it built, and how long each stage actually took.
+        The operator wrote prompts &mdash; never code &mdash; then read back everything the inner
+        agent produced (spec, Bicep, evals, traces) and <strong>re-derived every number by hand</strong>
+        before letting the next stage run.
       </p>
+      <div class="cs-actstats">
+        <div class="cs-astat"><div class="v"><em>14</em></div><p class="l">stages &middot; idea &rarr; production</p></div>
+        <div class="cs-astat"><div class="v">3h&nbsp;46m</div><p class="l">inner-agent wall-clock</p></div>
+        <div class="cs-astat is-lime"><div class="v"><em>0</em></div><p class="l">lines of code the operator wrote</p></div>
+        <div class="cs-astat is-lime"><div class="v"><em>13</em>/14</div><p class="l">independent PASS verdicts</p></div>
+      </div>
     </div>
   </section>
 
@@ -819,6 +852,96 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           model call is authenticated, metered, and allow-listed at the gateway door.
         </figcaption>
       </figure>
+
+      <!-- Into production: the governed Citadel spoke (what actually landed) -->
+      <div class="section-head" style="margin-top:64px;">
+        <p class="eyebrow"><span class="dot"></span>Into production</p>
+        <h2>The governed Citadel spoke &mdash; <em>what actually landed.</em></h2>
+        <p class="section-lede">
+          This is the part that makes it production, not a demo. The prod agent took <strong>no model
+          of its own</strong> &mdash; it onboarded to the bank&rsquo;s existing <strong>Citadel AI
+          gateway</strong> as an isolated, allow-listed spoke: keyless, metered, reversible &mdash; then
+          proved the wall holds against a live call.
+        </p>
+      </div>
+
+      <div class="cs-postures reveal" data-delay="1">
+        <div class="cs-posture is-lime">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13l-3-3"/><path d="M20 17H7l3 3"/></svg></div>
+          <div><h5>Borrows the model, owns none</h5><p>The prod agent deploys <strong>no model of its own</strong> &mdash; it calls the hub&rsquo;s current-generation model through the gateway, consuming <strong>zero new quota</strong>.</p></div>
+        </div>
+        <div class="cs-posture">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="4"/><path d="M11 12l9 9"/><path d="M19 20l2-2"/><path d="M16 17l2-2"/></svg></div>
+          <div><h5>Keyless &amp; least-privileged</h5><p>A managed identity authenticates &mdash; no keys, no secrets. The deploy identity holds <strong>exactly two roles</strong>, both scoped to the prod resource group.</p></div>
+        </div>
+        <div class="cs-posture is-lime">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></div>
+          <div><h5>Additive, reversible onboarding</h5><p>Registered as an IaC access contract: <code>6 create &middot; 0 modify &middot; 0 delete</code>. The hub&rsquo;s <strong>23 existing products were untouched</strong>.</p></div>
+        </div>
+      </div>
+
+      <figure class="cs-arch reveal" data-delay="1" aria-labelledby="onb-cap">
+        <div class="frame">
+          <svg viewBox="0 0 1120 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production agent onboards to the bank's Citadel AI gateway as an isolated spoke with no model of its own. It authenticates with a keyless managed identity and borrows the hub's current-generation model through the gateway, which authenticates, meters and allow-lists every call: an approved current model returns 200, a banned deprecated model is refused with 403. Onboarding was additive — six resources created, none modified or deleted, twenty-three existing hub products untouched.">
+            <defs>
+              <marker id="cs-arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
+              </marker>
+              <linearGradient id="cs-accent2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#4f6dff"/><stop offset="1" stop-color="#6e87ff"/>
+              </linearGradient>
+            </defs>
+
+            <!-- additive contract banner -->
+            <rect x="40" y="14" width="1040" height="38" rx="10" fill="#0a0d14" stroke="#3a4366"/>
+            <text x="560" y="38" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="12.5" fill="#cfd2dc">Onboarded as an additive IaC access contract &mdash; <tspan fill="#a8ff60">6 create</tspan> &middot; 0 modify &middot; 0 delete &middot; 23 existing hub products untouched</text>
+
+            <!-- spoke -->
+            <g>
+              <rect x="40" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.5"/>
+              <text x="190" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Production agent</text>
+              <text x="190" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">the governed spoke</text>
+              <text x="190" y="176" text-anchor="middle" fill="#a8ff60" font-family="Inter,system-ui,sans-serif" font-size="11.5">no model of its own</text>
+              <text x="190" y="196" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">keyless managed identity</text>
+            </g>
+            <line x1="340" y1="154" x2="408" y2="154" stroke="#8e95a8" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
+            <text x="374" y="144" text-anchor="middle" fill="#8e95a8" font-family="Cascadia Mono,monospace" font-size="9.5">calls</text>
+
+            <!-- gateway -->
+            <g>
+              <rect x="410" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="url(#cs-accent2)"/>
+              <text x="560" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Citadel AI gateway</text>
+              <text x="560" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">JWT auth &middot; metered</text>
+              <text x="560" y="176" text-anchor="middle" fill="#6e87ff" font-family="Inter,system-ui,sans-serif" font-size="11.5">model allow-list</text>
+              <text x="560" y="196" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">2 approved &middot; current-gen</text>
+            </g>
+            <line x1="710" y1="154" x2="778" y2="154" stroke="#8e95a8" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
+            <text x="744" y="144" text-anchor="middle" fill="#8e95a8" font-family="Cascadia Mono,monospace" font-size="9.5">borrow</text>
+
+            <!-- hub -->
+            <g>
+              <rect x="780" y="92" width="300" height="124" rx="13" fill="#11151f" stroke="#3a4366"/>
+              <text x="930" y="126" text-anchor="middle" fill="#f5f5f7" font-family="Inter,system-ui,sans-serif" font-size="15.5" font-weight="600">Bank&rsquo;s Citadel hub</text>
+              <text x="930" y="148" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">current-gen model pool</text>
+              <text x="930" y="176" text-anchor="middle" fill="#8e95a8" font-family="Inter,system-ui,sans-serif" font-size="11.5">shared &middot; governed</text>
+            </g>
+
+            <!-- allow / deny proof -->
+            <line x1="560" y1="216" x2="560" y2="244" stroke="#4f6dff" stroke-width="1.5" marker-end="url(#cs-arrow2)"/>
+            <g>
+              <rect x="404" y="252" width="150" height="30" rx="8" fill="#11151f" stroke="#a8ff60" stroke-opacity="0.55"/>
+              <text x="479" y="271" text-anchor="middle" fill="#a8ff60" font-family="Cascadia Mono,monospace" font-size="11.5">approved &rarr; 200</text>
+              <rect x="566" y="252" width="150" height="30" rx="8" fill="#11151f" stroke="#ffb84a" stroke-opacity="0.55"/>
+              <text x="641" y="271" text-anchor="middle" fill="#ffb84a" font-family="Cascadia Mono,monospace" font-size="11.5">banned &rarr; 403</text>
+            </g>
+          </svg>
+        </div>
+        <figcaption id="onb-cap">
+          Same gateway, proven both ways: the approved current-generation model answers <strong>200</strong>;
+          a deprecated model is refused at the door <strong>403</strong> &mdash; while the spoke stays isolated
+          from shared infrastructure and holds no model of its own.
+        </figcaption>
+      </figure>
     </div>
   </section>
 
@@ -851,7 +974,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               no self-approve, mandatory human signoff), six agent skills, and a seeded demo world whose
               metrics actually compute.
             </p>
-            <p class="cs-finding"><span class="tag">Standout</span> The numbers <b>are correct, not just plausible</b> &mdash; recomputing from seed data reproduces the spec&rsquo;s headline ratios to two decimals, and the eval set agrees. Zero <code>[NEEDS CLARIFICATION]</code> markers.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.6c.6.5 1 1.2 1 2.4h6c0-1.2.4-1.9 1-2.4A7 7 0 0 0 12 2z"/></svg>Standout</span> The numbers <b>are correct, not just plausible</b> &mdash; recomputing from seed data reproduces the spec&rsquo;s headline ratios to two decimals, and the eval set agrees. Zero <code>[NEEDS CLARIFICATION]</code> markers.</p>
           </div>
         </article>
 
@@ -867,7 +990,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               no Docker, no <code>azd</code>. The full six-skill agent reproduced <strong>every golden ratio
               exactly</strong>, with a policy citation on every assessed line and no self-approval.
             </p>
-            <p class="cs-finding"><span class="tag">Dogfooding finding</span> Surfaced and fixed <b>two genuine bugs in the quickstart harness itself</b> &mdash; a tool-name collision that crashed agent construction, and a stale Azure OpenAI client class &mdash; caught only because local-test actually <em>builds</em> the agent.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z"/><path d="M3 13h3M18 13h3M5 7l2.5 2M19 7l-2.5 2M4 19l3-2M20 19l-3-2"/></svg>Dogfooding finding</span> Surfaced and fixed <b>two genuine bugs in the quickstart harness itself</b> &mdash; a tool-name collision that crashed agent construction, and a stale Azure OpenAI client class &mdash; caught only because local-test actually <em>builds</em> the agent.</p>
           </div>
         </article>
 
@@ -884,7 +1007,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               exactly &mdash; and left the memo at <code>pending_review</code>, because a human signs off,
               not the agent.
             </p>
-            <p class="cs-finding"><span class="tag">Recovered</span> Hit two real failure modes and recovered from both: a post-deploy <b>name-lookup 404</b> (one key renamed in <code>azure.yaml</code>) and the <b>skipped role assignments</b> it caused (granted and re-invoked). A regional quota crunch forced a same-family model swap &mdash; never a gpt-4.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/></svg>Recovered</span> Hit two real failure modes and recovered from both: a post-deploy <b>name-lookup 404</b> (one key renamed in <code>azure.yaml</code>) and the <b>skipped role assignments</b> it caused (granted and re-invoked). A regional quota crunch forced a same-family model swap &mdash; never a gpt-4.</p>
           </div>
         </article>
 
@@ -901,7 +1024,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               deliberately deferred</strong> to production, and exactly one was a real (trivial) defect:
               a workspace missing from the manifest.
             </p>
-            <p class="cs-finding"><span class="tag">Two findings</span> A <b>shell-quoting bug made the gate unrunnable on macOS/Linux</b> &mdash; found, fixed, verified. And a design insight: the pipeline needs <b>per-environment targets</b> so a deliberately-lean pilot isn&rsquo;t judged against a full-production manifest.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z"/><path d="M3 13h3M18 13h3M5 7l2.5 2M19 7l-2.5 2M4 19l3-2M20 19l-3-2"/></svg>Two findings</span> A <b>shell-quoting bug made the gate unrunnable on macOS/Linux</b> &mdash; found, fixed, verified. And a design insight: the pipeline needs <b>per-environment targets</b> so a deliberately-lean pilot isn&rsquo;t judged against a full-production manifest.</p>
           </div>
         </article>
 
@@ -918,7 +1041,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               every second. The agent caught it, recomputed against realistic volume, and published
               <strong>~$920/mo zone-redundant (or ~$125 with a documented exception)</strong>.
             </p>
-            <p class="cs-finding"><span class="tag">The real insight</span> <b>The language model is a rounding error</b> (~$11/mo). What drives the bill is whether the policy search index runs zone-redundant (~$736) or single-replica (~$74) &mdash; a business decision, now backed by real numbers.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.6c.6.5 1 1.2 1 2.4h6c0-1.2.4-1.9 1-2.4A7 7 0 0 0 12 2z"/></svg>The real insight</span> <b>The language model is a rounding error</b> (~$11/mo). What drives the bill is whether the policy search index runs zone-redundant (~$736) or single-replica (~$74) &mdash; a business decision, now backed by real numbers.</p>
           </div>
         </article>
 
@@ -935,7 +1058,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               clause on <strong>41 of 41</strong> measured lines, never self-finalized a memo, and earned 4.9/5
               for coherence. Each memo: ~20s versus 3&ndash;4 human hours.
             </p>
-            <p class="cs-finding"><span class="tag">The instructive miss</span> The single failure was a <b>gap in the test, not the agent</b> &mdash; a scenario with no borrower, where the agent correctly refused to invent an identifier. A finding also corrected an over-broad doc claim that gpt-5.4 was unusable as a judge.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.6c.6.5 1 1.2 1 2.4h6c0-1.2.4-1.9 1-2.4A7 7 0 0 0 12 2z"/></svg>The instructive miss</span> The single failure was a <b>gap in the test, not the agent</b> &mdash; a scenario with no borrower, where the agent correctly refused to invent an identifier. A finding also corrected an over-broad doc claim that gpt-5.4 was unusable as a judge.</p>
           </div>
         </article>
 
@@ -952,7 +1075,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               the fifteen eval runs accounted for, each model call and internal tool call traced as its own span,
               and a second independent confirmation the agent runs on gpt-5.
             </p>
-            <p class="cs-finding"><span class="tag">Send this upstream first</span> <b>The stock diagnostic queries return zero rows on a perfectly healthy agent</b> &mdash; they target the wrong tables and assume role names this runtime no longer uses. The check meant to catch silent failures was itself failing silently.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z"/><path d="M3 13h3M18 13h3M5 7l2.5 2M19 7l-2.5 2M4 19l3-2M20 19l-3-2"/></svg>Send this upstream first</span> <b>The stock diagnostic queries return zero rows on a perfectly healthy agent</b> &mdash; they target the wrong tables and assume role names this runtime no longer uses. The check meant to catch silent failures was itself failing silently.</p>
           </div>
         </article>
 
@@ -969,7 +1092,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               tripped three policy floors at once &mdash; each flagged with threshold, value, clause, and mitigants &mdash;
               and was escalated to a <em>senior</em> credit officer.
             </p>
-            <p class="cs-finding"><span class="tag">Written into the prep guide</span> The second demo came back empty the first time &mdash; the CLI silently reused the first conversation&rsquo;s context. A <b>clean-conversation flag</b> fixed it: the exact small thing that derails a live customer demo.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h8l6 6v12H5z"/><path d="M13 3v6h6"/></svg>Written into the prep guide</span> The second demo came back empty the first time &mdash; the CLI silently reused the first conversation&rsquo;s context. A <b>clean-conversation flag</b> fixed it: the exact small thing that derails a live customer demo.</p>
           </div>
         </article>
 
@@ -985,7 +1108,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               pilot came back <strong>not ready, 45%</strong>. The right answer. Crucially, the report pinned each
               of 34 gaps to the exact later stage that closes it, rather than just listing them.
             </p>
-            <p class="cs-finding"><span class="tag">Grade the assembly line too</span> The scorecard tool fought us &mdash; two crashes on modern infra, an action plan empty of its own findings, a misread spec. The agent root-caused each to the line and wrote up <b>12 concrete bug reports (5 serious)</b>.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z"/><path d="M3 13h3M18 13h3M5 7l2.5 2M19 7l-2.5 2M4 19l3-2M20 19l-3-2"/></svg>Grade the assembly line too</span> The scorecard tool fought us &mdash; two crashes on modern infra, an action plan empty of its own findings, a misread spec. The agent root-caused each to the line and wrote up <b>12 concrete bug reports (5 serious)</b>.</p>
           </div>
         </article>
 
@@ -1002,7 +1125,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               internet with private backends, so we could onboard the <strong>light way</strong>: a keyless
               managed-identity connection plus a small isolated product, no VNet peering into shared infrastructure.
             </p>
-            <p class="cs-finding"><span class="tag">Caught early</span> The shared hub still offers a <b>deprecated model to anyone who asks</b> &mdash; exactly what this project bans. We can&rsquo;t remove it, but we <em>can</em> wall the spoke off: an allow-list naming only the two approved current-generation models.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Caught early</span> The shared hub still offers a <b>deprecated model to anyone who asks</b> &mdash; exactly what this project bans. We can&rsquo;t remove it, but we <em>can</em> wall the spoke off: an allow-list naming only the two approved current-generation models.</p>
           </div>
         </article>
 
@@ -1020,7 +1143,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               with the gateway&rsquo;s own record of which version answered; banned deprecated model &rarr;
               <strong>403</strong>, refused outright.
             </p>
-            <p class="cs-finding"><span class="tag">Priority fix</span> The sample onboarding policy ships an allow-list that <b>includes the very deprecated models the bank has banned</b>. A team copying the default would have onboarded with the wrong rule baked in &mdash; the exact class of mistake running it for real is meant to catch.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Priority fix</span> The sample onboarding policy ships an allow-list that <b>includes the very deprecated models the bank has banned</b>. A team copying the default would have onboarded with the wrong rule baked in &mdash; the exact class of mistake running it for real is meant to catch.</p>
           </div>
         </article>
 
@@ -1038,7 +1161,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               checked the <strong>hub&rsquo;s own logs</strong>: our calls, attributed to our product, succeeding &mdash;
               the banned model refused right alongside.
             </p>
-            <p class="cs-finding"><span class="tag">The run&rsquo;s headline finding</span> The playbook&rsquo;s example pointed the connection at the <b>wrong gateway surface</b> &mdash; the agent returned empty, a silent &ldquo;resource not found.&rdquo; The real shape is an OpenAI-style endpoint with the model in the body (<code>/models</code>, not <code>/openai</code>). Re-pointed, redeployed, alive. The worst kind of failure: silent.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5"/></svg>The run&rsquo;s headline finding</span> The playbook&rsquo;s example pointed the connection at the <b>wrong gateway surface</b> &mdash; the agent returned empty, a silent &ldquo;resource not found.&rdquo; The real shape is an OpenAI-style endpoint with the model in the body (<code>/models</code>, not <code>/openai</code>). Re-pointed, redeployed, alive. The worst kind of failure: silent.</p>
           </div>
         </article>
 
@@ -1056,7 +1179,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               <strong>exactly two permissions, both confined to the prod resource group</strong> &mdash; nothing at the
               subscription level, nothing near the shared gateway.
             </p>
-            <p class="cs-finding"><span class="tag">A seam between two tools</span> The pipeline generator produces a correct, secret-free workflow &mdash; but doesn&rsquo;t yet know the <b>gateway-routed model wiring</b>, so the workflow needs a small hand-edit to reproduce the Stage-12 setup. Only visible by running the whole chain.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z"/><path d="M3 13h3M18 13h3M5 7l2.5 2M19 7l-2.5 2M4 19l3-2M20 19l-3-2"/></svg>A seam between two tools</span> The pipeline generator produces a correct, secret-free workflow &mdash; but doesn&rsquo;t yet know the <b>gateway-routed model wiring</b>, so the workflow needs a small hand-edit to reproduce the Stage-12 setup. Only visible by running the whole chain.</p>
           </div>
         </article>
 
@@ -1074,7 +1197,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
               from this run. The customer profile carries 20+ <em>confirm-with-customer</em> markers &mdash; honest about
               what was assumed for the demo.
             </p>
-            <p class="cs-finding"><span class="tag">Fitting, for a stage about honesty</span> Running the templates for real exposed that the generic map <b>didn&rsquo;t anticipate the one override that defined the whole production leg</b> &mdash; borrowing the model from a shared gateway instead of deploying your own. Logged, with seven more.</p>
+            <p class="cs-finding"><span class="tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h8l6 6v12H5z"/><path d="M13 3v6h6"/></svg>Fitting, for a stage about honesty</span> Running the templates for real exposed that the generic map <b>didn&rsquo;t anticipate the one override that defined the whole production leg</b> &mdash; borrowing the model from a shared gateway instead of deploying your own. Logged, with seven more.</p>
           </div>
         </article>
 
@@ -1109,7 +1232,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   </section>
 
   <!-- ==================== ACT III ==================== -->
-  <section class="cs-act" id="act-3" aria-label="Act three — the proof">
+  <section class="cs-act" id="act-3" data-act="III" aria-label="Act three — the proof">
     <div class="inner reveal">
       <p class="kicker">Act III</p>
       <h2>Don&rsquo;t trust the agent. <em>Read the receipts.</em></h2>
