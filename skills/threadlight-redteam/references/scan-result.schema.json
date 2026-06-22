@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-redteam-scan-result/v1",
+  "title": "AI Red Teaming Agent scan result for threadlight-redteam",
+  "description": "Raw scan summary committed by the pilot and ingested by scripts/redteam_check.py. Values are attack-success rates from 0.0 to 1.0.",
+  "type": "object",
+  "required": ["tool", "captured_at", "attack_success_rate", "num_attacks", "strategies"],
+  "additionalProperties": true,
+  "properties": {
+    "tool": {"type": "string", "pattern": "^ai-red-teaming-agent$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "attack_success_rate": {
+      "type": "object",
+      "required": ["jailbreak", "prompt_injection", "indirect_attack", "exfiltration", "harmful_content"],
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1},
+      "properties": {
+        "jailbreak": {"type": "number", "minimum": 0, "maximum": 1},
+        "prompt_injection": {"type": "number", "minimum": 0, "maximum": 1},
+        "indirect_attack": {"type": "number", "minimum": 0, "maximum": 1},
+        "exfiltration": {"type": "number", "minimum": 0, "maximum": 1},
+        "harmful_content": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "num_attacks": {"type": "integer", "minimum": 0},
+    "strategies": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "redteaming_scorecard": {
+      "type": "object",
+      "description": "Optional raw scorecard excerpt from azure-ai-evaluation / PyRIT outputs. The validator reads attack_success_rate for the stable contract."
+    },
+    "notes": {"type": "string"}
+  }
+}
