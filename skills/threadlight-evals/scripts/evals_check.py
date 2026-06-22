@@ -462,6 +462,13 @@ def manifest(root: str, caps: dict, freshness_days: int = 7) -> dict:
     else:
         verdict = "partial"
 
+    latest_path, _ = _latest_run(root)
+    metrics = {
+        "pass_rate": _pass_rate_from_run(latest_path),
+        "threshold": _threshold_value(root),
+        "latest_run": _rel(root, latest_path) if latest_path else None,
+    }
+
     return {
         "schema": MANIFEST_SCHEMA,
         "tool_version": VERSION,
@@ -471,6 +478,7 @@ def manifest(root: str, caps: dict, freshness_days: int = 7) -> dict:
         "must_fix": must,
         "should_fix": should,
         "not_verified": notv,
+        "metrics": metrics,
         "capabilities": {key: caps[key] for key in CAPABILITY_ORDER},
     }
 

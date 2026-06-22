@@ -10,6 +10,12 @@
 #   §6.2+§6.3   threadlight-deploy → azd up (Foundry account + Container
 #               App + hosted agent)
 #   §6.4        Invoke 2 killer prompts against the deployed agent
+#   legs        threadlight-govern + threadlight-evals + threadlight-redteam
+#               run against the deployed pilot (Protect/Discover control
+#               plane), then threadlight-production-ready renders the
+#               outcome-KPI scorecard that joins them — workflow-owned +
+#               deterministic, report-only for verdicts, gated on the leg
+#               manifests being emitted (see Phase 5)
 #
 # The Pattern 0 phase is a CI-only gate that is NOT in the workshop runbook's
 # critical path (the workshop runs §4.4 Streamlit live for the same purpose).
@@ -833,6 +839,83 @@ jobs:
           }
           echo "✅ Agent active"
 
+      # ── Discover / Protect / Govern control-plane legs ────────────────
+      # Workflow-owned + deterministic (no agent, no model spend), in the
+      # same spirit as the Pattern 0 §4.3 gate above. Runs the three leg
+      # CLIs against the *deployed* pilot so we prove they execute end-to-end
+      # in the live pipeline and emit their manifests, then renders the
+      # production-readiness scorecard that joins them into the outcome-KPI
+      # section. Report-only for verdicts: the workshop returns-triage
+      # scenario is not a fully-governed repo, so the legs surface gaps
+      # rather than pass — the deterministic gate is that each executable
+      # runs and writes a manifest (see the assert step).
+      - name: "[Phase 5/5] Run govern + evals + red-team legs against the deployed pilot"
+        if: success() && inputs.mode != 'smoke-only'
+        timeout-minutes: 8
+        run: |
+          set -uo pipefail
+          REPO="${GITHUB_WORKSPACE}"
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          fi
+          echo "Pilot dir: $PILOT_DIR" | tee /tmp/phase-legs.log
+          # Each leg in --emit (report) mode — no --gate, so a gap-laden
+          # workshop repo does not hard-fail here; the assert step below is
+          # the real gate (manifests must exist).
+          python3 "$REPO/skills/threadlight-govern/scripts/govern_check.py" \
+            --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::govern leg reported gaps"
+          python3 "$REPO/skills/threadlight-evals/scripts/evals_check.py" \
+            --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::evals leg reported gaps"
+          python3 "$REPO/skills/threadlight-redteam/scripts/redteam_check.py" \
+            --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::red-team leg reported gaps"
+          # Render the scorecard that consumes the three manifests + joins the
+          # outcome-KPI section. Best-effort: the workshop pilot may lack
+          # inputs the full scorecard needs; its own offline suite covers it.
+          python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
+            --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
+            --accept-stale-safe-check \
+            --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
+            --report "$PILOT_DIR/docs/production-readiness-report.md" \
+            2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
+
+      - name: "[Phase 5/5 assert] Leg manifests emitted + scorecard joins KPIs"
+        if: success() && inputs.mode != 'smoke-only'
+        run: |
+          set -euo pipefail
+          PILOT_DIR="$E2E_WORKSPACE/returns-triage"
+          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          fi
+          # Hard gate: each new leg executable must have run + written a valid
+          # manifest carrying a verdict (verdict VALUE is not asserted — the
+          # workshop repo legitimately reports gaps).
+          for leg in govern evals redteam; do
+            f="$PILOT_DIR/specs/${leg}-manifest.json"
+            if [ ! -s "$f" ]; then
+              echo "::error::${leg}-manifest.json not emitted — the ${leg} leg did not run end-to-end"
+              exit 1
+            fi
+            V=$(jq -er '.verdict' "$f") || {
+              echo "::error::${leg}-manifest.json missing a verdict — malformed manifest"
+              cat "$f"; exit 1
+            }
+            echo "✅ ${leg} leg ran live → verdict=${V}"
+          done
+          # Soft gate: if the scorecard rendered, it must carry the joined
+          # outcome-KPI block (proves the assess stage consumes the legs).
+          SC="$PILOT_DIR/tests/production-readiness-manifest.json"
+          if [ -s "$SC" ]; then
+            if jq -e '.kpi_scorecard' "$SC" >/dev/null 2>&1; then
+              echo "✅ scorecard joined the outcome-KPI block:"
+              jq -c '.kpi_scorecard' "$SC"
+            else
+              echo "::warning::scorecard manifest present but has no kpi_scorecard block"
+            fi
+          else
+            echo "::warning::scorecard did not render against the workshop pilot (covered offline by test_e2e_control_plane.py)"
+          fi
+
       - name: Snapshot deployed resources
         if: always() && inputs.mode != 'smoke-only'
         run: |
@@ -967,6 +1050,7 @@ jobs:
             /tmp/phase-local-test.log
             /tmp/phase-deploy.log
             /tmp/phase-invoke.log
+            /tmp/phase-legs.log
             /tmp/phase-invoke-transcript-1.txt
             /tmp/phase-invoke-transcript-2.txt
             /tmp/info.out

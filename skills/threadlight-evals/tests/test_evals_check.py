@@ -73,6 +73,26 @@ class ManualFixtureTests(unittest.TestCase):
                 pass
 
 
+class MetricsBlockTests(unittest.TestCase):
+    """The manifest must surface the latest run's pass-rate so the
+    production-ready KPI scorecard can join eval quality (KPI-003)."""
+
+    def test_scheduled_manifest_surfaces_pass_rate(self):
+        caps = ec.evaluate(SCHEDULED, 3650)
+        man = ec.manifest(SCHEDULED, caps, 3650)
+        self.assertIn("metrics", man)
+        metrics = man["metrics"]
+        self.assertAlmostEqual(metrics["pass_rate"], 0.91, places=4)
+        self.assertIsInstance(metrics["threshold"], float)
+        self.assertTrue(metrics["latest_run"].startswith("evals/runs/"))
+
+    def test_manual_manifest_pass_rate_is_none_when_no_run(self):
+        caps = ec.evaluate(MANUAL, 3650)
+        man = ec.manifest(MANUAL, caps, 3650)
+        self.assertIn("metrics", man)
+        self.assertIsNone(man["metrics"]["pass_rate"])
+
+
 class ManifestShapeTests(unittest.TestCase):
     def test_schema_and_required_keys(self):
         caps = ec.evaluate(SCHEDULED, 3650)
@@ -87,6 +107,7 @@ class ManifestShapeTests(unittest.TestCase):
             "not_verified",
             "capabilities",
             "freshness_window_days",
+            "metrics",
         ):
             self.assertIn(key, man)
 

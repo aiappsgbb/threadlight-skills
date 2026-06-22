@@ -91,7 +91,6 @@ Verdict roll-up:
 | `none` | Evals are absent or too incomplete to trust. |
 
 The emitted manifest includes:
-
 ```json
 {
   "schema": "threadlight-evals-manifest/v1",
@@ -102,6 +101,11 @@ The emitted manifest includes:
   "must_fix": [],
   "should_fix": [],
   "not_verified": [],
+  "metrics": {
+    "pass_rate": 0.91,
+    "threshold": 0.8,
+    "latest_run": "evals/runs/2026-01-01.json"
+  },
   "capabilities": {
     "eval_scenarios_present": {
       "check_id": "EVAL-001",
@@ -112,6 +116,13 @@ The emitted manifest includes:
   }
 }
 ```
+
+The top-level `metrics` block surfaces the latest run's `pass_rate`, the
+declared `threshold`, and the relative path to the `latest_run`. This is the
+join key `threadlight-production-ready` reads (`metrics.pass_rate`) to render
+the eval-quality column of its outcome-KPI scorecard — so eval quality flows
+into the business-KPI view instead of staying locked inside the evals leg.
+`pass_rate`/`latest_run` are `null` when no machine-readable run history exists.
 
 ## Usage
 

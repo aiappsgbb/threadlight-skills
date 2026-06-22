@@ -16,7 +16,10 @@ name: python-pytest
 #     existing pillar tests)
 #   - skills/threadlight-auto/tests/             (orchestrator state
 #     machine, includes the evals/redteam/govern Discover/Protect stage
-#     probes — run as a standalone script since the suite uses main())
+#     probes — run as a standalone script since the suite uses main() —
+#     PLUS test_e2e_control_plane.py, the offline cross-skill E2E that
+#     chains govern+evals+redteam → production-ready KPI scorecard →
+#     cicd gates against the green fixtures; collected by pytest)
 #   - skills/threadlight-evals/tests/            (Discover evals leg — offline
 #     batch + online/continuous eval + A/B gate; deterministic, no network)
 #   - skills/threadlight-redteam/tests/          (Discover safety leg — AI Red
