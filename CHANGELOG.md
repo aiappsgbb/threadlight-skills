@@ -264,6 +264,23 @@ field.
   Retail Prices API and fixture both miss the current SKU). Sort order
   pushes None-cost alternatives to the bottom of the table.
 
+### Fixed
+
+- **`threadlight-consumption-iq` — pre-sales reference-repo mode crashed over
+  real repos using the canonical Bicep `cpu: json('x')` ACA idiom.** Every azd
+  Container-Apps template declares container CPU as `cpu: json('0.5')`, which
+  `az bicep build --stdout` renders as the ARM expression string
+  `"[json('0.5')]"`. Discovery passed that string straight through as `vcpu`,
+  and the ACA projector then did arithmetic on it (`str * int` → `str - int`)
+  and died with an uncaught `TypeError` the moment a phased estimate ran in
+  reference-repo / expansion mode against an undeployed real repo. Now
+  `discover._parse_vcpu` resolves the `json('x')` idiom (and plain numeric
+  strings) to a float, and `projectors/aca.py` defensively coerces `vcpu` /
+  `memory_gib` with a safe fallback so any stray non-numeric value falls back to
+  the 0.5 vCPU / 1.0 GiB default instead of crashing. +5 tests (discover idiom
+  resolution + `_parse_vcpu` unit table; projector string/unresolved/None
+  coercion). Surfaced by a real-repo smoke of the hardened pre-sales path.
+
 ### Pending for v0.2
 
 - Live-pricing population for the 6 non-AOAI resource-kind fixtures

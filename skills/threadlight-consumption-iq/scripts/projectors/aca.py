@@ -106,6 +106,23 @@ def _get_consumption_prices(
     return prices, _worst_source(*sources)
 
 
+def _coerce_float(value: Any, default: float) -> float:
+    """Best-effort float coercion with a fallback.
+
+    Discovery resolves the common ``json('x')`` CPU idiom, but the projector
+    must never crash on a stray non-numeric ``vcpu`` / ``memory_gib`` (a
+    hand-authored rollout topology, or an ARM expression discovery could not
+    resolve). A ``None`` or unparseable value falls back to ``default`` rather
+    than raising ``TypeError`` mid-projection.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _compute_consumption_cost(
     load_profile: dict[str, Any],
     current_sku: dict[str, Any],
@@ -126,8 +143,8 @@ def _compute_consumption_cost(
     monthly_requests = peak_rps * seconds_per_month
 
     extra = current_sku.get("extra", {})
-    vcpu = extra.get("vcpu", 0.5)
-    memory_gib = extra.get("memory_gib", 1.0)
+    vcpu = _coerce_float(extra.get("vcpu"), 0.5)
+    memory_gib = _coerce_float(extra.get("memory_gib"), 1.0)
     # NOTE: requests_per_second_per_replica defaults to 10 if not specified in extra.
     rps_per_replica = extra.get("requests_per_second_per_replica", 10)
 

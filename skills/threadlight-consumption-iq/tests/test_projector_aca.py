@@ -223,3 +223,48 @@ def test_aca_dedicated_d8_is_twice_d4():
     d8 = project(_dedicated_sku("D8"), _load(), FakePricing())
 
     assert d8["monthly_cost_usd"] == pytest.approx(d4["monthly_cost_usd"] * 2)
+
+
+# ---------------------------------------------------------------------------
+# Test: projector is defensive about a non-numeric vCPU
+#
+# Discovery resolves the common `json('x')` idiom, but the projector must never
+# crash on a stray string/None vCPU (hand-authored rollout topology, an exotic
+# ARM expression discovery can't resolve, etc.). It coerces to float and falls
+# back to the 0.5 default rather than raising TypeError.
+# ---------------------------------------------------------------------------
+
+def test_aca_consumption_coerces_numeric_string_vcpu():
+    """vcpu given as the string "0.5" must compute the same cost as float 0.5."""
+    str_sku = _consumption_sku(vcpu="0.5", memory_gib=1.0, min_replicas=1, max_replicas=10)
+    float_sku = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    load = _load(rps=2.0, business_hours=False)
+
+    str_result = project(str_sku, load, FakePricing())
+    float_result = project(float_sku, load, FakePricing())
+
+    assert str_result["monthly_cost_usd"] == pytest.approx(float_result["monthly_cost_usd"])
+
+
+def test_aca_consumption_unresolved_vcpu_falls_back_to_default():
+    """An unresolvable vCPU expression must not crash; falls back to 0.5 default."""
+    bad_sku = _consumption_sku(vcpu="[json('1.0')]", memory_gib=1.0, min_replicas=1, max_replicas=10)
+    default_sku = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    load = _load(rps=2.0, business_hours=False)
+
+    bad_result = project(bad_sku, load, FakePricing())  # must not raise
+    default_result = project(default_sku, load, FakePricing())
+
+    assert bad_result["monthly_cost_usd"] == pytest.approx(default_result["monthly_cost_usd"])
+
+
+def test_aca_consumption_none_vcpu_falls_back_to_default():
+    """vcpu=None must not crash; falls back to 0.5 default."""
+    none_sku = _consumption_sku(vcpu=None, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    default_sku = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    load = _load(rps=2.0, business_hours=False)
+
+    none_result = project(none_sku, load, FakePricing())  # must not raise
+    default_result = project(default_sku, load, FakePricing())
+
+    assert none_result["monthly_cost_usd"] == pytest.approx(default_result["monthly_cost_usd"])

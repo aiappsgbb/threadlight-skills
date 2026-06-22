@@ -459,3 +459,46 @@ def test_parse_gib():
     assert discover._parse_gib("2Gi") == 2.0
     assert discover._parse_gib("") is None
     assert discover._parse_gib("512Mi") is None  # Mebibytes not handled, return None
+
+
+# ---------------------------------------------------------------------------
+# Test: ACA cpu resolves the Bicep `json('x')` idiom to a float
+#
+# Real-world Bicep (every azd ACA template) declares container CPU as
+# `cpu: json('0.5')` — `az bicep build --stdout` renders that as the ARM
+# expression string "[json('0.5')]". The extractor must resolve it to a
+# numeric vCPU, otherwise the projector does arithmetic on a str and crashes.
+# ---------------------------------------------------------------------------
+
+_ARM_ACA_JSON_CPU = {
+    "type": "Microsoft.App/containerApps",
+    "location": "eastus2",
+    "properties": {
+        "workloadProfileName": "Consumption",
+        "template": {
+            "scale": {"minReplicas": 1, "maxReplicas": 3},
+            "containers": [
+                {"resources": {"cpu": "[json('1.0')]", "memory": "2Gi"}}
+            ],
+        },
+    },
+}
+
+
+def test_extract_aca_resolves_json_cpu_idiom():
+    """`cpu: json('1.0')` (ARM expr "[json('1.0')]") → vcpu 1.0 as a float."""
+    sku = discover._extract_aca(_ARM_ACA_JSON_CPU)
+    assert sku["extra"]["vcpu"] == 1.0
+    assert isinstance(sku["extra"]["vcpu"], float)
+    assert sku["extra"]["memory_gib"] == 2.0
+
+
+def test_parse_vcpu():
+    assert discover._parse_vcpu("[json('0.5')]") == 0.5
+    assert discover._parse_vcpu("[json('1.0')]") == 1.0
+    assert discover._parse_vcpu("0.25") == 0.25
+    assert discover._parse_vcpu(0.5) == 0.5
+    assert discover._parse_vcpu(1) == 1.0
+    assert discover._parse_vcpu(None) is None
+    assert discover._parse_vcpu("") is None
+    assert discover._parse_vcpu("[parameters('cpu')]") is None  # unresolvable → None

@@ -479,10 +479,34 @@ def _extract_aca(arm_resource: dict[str, Any]) -> dict[str, Any]:
         "extra": {
             "min_replicas": min_replicas,
             "max_replicas": max_replicas,
-            "vcpu": first_container_resources.get("cpu"),
+            "vcpu": _parse_vcpu(first_container_resources.get("cpu")),
             "memory_gib": memory_gib,
         },
     }
+
+
+def _parse_vcpu(value: Any) -> float | None:
+    """Resolve a container CPU value to a float number of vCPUs.
+
+    Handles a plain number, a numeric string ("0.5"), and the canonical Bicep
+    idiom ``cpu: json('0.5')`` which ``az bicep build --stdout`` renders as the
+    ARM expression string ``"[json('0.5')]"``. Returns None when the value is
+    absent or cannot be resolved to a number (e.g. an unresolved
+    ``parameters('...')`` reference).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):  # guard: bool is an int subclass
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        candidate = _strip_template_expr(value.strip())
+        try:
+            return float(candidate)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _parse_gib(value: str) -> float | None:
