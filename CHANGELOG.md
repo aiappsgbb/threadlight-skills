@@ -38,17 +38,28 @@ field.
     (a "do not share" strip + seller talk-track on the internal variant), and
     the PayGo-vs-PTU-as-SLA narrative.
   - **Manifest schema 1.1** — additive (`pre_sales`, `phases[]`, `discount{}`,
-    top-level `totals.*` mirror the current phase) so
-    `threadlight-production-ready` COST-005/006 still read a number.
-    New `references/cost-estimate-manifest-schema.md`.
+    `totals.*` — including a `monthly_cost_hardening_shared_usd` breakout of the
+    estate-amortised portion — mirror the current phase **exactly**, even under
+    a discount) so `threadlight-production-ready` COST-005/006 still read a
+    number. New `references/cost-estimate-manifest-schema.md`.
+  - **Repo-free, per-phase topology** — a rollout profile may declare its own
+    `resources[]` (top-level and/or per-phase), so an estimate runs with **no
+    Bicep / `azd` discovery** and the topology can *evolve* across phases — the
+    real land-and-expand SKU step (AI Search Basic → S1 → S2). The CLI only
+    falls back to repo discovery when no topology is declared.
   - **SKILL.md discipline** — new "Pre-sales phased estimate mode" section with
     an **estimate-framing** rationalization table + red-flags list and an
     **internal/customer classification** rule, asserted by
     `tests/test_skill_discipline.py`.
-  - **Tests:** +80 unit/golden/discipline tests (rollout, observability,
-    hardening, discount, one-pager, emitter, estimate, CLI, e2e golden,
-    skill-discipline, no-VF3/no-secrets denylist); a new
-    `references/fixtures/sample-presales-rollout/` golden fixture.
+  - **Fail-fast guardrails** — `retail` basis can't carry a real discount; a
+    `1.0` multiplier is a no-op for any basis; an out-of-range/invalid discount
+    exits 4 (not an uncaught traceback). The seller one-pager carries the
+    estate-billed caveat through to the forwarded artefact.
+  - **Tests:** +100 unit/golden/discipline tests (rollout, observability,
+    hardening, discount, one-pager, emitter, estimate, CLI, two e2e golden
+    fixtures, skill-discipline, no-VF3/no-secrets denylist); new
+    `references/fixtures/sample-presales-rollout/` and
+    `references/fixtures/sample-presales-topology-rollout/` golden fixtures.
 
 - **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
   1.4.0).** Closes the last unstated assumption in the pipeline: that an SE

@@ -163,3 +163,20 @@ def test_write_onepager_pdf_best_effort_never_raises(tmp_path):
     assert out_path.exists()
     # Either a PDF was produced, or a friendly skip reason was recorded.
     assert (result["pdf_path"] is not None) or (result["pdf_skipped_reason"])
+
+
+def _manifest_with_shared_hardening():
+    m = _phased_manifest()
+    bw = next(p for p in m["phases"] if p["id"] == "business-wide")
+    bw["totals"]["monthly_cost_hardening_shared_usd"] = 3644.0
+    return m
+
+
+def test_onepager_surfaces_estate_billed_shared_platform():
+    """The one-pager is the artefact a seller forwards. When a phase total
+    silently contains estate-shared platform (Defender/Sentinel/DDoS), the
+    one-pager must say so — otherwise it overstates the workload's marginal
+    cost with no annotation."""
+    html = render_onepager(_manifest_with_shared_hardening(), audience="internal").lower()
+    assert "estate" in html or "shared platform" in html
+    assert "3,644" in render_onepager(_manifest_with_shared_hardening(), audience="internal")

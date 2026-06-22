@@ -71,6 +71,12 @@ def project(
 
     seconds = _seconds_per_month(load_profile)
     rps = float(load_profile.get("peak_requests_per_second", 0.0))
+    # DELIBERATE upper bound: we treat the declared PEAK rps as if sustained for
+    # every second of the month. Real ingest is lower (peaks are not 24x7), but
+    # for a pre-deploy estimate of GenAI OTel — where 100%-capture, no-sampling,
+    # content-recording is the worst case the customer should budget for — we
+    # quote the ceiling, then offer sampling/no-content bands as alternatives
+    # below. Do NOT "average this down" without an explicit avg-rps input.
     monthly_traces = rps * seconds
 
     per_trace = _bytes_per_trace(extra)

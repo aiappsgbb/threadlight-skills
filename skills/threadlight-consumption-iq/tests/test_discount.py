@@ -109,3 +109,21 @@ def test_discount_manifest_does_not_mutate_input():
     discount_manifest(original, basis="ea", multiplier=0.85)
     assert "discount" not in original
     assert "monthly_cost_current_discounted_usd" not in original["totals"]
+
+
+def test_discount_manifest_rejects_retail_basis_with_real_discount():
+    """`retail` basis is the 'no discount' basis. Pairing it with a sub-1.0
+    multiplier is contradictory (a discounted figure labelled retail) and must
+    fail fast rather than emit a nonsensical '15% RETAIL multiplier' caveat."""
+    with pytest.raises(DiscountError, match="retail"):
+        discount_manifest(_manifest(), basis="retail", multiplier=0.85)
+
+
+def test_discount_manifest_unit_multiplier_is_noop_for_any_basis():
+    """A 1.0 multiplier is 'no discount' regardless of basis. ea/mca + 1.0 must
+    NOT emit discounted keys or a bogus '0% multiplier' caveat (schema rule:
+    applied=false when retail basis OR multiplier==1.0)."""
+    out = discount_manifest(_manifest(), basis="ea", multiplier=1.0)
+    assert out["discount"]["applied"] is False
+    assert out["discount"]["caveats"] == []
+    assert not any(k.endswith("_discounted_usd") for k in out["totals"])

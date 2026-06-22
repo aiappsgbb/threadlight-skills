@@ -7,15 +7,15 @@
 
 ## Headline (current phase)
 
-Current phase: **`expansion`**. Estimated monthly cost: **$794.89** (estimate). After discount: **$675.66** (estimate).
+Current phase: **`expansion`**. Estimated monthly cost: **$753.70** (estimate). After discount: **$640.64** (estimate).
 
 ## Cost by adoption phase
 
 | Phase | Posture | Resources (est.) | Hardening Δ (est.) | Phase total (est.) | EA total (est.) |
 | --- | --- | --- | --- | --- | --- |
-| Phase 1 - Proof of concept | `demo` | $326.32 | $0.00 | **$326.32** | $277.37 |
-| Phase 2 - Expansion ⭐ | `production` | $628.89 | $166.00 | **$794.89** | $675.66 |
-| Phase 3 - Business-wide | `production-hardened` | $1,414.39 | $5,390.00 | **$6,804.39** | $5,783.73 |
+| Phase 1 - Proof of concept | `demo` | $79.73 | $0.00 | **$79.73** | $67.77 |
+| Phase 2 - Expansion ⭐ | `production` | $587.70 | $166.00 | **$753.70** | $640.64 |
+| Phase 3 - Business-wide | `production-hardened` | $5,204.43 | $5,390.00 | **$10,594.43** | $9,005.27 |
 
 ## Production-hardening & estate delta
 

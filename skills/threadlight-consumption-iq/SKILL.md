@@ -278,15 +278,22 @@ business-wide?"* — without a deployed repo, an `azd env`, or a SPEC § 12 bloc
 
 ```
 # from a rollout profile (.json or .yaml), no deploy required
-consumption_iq estimate --rollout rollout.json \
+scripts/consumption_iq.py estimate --rollout rollout.json \
   --onepager docs/estimate-onepager.html
-# or fold into the run wrapper
-consumption_iq run --all --pre-sales --rollout rollout.json
+# or fold into the run wrapper (writes the post-deploy manifest path the
+# production-ready COST gates read — see "outputs" below)
+scripts/consumption_iq.py run --all --pre-sales --rollout rollout.json
 ```
 
 A **rollout profile** declares N adoption phases; each phase carries its own
 `load_profile{}` (same schema as SPEC § 12) and a hardening `posture`
-(`demo` | `production` | `production-hardened`). Per phase the orchestrator:
+(`demo` | `production` | `production-hardened`). The profile is **repo-optional**:
+declare the resource topology directly on it — a top-level `resources[]` and/or a
+per-phase `resources[]` override — and the estimate runs with no Bicep / `azd`
+walk at all. A per-phase override is what expresses the real land-and-expand SKU
+step (e.g. AI Search **Basic** in the POC → **S2/S3** once it's business-wide).
+Only when a rollout declares **no** topology does the CLI fall back to repo
+discovery. Per phase the orchestrator:
 
 1. projects **every** resource at that phase's load (reusing the per-resource
    projectors — the Log Analytics workspace included, so GenAI OTel ingestion
@@ -298,11 +305,18 @@ A **rollout profile** declares N adoption phases; each phase carries its own
    `shared_platform_billed` so estate-amortised items are honest;
 3. scores SKU recommendations on the **current** phase only.
 
-Optional `--discount 0.85 --discount-basis ea` applies a flat EA/MCA multiplier;
-the retail number is always preserved alongside the discounted one. Outputs:
+Optional `--discount 0.85 --discount-basis ea` applies a flat EA/MCA multiplier
+(only `ea`/`mca` may carry a sub-1.0 multiplier; `retail` + a real discount, or
+any out-of-range multiplier, fail fast with exit 4). The retail number is always
+preserved alongside the discounted one. Outputs:
 `docs/cost-estimate.md`, `specs/cost-estimate-manifest.json` (schema 1.1,
 `pre_sales: true`, top-level `totals.*` mirror the current phase so the
 `production-ready` COST gates still read a number), and the seller one-pager.
+The standalone `estimate` subcommand writes those dedicated `cost-estimate*`
+paths; `run --all --pre-sales` instead writes the phased manifest to the
+**post-deploy** paths (`docs/cost-projection.md` / `specs/cost-manifest.json`) on
+purpose, so the `production-ready` COST-005/006 gates consume one manifest
+regardless of which mode produced it.
 
 ### Estimate-framing discipline (non-negotiable)
 

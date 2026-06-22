@@ -63,7 +63,16 @@ def discount_manifest(
     out = copy.deepcopy(manifest)
     out["price_basis"] = basis
 
-    applied = not (basis == "retail" and multiplier == 1.0)
+    if basis == "retail" and float(multiplier) != 1.0:
+        raise DiscountError(
+            "basis 'retail' means no commercial discount; it cannot be paired "
+            f"with multiplier {multiplier!r}. Use basis 'ea' or 'mca' for a "
+            "negotiated multiplier, or multiplier 1.0 for retail."
+        )
+
+    # A 1.0 multiplier is "no discount" for ANY basis; retail is "no discount"
+    # for any (1.0) multiplier. Either way we emit no discounted siblings.
+    applied = (basis != "retail") and (float(multiplier) != 1.0)
     if applied:
         # Validate the multiplier only when we actually apply it.
         multiplier = float(multiplier)

@@ -137,3 +137,68 @@ def test_run_all_pre_sales_routes_to_estimate(tmp_path, monkeypatch):
 def test_run_all_pre_sales_requires_rollout(tmp_path, monkeypatch):
     rc = consumption_iq.main(["run", "--all", "--pre-sales"])
     assert rc == 2
+
+
+def _rollout_with_topology() -> dict:
+    r = _rollout_dict()
+    # Declare the topology IN the rollout — the pre-sales promise: no repo.
+    r["resources"] = list(_SYNTHETIC)
+    return r
+
+
+def test_estimate_cli_uses_declared_topology_without_discovery(tmp_path, monkeypatch):
+    """The headline pre-sales guarantee: estimate runs with NO repo discovery
+    when the rollout declares its own topology. We prove it by making discovery
+    explode — the run must still succeed and project the declared resources."""
+    def _boom(args):
+        raise AssertionError("discover_resources must NOT be called for a declared topology")
+
+    monkeypatch.setattr(consumption_iq, "_phase_discover", _boom)
+    monkeypatch.setattr(
+        consumption_iq, "PricingClient",
+        lambda *a, **k: type("P", (), {
+            "get_price": lambda self, rk, sku: {"unit_price_usd": None, "unit": None,
+                                                "price_source": "fallback", "fetched_at": None,
+                                                "azure_meter_id": None, "raw": {}},
+            "warm": lambda self, r: None,
+        })(),
+    )
+    rollout = tmp_path / "rollout.json"
+    rollout.write_text(json.dumps(_rollout_with_topology()))
+    manifest = tmp_path / "m.json"
+    rc = consumption_iq.main([
+        "estimate", "--rollout", str(rollout),
+        "--report", str(tmp_path / "r.md"), "--manifest", str(manifest),
+        "--pre-deploy",
+    ])
+    assert rc == 0
+    data = json.loads(manifest.read_text())
+    # Each phase projected the two declared resources.
+    for phase in data["phases"]:
+        kinds = {r["resource_kind"] for r in phase["resources"]}
+        assert "Microsoft.App/containerApps" in kinds
+        assert "Microsoft.OperationalInsights/workspaces" in kinds
+
+
+def test_estimate_cli_invalid_discount_exits_4_not_traceback(tmp_path, monkeypatch):
+    """An out-of-range discount is a fail-fast input error, not a bug. It must
+    exit 4 (like RolloutProfileError) with a message — never escape as an
+    uncaught DiscountError traceback (exit 1)."""
+    monkeypatch.setattr(consumption_iq, "_phase_discover", lambda args: list(_SYNTHETIC))
+    monkeypatch.setattr(
+        consumption_iq, "PricingClient",
+        lambda *a, **k: type("P", (), {
+            "get_price": lambda self, rk, sku: {"unit_price_usd": None, "unit": None,
+                                                "price_source": "fallback", "fetched_at": None,
+                                                "azure_meter_id": None, "raw": {}},
+            "warm": lambda self, r: None,
+        })(),
+    )
+    rollout = tmp_path / "rollout.json"
+    rollout.write_text(json.dumps(_rollout_dict()))
+    rc = consumption_iq.main([
+        "estimate", "--rollout", str(rollout),
+        "--report", str(tmp_path / "r.md"), "--manifest", str(tmp_path / "m.json"),
+        "--discount", "2.0",  # > 1.0 is invalid
+    ])
+    assert rc == 4

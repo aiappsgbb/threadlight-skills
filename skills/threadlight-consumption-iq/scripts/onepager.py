@@ -152,6 +152,22 @@ def _render_phase_table(manifest: dict[str, Any], applied: bool) -> str:
             cells.append(f"<td class=\"num\">{disc_cell}</td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
     rows.append("</table>")
+    shared_notes = [
+        (ph.get("label", ph.get("id", "?")),
+         float((ph.get("totals") or {}).get("monthly_cost_hardening_shared_usd") or 0.0))
+        for ph in phases
+    ]
+    shared_notes = [(lbl, amt) for lbl, amt in shared_notes if amt > 0]
+    if shared_notes:
+        parts = "; ".join(
+            f"{html.escape(str(lbl))} ${amt:,.0f}/mo" for lbl, amt in shared_notes
+        )
+        rows.append(
+            "<p class=\"note\"><strong>Includes shared platform billed "
+            "estate-wide</strong> (e.g. Defender, Sentinel, DDoS) — amortised "
+            "across the whole estate, not charged wholly to this workload, so "
+            f"treat the phase totals as an upper bound: {parts}.</p>"
+        )
     return "\n".join(rows)
 
 

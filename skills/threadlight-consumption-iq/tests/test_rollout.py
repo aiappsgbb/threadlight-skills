@@ -227,3 +227,60 @@ def test_load_yaml_rollout(tmp_path):
     out = load_rollout_profile(path)
     assert out["phases"][0]["id"] == "poc"
     assert out["phases"][0]["posture"] == "demo"
+
+
+# ---------------------------------------------------------------------------
+# Declared topology (pre-sales needs no deployed repo)
+# ---------------------------------------------------------------------------
+
+def _res(kind="Microsoft.App/containerApps", name="bot"):
+    return {
+        "resource_kind": kind,
+        "logical_name": name,
+        "region": "eastus2",
+        "current_sku": {"name": "Consumption", "tier": "Consumption",
+                        "region": "eastus2", "extra": {"vcpu": 0.5, "memory_gib": 1.0}},
+    }
+
+
+def test_top_level_resources_topology_is_preserved():
+    prof = _valid_profile()
+    prof["resources"] = [_res(), _res("Microsoft.Search/searchServices", "search")]
+    norm = validate_rollout_profile(prof)
+    assert "resources" in norm
+    assert [r["resource_kind"] for r in norm["resources"]] == [
+        "Microsoft.App/containerApps",
+        "Microsoft.Search/searchServices",
+    ]
+
+
+def test_per_phase_resources_override_is_preserved():
+    prof = _valid_profile()
+    # POC runs AI Search Basic; business-wide swaps to S2 — a real topology step.
+    prof["phases"][0]["resources"] = [
+        {"resource_kind": "Microsoft.Search/searchServices", "logical_name": "search",
+         "region": "eastus2", "current_sku": {"name": "basic", "tier": "Basic", "region": "eastus2"}}
+    ]
+    prof["phases"][2]["resources"] = [
+        {"resource_kind": "Microsoft.Search/searchServices", "logical_name": "search",
+         "region": "eastus2", "current_sku": {"name": "standard2", "tier": "S2", "region": "eastus2"}}
+    ]
+    norm = validate_rollout_profile(prof)
+    assert norm["phases"][0]["resources"][0]["current_sku"]["tier"] == "Basic"
+    assert norm["phases"][2]["resources"][0]["current_sku"]["tier"] == "S2"
+    # A phase without its own topology keeps no `resources` key (falls back later).
+    assert "resources" not in norm["phases"][1]
+
+
+def test_invalid_resource_entry_is_rejected():
+    prof = _valid_profile()
+    prof["resources"] = [{"logical_name": "oops"}]  # missing resource_kind + current_sku
+    with pytest.raises(RolloutProfileError):
+        validate_rollout_profile(prof)
+
+
+def test_resources_must_be_a_list():
+    prof = _valid_profile()
+    prof["resources"] = {"resource_kind": "x"}  # a dict, not a list
+    with pytest.raises(RolloutProfileError):
+        validate_rollout_profile(prof)

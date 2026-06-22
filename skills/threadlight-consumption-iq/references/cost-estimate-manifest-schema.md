@@ -48,12 +48,19 @@
 {
   "monthly_cost_resources_usd": 628.89,         // sum of phase resources
   "monthly_cost_hardening_usd": 166.0,          // sum of hardening_delta
+  "monthly_cost_hardening_shared_usd": 0.0,     // portion billed once estate-wide
   "monthly_cost_current_usd": 794.89,           // resources + hardening
   "monthly_cost_recommended_usd": 328.89,       // after applying recommendations
   "monthly_savings_potential_usd": 466.0,       // current - recommended
   "monthly_cost_current_discounted_usd": 675.66 // present ONLY when discount.applied
 }
 ```
+
+> `monthly_cost_hardening_shared_usd` is the subset of `monthly_cost_hardening_usd`
+> coming from `shared_platform_billed` lines (Defender / Sentinel / DDoS). It is
+> **kept inside** `monthly_cost_current_usd` as a conservative upper bound, but
+> broken out so a seller can be honest that the customer may already pay it
+> across the estate rather than wholly against this workload.
 
 > The emitter **recomputes** every total from the line items — it never trusts
 > upstream sums.

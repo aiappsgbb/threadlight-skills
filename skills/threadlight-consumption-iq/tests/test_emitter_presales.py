@@ -224,3 +224,55 @@ def test_emit_writes_both_artefacts(tmp_path):
     data = json.loads(manifest.read_text())
     assert data["schema_version"] == "1.1"
     assert data["pre_sales"] is True
+
+
+# ---------------------------------------------------------------------------
+# shared_platform_billed breakout (Fix B)
+# ---------------------------------------------------------------------------
+
+def test_phase_totals_break_out_shared_platform_hardening():
+    """Estate-shared lines (Defender/Sentinel/DDoS) are amortised across a whole
+    estate, not charged wholly to this workload. The phase total keeps them (a
+    conservative upper bound) but ALSO breaks out the shared portion so a seller
+    can honestly say 'X of this is shared platform you may already pay for'."""
+    m = build_presales_manifest(_phases(), _rollout(), deploy_ref="pre-sales", generated_at=PINNED)
+    bw = next(p for p in m["phases"] if p["id"] == "business-wide")
+    t = bw["totals"]
+    # Sentinel 600 (shared) + Front Door 300 (dedicated) = 900 total.
+    assert t["monthly_cost_hardening_usd"] == 900.0
+    assert t["monthly_cost_hardening_shared_usd"] == 600.0
+    # Phases with no shared lines report 0.0, never a missing key.
+    exp = next(p for p in m["phases"] if p["id"] == "expansion")
+    assert exp["totals"]["monthly_cost_hardening_shared_usd"] == 0.0
+
+
+def test_markdown_surfaces_shared_platform_portion():
+    m = build_presales_manifest(_phases(), _rollout(), deploy_ref="pre-sales", generated_at=PINNED)
+    md = render_presales_markdown(m)
+    assert "shared platform" in md.lower()
+
+
+# ---------------------------------------------------------------------------
+# Schema-1.1 mirror invariant under discount (Fix S1)
+# ---------------------------------------------------------------------------
+
+def test_top_totals_fully_mirror_current_phase_when_discounted():
+    """The schema contract: top-level `totals` MIRRORS the current phase's
+    totals — same keys, same values — even after a discount is applied. A
+    partial discount (top gets 5 discounted siblings, phase gets 1) breaks every
+    downstream consumer that trusts the mirror."""
+    m = build_presales_manifest(
+        _phases(), _rollout(discount={"basis": "ea", "multiplier": 0.85}),
+        deploy_ref="pre-sales", generated_at=PINNED,
+    )
+    current = next(p for p in m["phases"] if p["id"] == m["current_phase"])
+    assert m["totals"] == current["totals"]
+
+
+def test_money_totals_are_uniform_float_type():
+    """Every money field must serialize as a float — a demo phase with no
+    hardening must emit 0.0, not int 0, so strict typed consumers don't trip."""
+    m = build_presales_manifest(_phases(), _rollout(), deploy_ref="pre-sales", generated_at=PINNED)
+    poc = next(p for p in m["phases"] if p["id"] == "poc")
+    assert isinstance(poc["totals"]["monthly_cost_hardening_usd"], float)
+    assert isinstance(poc["totals"]["monthly_cost_hardening_shared_usd"], float)

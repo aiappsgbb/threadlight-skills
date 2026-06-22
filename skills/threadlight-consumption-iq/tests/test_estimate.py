@@ -174,3 +174,41 @@ def test_emit_presales_onepager_audience_defaults_to_current_phase(tmp_path):
     # current phase (expansion) audience is internal -> classification strip present.
     html = onepager.read_text().lower()
     assert "do not share" in html
+
+
+# ---------------------------------------------------------------------------
+# Per-phase topology override (pre-sales needs no repo discovery)
+# ---------------------------------------------------------------------------
+
+def test_phase_topology_override_takes_precedence():
+    """A phase that declares its own `resources` is projected with THOSE, not
+    the default topology — the land-and-expand SKU step (Basic -> S2)."""
+    rollout = _rollout()
+    rollout["phases"][0]["resources"] = [
+        {"resource_kind": "Microsoft.Search/searchServices", "logical_name": "search",
+         "region": "eastus2", "current_sku": {"name": "basic", "tier": "Basic", "region": "eastus2"}},
+    ]
+    phases = estimate.project_phases(rollout, _resources(), _FallbackPricing())
+    poc = next(p for p in phases if p["id"] == "poc")
+    kinds = {r["resource_kind"] for r in poc["resources"]}
+    assert kinds == {"Microsoft.Search/searchServices"}  # ONLY the override
+    # A phase without an override still gets the default topology.
+    expansion = next(p for p in phases if p["id"] == "expansion")
+    assert {r["resource_kind"] for r in expansion["resources"]} == {
+        "Microsoft.App/containerApps",
+        "Microsoft.OperationalInsights/workspaces",
+    }
+
+
+def test_top_level_rollout_topology_used_when_no_resources_arg():
+    """When the caller passes no default topology, the rollout's own top-level
+    `resources` are used — i.e. the estimate is fully self-contained."""
+    rollout = _rollout()
+    rollout["resources"] = [
+        {"resource_kind": "Microsoft.App/containerApps", "logical_name": "bot",
+         "region": "eastus2", "current_sku": {"name": "Consumption", "tier": "Consumption",
+                                               "region": "eastus2", "extra": {"vcpu": 0.5, "memory_gib": 1.0}}},
+    ]
+    phases = estimate.project_phases(rollout, None, _FallbackPricing())
+    for phase in phases:
+        assert {r["resource_kind"] for r in phase["resources"]} == {"Microsoft.App/containerApps"}

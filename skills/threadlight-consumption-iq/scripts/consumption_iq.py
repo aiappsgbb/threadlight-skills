@@ -50,12 +50,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from discover import discover_resources  # noqa: E402
+from discount import DiscountError  # noqa: E402
 from emitter import emit_artefacts  # noqa: E402
 from estimate import emit_presales  # noqa: E402
 from load_profile_wizard import load_or_prompt_profile, ProfileIncompleteError  # noqa: E402
 from pricing_client import PricingClient, PricingUnavailableError  # noqa: E402
 from recommender import score_and_rank  # noqa: E402
-from rollout import load_rollout_profile, RolloutProfileError  # noqa: E402
+from rollout import load_rollout_profile, RolloutProfileError, has_declared_topology  # noqa: E402
 from projectors import project_resource  # noqa: E402
 
 DEFAULT_CACHE_PATH = Path(".threadlight/cost-cache.json")
@@ -151,7 +152,13 @@ def _rollout_with_cli_overrides(rollout: dict[str, Any], args: argparse.Namespac
 def _phase_estimate(args: argparse.Namespace) -> dict[str, Any]:
     rollout = load_rollout_profile(args.rollout)
     rollout = _rollout_with_cli_overrides(rollout, args)
-    resources = _phase_discover(args)
+    # Pre-sales is repo-optional: if the rollout declares its own topology we
+    # estimate straight from it (no Bicep / azd walk). Only fall back to
+    # discovery when no topology is declared (reference-repo / expansion mode).
+    if has_declared_topology(rollout):
+        resources: list[dict[str, Any]] = rollout.get("resources") or []
+    else:
+        resources = _phase_discover(args)
     pricing = PricingClient(cache_path=args.cache)
     return emit_presales(
         rollout,
@@ -376,6 +383,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except RolloutProfileError as exc:
         print(f"rollout profile invalid: {exc}", file=sys.stderr)
+        return 4
+    except DiscountError as exc:
+        print(f"discount invalid: {exc}", file=sys.stderr)
         return 4
     except ProfileIncompleteError as exc:
         print(f"load profile incomplete: {exc}", file=sys.stderr)

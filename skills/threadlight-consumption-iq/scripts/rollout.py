@@ -105,16 +105,19 @@ def validate_rollout_profile(profile: dict[str, Any]) -> dict[str, Any]:
                 "Pre-sales estimates are never produced on guessed numbers."
             )
 
-        norm_phases.append(
-            {
-                "id": pid,
-                "label": phase["label"],
-                "audience": audience,
-                "posture": posture,
-                "load_profile": load_profile,
-                **({"benchmark": phase["benchmark"]} if phase.get("benchmark") else {}),
-            }
-        )
+        norm_phase: dict[str, Any] = {
+            "id": pid,
+            "label": phase["label"],
+            "audience": audience,
+            "posture": posture,
+            "load_profile": load_profile,
+            **({"benchmark": phase["benchmark"]} if phase.get("benchmark") else {}),
+        }
+        if phase.get("resources") is not None:
+            norm_phase["resources"] = _validate_resources(
+                phase["resources"], where=f"phases[{i}].resources"
+            )
+        norm_phases.append(norm_phase)
 
     current_phase = profile.get("current_phase") or seen_ids[0]
     if current_phase not in seen_ids:
@@ -128,11 +131,61 @@ def validate_rollout_profile(profile: dict[str, Any]) -> dict[str, Any]:
         "phases": norm_phases,
         "current_phase": current_phase,
     }
+    if profile.get("resources") is not None:
+        normalized["resources"] = _validate_resources(
+            profile["resources"], where="resources"
+        )
     if profile.get("discount"):
         normalized["discount"] = profile["discount"]
     if profile.get("benchmark"):
         normalized["benchmark"] = profile["benchmark"]
     return normalized
+
+
+def _validate_resources(resources: Any, where: str) -> list[dict[str, Any]]:
+    """Validate a declared topology list (top-level or per-phase).
+
+    Pre-sales mode estimates a workload that may not be deployed yet, so the
+    rollout profile can declare its own resource topology instead of relying on
+    `discover_resources` walking a repo. Each entry needs at least a
+    `resource_kind` and a `current_sku` mapping — same shape the per-resource
+    projectors consume — so we fail fast rather than project on a malformed SKU.
+    """
+    if not isinstance(resources, list):
+        raise RolloutProfileError(f"{where} must be a list of resource mappings")
+    out: list[dict[str, Any]] = []
+    for j, res in enumerate(resources):
+        if not isinstance(res, dict):
+            raise RolloutProfileError(f"{where}[{j}] must be a mapping")
+        if not res.get("resource_kind"):
+            raise RolloutProfileError(f"{where}[{j}] is missing required `resource_kind`")
+        if not isinstance(res.get("current_sku"), dict):
+            raise RolloutProfileError(
+                f"{where}[{j}] ('{res.get('resource_kind')}') is missing required "
+                "`current_sku` mapping"
+            )
+        out.append(res)
+    return out
+
+
+def phase_resources(
+    rollout_profile: dict[str, Any],
+    phase: dict[str, Any],
+    default: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Resolve the topology for one phase: phase override > rollout top-level > default."""
+    if phase.get("resources") is not None:
+        return phase["resources"]
+    if rollout_profile.get("resources") is not None:
+        return rollout_profile["resources"]
+    return default if default is not None else []
+
+
+def has_declared_topology(rollout_profile: dict[str, Any]) -> bool:
+    """True if the rollout declares any topology (top-level or per-phase)."""
+    if rollout_profile.get("resources"):
+        return True
+    return any(p.get("resources") for p in rollout_profile.get("phases", []))
 
 
 # ---------------------------------------------------------------------------

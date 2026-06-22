@@ -357,10 +357,15 @@ def build_presales_manifest(
         hardening = ph.get("hardening_delta") or []
         recs = ph.get("recommendations") or []
 
-        res_total = sum((r.get("monthly_cost_usd") or 0.0) for r in resources)
-        hard_total = sum((ln.get("monthly_cost_usd") or 0.0) for ln in hardening)
+        res_total = float(sum((r.get("monthly_cost_usd") or 0.0) for r in resources))
+        hard_total = float(sum((ln.get("monthly_cost_usd") or 0.0) for ln in hardening))
+        hard_shared = float(sum(
+            (ln.get("monthly_cost_usd") or 0.0)
+            for ln in hardening
+            if ln.get("shared_platform_billed")
+        ))
         current = res_total + hard_total
-        savings = sum((rec.get("monthly_savings_usd") or 0.0) for rec in recs)
+        savings = float(sum((rec.get("monthly_savings_usd") or 0.0) for rec in recs))
         recommended = current - savings
 
         phase_obj: dict[str, Any] = {
@@ -374,6 +379,7 @@ def build_presales_manifest(
             "totals": {
                 "monthly_cost_resources_usd": round(res_total, 2),
                 "monthly_cost_hardening_usd": round(hard_total, 2),
+                "monthly_cost_hardening_shared_usd": round(hard_shared, 2),
                 "monthly_cost_current_usd": round(current, 2),
                 "monthly_cost_recommended_usd": round(recommended, 2),
                 "monthly_savings_potential_usd": round(current - recommended, 2),
@@ -430,10 +436,14 @@ def _apply_presales_discount(manifest: dict[str, Any], discount: dict[str, Any])
 
     if manifest["discount"]["applied"]:
         for ph in manifest["phases"]:
-            retail = ph["totals"].get("monthly_cost_current_usd", 0.0)
-            ph["totals"]["monthly_cost_current_discounted_usd"] = round(
-                apply_discount(retail, multiplier), 2
-            )
+            totals = ph["totals"]
+            # Mirror the top-level discounter: add a discounted sibling for
+            # EVERY retail `_usd` key so top-level `totals` (a copy of the
+            # current phase) stays a faithful mirror of `phases[current]`.
+            for key in list(totals.keys()):
+                if key.endswith("_usd") and not key.endswith("_discounted_usd"):
+                    disc_key = key.replace("_usd", "_discounted_usd")
+                    totals[disc_key] = round(apply_discount(totals[key], multiplier), 2)
     return manifest
 
 
@@ -546,7 +556,14 @@ def _render_hardening_delta(manifest: dict[str, Any]) -> str:
                     why=_oneline(ln.get("rationale") or ""),
                 )
             )
+        shared_total = float((ph.get("totals") or {}).get("monthly_cost_hardening_shared_usd") or 0.0)
         rows.append("")
+        if shared_total > 0:
+            rows.append(
+                f"_Of which ${shared_total:,.2f}/mo is **shared platform** "
+                "billed once across the estate — the customer may already pay "
+                "it, so treat it as an upper bound for this workload._\n"
+            )
         blocks.append("\n".join(rows))
     if not blocks:
         return ""

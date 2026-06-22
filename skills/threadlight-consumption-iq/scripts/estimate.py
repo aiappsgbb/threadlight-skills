@@ -34,20 +34,28 @@ from hardening import project_hardening  # noqa: E402
 from onepager import write_onepager  # noqa: E402
 from projectors import project_resource  # noqa: E402
 from recommender import score_and_rank  # noqa: E402
+from rollout import phase_resources  # noqa: E402
 
 
 def project_phases(
     rollout_profile: dict[str, Any],
-    resources: list[dict[str, Any]],
+    resources: list[dict[str, Any]] | None,
     pricing: Any,
 ) -> list[dict[str, Any]]:
-    """Project every resource + hardening delta for each phase of the rollout."""
+    """Project every resource + hardening delta for each phase of the rollout.
+
+    Topology per phase is resolved (phase override > rollout top-level >
+    `resources` arg) so a pre-sales estimate can be fully self-contained — no
+    repo discovery required — and can step SKUs across phases (e.g. AI Search
+    Basic in the POC, S2 once it's business-wide).
+    """
     current_phase_id = rollout_profile.get("current_phase")
     out: list[dict[str, Any]] = []
 
     for phase in rollout_profile.get("phases", []):
         load_profile = phase["load_profile"]
-        projected = [project_resource(r, load_profile, pricing) for r in resources]
+        topology = phase_resources(rollout_profile, phase, default=resources or [])
+        projected = [project_resource(r, load_profile, pricing) for r in topology]
         hardening = project_hardening(phase["posture"], load_profile, pricing)
         is_current = phase["id"] == current_phase_id
         recommendations = score_and_rank(projected, load_profile) if is_current else []
