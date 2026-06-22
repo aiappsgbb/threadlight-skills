@@ -85,6 +85,57 @@ field.
   - **Deferred (truthful):** the P2 `threadlight-optimize` eval-driven
     optimization loop + central eval-catalog conventions are planned as
     fast-follow commits.
+- **`threadlight-consumption-iq` v0.3.0 — pre-sales phased estimate mode
+  (plugin 1.5.0).** Extends the post-deploy SKU-diff projector with the
+  **pre-sales / pre-deploy** front-end it explicitly lacked: estimate Azure
+  consumption for a workload that **isn't deployed yet**, across the customer's
+  adoption ramp (POC → expansion → business-wide). **Cost-estimation only — no
+  customer/CX specifics; a generic pilot throughout.**
+  - **Phased rollout** — a new `rollout_profile{}` (`references/rollout-profile-schema.md`)
+    models N phases, each its own `load_profile{}` + hardening `posture`
+    (`demo` | `production` | `production-hardened`). New `scripts/rollout.py`,
+    `scripts/estimate.py` orchestrator, `estimate` CLI subcommand +
+    `run --all --pre-sales`.
+  - **Production-hardening / estate delta** — `scripts/hardening.py` +
+    `references/hardening-delta-catalog.json` add the SKUs that appear at
+    production scale (Front Door + WAF, Private Endpoints, Defender, Sentinel,
+    DDoS, multi-region DR, non-prod estate) as a labelled **delta**, with
+    `shared_platform_billed` honesty on estate-amortised items.
+  - **Observability ingestion projector** — `scripts/projectors/observability.py`
+    sizes Log Analytics / App Insights GenAI-OTel ingestion (the frequently
+    top-3, frequently-forgotten line), wired into the standard projector
+    dispatch so the post-deploy path benefits too.
+  - **EA/MCA discount multiplier** — `scripts/discount.py` applies an optional
+    `--discount`/`--discount-basis` multiplier; retail is always preserved
+    alongside, with a caveat that it's a planning **estimate, not a quote**.
+  - **Shareable seller one-pager** — `scripts/onepager.py` +
+    `references/onepager-template.html` render an HTML (best-effort PDF)
+    leave-behind with estimate-framing, internal-vs-customer classification
+    (a "do not share" strip + seller talk-track on the internal variant), and
+    the PayGo-vs-PTU-as-SLA narrative.
+  - **Manifest schema 1.1** — additive (`pre_sales`, `phases[]`, `discount{}`,
+    `totals.*` — including a `monthly_cost_hardening_shared_usd` breakout of the
+    estate-amortised portion — mirror the current phase **exactly**, even under
+    a discount) so `threadlight-production-ready` COST-005/006 still read a
+    number. New `references/cost-estimate-manifest-schema.md`.
+  - **Repo-free, per-phase topology** — a rollout profile may declare its own
+    `resources[]` (top-level and/or per-phase), so an estimate runs with **no
+    Bicep / `azd` discovery** and the topology can *evolve* across phases — the
+    real land-and-expand SKU step (AI Search Basic → S1 → S2). The CLI only
+    falls back to repo discovery when no topology is declared.
+  - **SKILL.md discipline** — new "Pre-sales phased estimate mode" section with
+    an **estimate-framing** rationalization table + red-flags list and an
+    **internal/customer classification** rule, asserted by
+    `tests/test_skill_discipline.py`.
+  - **Fail-fast guardrails** — `retail` basis can't carry a real discount; a
+    `1.0` multiplier is a no-op for any basis; an out-of-range/invalid discount
+    exits 4 (not an uncaught traceback). The seller one-pager carries the
+    estate-billed caveat through to the forwarded artefact.
+  - **Tests:** +100 unit/golden/discipline tests (rollout, observability,
+    hardening, discount, one-pager, emitter, estimate, CLI, two e2e golden
+    fixtures, skill-discipline, no-VF3/no-secrets denylist); new
+    `references/fixtures/sample-presales-rollout/` and
+    `references/fixtures/sample-presales-topology-rollout/` golden fixtures.
 
 - **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
   1.4.0).** Closes the last unstated assumption in the pipeline: that an SE
@@ -288,6 +339,50 @@ field.
   `monthly_cost_usd: None` (e.g. AOAI's sentinel alternative when the
   Retail Prices API and fixture both miss the current SKU). Sort order
   pushes None-cost alternatives to the bottom of the table.
+
+### Fixed
+
+- **`threadlight-consumption-iq` — pre-sales reference-repo mode crashed over
+  real repos using the canonical Bicep `cpu: json('x')` ACA idiom.** Every azd
+  Container-Apps template declares container CPU as `cpu: json('0.5')`, which
+  `az bicep build --stdout` renders as the ARM expression string
+  `"[json('0.5')]"`. Discovery passed that string straight through as `vcpu`,
+  and the ACA projector then did arithmetic on it (`str * int` → `str - int`)
+  and died with an uncaught `TypeError` the moment a phased estimate ran in
+  reference-repo / expansion mode against an undeployed real repo. Now
+  `discover._parse_vcpu` resolves the `json('x')` idiom (and plain numeric
+  strings) to a float, and `projectors/aca.py` defensively coerces `vcpu` /
+  `memory_gib` with a safe fallback so any stray non-numeric value falls back to
+  the 0.5 vCPU / 1.0 GiB default instead of crashing. +5 tests (discover idiom
+  resolution + `_parse_vcpu` unit table; projector string/unresolved/None
+  coercion). Surfaced by a real-repo smoke of the hardened pre-sales path.
+
+- **`threadlight-consumption-iq` — four robustness/accuracy fixes from a final
+  adverse review of the pre-sales mode.**
+  - **Discovered Consumption ACA was mis-costed as flat Dedicated.** Discovery
+    emits the tier lower-cased (`"consumption"`) but the projector compared
+    `tier == "Consumption"`, so a discovered Consumption Container App fell
+    through to the flat Dedicated branch (`0.20 × 730 = $146/mo`) instead of the
+    free-grant usage-based formula — inflating every reference-repo estimate.
+    The tier check is now case-insensitive.
+  - **Parameterized replica bounds crashed the projector.** Real Bicep
+    parameterizes `minReplicas`/`maxReplicas`, which render as ARM expression
+    strings; discovery passed them through raw and the projector's
+    `max()`/`math.ceil` arithmetic raised an uncaught `TypeError` (exit 1,
+    breaking the 2/3/4 exit contract). Discovery now resolves replica values to
+    ints (with int fallback for unresolvable `parameters()` refs), the projector
+    defensively int-coerces replica bounds, and declared-topology numeric
+    `current_sku.extra` fields are type-checked at load time (→ exit 4).
+  - **Negative/non-numeric load fields produced negative totals.** The
+    rollout JSON/YAML path bypassed the wizard's `>= 0` guard, so a
+    hand-authored `peak_requests_per_second: -5` yielded a negative monthly
+    total. `validate_rollout_profile` now rejects non-numeric or negative
+    required load fields (→ exit 4).
+  - **Partial per-phase topology silently projected a $0-compute phase.** When
+    one phase declared `resources` (globally skipping discovery) but another
+    omitted them with no top-level fallback, that phase resolved to an empty
+    topology and silently showed $0 compute. It is now rejected fail-fast
+    (→ exit 4). +11 tests; full consumption-iq suite 241 → 252.
 
 ### Pending for v0.2
 

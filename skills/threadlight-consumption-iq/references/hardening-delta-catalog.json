@@ -1,0 +1,88 @@
+{
+  "_comment": "Production-hardening + estate delta catalog. Monthly USD figures are neutral, public-list ESTIMATES for a single generic pilot — not a quote. `shared_platform_billed: true` marks items that are billed once across a whole estate (amortised), not per app. Postures are cumulative: production-hardened repeats every production line verbatim so the delta is a strict superset.",
+  "demo": [],
+  "production": [
+    {
+      "component": "Private Endpoints (x6 core resources)",
+      "category": "networking",
+      "monthly_cost_usd": 46.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Private Link for AOAI, Search, Cosmos, Storage, Key Vault, ACA env — ~$7.66/endpoint/mo plus data processing."
+    },
+    {
+      "component": "Zone-redundancy uplift (compute + data)",
+      "category": "resilience",
+      "monthly_cost_usd": 120.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Zone-redundant gateways, ZRS storage, and min-replica floors to meet a production availability SLO."
+    }
+  ],
+  "production-hardened": [
+    {
+      "component": "Private Endpoints (x6 core resources)",
+      "category": "networking",
+      "monthly_cost_usd": 46.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Private Link for AOAI, Search, Cosmos, Storage, Key Vault, ACA env — ~$7.66/endpoint/mo plus data processing."
+    },
+    {
+      "component": "Zone-redundancy uplift (compute + data)",
+      "category": "resilience",
+      "monthly_cost_usd": 120.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Zone-redundant gateways, ZRS storage, and min-replica floors to meet a production availability SLO."
+    },
+    {
+      "component": "Azure Front Door Premium + WAF",
+      "category": "edge",
+      "monthly_cost_usd": 330.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Global edge, managed TLS, and a WAF policy in front of the public ingress; base fee plus routing/rules."
+    },
+    {
+      "component": "Microsoft Defender for Cloud (multi-plan)",
+      "category": "security",
+      "monthly_cost_usd": 200.0,
+      "shared_platform_billed": true,
+      "price_source": "fallback",
+      "rationale": "Defender plans for servers / containers / databases / Key Vault. Billed per-resource but governed and amortised at estate level."
+    },
+    {
+      "component": "Microsoft Sentinel (SIEM ingestion)",
+      "category": "security",
+      "monthly_cost_usd": 500.0,
+      "shared_platform_billed": true,
+      "price_source": "fallback",
+      "rationale": "Security analytics ingestion + retention. One estate SIEM serves many workloads — counted here, amortised in reality."
+    },
+    {
+      "component": "DDoS Network Protection",
+      "category": "security",
+      "monthly_cost_usd": 2944.0,
+      "shared_platform_billed": true,
+      "price_source": "fallback",
+      "rationale": "Tenant/region-wide DDoS Network Protection plan (~$2,944/mo) covering up to 100 public IPs — shared across the whole estate, not this app alone."
+    },
+    {
+      "component": "Multi-region DR (warm standby)",
+      "category": "resilience",
+      "monthly_cost_usd": 850.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "Warm standby of core compute + data in a paired region for regulated RTO/RPO; roughly duplicates the always-on floor."
+    },
+    {
+      "component": "Non-production estate (dev/test copy)",
+      "category": "estate",
+      "monthly_cost_usd": 400.0,
+      "shared_platform_billed": false,
+      "price_source": "fallback",
+      "rationale": "A dev/test environment sized at ~40% of production so changes are validated before they reach the regulated workload."
+    }
+  ]
+}

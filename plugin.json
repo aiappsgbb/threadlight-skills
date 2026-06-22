@@ -77,7 +77,14 @@
     "private-vnet-dev",
     "codespaces",
     "azure-ml-vscode",
-    "overlay-merge"
+    "overlay-merge",
+    "phased-rollout",
+    "pre-sales-estimate",
+    "land-and-expand",
+    "production-hardening-delta",
+    "ea-mca-discount",
+    "seller-one-pager",
+    "observability-cost"
   ],
   "skills": "skills/"
 }

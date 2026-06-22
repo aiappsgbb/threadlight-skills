@@ -22,6 +22,13 @@ description: >
   read by `threadlight-production-ready`'s new `COST-006` check which flags
   unaddressed savings >$100/mo as `must-fix`. Every emitted $ value is tagged
   `price_source: live | fixture | fallback` so reviewers can see what's stale.
+  Also runs a PRE-SALES phased-estimate mode (no deployed pilot required): give
+  it a rollout profile describing N adoption phases (POC → expansion →
+  business-wide), each with its own load + hardening posture, and it projects
+  every resource per phase, adds the production-hardening / estate delta,
+  applies an optional EA/MCA discount multiplier, and emits `docs/cost-estimate.md`
+  + `specs/cost-estimate-manifest.json` plus a shareable seller one-pager
+  (HTML, best-effort PDF) — every figure framed as an ESTIMATE, not a quote.
   USE FOR: azure consumption projection, cost projection, post-deploy cost,
   SKU diff, SKU comparison, PAYG vs PTU, ACA SKU comparison, Cosmos serverless
   vs provisioned, Storage redundancy comparison, APIM tier comparison, AI
@@ -32,7 +39,10 @@ description: >
   MCP, paygo-ptu beyond LLMs, generalize cost analysis across resources,
   monthly savings recommendation, cost rationale, cost caveat,
   Kratos export cost projection, discover from infra, tolerate Kratos
-  resource naming.
+  resource naming, pre-sales cost estimate, phased estimate, rollout profile,
+  land-and-expand cost, adoption phase cost, production-hardening delta,
+  estate cost delta, EA / MCA discount, customer cost one-pager, seller
+  one-pager, sales cost framing.
   DO NOT USE FOR: AOAI-only PAYG-vs-PTU break-even (use `paygo-ptu-cost-analyzer`
   in awesome-gbb directly if you don't have a deployed pilot); the static cost
   pillar checks (Budget declared? anomaly alert wired? projection artefact
@@ -41,10 +51,9 @@ description: >
   ready` COST-101..103); Bicep mutation — this skill is advisory only and
   `threadlight-deploy` is what actually changes infra on the next run; demand
   forecasting / time-series of usage (out of scope v1); reservations /
-  Savings Plans modelling (out of scope v1, deferred to v2); EA / MCA discount
-  modelling (out of scope v1, user-provided multiplier in v2).
+  Savings Plans modelling (deferred to v2).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Threadlight Consumption IQ — post-deploy cost projection + SKU diff
@@ -260,6 +269,89 @@ subprocess + JSON. Mirrors the dependency posture of
   skeleton with comments pointing at this skill — so the wizard always
   has something to fill in rather than a missing section.
 
+## Pre-sales phased estimate mode
+
+The default mode above answers *"what does this deployed pilot cost?"*. The
+**pre-sales mode** answers the question that comes **before** a pilot exists:
+*"what will this cost as the customer adopts it — POC, then expansion, then
+business-wide?"* — without a deployed repo, an `azd env`, or a SPEC § 12 block.
+
+```
+# from a rollout profile (.json or .yaml), no deploy required
+scripts/consumption_iq.py estimate --rollout rollout.json \
+  --onepager docs/estimate-onepager.html
+# or fold into the run wrapper (writes the post-deploy manifest path the
+# production-ready COST gates read — see "outputs" below)
+scripts/consumption_iq.py run --all --pre-sales --rollout rollout.json
+```
+
+A **rollout profile** declares N adoption phases; each phase carries its own
+`load_profile{}` (same schema as SPEC § 12) and a hardening `posture`
+(`demo` | `production` | `production-hardened`). The profile is **repo-optional**:
+declare the resource topology directly on it — a top-level `resources[]` and/or a
+per-phase `resources[]` override — and the estimate runs with no Bicep / `azd`
+walk at all. A per-phase override is what expresses the real land-and-expand SKU
+step (e.g. AI Search **Basic** in the POC → **S2/S3** once it's business-wide).
+Only when a rollout declares **no** topology does the CLI fall back to repo
+discovery. Per phase the orchestrator:
+
+1. projects **every** resource at that phase's load (reusing the per-resource
+   projectors — the Log Analytics workspace included, so GenAI OTel ingestion
+   is sized explicitly, not forgotten);
+2. appends the **production-hardening / estate delta** for that posture — the
+   SKUs that appear when a workload leaves "pilot" and enters regulated
+   production (Front Door + WAF, Private Endpoints, Defender, Sentinel, DDoS,
+   multi-region DR, the non-prod estate copy), each tagged
+   `shared_platform_billed` so estate-amortised items are honest;
+3. scores SKU recommendations on the **current** phase only.
+
+Optional `--discount 0.85 --discount-basis ea` applies a flat EA/MCA multiplier
+(only `ea`/`mca` may carry a sub-1.0 multiplier; `retail` + a real discount, or
+any out-of-range multiplier, fail fast with exit 4). The retail number is always
+preserved alongside the discounted one. Outputs:
+`docs/cost-estimate.md`, `specs/cost-estimate-manifest.json` (schema 1.1,
+`pre_sales: true`, top-level `totals.*` mirror the current phase so the
+`production-ready` COST gates still read a number), and the seller one-pager.
+The standalone `estimate` subcommand writes those dedicated `cost-estimate*`
+paths; `run --all --pre-sales` instead writes the phased manifest to the
+**post-deploy** paths (`docs/cost-projection.md` / `specs/cost-manifest.json`) on
+purpose, so the `production-ready` COST-005/006 gates consume one manifest
+regardless of which mode produced it.
+
+### Estimate-framing discipline (non-negotiable)
+
+**A pre-sales number is dangerous because it looks authoritative.** Every figure
+this mode emits is a planning **ESTIMATE at public list prices for one generic
+pilot — never a quote.** Violating the letter of this rule violates its spirit.
+
+| Rationalization | Reality |
+|---|---|
+| "The customer just wants one number." | One bare number is the failure mode. Show the phased ramp + the word *estimate*. |
+| "It's basically a quote, I'll call it that." | It is **not** a quote. Real pricing depends on the customer's agreement, region, and commitment. Say "estimate". |
+| "Discounted figure = their EA price." | The multiplier is **your assumption**, not a contractual rate. Keep retail visible; caveat the discount. |
+| "Hardening is overkill for the demo." | Demo posture *has* no hardening. The delta only appears at `production`/`production-hardened` — and it's a deliberate, labelled choice. |
+| "Logs are cheap, skip them." | GenAI OTel ingests on every span. The observability line is frequently top-3 — size it. |
+
+**Red flags — STOP if you catch yourself:**
+
+- About to present a single $/mo figure with no "estimate" framing.
+- About to call any figure a "quote" or "price".
+- About to share an `audience: internal` one-pager (the "do not share" / seller
+  talk-track variant) with the customer.
+- About to present a discounted number without the EA-assumption caveat.
+
+### Classification discipline (internal vs customer)
+
+The one-pager renders for one of two audiences:
+
+| Audience | Classification strip | Seller talk-track ("how to open") | Use |
+|---|---|---|---|
+| `internal` (default) | **"Microsoft internal · do not share with the customer"** | included | sales enablement — peers start the conversation |
+| `customer` | omitted | omitted | a customer-safe leave-behind |
+
+`--audience` overrides; otherwise the one-pager inherits the **current phase's**
+audience. Never hand the internal variant to a customer.
+
 ## Pricing source
 
 - **Primary:** `Azure-pricing` MCP tool (live Azure Retail Prices API).
@@ -273,8 +365,14 @@ subprocess + JSON. Mirrors the dependency posture of
 
 - `references/load-profile-schema.md` — SPEC § 12 `load_profile{}` schema
 - `references/cost-manifest-schema.md` — `specs/cost-manifest.json` v1 schema
+- `references/rollout-profile-schema.md` — pre-sales phased `rollout_profile{}` schema
+- `references/cost-estimate-manifest-schema.md` — phased estimate manifest (schema 1.1)
+- `references/hardening-delta-catalog.json` — per-posture production-hardening / estate delta
+- `references/onepager-template.html` — seller one-pager template (HTML, best-effort PDF)
 - `references/consumption-formulas.md` — per-resource math + citations
 - `references/pricing-fixtures/*.json` — fallback price snapshots
 - `references/fixtures/sample-pilot-consumption/` — end-to-end fixture
   with filled SPEC + manifest + expected golden artefacts (used by the
   emitter golden-file test and CI e2e)
+- `references/fixtures/sample-presales-rollout/` — end-to-end pre-sales
+  fixture (3-phase rollout + expected golden estimate + one-pager)
