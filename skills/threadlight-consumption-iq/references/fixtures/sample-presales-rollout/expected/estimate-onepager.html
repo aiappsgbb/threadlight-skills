@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Azure consumption — phased estimate (internal)</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5b5b5b; --line:#e2e2e2; --accent:#0a6; --warn:#8a1f1f; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); margin: 0; padding: 0 0 48px; line-height: 1.45; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 28px; }
+  .classification { background: var(--warn); color: #fff; font-size: 12px; font-weight: 700;
+                    letter-spacing: .04em; text-transform: uppercase; text-align: center;
+                    padding: 7px 12px; }
+  header { padding: 26px 0 8px; border-bottom: 2px solid var(--ink); }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .banner { background: #f4f8f6; border: 1px solid var(--line); border-left: 4px solid var(--accent);
+            padding: 12px 16px; margin: 20px 0; font-size: 14px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .est { color: var(--muted); font-size: 11px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+          font-weight: 600; background: #eef; color: #225; }
+  .caveat { background: #fff7f3; border: 1px solid #f0d2c2; border-left: 4px solid var(--warn);
+            padding: 12px 16px; margin: 18px 0; font-size: 13px; }
+  .talktrack { background: #f6f4ff; border: 1px solid #ded5f5; padding: 14px 18px; margin: 22px 0;
+               border-radius: 6px; }
+  .talktrack h2 { margin-top: 0; }
+  .talktrack ul { margin: 6px 0 0; padding-left: 18px; }
+  .talktrack li { margin: 5px 0; font-size: 13px; }
+  footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="classification">Microsoft internal · sales enablement · do not share with the customer</div>
+<div class="wrap">
+<header>
+  <h1>Azure consumption — phased estimate (internal)</h1>
+  <p class="sub">Generic Pilot · pre-sales cost framing across adoption phases</p>
+  <p class="meta">Generated 2026-06-22T12:00:00+00:00 · currency USD · price basis ea</p>
+</header>
+<div class="banner">All figures on this page are planning <strong>estimates</strong> at public list prices for a single generic pilot — not a quote. They exist to frame a conversation, not to commit a number.</div>
+<h2>Cost by adoption phase</h2><table><tr><th>Phase</th><th>Posture</th><th>Est. monthly cost</th><th>EA est.</th></tr>
+<tr><td>Phase 1 - Proof of concept</td><td>demo</td><td class="num">$326 <span class="est">(estimate)</span></td><td class="num">$277</td></tr>
+<tr><td>Phase 2 - Expansion <span class="pill">current</span></td><td>production</td><td class="num">$795 <span class="est">(estimate)</span></td><td class="num">$676</td></tr>
+<tr><td>Phase 3 - Business-wide</td><td>production-hardened</td><td class="num">$6,804 <span class="est">(estimate)</span></td><td class="num">$5,784</td></tr>
+</table><div class="caveat">Discounted figures apply a flat 15% EA multiplier as an internal planning assumption — they are an ESTIMATE, not a quote. Real EA/MCA pricing depends on the customer&#x27;s agreement, commitment, and negotiated rate card.</div><p class="meta">Anchored to the customer benchmark <strong>queries_per_day = 5,000</strong> (estimate basis).</p>
+<div class="talktrack"><h2>For the seller — how to open the conversation</h2><ul><li>Lead with Phase 1 (proof of concept) — the smallest, cheapest commitment.</li><li>Never quote a single Phase 3 number in isolation; show the phased ramp so the step-change is expected.</li><li>Call out that production-hardening (private networking, SecOps, DR, non-prod) is a deliberate posture choice, not a surprise.</li><li>Qualify any EA figure before sharing — it is your assumption, not a contractual rate.</li></ul></div>
+<footer>Threadlight Consumption IQ · pre-sales phased estimate. Estimates only; validate against the Azure Pricing Calculator and the customer&#x27;s agreement before sharing externally.</footer>
+</div>
+</body>
+</html>

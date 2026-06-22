@@ -51,14 +51,18 @@ sys.path.insert(0, str(HERE))
 
 from discover import discover_resources  # noqa: E402
 from emitter import emit_artefacts  # noqa: E402
+from estimate import emit_presales  # noqa: E402
 from load_profile_wizard import load_or_prompt_profile, ProfileIncompleteError  # noqa: E402
 from pricing_client import PricingClient, PricingUnavailableError  # noqa: E402
 from recommender import score_and_rank  # noqa: E402
+from rollout import load_rollout_profile, RolloutProfileError  # noqa: E402
 from projectors import project_resource  # noqa: E402
 
 DEFAULT_CACHE_PATH = Path(".threadlight/cost-cache.json")
 DEFAULT_OUTPUT_REPORT = Path("docs/cost-projection.md")
 DEFAULT_OUTPUT_MANIFEST = Path("specs/cost-manifest.json")
+DEFAULT_ESTIMATE_REPORT = Path("docs/cost-estimate.md")
+DEFAULT_ESTIMATE_MANIFEST = Path("specs/cost-estimate-manifest.json")
 DEFAULT_SPEC_PATH = Path("specs/SPEC.md")
 DEFAULT_DEPLOYMENT_MANIFEST = Path("specs/manifest.json")
 DEFAULT_BICEP_ENTRYPOINT = Path("infra/main.bicep")
@@ -129,6 +133,39 @@ def _resolve_deploy_ref(pre_deploy: bool) -> str:
     return f"{env}/{deployment_id}"
 
 
+# ---------- pre-sales estimate ----------------------------------------------
+
+
+def _rollout_with_cli_overrides(rollout: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    """Layer CLI `--discount` / `--discount-basis` over the rollout's own block."""
+    discount_arg = getattr(args, "discount", None)
+    if discount_arg is not None:
+        rollout = dict(rollout)
+        rollout["discount"] = {
+            "basis": getattr(args, "discount_basis", None) or "ea",
+            "multiplier": float(discount_arg),
+        }
+    return rollout
+
+
+def _phase_estimate(args: argparse.Namespace) -> dict[str, Any]:
+    rollout = load_rollout_profile(args.rollout)
+    rollout = _rollout_with_cli_overrides(rollout, args)
+    resources = _phase_discover(args)
+    pricing = PricingClient(cache_path=args.cache)
+    return emit_presales(
+        rollout,
+        resources,
+        pricing,
+        report_path=args.report,
+        manifest_path=args.manifest,
+        onepager_path=getattr(args, "onepager", None),
+        audience=getattr(args, "audience", None),
+        pdf=getattr(args, "pdf", False),
+        deploy_ref=_resolve_deploy_ref(args.pre_deploy),
+    )
+
+
 # ---------- argument parsing -------------------------------------------------
 
 
@@ -185,8 +222,59 @@ def build_parser() -> argparse.ArgumentParser:
         "--only",
         help="Restrict projection to one resource_kind (project phase only).",
     )
+    run.add_argument(
+        "--pre-sales",
+        action="store_true",
+        help="Run the phased pre-sales estimate instead of the post-deploy projection (requires --rollout).",
+    )
+    _estimate_args(run)
+
+    estimate_p = sub.add_parser(
+        "estimate",
+        help="Pre-sales phased estimate from a rollout profile (no deploy required).",
+    )
+    _common_args(estimate_p)
+    estimate_p.set_defaults(
+        report=DEFAULT_ESTIMATE_REPORT,
+        manifest=DEFAULT_ESTIMATE_MANIFEST,
+    )
+    _estimate_args(estimate_p, required_rollout=True)
 
     return parser
+
+
+def _estimate_args(p: argparse.ArgumentParser, required_rollout: bool = False) -> None:
+    p.add_argument(
+        "--rollout",
+        type=Path,
+        required=required_rollout,
+        help="Path to a rollout profile (.json or .yaml) describing the adoption phases.",
+    )
+    p.add_argument(
+        "--discount",
+        type=float,
+        help="EA/MCA discount multiplier in (0, 1], e.g. 0.85 for -15%%. Overrides the rollout's own discount block.",
+    )
+    p.add_argument(
+        "--discount-basis",
+        choices=("retail", "ea", "mca"),
+        help="Price basis label for --discount (default ea).",
+    )
+    p.add_argument(
+        "--audience",
+        choices=("internal", "customer"),
+        help="One-pager audience. Defaults to the current phase's audience.",
+    )
+    p.add_argument(
+        "--onepager",
+        type=Path,
+        help="Also render a shareable seller one-pager (HTML) to this path.",
+    )
+    p.add_argument(
+        "--pdf",
+        action="store_true",
+        help="Best-effort PDF alongside the one-pager (needs Chromium/Playwright; skips gracefully).",
+    )
 
 
 # ---------- dispatch ---------------------------------------------------------
@@ -241,10 +329,30 @@ def main(argv: list[str] | None = None) -> int:
             _phase_emit(projected, recs, profile, args)
             return 0
 
+        if args.phase == "estimate":
+            result = _phase_estimate(args)
+            if args.verbose:
+                print(
+                    f"emitted {result['report_path']} and {result['manifest_path']}",
+                    file=sys.stderr,
+                )
+            return 0
+
         if args.phase == "run":
             if not args.all:
                 print("run requires --all in v1", file=sys.stderr)
                 return 2
+            if getattr(args, "pre_sales", False):
+                if not getattr(args, "rollout", None):
+                    print("run --all --pre-sales requires --rollout", file=sys.stderr)
+                    return 2
+                result = _phase_estimate(args)
+                if args.verbose:
+                    print(
+                        f"emitted {result['report_path']} and {result['manifest_path']}",
+                        file=sys.stderr,
+                    )
+                return 0
             resources = _phase_discover(args)
             profile = _phase_load_profile(args)
             pricing = PricingClient(cache_path=args.cache)
@@ -266,6 +374,9 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as exc:
         print(f"prerequisite missing: {exc}", file=sys.stderr)
         return 2
+    except RolloutProfileError as exc:
+        print(f"rollout profile invalid: {exc}", file=sys.stderr)
+        return 4
     except ProfileIncompleteError as exc:
         print(f"load profile incomplete: {exc}", file=sys.stderr)
         return 4

@@ -9,6 +9,47 @@ field.
 
 ### Added
 
+- **`threadlight-consumption-iq` v0.3.0 — pre-sales phased estimate mode
+  (plugin 1.5.0).** Extends the post-deploy SKU-diff projector with the
+  **pre-sales / pre-deploy** front-end it explicitly lacked: estimate Azure
+  consumption for a workload that **isn't deployed yet**, across the customer's
+  adoption ramp (POC → expansion → business-wide). **Cost-estimation only — no
+  customer/CX specifics; a generic pilot throughout.**
+  - **Phased rollout** — a new `rollout_profile{}` (`references/rollout-profile-schema.md`)
+    models N phases, each its own `load_profile{}` + hardening `posture`
+    (`demo` | `production` | `production-hardened`). New `scripts/rollout.py`,
+    `scripts/estimate.py` orchestrator, `estimate` CLI subcommand +
+    `run --all --pre-sales`.
+  - **Production-hardening / estate delta** — `scripts/hardening.py` +
+    `references/hardening-delta-catalog.json` add the SKUs that appear at
+    production scale (Front Door + WAF, Private Endpoints, Defender, Sentinel,
+    DDoS, multi-region DR, non-prod estate) as a labelled **delta**, with
+    `shared_platform_billed` honesty on estate-amortised items.
+  - **Observability ingestion projector** — `scripts/projectors/observability.py`
+    sizes Log Analytics / App Insights GenAI-OTel ingestion (the frequently
+    top-3, frequently-forgotten line), wired into the standard projector
+    dispatch so the post-deploy path benefits too.
+  - **EA/MCA discount multiplier** — `scripts/discount.py` applies an optional
+    `--discount`/`--discount-basis` multiplier; retail is always preserved
+    alongside, with a caveat that it's a planning **estimate, not a quote**.
+  - **Shareable seller one-pager** — `scripts/onepager.py` +
+    `references/onepager-template.html` render an HTML (best-effort PDF)
+    leave-behind with estimate-framing, internal-vs-customer classification
+    (a "do not share" strip + seller talk-track on the internal variant), and
+    the PayGo-vs-PTU-as-SLA narrative.
+  - **Manifest schema 1.1** — additive (`pre_sales`, `phases[]`, `discount{}`,
+    top-level `totals.*` mirror the current phase) so
+    `threadlight-production-ready` COST-005/006 still read a number.
+    New `references/cost-estimate-manifest-schema.md`.
+  - **SKILL.md discipline** — new "Pre-sales phased estimate mode" section with
+    an **estimate-framing** rationalization table + red-flags list and an
+    **internal/customer classification** rule, asserted by
+    `tests/test_skill_discipline.py`.
+  - **Tests:** +80 unit/golden/discipline tests (rollout, observability,
+    hardening, discount, one-pager, emitter, estimate, CLI, e2e golden,
+    skill-discipline, no-VF3/no-secrets denylist); a new
+    `references/fixtures/sample-presales-rollout/` golden fixture.
+
 - **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
   1.4.0).** Closes the last unstated assumption in the pipeline: that an SE
   can stand Threadlight up **inside one specific customer's environment** and

@@ -11,7 +11,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import aca, ai_search, aoai, apim, cosmos, foundry_hosted_agent, storage
+from . import (
+    aca,
+    ai_search,
+    aoai,
+    apim,
+    cosmos,
+    foundry_hosted_agent,
+    observability,
+    storage,
+)
 
 PROJECTOR_REGISTRY: dict[str, Any] = {
     "Microsoft.CognitiveServices/accounts/deployments": aoai,
@@ -21,6 +30,7 @@ PROJECTOR_REGISTRY: dict[str, Any] = {
     "Microsoft.Storage/storageAccounts": storage,
     "Microsoft.ApiManagement/service": apim,
     "Microsoft.Search/searchServices": ai_search,
+    "Microsoft.OperationalInsights/workspaces": observability,
 }
 
 

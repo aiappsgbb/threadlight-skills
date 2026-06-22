@@ -255,8 +255,47 @@ monthly_cost = sku_unit_price_per_hour_usd * replicas * partitions * 730
 ## v2 backlog
 
   * Reservations & Savings Plans modelling
-  * EA / MCA discount multipliers
   * Spot pricing for ACA
-  * Multi-region failover cost
   * Forecast / 12-month outlook with `monthly_growth_rate`
   * Sensitivity analysis: ±20% load_profile knobs → cost band
+
+---
+
+## Observability ingestion (pre-sales + post-deploy)
+
+The `Microsoft.OperationalInsights/workspaces` projector sizes the Log
+Analytics / Application Insights **ingestion** bill — the line telcos and
+regulated customers routinely under-estimate because GenAI OTel emits a span
+per request.
+
+  * monthly GB ≈ `monthly_requests × bytes_per_trace × content_recording_band`
+  * `content_recording_band`: prompts+completions recorded ⇒ larger payloads;
+    metadata-only ⇒ smaller. No sampling assumed (100% telemetry) unless the
+    load profile says otherwise.
+  * £/GB at the pay-as-you-go analytics-logs rate; commitment tiers are a v2
+    knob.
+
+### Citations
+
+  * [Azure Monitor pricing](https://azure.microsoft.com/en-us/pricing/details/monitor/)
+
+---
+
+## Production-hardening / estate delta (pre-sales)
+
+A **catalog-driven delta**, not a SKU swap — the resources that appear when a
+workload leaves "pilot" and enters regulated production. Source:
+`references/hardening-delta-catalog.json`, keyed by posture
+(`demo` | `production` | `production-hardened`, cumulative).
+
+  * Each line: `component`, `category`, `monthly_cost_usd`,
+    `shared_platform_billed`, `price_source`, `rationale`.
+  * `shared_platform_billed: true` (Defender, Sentinel, DDoS) ⇒ amortised
+    across the estate, not charged wholly to this workload.
+  * Figures are neutral public-list **ESTIMATES** for a generic pilot.
+
+### Citations
+
+  * [Azure Front Door pricing](https://azure.microsoft.com/en-us/pricing/details/frontdoor/)
+  * [Microsoft Defender for Cloud pricing](https://azure.microsoft.com/en-us/pricing/details/defender-for-cloud/)
+  * [Microsoft Sentinel pricing](https://azure.microsoft.com/en-us/pricing/details/microsoft-sentinel/)
