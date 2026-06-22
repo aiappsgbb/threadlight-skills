@@ -1,6 +1,6 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Twelve pipeline skills + one orchestrator (13 total)** that take a customer
+> **Fifteen pipeline skills + one orchestrator (16 total)** that take a customer
 > engagement from a one-paragraph brief through to a deployed, evaluated,
 > observable, **production-ready** Microsoft Foundry hosted agent — runnable
 > on the customer's tenant in a single working session, then handed off to
@@ -17,23 +17,35 @@
 | [`threadlight-hitl-patterns`](skills/threadlight-hitl-patterns/) | Human-in-the-loop gates via Teams Adaptive Cards + audit trail |
 | [`threadlight-workspace-ui`](skills/threadlight-workspace-ui/) | Operator dashboard (React workspace) behind Easy Auth |
 | [`threadlight-consumption-iq`](skills/threadlight-consumption-iq/) | **NEW v0.1.0-alpha** — post-deploy Azure cost projection + SKU-diff recommender. Walks Bicep + `azd env`, reads SPEC § 12 `load_profile{}` (wizard writes it if absent), hits Azure Retail Prices for current SKUs + 2–3 alternatives per resource (AOAI, Foundry, ACA, Cosmos, Storage, APIM, AI Search), emits `docs/cost-projection.md` + `specs/cost-manifest.json`. Soft-advisory; consumed by `production-ready`'s tightened COST-005 + new COST-006. |
-| [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. |
+| [`threadlight-evals`](skills/threadlight-evals/) | **NEW v0.1.0** — the **DISCOVER/GOVERN evals leg**. Runs offline batch quality evals (delegates invoke+score to `foundry-evals`), wires **Foundry Continuous Evaluation** on live threads (`create_agent_evaluation` → App Insights), and an **A/B champion–challenger** comparison gate before a model/prompt swap. Emits `specs/evals-manifest.json` that `production-ready` pillar 6 (EVAL-001..004) consumes as leg-verified evidence. |
+| [`threadlight-redteam`](skills/threadlight-redteam/) | **NEW v0.1.0** — the **DISCOVER safety leg**. Runs the **AI Red Teaming Agent** (PyRIT-based) adversarial scan for jailbreak / prompt-injection / data-exfiltration / harmful-content, emits `docs/redteam-report.md` + `specs/redteam-manifest.json`. Maps attack-success-rate to `production-ready` pillar 7 SAFE-101..106 findings. |
+| [`threadlight-govern`](skills/threadlight-govern/) | **NEW v0.1.0** — the **PROTECT/AGT leg**. Wraps `foundry-agt`: scaffolds/validates the agent-runtime governance policy artefact, verifies in-process middleware is wired at the container boundary, and emits a committed verifier report + `specs/govern-manifest.json`. Produces the artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look for. |
+| [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. Pillars 2/6/7 consume the govern/evals/red-team leg manifests when present + fresh. |
 | [`threadlight-cicd`](skills/threadlight-cicd/) | **NEW v0.1.0** — production deploy pipeline + env-setup runbooks for locked-down customer envs (no direct `azd up`). Onboarding-path gate (standalone / spoke-onboard / hub-deploy-then-spoke), then generates **GitHub Actions or Azure DevOps** OIDC/WIF pipelines + UAMI/federated-credential, least-privilege RBAC, and private-VNet runner runbooks. Secret-free; ships a `central-platform-boundary.md` that keeps the pilot pipeline **separate** from `citadel-hub-deploy`. |
 | [`threadlight-customize`](skills/threadlight-customize/) | **NEW v0.1.0** — the **fork-and-customize final leg**. Instructions/runbooks (not automation) for forking the Threadlight pipeline and onboarding it into **one customer's environment** — landing zones, RBAC, pipelines, governance — with **production onboarding priority #1**. Four moves: intake gate (customer-profile workbook), customization map (fork-vs-keep), test-in-customer-env runbook (private-VNet via **Azure ML VS Code** / **GH Codespaces**), and an explicit non-coverage boundary. Ships a fork-runbook (`upstream-pin` + overlay). Manual handoff — `threadlight-auto` does **not** drive it. |
-| [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 10 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
+| [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 13 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow
 
 ```
 threadlight-design → threadlight-local-test → threadlight-deploy →
 threadlight-safe-check (gate) → threadlight-consumption-iq (cost) →
-foundry-evals + foundry-observability →
-threadlight-production-ready (advisory) → customer architecture review →
+DISCOVER: threadlight-evals (offline + online CE) + threadlight-redteam (adversarial scan) →
+PROTECT: threadlight-govern (AGT runtime governance) →
+foundry-observability →
+threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →
 threadlight-cicd (prod deploy pipeline, when the customer env is locked down) →
 threadlight-customize (fork + onboard into the customer's own environment)
 ```
 
-The 10-stage pipeline above is the spine. `threadlight-auto` drives the same
+The spine maps to the Microsoft Responsible-AI-for-Foundry operating loop —
+**Design → Build/Deploy → Discover → Protect → Govern → Improve**. The
+**Discover** legs (`threadlight-evals`, `threadlight-redteam`) and the
+**Protect** leg (`threadlight-govern`) run *before* the readiness gate so that
+`threadlight-production-ready` verifies each control-plane leg actually ran and
+its artefact is fresh, rather than only scoring whether one was declared.
+
+The 13-stage pipeline above is the spine. `threadlight-auto` drives the same
 chain end-to-end when you want one-prompt automation (demos, resumption,
 template-from-scenario kickoffs). **`threadlight-cicd` and `threadlight-customize`
 are manual handoff steps** after the readiness gate — `threadlight-auto` does

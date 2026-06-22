@@ -87,12 +87,12 @@ If anything's red, fix it before Step 1 — not inside the runbook.
                                   │
                                   ▼
   ┌────────── PRODUCTION TRACK · documented · needs a Citadel hub ─────┐
-  SAFE-CHECK ─▶ COST ─▶ EVALS ─▶ OBSERVE ─▶ READY ─▶ SPOKE ─▶ PROD ─▶ CI/CD ─▶ HANDOFF
-   the honest    real    14/15   ~2k       45% &     keyless   no model   pipeline   runbooks
-   gate          $/mo    scored  traces    correct   spoke*    of its     holds the  + map
-                                                      *needs    own*       keys
-                                                       hub      *needs hub
+  SAFE-CHECK ─▶ COST ─▶ DISCOVER ──────▶ PROTECT ─▶ OBSERVE ─▶ READY ─▶ SPOKE ─▶ PROD ─▶ CI/CD ─▶ HANDOFF
+   the honest   real    evals + red-team   AGT       ~2k       gap-to-   keyless   no model  pipeline  runbooks
+   gate         $/mo    (quality + scan)   runtime   traces    stage     spoke*    of its    holds     + map
+                                           governance           map                own*      the keys
   └────────────────────────────────────────────────────────────────────┘
+       DISCOVER · PROTECT · GOVERN · IMPROVE — the Responsible-AI-for-Foundry loop, made executable
 ```
 
 Part 1 is the inner loop — idea to a live, invokable agent you stood up
@@ -291,16 +291,51 @@ index runs zone-redundant or single-replica.
 ### 8 · Evals — does it actually work? 🟡
 
 ```
-Use the foundry-evals skill to evaluate the live agent across the full
-scenario set, scored by deterministic graders and a gpt-5 judge. Report
-exception recall, citation coverage, and whether it ever self-finalized.
+Use the threadlight-evals skill to run the evals leg against the live agent:
+offline batch (delegating to foundry-evals), online/continuous eval on live
+threads (Foundry Continuous Evaluation → App Insights), and an A/B
+champion–challenger gate before any model or prompt swap.
 ```
 
 A real evaluation against the **live** agent. The run scored **14/15**: 100%
 of seeded policy exceptions caught, a clause cited on 41/41 measured lines,
 never self-finalized, 4.9/5 coherence — each memo ~20s versus 3–4 human
 hours. The single "miss" was a **gap in the test, not the agent** (a scenario
-with no borrower, where refusing to invent an identifier was correct).
+with no borrower, where refusing to invent an identifier was correct). The
+`threadlight-evals` leg wraps that offline run and adds the two pieces CAF
+asks for: **online/continuous eval** on live threads (results to App Insights
+with reasoning) and an **A/B comparison gate** so a model swap has to *prove*
+uplift before it ships. The leg writes `specs/evals-manifest.json`, which
+production-ready reads to confirm the leg actually ran.
+
+### 8a · Red-team — has anyone tried to break it? 🟡
+
+```
+Use the threadlight-redteam skill to run the AI Red Teaming Agent adversarial
+scan (jailbreak / prompt-injection / exfiltration) against the live agent and
+write docs/redteam-report.md + specs/redteam-manifest.json.
+```
+
+This is the **Discover** control RAI-for-Foundry expects and the static
+"is a jailbreak shield declared?" check can't replace: an automated,
+PyRIT-backed adversarial scan that actually probes the deployed agent and
+reports an attack-success rate per risk category. Results map straight to
+production-ready pillar 7 (`SAFE-1xx`) so an un-scanned agent reads as
+*not-verified*, not silently green.
+
+### 8b · Govern — is the runtime actually governed? 🟡
+
+```
+Use the threadlight-govern skill to wire foundry-agt at the container
+boundary: scaffold/validate the policy artefact, attach the in-process
+governance middleware, and emit a committed verifier report
+(specs/govern-manifest.json).
+```
+
+The **Protect** leg turns pillar 2 from "AGT scored, remediation delegated"
+into "AGT runtime governance *ran* and left an artefact." It produces exactly
+what pillars 2 and 7 look for — policy + middleware + verifier evidence — so
+the scorecard can verify the leg ran rather than just recommending it.
 
 ### 9 · Observability — can we see what it's doing? 🟡
 

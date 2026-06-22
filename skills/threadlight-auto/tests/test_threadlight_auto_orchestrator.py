@@ -34,9 +34,11 @@ def run(workspace: Path) -> dict:
 
 def main() -> int:
     cases = [
-        ("blank",        "run",       {"preflight", "design", "deploy", "safe_check", "cost_projection", "invoke"}, set()),
-        # NOTE: all-complete fixture predates cost_projection; no cost-manifest.json → stage runs
-        ("all-complete", "run",       {"cost_projection", "invoke"},                                                {"preflight", "design", "deploy", "safe_check"}),
+        ("blank",        "run",       {"preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "evals", "redteam", "govern"}, set()),
+        # NOTE: all-complete fixture predates cost_projection + the discover/protect
+        # legs; no cost-manifest.json → cost_projection runs, and the cascade plus
+        # absent leg manifests make evals/redteam/govern run too.
+        ("all-complete", "run",       {"cost_projection", "invoke", "evals", "redteam", "govern"},                   {"preflight", "design", "deploy", "safe_check"}),
         ("hard-stop",    "hard_stop", None,                                                                         None),
         ("spec-edited",  "run",       None,                                                                         None),
     ]
@@ -96,6 +98,17 @@ def main() -> int:
             failures += 1
         else:
             print(f"✅ STAGES order: safe_check({sc_idx}) < cost_projection({cp_idx}) < invoke({inv_idx})")
+
+    # --- extra: assert the discover/protect legs follow invoke in STAGES ---
+    for leg in ("evals", "redteam", "govern"):
+        if leg not in stages:
+            print(f"❌ STAGES: {leg} not in STAGES list")
+            failures += 1
+        elif stages.index(leg) <= stages.index("invoke"):
+            print(f"❌ STAGES: {leg} at index {stages.index(leg)} not after invoke ({stages.index('invoke')})")
+            failures += 1
+        else:
+            print(f"✅ STAGES order: invoke({stages.index('invoke')}) < {leg}({stages.index(leg)})")
 
     print(f"\n=== {len(cases) + 1 - failures}/{len(cases) + 1} passed ===")
     return failures
