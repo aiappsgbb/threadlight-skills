@@ -15,7 +15,14 @@ name: python-pytest
 #   - skills/threadlight-production-ready/tests/ (covers COST-005/006 +
 #     existing pillar tests)
 #   - skills/threadlight-auto/tests/             (orchestrator state
-#     machine, includes the new cost_projection stage probe)
+#     machine, includes the evals/redteam/govern Discover/Protect stage
+#     probes — run as a standalone script since the suite uses main())
+#   - skills/threadlight-evals/tests/            (Discover evals leg — offline
+#     batch + online/continuous eval + A/B gate; deterministic, no network)
+#   - skills/threadlight-redteam/tests/          (Discover safety leg — AI Red
+#     Teaming Agent scan mapper; deterministic, no network)
+#   - skills/threadlight-govern/tests/           (Protect leg — AGT runtime
+#     governance verifier; deterministic, no network)
 #   - skills/threadlight-cicd/tests/             (prod CI/CD pipeline +
 #     env-setup runbook generator — deterministic, secret-free, no network)
 #   - skills/threadlight-customize/tests/        (fork-and-customize final
@@ -52,6 +59,17 @@ jobs:
       - name: Run threadlight-auto tests
         run: python -m pytest skills/threadlight-auto/tests/ -v
         continue-on-error: true
+      - name: Run threadlight-auto orchestrator state-machine test (standalone)
+        # The orchestrator suite drives main() rather than pytest test_ funcs,
+        # so pytest collects 0 above. Run it directly to hard-gate the
+        # evals/redteam/govern stage ordering + skip/run probes.
+        run: python skills/threadlight-auto/tests/test_threadlight_auto_orchestrator.py
+      - name: Run threadlight-evals tests
+        run: python -m pytest skills/threadlight-evals/tests/ -v
+      - name: Run threadlight-redteam tests
+        run: python -m pytest skills/threadlight-redteam/tests/ -v
+      - name: Run threadlight-govern tests
+        run: python -m pytest skills/threadlight-govern/tests/ -v
       - name: Run threadlight-cicd tests
         run: python -m pytest skills/threadlight-cicd/tests/ -v
       - name: Run threadlight-customize tests

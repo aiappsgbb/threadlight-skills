@@ -9,6 +9,64 @@ field.
 
 ### Added
 
+- **Executable Responsible-AI-for-Foundry control plane — `threadlight-evals`,
+  `threadlight-redteam`, `threadlight-govern` v0.1.0 (plugin 1.5.0).** Closes
+  the gap where `path2production` *scored* its control-plane legs but never
+  *ran* them. The pipeline now operationalizes the Microsoft RAI-for-Foundry
+  loop — **Design → Build/Deploy → Discover → Protect → Govern → Improve** —
+  with three new first-class legs wired into the spine and verified by
+  `production-ready`:
+  - **NEW skill: [`skills/threadlight-evals/`](skills/threadlight-evals/SKILL.md)**
+    — the **Discover** evals leg. Offline batch quality evals (delegates
+    invoke+score to `foundry-evals`), **online / continuous evaluation** on
+    live threads (Foundry `create_agent_evaluation` → App Insights, with
+    reasoning), and an **A/B champion–challenger** comparison gate before a
+    model/prompt swap. Emits `specs/evals-manifest.json` consumed by
+    `production-ready` pillar 6 (EVAL-001..004). 10 stdlib tests.
+  - **NEW skill: [`skills/threadlight-redteam/`](skills/threadlight-redteam/SKILL.md)**
+    — the **Discover** safety leg. Runs the **AI Red Teaming Agent**
+    (PyRIT-based) adversarial scan for jailbreak / prompt-injection /
+    data-exfiltration / harmful-content, emits `docs/redteam-report.md` +
+    `specs/redteam-manifest.json`, and maps attack-success-rate to
+    `production-ready` pillar 7 findings **SAFE-101..106**. Replaces the old
+    static "is a jailbreak shield declared?" check with an actual scan. 10
+    stdlib tests + 3 remediation recipes (SAFE-101/102/103).
+  - **NEW skill: [`skills/threadlight-govern/`](skills/threadlight-govern/SKILL.md)**
+    — the **Protect** leg. Wraps `foundry-agt`: scaffolds/validates the
+    agent-runtime governance policy artefact, verifies in-process governance
+    middleware at the container boundary, and emits a committed verifier
+    report + `specs/govern-manifest.json`. Produces the artefacts
+    `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look
+    for. 12 stdlib tests.
+  - **`production-ready` flip.** Pillars 2/6/7 move from "remediate → go run
+    X" to "**verify the leg ran + artefact fresh**" when the govern/evals/
+    red-team manifest is present and within the 90-day window; they fall back
+    to the legacy heuristics when a manifest is absent or stale.
+    `_load_leg_manifest`/`_leg_cap_status` helpers added (never raise); new
+    SAFE-101..106 catalog entries + a `_check_redteam_static` finding mapper.
+    Backward-compatible — existing fixtures (no manifests) keep unchanged
+    finding sets.
+  - **Spine wiring.** `threadlight-auto` gains three resumable stages
+    (`evals`, `redteam`, `govern`) after `invoke`, each gated on a fresh
+    `specs/*-manifest.json` (missing/stale-24h → run, fresh → skip) so a
+    re-deploy upstream cascades a fresh evaluation / scan / governance pass.
+    `orchestrator.py` (STAGES + `_check_leg_manifest` probe), `state-schema.md`,
+    and the auto `SKILL.md` Resumption + Sub-stages tables updated.
+  - **Docs:** `README.md` (now **fifteen pipeline skills + one orchestrator,
+    16 total**, skills table, Discover/Protect pipeline-flow + RAI operating
+    loop), `THREADLIGHT.md` (sixteen-skill count, alphabetical list, three
+    new entry-skill picker rows + chain sections 9/10/11, production-ready →
+    12 / cicd → 13 / customize → 14), and
+    `docs/IDEA-TO-PRODUCTION-WORKBOOK.md` (arc diagram + steps 8/8a/8b)
+    updated. `plugin.json` bumped 1.4.0 → 1.5.0 with new keywords.
+  - **CI:** `.github/workflows/python-pytest.yml` runs the three new skills'
+    stdlib test suites as hard-fail steps (deterministic, secret-free, no
+    network).
+  - **Deferred (truthful):** the CI/CD eval-gate + red-team-gate stages in
+    `threadlight-cicd`, the business-KPI / outcome scorecard sub-section in
+    `production-ready`, and the P2 `threadlight-optimize` + central eval-catalog
+    conventions are planned as fast-follow commits.
+
 - **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
   1.4.0).** Closes the last unstated assumption in the pipeline: that an SE
   can stand Threadlight up **inside one specific customer's environment** and
