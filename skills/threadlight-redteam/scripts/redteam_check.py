@@ -479,8 +479,15 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     root = os.path.abspath(args.target)
-    result = evaluate(root, args.scan_result, args.freshness_days, args.max_asr)
-    man = manifest(root, result, args.freshness_days, args.max_asr)
+    try:
+        result = evaluate(root, args.scan_result, args.freshness_days, args.max_asr)
+        man = manifest(root, result, args.freshness_days, args.max_asr)
+    except Exception as exc:  # graceful top-level degradation
+        result = {"capabilities": {
+            key: {"status": "not-verified", "evidence": None,
+                  "hint": f"validator could not complete: {exc}", "finding_id": fid}
+            for key, fid in CAPABILITY_FINDINGS.items()}}
+        man = manifest(root, result, args.freshness_days, args.max_asr)
 
     if args.emit:
         os.makedirs(os.path.join(root, "specs"), exist_ok=True)

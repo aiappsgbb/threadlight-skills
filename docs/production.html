@@ -379,8 +379,8 @@
           model and agent-runtime controls to <em>protect</em>, monitor and
           evaluate on live traffic to <em>govern</em>. Production-ready used to
           <em>score</em> those stages and hand the work to other skills. Now
-          three threadlight legs <strong>execute</strong> them in the chain and
-          leave committed evidence the scorecard reads &mdash; idempotent,
+          three threadlight legs <strong>run as executable checks</strong> in the
+          chain and leave committed evidence the scorecard reads &mdash; idempotent,
           keyless, and gracefully degrading to <code>not-verified</code> when a
           permission is missing.
         </p>
@@ -419,12 +419,12 @@
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Discover &middot; <code>threadlight-redteam</code></p>
           <h3>An adversarial scan, not a declared shield.</h3>
-          <p>Runs the <strong>AI Red Teaming Agent</strong> (PyRIT-based)
-          adversarial scan &mdash; jailbreak, prompt-injection, data and prompt
-          exfiltration &mdash; and emits <code>docs/redteam-report.md</code> plus
-          a manifest whose findings map to Responsible-AI pillar 07. Run it
-          pre- and post-deploy; a declared jailbreak shield is no longer taken
-          on faith.</p>
+          <p>Ingests and scores the <strong>AI Red Teaming Agent</strong>
+          (PyRIT-based) scan evidence &mdash; jailbreak, prompt-injection, data
+          and prompt exfiltration &mdash; into an attack-success-rate verdict, and
+          emits <code>docs/redteam-report.md</code> plus a manifest whose findings
+          map to Responsible-AI pillar 07. Run the scan pre- and post-deploy; a
+          declared jailbreak shield is no longer taken on faith.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
@@ -702,7 +702,7 @@
           <article class="metric-card">
             <span class="metric-num"><em>91</em>%</span>
             <span class="metric-label">Eval pass-rate</span>
-            <span class="metric-caption">Latest scheduled run, from <code>evals-manifest.metrics.pass_rate</code> &mdash; threshold 80%.</span>
+            <span class="metric-caption">Latest scheduled run, from <code>evals-manifest.metrics.pass_rate</code> &mdash; threshold 85%.</span>
           </article>
           <article class="metric-card">
             <span class="metric-num">$<em>0.0123</em></span>

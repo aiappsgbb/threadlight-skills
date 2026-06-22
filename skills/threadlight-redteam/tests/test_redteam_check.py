@@ -89,5 +89,32 @@ class ManifestShapeTests(unittest.TestCase):
         self.assertEqual(rc_code, 0)
 
 
+class GracefulDegradationTests(unittest.TestCase):
+    """An unexpected evaluate() failure must still emit a valid manifest
+    (verdict present, no fabricated must-fix) so the live E2E leg-assert
+    never hard-fails on a manifest that was simply never written."""
+
+    def test_emit_writes_manifest_when_evaluate_raises(self):
+        import json
+        import tempfile
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("synthetic validator failure")
+
+        original = rc.evaluate
+        rc.evaluate = _boom
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                code = rc.main(["--target", d, "--emit"])
+                self.assertEqual(code, 0)
+                path = os.path.join(d, "specs", "redteam-manifest.json")
+                self.assertTrue(os.path.isfile(path))
+                man = json.loads(open(path, encoding="utf-8").read())
+                self.assertEqual(man["verdict"], "partial")
+                self.assertEqual(man["must_fix"], [])
+        finally:
+            rc.evaluate = original
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

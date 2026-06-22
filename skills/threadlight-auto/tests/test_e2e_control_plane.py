@@ -77,8 +77,12 @@ def _run(*args: str) -> subprocess.CompletedProcess:
 
 
 def _emit_legs(root: pathlib.Path) -> None:
+    # A wide freshness window keeps the green fixtures time-stable: the redteam
+    # scan and evals run carry fixed capture dates, so without this the verdict
+    # would drift to "partial" once the fixture aged past each leg's default
+    # window. Mirrors how the per-leg unit suites pin freshness.
     for script in (GOVERN, EVALS, REDTEAM):
-        r = _run(str(script), "--target", str(root), "--emit")
+        r = _run(str(script), "--target", str(root), "--emit", "--freshness-days", "36500")
         assert r.returncode == 0, f"{script.name} failed:\n{r.stdout}\n{r.stderr}"
 
 

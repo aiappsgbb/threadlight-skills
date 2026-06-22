@@ -311,8 +311,17 @@ def main(argv=None) -> int:
         print("agt-profile=none → governance pillar not applicable")
         return 0
 
-    caps = evaluate(root, args.freshness_days)
-    man = manifest(root, caps, args.profile, args.freshness_days)
+    try:
+        caps = evaluate(root, args.freshness_days)
+        man = manifest(root, caps, args.profile, args.freshness_days)
+    except Exception as exc:  # graceful top-level degradation
+        caps = {key: {"status": "not-verified", "evidence": None,
+                      "hint": f"validator could not complete: {exc}"}
+                for key in ("middleware_wired_at_boundary", "policy_artefact_present",
+                            "policy_versioned", "rai_policy_present",
+                            "verifier_artefact_present", "verifier_fresh",
+                            "asi_reference_present", "sidecar_pattern")}
+        man = manifest(root, caps, args.profile, args.freshness_days)
 
     if args.emit:
         os.makedirs(os.path.join(root, "specs"), exist_ok=True)
