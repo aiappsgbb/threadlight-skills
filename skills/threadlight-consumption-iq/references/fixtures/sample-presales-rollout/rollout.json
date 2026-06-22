@@ -1,0 +1,66 @@
+{
+  "customer": "Generic Pilot",
+  "currency": "USD",
+  "current_phase": "expansion",
+  "benchmark": { "metric": "queries_per_day", "value": 5000 },
+  "discount": { "basis": "ea", "multiplier": 0.85 },
+  "phases": [
+    {
+      "id": "poc",
+      "label": "Phase 1 - Proof of concept",
+      "posture": "demo",
+      "audience": "internal",
+      "load_profile": {
+        "workload_class": "chat-agent",
+        "peak_concurrent_sessions": 5,
+        "avg_requests_per_session": 6,
+        "avg_tokens_per_request": 1200,
+        "peak_requests_per_second": 0.5,
+        "business_hours_only": true,
+        "cosmos_gb_year_one": 10.0,
+        "storage_gb_year_one": 5.0,
+        "ai_search_documents": 20000,
+        "monthly_growth_rate": 0.1,
+        "declared_constraints": { "max_p95_latency_ms": 3000, "min_redundancy": "none" }
+      }
+    },
+    {
+      "id": "expansion",
+      "label": "Phase 2 - Expansion",
+      "posture": "production",
+      "audience": "internal",
+      "load_profile": {
+        "workload_class": "chat-agent",
+        "peak_concurrent_sessions": 25,
+        "avg_requests_per_session": 8,
+        "avg_tokens_per_request": 1500,
+        "peak_requests_per_second": 2.5,
+        "business_hours_only": false,
+        "cosmos_gb_year_one": 75.0,
+        "storage_gb_year_one": 40.0,
+        "ai_search_documents": 250000,
+        "monthly_growth_rate": 0.15,
+        "declared_constraints": { "max_p95_latency_ms": 2000, "min_redundancy": "zonal" }
+      }
+    },
+    {
+      "id": "business-wide",
+      "label": "Phase 3 - Business-wide",
+      "posture": "production-hardened",
+      "audience": "customer",
+      "load_profile": {
+        "workload_class": "hybrid",
+        "peak_concurrent_sessions": 120,
+        "avg_requests_per_session": 10,
+        "avg_tokens_per_request": 1800,
+        "peak_requests_per_second": 9.0,
+        "business_hours_only": false,
+        "cosmos_gb_year_one": 400.0,
+        "storage_gb_year_one": 250.0,
+        "ai_search_documents": 2000000,
+        "monthly_growth_rate": 0.2,
+        "declared_constraints": { "max_p95_latency_ms": 1500, "min_redundancy": "zonal" }
+      }
+    }
+  ]
+}

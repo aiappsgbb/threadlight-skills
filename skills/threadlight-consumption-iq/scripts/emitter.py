@@ -21,8 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from discount import apply_discount, discount_manifest  # noqa: E402
+
 
 SCHEMA_VERSION = "1.0"
+PRESALES_SCHEMA_VERSION = "1.1"
 
 
 def emit_artefacts(
@@ -295,3 +298,289 @@ def _fmt_units(v: Any) -> str:
 def _oneline(text: str) -> str:
     # Tables break on newlines and pipes.
     return text.replace("\n", " ").replace("|", "\\|")
+
+
+# ===========================================================================
+# Pre-sales phased estimate (schema 1.1)
+# ===========================================================================
+#
+# Where the v1 path above models ONE deployed load, the pre-sales path models N
+# adoption phases (land-and-expand). Each phase is projected at its own load +
+# posture; we recompute every total here (never trust upstream) and mirror the
+# CURRENT phase's totals into top-level `totals.*` so the downstream
+# production-ready COST gates keep reading a meaningful number. Additive only —
+# no v1 field is removed, so old readers still work.
+
+
+def emit_presales_artefacts(
+    phases: list[dict[str, Any]],
+    rollout_profile: dict[str, Any],
+    report_path: Path,
+    manifest_path: Path,
+    deploy_ref: str = "pre-sales",
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Build + write the phased manifest and the phased markdown report.
+
+    Returns the manifest dict (so an orchestrator can also render a one-pager
+    from it without rebuilding).
+    """
+    manifest = build_presales_manifest(
+        phases, rollout_profile, deploy_ref=deploy_ref, generated_at=generated_at
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(render_presales_markdown(manifest))
+    return manifest
+
+
+def build_presales_manifest(
+    phases: list[dict[str, Any]],
+    rollout_profile: dict[str, Any],
+    deploy_ref: str = "pre-sales",
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the phased pre-sales manifest from already-projected phases.
+
+    Each `phases[i]` is `{id, label, posture, audience, resources[],
+    hardening_delta[], recommendations[], benchmark?}` — i.e. the output of the
+    `estimate` orchestrator. Totals are recomputed here so the manifest always
+    reconciles.
+    """
+    current_phase_id = rollout_profile.get("current_phase")
+    out_phases: list[dict[str, Any]] = []
+
+    for ph in phases:
+        resources = ph.get("resources") or []
+        hardening = ph.get("hardening_delta") or []
+        recs = ph.get("recommendations") or []
+
+        res_total = float(sum((r.get("monthly_cost_usd") or 0.0) for r in resources))
+        hard_total = float(sum((ln.get("monthly_cost_usd") or 0.0) for ln in hardening))
+        hard_shared = float(sum(
+            (ln.get("monthly_cost_usd") or 0.0)
+            for ln in hardening
+            if ln.get("shared_platform_billed")
+        ))
+        current = res_total + hard_total
+        savings = float(sum((rec.get("monthly_savings_usd") or 0.0) for rec in recs))
+        recommended = current - savings
+
+        phase_obj: dict[str, Any] = {
+            "id": ph["id"],
+            "label": ph["label"],
+            "posture": ph["posture"],
+            "audience": ph.get("audience", "internal"),
+            "resources": resources,
+            "hardening_delta": hardening,
+            "recommendations": recs,
+            "totals": {
+                "monthly_cost_resources_usd": round(res_total, 2),
+                "monthly_cost_hardening_usd": round(hard_total, 2),
+                "monthly_cost_hardening_shared_usd": round(hard_shared, 2),
+                "monthly_cost_current_usd": round(current, 2),
+                "monthly_cost_recommended_usd": round(recommended, 2),
+                "monthly_savings_potential_usd": round(current - recommended, 2),
+            },
+        }
+        if ph.get("benchmark"):
+            phase_obj["benchmark"] = ph["benchmark"]
+        out_phases.append(phase_obj)
+
+    if not current_phase_id and out_phases:
+        current_phase_id = out_phases[0]["id"]
+    current_obj = next(
+        (p for p in out_phases if p["id"] == current_phase_id),
+        out_phases[0] if out_phases else None,
+    )
+    top_totals = dict(current_obj["totals"]) if current_obj else {}
+
+    manifest: dict[str, Any] = {
+        "schema_version": PRESALES_SCHEMA_VERSION,
+        "pre_sales": True,
+        "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "deploy_ref": deploy_ref,
+        "currency": rollout_profile.get("currency", "USD"),
+        "customer": rollout_profile.get("customer", "Generic Pilot"),
+        "price_basis": "retail",
+        "current_phase": current_phase_id,
+        "phases": out_phases,
+        "totals": top_totals,
+    }
+    if rollout_profile.get("benchmark"):
+        manifest["benchmark"] = rollout_profile["benchmark"]
+
+    discount = rollout_profile.get("discount")
+    if discount:
+        manifest = _apply_presales_discount(manifest, discount)
+    else:
+        manifest["discount"] = {
+            "basis": "retail",
+            "multiplier": 1.0,
+            "applied": False,
+            "caveats": [],
+        }
+    return manifest
+
+
+def _apply_presales_discount(manifest: dict[str, Any], discount: dict[str, Any]) -> dict[str, Any]:
+    """Apply an EA/MCA multiplier to top-level AND per-phase current totals."""
+    basis = discount.get("basis", "ea")
+    multiplier = float(discount.get("multiplier", 1.0))
+
+    # Reuse the tested top-level discounter (adds discounted siblings to the
+    # top totals + the discount{} block + caveats + price_basis).
+    manifest = discount_manifest(manifest, basis, multiplier)
+
+    if manifest["discount"]["applied"]:
+        for ph in manifest["phases"]:
+            totals = ph["totals"]
+            # Mirror the top-level discounter: add a discounted sibling for
+            # EVERY retail `_usd` key so top-level `totals` (a copy of the
+            # current phase) stays a faithful mirror of `phases[current]`.
+            for key in list(totals.keys()):
+                if key.endswith("_usd") and not key.endswith("_discounted_usd"):
+                    disc_key = key.replace("_usd", "_discounted_usd")
+                    totals[disc_key] = round(apply_discount(totals[key], multiplier), 2)
+    return manifest
+
+
+# ---------- pre-sales markdown ----------------------------------------------
+
+
+def render_presales_markdown(manifest: dict[str, Any]) -> str:
+    parts: list[str] = [
+        _render_presales_header(manifest),
+        _render_presales_headline(manifest),
+        _render_phase_matrix(manifest),
+        _render_hardening_delta(manifest),
+        _render_presales_footer(manifest),
+    ]
+    return "\n".join(p for p in parts if p)
+
+
+def _render_presales_header(manifest: dict[str, Any]) -> str:
+    discount = manifest.get("discount") or {}
+    basis_note = ""
+    if discount.get("applied"):
+        basis_note = (
+            f" Discounted figures apply a "
+            f"{(1 - discount['multiplier']) * 100:.0f}% {discount['basis'].upper()} "
+            f"multiplier (an internal assumption, not a quote)."
+        )
+    bench = manifest.get("benchmark")
+    bench_note = ""
+    if bench:
+        val = bench.get("value")
+        val_str = f"{val:,}" if isinstance(val, (int, float)) else str(val)
+        bench_note = f" Anchored to benchmark `{bench.get('metric')} = {val_str}`."
+    return (
+        "# Cost estimate — phased pre-sales projection\n\n"
+        f"> Generated `{manifest['generated_at']}` for `{manifest['customer']}`.\n"
+        f"> Currency: `{manifest['currency']}`. Price basis: `{manifest['price_basis']}`."
+        f"{basis_note}{bench_note}\n"
+        ">\n"
+        "> **All figures are planning ESTIMATES at public list prices for a single "
+        "generic pilot — not a quote.** They frame a conversation; they do not commit "
+        "a number.\n"
+    )
+
+
+def _render_presales_headline(manifest: dict[str, Any]) -> str:
+    totals = manifest.get("totals") or {}
+    current = totals.get("monthly_cost_current_usd", 0.0)
+    cur_id = manifest.get("current_phase")
+    line = (
+        "## Headline (current phase)\n\n"
+        f"Current phase: **`{cur_id}`**. Estimated monthly cost: "
+        f"**${current:,.2f}** (estimate)."
+    )
+    disc = totals.get("monthly_cost_current_discounted_usd")
+    if disc is not None:
+        line += f" After discount: **${disc:,.2f}** (estimate)."
+    return line + "\n"
+
+
+def _render_phase_matrix(manifest: dict[str, Any]) -> str:
+    phases = manifest.get("phases") or []
+    if not phases:
+        return ""
+    applied = bool((manifest.get("discount") or {}).get("applied"))
+    cur_id = manifest.get("current_phase")
+
+    header = "| Phase | Posture | Resources (est.) | Hardening Δ (est.) | Phase total (est.) |"
+    sep = "| --- | --- | --- | --- | --- |"
+    if applied:
+        header += " EA total (est.) |"
+        sep += " --- |"
+    rows = ["## Cost by adoption phase\n", header, sep]
+    for ph in phases:
+        t = ph["totals"]
+        marker = " ⭐" if ph["id"] == cur_id else ""
+        cells = (
+            f"| {ph['label']}{marker} | `{ph['posture']}` | "
+            f"${t['monthly_cost_resources_usd']:,.2f} | "
+            f"${t['monthly_cost_hardening_usd']:,.2f} | "
+            f"**${t['monthly_cost_current_usd']:,.2f}** |"
+        )
+        if applied:
+            disc = t.get("monthly_cost_current_discounted_usd")
+            cells += f" ${disc:,.2f} |" if disc is not None else " — |"
+        rows.append(cells)
+    rows.append("")
+    return "\n".join(rows)
+
+
+def _render_hardening_delta(manifest: dict[str, Any]) -> str:
+    phases = manifest.get("phases") or []
+    blocks: list[str] = []
+    for ph in phases:
+        lines = ph.get("hardening_delta") or []
+        if not lines:
+            continue
+        rows = [
+            f"### {ph['label']} — `{ph['posture']}`\n",
+            "| Component | Category | Monthly (est.) | Estate-billed? | Rationale |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for ln in lines:
+            shared = "yes" if ln.get("shared_platform_billed") else "no"
+            rows.append(
+                "| {comp} | {cat} | ${cost:,.2f} | {shared} | {why} |".format(
+                    comp=ln.get("component", "?"),
+                    cat=ln.get("category", "?"),
+                    cost=float(ln.get("monthly_cost_usd") or 0.0),
+                    shared=shared,
+                    why=_oneline(ln.get("rationale") or ""),
+                )
+            )
+        shared_total = float((ph.get("totals") or {}).get("monthly_cost_hardening_shared_usd") or 0.0)
+        rows.append("")
+        if shared_total > 0:
+            rows.append(
+                f"_Of which ${shared_total:,.2f}/mo is **shared platform** "
+                "billed once across the estate — the customer may already pay "
+                "it, so treat it as an upper bound for this workload._\n"
+            )
+        blocks.append("\n".join(rows))
+    if not blocks:
+        return ""
+    return (
+        "## Production-hardening & estate delta\n\n"
+        "_Additional SKUs that appear as the workload leaves pilot and enters "
+        "regulated production. `Estate-billed` items are amortised once across "
+        "the whole estate, not per app. All ESTIMATES._\n\n"
+        + "\n".join(blocks)
+    )
+
+
+def _render_presales_footer(manifest: dict[str, Any]) -> str:
+    return (
+        "---\n\n"
+        "> **Estimates only.** Public list prices for one generic pilot, not a "
+        "quote. Validate against the Azure Pricing Calculator and the customer's "
+        "agreement before sharing externally. This skill does not provision or "
+        "mutate any infrastructure.\n"
+    )

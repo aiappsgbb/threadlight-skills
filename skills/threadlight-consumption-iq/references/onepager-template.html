@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5b5b5b; --line:#e2e2e2; --accent:#0a6; --warn:#8a1f1f; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); margin: 0; padding: 0 0 48px; line-height: 1.45; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 28px; }
+  .classification { background: var(--warn); color: #fff; font-size: 12px; font-weight: 700;
+                    letter-spacing: .04em; text-transform: uppercase; text-align: center;
+                    padding: 7px 12px; }
+  header { padding: 26px 0 8px; border-bottom: 2px solid var(--ink); }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .banner { background: #f4f8f6; border: 1px solid var(--line); border-left: 4px solid var(--accent);
+            padding: 12px 16px; margin: 20px 0; font-size: 14px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .est { color: var(--muted); font-size: 11px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+          font-weight: 600; background: #eef; color: #225; }
+  .caveat { background: #fff7f3; border: 1px solid #f0d2c2; border-left: 4px solid var(--warn);
+            padding: 12px 16px; margin: 18px 0; font-size: 13px; }
+  .talktrack { background: #f6f4ff; border: 1px solid #ded5f5; padding: 14px 18px; margin: 22px 0;
+               border-radius: 6px; }
+  .talktrack h2 { margin-top: 0; }
+  .talktrack ul { margin: 6px 0 0; padding-left: 18px; }
+  .talktrack li { margin: 5px 0; font-size: 13px; }
+  footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+{{CLASSIFICATION}}
+<div class="wrap">
+<header>
+  <h1>{{TITLE}}</h1>
+  <p class="sub">{{SUBTITLE}}</p>
+  <p class="meta">{{GENERATED}}</p>
+</header>
+<div class="banner">{{BANNER}}</div>
+{{BODY}}
+{{TALKTRACK}}
+<footer>{{FOOTER}}</footer>
+</div>
+</body>
+</html>
