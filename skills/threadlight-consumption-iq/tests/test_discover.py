@@ -502,3 +502,61 @@ def test_parse_vcpu():
     assert discover._parse_vcpu(None) is None
     assert discover._parse_vcpu("") is None
     assert discover._parse_vcpu("[parameters('cpu')]") is None  # unresolvable → None
+
+
+# ---------------------------------------------------------------------------
+# Finding A (discover layer): replica counts must resolve to ints
+#
+# Real Bicep parameterizes replica bounds:
+#   scale: { minReplicas: minReplicas, maxReplicas: maxReplicas }
+# which `az bicep build --stdout` renders as the ARM expression strings
+# "[parameters('minReplicas')]" / "[parameters('maxReplicas')]". The previous
+# `scale.get("maxReplicas") or 3` passed that *string* straight through, so the
+# projector later did `math.ceil(rps / str)` / `max(str, int)` → TypeError →
+# uncaught crash (exit 1, breaking the 2/3/4 exit contract). The extractor must
+# resolve resolvable values to ints and fall back to ints when unresolvable.
+# ---------------------------------------------------------------------------
+
+_ARM_ACA_PARAM_REPLICAS = {
+    "type": "Microsoft.App/containerApps",
+    "location": "eastus2",
+    "properties": {
+        "workloadProfileName": "Consumption",
+        "template": {
+            "scale": {
+                "minReplicas": "[parameters('minReplicas')]",
+                "maxReplicas": "[parameters('maxReplicas')]",
+            },
+            "containers": [
+                {"resources": {"cpu": "[json('0.5')]", "memory": "1Gi"}}
+            ],
+        },
+    },
+}
+
+
+def test_extract_aca_parameterized_replicas_resolve_to_int():
+    """Unresolvable replica params fall back to ints, never leave a str."""
+    sku = discover._extract_aca(_ARM_ACA_PARAM_REPLICAS)
+    assert isinstance(sku["extra"]["min_replicas"], int)
+    assert isinstance(sku["extra"]["max_replicas"], int)
+
+
+def test_extract_aca_numeric_string_replicas_resolve_to_int():
+    """`json('2')`/numeric-string replicas resolve to the right int."""
+    arm = {
+        "type": "Microsoft.App/containerApps",
+        "location": "eastus2",
+        "properties": {
+            "workloadProfileName": "Consumption",
+            "template": {
+                "scale": {"minReplicas": "[json('2')]", "maxReplicas": "5"},
+                "containers": [{"resources": {"cpu": "0.5", "memory": "1Gi"}}],
+            },
+        },
+    }
+    sku = discover._extract_aca(arm)
+    assert sku["extra"]["min_replicas"] == 2
+    assert sku["extra"]["max_replicas"] == 5
+    assert isinstance(sku["extra"]["min_replicas"], int)
+    assert isinstance(sku["extra"]["max_replicas"], int)

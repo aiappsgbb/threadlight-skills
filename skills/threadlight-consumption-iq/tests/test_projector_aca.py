@@ -268,3 +268,48 @@ def test_aca_consumption_none_vcpu_falls_back_to_default():
     default_result = project(default_sku, load, FakePricing())
 
     assert none_result["monthly_cost_usd"] == pytest.approx(default_result["monthly_cost_usd"])
+
+
+# ---------------------------------------------------------------------------
+# Finding D: discovered lower-case "consumption" tier must be usage-based.
+#
+# discover._extract_aca emits tier "consumption" (lower-case), but project()
+# compared `tier == "Consumption"` (capital), so a discovered Consumption ACA
+# fell through to the flat Dedicated branch (0.20 × 730 = $146/mo) instead of
+# the free-grant usage-based formula. Reference-repo estimates were inflated.
+# ---------------------------------------------------------------------------
+
+def test_aca_lowercase_consumption_tier_is_usage_based():
+    """tier 'consumption' must compute the same usage-based cost as 'Consumption'."""
+    lower = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    lower["tier"] = "consumption"
+    lower["name"] = "consumption"
+    upper = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    load = _load(rps=2.0, business_hours=False)
+
+    lower_result = project(lower, load, FakePricing())
+    upper_result = project(upper, load, FakePricing())
+
+    # Must match the usage-based number, NOT the flat Dedicated $146/mo.
+    assert lower_result["monthly_cost_usd"] == pytest.approx(upper_result["monthly_cost_usd"])
+    assert lower_result["monthly_cost_usd"] != pytest.approx(round(0.20 * 730, 4))
+
+
+# ---------------------------------------------------------------------------
+# Finding A (projector backstop): string/None replica bounds must not crash.
+#
+# Even if discovery and rollout validation are bypassed (in-process callers,
+# exotic ARM), the projector itself must never raise TypeError on a non-numeric
+# min/max replica — it coerces to int and falls back to a default.
+# ---------------------------------------------------------------------------
+
+def test_aca_consumption_coerces_string_replica_bounds():
+    """min/max replicas given as strings compute the same as their int forms."""
+    str_sku = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas="1", max_replicas="10")
+    int_sku = _consumption_sku(vcpu=0.5, memory_gib=1.0, min_replicas=1, max_replicas=10)
+    load = _load(rps=2.0, business_hours=False)
+
+    str_result = project(str_sku, load, FakePricing())  # must not raise
+    int_result = project(int_sku, load, FakePricing())
+
+    assert str_result["monthly_cost_usd"] == pytest.approx(int_result["monthly_cost_usd"])

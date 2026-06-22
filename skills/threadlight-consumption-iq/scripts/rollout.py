@@ -26,10 +26,38 @@ from pathlib import Path
 from typing import Any
 
 from load_profile_wizard import _find_missing as _missing_load_fields  # noqa: E402
+from load_profile_wizard import _FIELD_TYPES, REQUIRED_FIELDS  # noqa: E402
 
 POSTURES: set[str] = {"demo", "production", "production-hardened"}
 AUDIENCES: set[str] = {"internal", "customer"}
 _DEFAULT_AUDIENCE = "internal"
+
+# Required load fields that must be non-negative numbers (the wizard enforces
+# this interactively; the rollout JSON/YAML path must enforce it too).
+_NUMERIC_LOAD_FIELDS: tuple[str, ...] = tuple(
+    f for f in REQUIRED_FIELDS if _FIELD_TYPES.get(f) in ("int", "float")
+)
+
+# `current_sku.extra` keys the per-resource projectors do arithmetic on. A
+# string here (e.g. a parameterized ARM value left in a hand-authored topology)
+# would crash the projector deep in the run; reject it at load time instead.
+_NUMERIC_EXTRA_KEYS: frozenset[str] = frozenset(
+    {
+        "min_replicas",
+        "max_replicas",
+        "vcpu",
+        "memory_gib",
+        "replicas",
+        "partitions",
+        "capacity",
+        "requests_per_second_per_replica",
+    }
+)
+
+
+def _is_nonneg_number(value: Any) -> bool:
+    """True for a real (non-bool) int/float >= 0."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
 
 
 class RolloutProfileError(RuntimeError):
@@ -105,6 +133,14 @@ def validate_rollout_profile(profile: dict[str, Any]) -> dict[str, Any]:
                 "Pre-sales estimates are never produced on guessed numbers."
             )
 
+        for field in _NUMERIC_LOAD_FIELDS:
+            if not _is_nonneg_number(load_profile.get(field)):
+                raise RolloutProfileError(
+                    f"phase '{pid}' load_profile.{field} must be a number >= 0, "
+                    f"got {load_profile.get(field)!r}. "
+                    "Pre-sales estimates are never produced on invalid numbers."
+                )
+
         norm_phase: dict[str, Any] = {
             "id": pid,
             "label": phase["label"],
@@ -139,6 +175,19 @@ def validate_rollout_profile(profile: dict[str, Any]) -> dict[str, Any]:
         normalized["discount"] = profile["discount"]
     if profile.get("benchmark"):
         normalized["benchmark"] = profile["benchmark"]
+
+    # Finding C: if any phase declares topology (so discovery is globally
+    # skipped) but another phase resolves to an empty topology with no top-level
+    # fallback, that phase would silently project $0 compute. Fail fast instead.
+    if has_declared_topology(normalized) and normalized.get("resources") is None:
+        for ph in norm_phases:
+            if not phase_resources(normalized, ph, default=[]):
+                raise RolloutProfileError(
+                    f"phase '{ph['id']}' resolves to an empty topology while other "
+                    "phases declare one and there is no top-level `resources` "
+                    "fallback. Declare `resources` on every phase, or add a "
+                    "top-level `resources` topology."
+                )
     return normalized
 
 
@@ -164,6 +213,15 @@ def _validate_resources(resources: Any, where: str) -> list[dict[str, Any]]:
                 f"{where}[{j}] ('{res.get('resource_kind')}') is missing required "
                 "`current_sku` mapping"
             )
+        extra = res["current_sku"].get("extra")
+        if isinstance(extra, dict):
+            for key in _NUMERIC_EXTRA_KEYS:
+                if key in extra and not _is_nonneg_number(extra[key]):
+                    raise RolloutProfileError(
+                        f"{where}[{j}] ('{res.get('resource_kind')}') "
+                        f"current_sku.extra.{key} must be a number >= 0, "
+                        f"got {extra[key]!r}"
+                    )
         out.append(res)
     return out
 

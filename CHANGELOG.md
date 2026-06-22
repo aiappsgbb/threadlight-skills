@@ -281,6 +281,33 @@ field.
   resolution + `_parse_vcpu` unit table; projector string/unresolved/None
   coercion). Surfaced by a real-repo smoke of the hardened pre-sales path.
 
+- **`threadlight-consumption-iq` — four robustness/accuracy fixes from a final
+  adverse review of the pre-sales mode.**
+  - **Discovered Consumption ACA was mis-costed as flat Dedicated.** Discovery
+    emits the tier lower-cased (`"consumption"`) but the projector compared
+    `tier == "Consumption"`, so a discovered Consumption Container App fell
+    through to the flat Dedicated branch (`0.20 × 730 = $146/mo`) instead of the
+    free-grant usage-based formula — inflating every reference-repo estimate.
+    The tier check is now case-insensitive.
+  - **Parameterized replica bounds crashed the projector.** Real Bicep
+    parameterizes `minReplicas`/`maxReplicas`, which render as ARM expression
+    strings; discovery passed them through raw and the projector's
+    `max()`/`math.ceil` arithmetic raised an uncaught `TypeError` (exit 1,
+    breaking the 2/3/4 exit contract). Discovery now resolves replica values to
+    ints (with int fallback for unresolvable `parameters()` refs), the projector
+    defensively int-coerces replica bounds, and declared-topology numeric
+    `current_sku.extra` fields are type-checked at load time (→ exit 4).
+  - **Negative/non-numeric load fields produced negative totals.** The
+    rollout JSON/YAML path bypassed the wizard's `>= 0` guard, so a
+    hand-authored `peak_requests_per_second: -5` yielded a negative monthly
+    total. `validate_rollout_profile` now rejects non-numeric or negative
+    required load fields (→ exit 4).
+  - **Partial per-phase topology silently projected a $0-compute phase.** When
+    one phase declared `resources` (globally skipping discovery) but another
+    omitted them with no top-level fallback, that phase resolved to an empty
+    topology and silently showed $0 compute. It is now rejected fail-fast
+    (→ exit 4). +11 tests; full consumption-iq suite 241 → 252.
+
 ### Pending for v0.2
 
 - Live-pricing population for the 6 non-AOAI resource-kind fixtures

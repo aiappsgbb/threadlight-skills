@@ -464,8 +464,8 @@ def _extract_aca(arm_resource: dict[str, Any]) -> dict[str, Any]:
     profile_name = props.get("workloadProfileName") or "Consumption"
     sku_name = "consumption" if profile_name == "Consumption" else profile_name
 
-    max_replicas = scale.get("maxReplicas") or 3
-    min_replicas = scale.get("minReplicas") or 0
+    max_replicas = _parse_replicas(scale.get("maxReplicas"), 3)
+    min_replicas = _parse_replicas(scale.get("minReplicas"), 0)
 
     # Parse memory like "0.5Gi" → 0.5 (GiB as float).
     raw_memory = first_container_resources.get("memory") or ""
@@ -507,6 +507,28 @@ def _parse_vcpu(value: Any) -> float | None:
         except (TypeError, ValueError):
             return None
     return None
+
+
+def _parse_replicas(value: Any, default: int) -> int:
+    """Resolve an ACA replica bound to an int.
+
+    Handles a plain number, a numeric string ("5"), and the Bicep ``json('2')``
+    idiom (ARM expr ``"[json('2')]"``). An unresolvable ``parameters('...')``
+    reference (or any non-numeric / falsy value) falls back to ``default`` —
+    never a raw string, so the projector's ``max()`` / ``math.ceil`` arithmetic
+    can't crash on it.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        candidate = _strip_template_expr(value.strip())
+        try:
+            return int(float(candidate))
+        except (TypeError, ValueError):
+            return default
+    return default
 
 
 def _parse_gib(value: str) -> float | None:
