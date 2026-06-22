@@ -1,0 +1,78 @@
+{
+  "schema": "threadlight-evals-manifest/v1",
+  "tool_version": "0.1.0",
+  "captured_at": "2026-06-22T16:11:48+00:00",
+  "freshness_window_days": 3650,
+  "verdict": "comprehensive",
+  "must_fix": [],
+  "should_fix": [],
+  "not_verified": [],
+  "capabilities": {
+    "eval_scenarios_present": {
+      "check_id": "EVAL-001",
+      "status": "pass",
+      "evidence": "1 scenario marker(s); first: specs/spec.md",
+      "hint": null
+    },
+    "eval_datasets_present": {
+      "check_id": "EVAL-002",
+      "status": "pass",
+      "evidence": "evals/dataset.jsonl",
+      "hint": null
+    },
+    "dataset_shape_ok": {
+      "check_id": "EVAL-003",
+      "status": "pass",
+      "evidence": "evals/dataset.jsonl",
+      "hint": null
+    },
+    "thresholds_declared": {
+      "check_id": "EVAL-004",
+      "status": "pass",
+      "evidence": "evals/continuous-eval.yaml",
+      "hint": null
+    },
+    "schedule_present": {
+      "check_id": "EVAL-005",
+      "status": "pass",
+      "evidence": "Plan A: evals/continuous-eval.yaml",
+      "hint": null
+    },
+    "run_history_present": {
+      "check_id": "EVAL-006",
+      "status": "pass",
+      "evidence": "evals/runs/2026-01-01.json",
+      "hint": null
+    },
+    "online_eval_wired": {
+      "check_id": "EVAL-101",
+      "status": "pass",
+      "evidence": "src/continuous_eval.py",
+      "hint": null
+    },
+    "latest_eval_run_fresh": {
+      "check_id": "EVAL-102/EVAL-103",
+      "status": "pass",
+      "evidence": "evals/runs/2026-01-01.json (172.7d old <= 3650d)",
+      "hint": null
+    },
+    "alert_wired": {
+      "check_id": "EVAL-104",
+      "status": "pass",
+      "evidence": "infra/eval-alert.bicep",
+      "hint": null
+    },
+    "latest_pass_rate_ok": {
+      "check_id": "EVAL-105",
+      "status": "pass",
+      "evidence": "pass_rate=0.91 >= threshold=0.85",
+      "hint": null
+    },
+    "ab_comparison_present": {
+      "check_id": "F3",
+      "status": "pass",
+      "evidence": "evals/ab/",
+      "hint": null
+    }
+  }
+}
