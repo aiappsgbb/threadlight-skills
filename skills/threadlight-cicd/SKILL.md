@@ -34,7 +34,7 @@ description: >
   (use threadlight-production-ready); full runner IaC / Bicep VMSS authoring
   (runbook + pipeline wiring only here); GitLab CI (out of scope v1).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
@@ -127,6 +127,7 @@ flowchart LR
 | GitHub Actions, standalone (public) | `python scripts/generate_pipeline.py --platform github-actions --central-env-required no --repo-full-name owner/repo --target-sub <sub> --target-rg <rg> --tenant-id <tid>` |
 | Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid> --hub-sub <hsub> --hub-apim-id <apim-id> --access-contract-product <product>` |
 | Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
+| Eval + red-team CI/CD gate mode | add `--eval-gate soft` (default, warn-only) or `--eval-gate hard` (block on a non-pass verdict) |
 | From a saved framing file | `--framing-file framing.json` |
 | Run the test suite | `python -m pytest tests/ -v` |
 
@@ -146,6 +147,19 @@ Rendered deterministically (offline, no Azure calls, no secrets) into the pilot 
   approval gate, seeds the azd env, then **separate** `azd provision` / `azd deploy`
   steps) **or** `azure-pipelines.yml` (Azure DevOps, WIF service connection, three
   `AzureCLI@2` tasks — install azd, provision, deploy — environment approvals, pool ref).
+- **Eval + red-team CI/CD gate** — after the deploy stage, two gates run the
+  threadlight Discover legs against the freshly deployed agent and enforce their
+  verdict (CAF: standardized evaluation **and** dedicated AI red teaming,
+  integrated into CI/CD):
+  - GitHub: `eval-gate` + `red-team-gate` jobs (`needs: deploy`, OIDC login),
+    each invoking `threadlight-evals` / `threadlight-redteam` then checking the
+    leg manifest verdict.
+  - Azure DevOps: `eval_gate` + `red_team_gate` stages (`dependsOn: deploy`).
+  - Mode via `--eval-gate`: **soft** (default) is warn-only
+    (`continue-on-error: true` / `continueOnError: true`); **hard** blocks the
+    pipeline on a missing or non-pass `specs/{evals,redteam}-manifest.json`
+    verdict. Soft is the default so a first onboarding isn't wedged before the
+    legs have a baseline manifest.
 - **Env-setup runbooks** — `docs/threadlight-cicd/env-setup/`:
   - `01-uami-federated-credentials.md` + `.sh` (UAMI + GH OIDC or ADO WIF — no secrets)
   - `02-rbac-role-assignments.md` + `.sh` (target-RG-scoped: deploy role **plus**

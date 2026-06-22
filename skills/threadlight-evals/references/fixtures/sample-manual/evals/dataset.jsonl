@@ -1,0 +1,1 @@
+{"id":"manual-1","scenario":"manual grounded answer check","input":"Summarize case status","expected":"Use only CRM facts.","tool_calls":[{"name":"crm.lookup","arguments":{"case":"123"}}],"tool_outputs":[{"name":"crm.lookup","content":"Case 123 is pending review."}],"min_score":0.80}

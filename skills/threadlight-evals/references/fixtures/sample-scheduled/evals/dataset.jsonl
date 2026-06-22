@@ -1,0 +1,1 @@
+{"id":"grounded-answer-1","scenario":"grounded answer cites retrieved tool output","input":"What is the support policy?","expected":"Escalate to Tier 2 within one business day.","tool_calls":[{"name":"kb.search","arguments":{"query":"support policy"}}],"tool_outputs":[{"name":"kb.search","content":"Escalate Tier 2 within one business day."}],"threshold":0.85}

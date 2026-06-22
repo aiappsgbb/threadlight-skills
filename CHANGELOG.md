@@ -9,6 +9,82 @@ field.
 
 ### Added
 
+- **Executable Responsible-AI-for-Foundry control plane — `threadlight-evals`,
+  `threadlight-redteam`, `threadlight-govern` v0.1.0 (plugin 1.5.0).** Closes
+  the gap where `path2production` *scored* its control-plane legs but never
+  *ran* them. The pipeline now operationalizes the Microsoft RAI-for-Foundry
+  loop — **Design → Build/Deploy → Discover → Protect → Govern → Improve** —
+  with three new first-class legs wired into the spine and verified by
+  `production-ready`:
+  - **NEW skill: [`skills/threadlight-evals/`](skills/threadlight-evals/SKILL.md)**
+    — the **Discover** evals leg. Offline batch quality evals (delegates
+    invoke+score to `foundry-evals`), **online / continuous evaluation** on
+    live threads (Foundry `create_agent_evaluation` → App Insights, with
+    reasoning), and an **A/B champion–challenger** comparison gate before a
+    model/prompt swap. Emits `specs/evals-manifest.json` consumed by
+    `production-ready` pillar 6 (EVAL-001..004). 10 stdlib tests.
+  - **NEW skill: [`skills/threadlight-redteam/`](skills/threadlight-redteam/SKILL.md)**
+    — the **Discover** safety leg. Runs the **AI Red Teaming Agent**
+    (PyRIT-based) adversarial scan for jailbreak / prompt-injection /
+    data-exfiltration / harmful-content, emits `docs/redteam-report.md` +
+    `specs/redteam-manifest.json`, and maps attack-success-rate to
+    `production-ready` pillar 7 findings **SAFE-101..106**. Replaces the old
+    static "is a jailbreak shield declared?" check with an actual scan. 10
+    stdlib tests + 3 remediation recipes (SAFE-101/102/103).
+  - **NEW skill: [`skills/threadlight-govern/`](skills/threadlight-govern/SKILL.md)**
+    — the **Protect** leg. Wraps `foundry-agt`: scaffolds/validates the
+    agent-runtime governance policy artefact, verifies in-process governance
+    middleware at the container boundary, and emits a committed verifier
+    report + `specs/govern-manifest.json`. Produces the artefacts
+    `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look
+    for. 12 stdlib tests.
+  - **`production-ready` flip.** Pillars 2/6/7 move from "remediate → go run
+    X" to "**verify the leg ran + artefact fresh**" when the govern/evals/
+    red-team manifest is present and within the 90-day window; they fall back
+    to the legacy heuristics when a manifest is absent or stale.
+    `_load_leg_manifest`/`_leg_cap_status` helpers added (never raise); new
+    SAFE-101..106 catalog entries + a `_check_redteam_static` finding mapper.
+    Backward-compatible — existing fixtures (no manifests) keep unchanged
+    finding sets.
+  - **Spine wiring.** `threadlight-auto` gains three resumable stages
+    (`evals`, `redteam`, `govern`) after `invoke`, each gated on a fresh
+    `specs/*-manifest.json` (missing/stale-24h → run, fresh → skip) so a
+    re-deploy upstream cascades a fresh evaluation / scan / governance pass.
+    `orchestrator.py` (STAGES + `_check_leg_manifest` probe), `state-schema.md`,
+    and the auto `SKILL.md` Resumption + Sub-stages tables updated.
+  - **Docs:** `README.md` (now **fifteen pipeline skills + one orchestrator,
+    16 total**, skills table, Discover/Protect pipeline-flow + RAI operating
+    loop), `THREADLIGHT.md` (sixteen-skill count, alphabetical list, three
+    new entry-skill picker rows + chain sections 9/10/11, production-ready →
+    12 / cicd → 13 / customize → 14), and
+    `docs/IDEA-TO-PRODUCTION-WORKBOOK.md` (arc diagram + steps 8/8a/8b)
+    updated. `plugin.json` bumped 1.4.0 → 1.5.0 with new keywords.
+  - **CI:** `.github/workflows/python-pytest.yml` runs the three new skills'
+    stdlib test suites as hard-fail steps (deterministic, secret-free, no
+    network).
+  - **`threadlight-cicd` eval + red-team gate (F6, v0.2.0).** The generated
+    production pipelines now run the two Discover legs as post-deploy gates —
+    `eval-gate` + `red-team-gate` jobs (GitHub Actions, `needs: deploy`, OIDC)
+    and `eval_gate` + `red_team_gate` stages (Azure DevOps, `dependsOn: deploy`,
+    WIF) — each enforcing the leg's `specs/{evals,redteam}-manifest.json`
+    verdict. New `--eval-gate soft|hard` flag: **soft** (default) is warn-only
+    so a first onboarding isn't wedged before a baseline manifest exists;
+    **hard** blocks on a missing or non-pass verdict. Secret-free (OIDC + WIF
+    only). 9 stdlib tests; full cicd suite 44 passing.
+  - **`production-ready` outcome-KPI scorecard (F7).** Report § 8 ("Outcome KPI
+    scorecard") now joins the three signals CAF asks teams to measure as a real
+    outcome — eval pass-rate (`specs/evals-manifest.json`), cost-per-interaction
+    (`specs/cost-manifest.json`), and live traces (foundry-observability
+    wiring) — plus the declared baselines (latency / cost-per-interaction /
+    success-rate) and whether a deviation alert is wired. Scored as
+    **KPI-001..003** (should-fix, tier-0) under pillar 5 (observability), where
+    CAF's agent-observability triad places baselines + deviation alerts.
+    `_kpi_signals` join helper + `_check_kpi_static` (never raise); the
+    `kpi_scorecard` block is stashed into the JSON manifest. 11 stdlib tests +
+    a `KPI-002` deviation-alert remediation recipe.
+  - **Deferred (truthful):** the P2 `threadlight-optimize` eval-driven
+    optimization loop + central eval-catalog conventions are planned as
+    fast-follow commits.
 - **`threadlight-consumption-iq` v0.3.0 — pre-sales phased estimate mode
   (plugin 1.5.0).** Extends the post-deploy SKU-diff projector with the
   **pre-sales / pre-deploy** front-end it explicitly lacked: estimate Azure

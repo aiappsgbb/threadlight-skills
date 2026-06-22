@@ -17,6 +17,9 @@ the invocation is expected to flip green.
 | OBS-106 | `azure-resource-diagnostics` *(planned — awesome-gbb#271)* | `subscription_id`, `resource_group`, `target_resource_types` | Not yet released — fall back to `kind: manual`. |
 | REL-007 | `azure-backup-readiness` *(planned — awesome-gbb#267)* | `subscription_id`, `resource_group`, `protected_item_types` | Not yet released — fall back to `kind: manual`. |
 | SRE-104 | `azure-monitor-alert-baseline` *(planned — awesome-gbb#272)* | `subscription_id`, `resource_group`, `alert_baseline_kind` | Not yet released — fall back to `kind: manual`. |
+| SAFE-101 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after policy hardening via `threadlight-govern` | Jailbreak attack-success-rate above threshold — harden prompt shields + content filter, then re-scan. |
+| SAFE-102 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after tool-authorization hardening via `threadlight-govern` | Prompt-injection (direct/XPIA) ASR above threshold — enable indirect-attack shield + HITL gate, then re-scan. |
+| SAFE-103 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after egress hardening via `threadlight-govern` | Data/prompt exfiltration ASR above threshold — deny egress sinks + block external PII, then re-scan. |
 
 ## Planned but not implemented (placeholders — recipes are `kind: manual` until skill ships)
 

@@ -71,3 +71,86 @@ stages:
                       set -euo pipefail
                       azd config set auth.useAzCliAuth "true"
                       azd deploy --no-prompt
+
+  # CAF "build agents across your organization": standardized evaluation +
+  # dedicated AI red teaming, integrated into CI/CD. Both gate stages run the
+  # threadlight Discover legs against the freshly deployed agent and enforce
+  # their verdict. Gate mode: {{EVAL_GATE_MODE}} (soft = warn-only,
+  # hard = block the pipeline on a non-pass verdict).
+  - stage: eval_gate
+    displayName: Eval gate ({{EVAL_GATE_MODE}})
+    dependsOn: deploy
+    jobs:
+      - job: quality_evals
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: Run quality evals (threadlight-evals Discover leg)
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Run threadlight-evals against $(AZURE_ENV_NAME) to (re)produce \
+                  specs/evals-manifest.json — offline batch (foundry-evals), \
+                  online/continuous eval on live threads, and the A/B \
+                  champion-challenger gate."
+          - task: AzureCLI@2
+            displayName: Enforce eval verdict (mode={{EVAL_GATE_MODE}})
+            continueOnError: {{EVAL_GATE_SOFT}}
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                python3 - <<'PY'
+                import json, os, sys
+                p = "specs/evals-manifest.json"
+                if not os.path.exists(p):
+                    print(f"##vso[task.logissue type=warning]{p} missing — evals leg has not run.")
+                    sys.exit(1)
+                verdict = json.load(open(p)).get("verdict", "not-verified")
+                print(f"evals verdict: {verdict}")
+                sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+                PY
+
+  - stage: red_team_gate
+    displayName: Red-team gate ({{EVAL_GATE_MODE}})
+    dependsOn: deploy
+    jobs:
+      - job: adversarial_scan
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: Run adversarial scan (threadlight-redteam Discover leg)
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Run threadlight-redteam against $(AZURE_ENV_NAME) to produce \
+                  docs/redteam-report.md + specs/redteam-manifest.json — AI Red \
+                  Teaming Agent scan for jailbreak / prompt-injection / \
+                  exfiltration / harmful-content."
+          - task: AzureCLI@2
+            displayName: Enforce red-team verdict (mode={{EVAL_GATE_MODE}})
+            continueOnError: {{EVAL_GATE_SOFT}}
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                python3 - <<'PY'
+                import json, os, sys
+                p = "specs/redteam-manifest.json"
+                if not os.path.exists(p):
+                    print(f"##vso[task.logissue type=warning]{p} missing — red-team scan has not run.")
+                    sys.exit(1)
+                verdict = json.load(open(p)).get("verdict", "not-verified")
+                print(f"red-team verdict: {verdict}")
+                sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+                PY

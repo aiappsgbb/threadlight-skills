@@ -12,7 +12,7 @@
 
 ## What this workflow does
 
-Drives the full threadlight pipeline — `threadlight-design` → `threadlight-deploy` (incl. `azd up`) → `threadlight-safe-check phase=post-deploy` → live agent invoke — in a clean Actions runner, with model calls routed to a Foundry account via BYOK. Deployed Azure resources land in a per-run RG (`rg-threadlight-e2e-<run_id>`) and are torn down via `azd down --force --purge` in an `if: always()` step.
+Drives the full threadlight pipeline — `threadlight-design` → `threadlight-deploy` (incl. `azd up`) → `threadlight-safe-check phase=post-deploy` → live agent invoke → **control-plane legs** (`threadlight-govern` + `threadlight-evals` + `threadlight-redteam` against the deployed pilot, then `threadlight-production-ready` rendering the outcome-KPI scorecard that joins them) — in a clean Actions runner, with model calls routed to a Foundry account via BYOK. The leg phase is workflow-owned + deterministic and report-only for verdicts (the workshop scenario legitimately surfaces governance/eval/safety gaps); its hard gate is that each leg executable runs end-to-end and emits its `specs/*-manifest.json`. The offline counterpart that asserts a *fully green + joined* control plane is [`test_e2e_control_plane.py`](../../skills/threadlight-auto/tests/test_e2e_control_plane.py). Deployed Azure resources land in a per-run RG (`rg-threadlight-e2e-<run_id>`) and are torn down via `azd down --force --purge` in an `if: always()` step.
 
 ## When to fire it
 

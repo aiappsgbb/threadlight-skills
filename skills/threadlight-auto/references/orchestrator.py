@@ -43,7 +43,7 @@ from typing import Any
 # Stage definitions — lockstep with SKILL.md § Resumption table
 # -----------------------------------------------------------------------------
 
-STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke"]
+STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "evals", "redteam", "govern"]
 
 DEFAULT_STATE_PATH = ".threadlight/auto-state.json"
 DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
@@ -360,6 +360,59 @@ def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecis
     )
 
 
+def _check_leg_manifest(workspace: Path, stage: str, manifest_rel: str, skill: str) -> StageDecision:
+    """Generic resumability probe for a Discover/Protect leg.
+
+    The leg is re-run when its manifest under specs/ is missing or older than
+    the 24 h session-freshness window, and skipped when a fresh manifest is
+    present. Mirrors the invoke/safe_check pattern so a re-deploy upstream
+    cascades a fresh evaluation / scan / governance pass.
+    """
+    manifest = workspace / manifest_rel
+    age = _file_age_seconds(manifest)
+    if age is None:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} missing — {skill} has not produced its leg manifest yet.",
+            artifacts_missing=[manifest_rel],
+        )
+    if age > FRESHNESS_SECONDS:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} is {int(age/3600)} h old (> 24 h); re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    return StageDecision(
+        stage,
+        "skip",
+        f"{manifest_rel} is {int(age/60)} m old (< 24 h).",
+        artifacts_seen=[manifest_rel],
+    )
+
+
+# Discover leg — offline + online (Foundry Continuous Evaluation) + A/B evals.
+# Runs threadlight-evals; emits specs/evals-manifest.json consumed by
+# production-ready pillar 6 (EVAL-001..004).
+def _check_evals(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    return _check_leg_manifest(workspace, "evals", "specs/evals-manifest.json", "threadlight-evals")
+
+
+# Discover leg — AI Red Teaming Agent adversarial scan. Runs threadlight-redteam;
+# emits docs/redteam-report.md + specs/redteam-manifest.json mapped to
+# production-ready pillar 7 (SAFE-101..106).
+def _check_redteam(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    return _check_leg_manifest(workspace, "redteam", "specs/redteam-manifest.json", "threadlight-redteam")
+
+
+# Protect leg — agent-runtime governance (AGT). Runs threadlight-govern; emits
+# the verifier report + specs/govern-manifest.json consumed by production-ready
+# pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003).
+def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    return _check_leg_manifest(workspace, "govern", "specs/govern-manifest.json", "threadlight-govern")
+
+
 STAGE_PROBES = {
     "preflight": _check_preflight,
     "design": _check_design,
@@ -367,6 +420,9 @@ STAGE_PROBES = {
     "safe_check": _check_safe_check,
     "cost_projection": _check_cost_projection,
     "invoke": _check_invoke,
+    "evals": _check_evals,
+    "redteam": _check_redteam,
+    "govern": _check_govern,
 }
 
 

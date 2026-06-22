@@ -744,6 +744,14 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "OBS-104": {"title": "Alert rules wired in target RG", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-105": {"title": "Action group with notification channel", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-106": {"title": "Diagnostic settings on Foundry account -> LA", "pillar": "observability", "severity": "must-fix", "tier": 1},
+    # ---- observability — outcome-KPI scorecard (F7)
+    # CAF agent observability triad: baselines (latency, cost-per-interaction,
+    # success-rate) + deviation alerts live under observability. KPI-001..003
+    # join eval pass-rate + cost-per-interaction + traces into one measurable
+    # outcome view. should-fix / tier-0 (static synthesis, never must-fix).
+    "KPI-001": {"title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-002": {"title": "Deviation alert wired for an outcome KPI baseline", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
 
     # ---- continuous-evals
     "EVAL-001": {"title": "SPEC sec 9 declares eval scenarios", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
@@ -767,6 +775,15 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "RAI-006": {"title": "RAI incident escalation owner named", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-101": {"title": "Content filter resource present in target", "pillar": "responsible-ai", "severity": "must-fix", "tier": 1},
     "RAI-102": {"title": "AGT RAI denials observable in last 24h", "pillar": "responsible-ai", "severity": "should-fix", "tier": 2, "experimental": True},
+    # ---- responsible-ai — adversarial red-team evidence (threadlight-redteam)
+    # Emitted only when specs/redteam-manifest.json is present; gives pillar 7
+    # live attack evidence instead of static configuration only.
+    "SAFE-101": {"title": "Red-team jailbreak attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-102": {"title": "Red-team prompt-injection attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-103": {"title": "Red-team data/prompt exfiltration attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-104": {"title": "Adversarial red-team scan present and fresh", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    "SAFE-105": {"title": "Red-team harmful-content attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    "SAFE-106": {"title": "Red-team attack coverage sufficient", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
 
     # ---- hitl-audit
     "HITL-001": {"title": "SPEC sec 8 declares HITL gates if user-facing", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
@@ -1664,6 +1681,66 @@ def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]
 
 
 # ---------------------------------------------------------------------------
+# threadlight leg manifests (govern / evals / redteam)
+# ---------------------------------------------------------------------------
+#
+# The executable threadlight legs each emit a manifest under `specs/`:
+#   threadlight-govern   -> specs/govern-manifest.json   (AGT wiring)
+#   threadlight-evals    -> specs/evals-manifest.json     (eval coverage)
+#   threadlight-redteam  -> specs/redteam-manifest.json   (adversarial scan)
+#
+# When a fresh manifest is present, the corresponding pillar reports the leg's
+# own verdict as *evidence the leg ran* — flipping findings from "go run the
+# remediation skill" to "verified". When no manifest is present the pillar
+# falls back to its legacy static heuristics, so behaviour is unchanged for
+# pilots that have not adopted the legs yet.
+
+_LEG_FRESHNESS_DAYS = 90
+
+
+def _load_leg_manifest(ctx: RepoContext, filename: str,
+                       max_age_days: int = _LEG_FRESHNESS_DAYS) -> dict | None:
+    """Load a threadlight leg manifest from specs/<filename>.
+
+    Returns the parsed dict with two computed keys injected — ``_age_days``
+    (float | None) and ``_fresh`` (bool) — or ``None`` if the file is absent
+    or unparseable. Never raises.
+    """
+    path = ctx.root / "specs" / filename
+    raw = _read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    age: float | None = None
+    captured = data.get("captured_at") or ""
+    if captured:
+        try:
+            cap_dt = datetime.fromisoformat(str(captured).replace("Z", "+00:00"))
+            now = datetime.now(cap_dt.tzinfo) if cap_dt.tzinfo else datetime.now()
+            age = round((now - cap_dt).total_seconds() / 86400.0, 1)
+        except (ValueError, TypeError):
+            age = None
+    data["_age_days"] = age
+    data["_fresh"] = age is not None and 0 <= age <= max_age_days
+    return data
+
+
+def _leg_cap_status(manifest: dict, key: str) -> str | None:
+    """Return the status string for a capability key in a leg manifest."""
+    cap = (manifest.get("capabilities") or {}).get(key)
+    if isinstance(cap, dict):
+        status = cap.get("status")
+        if status in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable"):
+            return status
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Bicep ARM-graph parser (v0.3.0 — closes the smoking gun)
 # ---------------------------------------------------------------------------
 #
@@ -2073,6 +2150,39 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
+    # Prefer the threadlight-govern leg manifest when it is present and fresh:
+    # the leg has already verified AGT wiring, so report its verdict as
+    # evidence rather than re-deriving from heuristics.
+    gm = _load_leg_manifest(ctx, "govern-manifest.json")
+    if gm is not None and gm.get("_fresh"):
+        verdict = gm.get("verdict", "?")
+        prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
+        _agt_map = {
+            "AGT-001": "middleware_wired_at_boundary",
+            "AGT-002": "policy_artefact_present",
+            "AGT-003": "asi_reference_present",
+            "AGT-004": "policy_versioned",
+            "AGT-005": "rai_policy_present",
+        }
+        for fid, cap in _agt_map.items():
+            st = _leg_cap_status(gm, cap)
+            if st is None:
+                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+            else:
+                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
+        # AGT-006 telemetry sink is not part of the govern manifest — keep the
+        # legacy heuristic so the finding still scores.
+        pol_text = ""
+        for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
+            pol_text += "\n" + (_read_text(p) or "")
+        has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
+        out.append(_mk_finding("AGT-006",
+            status="pass" if has_telemetry else "should-fix",
+            detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
+        if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
+            out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
+        return out
+    # ---- legacy heuristic path (no govern manifest) ----
     # AGT-001 imported in src
     has_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
     out.append(_mk_finding("AGT-001",
@@ -2656,6 +2766,159 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("OBS-005",
         status="pass" if has_workbook else "should-fix",
         detail="Workbook scaffold present" if has_workbook else "No workbook scaffold found"))
+    out.extend(_check_kpi_static(ctx))
+    return out
+
+
+# ---- outcome-KPI scorecard (F7) -------------------------------------------
+#
+# CAF's agent observability triad puts *baselines* (latency, cost-per-interaction,
+# success-rate) and *deviation alerts* under observability, and asks teams to
+# measure a real outcome — not just wire traces. `_kpi_signals` joins three
+# already-collected signals into one view:
+#
+#   * eval pass-rate        specs/evals-manifest.json   (threadlight-evals)
+#   * cost-per-interaction  specs/cost-manifest.json    (threadlight-consumption-iq)
+#   * traces emitting       foundry-observability / OTel wiring in infra+src
+#
+# plus the declared baseline targets + a deviation-alert resource. Pure file
+# reads; never raises (missing/garbage inputs degrade to None / False).
+
+
+def _kpi_signals(ctx: RepoContext) -> dict:
+    """Join the outcome-KPI signals. Pure, side-effect-free, never raises."""
+    spec = ctx.spec_text or ""
+    bicep = ctx.bicep_text or ""
+    src = ctx.src_text or ""
+    docs = getattr(ctx, "docs_text", "") or ""
+    prose = spec + "\n" + docs
+
+    latency_declared = bool(re.search(
+        r"(p9[59]|latency|response[ _-]?time)\D{0,24}\d", prose, re.I))
+    cost_per_interaction_declared = bool(re.search(
+        r"cost[ _-]?per[ _-]?(interaction|request|call|message|conversation)", prose, re.I))
+    success_rate_declared = bool(re.search(
+        r"((success|pass|task[ _-]?success|resolution)[ _-]?rate)\D{0,24}\d"
+        r"|\d+\s*%\s*(success|pass)", prose, re.I))
+
+    # Deviation alert: an Insights alert resource that references a KPI metric,
+    # or an explicit "deviation/baseline alert" declaration in prose.
+    alert_resource = bool(re.search(
+        r"Microsoft\.Insights/(metricAlerts|scheduledQueryRules)", bicep, re.I))
+    kpi_metric_ref = bool(re.search(
+        r"latency|duration|success|availability|cost|failed|requests", bicep, re.I))
+    deviation_alert_present = (alert_resource and kpi_metric_ref) or bool(
+        re.search(r"(deviation|baseline)\s*alert", prose, re.I))
+
+    traces_emit = bool(re.search(
+        r"foundry[._-]observability|opentelemetry|azure[._-]monitor[._-]opentelemetry"
+        r"|configure_azure_monitor|@opentelemetry|AzureMonitorTraceExporter",
+        bicep + src, re.I))
+
+    eval_pass_rate = _read_eval_pass_rate(ctx)
+    cost_per_interaction_usd = _read_cost_per_interaction(ctx)
+
+    return {
+        "latency_declared": latency_declared,
+        "cost_per_interaction_declared": cost_per_interaction_declared,
+        "success_rate_declared": success_rate_declared,
+        "deviation_alert_present": deviation_alert_present,
+        "traces_emit": traces_emit,
+        "eval_pass_rate": eval_pass_rate,
+        "cost_per_interaction_usd": cost_per_interaction_usd,
+    }
+
+
+def _read_eval_pass_rate(ctx: RepoContext) -> float | None:
+    """Read the eval pass-rate (0..1) from specs/evals-manifest.json. None if
+    absent/garbage. Accepts `metrics.pass_rate` or top-level `pass_rate`."""
+    data = _load_leg_manifest(ctx, "evals-manifest.json")
+    if not isinstance(data, dict):
+        return None
+    for path in (("metrics", "pass_rate"), ("pass_rate",)):
+        node: object = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            val = float(node)
+            return val / 100.0 if val > 1.0 else val
+    return None
+
+
+def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
+    """Read cost-per-interaction (USD) from specs/cost-manifest.json. None if
+    absent/garbage. Accepts `cost_per_interaction_usd` or
+    `unit_economics.cost_per_interaction_usd`."""
+    path = ctx.root / "specs" / "cost-manifest.json"
+    raw = _read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for keypath in (("cost_per_interaction_usd",), ("unit_economics", "cost_per_interaction_usd")):
+        node: object = data
+        for key in keypath:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            return float(node)
+    return None
+
+
+def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
+    """Emit the three outcome-KPI findings (F7). should-fix / tier-0; never raises."""
+    out: list[Finding] = []
+    sig = _kpi_signals(ctx)
+
+    # KPI-001 — baselines declared
+    triples = (
+        ("latency", sig["latency_declared"]),
+        ("cost-per-interaction", sig["cost_per_interaction_declared"]),
+        ("success-rate", sig["success_rate_declared"]),
+    )
+    missing = [name for name, ok in triples if not ok]
+    if not missing:
+        out.append(_mk_finding("KPI-001", status="pass",
+            detail="Outcome KPI baselines declared: latency, cost-per-interaction, success-rate "
+                   "(CAF agent observability baselines)."))
+    else:
+        out.append(_mk_finding("KPI-001", status="should-fix",
+            detail=f"Outcome KPI baseline(s) not declared: {', '.join(missing)}. "
+                   "Declare target latency, cost-per-interaction, and success-rate so deviation "
+                   "can be measured."))
+
+    # KPI-002 — deviation alert wired
+    if sig["deviation_alert_present"]:
+        out.append(_mk_finding("KPI-002", status="pass",
+            detail="Deviation alert wired against a KPI baseline (latency/cost/success drift)."))
+    else:
+        out.append(_mk_finding("KPI-002", status="should-fix",
+            detail="No deviation alert wired for a KPI baseline — add a metric/log alert on "
+                   "latency, cost-per-interaction, or success-rate drift (see recipe KPI-002)."))
+
+    # KPI-003 — joined outcome scorecard
+    have = []
+    if sig["eval_pass_rate"] is not None:
+        have.append("eval pass-rate")
+    if sig["cost_per_interaction_usd"] is not None:
+        have.append("cost-per-interaction")
+    if sig["traces_emit"]:
+        have.append("traces")
+    if len(have) == 3:
+        out.append(_mk_finding("KPI-003", status="pass",
+            detail=(f"Outcome scorecard joinable: eval pass-rate {sig['eval_pass_rate']:.0%}, "
+                    f"cost-per-interaction ${sig['cost_per_interaction_usd']:.4f}, traces emitting.")))
+    elif not have:
+        out.append(_mk_finding("KPI-003", status="not-verified",
+            detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq, "
+                   "and foundry-observability to populate the scorecard."))
+    else:
+        out.append(_mk_finding("KPI-003", status="should-fix",
+            detail=(f"Partial outcome scorecard ({', '.join(have)} present). Join all three "
+                    "(eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.")))
     return out
 
 
@@ -2787,6 +3050,46 @@ def _check_observability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str
 def _check_evals_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
+    # Prefer the threadlight-evals leg manifest when present and fresh.
+    em = _load_leg_manifest(ctx, "evals-manifest.json")
+    em_fresh = em is not None and em.get("_fresh")
+    if em_fresh:
+        prov = f"threadlight-evals manifest (verdict: {em.get('verdict', '?')}, {em.get('_age_days')}d old)"
+        _eval_map = {
+            "EVAL-001": "eval_scenarios_present",
+            "EVAL-002": "eval_datasets_present",
+            "EVAL-003": "schedule_present",
+            "EVAL-004": "thresholds_declared",
+        }
+        for fid, cap in _eval_map.items():
+            st = _leg_cap_status(em, cap)
+            if st is None:
+                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+            else:
+                extra = ""
+                if fid == "EVAL-003":
+                    online = _leg_cap_status(em, "online_eval_wired")
+                    ab = _leg_cap_status(em, "ab_comparison_present")
+                    bits = []
+                    if online == "pass":
+                        bits.append("online/continuous eval wired")
+                    if ab == "pass":
+                        bits.append("A/B champion-challenger gate present")
+                    if bits:
+                        extra = " — " + "; ".join(bits)
+                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}{extra}"))
+        # EVAL-005 (grader strategy) + EVAL-006 (dataset versioning) are not in
+        # the evals manifest — keep the legacy SPEC heuristics for those.
+        has_grader = bool(re.search(r"grader|judge|llm[-_ ]as[-_ ]a[-_ ]judge", spec, re.I))
+        out.append(_mk_finding("EVAL-005",
+            status="pass" if has_grader else "should-fix",
+            detail="Grader strategy named" if has_grader else "No grader strategy named in SPEC"))
+        has_versioning = bool(re.search(r"dataset.*version|v\d+\.\d+", spec, re.I))
+        out.append(_mk_finding("EVAL-006",
+            status="pass" if has_versioning else "should-fix",
+            detail="Dataset versioning hinted" if has_versioning else "No dataset versioning documented"))
+        return out
+    # ---- legacy heuristic path (no evals manifest) ----
     m = re.search(r"##\s*9\.?\s+Eval", spec, re.I)
     sec9_present = bool(m)
     out.append(_mk_finding("EVAL-001",
@@ -2858,14 +3161,25 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     pol_text = ""
     for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
         pol_text += "\n" + (_read_text(p) or "")
+    # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
+    gm = _load_leg_manifest(ctx, "govern-manifest.json")
+    gm_rai = _leg_cap_status(gm, "rai_policy_present") if (gm and gm.get("_fresh")) else None
     has_rai_pol = bool(re.search(r"\brai\b|responsible[_ ]?ai|content[_ ]?safety", pol_text, re.I))
-    out.append(_mk_finding("RAI-002",
-        status="pass" if has_rai_pol else "must-fix",
-        detail="AGT policy has RAI section" if has_rai_pol else "AGT policy missing RAI/content-safety section"))
+    if gm_rai is not None:
+        out.append(_mk_finding("RAI-002", status=gm_rai,
+            detail=f"threadlight-govern manifest: rai_policy_present={gm_rai}"))
+    else:
+        out.append(_mk_finding("RAI-002",
+            status="pass" if has_rai_pol else "must-fix",
+            detail="AGT policy has RAI section" if has_rai_pol else "AGT policy missing RAI/content-safety section"))
     has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text, re.I))
-    out.append(_mk_finding("RAI-003",
-        status="pass" if has_shields else "must-fix",
-        detail="Prompt shields configured" if has_shields else "Prompt shields not configured in policy"))
+    if gm_rai is not None and gm_rai == "pass":
+        out.append(_mk_finding("RAI-003", status="pass",
+            detail="threadlight-govern manifest: RAI block declares prompt shields"))
+    else:
+        out.append(_mk_finding("RAI-003",
+            status="pass" if has_shields else "must-fix",
+            detail="Prompt shields configured" if has_shields else "Prompt shields not configured in policy"))
     has_pii = bool(re.search(r"pii|presidio|redact", spec + ctx.docs_text + pol_text, re.I))
     out.append(_mk_finding("RAI-004",
         status="pass" if has_pii else "should-fix",
@@ -2878,6 +3192,50 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("RAI-006",
         status="pass" if has_owner else "should-fix",
         detail="RAI/incident owner named in SPEC" if has_owner else "No RAI incident owner named"))
+    # Adversarial red-team evidence (threadlight-redteam). Emitted only when the
+    # leg has produced specs/redteam-manifest.json; gives pillar 7 live attack
+    # evidence rather than static configuration alone.
+    out.extend(_check_redteam_static(ctx))
+    return out
+
+
+def _check_redteam_static(ctx: RepoContext) -> list[Finding]:
+    """Map the threadlight-redteam manifest to SAFE-1xx findings.
+
+    Returns [] when no manifest is present so pilots that have not run an
+    adversarial scan keep their existing pillar-7 finding set unchanged.
+    """
+    rm = _load_leg_manifest(ctx, "redteam-manifest.json")
+    if rm is None:
+        return []
+    out: list[Finding] = []
+    fresh = rm.get("_fresh")
+    prov = f"threadlight-redteam manifest (verdict: {rm.get('verdict', '?')}, {rm.get('_age_days')}d old)"
+    _safe_map = {
+        "SAFE-101": "jailbreak_asr_ok",
+        "SAFE-102": "prompt_injection_asr_ok",
+        "SAFE-103": "exfiltration_asr_ok",
+        "SAFE-105": "harmful_content_asr_ok",
+        "SAFE-106": "coverage_ok",
+    }
+    # SAFE-104: scan present + fresh.
+    scan_present = _leg_cap_status(rm, "scan_present")
+    if scan_present == "pass" and not fresh:
+        out.append(_mk_finding("SAFE-104", status="should-fix",
+            detail=f"{prov}: scan present but stale (> {_LEG_FRESHNESS_DAYS}d) — re-run red-team scan"))
+    elif scan_present is not None:
+        out.append(_mk_finding("SAFE-104", status=scan_present, detail=f"{prov}: scan_present={scan_present}"))
+    else:
+        out.append(_not_verified("SAFE-104", f"{prov}: scan_present not reported"))
+    for fid, cap in _safe_map.items():
+        st = _leg_cap_status(rm, cap)
+        if st is None:
+            out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+        elif not fresh and st != "pass":
+            # Stale findings are downgraded to not-verified — re-scan required.
+            out.append(_not_verified(fid, f"{prov}: stale; re-run red-team scan to confirm {cap}"))
+        else:
+            out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
     return out
 
 
@@ -4492,10 +4850,38 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("- Pricing plan declared in SPEC § 10: " + ("yes" if any(f.id == "COST-001" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no"))
     out.append("- Budget alerts wired: " + ("yes" if any(f.id == "COST-101" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no / not-verified"))
     out.append("")
-    # 8. Eval summary
-    out.append("## 8. Eval summary")
+    # 8. Outcome KPI scorecard
+    out.append("## 8. Outcome KPI scorecard")
     out.append("")
-    out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
+    kpi = manifest.get("kpi_scorecard") or {}
+    if kpi:
+        def _yn(v: bool) -> str:
+            return "✅ yes" if v else "⚠️ no"
+        pr_val = kpi.get("eval_pass_rate")
+        cpi_val = kpi.get("cost_per_interaction_usd")
+        pr_str = f"{pr_val:.0%}" if isinstance(pr_val, (int, float)) else "not-verified"
+        cpi_str = f"${cpi_val:.4f}" if isinstance(cpi_val, (int, float)) else "not-verified"
+        out.append("Joins the three signals CAF asks teams to measure as a real outcome "
+                   "(eval quality + unit cost + live telemetry):")
+        out.append("")
+        out.append("| KPI signal | Value | Source |")
+        out.append("|---|---|---|")
+        out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
+        out.append(f"| Cost-per-interaction | {cpi_str} | `specs/cost-manifest.json` (threadlight-consumption-iq) |")
+        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
+        out.append("")
+        out.append("| Baseline declared | Status |")
+        out.append("|---|---|")
+        out.append(f"| Latency | {_yn(bool(kpi.get('latency_declared')))} |")
+        out.append(f"| Cost-per-interaction | {_yn(bool(kpi.get('cost_per_interaction_declared')))} |")
+        out.append(f"| Success-rate | {_yn(bool(kpi.get('success_rate_declared')))} |")
+        out.append(f"| Deviation alert wired | {_yn(bool(kpi.get('deviation_alert_present')))} |")
+        out.append("")
+        out.append("_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` "
+                   "(scorecard joinable) under pillar 5. Run `foundry-evals` and paste eval "
+                   "thresholds into SPEC § 9._")
+    else:
+        out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
     out.append("")
     # 9. Residual risk + rollout/rollback
     out.append("## 9. Residual risk, RACI, rollout / rollback / cutover")
@@ -4937,7 +5323,7 @@ def main(argv: list[str] | None = None) -> int:
         freshness_hours=args.freshness_hours,
         include_experimental=args.include_experimental,
     )
-
+    out_manifest["kpi_scorecard"] = _kpi_signals(ctx)
     out_path = root / args.out
     report_path = root / args.report
     try:

@@ -89,8 +89,10 @@
       <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
         <a href="#amber-green">Amber &rarr; green</a>
         <a href="#governance-triggers">When to graduate</a>
+        <a href="#control-plane">Control plane</a>
         <a href="#posture-overview">3 postures</a>
         <a href="#prod-scorecard">The scorecard</a>
+        <a href="#prod-kpi">Outcome KPIs</a>
         <a href="#prod-cost">Cost forecast</a>
         <a href="#chapter-recap">Recap</a>
       </nav>
@@ -213,18 +215,20 @@
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>When to graduate</p>
-        <h2>Five questions a CISO asks. <em>If any one fires, you&rsquo;ve outgrown the laptop.</em></h2>
+        <h2>Six questions a CISO asks. <em>If any one fires, you&rsquo;ve outgrown the laptop.</em></h2>
         <p class="section-lede">
           Threadlight skills run cleanly from a developer&rsquo;s machine for
-          early-stage co-design. The moment any of these five triggers turns
+          early-stage co-design. The moment any of these six triggers turns
           red, the pilot needs a <strong>hosted runtime, governed identity,
           and a paved-path posture</strong> &mdash; not another iteration on
-          the laptop. This is the conversation production-ready opens with.
+          the laptop. This is the conversation production-ready opens with &mdash;
+          and, for governance, evals, and safety, the conversation is now backed
+          by <a href="#control-plane">legs that actually run</a>.
         </p>
       </div>
 
       <figure aria-labelledby="ciso-caption" class="reveal" data-delay="1">
-        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five questions a CISO asks arranged as spokes around a central production-ready core">
+        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
           <defs>
             <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
               <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
@@ -252,6 +256,7 @@
             <line x1="540" y1="190" x2="240" y2="310"/>
             <line x1="540" y1="190" x2="840" y2="310"/>
             <line x1="540" y1="190" x2="540" y2="50"/>
+            <line x1="540" y1="190" x2="540" y2="330"/>
           </g>
 
           <!-- Core: "Is this production-ready?" -->
@@ -311,9 +316,18 @@
             <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
             <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
           </g>
+
+          <!-- 06 Safety / red-team (bottom center) -->
+          <g transform="translate(420, 312)">
+            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M 16 24 L 28 36 M 28 24 L 16 36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <text x="44" y="22" class="ciso-num">06 &middot; SAFETY</text>
+            <text x="44" y="44" class="ciso-q">Can it be jailbroken?</text>
+          </g>
         </svg>
         <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Production-ready is a conversation, not a button. These are its five opening questions.
+          Production-ready is a conversation, not a button. These are its six opening questions.
         </figcaption>
       </figure>
 
@@ -342,6 +356,86 @@
           <p class="eyebrow"><span class="dot"></span>05 &middot; Evals</p>
           <h3>How do we know the next deploy didn&rsquo;t regress?</h3>
           <p>Foundry Evals as a continuous gate &mdash; quality is a release criterion, not a vibe-check.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>06 &middot; Safety</p>
+          <h3>Can it be jailbroken or made to exfiltrate?</h3>
+          <p>An adversarial scan &mdash; prompt-injection, jailbreak, data and prompt exfiltration &mdash; run before and after deploy, not assumed because a shield was declared. This is the <a href="#control-plane">red-team leg</a>.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== EXECUTABLE CONTROL PLANE =================== -->
+
+  <section class="chapter-section" id="control-plane" data-toc-id="control-plane" data-toc-label="The control plane &middot; legs that run">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Discover &rarr; Protect &rarr; Govern</p>
+        <h2>Three of those questions are now <em>legs that run</em> &mdash; not slides.</h2>
+        <p class="section-lede">
+          Microsoft frames the agent lifecycle as <strong>Discover &rarr; Protect
+          &rarr; Govern</strong>: adversarially test to <em>discover</em>, wire
+          model and agent-runtime controls to <em>protect</em>, monitor and
+          evaluate on live traffic to <em>govern</em>. Production-ready used to
+          <em>score</em> those stages and hand the work to other skills. Now
+          three threadlight legs <strong>run as executable checks</strong> in the
+          chain and leave committed evidence the scorecard reads &mdash; idempotent,
+          keyless, and gracefully degrading to <code>not-verified</code> when a
+          permission is missing.
+        </p>
+        <p class="reveal" data-delay="1" style="margin-top:6px;">
+          <span class="pill muted">design</span>
+          <span class="pill muted">deploy</span>
+          <span class="pill">discover &middot; evals + red-team</span>
+          <span class="pill">protect &middot; AGT</span>
+          <span class="pill">govern &middot; online eval + KPIs</span>
+          <span class="pill muted">improve</span>
+        </p>
+      </div>
+
+      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Protect &middot; <code>threadlight-govern</code></p>
+          <h3>Agent-runtime governance (AGT) that ships an artefact.</h3>
+          <p>Wraps <code>foundry-agt</code> to scaffold and validate a policy
+          artefact, wire in-process middleware at the container boundary, and
+          emit a committed verifier report &mdash; the evidence pillars 02
+          (Agent governance) and 07 (Responsible AI) look for, instead of a
+          remediation pointer.</p>
+          <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-govern" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Discover + Govern &middot; <code>threadlight-evals</code></p>
+          <h3>Offline batch, online continuous eval, and an A/B gate.</h3>
+          <p>Runs the offline quality batch, wires <strong>Foundry Continuous
+          Evaluation</strong> on live threads (results to App Insights), and
+          gates model or prompt swaps behind an A/B champion&ndash;challenger
+          comparison. Emits <code>specs/evals-manifest.json</code> whose
+          <code>metrics.pass_rate</code> is the join key the outcome-KPI
+          scorecard reads.</p>
+          <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Discover &middot; <code>threadlight-redteam</code></p>
+          <h3>An adversarial scan, not a declared shield.</h3>
+          <p>Ingests and scores the <strong>AI Red Teaming Agent</strong>
+          (PyRIT-based) scan evidence &mdash; jailbreak, prompt-injection, data
+          and prompt exfiltration &mdash; into an attack-success-rate verdict, and
+          emits <code>docs/redteam-report.md</code> plus a manifest whose findings
+          map to Responsible-AI pillar 07. Run the scan pre- and post-deploy; a
+          declared jailbreak shield is no longer taken on faith.</p>
+          <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Govern &middot; <code>threadlight-cicd</code></p>
+          <h3>An eval-gate and a red-team-gate in the pipeline.</h3>
+          <p>The CAF process puts evaluation <em>in CI/CD</em>. The generated
+          pipeline now carries an <code>eval-gate</code> and a
+          <code>red-team-gate</code> &mdash; soft (advisory) or hard (blocking)
+          by a flag, OIDC, secret-free &mdash; so a regression or a fresh
+          jailbreak stops the deploy. <a href="#prod-cicd">See the pipeline below.</a></p>
+          <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
       </div>
     </div>
@@ -572,6 +666,64 @@
       <div class="read-deeper">
         <span class="rd-label">All 13 pillars, deeply explained:</span>
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== OUTCOME-KPI SCORECARD =================== -->
+
+  <section class="chapter-section" id="prod-kpi" data-toc-id="prod-kpi" data-toc-label="Outcome KPIs &middot; the join">
+    <div class="wrap wrap-wide">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>The outcome, not just the shape</p>
+        <h2>One more page &mdash; <em>does it actually pay off?</em></h2>
+        <p class="section-lede">
+          The 13-pillar scorecard proves the pilot is <em>production-shaped</em>.
+          It doesn&rsquo;t prove it&rsquo;s <em>working</em>. The CAF
+          agent-observability baseline is explicit: trace <strong>latency,
+          cost-per-interaction, and success rate</strong>, set baselines, and
+          alert on deviation. Production-ready now emits an <strong>outcome-KPI
+          scorecard</strong> (report &sect; 8) that joins the evals leg&rsquo;s
+          live <code>pass_rate</code>, <code>consumption-iq</code>&rsquo;s
+          cost-per-interaction, and the observability baselines into one
+          measurable view &mdash; eval quality stops being a number locked
+          inside the evals leg.
+        </p>
+      </div>
+
+      <article class="scorecard-preview reveal">
+        <header class="sc-header">
+          <p class="sc-title">kpi-scorecard</p>
+          <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
+          <p class="sc-posture">Joins &mdash; <strong>evals-manifest</strong> &middot; <strong>cost-manifest</strong> &middot; <strong>observability baselines</strong></p>
+        </header>
+
+        <div class="recap-metrics" style="margin-top:18px;">
+          <article class="metric-card">
+            <span class="metric-num"><em>91</em>%</span>
+            <span class="metric-label">Eval pass-rate</span>
+            <span class="metric-caption">Latest scheduled run, from <code>evals-manifest.metrics.pass_rate</code> &mdash; threshold 85%.</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-num">$<em>0.0123</em></span>
+            <span class="metric-label">Cost / interaction</span>
+            <span class="metric-caption">From <code>consumption-iq</code> &rarr; <code>specs/cost-manifest.json</code>, baselined for deviation alerts.</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-num"><em>0</em></span>
+            <span class="metric-label">Red-team must-fix</span>
+            <span class="metric-caption">High-severity adversarial findings from the red-team leg &mdash; the safety gate is green.</span>
+          </article>
+        </div>
+
+        <footer class="sc-footer">
+          <p class="sc-take">Scorecard take: <strong>outcome verified</strong> &mdash; quality, unit-cost, and safety joined to a single deviation-alerted baseline; a regression on any one trips the gate before the next deploy.</p>
+        </footer>
+      </article>
+
+      <div class="read-deeper">
+        <span class="rd-label">How the join is computed:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-production-ready" target="_blank" rel="noopener">Open threadlight-production-ready &rarr;</a>
       </div>
     </div>
   </section>

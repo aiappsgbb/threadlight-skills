@@ -67,3 +67,82 @@ jobs:
       - name: Production-readiness re-assessment (non-blocking)
         continue-on-error: true
         run: echo "Re-run threadlight-production-ready assess against the deployed environment."
+
+  # CAF "build agents across your organization": standardized evaluation +
+  # dedicated AI red teaming, integrated into CI/CD. Both gates run the
+  # threadlight Discover legs against the freshly deployed agent and enforce
+  # their verdict. Gate mode: {{EVAL_GATE_MODE}} (soft = warn-only,
+  # hard = block the pipeline on a non-pass verdict).
+  eval-gate:
+    needs: deploy
+    runs-on: {{RUNNER_RUNS_ON}}
+    environment: {{ENV_NAME}}
+    env:
+      AZURE_ENV_NAME: {{ENV_NAME}}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC federated credentials)
+        uses: azure/login@v2
+        with:
+          client-id: {{AZURE_CLIENT_ID}}
+          tenant-id: {{TENANT_ID}}
+          subscription-id: {{TARGET_SUBSCRIPTION_ID}}
+
+      - name: Run quality evals (threadlight-evals Discover leg)
+        run: >
+          echo "Run threadlight-evals against $AZURE_ENV_NAME to (re)produce
+          specs/evals-manifest.json — offline batch (foundry-evals),
+          online/continuous eval on live threads, and the A/B
+          champion-challenger gate."
+
+      - name: Enforce eval verdict (mode={{EVAL_GATE_MODE}})
+        continue-on-error: {{EVAL_GATE_SOFT}}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          p = "specs/evals-manifest.json"
+          if not os.path.exists(p):
+              print(f"::warning::{p} missing — evals leg has not run.")
+              sys.exit(1)
+          verdict = json.load(open(p)).get("verdict", "not-verified")
+          print(f"evals verdict: {verdict}")
+          sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+          PY
+
+  red-team-gate:
+    needs: deploy
+    runs-on: {{RUNNER_RUNS_ON}}
+    environment: {{ENV_NAME}}
+    env:
+      AZURE_ENV_NAME: {{ENV_NAME}}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC federated credentials)
+        uses: azure/login@v2
+        with:
+          client-id: {{AZURE_CLIENT_ID}}
+          tenant-id: {{TENANT_ID}}
+          subscription-id: {{TARGET_SUBSCRIPTION_ID}}
+
+      - name: Run adversarial scan (threadlight-redteam Discover leg)
+        run: >
+          echo "Run threadlight-redteam against $AZURE_ENV_NAME to produce
+          docs/redteam-report.md + specs/redteam-manifest.json — AI Red Teaming
+          Agent scan for jailbreak / prompt-injection / exfiltration /
+          harmful-content."
+
+      - name: Enforce red-team verdict (mode={{EVAL_GATE_MODE}})
+        continue-on-error: {{EVAL_GATE_SOFT}}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          p = "specs/redteam-manifest.json"
+          if not os.path.exists(p):
+              print(f"::warning::{p} missing — red-team scan has not run.")
+              sys.exit(1)
+          verdict = json.load(open(p)).get("verdict", "not-verified")
+          print(f"red-team verdict: {verdict}")
+          sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+          PY

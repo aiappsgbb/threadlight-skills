@@ -1,0 +1,38 @@
+# AGT governance policy — strict PII-deny template
+#
+# Use for pilots handling regulated / sensitive data where the agent must
+# never egress PII through tools or external sinks. Strictest baseline.
+version: "REPLACE_WITH_AGT_VERSION"
+agent_control_specification_version: "2026.1"
+
+references:
+  - owasp-asi-2026
+
+responsible_ai:
+  content_filter: strict
+  prompt_shields: true
+  pii_redact: true
+  pii_deny: true                # block, do not just redact, on PII egress
+  pii_categories:
+    - person_name
+    - email
+    - phone
+    - national_id
+    - payment_card
+    - address
+
+tools:
+  allow: []                     # explicit allow-list from agent.yaml tools
+  deny:
+    - shell_exec
+    - send_external_email
+    - http_post                 # no arbitrary outbound sinks
+    - file_write_external
+
+data_egress:
+  block_external_pii: true
+  audit_all_tool_io: true       # full I/O audit trail for compliance
+
+excessive_agency:
+  max_tool_calls_per_turn: 4
+  max_chained_actions: 8

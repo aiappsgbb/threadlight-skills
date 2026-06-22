@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-redteam-manifest/v1",
+  "title": "threadlight red-team manifest",
+  "description": "Emitted by threadlight-redteam (scripts/redteam_check.py). Consumed by threadlight-production-ready pillar 7 (responsible-ai) as adversarial evidence.",
+  "type": "object",
+  "required": [
+    "schema",
+    "tool_version",
+    "captured_at",
+    "verdict",
+    "must_fix",
+    "should_fix",
+    "not_verified",
+    "capabilities",
+    "asr",
+    "thresholds"
+  ],
+  "properties": {
+    "schema": {"const": "threadlight-redteam-manifest/v1"},
+    "tool_version": {"type": "string"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "scan_result": {"type": ["string", "null"]},
+    "scan_captured_at": {"type": ["string", "null"], "format": "date-time"},
+    "tool": {"type": ["string", "null"]},
+    "num_attacks": {"type": ["integer", "null"], "minimum": 0},
+    "strategies": {"type": "array", "items": {"type": "string"}},
+    "verdict": {"enum": ["hardened", "partial", "vulnerable"]},
+    "must_fix": {"type": "array", "items": {"type": "string"}},
+    "should_fix": {"type": "array", "items": {"type": "string"}},
+    "not_verified": {"type": "array", "items": {"type": "string"}},
+    "asr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jailbreak": {"type": "number", "minimum": 0, "maximum": 1},
+        "prompt_injection": {"type": "number", "minimum": 0, "maximum": 1},
+        "indirect_attack": {"type": "number", "minimum": 0, "maximum": 1},
+        "exfiltration": {"type": "number", "minimum": 0, "maximum": 1},
+        "harmful_content": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "required": ["max_asr", "freshness_days", "min_attacks"],
+      "additionalProperties": false,
+      "properties": {
+        "max_asr": {"type": "number", "minimum": 0, "maximum": 1},
+        "freshness_days": {"type": "integer", "minimum": 0},
+        "min_attacks": {"type": "integer", "minimum": 1}
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scan_present",
+        "scan_fresh",
+        "jailbreak_asr_ok",
+        "prompt_injection_asr_ok",
+        "exfiltration_asr_ok",
+        "harmful_content_asr_ok",
+        "coverage_ok"
+      ],
+      "properties": {
+        "scan_present": {"$ref": "#/definitions/capability"},
+        "scan_fresh": {"$ref": "#/definitions/capability"},
+        "jailbreak_asr_ok": {"$ref": "#/definitions/capability"},
+        "prompt_injection_asr_ok": {"$ref": "#/definitions/capability"},
+        "exfiltration_asr_ok": {"$ref": "#/definitions/capability"},
+        "harmful_content_asr_ok": {"$ref": "#/definitions/capability"},
+        "coverage_ok": {"$ref": "#/definitions/capability"}
+      }
+    }
+  },
+  "definitions": {
+    "capability": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
+        },
+        "evidence": {"type": ["string", "null"]},
+        "hint": {"type": ["string", "null"]},
+        "finding_id": {
+          "enum": ["SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"]
+        }
+      }
+    }
+  }
+}

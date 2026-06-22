@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 REF = Path(__file__).resolve().parent.parent / "references"
 
@@ -190,6 +190,15 @@ def build_context(framing: dict, resolved: dict) -> dict:
 
     next_actions_md = "\n".join(f"- {a}" for a in resolved.get("next_actions", []))
 
+    # CI/CD eval + red-team gate mode (CAF: standardized evaluation + AI red
+    # teaming integrated into CI/CD). soft = warn-only; hard = block on a
+    # non-pass verdict. Soft is the default so a first onboarding doesn't wedge
+    # the pipeline before the legs have a baseline manifest.
+    eval_gate_mode = str(framing.get("eval_gate", "soft")).lower()
+    if eval_gate_mode not in ("soft", "hard"):
+        eval_gate_mode = "soft"
+    eval_gate_soft = "true" if eval_gate_mode == "soft" else "false"
+
     return {
         "GENERATOR_VERSION": VERSION,
         "ISO_TIMESTAMP": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -229,6 +238,8 @@ def build_context(framing: dict, resolved: dict) -> dict:
         "FED_SUBJECT_MAIN": f"repo:{repo}:ref:refs/heads/main",
         "FED_SUBJECT_ADO": f"sc://{ado_org}/{ado_project}/{ado_sc}",
         "NEXT_ACTIONS": next_actions_md,
+        "EVAL_GATE_MODE": eval_gate_mode,
+        "EVAL_GATE_SOFT": eval_gate_soft,
     }
 
 # endregion
@@ -407,6 +418,9 @@ def _parse_args(argv):
     p.add_argument("--ado-pool-name", dest="ado_pool_name",
                    help="Managed DevOps Pool / self-hosted pool name for private-network runs.")
     p.add_argument("--env-name", default="prod")
+    p.add_argument("--eval-gate", choices=["soft", "hard"], default=None,
+                   help="CI/CD eval + red-team gate mode: soft (warn-only, default) "
+                        "or hard (block the pipeline on a non-pass verdict).")
     p.add_argument("--out", default=os.getcwd(), help="Output root (default: cwd).")
     return p.parse_args(argv)
 
@@ -431,6 +445,7 @@ def _framing_from_args(args) -> dict:
         "access_contract_product": args.access_contract_product,
         "ado_pool_name": args.ado_pool_name,
         "env_name": args.env_name,
+        "eval_gate": args.eval_gate,
     }
     for k, v in cli.items():
         if v is not None:

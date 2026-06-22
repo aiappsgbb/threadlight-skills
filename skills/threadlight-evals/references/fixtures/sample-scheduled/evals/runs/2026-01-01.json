@@ -1,0 +1,8 @@
+{
+  "run_id": "scheduled-2026-01-01",
+  "pass_rate": 0.91,
+  "threshold": 0.85,
+  "results": [
+    {"id": "grounded-answer-1", "passed": true, "score": 0.94}
+  ]
+}

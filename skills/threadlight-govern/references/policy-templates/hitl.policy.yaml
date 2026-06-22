@@ -1,0 +1,35 @@
+# AGT governance policy — human-in-the-loop template
+#
+# Use when the agent performs consequential actions (writes, purchases,
+# ticket creation, outbound messages) that require human approval. Builds on
+# the baseline and adds an approval gate enforced by the middleware.
+version: "REPLACE_WITH_AGT_VERSION"
+agent_control_specification_version: "2026.1"
+
+references:
+  - owasp-asi-2026
+
+responsible_ai:
+  content_filter: standard
+  prompt_shields: true
+  pii_redact: true
+
+tools:
+  allow: []                     # explicit allow-list from agent.yaml tools
+  deny:
+    - shell_exec
+    - send_external_email
+
+# Every action listed here pauses for human approval before execution. Pairs
+# with the threadlight HITL leg — the approver channel must be wired.
+human_in_the_loop:
+  require_approval_for:
+    - create_ticket
+    - send_message
+    - place_order
+  approval_timeout_seconds: 3600
+  on_timeout: deny
+
+excessive_agency:
+  max_tool_calls_per_turn: 6
+  max_chained_actions: 12

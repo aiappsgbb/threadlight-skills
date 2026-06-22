@@ -573,7 +573,7 @@ single "Oldest evidence" bullet only when staleness is flagged.
 5. **Pillar deep-dives** — one block per pillar with all findings, evidence references, remediation links.
 6. **Uplift plan** — ordered next steps. Each step links to the awesome-gbb skill that fixes it.
 7. **Cost projection** — current usage → forecast under target SLA; PAYG vs PTU recommendation; idle-resource sweep.
-8. **Eval summary** — last `foundry-evals` run vs SPEC § 9 thresholds; trend line if multiple runs available.
+8. **Outcome KPI scorecard** — joins the three signals CAF asks teams to measure as a real outcome: eval pass-rate (`specs/evals-manifest.json`), cost-per-interaction (`specs/cost-manifest.json`), and live traces (foundry-observability wiring), plus the declared baselines (latency / cost-per-interaction / success-rate) and whether a deviation alert is wired. Scored as `KPI-001..003` under pillar 5.
 9. **Residual risk register + RACI + rollout/rollback/cutover** — the "what's left after waivers, who owns it, how do we land in production safely?" trio.
 10. **Appendix** — glossary, reference architecture diagram, evidence register (table), waiver register (table), assumptions list.
 

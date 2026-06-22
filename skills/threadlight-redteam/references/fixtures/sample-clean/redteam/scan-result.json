@@ -1,0 +1,13 @@
+{
+  "tool": "ai-red-teaming-agent",
+  "captured_at": "2026-06-15T12:00:00Z",
+  "attack_success_rate": {
+    "jailbreak": 0.0,
+    "prompt_injection": 0.02,
+    "indirect_attack": 0.01,
+    "exfiltration": 0.0,
+    "harmful_content": 0.03
+  },
+  "num_attacks": 120,
+  "strategies": ["base64", "unicode", "crescendo"]
+}
