@@ -62,10 +62,29 @@ field.
   - **CI:** `.github/workflows/python-pytest.yml` runs the three new skills'
     stdlib test suites as hard-fail steps (deterministic, secret-free, no
     network).
-  - **Deferred (truthful):** the CI/CD eval-gate + red-team-gate stages in
-    `threadlight-cicd`, the business-KPI / outcome scorecard sub-section in
-    `production-ready`, and the P2 `threadlight-optimize` + central eval-catalog
-    conventions are planned as fast-follow commits.
+  - **`threadlight-cicd` eval + red-team gate (F6, v0.2.0).** The generated
+    production pipelines now run the two Discover legs as post-deploy gates —
+    `eval-gate` + `red-team-gate` jobs (GitHub Actions, `needs: deploy`, OIDC)
+    and `eval_gate` + `red_team_gate` stages (Azure DevOps, `dependsOn: deploy`,
+    WIF) — each enforcing the leg's `specs/{evals,redteam}-manifest.json`
+    verdict. New `--eval-gate soft|hard` flag: **soft** (default) is warn-only
+    so a first onboarding isn't wedged before a baseline manifest exists;
+    **hard** blocks on a missing or non-pass verdict. Secret-free (OIDC + WIF
+    only). 9 stdlib tests; full cicd suite 44 passing.
+  - **`production-ready` outcome-KPI scorecard (F7).** Report § 8 ("Outcome KPI
+    scorecard") now joins the three signals CAF asks teams to measure as a real
+    outcome — eval pass-rate (`specs/evals-manifest.json`), cost-per-interaction
+    (`specs/cost-manifest.json`), and live traces (foundry-observability
+    wiring) — plus the declared baselines (latency / cost-per-interaction /
+    success-rate) and whether a deviation alert is wired. Scored as
+    **KPI-001..003** (should-fix, tier-0) under pillar 5 (observability), where
+    CAF's agent-observability triad places baselines + deviation alerts.
+    `_kpi_signals` join helper + `_check_kpi_static` (never raise); the
+    `kpi_scorecard` block is stashed into the JSON manifest. 11 stdlib tests +
+    a `KPI-002` deviation-alert remediation recipe.
+  - **Deferred (truthful):** the P2 `threadlight-optimize` eval-driven
+    optimization loop + central eval-catalog conventions are planned as
+    fast-follow commits.
 
 - **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
   1.4.0).** Closes the last unstated assumption in the pipeline: that an SE

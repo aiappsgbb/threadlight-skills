@@ -744,6 +744,14 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "OBS-104": {"title": "Alert rules wired in target RG", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-105": {"title": "Action group with notification channel", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-106": {"title": "Diagnostic settings on Foundry account -> LA", "pillar": "observability", "severity": "must-fix", "tier": 1},
+    # ---- observability — outcome-KPI scorecard (F7)
+    # CAF agent observability triad: baselines (latency, cost-per-interaction,
+    # success-rate) + deviation alerts live under observability. KPI-001..003
+    # join eval pass-rate + cost-per-interaction + traces into one measurable
+    # outcome view. should-fix / tier-0 (static synthesis, never must-fix).
+    "KPI-001": {"title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-002": {"title": "Deviation alert wired for an outcome KPI baseline", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
 
     # ---- continuous-evals
     "EVAL-001": {"title": "SPEC sec 9 declares eval scenarios", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
@@ -2758,6 +2766,159 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("OBS-005",
         status="pass" if has_workbook else "should-fix",
         detail="Workbook scaffold present" if has_workbook else "No workbook scaffold found"))
+    out.extend(_check_kpi_static(ctx))
+    return out
+
+
+# ---- outcome-KPI scorecard (F7) -------------------------------------------
+#
+# CAF's agent observability triad puts *baselines* (latency, cost-per-interaction,
+# success-rate) and *deviation alerts* under observability, and asks teams to
+# measure a real outcome — not just wire traces. `_kpi_signals` joins three
+# already-collected signals into one view:
+#
+#   * eval pass-rate        specs/evals-manifest.json   (threadlight-evals)
+#   * cost-per-interaction  specs/cost-manifest.json    (threadlight-consumption-iq)
+#   * traces emitting       foundry-observability / OTel wiring in infra+src
+#
+# plus the declared baseline targets + a deviation-alert resource. Pure file
+# reads; never raises (missing/garbage inputs degrade to None / False).
+
+
+def _kpi_signals(ctx: RepoContext) -> dict:
+    """Join the outcome-KPI signals. Pure, side-effect-free, never raises."""
+    spec = ctx.spec_text or ""
+    bicep = ctx.bicep_text or ""
+    src = ctx.src_text or ""
+    docs = getattr(ctx, "docs_text", "") or ""
+    prose = spec + "\n" + docs
+
+    latency_declared = bool(re.search(
+        r"(p9[59]|latency|response[ _-]?time)\D{0,24}\d", prose, re.I))
+    cost_per_interaction_declared = bool(re.search(
+        r"cost[ _-]?per[ _-]?(interaction|request|call|message|conversation)", prose, re.I))
+    success_rate_declared = bool(re.search(
+        r"((success|pass|task[ _-]?success|resolution)[ _-]?rate)\D{0,24}\d"
+        r"|\d+\s*%\s*(success|pass)", prose, re.I))
+
+    # Deviation alert: an Insights alert resource that references a KPI metric,
+    # or an explicit "deviation/baseline alert" declaration in prose.
+    alert_resource = bool(re.search(
+        r"Microsoft\.Insights/(metricAlerts|scheduledQueryRules)", bicep, re.I))
+    kpi_metric_ref = bool(re.search(
+        r"latency|duration|success|availability|cost|failed|requests", bicep, re.I))
+    deviation_alert_present = (alert_resource and kpi_metric_ref) or bool(
+        re.search(r"(deviation|baseline)\s*alert", prose, re.I))
+
+    traces_emit = bool(re.search(
+        r"foundry[._-]observability|opentelemetry|azure[._-]monitor[._-]opentelemetry"
+        r"|configure_azure_monitor|@opentelemetry|AzureMonitorTraceExporter",
+        bicep + src, re.I))
+
+    eval_pass_rate = _read_eval_pass_rate(ctx)
+    cost_per_interaction_usd = _read_cost_per_interaction(ctx)
+
+    return {
+        "latency_declared": latency_declared,
+        "cost_per_interaction_declared": cost_per_interaction_declared,
+        "success_rate_declared": success_rate_declared,
+        "deviation_alert_present": deviation_alert_present,
+        "traces_emit": traces_emit,
+        "eval_pass_rate": eval_pass_rate,
+        "cost_per_interaction_usd": cost_per_interaction_usd,
+    }
+
+
+def _read_eval_pass_rate(ctx: RepoContext) -> float | None:
+    """Read the eval pass-rate (0..1) from specs/evals-manifest.json. None if
+    absent/garbage. Accepts `metrics.pass_rate` or top-level `pass_rate`."""
+    data = _load_leg_manifest(ctx, "evals-manifest.json")
+    if not isinstance(data, dict):
+        return None
+    for path in (("metrics", "pass_rate"), ("pass_rate",)):
+        node: object = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            val = float(node)
+            return val / 100.0 if val > 1.0 else val
+    return None
+
+
+def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
+    """Read cost-per-interaction (USD) from specs/cost-manifest.json. None if
+    absent/garbage. Accepts `cost_per_interaction_usd` or
+    `unit_economics.cost_per_interaction_usd`."""
+    path = ctx.root / "specs" / "cost-manifest.json"
+    raw = _read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for keypath in (("cost_per_interaction_usd",), ("unit_economics", "cost_per_interaction_usd")):
+        node: object = data
+        for key in keypath:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            return float(node)
+    return None
+
+
+def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
+    """Emit the three outcome-KPI findings (F7). should-fix / tier-0; never raises."""
+    out: list[Finding] = []
+    sig = _kpi_signals(ctx)
+
+    # KPI-001 — baselines declared
+    triples = (
+        ("latency", sig["latency_declared"]),
+        ("cost-per-interaction", sig["cost_per_interaction_declared"]),
+        ("success-rate", sig["success_rate_declared"]),
+    )
+    missing = [name for name, ok in triples if not ok]
+    if not missing:
+        out.append(_mk_finding("KPI-001", status="pass",
+            detail="Outcome KPI baselines declared: latency, cost-per-interaction, success-rate "
+                   "(CAF agent observability baselines)."))
+    else:
+        out.append(_mk_finding("KPI-001", status="should-fix",
+            detail=f"Outcome KPI baseline(s) not declared: {', '.join(missing)}. "
+                   "Declare target latency, cost-per-interaction, and success-rate so deviation "
+                   "can be measured."))
+
+    # KPI-002 — deviation alert wired
+    if sig["deviation_alert_present"]:
+        out.append(_mk_finding("KPI-002", status="pass",
+            detail="Deviation alert wired against a KPI baseline (latency/cost/success drift)."))
+    else:
+        out.append(_mk_finding("KPI-002", status="should-fix",
+            detail="No deviation alert wired for a KPI baseline — add a metric/log alert on "
+                   "latency, cost-per-interaction, or success-rate drift (see recipe KPI-002)."))
+
+    # KPI-003 — joined outcome scorecard
+    have = []
+    if sig["eval_pass_rate"] is not None:
+        have.append("eval pass-rate")
+    if sig["cost_per_interaction_usd"] is not None:
+        have.append("cost-per-interaction")
+    if sig["traces_emit"]:
+        have.append("traces")
+    if len(have) == 3:
+        out.append(_mk_finding("KPI-003", status="pass",
+            detail=(f"Outcome scorecard joinable: eval pass-rate {sig['eval_pass_rate']:.0%}, "
+                    f"cost-per-interaction ${sig['cost_per_interaction_usd']:.4f}, traces emitting.")))
+    elif not have:
+        out.append(_mk_finding("KPI-003", status="not-verified",
+            detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq, "
+                   "and foundry-observability to populate the scorecard."))
+    else:
+        out.append(_mk_finding("KPI-003", status="should-fix",
+            detail=(f"Partial outcome scorecard ({', '.join(have)} present). Join all three "
+                    "(eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.")))
     return out
 
 
@@ -4689,10 +4850,38 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("- Pricing plan declared in SPEC § 10: " + ("yes" if any(f.id == "COST-001" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no"))
     out.append("- Budget alerts wired: " + ("yes" if any(f.id == "COST-101" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no / not-verified"))
     out.append("")
-    # 8. Eval summary
-    out.append("## 8. Eval summary")
+    # 8. Outcome KPI scorecard
+    out.append("## 8. Outcome KPI scorecard")
     out.append("")
-    out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
+    kpi = manifest.get("kpi_scorecard") or {}
+    if kpi:
+        def _yn(v: bool) -> str:
+            return "✅ yes" if v else "⚠️ no"
+        pr_val = kpi.get("eval_pass_rate")
+        cpi_val = kpi.get("cost_per_interaction_usd")
+        pr_str = f"{pr_val:.0%}" if isinstance(pr_val, (int, float)) else "not-verified"
+        cpi_str = f"${cpi_val:.4f}" if isinstance(cpi_val, (int, float)) else "not-verified"
+        out.append("Joins the three signals CAF asks teams to measure as a real outcome "
+                   "(eval quality + unit cost + live telemetry):")
+        out.append("")
+        out.append("| KPI signal | Value | Source |")
+        out.append("|---|---|---|")
+        out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
+        out.append(f"| Cost-per-interaction | {cpi_str} | `specs/cost-manifest.json` (threadlight-consumption-iq) |")
+        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
+        out.append("")
+        out.append("| Baseline declared | Status |")
+        out.append("|---|---|")
+        out.append(f"| Latency | {_yn(bool(kpi.get('latency_declared')))} |")
+        out.append(f"| Cost-per-interaction | {_yn(bool(kpi.get('cost_per_interaction_declared')))} |")
+        out.append(f"| Success-rate | {_yn(bool(kpi.get('success_rate_declared')))} |")
+        out.append(f"| Deviation alert wired | {_yn(bool(kpi.get('deviation_alert_present')))} |")
+        out.append("")
+        out.append("_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` "
+                   "(scorecard joinable) under pillar 5. Run `foundry-evals` and paste eval "
+                   "thresholds into SPEC § 9._")
+    else:
+        out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
     out.append("")
     # 9. Residual risk + rollout/rollback
     out.append("## 9. Residual risk, RACI, rollout / rollback / cutover")
@@ -5134,7 +5323,7 @@ def main(argv: list[str] | None = None) -> int:
         freshness_hours=args.freshness_hours,
         include_experimental=args.include_experimental,
     )
-
+    out_manifest["kpi_scorecard"] = _kpi_signals(ctx)
     out_path = root / args.out
     report_path = root / args.report
     try:
