@@ -1,0 +1,28 @@
+# AGT governance policy — baseline template
+#
+# Copy to the pilot root as `policy.yaml` (or `agt-policy.yaml`), pin a real
+# `version`, and fill `tools.allow` / `tools.deny` from the pilot's agent.yaml
+# tool set. Enforced in-process by the AGT middleware on every tool call.
+version: "REPLACE_WITH_AGT_VERSION"        # e.g. 4.1.0 — never 'latest'
+agent_control_specification_version: "2026.1"
+
+references:
+  - owasp-asi-2026   # OWASP Agentic Security Initiative — Agentic Top 10
+
+# Responsible-AI posture (pillar 7). AGT references the model guardrail; the
+# token-level filter itself is configured on the model (Content Safety).
+responsible_ai:
+  content_filter: standard
+  prompt_shields: true          # jailbreak + indirect (XPIA) attack defence
+  pii_redact: true
+
+# Action-level controls (the part AGT actually enforces).
+tools:
+  allow: []                     # explicit allow-list from agent.yaml tools
+  deny:
+    - shell_exec
+    - send_external_email
+
+excessive_agency:
+  max_tool_calls_per_turn: 8
+  max_chained_actions: 16

@@ -1,0 +1,24 @@
+# AGT governance policy (FIXTURE — wired)
+# Action-level controls enforced in-process by the AGT middleware.
+version: "4.1.0"
+agent_control_specification_version: "2026.1"
+
+references:
+  - owasp-asi-2026   # OWASP Agentic Security Initiative — Agentic Top 10
+
+responsible_ai:
+  content_filter: standard
+  prompt_shields: true          # jailbreak + indirect (XPIA) attack defence
+  pii_redact: true
+
+tools:
+  allow:
+    - search_catalog
+    - create_ticket
+  deny:
+    - shell_exec
+    - send_external_email
+
+human_in_the_loop:
+  require_approval_for:
+    - create_ticket
