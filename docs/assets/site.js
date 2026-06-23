@@ -274,6 +274,17 @@
       return;
     }
 
+    // Exactly one link is active at all times: start on the first section,
+    // and only ever MOVE the highlight to the most-visible section — never
+    // clear it to zero (which left no pill lit at the very top or bottom).
+    let activeId = null;
+    const setActive = (id) => {
+      if (!id || id === activeId || !linksById.has(id)) return;
+      activeId = id;
+      linksById.forEach((a, key) => a.classList.toggle('is-active', key === id));
+    };
+    setActive(targets[0].getAttribute('data-toc-id'));
+
     const visible = new Map();
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => {
@@ -286,8 +297,7 @@
       visible.forEach((ratio, id) => {
         if (ratio > bestRatio) { bestRatio = ratio; bestId = id; }
       });
-      linksById.forEach((a) => a.classList.remove('is-active'));
-      if (bestId && linksById.has(bestId)) linksById.get(bestId).classList.add('is-active');
+      if (bestId) setActive(bestId);
     }, {
       rootMargin: '-30% 0px -55% 0px',
       threshold: [0, 0.25, 0.5, 0.75, 1]

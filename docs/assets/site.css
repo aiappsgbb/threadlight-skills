@@ -226,6 +226,19 @@
   .masthead .nav .nav-ico { width: 14px; height: 14px; flex: 0 0 14px; opacity: .8; }
   .masthead .nav a:hover .nav-ico,
   .masthead .nav a[aria-current="page"] .nav-ico { opacity: 1; }
+  @media (max-width: 1000px) {
+    .masthead { padding: 16px 20px; }
+    .masthead .brand-name span { display: none; }
+    .masthead .nav {
+      gap: 12px;
+      font-size: 11.5px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      row-gap: 6px;
+    }
+    .masthead .nav .nav-ico { display: none; }
+    .masthead .nav a { gap: 0; }
+  }
   @media (max-width: 720px) { .masthead .nav { display: none; } }
 
   /* ---------- shared scene ---------- */
@@ -893,7 +906,7 @@
   }
   footer a { color: var(--ink-2); border-bottom: 1px dotted var(--ink-3); }
   footer a:hover { color: var(--lime-1); border-bottom-color: var(--lime); }
-  footer .right { display: flex; gap: 22px; }
+  footer .right { display: flex; flex-wrap: wrap; gap: 10px 22px; }
 
   /* ---------- shared inline-icon shape ---------- */
   .icon-inline { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
@@ -1644,14 +1657,16 @@
      attributes on its target sections.
      ============================================================ */
   .floating-toc {
-    position: fixed;
-    top: 50%;
-    right: 16px;
-    transform: translateY(-50%);
-    width: 200px;
-    max-height: 70vh;
-    overflow-y: auto;
-    padding: 16px 14px;
+    position: sticky;
+    top: 72px;
+    right: auto;
+    transform: none;
+    width: auto;
+    max-width: 980px;
+    margin: 0 auto 24px;
+    max-height: none;
+    overflow-y: visible;
+    padding: 10px 16px;
     background: rgba(17, 21, 31, .82);
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -1667,19 +1682,15 @@
     opacity: 1;
     pointer-events: auto;
   }
-  .floating-toc .toc-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: var(--ink-2);
-    margin: 0 0 10px;
-  }
+  .floating-toc .toc-title { display: none; }
   .floating-toc ol {
     list-style: none;
     margin: 0;
     padding: 0;
     counter-reset: tocstep;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
   }
   .floating-toc li {
     counter-increment: tocstep;
@@ -1690,24 +1701,14 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
-    padding: 6px 6px 6px 18px;
+    padding: 6px 12px;
     font-family: var(--sans);
-    font-size: 12.5px;
+    font-size: 12px;
     line-height: 1.4;
     color: var(--ink-2);
     text-decoration: none;
     border-radius: 6px;
     transition: color .15s ease, background .15s ease;
-  }
-  .floating-toc a::before {
-    content: counter(tocstep, decimal-leading-zero);
-    position: absolute;
-    left: 0;
-    top: 7px;
-    font-family: var(--mono);
-    font-size: 9.5px;
-    letter-spacing: .12em;
-    color: var(--ink-3);
   }
   .floating-toc a:hover,
   .floating-toc a:focus-visible {
@@ -1719,41 +1720,7 @@
     color: var(--accent-1);
     background: var(--accent-soft);
   }
-  .floating-toc a.is-active::before {
-    color: var(--accent-1);
-  }
 
-  @media (max-width: 1280px) {
-    .floating-toc {
-      width: 180px;
-      right: 12px;
-    }
-  }
-  @media (max-width: 1100px) {
-    .floating-toc {
-      position: sticky;
-      top: 72px;
-      transform: none;
-      right: auto;
-      left: auto;
-      width: auto;
-      max-width: 980px;
-      margin: 0 auto 24px;
-      padding: 10px 16px;
-      max-height: none;
-    }
-    .floating-toc .toc-title { display: none; }
-    .floating-toc ol {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-    .floating-toc a {
-      padding: 6px 12px;
-      font-size: 12px;
-    }
-    .floating-toc a::before { display: none; }
-  }
   @media (max-width: 560px) {
     .floating-toc { display: none; }
   }
@@ -1837,31 +1804,6 @@
   }
   .chapter-hero .breadcrumb a:hover { color: var(--ink-0); border-bottom-color: var(--chapter-accent, var(--accent-1)); }
 
-  /* ----- "In this chapter" inline mini-ToC under the hero lede ----- */
-  .chapter-toc-inline {
-    display: flex; flex-wrap: wrap; gap: 10px;
-    justify-content: center;
-    margin: 32px auto 0;
-    max-width: 760px;
-  }
-  .chapter-toc-inline a {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--ink-1);
-    background: var(--bg-2);
-    border: 1px solid var(--line);
-    border-radius: 99px;
-    padding: 7px 14px;
-    text-decoration: none;
-    transition: border-color .18s ease, color .18s ease, background .18s ease;
-  }
-  .chapter-toc-inline a:hover {
-    border-color: var(--chapter-accent, var(--accent-1));
-    color: var(--ink-0);
-    background: var(--bg-3);
-  }
 
   .chapter-section {
     padding: 64px 0;
@@ -1961,40 +1903,6 @@
     .detail-card code {
       color: var(--accent);
       background: rgba(79,109,255,.10);
-    }
-  }
-
-  /* ============================================================
-     Reserve room on the right edge for the floating ToC.
-     Applies to ANY page with a floating-toc (chapter pages AND
-     homepage) on wide viewports (>1100px). Uses :has() so we
-     don't need a body class flip. Below 1100px the ToC collapses
-     to a sticky pill bar above content, and below 560px it
-     disappears entirely, so no reservation needed.
-     ============================================================ */
-  @media (min-width: 1101px) {
-    /* Default .wrap (text columns) reserves room for the ToC so prose
-       doesn't collide with it. wrap-wide and wrap-xl handle the ToC by
-       capping their max-width against the viewport instead, which lets
-       hero SVGs spread far wider while still clearing the ToC zone. */
-    body.chapter-page .chapter-section .wrap:not(.wrap-wide):not(.wrap-xl),
-    body.chapter-page .chapter-hero    .wrap:not(.wrap-wide):not(.wrap-xl) {
-      padding-right: 220px;
-    }
-    body:has(.floating-toc) main > section.scene .wrap:not(.wrap-wide):not(.wrap-xl),
-    body:has(.floating-toc) main > section > .wrap:not(.wrap-wide):not(.wrap-xl) {
-      padding-right: 200px;
-    }
-    /* For wide and extra-wide wraps, constrain max-width so the right
-       edge stays out of the ToC zone (~220px) without padding the box.
-       This is the key to actually using horizontal space on chapter pages. */
-    body.chapter-page .chapter-section .wrap.wrap-wide,
-    body:has(.floating-toc) main > section > .wrap.wrap-wide {
-      max-width: min(1480px, calc(100vw - 240px));
-    }
-    body.chapter-page .chapter-section .wrap.wrap-xl,
-    body:has(.floating-toc) main > section > .wrap.wrap-xl {
-      max-width: min(1720px, calc(100vw - 220px));
     }
   }
 
@@ -3295,7 +3203,7 @@
   font-size: 11px;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 980px) {
   .agt-track,
   .agt-stage-labels {
     grid-template-columns: 1fr;
@@ -3431,4 +3339,31 @@
   background: color-mix(in srgb, var(--lime) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--lime) 24%, transparent);
   color: var(--ink-2);
+}
+
+/* ============================================================
+   MOBILE CONTAINMENT (<=560px)
+   Keep long mono content (skill invoke lines, INPUT/OUTPUT
+   blocks, AGT pillar owners) inside the viewport so the page
+   never scrolls horizontally on phones.
+   ============================================================ */
+@media (max-width: 560px) {
+  .skill-card { min-width: 0; }
+  .skill-io {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-width: 0;
+  }
+  .skill-io .io-block { min-width: 0; }
+  .skill-io .io-block .io-val { overflow-wrap: anywhere; word-break: break-word; }
+  .skill-io .io-arrow { display: none; }
+  .skill-invoke { min-width: 0; max-width: 100%; }
+  pre, code { max-width: 100%; }
+
+  .agt-pillar { grid-template-columns: 14px 1fr; row-gap: 4px; }
+  .agt-pillar .agt-owner {
+    grid-column: 2;
+    text-align: left;
+    white-space: normal;
+  }
 }
