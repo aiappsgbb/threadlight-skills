@@ -115,7 +115,7 @@
   .wb-arrow { align-self: center; color: var(--ink-3); flex: none; font-family: var(--mono); }
   @media (max-width: 720px) { .wb-arrow { display: none; } .wb-node { min-width: 0; flex: 1 1 44%; } }
 
-  /* — Part 1 step cards ————————————————————————————————————— */
+  /* — stage entrypoint step cards ——————————————————————————— */
   .wb-step { border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, var(--bg-1), var(--bg-0)); padding: 22px clamp(18px,2.4vw,30px) 24px; margin-top: 18px; position: relative; }
   .wb-step .sh { display: flex; align-items: flex-start; gap: 14px; }
   .wb-step .num { flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-family: var(--serif); font-size: 1.35rem; color: var(--bg-0); background: var(--chapter-accent); box-shadow: 0 8px 22px -10px var(--chapter-accent); }
@@ -138,7 +138,7 @@
   .wb-note.red .k { color: #ff8079; }
   .wb-note b { color: var(--ink-0); font-weight: 650; }
 
-  /* — Part 2 stage cards ———————————————————————————————————— */
+  /* — legacy stage cards (tags reused by the legend) ————————— */
   .wb-stages { display: grid; gap: 14px; margin-top: 12px; }
   .wb-stage { border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); padding: 20px clamp(16px,2.2vw,26px) 22px; }
   .wb-stage .sg-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
@@ -178,6 +178,56 @@
   .wb-verdict h2 em { font-style: italic; color: var(--chapter-accent); }
   .wb-verdict p { color: var(--ink-1); line-height: 1.66; max-width: 60ch; margin: 0 auto 22px; }
   .wb-verdict .hero-cta-row { justify-content: center; }
+
+  /* — three-stage arc ———————————————————————————————————————— */
+  .wb-arc.tri { grid-template-columns: repeat(3, minmax(0,1fr)); align-items: stretch; }
+  @media (max-width: 860px) { .wb-arc.tri { grid-template-columns: 1fr; } }
+  .wb-zone.z-design { border-color: color-mix(in srgb, var(--lime) 30%, var(--line)); }
+  .wb-zone.z-deploy { border-color: color-mix(in srgb, var(--chapter-accent) 30%, var(--line)); }
+  .wb-zone.z-design::before { background: var(--lime); }
+  .wb-zone.z-deploy::before { background: var(--chapter-accent); }
+  .wb-zone.z-design .zh .t { color: var(--lime); }
+  .wb-zone.z-deploy .zh .t { color: var(--chapter-accent); }
+  .wb-zone .zh .t .zn { font-family: var(--serif); font-size: 1.18rem; line-height: 1; margin-right: 3px; }
+  .wb-zone .ze { font-family: var(--mono); font-size: .92rem; color: var(--ink-0); font-weight: 650; margin: 2px 0 6px; }
+  .wb-zone .zd { font-size: .82rem; color: var(--ink-2); line-height: 1.5; margin: 0 0 13px; }
+  .wb-zone .zd code { font-family: var(--mono); font-size: .82em; color: var(--ink-1); }
+  .wb-zone .zlegs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: auto; }
+  .wb-zone .zlegs .lc { width: 100%; font-family: var(--mono); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 1px; }
+  .wb-zone .leg { font-family: var(--mono); font-size: .72rem; border: 1px dashed var(--line-2); border-radius: 7px; padding: 3px 8px; color: var(--ink-2); background: var(--bg-2); }
+  .wb-zone.z-design, .wb-zone.z-deploy, .wb-zone.z-prod { display: flex; flex-direction: column; }
+
+  /* — full-auto callout ——————————————————————————————————————— */
+  .wb-auto { margin-top: 16px; border: 1px solid color-mix(in srgb, var(--chapter-accent) 30%, var(--line)); border-radius: 14px; background: radial-gradient(120% 170% at 0% 0%, color-mix(in srgb, var(--chapter-accent) 12%, transparent), transparent 60%), var(--bg-1); padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+  .wb-auto .lbl { font-family: var(--mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--chapter-accent); flex: none; }
+  .wb-auto .tx { font-size: .92rem; color: var(--ink-1); line-height: 1.55; flex: 1 1 320px; }
+  .wb-auto .tx b { color: var(--ink-0); }
+  .wb-auto code { font-family: var(--mono); font-size: .82em; color: var(--chapter-accent); }
+
+  /* — stage divider accents ——————————————————————————————————— */
+  .wb-act.is-design .k { color: var(--lime); }
+  .wb-act.is-design .k::before, .wb-act.is-design .k::after { background: var(--lime); }
+  .wb-act.is-design h2 em { color: var(--lime); }
+  .wb-act p code, .wb-act h2 code { font-family: var(--mono); font-size: .82em; color: inherit; }
+
+  /* — automated-legs clusters (collapsible) ——————————————————— */
+  .wb-legs { margin-top: 18px; border-top: 1px dashed var(--line-2); padding-top: 16px; }
+  .wb-legs > .legs-h { font-family: var(--mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 12px; display: flex; align-items: center; gap: 9px; line-height: 1.4; }
+  .wb-legs > .legs-h::before { content: ""; width: 15px; height: 15px; border-radius: 5px; background: color-mix(in srgb, var(--chapter-accent) 20%, var(--bg-2)); border: 1px solid var(--line-2); flex: none; }
+  .wb-legs.handoff > .legs-h::before { background: color-mix(in srgb, var(--warn) 22%, var(--bg-2)); }
+  .wb-leg { border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); margin-top: 10px; }
+  .wb-leg > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 12px; padding: 13px 16px; }
+  .wb-leg > summary::-webkit-details-marker { display: none; }
+  .wb-leg > summary::before { content: "\25B8"; color: var(--ink-3); font-size: .82rem; line-height: 1.5; transition: transform .15s; flex: none; }
+  .wb-leg[open] > summary::before { transform: rotate(90deg); }
+  .wb-leg[open] > summary { border-bottom: 1px solid var(--line); }
+  .wb-leg > summary .lk { font-family: var(--mono); font-size: .75rem; color: var(--chapter-accent); }
+  .wb-leg > summary h4 { margin: 0; font-size: .98rem; color: var(--ink-0); font-weight: 650; letter-spacing: -.005em; }
+  .wb-leg > summary .lt { font-size: .82rem; color: var(--ink-2); flex: 1 1 auto; min-width: 0; }
+  .wb-leg > summary .auto { font-family: var(--mono); font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px; white-space: nowrap; flex: none; }
+  .wb-leg .lb { padding: 4px 16px 16px; }
+  .wb-leg .lb > .wb-term, .wb-leg .lb > .wb-out, .wb-leg .lb > .wb-check, .wb-leg .lb > .wb-note { margin-top: 14px; }
+  .wb-leg .lb > *:first-child { margin-top: 14px; }
 </style>
 </head>
 <body class="chapter-page chapter-workbook">
@@ -241,11 +291,11 @@
         <div class="k"><span class="v"><em>~60</em> min</span><span class="l">idea &rarr; live MVP</span></div>
         <div class="k"><span class="v"><em>1</em> prompt</span><span class="l">per stage &mdash; no shell-wrangling</span></div>
         <div class="k"><span class="v">your <em>own</em></span><span class="l">Azure subscription</span></div>
-        <div class="k"><span class="v"><em>14</em> stages</span><span class="l">the exact case-study chain</span></div>
+        <div class="k"><span class="v"><em>3</em> stages</span><span class="l">design &middot; deploy &middot; production</span></div>
       </div>
 
       <div class="hero-cta-row reveal" data-delay="4">
-        <a class="btn btn-primary" href="#part1">Start Part 1 <span class="arrow">&darr;</span></a>
+        <a class="btn btn-primary" href="#stage-design">Start: Design <span class="arrow">&darr;</span></a>
         <a class="btn btn-ghost" href="./case-study.html">See it run for real <span class="arrow">&rarr;</span></a>
       </div>
     </div>
@@ -260,7 +310,7 @@
         <p class="eyebrow"><span class="dot"></span>Before you start</p>
         <h2>Six things on the bench, then <em>one pre-flight prompt.</em></h2>
         <p class="section-lede wb-lede">
-          Everything signed in before Step 1 &mdash; not discovered mid-runbook. The skills
+          Everything signed in before the first prompt &mdash; not discovered mid-stage. The skills
           authenticate with Entra (<code>DefaultAzureCredential</code>), so there are no API
           keys to paste anywhere.
         </p>
@@ -280,7 +330,7 @@
         <div class="wb-pre">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l4-7h10l4 7-4 7H7z"/></svg></div>
           <h4>Azure CLI &middot; <code>az</code></h4>
-          <p>Signed in to a subscription <strong>you can deploy to</strong>. Entra auth, no keys. Part 1 runs entirely here.</p>
+          <p>Signed in to a subscription <strong>you can deploy to</strong>. Entra auth, no keys. Deploy (Stage&nbsp;2) runs entirely here.</p>
         </div>
         <div class="wb-pre">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-3 0-3 2-3 3v2h6"/><path d="M12 21c3 0 3-2 3-3v-2H9"/><rect x="6" y="8" width="12" height="8" rx="2"/></svg></div>
@@ -318,107 +368,80 @@ signed in, and tell me which subscription az is pointed at</div>
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>The arc at a glance</p>
-        <h2>Two halves: <em>hands-on today</em>, then the <em>production track.</em></h2>
+        <h2>Three stages, <em>one prompt each.</em></h2>
         <p class="section-lede wb-lede">
-          Part 1 is the inner loop &mdash; idea to a live, invokable agent you stood up
-          yourself. Part 2 is everything that turns a working pilot into something a bank&rsquo;s
-          architecture-review board signs off on.
+          The journey is short by design &mdash; <em>Design</em>, <em>Deploy</em>, <em>Production</em>,
+          one entrypoint skill per stage. Every other skill in the chain runs <em>underneath</em>
+          those three; they automate the work rather than hand you a checklist.
         </p>
       </div>
 
-      <div class="wb-arc reveal" data-delay="1">
-        <div class="wb-zone">
-          <div class="zh">
-            <span class="t">● Hands-on today</span>
-            <span class="s">runs entirely on your own subscription &middot; ~60 min</span>
-          </div>
-          <div class="wb-flow">
-            <div class="wb-node"><span class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10c.8.8 1 1.3 1 3h6c0-1.7.2-2.2 1-3a6 6 0 0 0-4-10z"/></svg>Idea</span><span class="c">one paragraph</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>Design</span><span class="c">spec + agent</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Local test</span><span class="c">runs on a laptop</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="2.5"/></svg>Deploy</span><span class="c">live MVP, your sub</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>Invoke</span><span class="c">two cases proven</span></div>
-          </div>
+      <div class="wb-arc tri reveal" data-delay="1">
+        <div class="wb-zone z-design">
+          <div class="zh"><span class="t"><span class="zn">&#9312;</span> Design</span><span class="s">~15 min &middot; your laptop</span></div>
+          <p class="ze">threadlight-design</p>
+          <p class="zd">Your paragraph &rarr; <code>SPEC.md</code> and a runnable agent.</p>
+          <div class="zlegs"><span class="lc">runs for you</span><span class="leg">demo-data-factory</span><span class="leg">local-test</span></div>
         </div>
-
+        <div class="wb-zone z-deploy">
+          <div class="zh"><span class="t"><span class="zn">&#9313;</span> Deploy</span><span class="s">~20 min &middot; your Azure sub</span></div>
+          <p class="ze">threadlight-deploy</p>
+          <p class="zd">One <code>azd up</code> &rarr; a live hosted agent you invoke.</p>
+          <div class="zlegs"><span class="lc">runs for you</span><span class="leg">safe-check</span><span class="leg">invoke &times;2</span></div>
+        </div>
         <div class="wb-zone z-prod">
-          <div class="zh">
-            <span class="t">▲ Production track</span>
-            <span class="s">documented with the real prompts &middot; needs a Citadel hub &amp; budget</span>
-          </div>
-          <div class="wb-flow">
-            <div class="wb-node"><span class="nm">Safe-check</span><span class="c">the honest gate</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Cost</span><span class="c">real $/mo</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Evals</span><span class="c">14/15 scored</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Observe</span><span class="c">~2k traces</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Ready?</span><span class="c">45% &amp; correct</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Spoke</span><span class="c">keyless onboard</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Prod</span><span class="c">no model of its own</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">CI/CD</span><span class="c">pipeline holds keys</span></div>
-            <span class="wb-arrow">→</span>
-            <div class="wb-node"><span class="nm">Handoff</span><span class="c">runbooks + map</span></div>
-          </div>
+          <div class="zh"><span class="t"><span class="zn">&#9314;</span> Production</span><span class="s">needs a hub &amp; budget</span></div>
+          <p class="ze">threadlight-production-ready</p>
+          <p class="zd">A 13-pillar gate scores the pilot &rarr; the road to governed prod.</p>
+          <div class="zlegs"><span class="lc">reads / hands off</span><span class="leg">evals</span><span class="leg">cost</span><span class="leg">observe</span><span class="leg">spoke &middot; cicd</span></div>
         </div>
+      </div>
+
+      <div class="wb-auto reveal" data-delay="2">
+        <span class="lbl">Full-auto</span>
+        <span class="tx">Rather watch than drive? <b>One <code>threadlight-auto</code> prompt runs all three stages</b> end-to-end &mdash; design, deploy, then the production gate &mdash; pausing only where a human decision is required. The three entrypoint prompts below are exactly what it runs for you.</span>
       </div>
     </div>
   </section>
 
-  <!-- ==================== ACT — PART 1 ==================== -->
-  <div class="wb-act reveal">
-    <p class="k">Part 1</p>
-    <h2>Hands-on to a <em>working MVP.</em></h2>
-    <p>Five steps, each one prompt into Copilot CLI. After every step, a &ldquo;you&rsquo;ll know it worked when&rdquo; checkpoint &mdash; so you can tell green from broken without guessing.</p>
+  <!-- ==================== STAGE 1 — DESIGN ==================== -->
+  <div class="wb-act is-design reveal">
+    <p class="k">Stage 1 of 3</p>
+    <h2><em>Design</em> &mdash; your paragraph becomes a spec.</h2>
+    <p>One entrypoint &mdash; <code>threadlight-design</code>. It writes the spec and the agent; seeding demo data and an optional laptop smoke test run underneath it. No other prompt required.</p>
   </div>
 
-  <section class="chapter-section" id="part1" data-toc-id="part1" data-toc-label="Part 1 · to MVP">
+  <section class="chapter-section" id="stage-design" data-toc-id="stage-design" data-toc-label="&#9312; Design">
     <div class="wrap wrap-wide">
 
-      <!-- Step 1 -->
+      <details class="wb-leg reveal" style="margin-top:0;">
+        <summary><span class="lk">setup</span><h4>First time only &mdash; install the plugins &amp; launch on a strong model</h4><span class="auto">one-off</span></summary>
+        <div class="lb">
+          <div class="wb-term">
+            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — install plugins</span></div>
+            <div class="body"><span class="ps">$</span> <span class="cmd">copilot</span>
+install the awesome-gbb and threadlight-skills plugins from the
+aiappsgbb org on github, then list my installed copilot plugins</div>
+          </div>
+          <div class="wb-term">
+            <div class="bar"><i></i><i></i><i></i><span class="ttl">shell — launch on a strong model</span></div>
+            <div class="body"><span class="ps">$</span> <span class="cmd">copilot --model <span class="hl">claude-opus-4.8</span> --effort high \
+        --plugin-dir ./threadlight-skills --plugin-dir ./awesome-gbb</span></div>
+          </div>
+          <div class="wb-check">
+            <p class="h">You'll know it worked when</p>
+            <p>The plugin list shows <b>both</b> <code>threadlight-skills</code> and <code>awesome-gbb</code>, and Copilot reports the active model is <code>claude-opus-4.8</code> (or <code>gpt-5.5</code>). A stronger agent writes a stronger spec and catches its own bugs.</p>
+          </div>
+        </div>
+      </details>
+
       <div class="wb-step reveal">
         <div class="sh">
           <div class="num">1</div>
           <div class="tt">
-            <p class="skill">install + launch</p>
-            <h3>Install the plugins, launch on a strong model</h3>
-            <p class="does">Pull both skill libraries from the <code>aiappsgbb</code> org, then start Copilot CLI on a current-generation model so the inner agent is strong enough to spec and self-correct.</p>
-          </div>
-        </div>
-        <div class="wb-term">
-          <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — install plugins</span></div>
-          <div class="body"><span class="ps">$</span> <span class="cmd">copilot</span>
-install the awesome-gbb and threadlight-skills plugins from the
-aiappsgbb org on github, then list my installed copilot plugins</div>
-        </div>
-        <div class="wb-term">
-          <div class="bar"><i></i><i></i><i></i><span class="ttl">shell — launch on a strong model</span></div>
-          <div class="body"><span class="ps">$</span> <span class="cmd">copilot --model <span class="hl">claude-opus-4.8</span> --effort high \
-        --plugin-dir ./threadlight-skills --plugin-dir ./awesome-gbb</span></div>
-        </div>
-        <div class="wb-check">
-          <p class="h">You'll know it worked when</p>
-          <p>The plugin list shows <b>both</b> <code>threadlight-skills</code> and <code>awesome-gbb</code>, and Copilot reports the active model is <code>claude-opus-4.8</code> (or <code>gpt-5.5</code>).</p>
-        </div>
-      </div>
-
-      <!-- Step 2 -->
-      <div class="wb-step reveal">
-        <div class="sh">
-          <div class="num">2</div>
-          <div class="tt">
-            <p class="skill">threadlight-design</p>
-            <h3>Design — your paragraph becomes a spec</h3>
-            <p class="does">The verbatim prompt that started the real run. <b>Swap the BRIEF</b> for your own process and keep the rest &mdash; every later prompt stays the same.</p>
+            <p class="skill">entrypoint &middot; threadlight-design</p>
+            <h3>Hand it your paragraph</h3>
+            <p class="does">The verbatim prompt that started the real run. <b>Swap the BRIEF</b> for your own process and keep the rest &mdash; this single prompt is the whole stage.</p>
           </div>
         </div>
         <div class="wb-term">
@@ -461,41 +484,58 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </div>
       </div>
 
-      <!-- Step 3 -->
-      <div class="wb-step reveal">
-        <div class="sh">
-          <div class="num">3</div>
-          <div class="tt">
-            <p class="skill">threadlight-local-test</p>
-            <h3>Local test — run it before you deploy it</h3>
-            <p class="does">Prove the generated agent actually boots and produces correct answers <b>on a laptop</b>, before spending a minute on Azure.</p>
+      <div class="wb-legs reveal">
+        <p class="legs-h">Runs under the hood &mdash; you don&rsquo;t prompt these separately</p>
+
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-demo-data-factory</span><h4>Seeds the sample data</h4><span class="lt">golden cases &amp; fixtures the spec is graded on</span><span class="auto">auto</span></summary>
+          <div class="lb">
+            <p class="wb-out"><code>threadlight-design</code> seeds <code>specs/sample-data/</code> for you &mdash; the two golden borrowers and their fixtures. You re-derive one headline ratio by hand to prove the numbers are <b>correct, not just plausible</b>; in the real run they reproduced to two decimals.</p>
           </div>
-        </div>
-        <div class="wb-term">
-          <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — Pattern 0 smoke test</span></div>
-          <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-local-test skill to boot this PoC locally
+        </details>
+
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-local-test</span><h4>Optional &mdash; run it on a laptop before you deploy</h4><span class="lt">Pattern 0 smoke test on the two golden cases</span><span class="auto">optional</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — Pattern 0 smoke test</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-local-test skill to boot this PoC locally
   (Pattern 0 — Quickstart) and run a real smoke test on the two
   golden demo cases. Prefer GitHub Models (LLM_BACKEND=copilot,
   auth via gh) with a gpt-5-family model; if none is offered, use
   an Azure OpenAI gpt-5-family deployment. Then run --info and --check.</span></div>
-        </div>
-        <div class="wb-check">
-          <p class="h">You'll know it worked when</p>
-          <p><code>--info</code> prints the auto-discovered entities and CRUD tools, <code>--check</code> exits clean, and the smoke test reproduces the golden ratios <b>exactly</b> &mdash; a policy citation on every assessed line, no self-approval.</p>
-        </div>
-        <div class="wb-note">
-          <span class="k">Why this step earns its keep</span> In the real run this is where two genuine bugs surfaced &mdash; in the harness itself &mdash; because it actually <em>builds</em> the agent rather than describing it.
-        </div>
+            </div>
+            <div class="wb-check">
+              <p class="h">You'll know it worked when</p>
+              <p><code>--info</code> prints the auto-discovered entities and CRUD tools, <code>--check</code> exits clean, and the smoke test reproduces the golden ratios <b>exactly</b> &mdash; a policy citation on every assessed line, no self-approval.</p>
+            </div>
+            <div class="wb-note">
+              <span class="k">Why this leg earns its keep</span> In the real run this is where two genuine bugs surfaced &mdash; in the harness itself &mdash; because it actually <em>builds</em> the agent rather than describing it.
+            </div>
+          </div>
+        </details>
       </div>
 
-      <!-- Step 4 -->
+    </div>
+  </section>
+
+  <!-- ==================== STAGE 2 — DEPLOY ==================== -->
+  <div class="wb-act reveal">
+    <p class="k">Stage 2 of 3</p>
+    <h2><em>Deploy</em> &mdash; the idea goes live on your sub.</h2>
+    <p>One entrypoint &mdash; <code>threadlight-deploy</code>. One <code>azd up</code> stands up a hosted agent; you invoke it on two cases to prove it, and a post-deploy honest gate runs underneath.</p>
+  </div>
+
+  <section class="chapter-section" id="stage-deploy" data-toc-id="stage-deploy" data-toc-label="&#9313; Deploy">
+    <div class="wrap wrap-wide">
+
       <div class="wb-step reveal">
         <div class="sh">
-          <div class="num">4</div>
+          <div class="num">2</div>
           <div class="tt">
-            <p class="skill">threadlight-deploy &middot; <span class="hl">azd up -e dev</span></p>
-            <h3>Deploy — the idea goes live on your sub</h3>
-            <p class="does">One <code>azd up</code> turns the project into a containerized Microsoft Foundry <b>hosted agent</b> on your subscription. Keep the Azure Portal resource-group view open in a second tab &mdash; you&rsquo;ll watch it fill in live.</p>
+            <p class="skill">entrypoint &middot; threadlight-deploy &middot; <span class="hl">azd up -e dev</span></p>
+            <h3>One <code>azd up</code> to your subscription</h3>
+            <p class="does">It turns the project into a containerized Microsoft Foundry <b>hosted agent</b> on your subscription. Keep the Azure Portal resource-group view open in a second tab &mdash; you&rsquo;ll watch it fill in live.</p>
           </div>
         </div>
         <div class="wb-term">
@@ -511,18 +551,10 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         <div class="wb-note red">
           <span class="k">Real failure modes here</span> The run hit &mdash; and recovered from &mdash; a post-deploy <b>404 name-lookup</b> (one key renamed in <code>azure.yaml</code>) and the <b>skipped role assignments</b> it caused. If you see either, the <a href="#recovery">recovery prompts</a> have the one-line fix.
         </div>
-      </div>
 
-      <!-- Step 5 -->
-      <div class="wb-step reveal">
-        <div class="sh">
-          <div class="num">5</div>
-          <div class="tt">
-            <p class="skill">azd ai agent invoke &times; 2</p>
-            <h3>Invoke — the two cases that prove it</h3>
-            <p class="does">Run the agent <b>live</b>, from the command line, on two contrasting cases &mdash; one clean, one that trips every alarm.</p>
-          </div>
-        </div>
+        <p class="skill" style="margin:24px 0 0;">then verify &middot; azd ai agent invoke &times; 2</p>
+        <h3 style="margin:5px 0 0;font-size:clamp(1.08rem,2vw,1.32rem);letter-spacing:-.01em;">Invoke the two cases that prove it</h3>
+        <p class="does" style="margin:6px 0 0;color:var(--ink-2);font-size:.92rem;line-height:1.55;">Run the agent <b>live</b>, from the command line, on two contrasting cases &mdash; one clean, one that trips every alarm.</p>
         <div class="wb-term">
           <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — invoke the live agent</span></div>
           <div class="body"><span class="ps">›</span> <span class="cmd">Use azd ai agent invoke to run the live agent on the first golden
@@ -537,21 +569,45 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
           <p><b>That <code>pending_review</code> state is the whole point:</b> the agent drafts, a person decides.</p>
         </div>
         <div class="wb-note" style="border-left-color:var(--lime);border-color:color-mix(in srgb,var(--lime) 30%,var(--line));background:color-mix(in srgb,var(--lime) 5%,var(--bg-1));">
-          <span class="k" style="color:var(--lime);">🎉 That&rsquo;s the MVP</span> You took a paragraph to a governed-ready agent on your own Azure &mdash; and proved it yourself. Everything past here is the road to production.
+          <span class="k" style="color:var(--lime);">🎉 That&rsquo;s the MVP</span> You took a paragraph to a governed-ready agent on your own Azure &mdash; and proved it yourself. Stage 3 is the road from here to governed production.
         </div>
+      </div>
+
+      <div class="wb-legs reveal">
+        <p class="legs-h">Runs under the hood &mdash; you don&rsquo;t prompt these separately</p>
+
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-safe-check</span><h4>The post-deploy gate that tells the truth</h4><span class="lt">real defect vs. deliberately-deferred hardening</span><span class="auto">auto</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-safe-check skill to run all phases against this
+  project and tell me, gap by gap, what's a real defect versus
+  deliberately-deferred hardening.</span></div>
+            </div>
+            <p class="wb-out">In the run it came back <b>red on all three phases</b> &mdash; and that was the most useful result yet: of 27 gaps, 26 were hardening deliberately deferred to production, exactly one a real (trivial) defect. <b>A red safe-check on a lean pilot is correct</b>, not a failure.</p>
+          </div>
+        </details>
+
+        <details class="wb-leg">
+          <summary><span class="lk">workspace-ui &middot; hitl-patterns &middot; event-triggers</span><h4>Only if your SPEC declares them</h4><span class="lt">a review UI, approval gates, or scheduled / event runs</span><span class="auto">conditional</span></summary>
+          <div class="lb">
+            <p class="wb-out">If the spec calls for a human-review surface, richer approval gates, or scheduled / event-driven runs, <code>threadlight-deploy</code> pulls in <code>threadlight-workspace-ui</code>, <code>threadlight-hitl-patterns</code>, and <code>threadlight-event-triggers</code>. The credit-memo pilot keeps its human gate at <code>pending_review</code>, so these stay dormant unless your spec asks for them.</p>
+          </div>
+        </details>
       </div>
 
     </div>
   </section>
 
-  <!-- ==================== ACT — PART 2 ==================== -->
+  <!-- ==================== STAGE 3 — PRODUCTION ==================== -->
   <div class="wb-act is-prod reveal">
-    <p class="k">Part 2</p>
-    <h2>The <em>production track.</em></h2>
-    <p>The real prompts from the run, in order. Reproducible &mdash; but several stages call a Citadel governance hub you probably don&rsquo;t own, and the track spends real Azure money over a few hours. This is the <em>documented</em> path; the <a href="./case-study.html">case study</a> is the evidence it lands.</p>
+    <p class="k">Stage 3 of 3</p>
+    <h2>The road to <em>governed production.</em></h2>
+    <p>One entrypoint &mdash; <code>threadlight-production-ready</code>. A 13-pillar gate scores the pilot and pins every gap to the step that closes it. The cost, evals, observability, red-team and governance legs write the manifests it reads &mdash; plus the Stage&nbsp;2 safe-check &mdash; and the hand-off skills take it the rest of the way. Reproducible, but several legs call a Citadel hub you probably don&rsquo;t own and spend real Azure money; the <a href="./case-study.html">case study</a> is the evidence it lands.</p>
   </div>
 
-  <section class="chapter-section" id="part2" data-toc-id="part2" data-toc-label="Part 2 · production">
+  <section class="chapter-section" id="stage-production" data-toc-id="stage-production" data-toc-label="&#9314; Production">
     <div class="wrap wrap-wide">
 
       <div class="wb-note reveal" style="margin-top:0;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
@@ -560,84 +616,90 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         <span><span class="wb-tag t-hub">🔵 needs a Citadel hub you can onboard to</span></span>
       </div>
 
-      <div class="wb-stages">
-
-        <!-- 6 safe-check -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">6</span><h3>Safe-check &mdash; the gate that tells the truth</h3><span class="skill">threadlight-safe-check</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-safe-check skill to run all phases against this
-  project and tell me, gap by gap, what's a real defect versus
-  deliberately-deferred hardening.</span></div>
+      <div class="wb-step reveal">
+        <div class="sh">
+          <div class="num">3</div>
+          <div class="tt">
+            <p class="skill">entrypoint &middot; threadlight-production-ready</p>
+            <h3>Score the pilot against its target</h3>
+            <p class="does">The gate runs the whole production checklist for you and reads every leg&rsquo;s manifest &mdash; you don&rsquo;t score pillars by hand.</p>
           </div>
-          <p class="wb-out">In the run it came back <b>red on all three phases</b> &mdash; and that was the most useful result yet: of 27 gaps, 26 were hardening deliberately deferred to production, exactly one a real (trivial) defect. <b>A red safe-check on a lean pilot is correct</b>, not a failure.</p>
         </div>
+        <div class="wb-term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+          <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-production-ready skill to score this pilot
+  against a private, gateway-fronted spoke target, and pin every gap
+  to the stage that closes it.</span></div>
+        </div>
+        <div class="wb-check">
+          <p class="h">You'll know it worked when</p>
+          <p>Scored against the bank&rsquo;s declared target, the lean pilot came back <b>not ready, 45% &mdash; the right answer.</b> The valuable part: each of 34 gaps pinned to the exact later step that closes it, rather than just listed. A 45% here is a correct read of a deliberately-lean pilot.</p>
+        </div>
+      </div>
 
-        <!-- 7 cost -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">7</span><h3>Cost &mdash; what will this actually cost?</h3><span class="skill">threadlight-consumption-iq</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-consumption-iq skill to forecast the monthly run
+      <div class="wb-legs reveal">
+        <p class="legs-h">Reads these manifests &mdash; each leg runs on its own, the gate scores the result</p>
+
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-consumption-iq</span><h4>Cost &mdash; what will this actually cost?</h4><span class="lt">monthly run-cost, broken down by resource</span><span class="auto">🟡 spend</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-consumption-iq skill to forecast the monthly run
   cost of this agent at realistic request volume, and break the bill
   down by resource.</span></div>
+            </div>
+            <p class="wb-out">The first headline was <b>$39,343/mo &mdash; and wrong</b> (priced as if it ran flat-out every second). The skill&rsquo;s own report caught it and recomputed to <b>~$920/mo zone-redundant</b> (or ~$125 with a documented exception). Worth re-deriving: the language model is a <b>rounding error (~$11/mo)</b> &mdash; the bill is the policy search index.</p>
           </div>
-          <p class="wb-out">The first headline was <b>$39,343/mo &mdash; and wrong</b> (priced as if it ran flat-out every second). The skill&rsquo;s own report caught it and recomputed to <b>~$920/mo zone-redundant</b> (or ~$125 with a documented exception). Worth re-deriving: the language model is a <b>rounding error (~$11/mo)</b> &mdash; the bill is the policy search index.</p>
-        </div>
+        </details>
 
-        <!-- 8 evals -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">8</span><h3>Evals &mdash; does it actually work?</h3><span class="skill">foundry-evals</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-evals skill to evaluate the live agent across the
+        <details class="wb-leg">
+          <summary><span class="lk">foundry-evals</span><h4>Evals &mdash; does it actually work?</h4><span class="lt">deterministic graders + a gpt-5 judge</span><span class="auto">🟡 spend</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-evals skill to evaluate the live agent across the
   full scenario set, scored by deterministic graders and a gpt-5
   judge. Report exception recall, citation coverage, and whether it
   ever self-finalized.</span></div>
+            </div>
+            <p class="wb-out">The run scored <b>14/15</b>: 100% of seeded exceptions caught, a clause cited on 41/41 measured lines, never self-finalized, 4.9/5 coherence &mdash; each memo ~20s versus 3&ndash;4 human hours. The single &ldquo;miss&rdquo; was a <b>gap in the test, not the agent</b>.</p>
           </div>
-          <p class="wb-out">The run scored <b>14/15</b>: 100% of seeded exceptions caught, a clause cited on 41/41 measured lines, never self-finalized, 4.9/5 coherence &mdash; each memo ~20s versus 3&ndash;4 human hours. The single &ldquo;miss&rdquo; was a <b>gap in the test, not the agent</b>.</p>
-        </div>
+        </details>
 
-        <!-- 9 observability -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">9</span><h3>Observability &mdash; can we see what it&rsquo;s doing?</h3><span class="skill">foundry-observability</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-observability skill to confirm the agent is emitting
+        <details class="wb-leg">
+          <summary><span class="lk">foundry-observability</span><h4>Observability &mdash; can we see what it&rsquo;s doing?</h4><span class="lt">OTel traces &middot; spans per model &amp; tool call</span><span class="auto">🟡 spend</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-observability skill to confirm the agent is emitting
   traces, and show me the spans for the eval runs — model calls and
   tool calls.</span></div>
+            </div>
+            <p class="wb-out">Pointed at the right tables: ~2,000 trace records, every eval run accounted for, each model and tool call its own span.</p>
+            <div class="wb-note">
+              <span class="k">Finding</span> The stock diagnostic queries returned <b>zero rows on a perfectly healthy agent</b> &mdash; wrong tables. If your first queries come back empty, the agent isn&rsquo;t necessarily broken; the query might be.
+            </div>
           </div>
-          <p class="wb-out">Pointed at the right tables: ~2,000 trace records, every eval run accounted for, each model and tool call its own span.</p>
-          <div class="wb-note">
-            <span class="k">Finding</span> The stock diagnostic queries returned <b>zero rows on a perfectly healthy agent</b> &mdash; wrong tables. If your first queries come back empty, the agent isn&rsquo;t necessarily broken; the query might be.
-          </div>
-        </div>
+        </details>
 
-        <!-- 10 production-ready -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">10</span><h3>Production-ready &mdash; is it ready?</h3><span class="skill">threadlight-production-ready</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-production-ready skill to score this pilot
-  against a private, gateway-fronted spoke target, and pin every gap
-  to the stage that closes it.</span></div>
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-redteam &middot; threadlight-govern</span><h4>Red-team &amp; governance evidence</h4><span class="lt">adversarial probes + the AGT governance manifest</span><span class="auto">🟡 spend</span></summary>
+          <div class="lb">
+            <p class="wb-out"><code>threadlight-redteam</code> runs adversarial probes &mdash; jailbreak, prompt-injection, policy-bypass &mdash; and writes a red-team manifest the gate scores. <code>threadlight-govern</code> compiles the agent-governance (AGT) evidence &mdash; data-residency, PII handling, audit trail, model policy &mdash; into the manifest the gate reads. Neither is a prompt you drive by hand; the gate consumes what they leave behind.</p>
           </div>
-          <p class="wb-out">Scored against the bank&rsquo;s declared target, the lean pilot came back <b>not ready, 45% &mdash; the right answer.</b> The valuable part: each of 34 gaps pinned to the exact later stage that closes it, rather than just listed. A 45% here is a correct read of a deliberately-lean pilot.</p>
-        </div>
+        </details>
+      </div>
 
-        <!-- 11 spoke -->
-        <div class="wb-stage reveal" style="border-color:color-mix(in srgb,var(--accent-1) 26%,var(--line));">
-          <div class="sg-h"><span class="n">11</span><h3>Citadel spoke &mdash; onboard behind the gateway</h3><span class="skill">citadel-spoke-onboarding</span></div>
-          <div class="wb-tags"><span class="wb-tag t-hub">🔵 needs a Citadel hub</span><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — probe the hub, then onboard</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Probe the target Citadel hub: is the AI gateway reachable over the
+      <div class="wb-legs handoff reveal">
+        <p class="legs-h">Then &mdash; hand off to governed production (advanced &middot; the case-study road)</p>
+
+        <details class="wb-leg">
+          <summary><span class="lk">citadel-spoke-onboarding</span><h4>Onboard behind the gateway</h4><span class="lt">keyless, additive-only spoke on a Citadel hub</span><span class="auto">🔵 hub</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — probe the hub, then onboard</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Probe the target Citadel hub: is the AI gateway reachable over the
   public internet with private backends, or VNet-only? List which
   models it exposes and flag any deprecated ones.</span>
 
@@ -646,67 +708,68 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
   connection, an allow-list naming ONLY the current-generation models
   we approve, and preview the change before applying. It must be
   purely additive: nothing modified or deleted on the shared hub.</span></div>
+            </div>
+            <p class="wb-out">Entirely <b>additive</b> in the run (6 to create, 0 to modify, 0 to delete; the hub still listed all 23 existing products). Then the wall was proven: approved model &rarr; <b>200</b>; banned deprecated model &rarr; <b>403</b>, refused.</p>
+            <div class="wb-note red">
+              <span class="k">Carry this in</span> The sample onboarding policy ships an allow-list that <b>includes deprecated models</b>. Copy the default blindly and you onboard with the wrong rule baked in. Name your approved models explicitly.
+            </div>
+            <div class="wb-note" style="border-left-color:var(--accent-1);border-color:color-mix(in srgb,var(--accent-1) 30%,var(--line));background:color-mix(in srgb,var(--accent-1) 5%,var(--bg-1));">
+              <span class="k" style="color:var(--accent-1);">Private networking</span> Here the spoke reaches the hub&rsquo;s <b>public gateway</b> (TLS &middot; JWT &middot; allow-list) while the hub&rsquo;s model backends sit <b>private behind private endpoints</b> &mdash; the shipped, additive-only posture. A fully private <b>VNet-peered</b> spoke (spoke&nbsp;VNet&nbsp;&harr;&nbsp;hub&nbsp;VNet&nbsp;+&nbsp;Private&nbsp;Link) is a first-class, <b>skill-covered</b> path &mdash; <code>foundry-vnet-deploy</code> plus <code>citadel-spoke-onboarding</code>&rsquo;s VNet-isolated (Option&nbsp;B) pattern &mdash; when the bank is ready to peer.
+            </div>
           </div>
-          <p class="wb-out">Entirely <b>additive</b> in the run (6 to create, 0 to modify, 0 to delete; the hub still listed all 23 existing products). Then the wall was proven: approved model &rarr; <b>200</b>; banned deprecated model &rarr; <b>403</b>, refused.</p>
-          <div class="wb-note red">
-            <span class="k">Carry this in</span> The sample onboarding policy ships an allow-list that <b>includes deprecated models</b>. Copy the default blindly and you onboard with the wrong rule baked in. Name your approved models explicitly.
-          </div>
-          <div class="wb-note" style="border-left-color:var(--accent-1);border-color:color-mix(in srgb,var(--accent-1) 30%,var(--line));background:color-mix(in srgb,var(--accent-1) 5%,var(--bg-1));">
-            <span class="k" style="color:var(--accent-1);">Private networking</span> Here the spoke reaches the hub&rsquo;s <b>public gateway</b> (TLS &middot; JWT &middot; allow-list) while the hub&rsquo;s model backends sit <b>private behind private endpoints</b> &mdash; the shipped, additive-only posture. A fully private <b>VNet-peered</b> spoke (spoke&nbsp;VNet&nbsp;&harr;&nbsp;hub&nbsp;VNet&nbsp;+&nbsp;Private&nbsp;Link) is a first-class, <b>skill-covered</b> path &mdash; <code>foundry-vnet-deploy</code> plus <code>citadel-spoke-onboarding</code>&rsquo;s VNet-isolated (Option&nbsp;B) pattern &mdash; when the bank is ready to peer.
-          </div>
-        </div>
+        </details>
 
-        <!-- 12 prod deploy -->
-        <div class="wb-stage reveal" style="border-color:color-mix(in srgb,var(--accent-1) 26%,var(--line));">
-          <div class="sg-h"><span class="n">12</span><h3>Production deploy &mdash; routed through the gateway</h3><span class="skill">threadlight-deploy · prod</span></div>
-          <div class="wb-tags"><span class="wb-tag t-hub">🔵 needs the onboarded spoke</span><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-deploy skill to deploy this agent to a prod
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-deploy &middot; prod</span><h4>Production deploy &mdash; routed through the gateway</h4><span class="lt">borrows the hub&rsquo;s model; no model of its own</span><span class="auto">🔵 hub</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-deploy skill to deploy this agent to a prod
   environment that borrows the hub's current-generation model THROUGH
   the Citadel gateway — no model of its own. Then run both golden
   cases against live prod and check the hub's own logs to confirm our
   calls are attributed to our product.</span></div>
+            </div>
+            <p class="wb-out">The production agent deploys <b>no model of its own</b> &mdash; it borrows the hub&rsquo;s through the gateway. That&rsquo;s the governed posture <em>and</em> it consumes zero new model quota. Both golden cases matched to the decimal against live prod.</p>
+            <div class="wb-note red">
+              <span class="k">The run&rsquo;s headline finding</span> The playbook&rsquo;s example pointed the connection at the <b>wrong gateway surface</b> and the agent returned empty &mdash; a silent &ldquo;resource not found.&rdquo; The real shape is an OpenAI-style endpoint with the model in the body (<code>/models</code>, not <code>/openai</code>). Re-pointed, redeployed, alive.
+            </div>
           </div>
-          <p class="wb-out">The production agent deploys <b>no model of its own</b> &mdash; it borrows the hub&rsquo;s through the gateway. That&rsquo;s the governed posture <em>and</em> it consumes zero new model quota. Both golden cases matched to the decimal against live prod.</p>
-          <div class="wb-note red">
-            <span class="k">The run&rsquo;s headline finding</span> The playbook&rsquo;s example pointed the connection at the <b>wrong gateway surface</b> and the agent returned empty &mdash; a silent &ldquo;resource not found.&rdquo; The real shape is an OpenAI-style endpoint with the model in the body (<code>/models</code>, not <code>/openai</code>). Re-pointed, redeployed, alive.
-          </div>
-        </div>
+        </details>
 
-        <!-- 13 cicd -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">13</span><h3>CI/CD &mdash; hand the keys to a pipeline</h3><span class="skill">threadlight-cicd</span></div>
-          <div class="wb-tags"><span class="wb-tag t-time">🟡 time + spend</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-cicd skill to generate a deploy pipeline under a
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-cicd</span><h4>CI/CD &mdash; hand the keys to a pipeline</h4><span class="lt">passwordless OIDC &middot; human gate before prod</span><span class="auto">🟡 spend</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-cicd skill to generate a deploy pipeline under a
   machine identity with federated OIDC (no passwords), a human
   approval gate before prod, and provision/deploy as two auditable
   steps. Then prove the identity's permissions are scoped to ONLY the
   prod resource group.</span></div>
+            </div>
+            <p class="wb-out">No human and no agent holds standing deploy rights &mdash; a pipeline does, under a passwordless machine identity. A tenant-wide listing returned <b>exactly two permissions, both confined to the prod resource group</b>; nothing at the subscription level, nothing near the shared gateway.</p>
+            <div class="wb-note">
+              <span class="k">Finding</span> The generated workflow is correct and secret-free, but doesn&rsquo;t yet know the gateway-routed model wiring from the prod deploy &mdash; it needs a small hand-edit to reproduce that. Only visible by running the whole chain.
+            </div>
           </div>
-          <p class="wb-out">No human and no agent holds standing deploy rights &mdash; a pipeline does, under a passwordless machine identity. A tenant-wide listing returned <b>exactly two permissions, both confined to the prod resource group</b>; nothing at the subscription level, nothing near the shared gateway.</p>
-          <div class="wb-note">
-            <span class="k">Finding</span> The generated workflow is correct and secret-free, but doesn&rsquo;t yet know the gateway-routed model wiring from Stage&nbsp;12 &mdash; it needs a small hand-edit to reproduce that. Only visible by running the whole chain.
-          </div>
-        </div>
+        </details>
 
-        <!-- 14 customize -->
-        <div class="wb-stage reveal">
-          <div class="sg-h"><span class="n">14</span><h3>Customize &mdash; hand it to a real customer</h3><span class="skill">threadlight-customize</span></div>
-          <div class="wb-tags"><span class="wb-tag t-own">🟢 your own sub</span></div>
-          <div class="wb-term">
-            <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-            <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-customize skill to produce the customer hand-off
+        <details class="wb-leg">
+          <summary><span class="lk">threadlight-customize</span><h4>Customize &mdash; hand it to a real customer</h4><span class="lt">runbooks, fill-in templates, a customization map</span><span class="auto">🟢 your sub</span></summary>
+          <div class="lb">
+            <div class="wb-term">
+              <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-customize skill to produce the customer hand-off
   package: a customization map marking every tool keep-or-override,
   runbooks, and fill-in templates — with confirm-with-customer markers
   wherever we assumed something for the demo.</span></div>
+            </div>
+            <p class="wb-out">The last leg ships <b>runbooks and fill-in templates, not a generator</b> &mdash; no two customers share a network or compliance posture. The centerpiece is a <b>customization map</b>: every tool marked &ldquo;keep&rdquo; or &ldquo;override, here&rsquo;s the knob,&rdquo; each override citing a real moment from the run.</p>
           </div>
-          <p class="wb-out">The last stage ships <b>runbooks and fill-in templates, not a generator</b> &mdash; no two customers share a network or compliance posture. The centerpiece is a <b>customization map</b>: every tool marked &ldquo;keep&rdquo; or &ldquo;override, here&rsquo;s the knob,&rdquo; each override citing a real moment from the run.</p>
-        </div>
-
+        </details>
       </div>
+
     </div>
   </section>
 
@@ -759,11 +822,11 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
       <div class="wb-deeper reveal" data-delay="1">
         <a class="wb-link" href="./case-study.html">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg></span>
-          <span><span class="t">The case study</span><span class="d">The full real run, stage by stage &mdash; findings, the OTel trace, the costs, the governed production architecture. <em>This is Part 2 when it&rsquo;s done.</em></span></span>
+          <span><span class="t">The case study</span><span class="d">The full real run, stage by stage &mdash; findings, the OTel trace, the costs, the governed production architecture. <em>This is Stage 3 when it&rsquo;s done.</em></span></span>
         </a>
         <a class="wb-link" href="./production.html">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
-          <span><span class="t">Production-ready chapter</span><span class="d">The 13 pillars in 4 themes that the Stage&nbsp;10 scorecard runs your pilot against.</span></span>
+          <span><span class="t">Production-ready chapter</span><span class="d">The 13 pillars in 4 themes that the Stage&nbsp;3 scorecard runs your pilot against.</span></span>
         </a>
         <a class="wb-link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
@@ -775,7 +838,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </a>
         <a class="wb-link" href="./WORKSHOP-1H-QUICKSTART.md">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-          <span><span class="t">1-hour facilitated workshop</span><span class="d">The same Part&nbsp;1, condensed for a room &mdash; a minute-by-minute runbook for a guided session.</span></span>
+          <span><span class="t">1-hour facilitated workshop</span><span class="d">The same Design &amp; Deploy stages, condensed for a room &mdash; a minute-by-minute runbook for a guided session.</span></span>
         </a>
         <a class="wb-link" href="./index.html">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span>
@@ -786,9 +849,9 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
       <div class="wb-verdict reveal" data-delay="2" style="margin-top:40px;">
         <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>The point</p>
         <h2>One paragraph. One session. <em>Your own Azure.</em></h2>
-        <p>Part 1 is real and reproducible solo today. Part 2 is the documented road the case study walked &mdash; same prompts, same order. Run as far as your hub and budget allow, and re-derive every number yourself. That&rsquo;s how you know it&rsquo;s real.</p>
+        <p>Stages 1&ndash;2 are real and reproducible solo today. Stage 3 is the documented road the case study walked &mdash; same prompts, same order. Run as far as your hub and budget allow, and re-derive every number yourself. That&rsquo;s how you know it&rsquo;s real.</p>
         <div class="hero-cta-row">
-          <a class="btn btn-primary" href="#part1">Back to Part 1 <span class="arrow">&uarr;</span></a>
+          <a class="btn btn-primary" href="#stage-design">Back to the start <span class="arrow">&uarr;</span></a>
           <a class="btn btn-ghost" href="./case-study.html">Read the real run <span class="arrow">&rarr;</span></a>
         </div>
       </div>
