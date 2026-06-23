@@ -2783,6 +2783,38 @@
   }
   .scorecard-preview .sc-take strong { color: var(--ink-1); }
 
+  /* --- .scorecard-preview .recap-metrics (production.html #prod-kpi) ---
+     The outcome-KPI scorecard reuses .recap-metrics + .metric-card, but
+     unlike the chapter-recap variant it sits inside a .scorecard-preview
+     card. Without a grid the three metrics stack in a narrow left column
+     and leave the card's right half empty — lay them across the card. */
+  .scorecard-preview .recap-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-5);
+    padding: 0 28px 6px;
+  }
+  .scorecard-preview .recap-metrics .metric-card {
+    text-align: center;
+    align-items: center;
+    padding: var(--s-4) 0;
+  }
+  .scorecard-preview .recap-metrics .metric-card .metric-num {
+    font-size: clamp(2.4rem, 3.2vw, 3.4rem);
+  }
+  .scorecard-preview .recap-metrics .metric-card .metric-caption {
+    text-align: center;
+    max-width: 30ch;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 640px) {
+    .scorecard-preview .recap-metrics {
+      grid-template-columns: 1fr;
+      gap: var(--s-3);
+      padding: 0 0 4px;
+    }
+  }
+
   /* --- .cost-artefact-grid (production.html #prod-cost) -------
      Posture-shaped cost forecast: 4 columns × 7 rows (1 header
      + 6 layers). NO specific $ amounts; only $/$$/$$$ shapes. */
