@@ -1,0 +1,36 @@
+name: pages-cache-bust
+
+# Guards the GitHub Pages cache-busting invariant.
+#
+# docs/*.html load the shared assets as assets/site.css?v=<token> and
+# assets/site.js?v=<token>. GitHub Pages serves those assets with
+# Cache-Control: max-age=600 and no content hash in the path, so a returning
+# browser reuses whatever it cached for that exact URL. If site.css/site.js
+# change but the token does not, the browser pairs NEW html with the OLD
+# cached stylesheet -- producing broken, half-updated layouts.
+#
+# The token is the sha256 prefix of each asset's contents, so any asset edit
+# must be accompanied by a regenerated token in the HTML. This job fails the
+# build if they drift. Fix locally with:
+#     python docs/ci/sync_cache_bust.py --write
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch: {}
+
+jobs:
+  cache-bust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify asset cache-bust tokens match content
+        run: python docs/ci/sync_cache_bust.py --check
