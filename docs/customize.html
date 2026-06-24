@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Customize — fork Threadlight, onboard a real customer.</title>
-<meta name="description" content="The final leg. How to fork the Threadlight pipeline and stand it up inside one customer's environment — landing zones, RBAC, pipelines, governance — with production onboarding as priority #1. Instructions and runbooks, not automation: four moves (intake gate, customization map, test-in-customer-env, non-coverage boundary).">
+<meta name="description" content="Customize Threadlight for one customer's production environment. Why (opinionated defaults vs the customer's own landing zone, identity, network, governance), what you override (deploy, cicd, safe-check, production-ready), how the fork + overlay model survives upstream merges, how to test inside a private VNet, and the practical steps.">
 <meta name="theme-color" content="#36c8a8">
 
 <meta property="og:type"        content="article">
 <meta property="og:title"       content="Customize — fork Threadlight, onboard a real customer.">
-<meta property="og:description" content="The final leg: fork the pipeline and onboard it into the customer's own environment, production onboarding first. Instructions, not automation — four moves: intake, customization map, test-in-customer-env, non-coverage boundary.">
+<meta property="og:description" content="Fork Threadlight and reconcile its opinionated defaults with one customer's environment through an overlay that survives upstream merges. Keep-vs-override seams, a private-VNet dev loop, and the practical steps.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/customize.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-customize.svg">
@@ -18,165 +18,94 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="Customize — fork Threadlight, onboard a real customer.">
-<meta name="twitter:description" content="The final leg. Fork + onboard into the customer's own environment, production onboarding first. Instructions, not automation.">
+<meta name="twitter:description"   content="Reconcile Threadlight's opinionated defaults with a customer's own environment via an overlay that survives upstream merges. What to override, how to test in a private VNet, and the steps.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-customize.svg">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=20739484">
 <style>
-  /* Chapter accent for the final leg — a teal/mint that reads as
-     "the customer's own environment / hand-over", distinct from the
-     blue funnel and the lime production chapter. Scoped to this page;
-     no global CSS changes. */
   body.chapter-customize {
     --chapter-accent:      #36c8a8;
     --chapter-accent-soft: rgba(54,200,168,.16);
   }
-  body.chapter-customize .chapter-hero .eyebrow .dot,
-  body.chapter-customize .chapter-section .eyebrow .dot {
-    background: var(--chapter-accent);
-    box-shadow: 0 0 10px rgba(54,200,168,.6);
-  }
-  /* The global `h1 em / h2 em` rule paints a blue gradient via
-     background-clip + transparent text-fill, which overrides plain
-     `color`. Re-point that gradient at the chapter accent so the
-     headline emphases match the teal chapter, not the default blue. */
-  body.chapter-customize .chapter-hero h1 em,
-  body.chapter-customize .chapter-section h2 em {
+
+  /* ---- Readable document: prose at a comfortable measure, visuals get room ---- */
+  .doc { max-width: 1000px; margin: 0 auto; padding: 48px 24px 96px; }
+  .doc .crumb { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--ink-3); margin: 0 0 20px; }
+  .doc .crumb a { color: var(--ink-2); }
+  .doc h1 { font-size: clamp(2rem, 4.6vw, 2.8rem); line-height: 1.1; letter-spacing: -.015em; margin: 0 0 16px; max-width: 16ch; }
+  .doc h1 em {
     background: linear-gradient(180deg, var(--chapter-accent) 0%, #1c9e86 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     color: var(--chapter-accent);
   }
-  /* a "priority #1" flag chip reused in the map + moves */
+  .doc .lede { margin: 0 0 4px; max-width: 70ch; }
+  .doc .lede strong { color: var(--ink-0); }
+  .doc h2 { font-size: 1.62rem; line-height: 1.18; margin: 0 0 6px; max-width: 40ch; }
+  .doc h2 .n { font-family: var(--mono); font-size: .8rem; color: var(--chapter-accent); margin-right: 12px; vertical-align: 4px; }
+  .doc h3 { font-size: 1.1rem; margin: 32px 0 8px; max-width: 60ch; }
+  .doc p  { color: var(--ink-1); line-height: 1.72; margin: 0 0 15px; max-width: 70ch; }
+  .doc > section > ul, .doc > section > ol { color: var(--ink-1); line-height: 1.7; padding-left: 22px; margin: 4px 0 18px; max-width: 70ch; }
+  .doc li { margin: 0 0 10px; }
+  .doc strong { color: var(--ink-0); }
+  .doc a { color: var(--chapter-accent); }
+  .doc .note { color: var(--ink-2); font-size: .95rem; max-width: 70ch; }
+  .doc code { color: var(--chapter-accent); }
+
+  /* full-width section dividers; intro flows straight from the H1 */
+  .doc > section { border-top: 1px solid var(--line); margin-top: 54px; padding-top: 40px; }
+
+  /* ---- "What it gives you" + "where it bites" cards ---- */
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 14px 0 6px; }
+  .doc .detail-card code { color: var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .doc .detail-card h3 { margin-top: 0; }
+  @media (max-width: 760px) { .card-grid { grid-template-columns: 1fr; } }
+
+  /* ---- The payoff visual: default → customized diff ---- */
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--chapter-accent); margin: 30px 0 12px; }
+  .outcome { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg-1); }
+  .outcome > div { display: grid; grid-template-columns: 150px 1fr 1fr; }
+  .outcome-head { background: rgba(255,255,255,.025); border-bottom: 1px solid var(--line); }
+  .outcome-head span { padding: 12px 16px; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .outcome-head .oc-default { color: var(--ink-3); }
+  .outcome-head .oc-custom  { color: var(--chapter-accent); }
+  .outcome-row + .outcome-row, .outcome-result { border-top: 1px solid var(--line); }
+  .outcome span { padding: 13px 16px; font-size: .93rem; line-height: 1.5; }
+  .oc-dim  { color: var(--ink-2); font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; align-self: center; }
+  .oc-cell { color: var(--ink-1); }
+  .oc-cell.oc-on { color: var(--ink-0); background: var(--chapter-accent-soft); box-shadow: inset 3px 0 0 var(--chapter-accent); }
+  .outcome-result { background: rgba(255,255,255,.025); }
+  .outcome-result span { font-weight: 600; font-size: .98rem; }
+  .outcome-result .oc-dim { color: var(--chapter-accent); }
+  @media (max-width: 680px) {
+    .outcome > div { grid-template-columns: 1fr; }
+    .outcome-head { display: none; }
+    .oc-dim { padding-bottom: 2px; }
+    .oc-cell::before { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 3px; }
+    .oc-cell:not(.oc-on)::before { content: "Out of the box"; }
+    .oc-cell.oc-on::before { content: "After customize"; color: var(--chapter-accent); }
+  }
+
+  /* ---- kept-vs-override chips + priority flag ---- */
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 4px; max-width: 80ch; }
+  .chip-row .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-right: 2px; }
   body.chapter-customize .prio {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: #06241e;
-    background: var(--chapter-accent);
-    border-radius: 99px;
-    padding: 2px 9px;
-    margin-left: 8px;
-    vertical-align: middle;
-    font-weight: 700;
+    display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .12em; text-transform: uppercase; color: #06241e;
+    background: var(--chapter-accent); border-radius: 99px; padding: 2px 9px;
+    margin-left: 8px; vertical-align: middle; font-weight: 700;
   }
+  body.chapter-customize .cost-table td code { font-size: .82rem; white-space: nowrap; color: var(--chapter-accent); }
+  .cost-table-wrap, .code-callout { max-width: 100%; }
 
-  /* ---- Signature bespoke visuals (this chapter only) ---- */
-
-  /* The fork -> overlay -> merge diagram inherits the teal accent so every
-     currentColor stroke/fill renders in the chapter colour. */
-  body.chapter-customize .fork-diagram {
-    max-width: 1000px;
-    margin: 4px auto 0;
-  }
-  body.chapter-customize .fork-diagram svg {
-    width: 100%;
-    height: auto;
-    color: var(--chapter-accent);
-    overflow: visible;
-  }
-  body.chapter-customize .env-diagram {
-    max-width: 1040px;
-    margin: 4px auto 0;
-  }
-  body.chapter-customize .env-diagram svg {
-    width: 100%;
-    height: auto;
-    color: var(--chapter-accent);
-    overflow: visible;
-  }
-
-  /* Numbered "four moves" path — replaces the flat card row with a route. */
-  body.chapter-customize .moves-flow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    margin-top: 6px;
-  }
-  body.chapter-customize .move-step {
-    flex: 1 1 210px;
-    min-width: 210px;
-    padding: 0 26px 0 0;
-    position: relative;
-  }
-  body.chapter-customize .move-row {
-    position: relative;
-    height: 56px;
-    display: flex;
-    align-items: center;
-    margin-bottom: 14px;
-  }
-  body.chapter-customize .move-badge {
-    width: 54px;
-    height: 54px;
-    flex: 0 0 54px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    font-family: var(--mono);
-    font-size: 21px;
-    font-weight: 700;
-    color: var(--chapter-accent);
-    background: var(--chapter-accent-soft);
-    border: 1.6px solid var(--chapter-accent);
-    position: relative;
-    z-index: 2;
-  }
-  /* connector rail to the next badge */
-  body.chapter-customize .move-step:not(:last-child) .move-row::after {
-    content: "";
-    position: absolute;
-    top: 27px;
-    left: 64px;
-    right: -2px;
-    height: 2px;
-    background: linear-gradient(90deg, var(--chapter-accent), var(--chapter-accent-soft));
-  }
-  body.chapter-customize .move-step h3 {
-    margin: 0 0 8px;
-    font-size: 1.08rem;
-  }
-  body.chapter-customize .move-step p {
-    margin: 0;
-    color: var(--ink-2);
-    font-size: .92rem;
-    line-height: 1.6;
-  }
-  body.chapter-customize .move-art {
-    display: inline-block;
-    margin-top: 12px;
-    font-family: var(--mono);
-    font-size: .78rem;
-    letter-spacing: .02em;
-    color: var(--chapter-accent);
-    background: var(--chapter-accent-soft);
-    border-radius: 7px;
-    padding: 4px 9px;
-  }
-  body.chapter-customize .move-tag {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    margin: 0 0 4px;
-  }
-  @media (max-width: 760px) {
-    body.chapter-customize .move-step {
-      flex-basis: 100%;
-      padding: 0 0 4px;
-    }
-    body.chapter-customize .move-step:not(:last-child) .move-row::after {
-      display: none;
-    }
-    body.chapter-customize .move-row {
-      height: auto;
-      margin-bottom: 10px;
-    }
+  /* ---- numbered steps ---- */
+  .steps { list-style: none; counter-reset: s; padding-left: 0; margin: 16px 0 22px; max-width: 74ch; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 50px; margin: 0 0 16px; line-height: 1.65; color: var(--ink-1); }
+  .steps > li::before {
+    content: counter(s, decimal-leading-zero); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--chapter-accent);
+    background: var(--chapter-accent-soft); border: 1px solid rgba(54,200,168,.32);
   }
 </style>
 </head>
@@ -204,716 +133,229 @@
 </aside>
 
 <main>
+  <article class="doc">
+    <p class="crumb"><a href="./index.html">Threadlight</a> / Customize</p>
+    <h1>From a working pilot to <em>their</em> production</h1>
+    <p class="lede">
+      <strong>threadlight-customize</strong> is the engagement runbook that takes a
+      Threadlight pilot and fits it to <strong>one customer&rsquo;s real production
+      environment</strong> &mdash; by forking the skills, capturing their landing
+      zone, identity, network and governance in an <strong>overlay</strong>, and
+      onboarding without ever editing a skill file.
+    </p>
 
-  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
-    <div class="wrap wrap-wide">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Customize</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>The final leg &middot; fork &amp; onboard</p>
-      <h1 class="reveal" data-delay="2">Make Threadlight <em>the customer&rsquo;s own.</em></h1>
-      <p class="lede reveal" data-delay="3">
-        The pilot proved the agent works. The next conversation is harder:
-        &ldquo;now stand this up inside <em>our</em> environment &mdash; our
-        landing zones, our identity model, our RBAC, our pipelines, our
-        governance &mdash; and test it on <em>our</em> tenant.&rdquo; That is
-        <strong>production onboarding</strong>, and it is
-        <strong>priority&nbsp;#1</strong>.
+    <div class="card-grid">
+      <div class="detail-card">
+        <h3>Structured intake</h3>
+        <p>A <code>customer-profile.md</code> captures their environment, requirements
+          and mandated templates &mdash; so nothing about production is guessed.</p>
+      </div>
+      <div class="detail-card">
+        <h3>Overlay, not fork-edit</h3>
+        <p>Every customer value lives in <code>overlay/</code> beside the untouched
+          skills, so <code>git merge upstream/main</code> keeps pulling our fixes.</p>
+      </div>
+      <div class="detail-card">
+        <h3>A signed-off boundary</h3>
+        <p>A <code>non-coverage.md</code> states what Threadlight deliberately
+          doesn&rsquo;t automate &mdash; and the architecture review approves it.</p>
+      </div>
+    </div>
+
+    <p class="kicker">What you actually get</p>
+    <div class="outcome" aria-label="What customizing changes, default versus customized">
+      <div class="outcome-head">
+        <span class="oc-dim"></span>
+        <span class="oc-default">Out of the box</span>
+        <span class="oc-custom">After threadlight-customize</span>
+      </div>
+      <div class="outcome-row">
+        <span class="oc-dim">Target</span>
+        <span class="oc-cell">SE sandbox subscription</span>
+        <span class="oc-cell oc-on">customer landing zone &middot; spoke RG</span>
+      </div>
+      <div class="outcome-row">
+        <span class="oc-dim">Network</span>
+        <span class="oc-cell">public egress</span>
+        <span class="oc-cell oc-on">private VNet &middot; private endpoints</span>
+      </div>
+      <div class="outcome-row">
+        <span class="oc-dim">Identity</span>
+        <span class="oc-cell">your dev credentials</span>
+        <span class="oc-cell oc-on">customer OIDC&nbsp;/&nbsp;WIF &middot; RBAC scoped to the RG</span>
+      </div>
+      <div class="outcome-row">
+        <span class="oc-dim">Pipeline</span>
+        <span class="oc-cell">generic OIDC sample</span>
+        <span class="oc-cell oc-on">their identity model &middot; their runners</span>
+      </div>
+      <div class="outcome-row">
+        <span class="oc-dim">Validation</span>
+        <span class="oc-cell">default thresholds</span>
+        <span class="oc-cell oc-on">their policy baseline &middot; <code>overrides.yaml</code></span>
+      </div>
+      <div class="outcome-result">
+        <span class="oc-dim">Result</span>
+        <span class="oc-cell">a pilot you can demo</span>
+        <span class="oc-cell oc-on">live in the customer&rsquo;s production</span>
+      </div>
+    </div>
+    <p class="note">Same skills, same code &mdash; only the inputs change. That is the whole point.</p>
+
+    <section id="why" data-toc-id="why" data-toc-label="Why">
+      <h2><span class="n">01</span>Why</h2>
+
+      <p>
+        Every Threadlight skill except this one is <strong>opinionated and
+        deterministic</strong>: bounded inputs, one right answer. A specific
+        customer&rsquo;s production estate is not bounded &mdash; their landing
+        zone, identity model, regions, private network and governance are
+        <strong>theirs</strong>, and no two customers are alike. Customizing is how
+        you reconcile our opinions with their environment: keep what fits, override
+        what doesn&rsquo;t, and be explicit about what we deliberately don&rsquo;t
+        automate.
       </p>
-      <p class="lede reveal" data-delay="4" style="margin-top:16px; color:var(--ink-2); font-size:.98rem;">
-        <code>threadlight-customize</code> is the leg that gets you there &mdash;
-        deliberately as <strong>instructions and fill-in runbooks, not
-        automation</strong>. No two customers&rsquo; onboarding is the same, so
-        we don&rsquo;t pretend to generate it. We give you the frame, the
-        intake, and the in-environment test loop, then get out of the way.
+      <p>
+        Our defaults are a <strong>starting position, not a mandate</strong>. A
+        customer may be <strong>stricter</strong> than us (extra controls) or simply
+        <strong>different</strong> (their identity model, their pipelines). Either
+        way the skills don&rsquo;t change &mdash; you change the inputs.
+      </p>
+      <p>
+        This is deliberately <strong>instructions, not a generator</strong>.
+        Branching on a customer&rsquo;s environment <em>in code</em> is the
+        anti-pattern: it would fork the skills on every engagement and rot. The
+        skills stay parameterised; you feed the customer&rsquo;s values as inputs.
       </p>
 
-      <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Customize at a glance">
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>4</em></span>
-          <span class="stat-label">moves, in order</span>
+      <h3>Where customization actually bites</h3>
+      <div class="card-grid">
+        <div class="detail-card">
+          <h3>CI/CD pipelines</h3>
+          <p>Their identity model (OIDC&nbsp;/&nbsp;WIF), RBAC scoped to the spoke RG,
+            runner topology. <code>threadlight-cicd</code> generates the pipeline;
+            you feed it these constraints.</p>
         </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">priority: prod onboarding</span>
+        <div class="detail-card">
+          <h3>Isolated / private-VNet</h3>
+          <p>Fully-private estates with no public egress. The deploy and validation
+            loop has to run from <em>inside</em> the perimeter &mdash; a public pilot
+            doesn&rsquo;t prove it.</p>
         </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>0</em></span>
-          <span class="stat-label">magic buttons</span>
+        <div class="detail-card">
+          <h3>Dev machines</h3>
+          <p>An SE laptop can&rsquo;t reach the customer&rsquo;s private endpoints.
+            You need a dev box inside the VNet (or a sanctioned tunnel) to run the
+            loop the way the workload will.</p>
         </div>
       </div>
+    </section>
 
-      <p class="skill-eyebrow reveal" data-delay="7">
-        <span class="se-tag">Threadlight skills</span>
-        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
-        <span class="se-not">Not commands. Not a CLI of our own.</span>
+    <section id="how" data-toc-id="how" data-toc-label="How">
+      <h2><span class="n">02</span>How</h2>
+
+      <p>
+        One mechanism makes this safe and repeatable: a <strong>pinned fork plus an
+        overlay</strong>. You never edit skill files.
       </p>
-    </div>
-  </section>
+      <ul>
+        <li><strong>Fork &amp; pin.</strong> Fork <code>threadlight-skills</code>
+          into the customer&nbsp;/&nbsp;engagement org and record the exact upstream
+          commit (SHA) in <code>overlay/upstream-pin.md</code>.</li>
+        <li><strong>Overlay, don&rsquo;t edit.</strong> Every customer input &mdash;
+          selectors, <code>azd env</code>, <code>customer-overrides.yaml</code>,
+          CI/CD constraints &mdash; lives in an <code>overlay/</code> directory
+          beside the untouched fork.</li>
+        <li><strong>Clean merge.</strong> Because the skill files stay byte-for-byte
+          upstream, <code>git merge upstream/main</code> is a clean merge. If a merge
+          ever conflicts, an override leaked out of the overlay.</li>
+      </ul>
 
-  <!-- ==================== WHY THIS LEG ==================== -->
-  <section class="chapter-section" id="why-fork" data-toc-id="why-fork" data-toc-label="Why this leg">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Why this leg exists</p>
-        <h2>A green pilot is not a production system. <em>The gap is the customer&rsquo;s environment.</em></h2>
-        <p class="section-lede">
-          The pilot proved the agent works &mdash; on an SE sandbox, with public
-          endpoints and your subscription. &ldquo;Production&rdquo; means the same
-          agent living inside <em>their</em> estate: their landing zones, their
-          identity model, their RBAC, their private network, their governance.
-          Closing that gap is the whole job &mdash; and it is different for every
-          customer.
-        </p>
-      </div>
+      <pre class="code-callout" tabindex="0" aria-label="The engagement repository layout">engagement-repo/
+├── <span class="cmd">threadlight-skills/</span>          <span class="cmt"># pinned upstream fork — left UNMODIFIED</span>
+├── <span class="cmd">overlay/</span>                     <span class="cmt"># customer inputs the skills already consume</span>
+│   ├── upstream-pin.md          <span class="cmt"># the SHA you forked from</span>
+│   ├── deploy/                  <span class="cmt"># landing-zone targeting, azd env, selectors</span>
+│   ├── production-ready/        <span class="cmt"># customer-overrides.yaml, thresholds</span>
+│   ├── cicd/                    <span class="cmt"># identity model, scoped RBAC, runners</span>
+│   └── safe-check/              <span class="cmt"># resource selectors + naming standard</span>
+└── <span class="cmd">docs/threadlight-customize/</span>  <span class="cmt"># the engagement record</span>
+    ├── customer-profile.md      <span class="cmt"># intake</span>
+    ├── customization-map.md     <span class="cmt"># keep-vs-override decisions</span>
+    └── non-coverage.md          <span class="cmt"># what we deliberately don't automate</span></pre>
 
-      <div class="amber-green-track reveal" data-delay="1">
-        <div class="agt-stage-labels">
-          <p class="agt-label is-amber"><span class="agt-day">On a sandbox</span> what the green pilot proved</p>
-          <p class="agt-label is-green"><span class="agt-day">In their estate</span> what production onboarding lands</p>
-        </div>
-
-        <div class="agt-track">
-          <!-- SANDBOX (amber) -->
-          <div class="agt-column is-amber">
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Identity</p>
-              <p class="agt-owner">Your SE login &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Network</p>
-              <p class="agt-owner">Public endpoints &middot; <span class="agt-owner-name">Cloud Ops</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Regions</p>
-              <p class="agt-owner">Any region &middot; <span class="agt-owner-name">Cloud Ops</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Landing zone</p>
-              <p class="agt-owner">Greenfield RG &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Governance</p>
-              <p class="agt-owner">None &middot; <span class="agt-owner-name">Security</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">IaC</p>
-              <p class="agt-owner">azd defaults &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-          </div>
-
-          <!-- ARROW -->
-          <div class="agt-arrow" aria-hidden="true">
-            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 10 32 L 50 32 M 38 18 L 54 32 L 38 46"
-                    fill="none" stroke="currentColor" stroke-width="3"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <p class="agt-arrow-label">The four moves<br>close the gap</p>
-          </div>
-
-          <!-- ESTATE (green) -->
-          <div class="agt-column is-green">
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Identity</p>
-              <p class="agt-owner">UAMI + scoped RBAC &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Network</p>
-              <p class="agt-owner">Private endpoint + DNS &middot; <span class="agt-owner-name">Cloud Ops</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Regions</p>
-              <p class="agt-owner">Allow-listed only &middot; <span class="agt-owner-name">Cloud Ops</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Landing zone</p>
-              <p class="agt-owner">Their hub-spoke &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Governance</p>
-              <p class="agt-owner">Change-mgmt gates &middot; <span class="agt-owner-name">Security</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">IaC</p>
-              <p class="agt-owner">Mandated modules &middot; <span class="agt-owner-name">Platform team</span></p>
-            </article>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== WHY NOT A GENERATOR ==================== -->
-  <section class="chapter-section" id="why-prose" data-toc-id="why-prose" data-toc-label="Why not a generator">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Scope, on purpose</p>
-        <h2>Every other skill is a generator. <em>This one isn&rsquo;t &mdash; by design.</em></h2>
-        <p class="section-lede">
-          The rest of Threadlight is opinionated and deterministic because its
-          inputs are bounded &mdash; a SPEC section, a set of selectors, an
-          <code>azd env</code>. A customer&rsquo;s production onboarding is
-          <em>not</em> bounded. Trying to cover every permutation in code
-          produces a generator that is wrong for everyone.
-        </p>
-      </div>
-
-      <div class="poster-triptych">
-        <article class="poster-card reveal" data-delay="1">
-          <p class="poster-eyebrow"><span>Bounded &rarr; automate</span></p>
-          <svg class="poster-icon" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="5" y="5" width="26" height="26" rx="5" fill="currentColor" fill-opacity="0.30" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M12 18 L16 22 L24 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h3>What the pipeline <em>already generates</em>.</h3>
-          <p class="poster-lede">
-            Design, deploy, safe-check, evals, the production-ready scorecard, the
-            CI/CD pipeline &mdash; all deterministic, all tested, because the shape
-            of the input is known. These skills stay exactly as they are.
-          </p>
-          <div class="poster-foot">
-            <span class="pill">deterministic</span>
-            <span class="pill muted">design &middot; deploy &middot; safe-check</span>
-            <span class="pill muted">evals &middot; cicd</span>
-          </div>
-        </article>
-
-        <article class="poster-card reveal" data-delay="2">
-          <p class="poster-eyebrow"><span>Unbounded &rarr; instruct</span></p>
-          <svg class="poster-icon" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="5" y="5" width="26" height="26" rx="5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3" stroke-opacity="0.85"/>
-            <path d="M18 11 L18 25 M11 18 L25 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-          </svg>
-          <h3>What no generator <em>can own</em>.</h3>
-          <p class="poster-lede">
-            Landing-zone topology, identity model, allowed regions, private DNS,
-            egress rules, mandated IaC modules, change-management gates, approval
-            chains &mdash; all theirs, all different. So this leg is
-            <strong>prose&nbsp;+&nbsp;templates</strong>: capture, classify, test,
-            and name the boundary.
-          </p>
-          <div class="poster-foot">
-            <span class="pill">per-customer</span>
-            <span class="pill muted">landing zone &middot; identity &middot; regions</span>
-            <span class="pill muted">DNS &middot; IaC &middot; governance</span>
-          </div>
-        </article>
-      </div>
-
-      <p class="reveal" data-delay="2" style="max-width:880px; margin:24px auto 0; text-align:center; color:var(--ink-2); font-size:1.02rem; line-height:1.7;">
-        It deliberately does <strong>not</strong> generate the onboarding for
-        you. That honesty is a feature &mdash; it keeps the customer&rsquo;s
-        architecture review calibrated and stops the next engagement from
-        assuming the work is turnkey.
+      <h3>What you keep, what you override</h3>
+      <p>
+        Most skills you keep and pull upstream freely. Four
+        <strong>production-onboarding</strong> skills are where the
+        customer&rsquo;s environment bites &mdash; expect to override all four.
       </p>
-    </div>
-  </section>
 
-  <!-- ==================== THE FOUR MOVES ==================== -->
-  <section class="chapter-section" id="four-moves" data-toc-id="four-moves" data-toc-label="The four moves">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Run them in order</p>
-        <h2>Four moves. <em>Each produces one durable artifact.</em></h2>
-        <p class="section-lede">
-          Every move drops a file under <code>docs/threadlight-customize/</code>,
-          so the engagement is auditable and resumable. Start Move&nbsp;1 early
-          &mdash; intake is the long pole, and you can run it in parallel with the
-          pilot.
-        </p>
+      <div class="cost-table-wrap">
+        <table class="cost-table">
+          <thead>
+            <tr><th>Skill <span class="prio">override</span></th><th>Default (opinionated)</th><th>Typical customer override</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>threadlight-deploy</code></td><td><code>azd up</code> into an SE sandbox; manifest selectors</td><td>landing-zone sub&nbsp;/&nbsp;RG, region allow-list, private-endpoint&nbsp;+&nbsp;private-DNS wiring, mandated IaC modules</td></tr>
+            <tr><td><code>threadlight-cicd</code></td><td>generates an OIDC&nbsp;/&nbsp;WIF production pipeline</td><td>customer identity model, RBAC scoped to the spoke RG, runner topology &mdash; you feed the constraints</td></tr>
+            <tr><td><code>threadlight-safe-check</code></td><td>validates resource selectors pre&nbsp;/&nbsp;post deploy</td><td>customer naming standard and the selectors the gate asserts</td></tr>
+            <tr><td><code>threadlight-production-ready</code></td><td>scorecard with default pass thresholds</td><td><code>customer-overrides.yaml</code> mapped to their policy baseline</td></tr>
+          </tbody>
+        </table>
       </div>
 
-      <div class="moves-flow reveal" data-delay="1">
-        <div class="move-step">
-          <div class="move-row"><span class="move-badge">1</span></div>
-          <p class="move-tag">The long pole</p>
-          <h3>Intake gate</h3>
-          <p>
-            You cannot customize what you have not been given. Fill the
-            customer-profile workbook <em>with</em> their platform owner:
-            documents, environment setup, requirements, and mandated
-            template&nbsp;/&nbsp;starter code. Treat every blank as a blocker.
-          </p>
-          <span class="move-art">&rarr; customer-profile.md</span>
-        </div>
-        <div class="move-step">
-          <div class="move-row"><span class="move-badge">2</span></div>
-          <p class="move-tag">Fork vs keep</p>
-          <h3>Customization map</h3>
-          <p>
-            Decide, per skill, what you override and what you leave alone &mdash;
-            naming the exact SPEC&nbsp;&sect;, selector, or <code>azd env</code>
-            hook to change. Most skills stay agnostic; a few need a per-customer
-            overlay.
-          </p>
-          <span class="move-art">&rarr; customization-map.md</span>
-        </div>
-        <div class="move-step">
-          <div class="move-row"><span class="move-badge">3</span></div>
-          <p class="move-tag">The stuck point</p>
-          <h3>Test in their env</h3>
-          <p>
-            A pilot that only ran on your sandbox is not onboarded. Run the
-            <code>local-test</code>&nbsp;/&nbsp;<code>deploy</code> loop
-            <strong>inside the customer&rsquo;s boundary</strong> &mdash; usually a
-            fully-private VNet. A pre-flight checklist gates the deploy.
-          </p>
-          <span class="move-art">&rarr; private-VNet pre-flight, green</span>
-        </div>
-        <div class="move-step">
-          <div class="move-row"><span class="move-badge">4</span></div>
-          <p class="move-tag">Close honestly</p>
-          <h3>Name the boundary</h3>
-          <p>
-            Write down the seams you customized and what Threadlight
-            <strong>deliberately does not automate</strong> for this customer,
-            with a short decision log. This is what keeps the architecture
-            review calibrated.
-          </p>
-          <span class="move-art">&rarr; non-coverage.md</span>
-        </div>
+      <div class="chip-row">
+        <span class="lbl">Keep &amp; pull upstream</span>
+        <span class="skill-tag is-grey">design</span>
+        <span class="skill-tag is-grey">demo-data-factory</span>
+        <span class="skill-tag is-grey">local-test</span>
+        <span class="skill-tag is-grey">consumption-iq</span>
+        <span class="skill-tag is-grey">event-triggers</span>
+        <span class="skill-tag is-grey">hitl-patterns</span>
+        <span class="skill-tag is-grey">workspace-ui</span>
       </div>
+      <p class="note">Keep <code>threadlight-auto</code> too, but <strong>never point it at production</strong>.</p>
 
-      <article class="scorecard-preview reveal" data-delay="2" aria-label="customer-profile.md intake workbook preview">
-        <header class="sc-header">
-          <p class="sc-title">customer-profile.md</p>
-          <p class="sc-headline">Move&nbsp;1 output &mdash; <em>onboarding intake</em></p>
-          <p class="sc-posture">Status &mdash; <strong>6 received &middot; 2 partial &middot; 2 blockers</strong></p>
-        </header>
-        <div class="sc-grid">
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">DOC</span><span class="sc-name">Architecture docs</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">LZ</span><span class="sc-name">Landing-zone topology</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">IDN</span><span class="sc-name">Identity model</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">RGN</span><span class="sc-name">Allowed regions</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">RBAC</span><span class="sc-name">Scoped roles</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">CMG</span><span class="sc-name">Change-mgmt gates</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">ENV</span><span class="sc-name">azd env setup</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">DNS</span><span class="sc-name">Private DNS / egress</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">IAC</span><span class="sc-name">Mandated IaC modules</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">REQ</span><span class="sc-name">Requirements sign-off</span></div>
-        </div>
-        <footer class="sc-footer">
-          <p class="sc-legend">
-            <span><i class="lg-green"></i> received</span>
-            <span><i class="lg-amber"></i> partial</span>
-            <span><i class="lg-grey"></i> missing &mdash; blocker</span>
-          </p>
-          <p class="sc-take">Intake take: <strong>2 blockers before kickoff</strong> &mdash; mandated IaC + requirements. Every blank is a blocker.</p>
-        </footer>
-      </article>
-    </div>
-  </section>
-
-  <!-- ==================== PRIORITY #1 ==================== -->
-  <section class="chapter-section" id="priority" data-toc-id="priority" data-toc-label="Priority #1">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Where the environment bites</p>
-        <h2>Production onboarding is <em>priority&nbsp;#1.</em></h2>
-        <p class="section-lede">
-          The customization map flags four skills as priority &mdash; they are the
-          production-onboarding leg, and they are where the customer&rsquo;s real
-          environment first pushes back. These get your override budget first.
-        </p>
-      </div>
-
-      <article class="scorecard-preview reveal" data-delay="1" aria-label="customization-map.md preview" style="margin-bottom: 8px;">
-        <header class="sc-header">
-          <p class="sc-title">customization-map.md</p>
-          <p class="sc-headline">Move&nbsp;2 output &mdash; <em>what to override</em></p>
-          <p class="sc-posture">Map &mdash; <strong>4 override &middot; rest stays upstream</strong></p>
-        </header>
-        <div class="sc-grid">
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">01</span><span class="sc-name">deploy &mdash; LZ, regions, DNS</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">02</span><span class="sc-name">safe-check &mdash; selectors</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">03</span><span class="sc-name">cicd &mdash; identity, RBAC</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">04</span><span class="sc-name">production-ready &mdash; thresholds</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">05</span><span class="sc-name">design &mdash; keep</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">local-test &mdash; keep</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">07</span><span class="sc-name">evals &mdash; keep</span></div>
-          <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">08</span><span class="sc-name">consumption-iq &mdash; keep</span></div>
-        </div>
-        <footer class="sc-footer">
-          <p class="sc-legend">
-            <span><i class="lg-amber"></i> per-customer override</span>
-            <span><i class="lg-green"></i> agnostic &mdash; keep upstream</span>
-          </p>
-          <p class="sc-take">Map take: <strong>the override surface is small &amp; named</strong> &mdash; selectors, azd env, thresholds, mandated IaC.</p>
-        </footer>
-      </article>
-
-      <div class="detail-grid reveal" data-delay="2">
-        <article class="detail-card">
-          <h3><code>threadlight-deploy</code> <span class="prio">priority</span></h3>
-          <p>
-            Landing-zone targeting (sub / RG), resource selectors, region
-            allow-list, and the <strong>private-endpoint + private-DNS</strong>
-            wiring that turns a public pilot into something that lives behind the
-            customer&rsquo;s perimeter.
-          </p>
-        </article>
-        <article class="detail-card">
-          <h3><code>threadlight-safe-check</code> <span class="prio">priority</span></h3>
-          <p>
-            The customer&rsquo;s resource selectors and naming standard that the
-            pre/post-deploy gate validates against &mdash; so &ldquo;green&rdquo;
-            means green <em>in their tenant</em>, not on your sandbox.
-          </p>
-        </article>
-        <article class="detail-card">
-          <h3><code>threadlight-cicd</code> <span class="prio">priority</span></h3>
-          <p>
-            Pipeline shape, federated-identity model, scoped RBAC, runner topology.
-            This skill <em>generates</em> the pipeline &mdash; you feed it the
-            customer&rsquo;s constraints from intake.
-          </p>
-        </article>
-        <article class="detail-card">
-          <h3><code>threadlight-production-ready</code> <span class="prio">priority</span></h3>
-          <p>
-            Pillar thresholds and <code>customer_overrides</code> tuned to the
-            customer&rsquo;s policy baseline, so the scorecard speaks their
-            standard at the architecture review.
-          </p>
-        </article>
-      </div>
-
-      <p class="reveal" data-delay="2" style="max-width:860px; margin:22px auto 0; text-align:center; color:var(--ink-3); font-size:.95rem; line-height:1.7;">
-        Keep these overrides in an <strong>overlay</strong>, never by editing
-        forked skills in place &mdash; so you can still pull upstream Threadlight
-        fixes. That&rsquo;s the fork mechanics below.
+      <h3>Testing inside their boundary</h3>
+      <p>
+        A private-VNet target needs a dev box inside the perimeter. Two patterns,
+        one gate.
       </p>
-    </div>
-  </section>
 
-  <!-- ==================== TEST IN THEIR ENV ==================== -->
-  <section class="chapter-section" id="in-env" data-toc-id="in-env" data-toc-label="Test in their env">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The part the field kept getting stuck on</p>
-        <h2>Run the loop <em>inside the customer&rsquo;s boundary.</em></h2>
-        <p class="section-lede">
-          Fully-private (private-VNet) environments with no public egress are
-          where onboarding actually proves out &mdash; and where an SE laptop
-          can&rsquo;t reach. Two patterns make the dev/test loop work from
-          <em>inside</em> the perimeter, gated by one pre-flight.
-        </p>
+      <div class="cost-table-wrap">
+        <table class="cost-table">
+          <thead>
+            <tr><th>Dimension</th><th>Azure ML compute + VS Code <span class="prio">strong</span></th><th>GitHub Codespaces</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Network</strong></td><td>Joined to the VNet, <strong>no public IP</strong></td><td>Public-egress by default; needs a sanctioned path or enterprise Azure private networking</td></tr>
+            <tr><td><strong>Private endpoints</strong></td><td>Reaches Foundry&nbsp;/&nbsp;ACR&nbsp;/&nbsp;Cosmos&nbsp;/&nbsp;Key&nbsp;Vault natively</td><td>Only via a sanctioned tunnel or enterprise private networking</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Fully-private, no-egress targets</td><td>Fast iteration on the non-private parts of the loop</td></tr>
+            <tr><td><strong>Honest limit</strong></td><td>Single-user box; stop it when idle to control cost</td><td>A vanilla Codespace <strong>can&rsquo;t see private endpoints</strong></td></tr>
+          </tbody>
+        </table>
       </div>
 
-      <figure class="env-diagram reveal" data-delay="1" aria-labelledby="env-diagram-cap">
-        <svg viewBox="0 0 1080 360" xmlns="http://www.w3.org/2000/svg" role="img"
-             aria-label="An SE laptop outside the customer's private VNet is blocked from reaching private endpoints. Inside the VNet boundary, a dev box (Azure ML compute instance or GitHub Codespaces) passes a pre-flight check and reaches the Foundry, ACR, Cosmos DB and Key Vault private endpoints.">
-          <defs>
-            <style>
-              .pe-tag  { font-family: var(--mono);  font-size: 11px; letter-spacing: .18em; fill: #8e95a8; }
-              .pe-mono { font-family: var(--mono);  font-size: 12.5px; fill: currentColor; font-weight: 600; }
-              .pe-sub  { font-family: var(--mono);  font-size: 10px; letter-spacing: .03em; fill: currentColor; opacity: .82; }
-              .pe-note { font-family: var(--mono);  font-size: 10px; letter-spacing: .06em; fill: #8e95a8; }
-              @media (prefers-color-scheme: light) {
-                .pe-tag, .pe-note { fill: #5f6680; }
-              }
-            </style>
-          </defs>
+      <p>
+        Either way the gate is the <strong>private-VNet pre-flight</strong>: private
+        DNS resolves to private IPs, <code>443</code> reaches every private endpoint,
+        and control-plane egress is allowed &mdash; <em>only then</em> deploy. A
+        half-resolved DNS zone fails the deploy looking like an auth error and burns
+        an afternoon; the checklist catches it first.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/private-env-test/private-vnet-checklist.md" target="_blank" rel="noopener">Pre-flight checklist&nbsp;&nearr;</a>
+      </p>
+    </section>
 
-          <!-- ===== SE laptop, outside the boundary ===== -->
-          <rect x="22" y="148" width="158" height="86" rx="12" fill="currentColor" fill-opacity="0.07" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.4"/>
-          <text x="40" y="182" class="pe-mono">SE LAPTOP</text>
-          <text x="40" y="202" class="pe-sub">public endpoints</text>
-          <text x="40" y="216" class="pe-sub">only</text>
+    <section id="how-to" data-toc-id="how-to" data-toc-label="How to">
+      <h2><span class="n">03</span>How to</h2>
 
-          <!-- blocked path into the boundary -->
-          <text x="196" y="172" class="pe-note">blocked</text>
-          <line x1="182" y1="191" x2="262" y2="191" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.6" stroke-dasharray="5 4"/>
-          <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-opacity="0.85">
-            <line x1="272" y1="183" x2="286" y2="199"/>
-            <line x1="286" y1="183" x2="272" y2="199"/>
-          </g>
+      <p>
+        Intake is the long pole &mdash; start it during the pilot. Everything after
+        it is mechanical. The fork and scaffold are three commands:
+      </p>
 
-          <!-- ===== Customer private VNet boundary ===== -->
-          <rect x="306" y="44" width="748" height="292" rx="22" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.6" stroke-dasharray="9 6"/>
-          <rect x="322" y="32" width="372" height="24" rx="7" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.4" stroke-width="1"/>
-          <text x="338" y="48" class="pe-tag">CUSTOMER PRIVATE VNET &middot; NO PUBLIC EGRESS</text>
-
-          <!-- dev box, inside -->
-          <rect x="336" y="150" width="190" height="98" rx="12" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
-          <text x="356" y="184" class="pe-mono">DEV BOX</text>
-          <text x="356" y="205" class="pe-sub">Azure ML compute / Codespaces</text>
-          <text x="356" y="221" class="pe-sub">no public IP &middot; joined to VNet</text>
-
-          <!-- pre-flight gate -->
-          <line x1="526" y1="199" x2="566" y2="195" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.5"/>
-          <rect x="566" y="166" width="124" height="58" rx="11" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-          <circle cx="586" cy="186" r="9" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.3"/>
-          <path d="M581,186 L585,190 L591,182" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <text x="602" y="190" class="pe-mono">PRE-FLIGHT</text>
-          <text x="580" y="214" class="pe-sub">DNS &middot; egress &middot; reach</text>
-
-          <!-- connectors gate -> endpoints -->
-          <g stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4" fill="none" stroke-dasharray="4 3">
-            <path d="M690,195 L726,88"/>
-            <path d="M690,195 L726,156"/>
-            <path d="M690,195 L726,224"/>
-            <path d="M690,195 L726,292"/>
-          </g>
-
-          <!-- private endpoints, inside -->
-          <g>
-            <!-- 01 Foundry -->
-            <rect x="730" y="63" width="300" height="50" rx="9" fill="currentColor" fill-opacity="0.1" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.3"/>
-            <circle cx="756" cy="88" r="9" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.2"/>
-            <path d="M751,88 L755,92 L761,84" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <text x="776" y="85" class="pe-mono">FOUNDRY</text>
-            <text x="776" y="101" class="pe-sub">private endpoint</text>
-            <!-- 02 ACR -->
-            <rect x="730" y="131" width="300" height="50" rx="9" fill="currentColor" fill-opacity="0.1" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.3"/>
-            <circle cx="756" cy="156" r="9" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.2"/>
-            <path d="M751,156 L755,160 L761,152" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <text x="776" y="153" class="pe-mono">ACR</text>
-            <text x="776" y="169" class="pe-sub">private endpoint</text>
-            <!-- 03 Cosmos -->
-            <rect x="730" y="199" width="300" height="50" rx="9" fill="currentColor" fill-opacity="0.1" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.3"/>
-            <circle cx="756" cy="224" r="9" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.2"/>
-            <path d="M751,224 L755,228 L761,220" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <text x="776" y="221" class="pe-mono">COSMOS DB</text>
-            <text x="776" y="237" class="pe-sub">private endpoint</text>
-            <!-- 04 Key Vault -->
-            <rect x="730" y="267" width="300" height="50" rx="9" fill="currentColor" fill-opacity="0.1" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.3"/>
-            <circle cx="756" cy="292" r="9" fill="currentColor" fill-opacity="0.2" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.2"/>
-            <path d="M751,292 L755,296 L761,288" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <text x="776" y="289" class="pe-mono">KEY VAULT</text>
-            <text x="776" y="305" class="pe-sub">private endpoint</text>
-          </g>
-        </svg>
-        <figcaption id="env-diagram-cap" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          An inside-the-boundary dev box reaches the private endpoints an SE laptop can&rsquo;t &mdash;
-          once the <strong>pre-flight</strong> (private DNS, egress, reachability) is green.
-        </figcaption>
-      </figure>
-
-      <div class="detail-grid reveal" data-delay="2" style="margin-top: var(--s-5);">
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Recommended</p>
-          <h3>Azure ML compute instance + VS Code</h3>
-          <p>
-            A compute instance with <strong>no public IP</strong>, joined to the
-            customer&rsquo;s VNet, driven over VS Code Remote. Reaches the Foundry,
-            ACR, Cosmos, and Key Vault private endpoints the way the real workload
-            will &mdash; the closest thing to running &ldquo;on their tenant.&rdquo;
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Quick box</p>
-          <h3>GitHub Codespaces</h3>
-          <p>
-            A fast, disposable dev box for the loop. With Codespaces private
-            networking it reaches into the customer&rsquo;s estate &mdash; honestly
-            hedged: availability depends on the customer&rsquo;s GitHub plan and
-            network posture, so the runbook says when to reach for Azure&nbsp;ML
-            instead.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>The gate</p>
-          <h3>Private-VNet pre-flight</h3>
-          <p>
-            Before any deploy: confirm <strong>private DNS resolution</strong>,
-            egress posture, and reachability of every private endpoint. A
-            half-resolved DNS zone fails the deploy in a way that
-            <em>looks like an auth error</em> and burns an afternoon &mdash; the
-            checklist catches it first.
-          </p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== FORK MECHANICS ==================== -->
-  <section class="chapter-section" id="fork" data-toc-id="fork" data-toc-label="Fork mechanics">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Do this once, up front</p>
-        <h2>Fork the way that <em>survives upstream updates.</em></h2>
-        <p class="section-lede">
-          The point of forking is to customize <em>and</em> still pull upstream
-          Threadlight fixes later. Three steps keep both true.
-        </p>
-      </div>
-
-      <figure class="fork-diagram reveal" data-delay="1" aria-labelledby="fork-diagram-cap">
-        <svg viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img"
-             aria-label="Upstream Threadlight on a top timeline; your fork branches off on a second timeline; a customer overlay layer sits on the fork holding only customer overrides; a later git merge of upstream flows into the fork while the overlay survives untouched.">
-          <defs>
-            <style>
-              .fd-tag  { font-family: var(--mono);  font-size: 11px;   letter-spacing: .2em; fill: #8e95a8; }
-              .fd-name { font-family: var(--serif); font-size: 17px;   fill: #f5f5f7; }
-              .fd-mono { font-family: var(--mono);  font-size: 12.5px; fill: currentColor; font-weight: 600; }
-              .fd-sub  { font-family: var(--mono);  font-size: 10.5px; letter-spacing: .04em; fill: currentColor; opacity: .82; }
-              .fd-note { font-family: var(--mono);  font-size: 10.5px; letter-spacing: .08em; fill: #8e95a8; }
-              @media (prefers-color-scheme: light) {
-                .fd-name { fill: #0a0d14; }
-                .fd-tag, .fd-note { fill: #5f6680; }
-              }
-            </style>
-          </defs>
-
-          <!-- ============ UPSTREAM lane ============ -->
-          <text x="96" y="40" class="fd-tag">UPSTREAM &middot; AIAPPSGBB/THREADLIGHT-SKILLS</text>
-          <line x1="96" y1="72" x2="1004" y2="72" stroke="currentColor" stroke-opacity="0.4" stroke-width="2"/>
-          <g fill="currentColor">
-            <circle cx="150" cy="72" r="5"/>
-            <circle cx="300" cy="72" r="5"/>
-            <circle cx="470" cy="72" r="5"/>
-            <circle cx="650" cy="72" r="5"/>
-            <circle cx="840" cy="72" r="11" fill-opacity="0.16"/>
-            <circle cx="840" cy="72" r="5"/>
-            <circle cx="980" cy="72" r="5"/>
-          </g>
-
-          <!-- fork point: branch from upstream commit (300) down to the fork lane -->
-          <path d="M300,72 C300,150 352,140 372,206" fill="none" stroke="currentColor" stroke-opacity="0.6" stroke-width="2"/>
-          <text x="312" y="150" class="fd-note">fork point</text>
-
-          <!-- ============ YOUR FORK lane ============ -->
-          <text x="372" y="190" class="fd-tag">YOUR FORK &middot; CUSTOMER / ENGAGEMENT ORG</text>
-          <line x1="372" y1="210" x2="1004" y2="210" stroke="currentColor" stroke-opacity="0.85" stroke-width="2.2"/>
-          <g fill="currentColor">
-            <circle cx="430" cy="210" r="5"/>
-            <circle cx="560" cy="210" r="5"/>
-            <circle cx="700" cy="210" r="5"/>
-            <circle cx="900" cy="210" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
-            <circle cx="900" cy="210" r="5"/>
-            <circle cx="980" cy="210" r="5"/>
-          </g>
-
-          <!-- ============ OVERLAY panel — layered onto the fork ============ -->
-          <line x1="430" y1="214" x2="430" y2="248" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 3"/>
-          <line x1="560" y1="214" x2="560" y2="248" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 3"/>
-          <line x1="700" y1="214" x2="700" y2="248" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 3"/>
-          <rect x="360" y="248" width="408" height="104" rx="14" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.55" stroke-width="1.4"/>
-          <text x="382" y="280" class="fd-mono">overlay/</text>
-          <text x="382" y="304" class="fd-sub">customer-overrides &middot; azd env &middot; selectors</text>
-          <text x="382" y="324" class="fd-sub">upstream-pin &middot; cicd inputs &middot; mandated IaC</text>
-          <text x="382" y="344" class="fd-note">layered on the fork — never edits skill files</text>
-
-          <!-- ============ MERGE — upstream flows in, overlay survives ============ -->
-          <path d="M840,72 C840,150 900,138 900,200" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="2"/>
-          <path d="M894,192 L900,204 L906,192" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="2" stroke-linejoin="round"/>
-          <text x="800" y="150" class="fd-sub">git merge</text>
-          <text x="800" y="166" class="fd-sub">upstream/main</text>
-
-          <!-- overlay-survives badge -->
-          <circle cx="812" cy="304" r="13" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.4"/>
-          <path d="M805,304 L810,310 L820,298" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <text x="832" y="300" class="fd-sub">overlay</text>
-          <text x="832" y="316" class="fd-sub">survives</text>
-        </svg>
-        <figcaption id="fork-diagram-cap" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Customer changes ride in an <strong>overlay</strong> over a pinned upstream &mdash; so a later
-          <code>git merge upstream/main</code> pulls Threadlight fixes <em>without</em> clobbering the customization.
-        </figcaption>
-      </figure>
-
-      <div class="detail-grid reveal" data-delay="2" style="margin-top: var(--s-5);">
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Step 1</p>
-          <h3>Fork</h3>
-          <p>
-            Fork <code>threadlight-skills</code> (or install the plugin and
-            overlay alongside it) into the customer&rsquo;s org or your engagement
-            repo.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Step 2</p>
-          <h3>Pin upstream</h3>
-          <p>
-            Record the upstream commit you forked from in an
-            <code>upstream-pin.md</code> &mdash; the same convention several
-            Threadlight skills already use to track the version they build on.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Step 3</p>
-          <h3>Overlay, don&rsquo;t fork-edit</h3>
-          <p>
-            Keep customer overrides (selectors, env hooks, thresholds, mandated
-            IaC) in a separate <strong>overlay</strong> layered over the pinned
-            upstream, so a later <code>git merge</code> of upstream doesn&rsquo;t
-            clobber the customizations.
-          </p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== THE BOUNDARY ==================== -->
-  <section class="chapter-section" id="boundary" data-toc-id="boundary" data-toc-label="The boundary">
-    <div class="wrap wrap-xl">
-      <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
-        <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>Move 4, restated</p>
-        <h2>The boundary <em>is the deliverable.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          Closing the engagement honestly is not an afterthought &mdash; it is the
-          artifact that keeps expectations true. Name what you customized, name
-          what Threadlight does not automate for this customer, and log the
-          decisions. If you find yourself writing a generator that branches on the
-          customer&rsquo;s landing zone, stop: that seam is exactly what this skill
-          keeps as instructions.
-        </p>
-      </div>
-
-      <article class="scorecard-preview reveal" data-delay="1" aria-label="non-coverage.md preview">
-        <header class="sc-header">
-          <p class="sc-title">non-coverage.md</p>
-          <p class="sc-headline">Move&nbsp;4 output &mdash; <em>what stays human</em></p>
-          <p class="sc-posture">Boundary &mdash; <strong>named &middot; owned &middot; logged</strong></p>
-        </header>
-        <div class="sc-grid">
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">P1</span><span class="sc-name">Production onboarding runbook</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">LZ</span><span class="sc-name">Landing-zone / VNet topology</span></div>
-          <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">IDN</span><span class="sc-name">Identity &amp; RBAC model</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">DNS</span><span class="sc-name">Private DNS / egress rules</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">CMG</span><span class="sc-name">Change-mgmt &amp; approvals</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">IAC</span><span class="sc-name">Mandated IaC wiring</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">RES</span><span class="sc-name">Data residency / regions</span></div>
-          <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">SEC</span><span class="sc-name">Customer security exceptions</span></div>
-        </div>
-        <footer class="sc-footer">
-          <p class="sc-legend">
-            <span><i class="lg-amber"></i> owner named &middot; decision logged</span>
-            <span><i class="lg-grey"></i> instructions, not automation</span>
-          </p>
-          <p class="sc-take">Boundary take: <strong>this list is the deliverable</strong> &mdash; the calibration the architecture review signs off.</p>
-        </footer>
-      </article>
-    </div>
-  </section>
-
-  <!-- ==================== GETTING STARTED ==================== -->
-  <section class="chapter-section" id="getting-started" data-toc-id="getting-started" data-toc-label="Getting started">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>How to start</p>
-        <h2>Day one. <em>Fork, pin, and open the intake.</em></h2>
-        <p class="section-lede">
-          You don&rsquo;t need the whole customization map to begin. Three commands
-          stand up the fork and the pin; one conversation opens the intake &mdash;
-          the long pole. Here is the literal first hour.
-        </p>
-      </div>
-
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="The first commands to fork and pin Threadlight"><span class="cmt"># 1 · fork into the customer org and clone (gh wires origin + upstream)</span>
+      <pre class="code-callout" tabindex="0" aria-label="Fork, pin and scaffold the overlay"><span class="cmt"># 1 · fork into the customer org and clone (gh wires origin + upstream)</span>
 <span class="prompt">&gt;</span> <span class="cmd">gh</span> <span class="arg">repo fork aiappsgbb/threadlight-skills</span> <span class="flag">--org</span> <span class="arg">&lt;customer-org&gt;</span> <span class="flag">--clone --remote</span>
 <span class="prompt">&gt;</span> <span class="cmd">cd</span> <span class="arg">threadlight-skills</span>
 
@@ -923,93 +365,42 @@
 <span class="cmt"># 3 · scaffold the overlay — customer inputs live here, never in skill files</span>
 <span class="prompt">&gt;</span> <span class="cmd">mkdir</span> <span class="flag">-p</span> <span class="arg">overlay/{deploy,production-ready,cicd,safe-check} docs/threadlight-customize</span></pre>
 
-      <div class="detail-grid reveal" data-delay="2" style="margin-top:26px;">
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Then, in order</p>
-          <h3>Open the intake <span class="prio">start here</span></h3>
-          <p>
-            Copy <code>customer-profile.md.tmpl</code> and work it <em>with</em>
-            the customer&rsquo;s platform owner. Start it in parallel with the
-            pilot &mdash; it is the long pole, and every blank field is a future
-            blocked deploy.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Next</p>
-          <h3>Map fork-vs-keep</h3>
-          <p>
-            Fill the customization map: per skill, keep or override. The four
-            production-onboarding skills get your override budget first; each
-            override drops a file into the matching <code>overlay/</code> folder.
-          </p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>Then prove it</p>
-          <h3>Test inside their boundary</h3>
-          <p>
-            Stand up the in-env loop (Azure ML VS Code or Codespaces), clear the
-            private-VNet pre-flight, and run deploy from <em>inside</em> the
-            customer&rsquo;s perimeter &mdash; not your sandbox.
-          </p>
-        </article>
-      </div>
+      <ol class="steps">
+        <li><strong>Intake &mdash; the long pole.</strong> Fill <code>customer-profile.md</code> <em>with</em> their platform owner: documents, environment setup, requirements, mandated template&nbsp;/&nbsp;starter code. Every blank is a blocker.</li>
+        <li><strong>Fork &amp; pin.</strong> Fork into the customer org; record the SHA in <code>overlay/upstream-pin.md</code> (commands above).</li>
+        <li><strong>Scaffold the overlay.</strong> One <code>mkdir -p</code> stands up the four skill folders plus the engagement-record directory.</li>
+        <li><strong>Map keep-vs-override.</strong> Fill <code>customization-map.md</code> &mdash; name the exact selector, <code>azd env</code>, or threshold to change per skill. <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/customization-map.md" target="_blank" rel="noopener">Map template&nbsp;&nearr;</a></li>
+        <li><strong>Drop real overrides.</strong> Put the customer&rsquo;s values in <code>overlay/</code> &mdash; for example the <code>customer-overrides.yaml</code> below. Never edit a skill file.</li>
+        <li><strong>Test inside the boundary.</strong> Pre-flight green, then run the <code>local-test</code>&nbsp;/&nbsp;<code>deploy</code> loop on the in-VNet box.</li>
+        <li><strong>Name the boundary.</strong> Record what you customized and what Threadlight deliberately doesn&rsquo;t automate in <code>non-coverage.md</code> &mdash; the architecture review signs off on this.</li>
+        <li><strong>Pull upstream later.</strong> <code>git merge upstream/main</code> stays clean because the overlay held the diff; then re-pin the new SHA. <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Full runbook&nbsp;&nearr;</a></li>
+      </ol>
 
-      <div class="recap-cta" style="margin-top:30px;">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Open the fork runbook <span class="arrow">↗</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/customer-profile.md.tmpl" target="_blank" rel="noopener">Start the intake workbook <span class="arrow">↗</span></a>
-      </div>
-    </div>
-  </section>
+      <h3>One real override</h3>
+      <pre class="code-callout" tabindex="0" aria-label="Example overlay file: customer-overrides.yaml"><span class="cmt"># overlay/production-ready/customer-overrides.yaml</span>
+customer: <span class="arg">&lt;customer-name&gt;</span>
+overrides:
+  - recipe_id: <span class="arg">SEC-105</span>            <span class="cmt"># should-fix: KV access via RBAC, not legacy policies</span>
+    status: <span class="str">pass</span>                  <span class="cmt"># customer uses an approved equivalent control</span>
+    reason: <span class="str">"Governed by the customer's audited PIM workflow; reviewed 2026-Q2."</span>
+  - recipe_id: <span class="arg">NET-103</span>            <span class="cmt"># should-fix: NSG flow logs on spoke subnets</span>
+    status: <span class="str">fail</span>                  <span class="cmt"># customer is STRICTER than our default</span>
+    reason: <span class="str">"Customer audit policy mandates flow logs on every spoke subnet."</span></pre>
+      <p class="note">
+        Overrides are <strong>status flips only</strong> (<code>pass</code> &harr;
+        <code>fail</code>) on <code>should-fix</code> findings, each with a written
+        reason for the audit trail. A <code>must-fix</code> finding cannot be flipped
+        &mdash; the scorecard exits non-zero and names it. The decision lives in the
+        overlay, never in an edited skill.
+      </p>
 
-  <!-- =================== RECAP =================== -->
-  <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap">
-    <div class="wrap">
-      <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
-        <p class="eyebrow" style="justify-content:center;"><span class="dot"></span>Recap</p>
-        <h2>The final leg, <em>in one frame.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          Fork once, run four moves, keep the customizations in an overlay, and be
-          honest about the boundary. Instructions, not automation &mdash; because
-          production onboarding is the one thing we can never pre-build.
-        </p>
-      </div>
-
-      <div class="chapter-recap-block">
-        <p class="recap-scorecard reveal" data-delay="1">
-          <span>You ran</span>
-          <span><em>4</em> moves</span><span class="sep">·</span>
-          <span><em>1</em> priority</span><span class="sep">·</span>
-          <span><em>1</em> overlay</span><span class="sep">·</span>
-          <span><em>0</em> generators</span>
-        </p>
-
-        <div class="recap-metrics">
-          <article class="metric-card reveal" data-delay="2">
-            <span class="metric-num"><em>1</em></span>
-            <span class="metric-label">Intake workbook</span>
-            <span class="metric-caption">The long pole. Start it in parallel with the pilot &mdash; every blank field is a future blocked deploy.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="3">
-            <span class="metric-num"><em>4</em></span>
-            <span class="metric-label">Priority skills</span>
-            <span class="metric-caption">deploy, safe-check, cicd, production-ready &mdash; the production-onboarding leg gets your override budget first.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="4">
-            <span class="metric-num"><em>2</em></span>
-            <span class="metric-label">In-env patterns</span>
-            <span class="metric-caption">Azure ML VS Code (recommended) or Codespaces &mdash; so the loop runs inside the customer&rsquo;s private VNet, not just your sandbox.</span>
-          </article>
-        </div>
-
-        <div class="recap-cta">
-          <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">See the fork runbook <span class="arrow">↗</span></a>
-          <a class="btn btn-ghost" href="./production.html">Back to production-ready <span class="arrow">→</span></a>
-        </div>
-      </div>
-    </div>
-  </section>
-
+      <p>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize" target="_blank" rel="noopener">Browse the skill&nbsp;&nearr;</a> &middot;
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Fork runbook&nbsp;&nearr;</a> &middot;
+        <a href="./production.html">Back to production-ready&nbsp;&rarr;</a>
+      </p>
+    </section>
+  </article>
 </main>
 
 <footer style="padding:48px 32px 64px; border-top:1px solid var(--line); text-align:center; color:var(--ink-3); font-size:13px;">
