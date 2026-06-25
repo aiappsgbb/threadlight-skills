@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Demo — watch a paragraph become a governed agent.</title>
-<meta name="description" content="A self-driving 60-second reel of the Threadlight pipeline: one paragraph types in, the agent is specced, booted locally, deployed to Azure, governed, and scored for production — play, pause, scrub, replay.">
+<meta name="description" content="A self-driving 90-second reel of the Threadlight pipeline: one paragraph types in, the agent is specced, booted locally, deployed to Azure, governed, and scored for production — play, pause, scrub, replay.">
 <meta name="theme-color" content="#4f6dff">
 
 <!-- OpenGraph + Twitter card -->
 <meta property="og:type"        content="website">
 <meta property="og:title"       content="Demo — watch a paragraph become a governed agent.">
-<meta property="og:description" content="A self-driving 60-second reel: paragraph in → specced, booted, deployed to your Azure, governed, scored for production. Play, pause, scrub, replay — no video file.">
+<meta property="og:description" content="A self-driving 90-second reel: paragraph in → specced, booted, deployed to your Azure, governed, scored for production. Play, pause, scrub, replay — no video file.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/demo.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
@@ -18,7 +18,7 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="Demo — watch a paragraph become a governed agent.">
-<meta name="twitter:description" content="A self-driving 60-second reel of the Threadlight pipeline. Play, pause, scrub, replay.">
+<meta name="twitter:description" content="A self-driving 90-second reel of the Threadlight pipeline. Play, pause, scrub, replay.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
@@ -388,6 +388,29 @@
     border-radius: 5px; padding: 1px 6px; letter-spacing: .02em;
   }
 
+  /* beat 6 — quiet sales-kit annotation under the scorecard */
+  .kit-note {
+    margin: 12px 0 0; padding: 9px 13px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px;
+    border: 1px dashed var(--line-2); border-radius: 10px; background: var(--bg-1);
+    font-family: var(--sans); font-size: 12.5px; color: var(--ink-2); line-height: 1.4;
+  }
+  .kit-note code {
+    font-family: var(--mono); font-size: 11.5px; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
+  }
+  .kit-note .kit-plus {
+    display: inline-grid; place-items: center; width: 17px; height: 17px;
+    border-radius: 5px; background: var(--lime-soft); color: var(--lime-1);
+    font-family: var(--mono); font-weight: 700; font-size: 12px;
+  }
+  .kit-note .kit-figs {
+    margin-left: auto; font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: .02em; color: var(--ink-1); white-space: nowrap;
+  }
+  .kit-note .kit-figs .u { color: var(--ink-3); }
+  @media (max-width: 520px) { .kit-note .kit-figs { margin-left: 0; } }
+
   /* beat-chip rail */
   .beat-rail {
     display: flex; flex-wrap: wrap; gap: 7px;
@@ -411,6 +434,75 @@
   }
   .beat-chip.is-active .n { color: var(--accent-1); border-color: var(--accent-soft); }
   .beat-chip.is-done .n { color: var(--lime-1); border-color: rgba(168,255,96,.3); }
+
+  /* — sales-kit showcase —————————————————————————————————— */
+  .sales-kit { padding-top: clamp(40px, 7vh, 86px); }
+  .sales-kit .sub code,
+  .kit-shot figcaption code {
+    font-family: var(--mono); font-size: .88em; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
+  }
+  .sales-kit .sub { max-width: 70ch; }
+
+  /* pipeline-slot chain */
+  .kit-chain {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin: 20px 0 0; font-family: var(--mono); font-size: 12px;
+  }
+  .kit-chain .kc {
+    display: inline-flex; align-items: baseline; gap: 7px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px;
+    color: var(--ink-2); background: var(--bg-1);
+  }
+  .kit-chain .kc i { font-style: normal; font-size: 10.5px; color: var(--ink-3); letter-spacing: .02em; }
+  .kit-chain .kc.ok { border-color: rgba(168,255,96,.32); color: var(--lime-1); }
+  .kit-chain .kc.ok i { color: rgba(168,255,96,.6); }
+  .kit-chain .kc.now { border-color: var(--accent); color: var(--ink-0); background: var(--accent-soft); }
+  .kit-chain .kc.now i { color: var(--accent-1); }
+  .kit-chain .kc-arrow { color: var(--ink-3); }
+
+  /* two-column figure + callouts */
+  .kit-layout {
+    margin-top: 28px; display: grid; gap: clamp(20px, 3vw, 38px);
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: start;
+  }
+  @media (max-width: 880px) { .kit-layout { grid-template-columns: 1fr; } }
+
+  .kit-shot {
+    margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: var(--bg-1); box-shadow: 0 24px 60px -30px rgba(0,0,0,.6);
+  }
+  .kit-chrome {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 13px; background: var(--bg-2); border-bottom: 1px solid var(--line);
+  }
+  .kit-dots { display: inline-flex; gap: 6px; }
+  .kit-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+  .kit-url {
+    flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px;
+    padding: 3px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .kit-badge {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: #fff; background: #9b1c1c; border-radius: 5px; padding: 3px 7px;
+  }
+  .kit-shot img { display: block; width: 100%; height: auto; }
+  .kit-shot figcaption {
+    padding: 9px 13px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 12px; color: var(--ink-3); background: var(--bg-1);
+  }
+
+  .kit-points { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 14px; }
+  .kit-points li { display: flex; gap: 13px; }
+  .kit-points .kp-ic {
+    flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--bg-1);
+    font-family: var(--mono); font-size: 14px; color: var(--accent-1);
+  }
+  .kit-points b { display: block; font-family: var(--sans); font-weight: 600; font-size: 14.5px; color: var(--ink-0); }
+  .kit-points p { margin: 3px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+  .kit-points em { font-style: normal; color: var(--warn); }
 
   /* — closing CTA strip ——————————————————————————————————— */
   .demo-cta { padding-top: 8px; }
@@ -641,7 +733,7 @@
                 <span class="beat-step"><b>06</b> / 06</span>
                 <h2 class="beat-title">Scored for <em>production.</em></h2>
               </div>
-              <p class="beat-caption">Finally, threadlight-production-ready scores the agent across thirteen pillars and writes the customer hand-off package — 92 out of 100, ship with two waivers.</p>
+              <p class="beat-caption">threadlight-consumption-iq turns the deployed estate into a phased Azure cost estimate and an internal seller one-pager — then threadlight-production-ready scores the agent across thirteen pillars and writes the customer hand-off package: 92/100, ship with two waivers.</p>
               <article class="scorecard-preview" aria-label="Production-readiness scorecard">
                 <header class="sc-header">
                   <div>
@@ -674,6 +766,11 @@
                   <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> · customer hand-off package written</p>
                 </footer>
               </article>
+              <p class="kit-note">
+                <span class="kit-plus">+</span> Sales kit · <code>threadlight-consumption-iq</code>
+                &rarr; phased Azure cost estimate &amp; seller one-pager
+                <span class="kit-figs">$326 &rarr; $795 &rarr; $6,804<span class="u">/mo&nbsp;est.</span></span>
+              </p>
               <p class="payoff">
                 One paragraph &rarr; <em>a governed agent on your Azure.</em>
                 <span class="sub">~50 minutes · every artefact auditable · nothing mocked</span>
@@ -698,7 +795,7 @@
               <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
-            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">0:54</span></span>
+            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:23</span></span>
             <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">
           </div>
 
@@ -714,6 +811,72 @@
 
         </div><!-- /.reel-frame -->
       </div><!-- /.reel -->
+    </div>
+  </section>
+
+  <!-- ====================== SALES KIT ====================== -->
+  <section class="scene sales-kit" aria-labelledby="kit-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>The sales kit — generated, not slideware</p>
+      <h2 id="kit-h" class="display reveal" data-delay="1">It also writes your <em>pre-sales kit.</em></h2>
+      <p class="sub reveal" data-delay="2">
+        Once the deployment passes <code>threadlight-safe-check</code>, <code>threadlight-consumption-iq</code>
+        reads the <strong>real provisioned estate</strong> and turns it into a phased Azure cost estimate and a
+        shareable <strong>seller one-pager</strong> — every figure framed as a planning <strong>estimate</strong>,
+        never a quote. It runs before the production-readiness scorecard.
+      </p>
+
+      <p class="kit-chain reveal" data-delay="2">
+        <span class="kc ok">safe-check ✓ <i>post-deploy</i></span>
+        <span class="kc-arrow">→</span>
+        <span class="kc now">consumption-iq <i>sales kit</i></span>
+        <span class="kc-arrow">→</span>
+        <span class="kc">production-ready <i>scorecard</i></span>
+      </p>
+
+      <div class="kit-layout reveal" data-delay="3">
+        <figure class="kit-shot">
+          <div class="kit-chrome">
+            <span class="kit-dots"><span></span><span></span><span></span></span>
+            <span class="kit-url">estimate-onepager.html</span>
+            <span class="kit-badge">internal</span>
+          </div>
+          <img src="assets/shots/sales-kit-onepager.png" loading="lazy" width="1000" height="947"
+               alt="The generated seller one-pager: a red ‘Microsoft internal — do not share with the customer’ banner above a phased Azure cost table (Phase 1 proof-of-concept $326, Phase 2 expansion $795 current, Phase 3 business-wide $6,804) with EA estimate column, and a ‘For the seller — how to open the conversation’ talk-track.">
+          <figcaption>Fixture run · <code>sample-presales-rollout</code> · non-customer sample data.</figcaption>
+        </figure>
+
+        <ul class="kit-points">
+          <li>
+            <span class="kp-ic">⌗</span>
+            <div>
+              <b>Phased, not one scary number</b>
+              <p>PoC → expansion (current) → business-wide, each an estimate at public list price — so the ramp is expected, not a step-change.</p>
+            </div>
+          </li>
+          <li>
+            <span class="kp-ic">%</span>
+            <div>
+              <b>EA framing built in</b>
+              <p>A 15% EA multiplier is shown as an internal planning assumption beside list price — clearly labelled an estimate, never a contractual rate.</p>
+            </div>
+          </li>
+          <li>
+            <span class="kp-ic">❝</span>
+            <div>
+              <b>A seller talk-track, written for you</b>
+              <p>“Lead with Phase 1. Never quote Phase 3 alone. Qualify every EA figure.” The how-to-open-the-conversation script ships in the page.</p>
+            </div>
+          </li>
+          <li>
+            <span class="kp-ic">⚑</span>
+            <div>
+              <b>Internal by design</b>
+              <p>Stamped <em>do not share with the customer</em>. Estate-wide shared platform (Defender · Sentinel · DDoS) is amortised, not charged to one app.</p>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 
