@@ -438,39 +438,25 @@
   /* — sales-kit showcase —————————————————————————————————— */
   .sales-kit { padding-top: clamp(40px, 7vh, 86px); }
   .sales-kit .sub code,
-  .kit-shot figcaption code {
+  .kit-foot code {
     font-family: var(--mono); font-size: .88em; color: var(--accent-1);
     background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
   }
   .sales-kit .sub { max-width: 70ch; }
 
-  /* pipeline-slot chain */
-  .kit-chain {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    margin: 20px 0 0; font-family: var(--mono); font-size: 12px;
+  /* artifact gallery */
+  .kit-gallery {
+    margin-top: 28px; display: grid; align-items: start;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 1.8vw, 22px);
   }
-  .kit-chain .kc {
-    display: inline-flex; align-items: baseline; gap: 7px;
-    border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px;
-    color: var(--ink-2); background: var(--bg-1);
+  @media (max-width: 900px) {
+    .kit-gallery { grid-template-columns: 1fr; max-width: 540px; margin-inline: auto; }
   }
-  .kit-chain .kc i { font-style: normal; font-size: 10.5px; color: var(--ink-3); letter-spacing: .02em; }
-  .kit-chain .kc.ok { border-color: rgba(168,255,96,.32); color: var(--lime-1); }
-  .kit-chain .kc.ok i { color: rgba(168,255,96,.6); }
-  .kit-chain .kc.now { border-color: var(--accent); color: var(--ink-0); background: var(--accent-soft); }
-  .kit-chain .kc.now i { color: var(--accent-1); }
-  .kit-chain .kc-arrow { color: var(--ink-3); }
-
-  /* two-column figure + callouts */
-  .kit-layout {
-    margin-top: 28px; display: grid; gap: clamp(20px, 3vw, 38px);
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: start;
-  }
-  @media (max-width: 880px) { .kit-layout { grid-template-columns: 1fr; } }
 
   .kit-shot {
     margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
     background: var(--bg-1); box-shadow: 0 24px 60px -30px rgba(0,0,0,.6);
+    display: flex; flex-direction: column;
   }
   .kit-chrome {
     display: flex; align-items: center; gap: 10px;
@@ -487,22 +473,25 @@
     font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
     color: #fff; background: #9b1c1c; border-radius: 5px; padding: 3px 7px;
   }
-  .kit-shot img { display: block; width: 100%; height: auto; }
+  .kit-frame {
+    position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: var(--bg-2);
+  }
+  .kit-frame img {
+    position: absolute; inset: 0; display: block;
+    width: 100%; height: 100%; object-fit: cover; object-position: top center;
+  }
   .kit-shot figcaption {
-    padding: 9px 13px; border-top: 1px solid var(--line);
-    font-family: var(--sans); font-size: 12px; color: var(--ink-3); background: var(--bg-1);
+    padding: 12px 14px 14px; border-top: 1px solid var(--line);
+    background: var(--bg-1); font-family: var(--sans);
   }
-
-  .kit-points { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 14px; }
-  .kit-points li { display: flex; gap: 13px; }
-  .kit-points .kp-ic {
-    flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px;
-    border-radius: 8px; border: 1px solid var(--line); background: var(--bg-1);
-    font-family: var(--mono); font-size: 14px; color: var(--accent-1);
+  .kit-shot figcaption b { display: block; font-size: 14px; font-weight: 600; color: var(--ink-0); }
+  .kit-by {
+    display: inline-block; margin-top: 6px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .01em; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 2px 7px;
   }
-  .kit-points b { display: block; font-family: var(--sans); font-weight: 600; font-size: 14.5px; color: var(--ink-0); }
-  .kit-points p { margin: 3px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
-  .kit-points em { font-style: normal; color: var(--warn); }
+  .kit-desc { display: block; margin-top: 9px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+  .kit-foot { margin: 22px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); font-family: var(--sans); }
 
   /* — closing CTA strip ——————————————————————————————————— */
   .demo-cta { padding-top: 8px; }
@@ -817,66 +806,71 @@
   <!-- ====================== SALES KIT ====================== -->
   <section class="scene sales-kit" aria-labelledby="kit-h">
     <div class="wrap">
-      <p class="eyebrow reveal"><span class="dot"></span>The sales kit — generated, not slideware</p>
-      <h2 id="kit-h" class="display reveal" data-delay="1">It also writes your <em>pre-sales kit.</em></h2>
+      <p class="eyebrow reveal"><span class="dot"></span>The kit — generated, not slideware</p>
+      <h2 id="kit-h" class="display reveal" data-delay="1">And it writes the kit you <em>walk in with.</em></h2>
       <p class="sub reveal" data-delay="2">
-        Once the deployment passes <code>threadlight-safe-check</code>, <code>threadlight-consumption-iq</code>
-        reads the <strong>real provisioned estate</strong> and turns it into a phased Azure cost estimate and a
-        shareable <strong>seller one-pager</strong> — every figure framed as a planning <strong>estimate</strong>,
-        never a quote. It runs before the production-readiness scorecard.
+        The same run doesn’t just ship code. <code>threadlight-design</code> writes a brand-matched
+        <strong>customer talk deck</strong> and an internal <strong>seller prep-guide</strong>, and
+        <code>threadlight-consumption-iq</code> adds a phased <strong>cost one-pager</strong> — real HTML you
+        screen-share, hand off, or print to PDF. Shown here on the fictional <strong>MeridianCredit</strong> bank sample.
       </p>
 
-      <p class="kit-chain reveal" data-delay="2">
-        <span class="kc ok">safe-check ✓ <i>post-deploy</i></span>
-        <span class="kc-arrow">→</span>
-        <span class="kc now">consumption-iq <i>sales kit</i></span>
-        <span class="kc-arrow">→</span>
-        <span class="kc">production-ready <i>scorecard</i></span>
-      </p>
+      <div class="kit-gallery reveal" data-delay="3">
+        <figure class="kit-shot">
+          <div class="kit-chrome">
+            <span class="kit-dots"><span></span><span></span><span></span></span>
+            <span class="kit-url">demo-deck.html</span>
+          </div>
+          <div class="kit-frame">
+            <img src="assets/shots/sales-kit-deck.png" loading="lazy" width="1440" height="810"
+                 alt="The generated customer talk deck: a dark, cinematic title slide reading ‘The credit memo, ready before the coffee’s cold’ with a Meridian Commercial Bank × Microsoft co-brand and a 1 / 11 slide counter.">
+          </div>
+          <figcaption>
+            <b>Customer talk deck</b>
+            <span class="kit-by">threadlight-design</span>
+            <span class="kit-desc">Cinematic, cold-open to close, with built-in speaker notes — drive it from the keyboard, in the room.</span>
+          </figcaption>
+        </figure>
 
-      <div class="kit-layout reveal" data-delay="3">
+        <figure class="kit-shot">
+          <div class="kit-chrome">
+            <span class="kit-dots"><span></span><span></span><span></span></span>
+            <span class="kit-url">prep-guide.html</span>
+            <span class="kit-badge">internal</span>
+          </div>
+          <div class="kit-frame">
+            <img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940"
+                 alt="The internal seller prep-guide: an orange ‘internal use only — do not share with the customer’ bar above a seller / solution-engineer view-mode toggle, a section table of contents, and a use-case summary for the MeridianCredit agent.">
+          </div>
+          <figcaption>
+            <b>Seller prep-guide</b>
+            <span class="kit-by">threadlight-design</span>
+            <span class="kit-desc">Use-case summary, demo script, discovery questions, objection handling — with a seller / engineer mode toggle.</span>
+          </figcaption>
+        </figure>
+
         <figure class="kit-shot">
           <div class="kit-chrome">
             <span class="kit-dots"><span></span><span></span><span></span></span>
             <span class="kit-url">estimate-onepager.html</span>
             <span class="kit-badge">internal</span>
           </div>
-          <img src="assets/shots/sales-kit-onepager.png" loading="lazy" width="1000" height="947"
-               alt="The generated seller one-pager: a red ‘Microsoft internal — do not share with the customer’ banner above a phased Azure cost table (Phase 1 proof-of-concept $326, Phase 2 expansion $795 current, Phase 3 business-wide $6,804) with EA estimate column, and a ‘For the seller — how to open the conversation’ talk-track.">
-          <figcaption>Fixture run · <code>sample-presales-rollout</code> · non-customer sample data.</figcaption>
+          <div class="kit-frame">
+            <img src="assets/shots/sales-kit-onepager.png" loading="lazy" width="1000" height="947"
+                 alt="The generated seller one-pager: a red ‘Microsoft internal — do not share with the customer’ banner above a phased Azure cost table (Phase 1 $326, Phase 2 $795, Phase 3 $6,804 per month, with an EA estimate column) and a ‘how to open the conversation’ seller talk-track.">
+          </div>
+          <figcaption>
+            <b>Phased cost one-pager</b>
+            <span class="kit-by">threadlight-consumption-iq</span>
+            <span class="kit-desc">A phased Azure estimate with EA framing and a written talk-track — every figure a planning estimate, never a quote.</span>
+          </figcaption>
         </figure>
-
-        <ul class="kit-points">
-          <li>
-            <span class="kp-ic">⌗</span>
-            <div>
-              <b>Phased, not one scary number</b>
-              <p>PoC → expansion (current) → business-wide, each an estimate at public list price — so the ramp is expected, not a step-change.</p>
-            </div>
-          </li>
-          <li>
-            <span class="kp-ic">%</span>
-            <div>
-              <b>EA framing built in</b>
-              <p>A 15% EA multiplier is shown as an internal planning assumption beside list price — clearly labelled an estimate, never a contractual rate.</p>
-            </div>
-          </li>
-          <li>
-            <span class="kp-ic">❝</span>
-            <div>
-              <b>A seller talk-track, written for you</b>
-              <p>“Lead with Phase 1. Never quote Phase 3 alone. Qualify every EA figure.” The how-to-open-the-conversation script ships in the page.</p>
-            </div>
-          </li>
-          <li>
-            <span class="kp-ic">⚑</span>
-            <div>
-              <b>Internal by design</b>
-              <p>Stamped <em>do not share with the customer</em>. Estate-wide shared platform (Defender · Sentinel · DDoS) is amortised, not charged to one app.</p>
-            </div>
-          </li>
-        </ul>
       </div>
+
+      <p class="kit-foot reveal" data-delay="3">
+        All three come from one run on the fictional <code>credit-memo</code> sample — every figure an estimate,
+        every internal page stamped, nothing customer-specific.
+      </p>
     </div>
   </section>
 
