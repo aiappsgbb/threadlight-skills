@@ -346,6 +346,48 @@
   }
   .reel-seek:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
+  /* ── narrative subtitle bar (enhanced mode only) ─────────── */
+  .reel-subtitle { display: none; }
+  .reel.is-enhanced .reel-subtitle {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 62px; padding: 12px clamp(16px, 3vw, 34px);
+    background: var(--bg-2); border-top: 1px solid var(--line);
+  }
+  .reel.is-enhanced .reel-subtitle p {
+    margin: 0; max-width: 74ch; text-align: center;
+    font-family: var(--sans); font-size: 14.5px; line-height: 1.5;
+    color: var(--ink-1); letter-spacing: .005em;
+    animation: subIn .42s var(--ease-out) both;
+  }
+  .reel.is-enhanced .reel-subtitle p .cue { color: var(--accent-1); font-weight: 600; }
+  @keyframes subIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+  /* per-beat caption — storyboard / no-JS / reduced-motion only */
+  .beat-caption {
+    margin: -4px 0 18px; max-width: 78ch;
+    font-family: var(--sans); font-size: 15px; line-height: 1.55; color: var(--ink-2);
+  }
+  .reel.is-enhanced .beat-caption { display: none; }
+
+  /* sound toggle */
+  .reel-btn .ico-sound { display: none; }
+  .reel.is-sound .reel-sound .ico-muted { display: none; }
+  .reel.is-sound .reel-sound .ico-sound { display: block; }
+  .reel.is-sound .reel-sound { border-color: var(--accent-1); color: var(--accent-1); }
+  .reel-sound.is-hint { animation: soundHint 1.6s var(--ease-out) 3; }
+  @keyframes soundHint {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+    50% { box-shadow: 0 0 0 7px transparent; border-color: var(--accent-1); }
+  }
+
+  /* beat 3 — tool-call return values */
+  .tooltrace .tool { display: inline-flex; align-items: center; gap: 7px; }
+  .tooltrace .tool i {
+    font-style: normal; font-size: 10px; color: var(--lime-1);
+    background: rgba(168,255,96,.08); border: 1px solid rgba(168,255,96,.22);
+    border-radius: 5px; padding: 1px 6px; letter-spacing: .02em;
+  }
+
   /* beat-chip rail */
   .beat-rail {
     display: flex; flex-wrap: wrap; gap: 7px;
@@ -454,10 +496,11 @@
                 <span class="beat-step"><b>01</b> / 06</span>
                 <h2 class="beat-title">One paragraph <em>in.</em></h2>
               </div>
+              <p class="beat-caption">It starts with one paragraph. You describe a credit-memo triage agent in plain English — threadlight-design pulls out the process, entities, decision branches, and the hard credit rules.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">copilot — credit-memo</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-design to spec a credit-memo</span></span><span class="term-line"><span class="cmd">triage agent for a regional bank: pull bureau</span></span><span class="term-line"><span class="cmd">data, check DSCR &amp; LTV, then auto-approve,</span></span><span class="term-line"><span class="cmd">refer, or decline with a written memo.<span class="caret"></span></span></span><span class="term-line"><span class="out">threadlight-design · fast-PoC engaged</span></span><span class="term-line"><span class="cmt"># parsing process · entities · branches…</span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-design to spec a credit-memo</span></span><span class="term-line"><span class="cmd">triage agent for a regional commercial bank.</span></span><span class="term-line"><span class="cmd">For each SME loan application: pull the credit-</span></span><span class="term-line"><span class="cmd">bureau report, compute DSCR &amp; LTV, then</span></span><span class="term-line"><span class="cmd">auto-approve, refer, or decline — drafting a</span></span><span class="term-line"><span class="cmd">memo that cites the policy rule. Floors:</span></span><span class="term-line"><span class="cmd">DSCR &ge; 1.25, LTV &le; 0.80.<span class="caret"></span></span></span><span class="term-line"><span class="out">threadlight-design · fast-PoC engaged</span></span><span class="term-line"><span class="cmt"># parsing process · entities · branches · rules</span></span></pre>
                 </div>
                 <div class="art" aria-label="Parsed intent">
                   <div class="art-head"><b>Understood from your paragraph</b><span class="art-tag">FSI</span></div>
@@ -477,6 +520,7 @@
                 <span class="beat-step"><b>02</b> / 06</span>
                 <h2 class="beat-title">Specced &amp; <em>scaffolded.</em></h2>
               </div>
+              <p class="beat-caption">threadlight-design writes the spec and the AGENTS file, scaffolds the tools, seeds realistic sample data, and adds killer-prompt tests — a working project, not a slide.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-design</span></div>
@@ -516,22 +560,23 @@
                 <span class="beat-step"><b>03</b> / 06</span>
                 <h2 class="beat-title">Answering live on <em>localhost.</em></h2>
               </div>
+              <p class="beat-caption">threadlight-local-test boots the agent on localhost with a Streamlit chat. Ask it to triage a real application and it calls the tools live, then writes a credit memo with its reasoning.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
-                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">pattern-0 · streamlit</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">launch pattern-0 streamlit quickstart</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">list · get · update wired — no glue code</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-local-test</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-local-test — pattern 0</span></span><span class="term-line"><span class="cmd">python -m threadlight_quickstart</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider + Streamlit</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
                 </div>
-                <div class="art" aria-label="Streamlit chat">
-                  <div class="art-head"><b>returns-triage · chat</b><span class="art-tag">:8501</span></div>
+                <div class="art" aria-label="Streamlit credit-memo chat">
+                  <div class="art-head"><b>credit-memo · chat</b><span class="art-tag">:8501</span></div>
                   <div class="art-body chat">
-                    <div class="bubble user">Application <b>APP-4821</b> — auto-approve?</div>
+                    <div class="bubble user">Triage <b>APP-4821</b> — Riverside Welding LLC, $480k equipment loan over 60 months. Approve, refer, or decline?</div>
                     <div class="tooltrace" aria-hidden="true">
-                      <span class="tool">list_applications</span>
-                      <span class="tool">get_application(APP-4821)</span>
-                      <span class="tool">get_bureau_pull</span>
-                      <span class="tool">update_memo</span>
+                      <span class="tool">list_applications<i>1 match</i></span>
+                      <span class="tool">get_application(APP-4821)<i>$480k · 60mo</i></span>
+                      <span class="tool">get_bureau_pull<i>FICO 706</i></span>
+                      <span class="tool">update_memo(CM-4821)<i>saved ✓</i></span>
                     </div>
-                    <div class="bubble bot"><b>Refer to underwriter.</b> DSCR 1.18 is below the 1.25 floor; LTV 0.74 passes. Drafted memo CM-4821 with the rationale.</div>
+                    <div class="bubble bot"><b>Refer to underwriter.</b> DSCR <b>1.18</b> is below the 1.25 floor — NOI $172k ÷ debt service $146k. LTV <b>0.74</b> passes. Bureau: 2 late payments in 24 months, no liens. Drafted memo <b>CM-4821</b> recommending referral, with a conditional-approval path if a $60k cash injection lifts DSCR to 1.27.</div>
                   </div>
                 </div>
               </div>
@@ -543,10 +588,11 @@
                 <span class="beat-step"><b>04</b> / 06</span>
                 <h2 class="beat-title">Deployed to <em>your Azure.</em></h2>
               </div>
+              <p class="beat-caption">threadlight-deploy runs azd up straight into your own Azure subscription — Foundry, a hosted-agent container, Cosmos, and App Insights, provisioned and wired together. Nothing is mocked.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-deploy · azd</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">threadlight-deploy</span> <span class="cmd">→</span> <span class="cmd">azd up</span></span><span class="term-line"><span class="out">tenant isolation · subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-deploy</span> <span class="cmd">→</span> <span class="cmd">azd up</span></span><span class="term-line"><span class="out">tenant isolation · subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Azure resource group">
                   <div class="art-head"><b>rg-credit-memo</b><span class="art-tag">eastus2</span></div>
@@ -571,10 +617,11 @@
                 <span class="beat-step"><b>05</b> / 06</span>
                 <h2 class="beat-title">Governed &amp; <em>gated.</em></h2>
               </div>
+              <p class="beat-caption">Then come the gates. threadlight-govern enforces runtime policy, threadlight-evals scores quality, and threadlight-redteam runs an adversarial PyRIT scan — a deprecated model is refused at the boundary.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">govern · evals · red-team</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">govern · evals · red-team</span></span><span class="term-line"><span class="out">AGT runtime policy wired at the boundary</span></span><span class="term-line"><span class="out">continuous evals + adversarial scan</span></span><span class="term-line"><span class="out">a deprecated model is refused at the door<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-govern, then threadlight-</span></span><span class="term-line"><span class="cmd">evals and threadlight-redteam</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·</span></span><span class="term-line"><span class="out">exfil · harmful-content<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
                 </div>
                 <div class="art" aria-label="Governance gates">
                   <div class="art-head"><b>Control-plane gates</b><span class="art-tag">DISCOVER · PROTECT</span></div>
@@ -594,10 +641,11 @@
                 <span class="beat-step"><b>06</b> / 06</span>
                 <h2 class="beat-title">Scored for <em>production.</em></h2>
               </div>
+              <p class="beat-caption">Finally, threadlight-production-ready scores the agent across thirteen pillars and writes the customer hand-off package — 92 out of 100, ship with two waivers.</p>
               <article class="scorecard-preview" aria-label="Production-readiness scorecard">
                 <header class="sc-header">
                   <div>
-                    <p class="sc-title">threadlight-production-ready · advisory</p>
+                    <p class="sc-title">› Use threadlight-production-ready · advisory</p>
                     <p class="sc-headline">Credit-memo agent &middot; <em>13-pillar scorecard</em></p>
                   </div>
                   <p class="sc-posture"><span class="sc-score" data-reel-counter data-to="92">0<span class="den">/100</span></span><br><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-2);">Citadel-spoke posture</span></p>
@@ -634,6 +682,9 @@
 
           </div><!-- /.reel-stage -->
 
+          <!-- narrative subtitle (enhanced mode) -->
+          <div class="reel-subtitle" id="reel-subtitle" aria-live="polite"></div>
+
           <!-- transport -->
           <div class="reel-transport" role="group" aria-label="Reel playback controls">
             <button class="reel-btn play" type="button" data-reel="play" aria-label="Play">
@@ -642,6 +693,10 @@
             </button>
             <button class="reel-btn" type="button" data-reel="replay" aria-label="Replay from start">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            </button>
+            <button class="reel-btn reel-sound" type="button" data-reel="sound" aria-label="Turn on voiceover" aria-pressed="false" title="Voiceover">
+              <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
             <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">0:54</span></span>
             <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">

@@ -21,9 +21,10 @@
   var beats = Array.prototype.slice.call(reel.querySelectorAll('.beat'));
   if (!stage || !beats.length) return;
 
-  // Per-beat durations (ms), in DOM order. Tuned so the typing +
-  // artefact reveal of each beat finishes comfortably inside its slot.
-  var DURATIONS = [7000, 9000, 10000, 9000, 9000, 10000];
+  // Per-beat durations (ms), in DOM order. Synced to the voiceover:
+  // each value is the beat's narration clip length + a ~1.3s tail so
+  // the artefact reveal settles before the next beat begins.
+  var DURATIONS = [12508, 11980, 12316, 13948, 14068, 11692];
   var N = beats.length;
   while (DURATIONS.length < N) DURATIONS.push(9000);
   DURATIONS = DURATIONS.slice(0, N);
@@ -32,6 +33,9 @@
   // Cumulative end-time of each beat, for elapsed -> beat lookup.
   var ENDS = [];
   (function () { var acc = 0; for (var i = 0; i < N; i++) { acc += DURATIONS[i]; ENDS.push(acc); } })();
+  // Cumulative start-time of each beat (STARTS[i] === ENDS[i-1]).
+  var STARTS = [0];
+  for (var si = 1; si < N; si++) STARTS.push(ENDS[si - 1]);
 
   function isReducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -63,6 +67,15 @@
   var timeEl    = q('[data-reel="time"]');
   var totalEl   = q('[data-reel="total"]');
   var chips     = Array.prototype.slice.call(reel.querySelectorAll('.beat-chip'));
+  var subtitle  = q('#reel-subtitle');
+  var soundBtn  = q('[data-reel="sound"]');
+
+  // ---- voiceover audio (one element, src swapped per beat) --------
+  var AUDIO_BASE = 'assets/audio/';
+  var audio = new Audio();
+  audio.preload = 'none';
+  var soundOn = false;
+  var audioBeat = -1;
 
   // ---- state ------------------------------------------------------
   var elapsed = 0;       // ms into the timeline
@@ -95,6 +108,8 @@
       c.classList.toggle('is-active', cb === b);
       c.classList.toggle('is-done', cb < b);
     });
+    updateSubtitle(b);
+    if (soundOn && playing) playBeatAudio(b, elapsed - STARTS[b - 1]);
     // Re-run the score counter whenever the final beat is shown.
     var beatEl = beats[b - 1];
     var counter = beatEl && beatEl.querySelector('[data-reel-counter]');
@@ -113,6 +128,55 @@
     requestAnimationFrame(step);
   }
 
+  // ---- narrative subtitle + voiceover -----------------------------
+  function updateSubtitle(b) {
+    if (!subtitle) return;
+    var cap = beats[b - 1] && beats[b - 1].querySelector('.beat-caption');
+    while (subtitle.firstChild) subtitle.removeChild(subtitle.firstChild);
+    var p = document.createElement('p');
+    p.textContent = cap ? cap.textContent : '';
+    subtitle.appendChild(p); // fresh node re-triggers the fade-in
+  }
+
+  function loadBeatAudio(b) {
+    if (audioBeat === b) return false;
+    audioBeat = b;
+    audio.src = AUDIO_BASE + 'beat-' + b + '.mp3';
+    audio.load();
+    return true;
+  }
+
+  function playBeatAudio(b, offsetMs) {
+    if (!soundOn) return;
+    var switched = loadBeatAudio(b);
+    var off = Math.max(0, (offsetMs || 0) / 1000);
+    var go = function () {
+      try { if (off > 0.05) audio.currentTime = off; } catch (e) {}
+      var pr = audio.play();
+      if (pr && pr.catch) pr.catch(function () {});
+    };
+    if (switched) {
+      audio.addEventListener('canplay', function once() {
+        audio.removeEventListener('canplay', once); go();
+      });
+    } else { go(); }
+  }
+
+  function setSound(on) {
+    soundOn = on;
+    reel.classList.toggle('is-sound', on);
+    if (soundBtn) {
+      soundBtn.setAttribute('aria-pressed', String(on));
+      soundBtn.setAttribute('aria-label', on ? 'Turn off voiceover' : 'Turn on voiceover');
+      soundBtn.classList.remove('is-hint');
+    }
+    if (on) {
+      var cb = currentBeat < 1 ? 1 : currentBeat;
+      if (playing) playBeatAudio(cb, elapsed - STARTS[cb - 1]);
+    } else {
+      audio.pause();
+    }
+  }
   function render() {
     var pct = TOTAL ? (elapsed / TOTAL) : 0;
     if (seek) {
@@ -142,6 +206,10 @@
     lastTs = 0;
     reel.classList.add('is-playing');
     if (playBtn) playBtn.setAttribute('aria-label', 'Pause');
+    if (soundOn) {
+      var cb = currentBeat < 1 ? 1 : currentBeat;
+      playBeatAudio(cb, elapsed - STARTS[cb - 1]);
+    }
     rafId = requestAnimationFrame(tick);
   }
 
@@ -150,6 +218,7 @@
     reel.classList.remove('is-playing');
     if (playBtn) playBtn.setAttribute('aria-label', 'Play');
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    audio.pause();
   }
 
   function toggle() { playing ? pause() : play(); }
@@ -172,6 +241,7 @@
   // ---- wiring -----------------------------------------------------
   if (playBtn)   playBtn.addEventListener('click', toggle);
   if (replayBtn) replayBtn.addEventListener('click', replay);
+  if (soundBtn)  soundBtn.addEventListener('click', function () { setSound(!soundOn); });
 
   if (seek) {
     seek.addEventListener('input', function () {
@@ -198,6 +268,7 @@
     else if (e.key === 'ArrowRight') { e.preventDefault(); seekToBeat(Math.min(N, currentBeat + 1)); }
     else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekToBeat(Math.max(1, currentBeat - 1)); }
     else if (e.key === 'r' || e.key === 'R') { replay(); }
+    else if (e.key === 'm' || e.key === 'M') { setSound(!soundOn); }
   });
 
   // Autoplay the first time the reel scrolls into view; track inView
@@ -217,5 +288,6 @@
 
   // ---- boot -------------------------------------------------------
   if (totalEl) totalEl.textContent = fmt(TOTAL);
+  if (soundBtn) soundBtn.classList.add('is-hint'); // nudge toward voiceover
   render();
 })();
