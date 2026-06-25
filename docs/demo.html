@@ -616,7 +616,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-design</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">threadlight-design</span> <span class="flag">--mode</span> <span class="arg">fast-poc</span></span><span class="term-line"><span class="out">write specs/SPEC.md</span></span><span class="term-line"><span class="out">write AGENTS.md</span></span><span class="term-line"><span class="out">scaffold src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">seed specs/sample-data/ — 38 records</span></span><span class="term-line"><span class="out">write tests/killer-prompts.md<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">seeding specs/sample-data/ — 38 records</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Generated spec and file tree">
                   <div class="art-head"><b>specs/SPEC.md</b><span class="art-tag">generated</span></div>
@@ -656,7 +656,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-local-test</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-local-test — pattern 0</span></span><span class="term-line"><span class="cmd">python -m threadlight_quickstart</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider + Streamlit</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-local-test to boot the agent</span></span><span class="term-line"><span class="cmd">locally so I can chat with it.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider + Streamlit</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Streamlit credit-memo chat">
                   <div class="art-head"><b>credit-memo · chat</b><span class="art-tag">:8501</span></div>
@@ -684,7 +684,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-deploy · azd</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-deploy</span> <span class="cmd">→</span> <span class="cmd">azd up</span></span><span class="term-line"><span class="out">tenant isolation · subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Now deploy it to my own Azure subscription</span></span><span class="term-line"><span class="cmd">with threadlight-deploy.</span></span><span class="term-line"><span class="out">azd up · tenant + subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Azure resource group">
                   <div class="art-head"><b>rg-credit-memo</b><span class="art-tag">eastus2</span></div>
@@ -713,7 +713,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">govern · evals · red-team</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-govern, then threadlight-</span></span><span class="term-line"><span class="cmd">evals and threadlight-redteam</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·</span></span><span class="term-line"><span class="out">exfil · harmful-content<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Before we ship, run the gates: threadlight-</span></span><span class="term-line"><span class="cmd">govern, threadlight-evals, threadlight-redteam.</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·</span></span><span class="term-line"><span class="out">exfil · harmful-content<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
                 </div>
                 <div class="art" aria-label="Governance gates">
                   <div class="art-head"><b>Control-plane gates</b><span class="art-tag">DISCOVER · PROTECT</span></div>
@@ -737,7 +737,7 @@
               <article class="scorecard-preview" aria-label="Production-readiness scorecard">
                 <header class="sc-header">
                   <div>
-                    <p class="sc-title">› Use threadlight-production-ready · advisory</p>
+                    <p class="sc-title">› Use threadlight-production-ready to score this for production and write the customer hand-off.</p>
                     <p class="sc-headline">Credit-memo agent &middot; <em>13-pillar scorecard</em></p>
                   </div>
                   <p class="sc-posture"><span class="sc-score" data-reel-counter data-to="92">0<span class="den">/100</span></span><br><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-2);">Citadel-spoke posture</span></p>
