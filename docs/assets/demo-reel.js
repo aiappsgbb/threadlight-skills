@@ -142,24 +142,30 @@
     if (audioBeat === b) return false;
     audioBeat = b;
     audio.src = AUDIO_BASE + 'beat-' + b + '.mp3';
-    audio.load();
     return true;
   }
 
   function playBeatAudio(b, offsetMs) {
     if (!soundOn) return;
-    var switched = loadBeatAudio(b);
+    loadBeatAudio(b);
     var off = Math.max(0, (offsetMs || 0) / 1000);
-    var go = function () {
-      try { if (off > 0.05) audio.currentTime = off; } catch (e) {}
-      var pr = audio.play();
-      if (pr && pr.catch) pr.catch(function () {});
+    // Apply the in-beat offset once metadata is known; never before play().
+    var applyOffset = function () {
+      try {
+        if (off > 0.1 && isFinite(audio.duration)) {
+          audio.currentTime = Math.min(off, audio.duration - 0.05);
+        }
+      } catch (e) {}
     };
-    if (switched) {
-      audio.addEventListener('canplay', function once() {
-        audio.removeEventListener('canplay', once); go();
-      });
-    } else { go(); }
+    if (audio.readyState >= 1) applyOffset();
+    else audio.addEventListener('loadedmetadata', function once() {
+      audio.removeEventListener('loadedmetadata', once); applyOffset();
+    });
+    // CRITICAL: call play() synchronously so it stays inside the user
+    // gesture that enabled sound — deferring it past the click loses the
+    // gesture and Chromium/Edge silently rejects the first playback.
+    var pr = audio.play();
+    if (pr && pr.catch) pr.catch(function () {});
   }
 
   function setSound(on) {
@@ -172,7 +178,11 @@
     }
     if (on) {
       var cb = currentBeat < 1 ? 1 : currentBeat;
+      // Enabling sound is a clear intent to hear it: if the reel is
+      // paused (or finished), start it now so the click's gesture also
+      // unlocks audio. play() will kick off playBeatAudio synchronously.
       if (playing) playBeatAudio(cb, elapsed - STARTS[cb - 1]);
+      else play();
     } else {
       audio.pause();
     }
