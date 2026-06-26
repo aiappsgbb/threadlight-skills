@@ -285,7 +285,7 @@ regardless of which mode produced it.
 
 **A pre-sales number is dangerous because it looks authoritative.** Every figure
 this mode emits is a planning **ESTIMATE at public list prices for one generic
-pilot — never a quote.** Violating the letter of this rule violates its spirit.
+pilot — not a quote.** Violating the letter of this rule violates its spirit.
 
 | Rationalization | Reality |
 |---|---|
