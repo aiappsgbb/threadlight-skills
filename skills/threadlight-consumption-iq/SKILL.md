@@ -1,57 +1,20 @@
 ---
 name: threadlight-consumption-iq
-description: >
-  Use after threadlight-safe-check --phase post-deploy returns green, before
-  threadlight-production-ready, to project per-resource monthly Azure cost at
-  the customer's declared production load and compare against 2–3 alternative
-  SKUs per resource so the seller / SE can pick the cheapest config that still
-  meets declared constraints before the customer signs off and turns on
-  production traffic. Walks the deployed Bicep + `azd env`, reads SPEC § 12
-  `load_profile{}` (interactive wizard fills it on first run + writes back to
-  SPEC), hits the public Azure Retail Prices API (`prices.azure.com`) directly
-  via stdlib urllib with a versioned fixture fallback, and emits `docs/cost-projection.md` (human-readable
-  scorecard with side-by-side SKU comparisons + mermaid cost share donut +
-  top-N recommendations) plus `specs/cost-manifest.json` (strict v1 schema
-  consumed by `threadlight-production-ready`'s cost pillar). Covers AOAI model
-  deployments (PAYG vs PTU vs regional vs model swap), Foundry hosted-agent
-  tiers, ACA SKUs (Consumption vs Dedicated D-series / E-series, replica
-  scaling), Cosmos DB (provisioned vs serverless vs autoscale), Storage
-  redundancy + access tier, APIM (Consumption vs Basic v2 vs Standard v2 vs
-  Premium), and Azure AI Search (Free / Basic / S1 / S2 / S3 + replica /
-  partition combos). Soft advisory — never mutates Bicep; recommendations[] is
-  read by `threadlight-production-ready`'s new `COST-006` check which flags
-  unaddressed savings >$100/mo as `must-fix`. Every emitted $ value is tagged
-  `price_source: live | fixture | fallback` so reviewers can see what's stale.
-  Also runs a PRE-SALES phased-estimate mode (no deployed pilot required): give
-  it a rollout profile describing N adoption phases (POC → expansion →
-  business-wide), each with its own load + hardening posture, and it projects
-  every resource per phase, adds the production-hardening / estate delta,
-  applies an optional EA/MCA discount multiplier, and emits `docs/cost-estimate.md`
-  + `specs/cost-estimate-manifest.json` plus a shareable seller one-pager
-  (HTML, best-effort PDF) — every figure framed as an ESTIMATE, not a quote.
-  USE FOR: azure consumption projection, cost projection, post-deploy cost,
-  SKU diff, SKU comparison, PAYG vs PTU, ACA SKU comparison, Cosmos serverless
-  vs provisioned, Storage redundancy comparison, APIM tier comparison, AI
-  Search tier sizing, Foundry hosted-agent tier sizing, load profile wizard,
-  SPEC § 12 load_profile, cost-projection.md, cost-manifest.json, drive
-  consumption outcome, customer FinOps conversation, pre-production cost
-  scorecard, monthly cost recommendation, retail prices API, Azure-pricing
-  MCP, paygo-ptu beyond LLMs, generalize cost analysis across resources,
-  monthly savings recommendation, cost rationale, cost caveat,
-  Kratos export cost projection, discover from infra, tolerate Kratos
-  resource naming, pre-sales cost estimate, phased estimate, rollout profile,
-  land-and-expand cost, adoption phase cost, production-hardening delta,
-  estate cost delta, EA / MCA discount, customer cost one-pager, seller
-  one-pager, sales cost framing.
-  DO NOT USE FOR: AOAI-only PAYG-vs-PTU break-even (use `paygo-ptu-cost-analyzer`
-  in awesome-gbb directly if you don't have a deployed pilot); the static cost
-  pillar checks (Budget declared? anomaly alert wired? projection artefact
-  present?) — those stay in `threadlight-production-ready` pillar 10; live
-  actual-cost queries against Cost Management (those are `threadlight-production-
-  ready` COST-101..103); Bicep mutation — this skill is advisory only and
-  `threadlight-deploy` is what actually changes infra on the next run; demand
-  forecasting / time-series of usage (out of scope v1); reservations /
-  Savings Plans modelling (deferred to v2).
+description: >-
+  Use after threadlight-safe-check post-deploy and before
+  threadlight-production-ready to project per-resource monthly Azure cost at
+  the customer's declared load and compare 2–3 SKUs per resource so the
+  seller/SE picks the cheapest config that still meets constraints. Reads
+  deployed Bicep + SPEC § 12 load_profile, hits the Azure Retail Prices API,
+  emits cost-projection.md + cost-manifest.json. Advisory only. Also a
+  PRE-SALES phased estimate with no deployed pilot (adoption phases, hardening
+  delta, EA/MCA discount → seller one-pager). USE FOR: azure consumption
+  projection, cost projection, post-deploy cost, SKU diff, PAYG vs PTU, AI
+  Search sizing, load profile, cost-manifest.json, retail prices API,
+  pre-sales cost estimate, EA/MCA discount, seller one-pager. DO NOT USE FOR:
+  AOAI-only PAYG-vs-PTU break-even with no pilot (use
+  paygo-ptu-cost-analyzer); live Cost Management actual-cost queries (stay in
+  threadlight-production-ready); Bicep mutation (use threadlight-deploy).
 metadata:
   version: "0.3.0"
 ---
@@ -322,7 +285,7 @@ regardless of which mode produced it.
 
 **A pre-sales number is dangerous because it looks authoritative.** Every figure
 this mode emits is a planning **ESTIMATE at public list prices for one generic
-pilot — never a quote.** Violating the letter of this rule violates its spirit.
+pilot — not a quote.** Violating the letter of this rule violates its spirit.
 
 | Rationalization | Reality |
 |---|---|

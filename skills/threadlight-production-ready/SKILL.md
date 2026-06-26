@@ -1,28 +1,20 @@
 ---
 name: threadlight-production-ready
-description: >
-  Use after threadlight-safe-check --phase post-deploy returns green to take a
-  deployed pilot from "lab" to "ready for customer architecture review / CISO
-  sign-off / paved path to production". Reads SPEC § 12 (target posture,
-  must-have pillars, residency, RTO/RPO, SLA, incident owner) and probes Azure
-  to produce an advisory production-readiness scorecard + uplift plan +
-  customer-facing hand-off package across 13 pillars. Citadel-spoke recommended,
-  AGT v4 in-process middleware second, standard AI Gateway / VNet third. Soft
-  advisory — never fails a build; missing live-probe permissions degrade
-  gracefully to `not-verified`.
-  USE FOR: production readiness, prod-ready gate, customer architecture review,
-  CISO sign-off prep, pilot-to-prod handover, paved path to production, citadel
-  uplift, AGT uplift, AI gateway uplift, production checklist, production
-  scorecard, go-live readiness, lab graveyard, hand-off package, residual risk,
-  go-live recommendation, would-fail-hard-gate, evidence register, waiver
-  register, model lifecycle, retirement notice, SRE handover, RACI,
-  Kratos export readiness, Kratos-exported agent scorecard, trimmed infra
-  intentional.
-  DO NOT USE FOR: deployment itself (threadlight-deploy), structural
-  completeness gate (threadlight-safe-check), invocation testing (foundry-evals),
-  in-process middleware authoring (foundry-agt), citadel hub provisioning
-  (citadel-hub-deploy), citadel access contracts (citadel-spoke-onboarding),
-  SRE Agent provisioning (azure-sre-agent), AppIn wiring (foundry-observability).
+description: >-
+  Use after threadlight-safe-check post-deploy returns green to take a
+  deployed pilot from lab to ready for customer architecture review / CISO
+  sign-off / paved path to production. Reads SPEC § 12 (posture, must-have
+  pillars, residency, RTO/RPO, SLA, incident owner) and probes Azure to
+  produce an advisory production-readiness scorecard + uplift plan + customer
+  hand-off package across 13 pillars. Soft advisory — never fails a build. USE
+  FOR: production readiness, prod-ready gate, customer architecture review,
+  CISO sign-off prep, pilot-to-prod handover, paved path to production,
+  citadel uplift, AGT uplift, AI gateway uplift, go-live readiness, hand-off
+  package, SRE handover, Kratos export readiness. DO NOT USE FOR: deployment
+  itself (threadlight-deploy), structural completeness gate
+  (threadlight-safe-check), invocation testing (foundry-evals), middleware
+  authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
+  access contracts (citadel-spoke-onboarding).
 metadata:
   version: "0.5.0"
 ---

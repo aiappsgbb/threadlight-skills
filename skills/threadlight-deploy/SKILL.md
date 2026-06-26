@@ -1,21 +1,20 @@
 ---
 name: threadlight-deploy
-description: >
-  Take a designed agent project (from threadlight-design or manually crafted) and generate
-  all deployment artifacts for Microsoft Foundry Hosted Agents. Reads specs/SPEC.md,
-  AGENTS.md, and skills to produce container.py, Dockerfile, pyproject.toml, azd project,
-  and deploy-notes.md. One-command deployment via `azd up`. Also runs in
-  Kratos-export mode: when handed a Kratos-exported full-clone project
-  (src/hosted-agent/ + use-cases/<x>/), it enriches/validates only — it does
-  NOT regenerate the Dockerfile/main.py/azure.yaml Kratos already shipped — and
-  backfills the missing evals/ directory.
-  USE FOR: deploy to Foundry, make this deployable, generate deployment files, Foundry hosted agent,
-  containerize agent, prepare for Foundry, package agent, deploy agent, hosted deployment,
-  agent deployment, azd deploy, azd up, Kratos export, Kratos-exported project, foundry-agent.zip,
-  enrich Kratos export, backfill evals, use-cases skills bundle.
-  DO NOT USE FOR: designing the process (use threadlight-design), running evals (use foundry-evals),
-  Teams bot deep dive (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
-  GHCP SDK variant (use ghcp-hosted-agents), tenant/subscription isolation for azd (use azure-tenant-isolation).
+description: >-
+  Take a designed agent project (from threadlight-design or hand-crafted) and
+  generate all deployment artifacts for Microsoft Foundry Hosted Agents. Reads
+  specs/SPEC.md, AGENTS.md, and skills to produce container.py, Dockerfile,
+  pyproject.toml, an azd project, and deploy-notes.md for one-command `azd
+  up`. Also runs in Kratos-export mode: handed a Kratos-exported project
+  (src/hosted-agent/ + use-cases/<x>/) it enriches/validates only and
+  backfills the missing evals/ directory. USE FOR: deploy to Foundry, make
+  this deployable, generate deployment files, Foundry hosted agent,
+  containerize agent, package agent, deploy agent, azd deploy, azd up, Kratos
+  export, foundry-agent.zip, backfill evals. DO NOT USE FOR: designing the
+  process (use threadlight-design), running evals (use foundry-evals), Teams
+  bot (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
+  GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
+  azure-tenant-isolation).
 metadata:
   version: "1.6.0"
 ---

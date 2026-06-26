@@ -1,25 +1,19 @@
 ---
 name: threadlight-govern
-description: >
-  PROTECT-leg for threadlight pilots: wires the Microsoft Agent
-  Governance Toolkit (AGT) into a deployed agent and verifies it is
-  actually enforcing — not just documented. Scaffolds a versioned
-  policy artefact, wires the in-process governance middleware at the
-  container boundary, runs `agt verify` to produce committed OWASP ASI
-  2026 evidence, and emits `specs/govern-manifest.json` consumed by
-  `threadlight-production-ready` pillars 2 (agent-governance) and 7
-  (responsible-ai) to flip them from "remediate" to "verified".
-  USE FOR: agent runtime governance, AGT wiring, action-level policy,
-  tool allow/deny, excessive-agency guardrail, governance middleware,
-  agt verify, OWASP ASI 2026, policy artefact, responsible-ai policy,
-  prompt-shield / PII-deny policy block, PROTECT stage, govern leg,
-  govern-manifest, pillar 2 remediation, pillar 7 RAI wiring.
-  DO NOT USE FOR: token-level content filtering at the model edge
-  (Azure AI Content Safety) — that is the model guardrail, AGT governs
-  *actions*; adversarial scanning (threadlight-redteam); offline/online
-  quality evals (threadlight-evals); completeness/deploy gate
-  (threadlight-safe-check); deep AGT capability authoring upstream
-  (foundry-agt).
+description: >-
+  PROTECT-leg for threadlight pilots: wires the Microsoft Agent Governance
+  Toolkit (AGT) into a deployed agent and verifies it is actually enforcing —
+  not just documented. Scaffolds a versioned policy artefact, wires in-process
+  governance middleware at the container boundary, runs `agt verify` for
+  committed OWASP ASI 2026 evidence, and emits `specs/govern-manifest.json`
+  for threadlight-production-ready pillars 2 and 7. USE FOR: agent runtime
+  governance, AGT wiring, action-level policy, tool allow/deny,
+  excessive-agency guardrail, governance middleware, agt verify, OWASP ASI
+  2026, policy artefact, responsible-ai policy, PROTECT stage, govern leg,
+  govern-manifest. DO NOT USE FOR: content filtering at the model edge (Azure
+  AI Content Safety) — AGT governs actions; adversarial scanning
+  (threadlight-redteam); quality evals (threadlight-evals); completeness gate
+  (threadlight-safe-check); deep AGT authoring upstream (foundry-agt).
 metadata:
   version: "0.1.0"
 ---
