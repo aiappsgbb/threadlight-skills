@@ -446,11 +446,12 @@
 
   /* artifact gallery */
   .kit-gallery {
-    margin-top: 28px; display: grid; align-items: start;
-    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 1.8vw, 22px);
+    margin-top: 28px; display: grid; align-items: start; margin-inline: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2.2vw, 28px);
+    max-width: 900px;
   }
-  @media (max-width: 900px) {
-    .kit-gallery { grid-template-columns: 1fr; max-width: 540px; margin-inline: auto; }
+  @media (max-width: 760px) {
+    .kit-gallery { grid-template-columns: 1fr; max-width: 540px; }
   }
 
   .kit-shot {
@@ -468,10 +469,6 @@
     flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
     background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px;
     padding: 3px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .kit-badge {
-    font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
-    color: #fff; background: #9b1c1c; border-radius: 5px; padding: 3px 7px;
   }
   .kit-frame {
     position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: var(--bg-2);
@@ -809,9 +806,8 @@
       <p class="eyebrow reveal"><span class="dot"></span>The kit — generated, not slideware</p>
       <h2 id="kit-h" class="display reveal" data-delay="1">And it writes the kit you <em>walk in with.</em></h2>
       <p class="sub reveal" data-delay="2">
-        The same run doesn’t just ship code. <code>threadlight-design</code> writes a brand-matched
-        <strong>customer talk deck</strong> and an internal <strong>seller prep-guide</strong>, and
-        <code>threadlight-consumption-iq</code> adds a phased <strong>cost one-pager</strong> — real HTML you
+        The same run doesn’t just ship code. <code>threadlight-design</code> also writes a brand-matched
+        <strong>customer talk deck</strong> and a matching <strong>seller prep-guide</strong> — real HTML you
         screen-share, hand off, or print to PDF. Shown here on the fictional <strong>MeridianCredit</strong> bank sample.
       </p>
 
@@ -836,11 +832,10 @@
           <div class="kit-chrome">
             <span class="kit-dots"><span></span><span></span><span></span></span>
             <span class="kit-url">prep-guide.html</span>
-            <span class="kit-badge">internal</span>
           </div>
           <div class="kit-frame">
             <img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940"
-                 alt="The internal seller prep-guide: an orange ‘internal use only — do not share with the customer’ bar above a seller / solution-engineer view-mode toggle, a section table of contents, and a use-case summary for the MeridianCredit agent.">
+                 alt="The generated seller prep-guide: a ‘MeridianCredit — Seller Prep Guide’ header with a seller / solution-engineer view-mode toggle, a section table of contents, and a use-case summary for the credit-memo agent.">
           </div>
           <figcaption>
             <b>Seller prep-guide</b>
@@ -848,28 +843,10 @@
             <span class="kit-desc">Use-case summary, demo script, discovery questions, objection handling — with a seller / engineer mode toggle.</span>
           </figcaption>
         </figure>
-
-        <figure class="kit-shot">
-          <div class="kit-chrome">
-            <span class="kit-dots"><span></span><span></span><span></span></span>
-            <span class="kit-url">estimate-onepager.html</span>
-            <span class="kit-badge">internal</span>
-          </div>
-          <div class="kit-frame">
-            <img src="assets/shots/sales-kit-onepager.png" loading="lazy" width="1000" height="947"
-                 alt="The generated seller one-pager: a red ‘Microsoft internal — do not share with the customer’ banner above a phased Azure cost table (Phase 1 $326, Phase 2 $795, Phase 3 $6,804 per month, with an EA estimate column) and a ‘how to open the conversation’ seller talk-track.">
-          </div>
-          <figcaption>
-            <b>Phased cost one-pager</b>
-            <span class="kit-by">threadlight-consumption-iq</span>
-            <span class="kit-desc">A phased Azure estimate with EA framing and a written talk-track — every figure a planning estimate, never a quote.</span>
-          </figcaption>
-        </figure>
       </div>
 
       <p class="kit-foot reveal" data-delay="3">
-        All three come from one run on the fictional <code>credit-memo</code> sample — every figure an estimate,
-        every internal page stamped, nothing customer-specific.
+        Both come from one run on the fictional <code>credit-memo</code> sample — nothing customer-specific.
       </p>
     </div>
   </section>
