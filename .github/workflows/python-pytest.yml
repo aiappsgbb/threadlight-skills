@@ -50,7 +50,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip pytest
+      - run: python -m pip install --upgrade pip pytest pyyaml
+      - name: Guard - SKILL.md description length (<=1024 chars)
+        # Deterministic per-PR guard for the silent loader-drop regression:
+        # any skills/*/SKILL.md whose parsed `description` exceeds 1024 chars
+        # is dropped from the Copilot CLI registry. The heavier
+        # skill-discovery-smoke.sh confirms this end-to-end but only runs on
+        # manual dispatch, so this cheap static check gates every PR.
+        run: python scripts/ci/check-skill-description-length.py
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
       - name: Run threadlight-production-ready tests
