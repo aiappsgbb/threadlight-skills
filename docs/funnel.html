@@ -3,27 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Threadlight funnel — five stages, one session.</title>
-<meta name="description" content="The Threadlight funnel: from a plain-language conversation to a governed agent running on the customer's Azure. Five named stages, each with its own skills, artefacts, and exit criteria.">
+<title>Threadlight — One paragraph to a deployed agent.</title>
+<meta name="description" content="Threadlight is how Microsoft GBB AI Apps compresses eight weeks of pilot into a single working session — a small library of skills the coding agent reads to spec, build, deploy, and govern an agent on the customer's Azure.">
 <meta name="theme-color" content="#4f6dff">
 
-<meta property="og:type"        content="article">
-<meta property="og:title"       content="The Threadlight funnel — five stages, one session.">
-<meta property="og:description" content="Conversation → Co-design → Deploy → Safe-check → Production. Skills, artefacts, exit criteria — for each stage.">
+<!-- OpenGraph + Twitter card -->
+<meta property="og:type"        content="website">
+<meta property="og:title"       content="Threadlight — paragraph → deployed agent in one session.">
+<meta property="og:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production. One session.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/funnel.html">
 <meta property="og:site_name"   content="Threadlight">
-<meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
+<meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="The Threadlight funnel — five stages.">
-<meta name="twitter:description" content="Conversation → Co-design → Deploy → Safe-check → Production.">
-<meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-funnel.png">
+<meta name="twitter:title"       content="Threadlight — paragraph → deployed agent in one session.">
+<meta name="twitter:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production.">
+<meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=20739484">
 </head>
-<body class="chapter-page chapter-funnel">
+<body>
+
+<div class="atmosphere" aria-hidden="true"></div>
 
 <header class="masthead">
   <div class="brand">
@@ -42,359 +45,664 @@
   </nav>
 </header>
 
-<aside class="floating-toc" aria-label="Funnel stages">
-  <p class="toc-title">Stages</p>
+<aside class="floating-toc" aria-label="On this page">
+  <p class="toc-title">On this page</p>
 </aside>
 
 <main>
 
-  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
-    <div class="wrap wrap-wide">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; The funnel</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Five named stages · one session</p>
-      <h1 class="reveal" data-delay="2">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h1>
-      <p class="lede reveal" data-delay="3">
-        Every Threadlight engagement walks the same five-stage funnel. Each stage has
-        its own skills, its own artefacts, and its own exit criteria. The skills do
-        the heavy lifting; you stay in control of the conversation.
-      </p>
-
-      <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Funnel at a glance">
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>5</em></span>
-          <span class="stat-label">named stages</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>11</em></span>
-          <span class="stat-label">skills along the way</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">session to deploy</span>
-        </div>
-      </div>
-
-      <p class="skill-eyebrow reveal" data-delay="6">
-        <span class="se-tag">Threadlight skills</span>
-        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
-        <span class="se-not">Not commands. Not a CLI of our own.</span>
-      </p>
+  <!-- ====================== SCENE 1 · HERO ====================== -->
+  <section class="scene" id="scene-hero" aria-labelledby="hero-headline" data-toc-id="scene-hero" data-toc-label="Top">
+    <div class="hero-stage" aria-hidden="true">
+      <div class="hero-aurora"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-particles" id="hero-particles"></div>
     </div>
+
+    <div class="wrap wrap-wide hero-inner">
+      <p class="eyebrow"><span class="dot"></span>AI agent PoCs, demos, and MVPs — dramatically simplified</p>
+
+      <h1 class="hero-headline" id="hero-headline">
+        <span class="word">Business</span>
+        <span class="word">process</span>
+        <span class="word">→</span>
+        <span class="word"><em>working</em></span>
+        <span class="word"><em>agent.</em></span>
+      </h1>
+
+      <p class="hero-sub">
+        Describe a business process to a coding agent. It drafts the spec,
+        scaffolds the agent code, validates it locally, and deploys it to
+        <em>your Azure</em> &mdash; with governance, telemetry, and evals
+        generated as auditable artefacts. <strong>One guided session to a deployed pilot.</strong>
+      </p>
+
+      <p class="hero-tag" aria-label="Pipeline status indicator">
+        <span class="pip"></span>
+        <span>FSI &middot; Healthcare &middot; Manufacturing &middot; Retail &middot; Telco &middot; Energy &amp; utilities &mdash; each tailored to domain-specific rules and data</span>
+      </p>
+
+      <aside class="hero-banner reveal" data-delay="3" role="note" aria-label="No-code alternative">
+        <span class="hb-mark" aria-hidden="true">⚡</span>
+        <span class="hb-text"><strong>No customization needed?</strong> Try <a href="#scene-kratos">Kratos</a> &mdash; no-code, MIT-licensed, in your browser. Or <strong>read on</strong> for Threadlight, the customizable path.</span>
+      </aside>
+
+      <div class="hero-cta-row">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
+        <a class="btn btn-ghost"   href="./case-study.html">See it run for real <span class="arrow">→</span></a>
+        <a class="btn btn-ghost"   href="#scene-chain">See the chain <span class="arrow">→</span></a>
+        <a class="btn btn-ghost"   href="#scene-cta">Start with one prompt <span class="arrow">↓</span></a>
+      </div>
+    </div>
+
+    <div class="scroll-cue" aria-hidden="true">Scroll</div>
   </section>
 
-  <section class="chapter-section relay-svg-hero" id="stage-relay" data-toc-id="stage-relay" data-toc-label="What each stage ships">
-    <div class="wrap wrap-xl" style="color: var(--chapter-accent, var(--accent-1));">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Five stages, five artefacts</p>
-        <h2>What <em>flows down</em> the ladder.</h2>
-        <p class="section-lede">
-          Each gate produces a named file the next stage reads as input.
-          No "we'll write that down later." The artefact <em>is</em> the gate.
-        </p>
+  <!-- ====================== STACK STRIP ====================== -->
+  <div class="stack-strip" aria-label="Microsoft Azure services that threadlight composes">
+    <span class="built">Built on Microsoft</span>
+    <strong>Foundry</strong><span class="sep">·</span>
+    <strong>Container Apps</strong><span class="sep">·</span>
+    <strong>Cosmos&nbsp;DB</strong><span class="sep">·</span>
+    <strong>AI&nbsp;Search</strong><span class="sep">·</span>
+    <strong>App&nbsp;Insights</strong><span class="sep">·</span>
+    <strong>Bicep</strong><span class="sep">·</span>
+    <strong>azd</strong><span class="sep">·</span>
+    <strong>Managed&nbsp;Identity</strong>
+  </div>
+
+  <!-- ====================== EVOLUTION BAND ====================== -->
+  <div class="evolution-band" aria-label="Where the field has been and where we are now">
+    <div class="wrap">
+      <p class="evo-lede"><strong>Where the field has been</strong> &nbsp;·&nbsp; the path from LLMs to skill-based agents</p>
+      <div class="evo-chips" role="list">
+        <span class="evo-chip" role="listitem">LLMs</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">RAG</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">Multi-agent</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip" role="listitem">MCP</span>
+        <span class="evo-arrow" aria-hidden="true">→</span>
+        <span class="evo-chip is-now" role="listitem">Skills <span aria-hidden="true">●</span></span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ====================== SVG CHAIN (paragraph → SPEC → agent) ====================== -->
+  <section class="scene" id="scene-show" data-toc-id="scene-show" data-toc-label="See the chain">
+    <div class="wrap wrap-xl">
+      <div class="copy reveal" style="max-width:760px;margin:0 auto 18px;text-align:center;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>What ships</p>
+        <h2 style="margin-top:14px;">From a paragraph &mdash; <em>to a deployed agent.</em></h2>
+        <p class="sub" style="margin-top:14px;">No new IDE. No new CLI of our own. <strong>You stay in your coding agent</strong> &mdash; the skills do the chain.</p>
       </div>
 
-      <figure aria-labelledby="relay-caption">
-        <svg class="artefact-relay-svg" viewBox="0 0 1080 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five artefacts produced left-to-right: paragraph, SPEC document, agent code with Bicep, scorecard JSON, hand-off PDF">
-          <defs>
-            <linearGradient id="relay-card-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.10"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
-            </linearGradient>
-            <marker id="relay-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" opacity="0.55"/>
-            </marker>
-            <style>
-              .ar-stage   { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; fill: #8e95a8; }
-              .ar-name    { font-family: var(--serif); font-size: 18px; fill: #f5f5f7; }
-              .ar-file    { font-family: var(--mono); font-size: 11px; fill: currentColor; }
-              .ar-arrow   { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; fill: #8e95a8; text-transform: uppercase; }
-              @media (prefers-color-scheme: light) {
-                .ar-name   { fill: #0a0d14; }
-                .ar-stage  { fill: #5f6680; }
-                .ar-arrow  { fill: #5f6680; }
-              }
-            </style>
-          </defs>
+      <p class="skill-eyebrow reveal" data-delay="1">
+        <span class="se-tag">Threadlight skills</span>
+        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
+        <span class="se-not">Not a CLI of our own. Not commands.</span>
+      </p>
 
-          <!-- 01 SPEC.md (Stage 01 exit) — speech bubble icon = chat → spec -->
-          <g transform="translate(40, 50)">
-            <rect width="180" height="140" rx="12" fill="url(#relay-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="14" y="22" class="ar-stage">STAGE 01</text>
-            <text x="14" y="44" class="ar-name">SPEC.md</text>
-            <g transform="translate(14, 60)" opacity="0.85">
-              <path d="M 0 12 Q 0 4 8 4 L 130 4 Q 138 4 138 12 L 138 38 Q 138 46 130 46 L 36 46 L 26 56 L 28 46 L 8 46 Q 0 46 0 38 Z" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.5" stroke-width="1"/>
-              <line x1="14" y1="18" x2="120" y2="18" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.5"/>
-              <line x1="14" y1="28" x2="106" y2="28" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.5"/>
-              <line x1="14" y1="38" x2="92"  y2="38" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.5"/>
+      <figure class="svg-hero reveal" data-delay="2" aria-labelledby="chain-caption">
+        <div class="frame">
+          <svg class="funnel-chain-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three panels: a paragraph becomes a signed SPEC document which becomes a deployed agent on Azure">
+            <defs>
+              <marker id="chain-arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" opacity="0.55"/>
+              </marker>
+            </defs>
+
+            <!-- PANEL 01 — THE PARAGRAPH -->
+            <g transform="translate(40, 40)">
+              <text x="0" y="0" class="panel-num">STAGE 01</text>
+              <text x="0" y="30" class="panel-title">A paragraph.</text>
+              <text x="0" y="54" class="panel-sub">What you type in chat.</text>
+
+              <!-- speech bubble -->
+              <path class="panel-bubble" d="M 0 80 Q 0 70 10 70 L 270 70 Q 280 70 280 80 L 280 188 Q 280 198 270 198 L 50 198 L 28 222 L 32 198 L 10 198 Q 0 198 0 188 Z"/>
+              <text x="18" y="100" class="panel-bubble-text">"Inbound claims,</text>
+              <text x="18" y="122" class="panel-bubble-text">regulator-exposed,</text>
+              <text x="18" y="144" class="panel-bubble-text">route by complexity.</text>
+              <text x="18" y="166" class="panel-bubble-text">HITL on every escalate."</text>
+              <text x="18" y="186" class="panel-chip" opacity=".7">&mdash; you, in chat</text>
             </g>
-            <text x="14" y="128" class="ar-file">signed by customer</text>
-          </g>
 
-          <!-- arrow 1 -->
-          <g transform="translate(220, 120)">
-            <line x1="6" y1="0" x2="44" y2="0" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#relay-arrow)"/>
-            <text x="25" y="-10" text-anchor="middle" class="ar-arrow">reads</text>
-          </g>
+            <!-- ARROW 01 → 02 -->
+            <line class="panel-line" x1="340" y1="160" x2="380" y2="160" marker-end="url(#chain-arrow-head)" stroke="currentColor" opacity=".55"/>
 
-          <!-- 02 Agent + dataset (Stage 02 exit) — doc icon repurposed as code+eval -->
-          <g transform="translate(270, 50)">
-            <rect width="180" height="140" rx="12" fill="url(#relay-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="14" y="22" class="ar-stage">STAGE 02</text>
-            <text x="14" y="44" class="ar-name">Agent + dataset</text>
-            <g transform="translate(40, 56)">
-              <rect width="100" height="78" rx="3" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-              <rect width="100" height="14" rx="3" fill="currentColor" fill-opacity="0.35"/>
-              <text x="50" y="11" text-anchor="middle" font-family="var(--mono)" font-size="8.5" fill="currentColor" letter-spacing=".14em" font-weight="600">agent.py</text>
-              <line x1="8" y1="26" x2="92" y2="26" stroke="currentColor" stroke-opacity="0.45" stroke-width="1"/>
-              <line x1="8" y1="36" x2="82" y2="36" stroke="currentColor" stroke-opacity="0.45" stroke-width="1"/>
-              <line x1="8" y1="46" x2="76" y2="46" stroke="currentColor" stroke-opacity="0.45" stroke-width="1"/>
-              <line x1="8" y1="56" x2="88" y2="56" stroke="currentColor" stroke-opacity="0.45" stroke-width="1"/>
-              <line x1="8" y1="66" x2="68" y2="66" stroke="currentColor" stroke-opacity="0.45" stroke-width="1"/>
+            <!-- PANEL 02 — THE SPEC -->
+            <g transform="translate(400, 40)">
+              <text x="0" y="0" class="panel-num">STAGE 02</text>
+              <text x="0" y="30" class="panel-title">A signed SPEC.</text>
+              <text x="0" y="54" class="panel-sub">What <tspan class="panel-chip">threadlight-design</tspan> writes.</text>
+
+              <!-- page with folded corner -->
+              <path class="panel-box" d="M 0 80 L 240 80 L 280 120 L 280 240 L 0 240 Z"/>
+              <path class="panel-line" d="M 240 80 L 240 120 L 280 120" fill="none"/>
+              <!-- page contents: SPEC.md header -->
+              <text x="14" y="106" class="panel-chip" opacity=".8">SPEC.md · v0.3</text>
+              <text x="14" y="132" class="panel-title" style="font-size:18px;">Claims triage</text>
+              <!-- ticks -->
+              <path class="panel-tick" d="M 18 154 l 5 5 l 10 -10"/>
+              <text x="40" y="160" class="panel-sub">Process &amp; HITL gates</text>
+              <path class="panel-tick" d="M 18 178 l 5 5 l 10 -10"/>
+              <text x="40" y="184" class="panel-sub">Skills used</text>
+              <path class="panel-tick" d="M 18 202 l 5 5 l 10 -10"/>
+              <text x="40" y="208" class="panel-sub">Exit criteria</text>
+              <!-- signature stamp -->
+              <g transform="translate(154, 215)">
+                <rect width="110" height="22" rx="4" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-dasharray="2 2"/>
+                <text x="8" y="15" class="panel-stamp">SIGNED · v0.3</text>
+              </g>
             </g>
-            <text x="14" y="152" class="ar-file" opacity="0.7" text-anchor="start">running on your laptop</text>
-          </g>
 
-          <!-- arrow 2 -->
-          <g transform="translate(450, 120)">
-            <line x1="6" y1="0" x2="44" y2="0" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#relay-arrow)"/>
-            <text x="25" y="-10" text-anchor="middle" class="ar-arrow">scaffolds</text>
-          </g>
+            <!-- ARROW 02 → 03 -->
+            <line class="panel-line" x1="700" y1="160" x2="740" y2="160" marker-end="url(#chain-arrow-head)" stroke="currentColor" opacity=".55"/>
 
-          <!-- 03 Live agent (Stage 03 exit) — folder icon repurposed as deploy artefacts -->
-          <g transform="translate(500, 50)">
-            <rect width="180" height="140" rx="12" fill="url(#relay-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="14" y="22" class="ar-stage">STAGE 03</text>
-            <text x="14" y="44" class="ar-name">Live agent</text>
-            <g transform="translate(36, 58)">
-              <path d="M 0 8 Q 0 0 8 0 L 36 0 L 44 10 L 100 10 Q 108 10 108 18 L 108 70 Q 108 78 100 78 L 8 78 Q 0 78 0 70 Z" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-              <text x="14" y="34" font-family="var(--mono)" font-size="11" fill="currentColor" opacity="0.85">{ }</text>
-              <text x="36" y="34" font-family="var(--mono)" font-size="9.5" fill="currentColor" opacity="0.75">.py</text>
-              <text x="14" y="50" font-family="var(--mono)" font-size="11" fill="currentColor" opacity="0.85">⌬</text>
-              <text x="36" y="50" font-family="var(--mono)" font-size="9.5" fill="currentColor" opacity="0.75">.bicep</text>
-              <text x="14" y="66" font-family="var(--mono)" font-size="11" fill="currentColor" opacity="0.85">⊕</text>
-              <text x="36" y="66" font-family="var(--mono)" font-size="9.5" fill="currentColor" opacity="0.75">azd up</text>
+            <!-- PANEL 03 — THE DEPLOYED AGENT -->
+            <g transform="translate(760, 40)">
+              <text x="0" y="0" class="panel-num">STAGE 04–05</text>
+              <text x="0" y="30" class="panel-title">A deployed agent.</text>
+              <text x="0" y="54" class="panel-sub">Live in the customer's Azure.</text>
+
+              <!-- azure runtime card -->
+              <rect class="panel-azure" x="0" y="80" width="280" height="160" rx="14"/>
+              <!-- cloud glyph -->
+              <path d="M 22 116 a 18 18 0 0 1 32 -8 a 14 14 0 0 1 22 6 a 14 14 0 0 1 -4 28 l -46 0 a 16 16 0 0 1 -4 -26 z"
+                    fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-opacity=".5" stroke-width="1"/>
+              <text x="92" y="118" class="panel-chip" opacity=".8">azure · westeurope</text>
+              <text x="92" y="138" class="panel-title" style="font-size:18px;">claims-triage</text>
+              <!-- health dot -->
+              <circle class="panel-dot-ok" cx="22" cy="170" r="6"/>
+              <text x="38" y="174" class="panel-sub">healthy · responding in 41s</text>
+              <!-- cost pill -->
+              <g transform="translate(14, 192)">
+                <rect width="120" height="32" rx="8" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".25"/>
+                <text x="14" y="14" class="panel-chip" opacity=".7">cost</text>
+                <text x="14" y="28" class="panel-cost">$341/mo</text>
+              </g>
+              <g transform="translate(144, 192)">
+                <rect width="120" height="32" rx="8" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".25"/>
+                <text x="14" y="14" class="panel-chip" opacity=".7">scorecard</text>
+                <text x="14" y="28" class="panel-cost">11/13 green</text>
+              </g>
             </g>
-            <text x="14" y="152" class="ar-file" opacity="0.7">live in customer's Azure</text>
-          </g>
 
-          <!-- arrow 3 -->
-          <g transform="translate(680, 120)">
-            <line x1="6" y1="0" x2="44" y2="0" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#relay-arrow)"/>
-            <text x="25" y="-10" text-anchor="middle" class="ar-arrow">audits</text>
-          </g>
-
-          <!-- 04 scorecard.json — shield with traffic light -->
-          <g transform="translate(730, 50)">
-            <rect width="180" height="140" rx="12" fill="url(#relay-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="14" y="22" class="ar-stage">STAGE 04</text>
-            <text x="14" y="44" class="ar-name">Scorecard</text>
-            <g transform="translate(58, 58)">
-              <path d="M 32 0 L 64 12 L 64 44 Q 64 64 32 80 Q 0 64 0 44 L 0 12 Z" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-opacity="0.55" stroke-width="1.2"/>
-              <circle cx="20" cy="30" r="5" fill="#3cb371"/>
-              <circle cx="32" cy="30" r="5" fill="#e0a23a"/>
-              <circle cx="44" cy="30" r="5" fill="currentColor" opacity="0.18"/>
-              <line x1="14" y1="48" x2="50" y2="48" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-              <line x1="14" y1="56" x2="44" y2="56" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-              <line x1="14" y1="64" x2="40" y2="64" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-            </g>
-            <text x="14" y="152" class="ar-file" opacity="0.7">3-lifecycle gate</text>
-          </g>
-
-          <!-- arrow 4 -->
-          <g transform="translate(910, 120)">
-            <line x1="6" y1="0" x2="44" y2="0" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#relay-arrow)"/>
-            <text x="25" y="-10" text-anchor="middle" class="ar-arrow">closes</text>
-          </g>
-
-          <!-- 05 handoff.pdf — PDF with 3 colour ribbon -->
-          <g transform="translate(960, 50)">
-            <rect width="100" height="140" rx="12" fill="url(#relay-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="14" y="22" class="ar-stage">STAGE 05</text>
-            <text x="14" y="44" class="ar-name">Hand-off</text>
-            <g transform="translate(20, 58)">
-              <path d="M 0 6 Q 0 0 6 0 L 44 0 L 60 16 L 60 78 Q 60 84 54 84 L 6 84 Q 0 84 0 78 Z" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-              <path d="M 44 0 L 44 16 L 60 16 Z" fill="currentColor" fill-opacity="0.30" stroke="currentColor" stroke-opacity="0.55" stroke-width="1" stroke-linejoin="miter"/>
-              <rect x="10" y="34" width="40" height="4" rx="1" fill="#3cb371"/>
-              <rect x="10" y="42" width="40" height="4" rx="1" fill="#3cb371"/>
-              <rect x="10" y="50" width="28" height="4" rx="1" fill="#e0a23a"/>
-              <rect x="10" y="58" width="34" height="4" rx="1" fill="#3cb371"/>
-              <rect x="10" y="66" width="22" height="4" rx="1" fill="#3cb371"/>
-            </g>
-            <text x="50" y="152" class="ar-file" opacity="0.7" text-anchor="middle">13-pillar PDF &middot; accepted</text>
-          </g>
-        </svg>
-        <figcaption id="relay-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Five gates &middot; five artefacts &middot; <strong>3-lifecycle completeness gate</strong> at safe-check (stage 04), <strong>13-pillar PDF</strong> at hand-off (stage 05)
-        </figcaption>
+            <!-- footer caption strip -->
+            <text x="540" y="346" class="panel-chip" text-anchor="middle" opacity=".65">
+              11 skills walk the chain · 1 paragraph in · 1 deployed agent out
+            </text>
+          </svg>
+        </div>
+        <figcaption id="chain-caption">The threadlight chain &middot; what you see, end-to-end</figcaption>
       </figure>
     </div>
   </section>
 
-  <!-- ===================== SEE IT RUN — sequential skill flow ===================== -->
-  <section class="chapter-section" id="stage-show" data-toc-id="stage-show" data-toc-label="The skills in detail">
+  <!-- ====================== FUNNEL TEASER (rich cards) ====================== -->
+  <section class="scene" id="scene-funnel" aria-labelledby="funnel-h" data-toc-id="scene-funnel" data-toc-label="Funnel">
     <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The skills in detail</p>
-        <h2>You prompt. The coding agent <em>picks up the right skills.</em></h2>
-        <p class="section-lede">
-          Skills are composable building blocks &mdash; Markdown instructions
-          that any coding agent (GitHub Copilot CLI, VS Code, Claude Code)
-          reads and follows. Below: the <strong>three named gates</strong>
-          (design → deploy → production-ready) and the <strong>six skills</strong>
-          wired between them. Four more &mdash; <code>threadlight-auto</code>
-          (entry orchestrator), <code>threadlight-consumption-iq</code>
-          (cost forecast), <code>threadlight-cicd</code> (production deploy
-          pipeline) and <code>threadlight-customize</code> (fork &amp; customer
-          onboarding) &mdash; round out the <strong>13-skill library</strong>;
-          they fire on demand, not on every chain.
+      <div class="copy reveal" style="max-width:880px;margin:0 auto 28px;text-align:center;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>The five-stage funnel</p>
+        <h2 id="funnel-h" style="margin-top:14px;">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h2>
+        <p class="sub" style="margin-top:18px;">
+          Every Threadlight engagement walks the same five stages. Each stage has its
+          own skills, its own artefacts, and its own exit criteria.
         </p>
       </div>
 
-            <div class="chain-rail">
+      <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
+        <a class="funnel-step" href="./production.html">
+          <span class="fs-num">01 &middot; Conversation</span>
+          <span class="fs-name">Describe the process</span>
+          <span class="fs-desc">Plain-language brief from you or a customer SME. No template, no questionnaire. <strong>Exits with</strong> a versioned <code>SPEC.md</code> the customer signs.</span>
+          <span class="fs-skills">threadlight-auto &middot; threadlight-design</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./production.html">
+          <span class="fs-num">02 &middot; Co-design</span>
+          <span class="fs-name">Spec &amp; scaffold</span>
+          <span class="fs-desc"><code>SPEC.md</code>, <code>AGENTS.md</code>, eval dataset and demo-data factory generated in-session. <strong>Exits with</strong> the agent contract + dataset running on your laptop.</span>
+          <span class="fs-skills">threadlight-design &middot; threadlight-demo-data-factory</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./production.html">
+          <span class="fs-num">03 &middot; Deploy</span>
+          <span class="fs-name">Land on your Azure</span>
+          <span class="fs-desc">Bicep + <code>azd up</code> to the customer&rsquo;s subscription, Managed Identity wired from day zero. <strong>Exits with</strong> the agent live in the customer&rsquo;s Azure.</span>
+          <span class="fs-skills">threadlight-deploy &middot; threadlight-local-test</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./production.html">
+          <span class="fs-num">04 &middot; Safe-check</span>
+          <span class="fs-name">Structural completeness + cost forecast</span>
+          <span class="fs-desc"><strong>Three-lifecycle completeness gate</strong> (design / pre-deploy / post-deploy) + monthly cost projected against the Azure Retail Prices API. <strong>Exits with</strong> the completeness manifest, the cost forecast, and per-amber waiver owners.</span>
+          <span class="fs-skills">threadlight-safe-check &middot; threadlight-consumption-iq</span>
+          <span class="fs-arrow" aria-hidden="true">›</span>
+        </a>
+        <a class="funnel-step" href="./production.html">
+          <span class="fs-num">05 &middot; Production</span>
+          <span class="fs-name">Hand-off</span>
+          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in seven minutes. <strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</span>
+          <span class="fs-skills">threadlight-production-ready &middot; threadlight-hitl-patterns</span>
+        </a>
+      </nav>
 
-              <!-- 1 — DESIGN (seller-facing entry) -->
-              <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">
-                <div class="skill-head">
-                  <div class="skill-name"><span class="accent">threadlight</span>-design</div>
-                  <span class="skill-tag is-blue">Cowork-safe</span>
-                  <span class="skill-tag is-grey">Entry skill</span>
-                </div>
-                <p class="skill-purpose">Turn a paragraph brief into a durable SpecKit spec &mdash; numbered business rules, data models, tool contracts, eval scenarios, governance &mdash; and derive the agent surface from it.</p>
-                <div class="skill-io" aria-label="Inputs and outputs">
-                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Free-text brief · industry primer (optional)</span></div>
-                  <div class="io-arrow">→</div>
-                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
-                </div>
-                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
-                <div class="skill-footer">
-                  <span>The coding agent reads the skill instructions and generates all artefacts.</span>
-                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
-                </div>
-              </article>
-
-              <!-- Supporting chain — six skills that run between design and deploy -->
-              <div class="chain-aux reveal">
-                <div class="aux-group">
-                  <div class="aux-label">Always wired</div>
-                  <div class="aux-row">
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
-                      <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
-                    </a>
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
-                      <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
-                    </a>
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
-                      <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
-                    </a>
-                  </div>
-                </div>
-                <div class="aux-group">
-                  <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
-                  <div class="aux-row">
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
-                      <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
-                    </a>
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
-                      <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
-                    </a>
-                    <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
-                      <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
-                      <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 2 — DEPLOY (seller-facing exit) -->
-              <article class="skill-card reveal" data-step="02" data-skill="threadlight-deploy">
-                <div class="skill-head">
-                  <div class="skill-name"><span class="accent">threadlight</span>-deploy</div>
-                  <span class="skill-tag is-blue">azd up</span>
-                </div>
-                <p class="skill-purpose">Generate every artefact needed to deploy as a Microsoft Foundry hosted agent &mdash; Foundry-hosted by default, with a portable Microsoft Agent Framework (MAF) fallback when the customer needs to self-host, plus Bicep, Dockerfile, and the <code>azd ai agent</code> extension wired end-to-end.</p>
-                <div class="skill-io" aria-label="Inputs and outputs">
-                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC · <code>AGENTS.md</code> · <code>manifest.json</code> · <code>src/agent/skills/</code></span></div>
-                  <div class="io-arrow">→</div>
-                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>container.py</code> · <code>Dockerfile</code> · <code>infra/</code> · <code>agent.yaml</code> · <code>azure.yaml</code></span></div>
-                </div>
-                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
-                <div class="skill-footer">
-                  <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
-                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
-                </div>
-              </article>
-
-              <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
-              <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
-                <div class="skill-head">
-                  <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
-                  <span class="skill-tag is-blue">Advisory · soft-gate</span>
-                  <span class="skill-tag is-grey">Hand-off package</span>
-                </div>
-                <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. <strong>AI Citadel spoke</strong> is the recommended enterprise posture; the skill resolves the actual posture from SPEC &sect; 12, deployed evidence, and finally falls back to a customer-owned gateway when nothing is declared.</p>
-                <div class="skill-io" aria-label="Inputs and outputs">
-                  <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
-                  <div class="io-arrow">→</div>
-                  <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
-                </div>
-                <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
-                <div class="skill-footer">
-                  <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
-                  <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
-                </div>
-              </article>
-
-            </div>
+      <p class="industries-footer reveal" data-delay="2" style="margin-top:28px;text-align:center;">
+        <a class="btn btn-ghost" href="./production.html">See how the stages reach production-ready <span class="arrow">→</span></a>
+      </p>
     </div>
   </section>
-  <section class="chapter-section" id="stage-recap" data-toc-id="stage-recap" data-toc-label="Recap">
-    <div class="wrap" style="text-align:center;">
-      <div class="section-head" style="margin: 0 auto 24px;">
-        <h2>One funnel. <em>Five exit gates.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          Each stage has a named exit. Each exit produces evidence.
-          When a stage closes, you and the customer agree on
-          what just shipped &mdash; before the next stage starts.
+
+  <!-- ====================== SCENE 3 · THE CHAIN ====================== -->
+  <section class="scene" id="scene-chain" aria-labelledby="chain-h" data-toc-id="scene-chain" data-toc-label="Chain">
+    <div class="wrap wrap-xl">
+      <div class="copy reveal">
+        <p class="eyebrow"><span class="dot"></span>The skills chain</p>
+        <h2 id="chain-h">You prompt. The coding agent <em>picks up the right skills.</em></h2>
+        <p class="lede" style="margin-left:auto;margin-right:auto;text-align:left;">
+          Skills are composable building blocks — Markdown instructions that any
+          coding agent (GitHub Copilot CLI, VS Code, Claude Code) reads and follows.
+          You describe what you need in a prompt. The agent discovers the matching
+          skill, runs it, and hands you the artefacts — all the way to a
+          <strong>governed agent on your Azure</strong> with a paved path to production
+          via <strong>AI Citadel</strong> (the governance hub) and the <strong>Agent Governance Toolkit</strong>.
+        </p>
+        <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
+          Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
+          <strong>six skills</strong> wired between them. Four more &mdash;
+          <code>threadlight-auto</code> (entry orchestrator),
+          <code>threadlight-consumption-iq</code> (cost forecast),
+          <code>threadlight-cicd</code> (production deploy pipeline) and
+          <code>threadlight-customize</code> (fork &amp; customer onboarding) &mdash; round out the
+          <strong>13-skill library</strong>; they fire on demand, not on every chain.
         </p>
       </div>
 
-      <div class="chapter-recap-block">
-        <p class="recap-scorecard reveal" data-delay="1">
-          <span>You walked</span>
-          <span><em>5</em> stages</span><span class="sep">·</span>
-          <span><em>11</em> skills</span><span class="sep">·</span>
-          <span><em>5</em> artefacts</span><span class="sep">·</span>
-          <span><em>1</em> session</span>
+      <div class="chain-rail" id="chain-rail">
+
+        <!-- 1 — DESIGN (seller-facing entry) -->
+        <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">
+          <div class="skill-head">
+            <div class="skill-name"><span class="accent">threadlight</span>-design</div>
+            <span class="skill-tag is-blue">Cowork-safe</span>
+            <span class="skill-tag is-grey">Entry skill</span>
+          </div>
+          <p class="skill-purpose">Turn a paragraph brief into a durable SpecKit spec &mdash; numbered business rules, data models, tool contracts, eval scenarios, governance &mdash; and derive the agent surface from it.</p>
+          <div class="skill-io" aria-label="Inputs and outputs">
+            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Free-text brief · industry primer (optional)</span></div>
+            <div class="io-arrow">→</div>
+            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
+          </div>
+          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
+          <div class="skill-footer">
+            <span>The coding agent reads the skill instructions and generates all artefacts.</span>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
+          </div>
+        </article>
+
+        <!-- Supporting chain — six skills that run between design and deploy -->
+        <div class="chain-aux reveal">
+          <div class="aux-group">
+            <div class="aux-label">Always wired</div>
+            <div class="aux-row">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
+                <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
+                <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
+                <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
+              </a>
+            </div>
+          </div>
+          <div class="aux-group">
+            <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
+            <div class="aux-row">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
+                <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
+                <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
+                <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 — DEPLOY (seller-facing exit) -->
+        <article class="skill-card reveal" data-step="02" data-skill="threadlight-deploy">
+          <div class="skill-head">
+            <div class="skill-name"><span class="accent">threadlight</span>-deploy</div>
+            <span class="skill-tag is-blue">azd up</span>
+          </div>
+          <p class="skill-purpose">Generate every artefact needed to deploy as a Microsoft Foundry hosted agent &mdash; Foundry-hosted by default, with a portable Microsoft Agent Framework (MAF) fallback when the customer needs to self-host, plus Bicep, Dockerfile, and the <code>azd ai agent</code> extension wired end-to-end.</p>
+          <div class="skill-io" aria-label="Inputs and outputs">
+            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC · <code>AGENTS.md</code> · <code>manifest.json</code> · <code>src/agent/skills/</code></span></div>
+            <div class="io-arrow">→</div>
+            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>container.py</code> · <code>Dockerfile</code> · <code>infra/</code> · <code>agent.yaml</code> · <code>azure.yaml</code></span></div>
+          </div>
+          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
+          <div class="skill-footer">
+            <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
+          </div>
+        </article>
+
+        <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
+        <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
+          <div class="skill-head">
+            <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
+            <span class="skill-tag is-blue">Advisory · soft-gate</span>
+            <span class="skill-tag is-grey">Hand-off package</span>
+          </div>
+          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. <strong>AI Citadel spoke</strong> is the recommended enterprise posture; the skill resolves the actual posture from SPEC &sect; 12, deployed evidence, and finally falls back to a customer-owned gateway when nothing is declared.</p>
+          <div class="skill-io" aria-label="Inputs and outputs">
+            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
+            <div class="io-arrow">→</div>
+            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
+          </div>
+          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
+          <div class="skill-footer">
+            <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
+          </div>
+        </article>
+
+        <!-- Manual handoff after green — prod pipeline, then customer onboarding -->
+        <div class="chain-aux reveal">
+          <div class="aux-group">
+            <div class="aux-label">After green &mdash; two manual handoff legs, not part of the chain</div>
+            <div class="aux-row">
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">
+                <span class="aux-name"><span class="accent">threadlight</span>-cicd</span>
+                <span class="aux-role">Generates the prod deploy pipeline (GitHub Actions / Azure DevOps) + env-setup runbooks &mdash; OIDC/WIF identity, scoped RBAC, private-VNet runners. Scoped to the spoke RG; separate from <code>citadel-hub-deploy</code>.</span>
+              </a>
+              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize">
+                <span class="aux-name"><span class="accent">threadlight</span>-customize</span>
+                <span class="aux-role">The final leg &mdash; fork the pipeline and onboard it into <em>one</em> customer&rsquo;s environment (landing zones, RBAC, private VNet). Instructions, not automation; production onboarding first.</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
+  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+    <div class="wrap wrap-xl">
+
+      <div class="copy reveal" style="text-align:center; max-width:900px; margin:0 auto 28px;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>Paved path to production</p>
+        <h2 id="prod-ready-h" class="display" data-delay="1" style="margin-top:14px;">Green safe-check isn&rsquo;t <em>go-live.</em></h2>
+        <p class="sub" data-delay="2" style="margin-top:20px;">
+          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em>. That isn&rsquo;t the same as <em>ready for the customer architecture review</em>.
+          <code>threadlight-production-ready</code> closes that gap &mdash; <strong>thirteen pillars</strong> across <strong>four themes</strong>, scored against the customer&rsquo;s actual posture, with a cost forecast attached. One PDF the ARB reads in seven minutes.
         </p>
+      </div>
 
-        <div class="recap-metrics">
-          <article class="metric-card reveal" data-delay="2">
-            <span class="metric-num"><em>~7</em> min</span>
-            <span class="metric-label">First spec drafted</span>
-            <span class="metric-caption">From a plain-language paragraph to a versioned SPEC.md the customer signs.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="3">
-            <span class="metric-num"><em>5</em> gates</span>
-            <span class="metric-label">Named exit per stage</span>
-            <span class="metric-caption">Each stage produces evidence you and the customer agree on, before the next opens.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="4">
-            <span class="metric-num"><em>0</em></span>
-            <span class="metric-label">Slides required</span>
-            <span class="metric-caption">No discovery workshop, no pre-deck. The agent runs in the same session as the brief.</span>
-          </article>
+      <!-- 4 themes grouping the 13 pillars -->
+      <div class="theme-quad reveal" data-delay="3" role="list" aria-label="Production-readiness themes">
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 1</p>
+          <h3 class="th-name">Network &amp; identity</h3>
+          <p class="th-desc">Posture, agent governance, identity &amp; access, secrets &mdash; the gates the perimeter watches.</p>
+          <p class="th-pillars"><span>01</span> <span>02</span> <span>03</span> <span>04</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 2</p>
+          <h3 class="th-name">Observability &amp; governance</h3>
+          <p class="th-desc">App-insights traces, continuous evals, responsible AI, HITL &amp; audit &mdash; what proves the agent behaves.</p>
+          <p class="th-pillars"><span>05</span> <span>06</span> <span>07</span> <span>08</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 3</p>
+          <h3 class="th-name">Supply chain &amp; ops</h3>
+          <p class="th-desc">SBOM &amp; SLSA, cost forecast, reliability &mdash; what FinOps and SRE sign off on.</p>
+          <p class="th-pillars"><span>09</span> <span>10</span> <span>11</span></p>
+        </article>
+        <article class="theme-card" role="listitem">
+          <p class="th-num">Theme 4</p>
+          <h3 class="th-name">Hand-off &amp; lifecycle</h3>
+          <p class="th-desc">SRE hand-over package, model-lifecycle plan &mdash; what keeps the agent alive after we leave.</p>
+          <p class="th-pillars"><span>12</span> <span>13</span></p>
+        </article>
+      </div>
+
+      <div class="reveal" data-delay="4" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:1100px; margin:36px auto 28px;">
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Gateway-fronted (Citadel spoke) &middot; default</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Foundry-native (core only)</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Customer-owned edge</span>
+      </div>
+
+      <div class="reveal" data-delay="5" style="text-align:center;">
+        <a class="btn btn-primary" href="./production.html" style="display:inline-block;">
+          Read the full production-ready chapter <span class="arrow">&rarr;</span>
+        </a>
+        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; cost forecast &middot; soft-advisory, never fails a build</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ====================== SCENE · THE FINAL LEG (CUSTOMIZE) ====================== -->
+  <section class="scene" id="scene-customize" aria-labelledby="customize-h" data-toc-id="scene-customize" data-toc-label="Customize" style="padding:80px 0 72px;border-bottom:1px solid var(--line);">
+    <div class="wrap wrap-xl">
+
+      <div class="copy reveal" style="text-align:center; max-width:840px; margin:0 auto 26px;">
+        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:#36c8a8;box-shadow:0 0 10px rgba(54,200,168,.6);"></span>The final leg</p>
+        <h2 id="customize-h" class="display" data-delay="1" style="margin-top:14px;">Then make it <em>the customer&rsquo;s own.</em></h2>
+        <p class="sub" data-delay="2" style="margin-top:20px;">
+          The pilot proved the agent works. The last leg stands it up inside
+          <em>one customer&rsquo;s</em> environment &mdash; landing zones, RBAC,
+          pipelines, governance &mdash; with <strong>production onboarding as
+          priority&nbsp;#1</strong>. <code>threadlight-customize</code> ships this
+          as <strong>instructions and runbooks, not automation</strong>: no two
+          customers&rsquo; onboarding is the same, so we give you the frame and the
+          in-environment test loop instead of a generator that&rsquo;s wrong for everyone.
+        </p>
+      </div>
+
+      <div class="reveal" data-delay="3" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:840px; margin:0 auto 28px;">
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">01 &middot; Intake gate</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">02 &middot; Customization map</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">03 &middot; Test in their env</span>
+        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">04 &middot; Name the boundary</span>
+      </div>
+
+      <div class="reveal" data-delay="4" style="text-align:center; max-width:840px; margin:0 auto;">
+        <a class="btn btn-primary" href="./customize.html" style="display:inline-block;">
+          Read the full customize chapter <span class="arrow">&rarr;</span>
+        </a>
+        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">4 moves &middot; fork + upstream-pin + overlay &middot; private-VNet dev via Azure ML VS Code / Codespaces &middot; manual handoff, not driven by auto</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ====================== INDUSTRIES STRIP ====================== -->
+  <section class="scene" id="scene-industries" aria-labelledby="ind-h" data-toc-id="scene-industries" data-toc-label="Industries">
+    <div class="wrap wrap-xl">
+      <div class="copy reveal">
+        <p class="eyebrow"><span class="dot"></span>What it looks like in the field</p>
+        <h2 id="ind-h">Six industries, <em>nineteen curated SPECs.</em></h2>
+        <p class="lede">
+          The library ships pre-shaped SPECs for the processes below &mdash;
+          starting points, not boundaries. The chain handles any process
+          you can describe in a paragraph.
+        </p>
+      </div>
+
+      <div class="industries-grid reveal" data-delay="1">
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">🏦</span>
+          <p class="it-sector">Financial services</p>
+          <h3 class="it-title">FSI &mdash; regulated case work</h3>
+          <p class="it-line">Card disputes, FNOL triage, KYC onboarding, SMB credit memos.</p>
+          <span class="it-tail">4 SPECs in the library</span>
+        </a>
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">🛍️</span>
+          <p class="it-sector">Retail</p>
+          <h3 class="it-title">Retail &mdash; back-office copilots</h3>
+          <p class="it-line">PIM enrichment, promo planning, returns triage.</p>
+          <span class="it-tail">3 SPECs in the library</span>
+        </a>
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">📡</span>
+          <p class="it-sector">Telco</p>
+          <h3 class="it-title">Telco &mdash; order &amp; network ops</h3>
+          <p class="it-line">B2B quote-to-order, network fault triage, order fallout.</p>
+          <span class="it-tail">3 SPECs in the library</span>
+        </a>
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">🏭</span>
+          <p class="it-sector">Manufacturing</p>
+          <h3 class="it-title">Manufacturing &mdash; shop-floor knowledge</h3>
+          <p class="it-line">Engineering knowledge, shift handover, supplier risk.</p>
+          <span class="it-tail">3 SPECs in the library</span>
+        </a>
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">🏥</span>
+          <p class="it-sector">Healthcare</p>
+          <h3 class="it-title">Healthcare &mdash; clinical &amp; ops</h3>
+          <p class="it-line">Referral triage, adverse-event detection, trial protocol review.</p>
+          <span class="it-tail">3 SPECs in the library</span>
+        </a>
+        <a class="industry-tile" href="./industries.html#sector-grid">
+          <span class="it-glyph" aria-hidden="true">⚡</span>
+          <p class="it-sector">Energy &amp; utilities</p>
+          <h3 class="it-title">Energy &mdash; grid, fleet &amp; compliance</h3>
+          <p class="it-line">Grid outage response, regulatory filings, renewable performance.</p>
+          <span class="it-tail">3 SPECs in the library</span>
+        </a>
+      </div>
+
+      <p class="industries-footer reveal" data-delay="2">
+        Library covers <strong>19 processes today</strong> &mdash; bring any other
+        and the chain handles it the same way.
+        <a class="btn btn-ghost" href="./industries.html" style="margin-left:8px;">Read the full industries chapter <span class="arrow">→</span></a>
+      </p>
+    </div>
+  </section>
+
+
+  <!-- ====================== KRATOS (no-code alt) ====================== -->
+  <section class="scene" id="scene-kratos" aria-labelledby="kratos-h" data-toc-id="scene-kratos" data-toc-label="No-code alt">
+    <div class="wrap wrap-xl">
+      <div class="channels-grid">
+
+        <div class="channels-copy reveal">
+          <p class="eyebrow"><span class="dot"></span>The no-code on-ramp</p>
+          <h2 id="ch-h">Skipped this whole page? <em>Try Kratos instead.</em></h2>
+          <p class="lede">
+            If your customer just wants a working AI agent &mdash; chat UI,
+            persona switching, a few tools wired in &mdash;
+            <strong>Kratos</strong> ships one on Microsoft Foundry, ready
+            to use, no setup, no dev skills. Try it live, customize in-app,
+            export the spec when the conversation gets serious.
+          </p>
+
+          <ul class="channels-bullets">
+            <li><strong>Kratos &mdash; the simpler path.</strong> Browser-first, MIT-licensed, hosted on Microsoft Foundry. Hand the link to your customer, iterate on persona and tools live.</li>
+            <li><strong>Threadlight &mdash; when you need customization.</strong> Your data, your governance, your Azure subscription &mdash; covered by everything above this section.</li>
+            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
+          </ul>
         </div>
 
-        <div class="recap-cta">
-          <a class="btn btn-primary" href="./index.html#scene-cta">Start with one prompt <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="./production.html">See production-ready <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="./industries.html">See industries &amp; pilots <span class="arrow">→</span></a>
-        </div>
+        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
+          <img class="kc-shot"
+               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
+               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
+               loading="lazy" decoding="async" width="1600" height="900">
+          <div class="kc-body">
+            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>No-code &middot; ready-to-use &middot; live</p>
+            <h3 id="kratos-h">Kratos Agent</h3>
+            <p class="kc-tag">
+              A demo-friendly conversational agent on Microsoft Foundry.
+              Pick a persona, wire up tools, talk to it&mdash;then export
+              the spec to take it further with Threadlight when you need
+              your own data, governance, or deployment.
+            </p>
+            <div class="kc-meta" aria-label="What Kratos gives you">
+              <span>Browser-first</span>
+              <span>Foundry hosted agent</span>
+              <span>Persona &amp; tool tuning</span>
+              <span>Export the spec</span>
+              <span>MIT license</span>
+            </div>
+            <div class="kc-ctas">
+              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
+              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== SCENE 6 · CTA ====================== -->
+  <section class="scene" id="scene-cta" aria-labelledby="cta-h" data-toc-id="scene-cta" data-toc-label="Get started">
+    <div class="wrap">
+      <p class="eyebrow reveal" style="display:inline-block;"><span class="dot"></span>Get started</p>
+      <h2 id="cta-h" class="display reveal" data-delay="1">See the artefacts. <em>Then try it yourself.</em></h2>
+      <p class="sub reveal" data-delay="2">One prompt. One session. Governed agent on your Azure.</p>
+
+      <a class="cs-feature reveal" data-delay="2" href="./case-study.html" aria-label="Read the real-run case study"
+         style="display:flex; align-items:center; gap:18px; max-width:760px; margin:26px auto 30px; padding:18px 22px; text-decoration:none;
+                background:linear-gradient(135deg, color-mix(in srgb, var(--lime) 9%, var(--bg-2)) 0%, var(--bg-2) 62%);
+                border:1px solid color-mix(in srgb, var(--lime) 38%, var(--line)); border-radius:16px; text-align:left;">
+        <span aria-hidden="true" style="font-size:1.7rem; line-height:1;">📑</span>
+        <span style="flex:1; min-width:0;">
+          <span style="display:block; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--lime);">New &middot; real-run case study</span>
+          <strong style="display:block; color:var(--ink-0); font-size:1.04rem; margin-top:4px;">One paragraph &rarr; a governed agent on a live Azure subscription</strong>
+          <span style="display:block; color:var(--ink-2); font-size:.9rem; margin-top:4px;">14 stages, idea&nbsp;&rarr;&nbsp;MVP&nbsp;&rarr;&nbsp;Citadel-spoke production &mdash; with the actual prompts, OTel traces, costs and verdict.</span>
+        </span>
+        <span class="arrow" aria-hidden="true" style="color:var(--lime); font-size:1.4rem;">&rarr;</span>
+      </a>
+
+      <a class="cs-feature reveal" data-delay="2" href="./workbook.html" aria-label="Open the idea-to-production workbook"
+         style="display:flex; align-items:center; gap:18px; max-width:760px; margin:0 auto 30px; padding:18px 22px; text-decoration:none;
+                background:linear-gradient(135deg, color-mix(in srgb, var(--accent-1) 10%, var(--bg-2)) 0%, var(--bg-2) 62%);
+                border:1px solid color-mix(in srgb, var(--accent-1) 40%, var(--line)); border-radius:16px; text-align:left;">
+        <span aria-hidden="true" style="font-size:1.7rem; line-height:1;">🧪</span>
+        <span style="flex:1; min-width:0;">
+          <span style="display:block; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent-1);">&ldquo;How do I test it?&rdquo; &middot; the workbook</span>
+          <strong style="display:block; color:var(--ink-0); font-size:1.04rem; margin-top:4px;">Run the same chain yourself &mdash; one paragraph to a live agent on your own Azure</strong>
+          <span style="display:block; color:var(--ink-2); font-size:.9rem; margin-top:4px;">A self-paced runbook: ~60&nbsp;min to a working MVP, then the real prompts on to governed production. One prompt per stage.</span>
+        </span>
+        <span class="arrow" aria-hidden="true" style="color:var(--accent-1); font-size:1.4rem;">&rarr;</span>
+      </a>
+
+      <div class="cta-prompts reveal" data-delay="3" role="note" aria-label="Example invocations">
+<span class="cmt"># Tell the coding agent which skill to use and what you need</span>
+<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design to design a claims-triage process for an FSI customer."</span>
+<br>
+<br><span class="cmt"># When you're happy with the spec, deploy it to the customer's Azure</span>
+<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-deploy to land this agent on the customer's Azure with governance and telemetry."</span>
+<br>
+<br><span class="cmt"># Then walk it to a customer architecture review — advisory, soft-gate, hand-off package</span>
+<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-production-ready to score this pilot across 13 pillars and produce the customer hand-off report."</span>
+      </div>
+
+      <div class="hero-cta-row reveal" data-delay="4">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills#readme">View the repo on GitHub <span class="arrow">↗</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/awesome-gbb#readme">Browse the awesome-gbb plugin <span class="arrow">↗</span></a>
       </div>
     </div>
   </section>
@@ -405,14 +713,18 @@
   <div class="row">
     <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
     <div class="right">
-      <a href="./index.html">Home</a>
-      <a href="./industries.html">Industries</a>
+      <a href="https://github.com/aiappsgbb/awesome-gbb#readme">README.md</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills">GitHub</a>
+      <a href="./workbook.html">Workbook</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md">WORKSHOP-1H-QUICKSTART.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">production-readiness.md</a>
+      <a href="https://github.com/aiappsgbb/zava-constellation/blob/main/ZAVA.md">ZAVA.md</a>
+      <a href="https://github.com/aiappsgbb/awesome-gbb/blob/main/AGENTS.md">AGENTS.md</a>
     </div>
   </div>
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
+
 </body>
 </html>

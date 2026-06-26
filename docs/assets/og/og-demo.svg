@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#101a3a"/>
+      <stop offset="100%" stop-color="#1b1140"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c5cff"/>
+      <stop offset="100%" stop-color="#00d4ff"/>
+    </linearGradient>
+    <style>
+      .display { font-family: 'Source Serif Pro', 'Source Serif 4', 'Georgia', serif; font-weight: 600; fill: #f4f4f8; }
+      .em      { fill: #ffffff; font-style: italic; }
+      .meta    { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 22px; fill: #c8c8d8; letter-spacing: 0.04em; }
+      .brand   { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 26px; fill: #ffffff; letter-spacing: 0.06em; font-weight: 700; }
+      .chip    { font-family: 'JetBrains Mono', 'Menlo', monospace; font-size: 19px; fill: #aeb4cc; letter-spacing: 0.03em; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+
+  <g transform="translate(72, 88)">
+    <circle cx="14" cy="14" r="14" fill="url(#accent)"/>
+    <text x="46" y="22" class="brand">THREADLIGHT</text>
+    <text x="46" y="58" class="meta">interactive demo · play · pause · scrub</text>
+  </g>
+
+  <g transform="translate(72, 250)">
+    <text class="display" font-size="78" y="0">Watch a paragraph</text>
+    <text class="display em" font-size="78" y="92">become a governed agent.</text>
+  </g>
+
+  <!-- transport / scrubber motif -->
+  <g transform="translate(72, 432)">
+    <circle cx="26" cy="26" r="26" fill="url(#accent)"/>
+    <path d="M19 14 L19 38 L40 26 Z" fill="#0b1020"/>
+    <rect x="74" y="22" width="900" height="8" rx="4" fill="#26304f"/>
+    <rect x="74" y="22" width="372" height="8" rx="4" fill="url(#accent)"/>
+    <circle cx="446" cy="26" r="11" fill="#ffffff"/>
+    <text x="990" y="33" class="chip">0:23 / 0:54</text>
+  </g>
+
+  <!-- beat chips -->
+  <g transform="translate(72, 512)">
+    <text x="0"   y="16" class="chip">01 Brief</text>
+    <text x="150" y="16" class="chip">02 Design</text>
+    <text x="320" y="16" class="chip">03 Local agent</text>
+    <text x="560" y="16" class="chip">04 Deploy</text>
+    <text x="740" y="16" class="chip">05 Govern</text>
+    <text x="920" y="16" class="chip">06 Scorecard</text>
+  </g>
+
+  <g transform="translate(72, 580)">
+    <rect x="0" y="0" width="32" height="2" fill="url(#accent)"/>
+    <text x="44" y="6" class="meta">aiappsgbb.github.io/threadlight-skills/demo.html</text>
+  </g>
+</svg>

@@ -3,26 +3,745 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Threadlight — One paragraph to a deployed agent.</title>
-<meta name="description" content="Threadlight is how Microsoft GBB AI Apps compresses eight weeks of pilot into a single working session — a small library of skills the coding agent reads to spec, build, deploy, and govern an agent on the customer's Azure.">
+<title>Demo — watch a paragraph become a governed agent.</title>
+<meta name="description" content="A self-driving interactive reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, deployed to your Azure, governed, and scored for production — play, pause, scrub, replay.">
 <meta name="theme-color" content="#4f6dff">
 
 <!-- OpenGraph + Twitter card -->
 <meta property="og:type"        content="website">
-<meta property="og:title"       content="Threadlight — paragraph → deployed agent in one session.">
-<meta property="og:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production. One session.">
+<meta property="og:title"       content="Demo — watch a paragraph become a governed agent.">
+<meta property="og:description" content="A self-driving interactive reel: paragraph in → specced, validated, deployed to your Azure, governed, scored for production. Play, pause, scrub, replay — no video file.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Threadlight — paragraph → deployed agent in one session.">
-<meta name="twitter:description" content="Microsoft GBB AI Apps' eleven-skill chain: spec a regulated process, generate the agent, deploy it to the customer's Azure, project cost, score for production.">
+<meta name="twitter:title"       content="Demo — watch a paragraph become a governed agent.">
+<meta name="twitter:description" content="A self-driving interactive reel of the Threadlight pipeline. Play, pause, scrub, replay.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=20739484">
+
+<style>
+  /* ============================================================
+     DEMO REEL — page-scoped, built on the global site tokens.
+     A self-driving "video" made of 6 beats. The player engine
+     (assets/demo-reel.js) toggles data-active-beat on .reel-stage;
+     every per-beat animation is keyed off the beat becoming
+     display:block, so seek/replay re-trigger cleanly. With no JS
+     (or prefers-reduced-motion) all beats render stacked + static.
+     ============================================================ */
+
+  /* — compact intro ——————————————————————————————————————— */
+  .demo-intro { padding-top: clamp(96px, 14vh, 168px); padding-bottom: 8px; }
+  .demo-intro .eyebrow { display: inline-flex; }
+  .demo-headline {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(2.1rem, 5.4vw, 3.7rem);
+    line-height: 1.04; letter-spacing: -.02em; margin: 14px 0 0; color: var(--ink-0);
+  }
+  .demo-headline em { font-style: italic; color: var(--accent-1); }
+  .demo-sub {
+    margin: 16px 0 0; max-width: 60ch; color: var(--ink-1);
+    font-size: clamp(1rem, 1.5vw, 1.16rem); line-height: 1.6;
+  }
+  .demo-sub strong { color: var(--ink-0); }
+
+  /* — the reel shell ——————————————————————————————————————— */
+  .reel { margin: 26px auto 0; }
+  .reel-frame {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background:
+      radial-gradient(120% 150% at 50% -30%, rgba(79,109,255,.10), transparent 60%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    box-shadow: var(--e-2);
+    overflow: hidden;
+  }
+  .reel-stage {
+    position: relative;
+    min-height: 560px;
+    padding: clamp(18px, 3vw, 34px);
+  }
+  @media (max-width: 720px) { .reel-stage { min-height: 0; } }
+
+  /* — a single beat ————————————————————————————————————————— */
+  .beat { /* no-JS default: visible (stacked storyboard) */ }
+  .beat + .beat { margin-top: 30px; }
+  .reel.is-enhanced .beat { display: none; }
+  .reel.is-enhanced .beat + .beat { margin-top: 0; }
+  .reel.is-enhanced .reel-stage[data-active-beat="1"] .beat[data-beat="1"],
+  .reel.is-enhanced .reel-stage[data-active-beat="2"] .beat[data-beat="2"],
+  .reel.is-enhanced .reel-stage[data-active-beat="3"] .beat[data-beat="3"],
+  .reel.is-enhanced .reel-stage[data-active-beat="4"] .beat[data-beat="4"],
+  .reel.is-enhanced .reel-stage[data-active-beat="5"] .beat[data-beat="5"],
+  .reel.is-enhanced .reel-stage[data-active-beat="6"] .beat[data-beat="6"],
+  .reel.is-enhanced .reel-stage[data-active-beat="7"] .beat[data-beat="7"] {
+    display: block;
+    animation: beatFade .42s var(--ease-out) both;
+  }
+  @keyframes beatFade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* — invoked skill names get a green accent everywhere they appear —— */
+  .skill {
+    color: var(--lime-1); font-weight: 600;
+    font-family: var(--mono); letter-spacing: .002em;
+  }
+  /* a touch bolder inside the typed prompts/terminals where it matters most */
+  .term-body .skill, .sc-title .skill { font-weight: 700; }
+  .beat-caption .skill, .reel-subtitle .skill { font-size: .96em; }
+  /* light mode: pale lime is unreadable on white surfaces — use a deep green,
+     except on the cover, which is always a dark poster regardless of theme. */
+  @media (prefers-color-scheme: light) {
+    .skill { color: #2e7d12; }
+    .reel-cover .skill { color: var(--lime-1); }
+  }
+
+  .beat-head {
+    display: flex; align-items: center; gap: 12px;
+    margin: 0 0 16px;
+  }
+  .beat-step {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-3);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; white-space: nowrap;
+  }
+  .beat-step b { color: var(--accent-1); font-weight: 600; }
+  .beat-title {
+    font-family: var(--serif); font-size: clamp(1.15rem, 2.2vw, 1.5rem);
+    color: var(--ink-0); letter-spacing: -.01em; margin: 0;
+  }
+  .beat-title em { font-style: italic; color: var(--accent-1); }
+
+  .beat-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;
+  }
+  @media (max-width: 900px) { .beat-grid { grid-template-columns: 1fr; } }
+
+  /* terminal card sits flush at top inside the grid */
+  .beat .terminal-card { margin-top: 0; }
+  .beat .term-body { font-size: 13px; min-height: 168px; }
+
+  /* — generic artifact reveal —————————————————————————————— */
+  .art {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--bg-1); box-shadow: var(--e-1); overflow: hidden;
+  }
+  .art-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 11px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; color: var(--ink-2);
+  }
+  .art-head b { color: var(--ink-0); font-weight: 600; }
+  .art-tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent-1); border: 1px solid var(--accent-soft); border-radius: 999px; padding: 3px 8px;
+  }
+  .art-body { padding: 16px 18px; }
+  @keyframes reelIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  @keyframes reelPop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+
+  /* — BEAT 1 · parsed intent chips ———————————————————————— */
+  .parsed-row { padding: 11px 0; border-top: 1px dashed var(--line); }
+  .parsed-row:first-child { border-top: 0; padding-top: 2px; }
+  .parsed-row .pk {
+    display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-1);
+    border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; background: var(--bg-2);
+    animation: reelPop .4s var(--ease-out) both;
+  }
+  .chip.lime { color: var(--lime-1); border-color: rgba(168,255,96,.32); }
+  .chip:nth-child(1){animation-delay:.15s} .chip:nth-child(2){animation-delay:.24s}
+  .chip:nth-child(3){animation-delay:.33s} .chip:nth-child(4){animation-delay:.42s}
+  .chip:nth-child(5){animation-delay:.51s}
+  .parsed-row:nth-child(2) .chips .chip { animation-delay: .55s; }
+  .parsed-row:nth-child(3) .chips .chip:nth-child(1){animation-delay:.7s}
+  .parsed-row:nth-child(3) .chips .chip:nth-child(2){animation-delay:.78s}
+  .parsed-row:nth-child(3) .chips .chip:nth-child(3){animation-delay:.86s}
+  .parsed-row:nth-child(4) .chips .chip { animation-delay: 1s; }
+
+  /* — BEAT 2 · generated artifacts + file-tree ———————————— */
+  .design-arts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    padding: 16px 18px; border-bottom: 1px solid var(--line);
+  }
+  @media (max-width: 560px) { .design-arts { grid-template-columns: 1fr; } }
+  .da-shot {
+    margin: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+    background: var(--bg-2); box-shadow: var(--e-1);
+    animation: reelPop .5s var(--ease-out) both;
+  }
+  .da-shot:nth-child(1) { animation-delay: .2s; }
+  .da-shot:nth-child(2) { animation-delay: .36s; }
+  .da-frame {
+    aspect-ratio: 16 / 10; overflow: hidden;
+    background: var(--bg-0); border-bottom: 1px solid var(--line);
+  }
+  .da-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .da-shot figcaption {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+    color: var(--ink-2); text-align: center; padding: 6px 6px;
+  }
+  .filetree { padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.85; color: var(--ink-1); }
+  .filetree span { display: block; animation: reelIn .34s var(--ease-out) both; }
+  .filetree span span { display: inline; animation: none; }
+  .filetree .t { color: var(--ink-3); }
+  .filetree .f { color: var(--lime-1); }
+  .filetree span:nth-child(1){animation-delay:.25s} .filetree span:nth-child(2){animation-delay:.34s}
+  .filetree span:nth-child(3){animation-delay:.43s} .filetree span:nth-child(4){animation-delay:.52s}
+  .filetree span:nth-child(5){animation-delay:.61s} .filetree span:nth-child(6){animation-delay:.7s}
+  .filetree span:nth-child(7){animation-delay:.79s} .filetree span:nth-child(8){animation-delay:.88s}
+  .filetree span:nth-child(9){animation-delay:.97s} .filetree span:nth-child(10){animation-delay:1.06s}
+
+  /* — BEAT 3 · local agent chat ——————————————————————————— */
+  .chat { display: flex; flex-direction: column; gap: 12px; }
+  .bubble {
+    max-width: 88%; padding: 11px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.5;
+    animation: reelIn .42s var(--ease-out) both;
+  }
+  .bubble.user {
+    align-self: flex-end; background: var(--accent-soft); border: 1px solid var(--accent-soft);
+    color: var(--ink-0); border-bottom-right-radius: 4px; animation-delay: .15s;
+  }
+  .bubble.bot {
+    align-self: flex-start; background: var(--bg-2); border: 1px solid var(--line);
+    color: var(--ink-1); border-bottom-left-radius: 4px; animation-delay: 1.5s;
+  }
+  .bubble.bot b { color: var(--lime-1); font-weight: 600; }
+  .tooltrace {
+    align-self: flex-start; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0;
+  }
+  .tool {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--bg-1);
+    animation: reelPop .34s var(--ease-out) both;
+  }
+  .tool::before { content: "↳ "; color: var(--accent-1); }
+  .tool:nth-child(1){animation-delay:.55s} .tool:nth-child(2){animation-delay:.78s}
+  .tool:nth-child(3){animation-delay:1.01s} .tool:nth-child(4){animation-delay:1.24s}
+
+  /* — BEAT 4 · azure resource group ——————————————————————— */
+  .rg-list { display: flex; flex-direction: column; }
+  .rg-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 4px;
+    border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12.5px; color: var(--ink-1);
+    animation: reelIn .34s var(--ease-out) both;
+  }
+  .rg-row:first-child { border-top: 0; }
+  .rg-row .rg-ico { flex: 0 0 16px; }
+  .rg-row .rg-state { margin-left: auto; }
+  .rg-row .spin {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--line-2); border-top-color: var(--accent-1);
+    animation: rgSpin .8s linear infinite;
+  }
+  .rg-row .check { color: #46c46e; opacity: 0; animation: reelPop .3s var(--ease-out) forwards; }
+  .rg-row .spin { animation: rgSpin .8s linear infinite, rgHide 0s linear forwards; }
+  @keyframes rgSpin { to { transform: rotate(360deg); } }
+  @keyframes rgHide { to {} }
+  /* per-row: spinner fades out, check fades in, staggered */
+  .rg-row:nth-child(1){animation-delay:.1s}  .rg-row:nth-child(1) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear .7s forwards}  .rg-row:nth-child(1) .check{animation-delay:.85s}
+  .rg-row:nth-child(2){animation-delay:.25s} .rg-row:nth-child(2) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear 1.1s forwards} .rg-row:nth-child(2) .check{animation-delay:1.25s}
+  .rg-row:nth-child(3){animation-delay:.4s}  .rg-row:nth-child(3) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear 1.5s forwards} .rg-row:nth-child(3) .check{animation-delay:1.65s}
+  .rg-row:nth-child(4){animation-delay:.55s} .rg-row:nth-child(4) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear 1.9s forwards} .rg-row:nth-child(4) .check{animation-delay:2.05s}
+  .rg-row:nth-child(5){animation-delay:.7s}  .rg-row:nth-child(5) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear 2.3s forwards} .rg-row:nth-child(5) .check{animation-delay:2.45s}
+  .rg-row:nth-child(6){animation-delay:.85s} .rg-row:nth-child(6) .spin{animation:rgSpin .8s linear infinite, fadeOut .25s linear 2.7s forwards} .rg-row:nth-child(6) .check{animation-delay:2.85s}
+  @keyframes fadeOut { to { opacity: 0; } }
+  .rg-foot {
+    margin-top: 4px; padding: 11px 4px 0; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; color: var(--lime-1);
+    animation: reelIn .4s var(--ease-out) 3s both;
+  }
+  .deploy-shot {
+    margin: 0 0 12px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+    background: var(--bg-2); box-shadow: var(--e-1); animation: reelPop .5s var(--ease-out) .2s both;
+  }
+  .deploy-frame { aspect-ratio: 16 / 10; overflow: hidden; background: var(--bg-0); border-bottom: 1px solid var(--line); }
+  .deploy-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .deploy-shot figcaption {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+    color: var(--ink-2); text-align: center; padding: 6px 6px;
+  }
+  .rg-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+  .rg-pill {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-1);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: var(--bg-1);
+    animation: reelPop .34s var(--ease-out) both;
+  }
+  .rg-pill i { color: #46c46e; font-style: normal; }
+  .rg-pill:nth-child(1){animation-delay:.5s} .rg-pill:nth-child(2){animation-delay:.66s}
+  .rg-pill:nth-child(3){animation-delay:.82s} .rg-pill:nth-child(4){animation-delay:.98s}
+
+  /* — BEAT 5 · governance gate tiles ——————————————————————— */
+  .gates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 460px) { .gates { grid-template-columns: 1fr; } }
+  .gate {
+    border: 1px solid var(--line); border-radius: 11px; padding: 14px 15px; background: var(--bg-2);
+    animation: reelPop .42s var(--ease-out) both;
+  }
+  .gate:nth-child(1){animation-delay:.15s} .gate:nth-child(2){animation-delay:.32s}
+  .gate:nth-child(3){animation-delay:.49s} .gate:nth-child(4){animation-delay:.66s}
+  .gate .gl {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 8px;
+  }
+  .gate .gv { display: flex; align-items: baseline; gap: 8px; }
+  .gate .gn { font-family: var(--serif); font-size: 1.5rem; color: var(--ink-0); line-height: 1; }
+  .gate .gs {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em; padding: 3px 8px; border-radius: 999px;
+  }
+  .gate.ok { border-color: rgba(70,196,110,.36); }
+  .gate.ok .gs { color: #46c46e; background: rgba(70,196,110,.12); }
+  .gate.ok .gn em { font-style: normal; color: #46c46e; }
+  .gate.deny { border-color: rgba(246,177,67,.4); }
+  .gate.deny .gs { color: var(--warn); background: rgba(246,177,67,.13); }
+  .gate.deny .gn { color: var(--warn); font-size: 1.15rem; }
+
+  /* — BEAT 6 · scorecard (reuses global .scorecard-preview) — */
+  .beat .scorecard-preview { margin: 0; max-width: none; }
+  .beat .scorecard-preview .sc-pillar { animation: reelIn .4s var(--ease-out) both; }
+  .beat .scorecard-preview .sc-pillar:nth-child(1){animation-delay:.18s}
+  .beat .scorecard-preview .sc-pillar:nth-child(2){animation-delay:.26s}
+  .beat .scorecard-preview .sc-pillar:nth-child(3){animation-delay:.34s}
+  .beat .scorecard-preview .sc-pillar:nth-child(4){animation-delay:.42s}
+  .beat .scorecard-preview .sc-pillar:nth-child(5){animation-delay:.5s}
+  .beat .scorecard-preview .sc-pillar:nth-child(6){animation-delay:.58s}
+  .beat .scorecard-preview .sc-pillar:nth-child(7){animation-delay:.66s}
+  .beat .scorecard-preview .sc-pillar:nth-child(8){animation-delay:.74s}
+  .beat .scorecard-preview .sc-pillar:nth-child(9){animation-delay:.82s}
+  .beat .scorecard-preview .sc-pillar:nth-child(10){animation-delay:.9s}
+  .beat .scorecard-preview .sc-pillar:nth-child(11){animation-delay:.98s}
+  .beat .scorecard-preview .sc-pillar:nth-child(12){animation-delay:1.06s}
+  .beat .scorecard-preview .sc-pillar:nth-child(13){animation-delay:1.14s}
+  .sc-score {
+    font-family: var(--serif); font-size: 1.5rem; color: var(--lime-1); line-height: 1;
+    display: inline-flex; align-items: baseline; gap: 2px;
+  }
+  .sc-score .den { font-size: .55em; color: var(--ink-2); font-family: var(--sans); }
+  .payoff {
+    margin: 16px 0 0; text-align: center;
+    font-family: var(--serif); font-size: clamp(1.05rem, 2vw, 1.34rem); color: var(--ink-0);
+    animation: reelIn .5s var(--ease-out) 1.3s both;
+  }
+  .payoff em { font-style: italic; color: var(--accent-1); }
+  .payoff .sub { display: block; margin-top: 6px; font-family: var(--sans); font-size: .9rem; color: var(--ink-2); }
+
+  /* ============================================================
+     TRANSPORT — play / pause / replay / scrubber / beat-rail
+     ============================================================ */
+  .reel-transport {
+    display: flex; align-items: center; gap: 14px;
+    padding: 13px clamp(14px, 2.4vw, 22px);
+    border-top: 1px solid var(--line); background: var(--bg-2);
+  }
+  .reel-btn {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--line-2); background: var(--bg-1); color: var(--ink-0);
+    transition: border-color .15s, transform .1s, background .15s;
+  }
+  .reel-btn:hover { border-color: var(--accent-1); }
+  .reel-btn:active { transform: scale(.94); }
+  .reel-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .reel-btn svg { width: 17px; height: 17px; fill: currentColor; }
+  .reel-btn.play { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .reel-btn.play:hover { background: var(--accent-1); }
+  /* play/pause icon toggle */
+  .reel-btn .ico-pause { display: none; }
+  .reel.is-playing .reel-btn .ico-play  { display: none; }
+  .reel.is-playing .reel-btn .ico-pause { display: block; }
+
+  .reel-time {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap;
+    min-width: 84px; letter-spacing: .04em;
+  }
+  .reel-time b { color: var(--ink-0); font-weight: 600; }
+
+  .reel-seek {
+    -webkit-appearance: none; appearance: none; flex: 1 1 auto; height: 6px; cursor: pointer;
+    border-radius: 999px; background: transparent; min-width: 80px;
+  }
+  .reel-seek::-webkit-slider-runnable-track {
+    height: 6px; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent) var(--seek, 0%), var(--line) var(--seek, 0%));
+  }
+  .reel-seek::-moz-range-track { height: 6px; border-radius: 999px; background: var(--line); }
+  .reel-seek::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+  .reel-seek::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; margin-top: -5px;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    border: 2px solid var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .reel-seek::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    border: 2px solid var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .reel-seek:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+  /* ── narrative subtitle bar (enhanced mode only) ─────────── */
+  .reel-subtitle { display: none; }
+  .reel.is-enhanced .reel-subtitle {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 62px; padding: 12px clamp(16px, 3vw, 34px);
+    background: var(--bg-2); border-top: 1px solid var(--line);
+  }
+  .reel.is-enhanced .reel-subtitle p {
+    margin: 0; max-width: 74ch; text-align: center;
+    font-family: var(--sans); font-size: 14.5px; line-height: 1.5;
+    color: var(--ink-1); letter-spacing: .005em;
+    animation: subIn .42s var(--ease-out) both;
+  }
+  .reel.is-enhanced .reel-subtitle p .cue { color: var(--accent-1); font-weight: 600; }
+  @keyframes subIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+  /* per-beat caption — storyboard / no-JS / reduced-motion only */
+  .beat-caption {
+    margin: -4px 0 18px; max-width: 78ch;
+    font-family: var(--sans); font-size: 15px; line-height: 1.55; color: var(--ink-2);
+  }
+  .reel.is-enhanced .beat-caption { display: none; }
+
+  /* sound toggle */
+  .reel-btn .ico-sound { display: none; }
+  .reel.is-sound .reel-sound .ico-muted { display: none; }
+  .reel.is-sound .reel-sound .ico-sound { display: block; }
+  .reel.is-sound .reel-sound { border-color: var(--accent-1); color: var(--accent-1); }
+  .reel-sound.is-hint { animation: soundHint 1.6s var(--ease-out) 3; }
+  @keyframes soundHint {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+    50% { box-shadow: 0 0 0 7px transparent; border-color: var(--accent-1); }
+  }
+
+  /* beat 3 — tool-call return values */
+  .tooltrace .tool { display: inline-flex; align-items: center; gap: 7px; }
+  .tooltrace .tool i {
+    font-style: normal; font-size: 10px; color: var(--lime-1);
+    background: rgba(168,255,96,.08); border: 1px solid rgba(168,255,96,.22);
+    border-radius: 5px; padding: 1px 6px; letter-spacing: .02em;
+  }
+
+  /* beat 6 — quiet sales-kit annotation under the scorecard */
+  .kit-note {
+    margin: 12px 0 0; padding: 9px 13px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px;
+    border: 1px dashed var(--line-2); border-radius: 10px; background: var(--bg-1);
+    font-family: var(--sans); font-size: 12.5px; color: var(--ink-2); line-height: 1.4;
+  }
+  .kit-note code {
+    font-family: var(--mono); font-size: 11.5px; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
+  }
+  .kit-note .kit-plus {
+    display: inline-grid; place-items: center; width: 17px; height: 17px;
+    border-radius: 5px; background: var(--lime-soft); color: var(--lime-1);
+    font-family: var(--mono); font-weight: 700; font-size: 12px;
+  }
+  .kit-note .kit-figs {
+    margin-left: auto; font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: .02em; color: var(--ink-1); white-space: nowrap;
+  }
+  .kit-note .kit-figs .u { color: var(--ink-3); }
+  @media (max-width: 520px) { .kit-note .kit-figs { margin-left: 0; } }
+
+  /* beat-chip rail */
+  .beat-rail {
+    display: flex; flex-wrap: wrap; gap: 7px;
+    padding: 14px clamp(14px, 2.4vw, 22px); background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .beat-chip {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .03em; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: var(--bg-1);
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .beat-chip:hover { color: var(--ink-0); border-color: var(--line-2); }
+  .beat-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .beat-chip .n {
+    font-size: 10px; color: var(--ink-3);
+    border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px;
+  }
+  .beat-chip.is-active {
+    color: var(--ink-0); border-color: var(--accent); background: var(--accent-soft);
+  }
+  .beat-chip.is-active .n { color: var(--accent-1); border-color: var(--accent-soft); }
+  .beat-chip.is-done .n { color: var(--lime-1); border-color: rgba(168,255,96,.3); }
+
+  /* ============================================================
+     COVER — click-to-start poster (enhanced mode only). Carries the
+     context up front; pressing play narrates a short intro over it,
+     then it dismisses into the reel.
+     ============================================================ */
+  .reel-cover { display: none; }
+  .reel.is-enhanced .reel-cover {
+    display: flex; position: absolute; inset: 0; z-index: 6;
+    align-items: center; justify-content: center; text-align: center;
+    padding: clamp(22px, 5vw, 56px);
+    background:
+      radial-gradient(120% 130% at 50% -10%, rgba(79,109,255,.18), transparent 58%),
+      linear-gradient(180deg, rgba(10,13,20,.82), rgba(10,13,20,.93));
+    -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px);
+    opacity: 1; transition: opacity .5s var(--ease-out);
+  }
+  .reel.is-enhanced .reel-cover.is-gone { opacity: 0; pointer-events: none; }
+  .reel.is-started .reel-cover { display: none; }
+  .rc-inner { max-width: 64ch; }
+  .rc-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; margin: 0 0 14px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .rc-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lime-1); }
+  .rc-title {
+    margin: 0; font-family: var(--serif); font-weight: 500;
+    font-size: clamp(1.7rem, 4.3vw, 2.9rem); line-height: 1.06; letter-spacing: -.02em;
+    color: #fff;
+  }
+  .rc-title em { font-style: italic; color: var(--accent-1); }
+  .rc-sub {
+    margin: 16px auto 0; max-width: 56ch; color: rgba(233,237,247,.82);
+    font-size: clamp(.98rem, 1.5vw, 1.12rem); line-height: 1.6;
+  }
+  .rc-sub strong { color: #fff; }
+  .rc-play {
+    margin: 26px auto 0; display: inline-flex; align-items: center; gap: 11px; cursor: pointer;
+    font-family: var(--sans); font-size: 15px; font-weight: 600; color: #fff;
+    padding: 13px 24px 13px 18px; border-radius: 999px;
+    border: 1px solid var(--accent); background: var(--accent);
+    box-shadow: 0 8px 30px rgba(79,109,255,.45);
+    transition: transform .12s var(--ease-out), background .15s, box-shadow .15s;
+  }
+  .rc-play:hover { background: var(--accent-1); transform: translateY(-1px); box-shadow: 0 12px 38px rgba(79,109,255,.55); }
+  .rc-play:active { transform: scale(.97); }
+  .rc-play:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  .rc-play svg { width: 20px; height: 20px; fill: currentColor; }
+  .rc-play .rc-hint { font-weight: 400; color: rgba(255,255,255,.8); }
+  .rc-foot {
+    margin: 14px 0 0; font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    color: rgba(233,237,247,.55);
+  }
+  @media (max-width: 560px) { .rc-play .rc-hint { display: none; } }
+
+  /* ============================================================
+     BEAT 7 · the wrap-up "slide" — recap + key outcomes, full-bleed
+     ============================================================ */
+  .beat-close { text-align: center; }
+  .beat-close .beat-head { justify-content: center; }
+  .beat-close .beat-caption {
+    margin: -2px auto 22px; max-width: 64ch; text-align: center; color: var(--ink-1);
+    font-size: 15.5px;
+  }
+  .reel.is-enhanced .beat-close .beat-caption { display: block; } /* keep it on this closing slide */
+  .close-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    max-width: 880px; margin: 0 auto;
+  }
+  @media (max-width: 760px) { .close-stats { grid-template-columns: 1fr 1fr; } }
+  .cs {
+    border: 1px solid var(--line); border-radius: 13px; padding: 17px 15px; background: var(--bg-2);
+    animation: reelPop .46s var(--ease-out) both;
+  }
+  .cs:nth-child(1){animation-delay:.12s} .cs:nth-child(2){animation-delay:.24s}
+  .cs:nth-child(3){animation-delay:.36s} .cs:nth-child(4){animation-delay:.48s}
+  .cs b {
+    display: block; font-family: var(--serif); font-size: 1.5rem; line-height: 1;
+    color: var(--lime-1); letter-spacing: -.01em; margin-bottom: 8px;
+  }
+  .cs b.cs-accent { color: var(--accent-1); }
+  .cs span {
+    font-family: var(--sans); font-size: 12.5px; line-height: 1.45; color: var(--ink-2);
+  }
+  .close-payoff {
+    margin: 24px auto 0; max-width: 60ch;
+    font-family: var(--serif); font-size: clamp(1.15rem, 2.4vw, 1.6rem); line-height: 1.2;
+    color: var(--ink-0); animation: reelIn .5s var(--ease-out) .6s both;
+  }
+  .close-payoff em { font-style: italic; color: var(--accent-1); }
+  .close-sub {
+    display: block; margin-top: 8px; font-family: var(--sans); font-size: .92rem; color: var(--ink-2);
+  }
+
+  /* — sales-kit showcase —————————————————————————————————— */
+  .sales-kit { padding-top: clamp(40px, 7vh, 86px); }
+  .sales-kit .sub code,
+  .kit-foot code {
+    font-family: var(--mono); font-size: .88em; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
+  }
+  .sales-kit .sub { max-width: 70ch; }
+
+  /* artifact gallery */
+  .kit-gallery {
+    margin-top: 28px; display: grid; align-items: start; margin-inline: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2.2vw, 28px);
+    max-width: 900px;
+  }
+  @media (max-width: 760px) {
+    .kit-gallery { grid-template-columns: 1fr; max-width: 540px; }
+  }
+
+  .kit-shot {
+    margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: var(--bg-1); box-shadow: 0 24px 60px -30px rgba(0,0,0,.6);
+    display: flex; flex-direction: column;
+  }
+  .kit-chrome {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 13px; background: var(--bg-2); border-bottom: 1px solid var(--line);
+  }
+  .kit-dots { display: inline-flex; gap: 6px; }
+  .kit-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+  .kit-url {
+    flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px;
+    padding: 3px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .kit-frame {
+    position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: var(--bg-2);
+  }
+  .kit-frame img {
+    position: absolute; inset: 0; display: block;
+    width: 100%; height: 100%; object-fit: cover; object-position: top center;
+  }
+  .kit-shot figcaption {
+    padding: 12px 14px 14px; border-top: 1px solid var(--line);
+    background: var(--bg-1); font-family: var(--sans);
+  }
+  .kit-shot figcaption b { display: block; font-size: 14px; font-weight: 600; color: var(--ink-0); }
+  .kit-by {
+    display: inline-block; margin-top: 6px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .01em; color: var(--accent-1);
+    background: var(--accent-soft); border-radius: 5px; padding: 2px 7px;
+  }
+  .kit-desc { display: block; margin-top: 9px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+  .kit-foot { margin: 22px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); font-family: var(--sans); }
+
+  /* — zoomable showcase frames ———————————————————————————— */
+  button.kit-frame {
+    width: 100%; padding: 0; border: 0; font: inherit; color: inherit;
+    cursor: zoom-in; -webkit-appearance: none; appearance: none;
+  }
+  button.kit-frame:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 3px; }
+  .kit-frame img { transition: transform .45s var(--ease-out); }
+  .kit-frame:hover img { transform: scale(1.045); }
+  .kit-zoom-hint {
+    position: absolute; right: 10px; bottom: 10px; z-index: 2; pointer-events: none;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; color: #fff;
+    background: rgba(10,12,20,.62); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 7px; padding: 4px 8px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    opacity: 0; transform: translateY(4px); transition: opacity .18s, transform .18s;
+  }
+  .kit-frame:hover .kit-zoom-hint,
+  button.kit-frame:focus-visible .kit-zoom-hint { opacity: 1; transform: none; }
+
+  /* — lightbox overlay ———————————————————————————————————— */
+  .lightbox {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center; padding: clamp(16px, 4vw, 56px);
+    background: rgba(6,8,14,.86); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .lightbox.is-open { display: flex; animation: lbFade .2s var(--ease-out) both; }
+  @keyframes lbFade { from { opacity: 0; } to { opacity: 1; } }
+  .lightbox figure {
+    margin: 0; max-width: 1200px; width: 100%; cursor: default;
+    animation: lbPop .26s var(--ease-out) both;
+  }
+  @keyframes lbPop { from { opacity: 0; transform: scale(.965); } to { opacity: 1; transform: none; } }
+  .lightbox img {
+    display: block; width: 100%; height: auto; max-height: 82vh; object-fit: contain;
+    border: 1px solid var(--line-2); border-radius: 12px;
+    box-shadow: 0 40px 120px -40px rgba(0,0,0,.85); background: var(--bg-0);
+  }
+  .lightbox figcaption {
+    margin-top: 12px; text-align: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: rgba(255,255,255,.74);
+  }
+  .lightbox-close {
+    position: absolute; top: clamp(12px, 2.5vw, 22px); right: clamp(12px, 2.5vw, 22px);
+    width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1; color: #fff;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22);
+  }
+  .lightbox-close:hover { background: rgba(255,255,255,.2); }
+  .lightbox-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  /* — closing CTA strip ——————————————————————————————————— */
+  .demo-cta { padding-top: 8px; }
+  .demo-cta .hero-cta-row { margin-top: 22px; }
+
+  /* — recap / outro ——————————————————————————————————————— */
+  .recap-flow {
+    list-style: none; margin: 30px 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+  }
+  .rf-step {
+    position: relative; padding: 16px 14px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--bg-1); display: flex; flex-direction: column; gap: 4px;
+  }
+  .rf-step::after {
+    content: "→"; position: absolute; right: -11px; top: 50%; transform: translateY(-50%);
+    color: var(--ink-3); font-size: 13px; z-index: 1;
+  }
+  .rf-step:last-child::after { content: none; }
+  .rf-n { font-family: var(--mono); font-size: 11px; color: var(--accent-1); letter-spacing: .06em; }
+  .rf-step b { font-family: var(--serif); font-size: 17px; color: var(--ink-0); line-height: 1.1; }
+  .rf-step span:last-child { font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+  @media (max-width: 880px) { .recap-flow { grid-template-columns: repeat(3, 1fr); }
+    .rf-step:nth-child(3)::after { content: none; } }
+  @media (max-width: 540px) { .recap-flow { grid-template-columns: 1fr 1fr; }
+    .rf-step::after { content: none; } }
+
+  .recap-outcomes {
+    margin: 14px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .oc {
+    padding: 18px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2);
+    box-shadow: var(--e-1);
+  }
+  .oc b { display: block; font-family: var(--serif); font-size: 17px; color: var(--ink-0); margin-bottom: 7px; }
+  .oc b.oc-stat { font-size: 30px; letter-spacing: -.02em; color: var(--lime-1); }
+  .oc span { font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+  @media (max-width: 880px) { .recap-outcomes { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 460px) { .recap-outcomes { grid-template-columns: 1fr; } }
+
+  .recap-visual { max-width: 760px; margin: 26px auto 0; }
+
+  /* ============================================================
+     STATIC FALLBACK — reduced-motion / no-JS storyboard
+     ============================================================ */
+  .reel.is-static .reel-transport,
+  .reel.is-static .beat-rail { display: none; }
+  .reel.is-static .reel-frame { border-radius: 18px; }
+  .reel.is-static .reel-stage { min-height: 0; }
+  .reel.is-static .beat { border-top: 1px solid var(--line); padding-top: 26px; }
+  .reel.is-static .beat:first-child { border-top: 0; padding-top: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .beat *,
+    .reel .terminal-card.is-typing .term-line {
+      animation: none !important; opacity: 1 !important; transform: none !important;
+    }
+    .rg-row .spin { display: none; }
+    .rg-row .check { opacity: 1 !important; }
+  }
+
+  /* — light mode bespoke tweaks ——————————————————————————— */
+  @media (prefers-color-scheme: light) {
+    .art, .gate, .chip, .tool, .beat-chip, .reel-btn { background: #ffffff; }
+    .art-head, .reel-transport, .beat-rail { background: #eef0f7; }
+    .reel-frame { background: linear-gradient(180deg, #ffffff, #f6f7fb); }
+  }
+</style>
 </head>
 <body>
 
@@ -35,6 +754,7 @@
     </a>
   </div>
   <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
     <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>Funnel</a>
     <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
     <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
@@ -44,664 +764,402 @@
   </nav>
 </header>
 
-<aside class="floating-toc" aria-label="On this page">
-  <p class="toc-title">On this page</p>
-</aside>
-
 <main>
 
-  <!-- ====================== SCENE 1 · HERO ====================== -->
-  <section class="scene" id="scene-hero" aria-labelledby="hero-headline" data-toc-id="scene-hero" data-toc-label="Top">
-    <div class="hero-stage" aria-hidden="true">
-      <div class="hero-aurora"></div>
-      <div class="hero-grid"></div>
-      <div class="hero-particles" id="hero-particles"></div>
-    </div>
-
-    <div class="wrap wrap-wide hero-inner">
-      <p class="eyebrow"><span class="dot"></span>AI agent PoCs, demos, and MVPs — dramatically simplified</p>
-
-      <h1 class="hero-headline" id="hero-headline">
-        <span class="word">Business</span>
-        <span class="word">process</span>
-        <span class="word">→</span>
-        <span class="word"><em>working</em></span>
-        <span class="word"><em>agent.</em></span>
+  <!-- ====================== INTRO ====================== -->
+  <section class="scene demo-intro" aria-labelledby="demo-h">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow reveal"><span class="dot"></span>A demo you can scrub — not a video file</p>
+      <h1 class="demo-headline reveal" data-delay="1" id="demo-h">
+        Watch a paragraph become a <em>governed agent.</em>
       </h1>
-
-      <p class="hero-sub">
-        Describe a business process to a coding agent. It drafts the spec,
-        scaffolds the agent code, validates it locally, and deploys it to
-        <em>your Azure</em> &mdash; with governance, telemetry, and evals
-        generated as auditable artefacts. <strong>One guided session to a deployed pilot.</strong>
+      <p class="demo-sub reveal" data-delay="2">
+        Idea to production in one continuous run — the same chain a solution
+        engineer drives from GitHub Copilot. The CLI types itself; the artefacts
+        appear in sync. <strong>Press play, or scrub to any beat.</strong>
       </p>
-
-      <p class="hero-tag" aria-label="Pipeline status indicator">
-        <span class="pip"></span>
-        <span>FSI &middot; Healthcare &middot; Manufacturing &middot; Retail &middot; Telco &middot; Energy &amp; utilities &mdash; each tailored to domain-specific rules and data</span>
-      </p>
-
-      <aside class="hero-banner reveal" data-delay="3" role="note" aria-label="No-code alternative">
-        <span class="hb-mark" aria-hidden="true">⚡</span>
-        <span class="hb-text"><strong>No customization needed?</strong> Try <a href="#scene-kratos">Kratos</a> &mdash; no-code, MIT-licensed, in your browser. Or <strong>read on</strong> for Threadlight, the customizable path.</span>
-      </aside>
-
-      <div class="hero-cta-row">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="./case-study.html">See it run for real <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="#scene-chain">See the chain <span class="arrow">→</span></a>
-        <a class="btn btn-ghost"   href="#scene-cta">Start with one prompt <span class="arrow">↓</span></a>
-      </div>
     </div>
-
-    <div class="scroll-cue" aria-hidden="true">Scroll</div>
   </section>
 
-  <!-- ====================== STACK STRIP ====================== -->
-  <div class="stack-strip" aria-label="Microsoft Azure services that threadlight composes">
-    <span class="built">Built on Microsoft</span>
-    <strong>Foundry</strong><span class="sep">·</span>
-    <strong>Container Apps</strong><span class="sep">·</span>
-    <strong>Cosmos&nbsp;DB</strong><span class="sep">·</span>
-    <strong>AI&nbsp;Search</strong><span class="sep">·</span>
-    <strong>App&nbsp;Insights</strong><span class="sep">·</span>
-    <strong>Bicep</strong><span class="sep">·</span>
-    <strong>azd</strong><span class="sep">·</span>
-    <strong>Managed&nbsp;Identity</strong>
-  </div>
+  <!-- ====================== THE REEL ====================== -->
+  <section class="scene" aria-label="Threadlight pipeline demo reel" style="padding-top:0;">
+    <div class="wrap wrap-wide">
+      <div class="reel" id="reel">
+        <div class="reel-frame">
 
-  <!-- ====================== EVOLUTION BAND ====================== -->
-  <div class="evolution-band" aria-label="Where the field has been and where we are now">
-    <div class="wrap">
-      <p class="evo-lede"><strong>Where the field has been</strong> &nbsp;·&nbsp; the path from LLMs to skill-based agents</p>
-      <div class="evo-chips" role="list">
-        <span class="evo-chip" role="listitem">LLMs</span>
-        <span class="evo-arrow" aria-hidden="true">→</span>
-        <span class="evo-chip" role="listitem">RAG</span>
-        <span class="evo-arrow" aria-hidden="true">→</span>
-        <span class="evo-chip" role="listitem">Multi-agent</span>
-        <span class="evo-arrow" aria-hidden="true">→</span>
-        <span class="evo-chip" role="listitem">MCP</span>
-        <span class="evo-arrow" aria-hidden="true">→</span>
-        <span class="evo-chip is-now" role="listitem">Skills <span aria-hidden="true">●</span></span>
-      </div>
+          <!-- cover / click-to-start poster (enhanced mode only) -->
+          <div class="reel-cover" data-reel="cover">
+            <div class="rc-inner">
+              <p class="rc-eyebrow"><span class="dot"></span>Interactive demo · with voiceover</p>
+              <h2 class="rc-title">From one paragraph to a <em>governed agent</em> — live.</h2>
+              <p class="rc-sub">Idea&nbsp;→&nbsp;production, driven from a coding agent like <strong>GitHub&nbsp;Copilot</strong>. Six <span class="skill">threadlight-&lowast;</span> skills, one continuous run — no glue code, nothing mocked.</p>
+              <button class="rc-play" type="button" data-reel="start" aria-label="Play the reel with voiceover">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                Play the reel <span class="rc-hint">· ~2 min</span>
+              </button>
+              <p class="rc-foot">play · pause · scrub any beat, anytime</p>
+            </div>
+          </div>
+
+          <!-- beat rail (status) -->
+          <nav class="beat-rail" aria-label="Jump to a beat">
+            <button class="beat-chip is-active" type="button" data-beat="1"><span class="n">01</span>Brief</button>
+            <button class="beat-chip" type="button" data-beat="2"><span class="n">02</span>Design</button>
+            <button class="beat-chip" type="button" data-beat="3"><span class="n">03</span>Local agent</button>
+            <button class="beat-chip" type="button" data-beat="4"><span class="n">04</span>Deploy</button>
+            <button class="beat-chip" type="button" data-beat="5"><span class="n">05</span>Govern</button>
+            <button class="beat-chip" type="button" data-beat="6"><span class="n">06</span>Scorecard</button>
+            <button class="beat-chip" type="button" data-beat="7"><span class="n">★</span>Recap</button>
+          </nav>
+
+          <div class="reel-stage" data-active-beat="1" id="reel-stage">
+
+            <!-- ── BEAT 1 · the brief ──────────────────────────── -->
+            <article class="beat" data-beat="1" aria-label="Beat 1 — the brief">
+              <div class="beat-head">
+                <span class="beat-step"><b>01</b> / 06</span>
+                <h2 class="beat-title">One paragraph <em>in.</em></h2>
+              </div>
+              <p class="beat-caption">It starts with one paragraph. You describe a credit-memo triage agent in plain English — <span class="skill">threadlight-design</span> pulls out the process, entities, decision branches, and the hard credit rules.</p>
+              <div class="beat-grid">
+                <div class="terminal-card is-typing">
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">copilot — credit-memo</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-design</span> to spec a credit-memo</span></span><span class="term-line"><span class="cmd">triage agent for a regional commercial bank.</span></span><span class="term-line"><span class="cmd">For each SME loan application: pull the credit-</span></span><span class="term-line"><span class="cmd">bureau report, compute DSCR &amp; LTV, then</span></span><span class="term-line"><span class="cmd">auto-approve, refer, or decline — drafting a</span></span><span class="term-line"><span class="cmd">memo that cites the policy rule. Floors:</span></span><span class="term-line"><span class="cmd">DSCR &ge; 1.25, LTV &le; 0.80.<span class="caret"></span></span></span><span class="term-line"><span class="out"><span class="skill">threadlight-design</span> · fast-PoC engaged</span></span><span class="term-line"><span class="cmt"># parsing process · entities · branches · rules</span></span></pre>
+                </div>
+                <div class="art" aria-label="Parsed intent">
+                  <div class="art-head"><b>Understood from your paragraph</b><span class="art-tag">FSI</span></div>
+                  <div class="art-body">
+                    <div class="parsed-row"><span class="pk">Process</span><div class="chips"><span class="chip lime">Credit-memo triage</span></div></div>
+                    <div class="parsed-row"><span class="pk">Entities</span><div class="chips"><span class="chip">Application</span><span class="chip">Applicant</span><span class="chip">Bureau pull</span><span class="chip">Memo</span></div></div>
+                    <div class="parsed-row"><span class="pk">Decision branches</span><div class="chips"><span class="chip">Auto-approve</span><span class="chip">Refer</span><span class="chip">Decline</span></div></div>
+                    <div class="parsed-row"><span class="pk">Rules</span><div class="chips"><span class="chip">DSCR ≥ 1.25</span><span class="chip">LTV ≤ 0.80</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- ── BEAT 2 · design → spec + code ────────────────── -->
+            <article class="beat" data-beat="2" aria-label="Beat 2 — design to spec and code">
+              <div class="beat-head">
+                <span class="beat-step"><b>02</b> / 06</span>
+                <h2 class="beat-title">Specced &amp; <em>scaffolded.</em></h2>
+              </div>
+              <p class="beat-caption"><span class="skill">threadlight-design</span> writes the spec and the AGENTS file, scaffolds the four tools, seeds realistic sample data, and adds killer-prompt tests — it even renders the customer talk-deck and the seller prep-guide. A working project, not just slideware.</p>
+              <div class="beat-grid">
+                <div class="terminal-card is-typing">
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-design</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">rendering demo-deck + prep-guide</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
+                </div>
+                <div class="art" aria-label="Generated design artifacts">
+                  <div class="art-head"><b>Generated artifacts</b><span class="art-tag">design</span></div>
+                  <div class="design-arts">
+                    <figure class="da-shot">
+                      <div class="da-frame"><img src="assets/shots/sales-kit-deck.png" loading="lazy" width="1440" height="810" alt="Generated customer talk-deck — a dark, cinematic title slide for the fictional MeridianCredit sample."></div>
+                      <figcaption>demo-deck.html</figcaption>
+                    </figure>
+                    <figure class="da-shot">
+                      <div class="da-frame"><img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940" alt="Generated seller prep-guide — a MeridianCredit seller prep guide with a view-mode toggle and a section table of contents."></div>
+                      <figcaption>prep-guide.html</figcaption>
+                    </figure>
+                  </div>
+                  <div class="filetree" aria-hidden="true">
+                    <span class="t">credit-memo/</span>
+                    <span>├─ specs/SPEC.md · AGENTS.md</span>
+                    <span class="t">├─ src/agent/skills/ <span class="f">· 4 tools</span></span>
+                    <span>├─ specs/sample-data/ · tests/</span>
+                    <span>└─ specs/ <span class="f">demo-deck.html · prep-guide.html</span></span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- ── BEAT 3 · live local agent ────────────────────── -->
+            <article class="beat" data-beat="3" aria-label="Beat 3 — live local agent">
+              <div class="beat-head">
+                <span class="beat-step"><b>03</b> / 06</span>
+                <h2 class="beat-title">Validated on your <em>local PC.</em></h2>
+              </div>
+              <p class="beat-caption"><span class="skill">threadlight-local-test</span> runs the agent on your own machine first — before any cloud spend. Ask it to triage a real application and it calls the tools live, then writes a credit memo with its reasoning.</p>
+              <div class="beat-grid">
+                <div class="terminal-card is-typing">
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-local-test</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-local-test</span> to run the agent</span></span><span class="term-line"><span class="cmd">on my own PC so I can chat with it first.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider · tools wired</span></span><span class="term-line"><span class="out">agent ready · running on your machine<span class="caret"></span></span></span></pre>
+                </div>
+                <div class="art" aria-label="Local credit-memo chat">
+                  <div class="art-head"><b>credit-memo · chat</b><span class="art-tag">local</span></div>
+                  <div class="art-body chat">
+                    <div class="bubble user">Triage <b>APP-4821</b> — Riverside Welding LLC, $480k equipment loan over 60 months. Approve, refer, or decline?</div>
+                    <div class="tooltrace" aria-hidden="true">
+                      <span class="tool">list_applications<i>1 match</i></span>
+                      <span class="tool">get_application(APP-4821)<i>$480k · 60mo</i></span>
+                      <span class="tool">get_bureau_pull<i>FICO 706</i></span>
+                      <span class="tool">update_memo(CM-4821)<i>saved ✓</i></span>
+                    </div>
+                    <div class="bubble bot"><b>Refer to underwriter.</b> DSCR <b>1.18</b> is below the 1.25 floor — NOI $172k ÷ debt service $146k. LTV <b>0.74</b> passes. Bureau: 2 late payments in 24 months, no liens. Drafted memo <b>CM-4821</b> recommending referral, with a conditional-approval path if a $60k cash injection lifts DSCR to 1.27.</div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- ── BEAT 4 · deploy to azure ─────────────────────── -->
+            <article class="beat" data-beat="4" aria-label="Beat 4 — deploy to Azure">
+              <div class="beat-head">
+                <span class="beat-step"><b>04</b> / 06</span>
+                <h2 class="beat-title">Deployed to <em>your Azure.</em></h2>
+              </div>
+              <p class="beat-caption"><span class="skill">threadlight-deploy</span> runs <strong>AZD up</strong> straight into your own Azure subscription — Foundry, a hosted-agent container, Cosmos, and App Insights, provisioned and wired together. The credit-memo agent goes live in your tenant, ready to use in a workspace or in Teams. Nothing is mocked.</p>
+              <div class="beat-grid">
+                <div class="terminal-card is-typing">
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-deploy · azd</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Now deploy it to my own Azure subscription</span></span><span class="term-line"><span class="cmd">with <span class="skill">threadlight-deploy</span>.</span></span><span class="term-line"><span class="out">azd up · tenant + subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
+                </div>
+                <div class="art" aria-label="Live credit-memo agent in your Azure tenant">
+                  <div class="art-head"><b>credit-memo · live</b><span class="art-tag">your Azure</span></div>
+                  <div class="art-body">
+                    <figure class="deploy-shot">
+                      <div class="deploy-frame">
+                        <img src="assets/shots/deploy-workspace.png" loading="lazy" width="1440" height="900"
+                             alt="The deployed credit-memo agent running live in a branded MeridianCredit web workspace, triaging application APP-4821 and returning a ‘Refer to underwriter’ memo with DSCR 1.18, LTV 0.74 and FICO 706.">
+                      </div>
+                      <figcaption>credit-memo agent · live in your tenant</figcaption>
+                    </figure>
+                    <div class="rg-pills" aria-label="Provisioned Azure resources">
+                      <span class="rg-pill">Foundry <i>✓</i></span>
+                      <span class="rg-pill">Hosted agent <i>✓</i></span>
+                      <span class="rg-pill">Cosmos DB <i>✓</i></span>
+                      <span class="rg-pill">App Insights <i>✓</i></span>
+                    </div>
+                    <p class="rg-foot">azd up · deployed ✓ — reachable in a workspace or in Microsoft Teams</p>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- ── BEAT 5 · govern / evals / safety ─────────────── -->
+            <article class="beat" data-beat="5" aria-label="Beat 5 — governance, evals and safety gates">
+              <div class="beat-head">
+                <span class="beat-step"><b>05</b> / 06</span>
+                <h2 class="beat-title">Governed &amp; <em>gated.</em></h2>
+              </div>
+              <p class="beat-caption">Then come the gates. <span class="skill">threadlight-govern</span> enforces runtime policy, <span class="skill">threadlight-evals</span> scores quality, and <span class="skill">threadlight-redteam</span> runs an adversarial PyRIT scan — a deprecated model is refused at the boundary.</p>
+              <div class="beat-grid">
+                <div class="terminal-card is-typing">
+                  <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">govern · evals · red-team</span></div>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Before we ship, run the three gate skills:</span></span><span class="term-line"><span class="cmd"><span class="skill">threadlight-govern</span>, <span class="skill">threadlight-evals</span>,</span></span><span class="term-line"><span class="cmd">and <span class="skill">threadlight-redteam</span>.</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
+                </div>
+                <div class="art" aria-label="Governance gates">
+                  <div class="art-head"><b>Control-plane gates</b><span class="art-tag">DISCOVER · PROTECT</span></div>
+                  <div class="art-body gates">
+                    <div class="gate ok"><p class="gl">AGT runtime policy</p><div class="gv"><span class="gn"><em>✓</em></span><span class="gs">enforced</span></div></div>
+                    <div class="gate ok"><p class="gl">Continuous evals</p><div class="gv"><span class="gn">14<span style="color:var(--ink-3)">/15</span></span><span class="gs">pass</span></div></div>
+                    <div class="gate ok"><p class="gl">Red-team · PyRIT</p><div class="gv"><span class="gn">0<span style="color:var(--ink-3)">/120</span></span><span class="gs">ASR</span></div></div>
+                    <div class="gate deny"><p class="gl">Deprecated model</p><div class="gv"><span class="gn">403</span><span class="gs">blocked</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- ── BEAT 6 · production-ready scorecard ──────────── -->
+            <article class="beat" data-beat="6" aria-label="Beat 6 — production-ready scorecard">
+              <div class="beat-head">
+                <span class="beat-step"><b>06</b> / 06</span>
+                <h2 class="beat-title">Scored for <em>production.</em></h2>
+              </div>
+              <p class="beat-caption">A deployed MVP isn’t the finish line. <span class="skill">threadlight-production-ready</span> scores the agent across thirteen pillars — network, governance, identity, evals, responsible AI, reliability — then writes the customer hand-off package: 92/100, ship with two waivers. The prototype becomes something an ARB can sign off and an SRE can run.</p>
+              <article class="scorecard-preview" aria-label="Production-readiness scorecard">
+                <header class="sc-header">
+                  <div>
+                    <p class="sc-title">› Use <span class="skill">threadlight-production-ready</span> to score this for production and write the customer hand-off.</p>
+                    <p class="sc-headline">Credit-memo agent &middot; <em>13-pillar scorecard</em></p>
+                  </div>
+                  <p class="sc-posture"><span class="sc-score" data-reel-counter data-to="92">0<span class="den">/100</span></span><br><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-2);">Citadel-spoke posture</span></p>
+                </header>
+                <div class="sc-grid">
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">01</span><span class="sc-name">Network posture</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">02</span><span class="sc-name">Agent governance</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">03</span><span class="sc-name">Identity &amp; access</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">04</span><span class="sc-name">Secrets</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">05</span><span class="sc-name">Observability</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">06</span><span class="sc-name">Continuous evals</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">07</span><span class="sc-name">Responsible AI</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">08</span><span class="sc-name">HITL &amp; audit</span></div>
+                  <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">09</span><span class="sc-name">Supply chain</span></div>
+                  <div class="sc-pillar is-amber"><span class="sc-dot"></span><span class="sc-num">10</span><span class="sc-name">Cost</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">11</span><span class="sc-name">Reliability</span></div>
+                  <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">12</span><span class="sc-name">SRE hand-over</span></div>
+                  <div class="sc-pillar is-grey"><span class="sc-dot"></span><span class="sc-num">13</span><span class="sc-name">Model lifecycle</span></div>
+                </div>
+                <footer class="sc-footer">
+                  <p class="sc-legend">
+                    <span><i class="lg-green"></i>verified</span>
+                    <span><i class="lg-amber"></i>waiver</span>
+                    <span><i class="lg-grey"></i>not-verified</span>
+                  </p>
+                  <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> · customer hand-off package written</p>
+                </footer>
+              </article>
+              <p class="kit-note">
+                <span class="kit-plus">+</span> Cost view · <code>threadlight-consumption-iq</code>
+                &rarr; phased Azure cost estimate
+                <span class="kit-figs">$326 &rarr; $795 &rarr; $6,804<span class="u">/mo&nbsp;est.</span></span>
+              </p>
+              <p class="payoff">
+                One paragraph &rarr; <em>a governed agent on your Azure.</em>
+                <span class="sub">~50 minutes · every artefact auditable · nothing mocked</span>
+              </p>
+            </article>
+
+            <!-- ── BEAT 7 · the wrap-up / recap ─────────────────── -->
+            <article class="beat beat-close" data-beat="7" aria-label="Recap — key outcomes">
+              <div class="beat-head">
+                <span class="beat-step"><b>★</b> recap</span>
+                <h2 class="beat-title">A governed agent, <em>shipped.</em></h2>
+              </div>
+              <p class="beat-caption">And that’s the whole arc. One paragraph becomes a working agent — deployed to your own tenant, governed and scored for production, with the customer talk-deck and prep-guide to walk in with. One continuous run, driven from your coding agent, nothing mocked.</p>
+              <div class="close-stats">
+                <div class="cs"><b>92/100</b><span>Production-ready score · ship with 2 waivers</span></div>
+                <div class="cs"><b>13 pillars</b><span>Verified for ARB sign-off &amp; SRE hand-off</span></div>
+                <div class="cs"><b class="cs-accent">your Azure</b><span>Governed agent live in your own tenant</span></div>
+                <div class="cs"><b>sales kit</b><span>Customer talk-deck + seller prep-guide</span></div>
+              </div>
+              <p class="close-payoff">
+                Idea &rarr; production, in <em>one continuous run.</em>
+                <span class="close-sub">Driven from GitHub Copilot · everything past the PoC handled — govern, evals, red-team, scorecard, hand-off.</span>
+              </p>
+            </article>
+
+          </div><!-- /.reel-stage -->
+
+          <!-- narrative subtitle (enhanced mode) -->
+          <div class="reel-subtitle" id="reel-subtitle" aria-live="polite"></div>
+
+          <!-- transport -->
+          <div class="reel-transport" role="group" aria-label="Reel playback controls">
+            <button class="reel-btn play" type="button" data-reel="play" aria-label="Play">
+              <svg class="ico-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="ico-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+            </button>
+            <button class="reel-btn" type="button" data-reel="replay" aria-label="Replay from start">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            </button>
+            <button class="reel-btn reel-sound" type="button" data-reel="sound" aria-label="Turn on voiceover" aria-pressed="false" title="Voiceover">
+              <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">2:03</span></span>
+            <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">
+          </div>
+
+        </div><!-- /.reel-frame -->
+      </div><!-- /.reel -->
     </div>
-  </div>
+  </section>
 
-
-  <!-- ====================== SVG CHAIN (paragraph → SPEC → agent) ====================== -->
-  <section class="scene" id="scene-show" data-toc-id="scene-show" data-toc-label="See the chain">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal" style="max-width:760px;margin:0 auto 18px;text-align:center;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>What ships</p>
-        <h2 style="margin-top:14px;">From a paragraph &mdash; <em>to a deployed agent.</em></h2>
-        <p class="sub" style="margin-top:14px;">No new IDE. No new CLI of our own. <strong>You stay in your coding agent</strong> &mdash; the skills do the chain.</p>
-      </div>
-
-      <p class="skill-eyebrow reveal" data-delay="1">
-        <span class="se-tag">Threadlight skills</span>
-        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
-        <span class="se-not">Not a CLI of our own. Not commands.</span>
+  <!-- ====================== SALES KIT ====================== -->
+  <section class="scene sales-kit" aria-labelledby="kit-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>The kit — generated, not slideware</p>
+      <h2 id="kit-h" class="display reveal" data-delay="1">And it writes the kit you <em>walk in with.</em></h2>
+      <p class="sub reveal" data-delay="2">
+        The same run doesn’t just ship code. <code>threadlight-design</code> also writes a brand-matched
+        <strong>customer talk deck</strong> and a matching <strong>seller prep-guide</strong> — real HTML you
+        screen-share, hand off, or print to PDF. Shown here on the fictional <strong>MeridianCredit</strong> bank sample.
       </p>
 
-      <figure class="svg-hero reveal" data-delay="2" aria-labelledby="chain-caption">
-        <div class="frame">
-          <svg class="funnel-chain-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three panels: a paragraph becomes a signed SPEC document which becomes a deployed agent on Azure">
-            <defs>
-              <marker id="chain-arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" opacity="0.55"/>
-              </marker>
-            </defs>
+      <div class="kit-gallery reveal" data-delay="3">
+        <figure class="kit-shot">
+          <div class="kit-chrome">
+            <span class="kit-dots"><span></span><span></span><span></span></span>
+            <span class="kit-url">demo-deck.html</span>
+          </div>
+          <button type="button" class="kit-frame" data-caption="demo-deck.html — Customer talk deck" aria-label="Enlarge the generated customer talk deck">
+            <img src="assets/shots/sales-kit-deck.png" loading="lazy" width="1440" height="810"
+                 alt="The generated customer talk deck: a dark, cinematic title slide reading ‘The credit memo, ready before the coffee’s cold’ with a Meridian Commercial Bank × Microsoft co-brand and a 1 / 11 slide counter.">
+            <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+          </button>
+          <figcaption>
+            <b>Customer talk deck</b>
+            <span class="kit-by">threadlight-design</span>
+            <span class="kit-desc">Cinematic, cold-open to close, with built-in speaker notes — drive it from the keyboard, in the room.</span>
+          </figcaption>
+        </figure>
 
-            <!-- PANEL 01 — THE PARAGRAPH -->
-            <g transform="translate(40, 40)">
-              <text x="0" y="0" class="panel-num">STAGE 01</text>
-              <text x="0" y="30" class="panel-title">A paragraph.</text>
-              <text x="0" y="54" class="panel-sub">What you type in chat.</text>
+        <figure class="kit-shot">
+          <div class="kit-chrome">
+            <span class="kit-dots"><span></span><span></span><span></span></span>
+            <span class="kit-url">prep-guide.html</span>
+          </div>
+          <button type="button" class="kit-frame" data-caption="prep-guide.html — Seller prep-guide" aria-label="Enlarge the generated seller prep-guide">
+            <img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940"
+                 alt="The generated seller prep-guide: a ‘MeridianCredit — Seller Prep Guide’ header with a seller / solution-engineer view-mode toggle, a section table of contents, and a use-case summary for the credit-memo agent.">
+            <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+          </button>
+          <figcaption>
+            <b>Seller prep-guide</b>
+            <span class="kit-by">threadlight-design</span>
+            <span class="kit-desc">Use-case summary, demo script, discovery questions, objection handling — with a seller / engineer mode toggle.</span>
+          </figcaption>
+        </figure>
+      </div>
 
-              <!-- speech bubble -->
-              <path class="panel-bubble" d="M 0 80 Q 0 70 10 70 L 270 70 Q 280 70 280 80 L 280 188 Q 280 198 270 198 L 50 198 L 28 222 L 32 198 L 10 198 Q 0 198 0 188 Z"/>
-              <text x="18" y="100" class="panel-bubble-text">"Inbound claims,</text>
-              <text x="18" y="122" class="panel-bubble-text">regulator-exposed,</text>
-              <text x="18" y="144" class="panel-bubble-text">route by complexity.</text>
-              <text x="18" y="166" class="panel-bubble-text">HITL on every escalate."</text>
-              <text x="18" y="186" class="panel-chip" opacity=".7">&mdash; you, in chat</text>
-            </g>
+      <p class="kit-foot reveal" data-delay="3">
+        Both come from one run on the fictional <code>credit-memo</code> sample — nothing customer-specific.
+      </p>
+    </div>
+  </section>
 
-            <!-- ARROW 01 → 02 -->
-            <line class="panel-line" x1="340" y1="160" x2="380" y2="160" marker-end="url(#chain-arrow-head)" stroke="currentColor" opacity=".55"/>
+  <!-- ====================== RECAP / OUTRO ====================== -->
+  <section class="scene recap" aria-labelledby="recap-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>The whole reel, in one breath</p>
+      <h2 id="recap-h" class="display reveal" data-delay="1">A paragraph in. A governed agent, <em>live in your tenant</em>, out.</h2>
+      <p class="sub reveal" data-delay="2">Six skills, one continuous run — no glue code, no hand-offs, nothing mocked.</p>
 
-            <!-- PANEL 02 — THE SPEC -->
-            <g transform="translate(400, 40)">
-              <text x="0" y="0" class="panel-num">STAGE 02</text>
-              <text x="0" y="30" class="panel-title">A signed SPEC.</text>
-              <text x="0" y="54" class="panel-sub">What <tspan class="panel-chip">threadlight-design</tspan> writes.</text>
+      <ol class="recap-flow reveal" data-delay="2" aria-label="The six-skill pipeline">
+        <li class="rf-step"><span class="rf-n">01</span><b>Brief</b><span>one plain-English paragraph</span></li>
+        <li class="rf-step"><span class="rf-n">02</span><b>Design</b><span>spec, code &amp; sales kit</span></li>
+        <li class="rf-step"><span class="rf-n">03</span><b>Local</b><span>answers live, tools traced</span></li>
+        <li class="rf-step"><span class="rf-n">04</span><b>Deploy</b><span>azd up into your Azure</span></li>
+        <li class="rf-step"><span class="rf-n">05</span><b>Govern</b><span>policy · evals · red-team</span></li>
+        <li class="rf-step"><span class="rf-n">06</span><b>Score</b><span>13-pillar production gate</span></li>
+      </ol>
 
-              <!-- page with folded corner -->
-              <path class="panel-box" d="M 0 80 L 240 80 L 280 120 L 280 240 L 0 240 Z"/>
-              <path class="panel-line" d="M 240 80 L 240 120 L 280 120" fill="none"/>
-              <!-- page contents: SPEC.md header -->
-              <text x="14" y="106" class="panel-chip" opacity=".8">SPEC.md · v0.3</text>
-              <text x="14" y="132" class="panel-title" style="font-size:18px;">Claims triage</text>
-              <!-- ticks -->
-              <path class="panel-tick" d="M 18 154 l 5 5 l 10 -10"/>
-              <text x="40" y="160" class="panel-sub">Process &amp; HITL gates</text>
-              <path class="panel-tick" d="M 18 178 l 5 5 l 10 -10"/>
-              <text x="40" y="184" class="panel-sub">Skills used</text>
-              <path class="panel-tick" d="M 18 202 l 5 5 l 10 -10"/>
-              <text x="40" y="208" class="panel-sub">Exit criteria</text>
-              <!-- signature stamp -->
-              <g transform="translate(154, 215)">
-                <rect width="110" height="22" rx="4" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-dasharray="2 2"/>
-                <text x="8" y="15" class="panel-stamp">SIGNED · v0.3</text>
-              </g>
-            </g>
+      <div class="recap-outcomes reveal" data-delay="3">
+        <div class="oc"><b>Your subscription</b><span>Foundry, hosted agent, Cosmos &amp; App Insights — in your own tenant, on your data.</span></div>
+        <div class="oc"><b>Safe by default</b><span>AGT policy, evals and red-team gates run on every single pass.</span></div>
+        <div class="oc"><b class="oc-stat">92–100</b><span>The 13-pillar production-ready scorecard — earned, not asserted.</span></div>
+        <div class="oc"><b>A walk-in kit</b><span>A brand-matched talk deck and seller prep-guide, from the same run.</span></div>
+      </div>
 
-            <!-- ARROW 02 → 03 -->
-            <line class="panel-line" x1="700" y1="160" x2="740" y2="160" marker-end="url(#chain-arrow-head)" stroke="currentColor" opacity=".55"/>
-
-            <!-- PANEL 03 — THE DEPLOYED AGENT -->
-            <g transform="translate(760, 40)">
-              <text x="0" y="0" class="panel-num">STAGE 04–05</text>
-              <text x="0" y="30" class="panel-title">A deployed agent.</text>
-              <text x="0" y="54" class="panel-sub">Live in the customer's Azure.</text>
-
-              <!-- azure runtime card -->
-              <rect class="panel-azure" x="0" y="80" width="280" height="160" rx="14"/>
-              <!-- cloud glyph -->
-              <path d="M 22 116 a 18 18 0 0 1 32 -8 a 14 14 0 0 1 22 6 a 14 14 0 0 1 -4 28 l -46 0 a 16 16 0 0 1 -4 -26 z"
-                    fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-opacity=".5" stroke-width="1"/>
-              <text x="92" y="118" class="panel-chip" opacity=".8">azure · westeurope</text>
-              <text x="92" y="138" class="panel-title" style="font-size:18px;">claims-triage</text>
-              <!-- health dot -->
-              <circle class="panel-dot-ok" cx="22" cy="170" r="6"/>
-              <text x="38" y="174" class="panel-sub">healthy · responding in 41s</text>
-              <!-- cost pill -->
-              <g transform="translate(14, 192)">
-                <rect width="120" height="32" rx="8" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".25"/>
-                <text x="14" y="14" class="panel-chip" opacity=".7">cost</text>
-                <text x="14" y="28" class="panel-cost">$341/mo</text>
-              </g>
-              <g transform="translate(144, 192)">
-                <rect width="120" height="32" rx="8" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-opacity=".25"/>
-                <text x="14" y="14" class="panel-chip" opacity=".7">scorecard</text>
-                <text x="14" y="28" class="panel-cost">11/13 green</text>
-              </g>
-            </g>
-
-            <!-- footer caption strip -->
-            <text x="540" y="346" class="panel-chip" text-anchor="middle" opacity=".65">
-              11 skills walk the chain · 1 paragraph in · 1 deployed agent out
-            </text>
-          </svg>
+      <figure class="kit-shot recap-visual reveal" data-delay="3">
+        <div class="kit-chrome">
+          <span class="kit-dots"><span></span><span></span><span></span></span>
+          <span class="kit-url">Microsoft Teams · Credit Memo Agent</span>
         </div>
-        <figcaption id="chain-caption">The threadlight chain &middot; what you see, end-to-end</figcaption>
+        <button type="button" class="kit-frame" data-caption="Microsoft Teams — the deployed credit-memo agent replying in-channel" aria-label="Enlarge the deployed agent running in Microsoft Teams">
+          <img src="assets/shots/deploy-teams.png" loading="lazy" width="1440" height="900"
+               alt="The deployed credit-memo agent answering inside Microsoft Teams: a lender @mentions the agent to triage APP-4821 and it replies with an adaptive card — ‘Refer to underwriter’, DSCR 1.18, LTV 0.74, FICO 706 — and Open-memo / Approve-with-conditions buttons.">
+          <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+        </button>
+        <figcaption>
+          <b>Live in Microsoft Teams</b>
+          <span class="kit-by">threadlight-deploy</span>
+          <span class="kit-desc">Same agent, same memo — answering where your team already works.</span>
+        </figcaption>
       </figure>
     </div>
   </section>
 
-  <!-- ====================== FUNNEL TEASER (rich cards) ====================== -->
-  <section class="scene" id="scene-funnel" aria-labelledby="funnel-h" data-toc-id="scene-funnel" data-toc-label="Funnel">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal" style="max-width:880px;margin:0 auto 28px;text-align:center;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot"></span>The five-stage funnel</p>
-        <h2 id="funnel-h" style="margin-top:14px;">From a paragraph to a governed agent &mdash; in <em>five named stages.</em></h2>
-        <p class="sub" style="margin-top:18px;">
-          Every Threadlight engagement walks the same five stages. Each stage has its
-          own skills, its own artefacts, and its own exit criteria.
-        </p>
-      </div>
-
-      <nav class="funnel-flow reveal" data-delay="1" aria-label="Threadlight funnel stages">
-        <a class="funnel-step" href="./funnel.html#stage-relay">
-          <span class="fs-num">01 &middot; Conversation</span>
-          <span class="fs-name">Describe the process</span>
-          <span class="fs-desc">Plain-language brief from you or a customer SME. No template, no questionnaire. <strong>Exits with</strong> a versioned <code>SPEC.md</code> the customer signs.</span>
-          <span class="fs-skills">threadlight-auto &middot; threadlight-design</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-relay">
-          <span class="fs-num">02 &middot; Co-design</span>
-          <span class="fs-name">Spec &amp; scaffold</span>
-          <span class="fs-desc"><code>SPEC.md</code>, <code>AGENTS.md</code>, eval dataset and demo-data factory generated in-session. <strong>Exits with</strong> the agent contract + dataset running on your laptop.</span>
-          <span class="fs-skills">threadlight-design &middot; threadlight-demo-data-factory</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-relay">
-          <span class="fs-num">03 &middot; Deploy</span>
-          <span class="fs-name">Land on your Azure</span>
-          <span class="fs-desc">Bicep + <code>azd up</code> to the customer&rsquo;s subscription, Managed Identity wired from day zero. <strong>Exits with</strong> the agent live in the customer&rsquo;s Azure.</span>
-          <span class="fs-skills">threadlight-deploy &middot; threadlight-local-test</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-relay">
-          <span class="fs-num">04 &middot; Safe-check</span>
-          <span class="fs-name">Structural completeness + cost forecast</span>
-          <span class="fs-desc"><strong>Three-lifecycle completeness gate</strong> (design / pre-deploy / post-deploy) + monthly cost projected against the Azure Retail Prices API. <strong>Exits with</strong> the completeness manifest, the cost forecast, and per-amber waiver owners.</span>
-          <span class="fs-skills">threadlight-safe-check &middot; threadlight-consumption-iq</span>
-          <span class="fs-arrow" aria-hidden="true">›</span>
-        </a>
-        <a class="funnel-step" href="./funnel.html#stage-relay">
-          <span class="fs-num">05 &middot; Production</span>
-          <span class="fs-name">Hand-off</span>
-          <span class="fs-desc">Governance, telemetry and runbooks already in the repo &mdash; plus a <strong>13-pillar production-ready scorecard</strong> the customer&rsquo;s ARB reads in seven minutes. <strong>Exits with</strong> hand-off accepted &mdash; customer keeps going Monday.</span>
-          <span class="fs-skills">threadlight-production-ready &middot; threadlight-hitl-patterns</span>
-        </a>
-      </nav>
-
-      <p class="industries-footer reveal" data-delay="2" style="margin-top:28px;text-align:center;">
-        <a class="btn btn-ghost" href="./funnel.html">Read the full funnel chapter <span class="arrow">→</span></a>
-      </p>
-    </div>
-  </section>
-
-  <!-- ====================== SCENE 3 · THE CHAIN ====================== -->
-  <section class="scene" id="scene-chain" aria-labelledby="chain-h" data-toc-id="scene-chain" data-toc-label="Chain">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal">
-        <p class="eyebrow"><span class="dot"></span>The skills chain</p>
-        <h2 id="chain-h">You prompt. The coding agent <em>picks up the right skills.</em></h2>
-        <p class="lede" style="margin-left:auto;margin-right:auto;text-align:left;">
-          Skills are composable building blocks — Markdown instructions that any
-          coding agent (GitHub Copilot CLI, VS Code, Claude Code) reads and follows.
-          You describe what you need in a prompt. The agent discovers the matching
-          skill, runs it, and hands you the artefacts — all the way to a
-          <strong>governed agent on your Azure</strong> with a paved path to production
-          via <strong>AI Citadel</strong> (the governance hub) and the <strong>Agent Governance Toolkit</strong>.
-        </p>
-        <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
-          Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
-          <strong>six skills</strong> wired between them. Four more &mdash;
-          <code>threadlight-auto</code> (entry orchestrator),
-          <code>threadlight-consumption-iq</code> (cost forecast),
-          <code>threadlight-cicd</code> (production deploy pipeline) and
-          <code>threadlight-customize</code> (fork &amp; customer onboarding) &mdash; round out the
-          <strong>13-skill library</strong>; they fire on demand, not on every chain.
-        </p>
-      </div>
-
-      <div class="chain-rail" id="chain-rail">
-
-        <!-- 1 — DESIGN (seller-facing entry) -->
-        <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-design</div>
-            <span class="skill-tag is-blue">Cowork-safe</span>
-            <span class="skill-tag is-grey">Entry skill</span>
-          </div>
-          <p class="skill-purpose">Turn a paragraph brief into a durable SpecKit spec &mdash; numbered business rules, data models, tool contracts, eval scenarios, governance &mdash; and derive the agent surface from it.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Free-text brief · industry primer (optional)</span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>specs/SPEC.md</code> · <code>manifest.json</code> · <code>AGENTS.md</code> · <code>skills/</code> · <code>overview.html</code></span></div>
-          </div>
-          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-design to design a claims-triage process for an FSI customer. Fast PoC mode."</span></div>
-          <div class="skill-footer">
-            <span>The coding agent reads the skill instructions and generates all artefacts.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-        <!-- Supporting chain — six skills that run between design and deploy -->
-        <div class="chain-aux reveal">
-          <div class="aux-group">
-            <div class="aux-label">Always wired</div>
-            <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-demo-data-factory/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-demo-data-factory</span>
-                <span class="aux-role">Per-domain synthetic data &amp; idempotent Cosmos seed / reset, anchored to industry realism canon.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-local-test</span>
-                <span class="aux-role">Inner loop &mdash; MAF Agent + Streamlit on <code>localhost:8501</code> in under 30 minutes.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-safe-check</span>
-                <span class="aux-role">The single completeness gate &mdash; runs after design, before <code>azd&nbsp;up</code>, and after.</span>
-              </a>
-            </div>
-          </div>
-          <div class="aux-group">
-            <div class="aux-label">Conditional &mdash; only when the SPEC asks</div>
-            <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-hitl-patterns/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-hitl-patterns</span>
-                <span class="aux-role">SPEC § 8 &middot; Teams Adaptive Cards for the seven canonical action gates.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-workspace-ui/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-workspace-ui</span>
-                <span class="aux-role">SPEC § 8b &middot; framework-agnostic workspace UI reference (case-list, inbox, dashboard, &hellip;).</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-event-triggers/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-event-triggers</span>
-                <span class="aux-role">SPEC § 10 &middot; ACA Jobs / Apps / KEDA receivers with idempotency + dead-letter wiring.</span>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2 — DEPLOY (seller-facing exit) -->
-        <article class="skill-card reveal" data-step="02" data-skill="threadlight-deploy">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-deploy</div>
-            <span class="skill-tag is-blue">azd up</span>
-          </div>
-          <p class="skill-purpose">Generate every artefact needed to deploy as a Microsoft Foundry hosted agent &mdash; Foundry-hosted by default, with a portable Microsoft Agent Framework (MAF) fallback when the customer needs to self-host, plus Bicep, Dockerfile, and the <code>azd ai agent</code> extension wired end-to-end.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC · <code>AGENTS.md</code> · <code>manifest.json</code> · <code>src/agent/skills/</code></span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>container.py</code> · <code>Dockerfile</code> · <code>infra/</code> · <code>agent.yaml</code> · <code>azure.yaml</code></span></div>
-          </div>
-          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-deploy to deploy this agent to the customer's Azure with governance and telemetry."</span></div>
-          <div class="skill-footer">
-            <span>The coding agent reads the skill, generates Bicep + Dockerfile + azd project, and runs <code>azd up</code>.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-        <!-- 3 — PRODUCTION-READY (the advisory bridge from green safe-check to CISO sign-off) -->
-        <article class="skill-card reveal" data-step="03" data-skill="threadlight-production-ready">
-          <div class="skill-head">
-            <div class="skill-name"><span class="accent">threadlight</span>-production-ready</div>
-            <span class="skill-tag is-blue">Advisory · soft-gate</span>
-            <span class="skill-tag is-grey">Hand-off package</span>
-          </div>
-          <p class="skill-purpose">Take a pilot that just passed <code>threadlight-safe-check --phase post-deploy</code> and walk it across 13 cross-cutting production-readiness pillars &mdash; network, agent governance, identity, secrets, observability, continuous evals, responsible AI, HITL, supply chain, cost, reliability, SRE handover, model lifecycle. <strong>AI Citadel spoke</strong> is the recommended enterprise posture; the skill resolves the actual posture from SPEC &sect; 12, deployed evidence, and finally falls back to a customer-owned gateway when nothing is declared.</p>
-          <div class="skill-io" aria-label="Inputs and outputs">
-            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">SPEC § 12 · <code>specs/manifest.json</code> · <code>tests/postdeploy-manifest.json</code> · live Azure (tiered, best-effort)</span></div>
-            <div class="io-arrow">→</div>
-            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>docs/production-readiness-report.md</code> · <code>tests/production-readiness-manifest.json</code></span></div>
-          </div>
-          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready to walk this pilot to a customer architecture review."</span></div>
-          <div class="skill-footer">
-            <span>Soft-advisory — never fails the deploy. Missing Azure permissions degrade to <code>not-verified</code> findings with verification coverage reported separately.</span>
-            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">SKILL.md →</a>
-          </div>
-        </article>
-
-        <!-- Manual handoff after green — prod pipeline, then customer onboarding -->
-        <div class="chain-aux reveal">
-          <div class="aux-group">
-            <div class="aux-label">After green &mdash; two manual handoff legs, not part of the chain</div>
-            <div class="aux-row">
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">
-                <span class="aux-name"><span class="accent">threadlight</span>-cicd</span>
-                <span class="aux-role">Generates the prod deploy pipeline (GitHub Actions / Azure DevOps) + env-setup runbooks &mdash; OIDC/WIF identity, scoped RBAC, private-VNet runners. Scoped to the spoke RG; separate from <code>citadel-hub-deploy</code>.</span>
-              </a>
-              <a class="aux-chip" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize">
-                <span class="aux-name"><span class="accent">threadlight</span>-customize</span>
-                <span class="aux-role">The final leg &mdash; fork the pipeline and onboard it into <em>one</em> customer&rsquo;s environment (landing zones, RBAC, private VNet). Instructions, not automation; production onboarding first.</span>
-              </a>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- ====================== SCENE · PAVED PATH TO PRODUCTION ====================== -->
-  <section class="scene" id="scene-prod-ready" aria-labelledby="prod-ready-h" data-toc-id="scene-prod-ready" data-toc-label="Production-ready" style="padding:80px 0 72px;background:linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-    <div class="wrap wrap-xl">
-
-      <div class="copy reveal" style="text-align:center; max-width:900px; margin:0 auto 28px;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:var(--lime);box-shadow:0 0 10px var(--lime);"></span>Paved path to production</p>
-        <h2 id="prod-ready-h" class="display" data-delay="1" style="margin-top:14px;">Green safe-check isn&rsquo;t <em>go-live.</em></h2>
-        <p class="sub" data-delay="2" style="margin-top:20px;">
-          A pilot that passes <code>threadlight-safe-check --phase post-deploy</code> is <em>structurally complete</em>. That isn&rsquo;t the same as <em>ready for the customer architecture review</em>.
-          <code>threadlight-production-ready</code> closes that gap &mdash; <strong>thirteen pillars</strong> across <strong>four themes</strong>, scored against the customer&rsquo;s actual posture, with a cost forecast attached. One PDF the ARB reads in seven minutes.
-        </p>
-      </div>
-
-      <!-- 4 themes grouping the 13 pillars -->
-      <div class="theme-quad reveal" data-delay="3" role="list" aria-label="Production-readiness themes">
-        <article class="theme-card" role="listitem">
-          <p class="th-num">Theme 1</p>
-          <h3 class="th-name">Network &amp; identity</h3>
-          <p class="th-desc">Posture, agent governance, identity &amp; access, secrets &mdash; the gates the perimeter watches.</p>
-          <p class="th-pillars"><span>01</span> <span>02</span> <span>03</span> <span>04</span></p>
-        </article>
-        <article class="theme-card" role="listitem">
-          <p class="th-num">Theme 2</p>
-          <h3 class="th-name">Observability &amp; governance</h3>
-          <p class="th-desc">App-insights traces, continuous evals, responsible AI, HITL &amp; audit &mdash; what proves the agent behaves.</p>
-          <p class="th-pillars"><span>05</span> <span>06</span> <span>07</span> <span>08</span></p>
-        </article>
-        <article class="theme-card" role="listitem">
-          <p class="th-num">Theme 3</p>
-          <h3 class="th-name">Supply chain &amp; ops</h3>
-          <p class="th-desc">SBOM &amp; SLSA, cost forecast, reliability &mdash; what FinOps and SRE sign off on.</p>
-          <p class="th-pillars"><span>09</span> <span>10</span> <span>11</span></p>
-        </article>
-        <article class="theme-card" role="listitem">
-          <p class="th-num">Theme 4</p>
-          <h3 class="th-name">Hand-off &amp; lifecycle</h3>
-          <p class="th-desc">SRE hand-over package, model-lifecycle plan &mdash; what keeps the agent alive after we leave.</p>
-          <p class="th-pillars"><span>12</span> <span>13</span></p>
-        </article>
-      </div>
-
-      <div class="reveal" data-delay="4" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:1100px; margin:36px auto 28px;">
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Gateway-fronted (Citadel spoke) &middot; default</span>
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Foundry-native (core only)</span>
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">Customer-owned edge</span>
-      </div>
-
-      <div class="reveal" data-delay="5" style="text-align:center;">
-        <a class="btn btn-primary" href="./production.html" style="display:inline-block;">
-          Read the full production-ready chapter <span class="arrow">&rarr;</span>
-        </a>
-        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">3 postures &middot; 13 pillars in 4 themes &middot; cost forecast &middot; soft-advisory, never fails a build</p>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ====================== SCENE · THE FINAL LEG (CUSTOMIZE) ====================== -->
-  <section class="scene" id="scene-customize" aria-labelledby="customize-h" data-toc-id="scene-customize" data-toc-label="Customize" style="padding:80px 0 72px;border-bottom:1px solid var(--line);">
-    <div class="wrap wrap-xl">
-
-      <div class="copy reveal" style="text-align:center; max-width:840px; margin:0 auto 26px;">
-        <p class="eyebrow" style="display:inline-block;"><span class="dot" style="background:#36c8a8;box-shadow:0 0 10px rgba(54,200,168,.6);"></span>The final leg</p>
-        <h2 id="customize-h" class="display" data-delay="1" style="margin-top:14px;">Then make it <em>the customer&rsquo;s own.</em></h2>
-        <p class="sub" data-delay="2" style="margin-top:20px;">
-          The pilot proved the agent works. The last leg stands it up inside
-          <em>one customer&rsquo;s</em> environment &mdash; landing zones, RBAC,
-          pipelines, governance &mdash; with <strong>production onboarding as
-          priority&nbsp;#1</strong>. <code>threadlight-customize</code> ships this
-          as <strong>instructions and runbooks, not automation</strong>: no two
-          customers&rsquo; onboarding is the same, so we give you the frame and the
-          in-environment test loop instead of a generator that&rsquo;s wrong for everyone.
-        </p>
-      </div>
-
-      <div class="reveal" data-delay="3" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:840px; margin:0 auto 28px;">
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">01 &middot; Intake gate</span>
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">02 &middot; Customization map</span>
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">03 &middot; Test in their env</span>
-        <span class="pr-pillar-tag" style="font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-1); background:var(--bg-2); border:1px solid var(--line); border-radius:99px; padding:7px 14px; white-space:nowrap;">04 &middot; Name the boundary</span>
-      </div>
-
-      <div class="reveal" data-delay="4" style="text-align:center; max-width:840px; margin:0 auto;">
-        <a class="btn btn-primary" href="./customize.html" style="display:inline-block;">
-          Read the full customize chapter <span class="arrow">&rarr;</span>
-        </a>
-        <p style="margin-top:14px; color:var(--ink-3); font-size:13px;">4 moves &middot; fork + upstream-pin + overlay &middot; private-VNet dev via Azure ML VS Code / Codespaces &middot; manual handoff, not driven by auto</p>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ====================== INDUSTRIES STRIP ====================== -->
-  <section class="scene" id="scene-industries" aria-labelledby="ind-h" data-toc-id="scene-industries" data-toc-label="Industries">
-    <div class="wrap wrap-xl">
-      <div class="copy reveal">
-        <p class="eyebrow"><span class="dot"></span>What it looks like in the field</p>
-        <h2 id="ind-h">Six industries, <em>nineteen curated SPECs.</em></h2>
-        <p class="lede">
-          The library ships pre-shaped SPECs for the processes below &mdash;
-          starting points, not boundaries. The chain handles any process
-          you can describe in a paragraph.
-        </p>
-      </div>
-
-      <div class="industries-grid reveal" data-delay="1">
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">🏦</span>
-          <p class="it-sector">Financial services</p>
-          <h3 class="it-title">FSI &mdash; regulated case work</h3>
-          <p class="it-line">Card disputes, FNOL triage, KYC onboarding, SMB credit memos.</p>
-          <span class="it-tail">4 SPECs in the library</span>
-        </a>
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">🛍️</span>
-          <p class="it-sector">Retail</p>
-          <h3 class="it-title">Retail &mdash; back-office copilots</h3>
-          <p class="it-line">PIM enrichment, promo planning, returns triage.</p>
-          <span class="it-tail">3 SPECs in the library</span>
-        </a>
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">📡</span>
-          <p class="it-sector">Telco</p>
-          <h3 class="it-title">Telco &mdash; order &amp; network ops</h3>
-          <p class="it-line">B2B quote-to-order, network fault triage, order fallout.</p>
-          <span class="it-tail">3 SPECs in the library</span>
-        </a>
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">🏭</span>
-          <p class="it-sector">Manufacturing</p>
-          <h3 class="it-title">Manufacturing &mdash; shop-floor knowledge</h3>
-          <p class="it-line">Engineering knowledge, shift handover, supplier risk.</p>
-          <span class="it-tail">3 SPECs in the library</span>
-        </a>
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">🏥</span>
-          <p class="it-sector">Healthcare</p>
-          <h3 class="it-title">Healthcare &mdash; clinical &amp; ops</h3>
-          <p class="it-line">Referral triage, adverse-event detection, trial protocol review.</p>
-          <span class="it-tail">3 SPECs in the library</span>
-        </a>
-        <a class="industry-tile" href="./industries.html#sector-grid">
-          <span class="it-glyph" aria-hidden="true">⚡</span>
-          <p class="it-sector">Energy &amp; utilities</p>
-          <h3 class="it-title">Energy &mdash; grid, fleet &amp; compliance</h3>
-          <p class="it-line">Grid outage response, regulatory filings, renewable performance.</p>
-          <span class="it-tail">3 SPECs in the library</span>
-        </a>
-      </div>
-
-      <p class="industries-footer reveal" data-delay="2">
-        Library covers <strong>19 processes today</strong> &mdash; bring any other
-        and the chain handles it the same way.
-        <a class="btn btn-ghost" href="./industries.html" style="margin-left:8px;">Read the full industries chapter <span class="arrow">→</span></a>
-      </p>
-    </div>
-  </section>
-
-
-  <!-- ====================== KRATOS (no-code alt) ====================== -->
-  <section class="scene" id="scene-kratos" aria-labelledby="kratos-h" data-toc-id="scene-kratos" data-toc-label="No-code alt">
-    <div class="wrap wrap-xl">
-      <div class="channels-grid">
-
-        <div class="channels-copy reveal">
-          <p class="eyebrow"><span class="dot"></span>The no-code on-ramp</p>
-          <h2 id="ch-h">Skipped this whole page? <em>Try Kratos instead.</em></h2>
-          <p class="lede">
-            If your customer just wants a working AI agent &mdash; chat UI,
-            persona switching, a few tools wired in &mdash;
-            <strong>Kratos</strong> ships one on Microsoft Foundry, ready
-            to use, no setup, no dev skills. Try it live, customize in-app,
-            export the spec when the conversation gets serious.
-          </p>
-
-          <ul class="channels-bullets">
-            <li><strong>Kratos &mdash; the simpler path.</strong> Browser-first, MIT-licensed, hosted on Microsoft Foundry. Hand the link to your customer, iterate on persona and tools live.</li>
-            <li><strong>Threadlight &mdash; when you need customization.</strong> Your data, your governance, your Azure subscription &mdash; covered by everything above this section.</li>
-            <li><strong>Same Foundry. Same governance.</strong> What you demo in Kratos is what you build with Threadlight &mdash; one hosted-agent runtime, one set of hooks for hand-off, telemetry, and cost.</li>
-          </ul>
-        </div>
-
-        <article class="kratos-card reveal" data-delay="1" aria-labelledby="kratos-h">
-          <img class="kc-shot"
-               src="https://raw.githubusercontent.com/kmavrodis/kratos-agent/main/docs/static/img/chat-ui.png"
-               alt="Kratos Agent chat interface &mdash; conversational UI with persona switching, suggested prompts, and live skill indicators"
-               loading="lazy" decoding="async" width="1600" height="900">
-          <div class="kc-body">
-            <p class="kc-eyebrow"><span class="kc-dot" aria-hidden="true"></span>No-code &middot; ready-to-use &middot; live</p>
-            <h3 id="kratos-h">Kratos Agent</h3>
-            <p class="kc-tag">
-              A demo-friendly conversational agent on Microsoft Foundry.
-              Pick a persona, wire up tools, talk to it&mdash;then export
-              the spec to take it further with Threadlight when you need
-              your own data, governance, or deployment.
-            </p>
-            <div class="kc-meta" aria-label="What Kratos gives you">
-              <span>Browser-first</span>
-              <span>Foundry hosted agent</span>
-              <span>Persona &amp; tool tuning</span>
-              <span>Export the spec</span>
-              <span>MIT license</span>
-            </div>
-            <div class="kc-ctas">
-              <a class="btn btn-primary" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos live <span class="arrow">↗</span></a>
-              <a class="btn btn-ghost"   href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">View on GitHub <span class="arrow">↗</span></a>
-            </div>
-          </div>
-        </article>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- ====================== SCENE 6 · CTA ====================== -->
-  <section class="scene" id="scene-cta" aria-labelledby="cta-h" data-toc-id="scene-cta" data-toc-label="Get started">
+  <!-- ====================== CTA ====================== -->
+  <section class="scene demo-cta" aria-labelledby="demo-cta-h">
     <div class="wrap">
-      <p class="eyebrow reveal" style="display:inline-block;"><span class="dot"></span>Get started</p>
-      <h2 id="cta-h" class="display reveal" data-delay="1">See the artefacts. <em>Then try it yourself.</em></h2>
-      <p class="sub reveal" data-delay="2">One prompt. One session. Governed agent on your Azure.</p>
-
-      <a class="cs-feature reveal" data-delay="2" href="./case-study.html" aria-label="Read the real-run case study"
-         style="display:flex; align-items:center; gap:18px; max-width:760px; margin:26px auto 30px; padding:18px 22px; text-decoration:none;
-                background:linear-gradient(135deg, color-mix(in srgb, var(--lime) 9%, var(--bg-2)) 0%, var(--bg-2) 62%);
-                border:1px solid color-mix(in srgb, var(--lime) 38%, var(--line)); border-radius:16px; text-align:left;">
-        <span aria-hidden="true" style="font-size:1.7rem; line-height:1;">📑</span>
-        <span style="flex:1; min-width:0;">
-          <span style="display:block; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--lime);">New &middot; real-run case study</span>
-          <strong style="display:block; color:var(--ink-0); font-size:1.04rem; margin-top:4px;">One paragraph &rarr; a governed agent on a live Azure subscription</strong>
-          <span style="display:block; color:var(--ink-2); font-size:.9rem; margin-top:4px;">14 stages, idea&nbsp;&rarr;&nbsp;MVP&nbsp;&rarr;&nbsp;Citadel-spoke production &mdash; with the actual prompts, OTel traces, costs and verdict.</span>
-        </span>
-        <span class="arrow" aria-hidden="true" style="color:var(--lime); font-size:1.4rem;">&rarr;</span>
-      </a>
-
-      <a class="cs-feature reveal" data-delay="2" href="./workbook.html" aria-label="Open the idea-to-production workbook"
-         style="display:flex; align-items:center; gap:18px; max-width:760px; margin:0 auto 30px; padding:18px 22px; text-decoration:none;
-                background:linear-gradient(135deg, color-mix(in srgb, var(--accent-1) 10%, var(--bg-2)) 0%, var(--bg-2) 62%);
-                border:1px solid color-mix(in srgb, var(--accent-1) 40%, var(--line)); border-radius:16px; text-align:left;">
-        <span aria-hidden="true" style="font-size:1.7rem; line-height:1;">🧪</span>
-        <span style="flex:1; min-width:0;">
-          <span style="display:block; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent-1);">&ldquo;How do I test it?&rdquo; &middot; the workbook</span>
-          <strong style="display:block; color:var(--ink-0); font-size:1.04rem; margin-top:4px;">Run the same chain yourself &mdash; one paragraph to a live agent on your own Azure</strong>
-          <span style="display:block; color:var(--ink-2); font-size:.9rem; margin-top:4px;">A self-paced runbook: ~60&nbsp;min to a working MVP, then the real prompts on to governed production. One prompt per stage.</span>
-        </span>
-        <span class="arrow" aria-hidden="true" style="color:var(--accent-1); font-size:1.4rem;">&rarr;</span>
-      </a>
-
-      <div class="cta-prompts reveal" data-delay="3" role="note" aria-label="Example invocations">
-<span class="cmt"># Tell the coding agent which skill to use and what you need</span>
-<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-design to design a claims-triage process for an FSI customer."</span>
-<br>
-<br><span class="cmt"># When you're happy with the spec, deploy it to the customer's Azure</span>
-<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-deploy to land this agent on the customer's Azure with governance and telemetry."</span>
-<br>
-<br><span class="cmt"># Then walk it to a customer architecture review — advisory, soft-gate, hand-off package</span>
-<br><span class="prompt">&gt;</span> <span class="cmd">"Use threadlight-production-ready to score this pilot across 13 pillars and produce the customer hand-off report."</span>
-      </div>
-
-      <div class="hero-cta-row reveal" data-delay="4">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Open the technical briefing <span class="arrow">→</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills#readme">View the repo on GitHub <span class="arrow">↗</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/awesome-gbb#readme">Browse the awesome-gbb plugin <span class="arrow">↗</span></a>
+      <p class="eyebrow reveal"><span class="dot"></span>That was the reel — now the receipts</p>
+      <h2 id="demo-cta-h" class="display reveal" data-delay="1">Liked the demo? <em>See it run for real.</em></h2>
+      <p class="sub reveal" data-delay="2">The reel is a recreation. The case study is an actual end-to-end run — real prompts, OTel traces, costs, and verdict.</p>
+      <div class="hero-cta-row reveal" data-delay="3">
+        <a class="btn btn-primary" href="./case-study.html">Read the real-run case study <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="./workbook.html">Run it yourself <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Technical briefing <span class="arrow">↗</span></a>
       </div>
     </div>
   </section>
@@ -712,18 +1170,67 @@
   <div class="row">
     <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
     <div class="right">
-      <a href="https://github.com/aiappsgbb/awesome-gbb#readme">README.md</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="./index.html">Home</a>
+      <a href="./case-study.html">Case study</a>
       <a href="./workbook.html">Workbook</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md">WORKSHOP-1H-QUICKSTART.md</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">production-readiness.md</a>
-      <a href="https://github.com/aiappsgbb/zava-constellation/blob/main/ZAVA.md">ZAVA.md</a>
-      <a href="https://github.com/aiappsgbb/awesome-gbb/blob/main/AGENTS.md">AGENTS.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills#readme">README.md</a>
     </div>
   </div>
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
+<script src="assets/demo-reel.js?v=5"></script>
+
+<!-- ====================== LIGHTBOX ====================== -->
+<div class="lightbox" id="kit-lightbox" aria-hidden="true">
+  <button class="lightbox-close" type="button" data-lb-close aria-label="Close enlarged view">✕</button>
+  <figure role="dialog" aria-modal="true" aria-label="Enlarged screenshot">
+    <img alt="">
+    <figcaption></figcaption>
+  </figure>
+</div>
+<script>
+(function () {
+  var lb = document.getElementById('kit-lightbox');
+  if (!lb) return;
+  var lbImg = lb.querySelector('img');
+  var lbCap = lb.querySelector('figcaption');
+  var frames = document.querySelectorAll('button.kit-frame');
+  var lastFocus = null;
+
+  function open(btn) {
+    var img = btn.querySelector('img');
+    if (!img) return;
+    lastFocus = btn;
+    lbImg.src = img.currentSrc || img.src;
+    lbImg.alt = img.alt || '';
+    lbCap.textContent = btn.getAttribute('data-caption') || '';
+    lb.classList.add('is-open');
+    lb.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    var closeBtn = lb.querySelector('[data-lb-close]');
+    if (closeBtn) closeBtn.focus();
+  }
+  function close() {
+    if (!lb.classList.contains('is-open')) return;
+    lb.classList.remove('is-open');
+    lb.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    lbImg.removeAttribute('src');
+    if (lastFocus) { lastFocus.focus(); lastFocus = null; }
+  }
+  Array.prototype.forEach.call(frames, function (b) {
+    b.addEventListener('click', function () { open(b); });
+  });
+  lb.addEventListener('click', function (e) {
+    if (e.target === lb || (e.target.closest && e.target.closest('[data-lb-close]'))) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') close();
+  });
+})();
+</script>
 
 </body>
 </html>
