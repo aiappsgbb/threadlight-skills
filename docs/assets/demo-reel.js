@@ -24,7 +24,9 @@
   // Per-beat durations (ms), in DOM order. Synced to the voiceover:
   // each value is the beat's narration clip length + a ~1.3s tail so
   // the artefact reveal settles before the next beat begins.
-  var DURATIONS = [12892, 16996, 12028, 20308, 14716, 26620];
+  var DURATIONS = [12892, 16996, 13876, 20308, 14716, 26620, 17404];
+  var INTRO_MS = 10176;  // intro.mp3 pre-roll, played over the cover
+  var INTRO_MAX = INTRO_MS + 2000; // hard cap if the clip never fires
   var N = beats.length;
   while (DURATIONS.length < N) DURATIONS.push(9000);
   DURATIONS = DURATIONS.slice(0, N);
@@ -69,6 +71,8 @@
   var chips     = Array.prototype.slice.call(reel.querySelectorAll('.beat-chip'));
   var subtitle  = q('#reel-subtitle');
   var soundBtn  = q('[data-reel="sound"]');
+  var cover     = q('[data-reel="cover"]');
+  var startBtn  = q('[data-reel="start"]');
 
   // ---- voiceover audio (one element, src swapped per beat) --------
   var AUDIO_BASE = 'assets/audio/';
@@ -83,7 +87,7 @@
   var rafId = 0;
   var lastTs = 0;
   var currentBeat = -1;  // 1-based; -1 forces first paint
-  var autoStarted = false;
+  var started = false;   // the cover has been fired
   var inView = false;
 
   // ---- helpers ----------------------------------------------------
@@ -134,7 +138,9 @@
     var cap = beats[b - 1] && beats[b - 1].querySelector('.beat-caption');
     while (subtitle.firstChild) subtitle.removeChild(subtitle.firstChild);
     var p = document.createElement('p');
-    p.textContent = cap ? cap.textContent : '';
+    // Captions are authored by us (trusted); clone their markup so the
+    // highlighted skill names carry into the subtitle bar.
+    if (cap) p.innerHTML = cap.innerHTML; else p.textContent = '';
     subtitle.appendChild(p); // fresh node re-triggers the fade-in
   }
 
@@ -203,7 +209,21 @@
     if (!lastTs) lastTs = ts;
     var dt = ts - lastTs;
     lastTs = ts;
-    elapsed += dt;
+    var cb = currentBeat < 1 ? 1 : currentBeat;
+    // While the voiceover for the current beat is actually playing, the
+    // AUDIO is the master clock: pin `elapsed` to its position so a beat
+    // can never advance until its narration finishes. This kills the
+    // pause/resume "the next beat cuts off the current pitch" drift —
+    // resuming re-seeks the audio and the timeline re-pins to it exactly.
+    // Once the clip ends (or sound is off / still buffering) we fall back
+    // to wall-clock `dt`, which carries the silent ~1.3s tail and drives
+    // muted playback.
+    if (soundOn && audioBeat === cb && !audio.paused && !audio.ended &&
+        isFinite(audio.duration) && audio.duration > 0) {
+      elapsed = STARTS[cb - 1] + Math.min(audio.currentTime, audio.duration) * 1000;
+    } else {
+      elapsed += dt;
+    }
     if (elapsed >= TOTAL) { elapsed = TOTAL; render(); pause(); return; }
     render();
     rafId = requestAnimationFrame(tick);
@@ -231,7 +251,56 @@
     audio.pause();
   }
 
-  function toggle() { playing ? pause() : play(); }
+  function toggle() {
+    if (!started) { beginExperience(); return; }
+    playing ? pause() : play();
+  }
+
+  // ---- cover → narrated intro → reel ------------------------------
+  // The cover is the "fire the experience" poster. Its click is a user
+  // gesture, so we use it to unlock + enable the voiceover, play a short
+  // intro over the cover, then dismiss into beat 1.
+  function beginExperience() {
+    if (started) return;
+    started = true;
+    reel.classList.add('is-started');
+    if (cover) {
+      cover.classList.add('is-gone');
+      cover.setAttribute('aria-hidden', 'true');
+    }
+    // Enabling sound here keeps audio inside the gesture; if the browser
+    // still blocks it the reel just runs silently (graceful).
+    setSoundUI(true);
+    playIntro(function () { play(); });
+  }
+
+  // Toggle only the sound UI/state (no playback side effects) — used by
+  // beginExperience so it controls when audio actually starts.
+  function setSoundUI(on) {
+    soundOn = on;
+    reel.classList.toggle('is-sound', on);
+    if (soundBtn) {
+      soundBtn.setAttribute('aria-pressed', String(on));
+      soundBtn.setAttribute('aria-label', on ? 'Turn off voiceover' : 'Turn on voiceover');
+      soundBtn.classList.remove('is-hint');
+    }
+  }
+
+  function playIntro(done) {
+    var fired = false;
+    function finish() {
+      if (fired) return; fired = true;
+      audio.removeEventListener('ended', finish);
+      done();
+    }
+    if (!soundOn) { finish(); return; }
+    audioBeat = 0; // mark intro loaded so beat 1 reloads its own clip
+    try { audio.src = AUDIO_BASE + 'intro.mp3'; audio.currentTime = 0; } catch (e) {}
+    audio.addEventListener('ended', finish);
+    var pr = audio.play();
+    if (pr && pr.catch) pr.catch(function () { finish(); }); // blocked → just begin
+    setTimeout(finish, INTRO_MAX); // safety net
+  }
 
   function replay() { elapsed = 0; render(); pause(); play(); }
 
@@ -252,6 +321,7 @@
   if (playBtn)   playBtn.addEventListener('click', toggle);
   if (replayBtn) replayBtn.addEventListener('click', replay);
   if (soundBtn)  soundBtn.addEventListener('click', function () { setSound(!soundOn); });
+  if (startBtn)  startBtn.addEventListener('click', beginExperience);
 
   if (seek) {
     seek.addEventListener('input', function () {
@@ -275,20 +345,20 @@
       if (e.target !== seek) return; // allow arrows on the slider itself
     }
     if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggle(); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); seekToBeat(Math.min(N, currentBeat + 1)); }
+    if (!started) return; // before the cover is fired, only Space starts it
+    if (e.key === 'ArrowRight') { e.preventDefault(); seekToBeat(Math.min(N, currentBeat + 1)); }
     else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekToBeat(Math.max(1, currentBeat - 1)); }
     else if (e.key === 'r' || e.key === 'R') { replay(); }
     else if (e.key === 'm' || e.key === 'M') { setSound(!soundOn); }
   });
 
-  // Autoplay the first time the reel scrolls into view; track inView
-  // for keyboard scoping. Pause when it leaves the viewport.
+  // Track whether the reel is on screen (for keyboard scoping) and pause
+  // it when it scrolls away. No autoplay — the cover starts the reel.
   if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
         inView = en.isIntersecting && en.intersectionRatio >= 0.35;
-        if (inView && !autoStarted) { autoStarted = true; play(); }
-        else if (!en.isIntersecting && playing) { pause(); }
+        if (!en.isIntersecting && playing) { pause(); }
       });
     }, { threshold: [0, 0.35, 0.6] });
     io.observe(reel);
