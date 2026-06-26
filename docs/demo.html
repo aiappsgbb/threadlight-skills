@@ -438,8 +438,8 @@
   /* beat-chip rail */
   .beat-rail {
     display: flex; flex-wrap: wrap; gap: 7px;
-    padding: 0 clamp(14px, 2.4vw, 22px) 15px; background: var(--bg-2);
-    border-bottom-left-radius: 18px; border-bottom-right-radius: 18px;
+    padding: 14px clamp(14px, 2.4vw, 22px); background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
   }
   .beat-chip {
     display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
@@ -678,6 +678,16 @@
       <div class="reel" id="reel">
         <div class="reel-frame">
 
+          <!-- beat rail (status) -->
+          <nav class="beat-rail" aria-label="Jump to a beat">
+            <button class="beat-chip is-active" type="button" data-beat="1"><span class="n">01</span>Brief</button>
+            <button class="beat-chip" type="button" data-beat="2"><span class="n">02</span>Design</button>
+            <button class="beat-chip" type="button" data-beat="3"><span class="n">03</span>Local agent</button>
+            <button class="beat-chip" type="button" data-beat="4"><span class="n">04</span>Deploy</button>
+            <button class="beat-chip" type="button" data-beat="5"><span class="n">05</span>Govern</button>
+            <button class="beat-chip" type="button" data-beat="6"><span class="n">06</span>Scorecard</button>
+          </nav>
+
           <div class="reel-stage" data-active-beat="1" id="reel-stage">
 
             <!-- ── BEAT 1 · the brief ──────────────────────────── -->
@@ -831,7 +841,7 @@
                 <span class="beat-step"><b>06</b> / 06</span>
                 <h2 class="beat-title">Scored for <em>production.</em></h2>
               </div>
-              <p class="beat-caption">threadlight-consumption-iq turns the deployed estate into a phased Azure cost estimate and an internal seller one-pager — then threadlight-production-ready scores the agent across thirteen pillars and writes the customer hand-off package: 92/100, ship with two waivers.</p>
+              <p class="beat-caption">A deployed MVP isn’t the finish line. threadlight-production-ready scores the agent across thirteen pillars — network, governance, identity, evals, responsible AI, reliability — then writes the customer hand-off package: 92/100, ship with two waivers. The prototype becomes something an ARB can sign off and an SRE can run.</p>
               <article class="scorecard-preview" aria-label="Production-readiness scorecard">
                 <header class="sc-header">
                   <div>
@@ -865,8 +875,8 @@
                 </footer>
               </article>
               <p class="kit-note">
-                <span class="kit-plus">+</span> Sales kit · <code>threadlight-consumption-iq</code>
-                &rarr; phased Azure cost estimate &amp; seller one-pager
+                <span class="kit-plus">+</span> Cost view · <code>threadlight-consumption-iq</code>
+                &rarr; phased Azure cost estimate
                 <span class="kit-figs">$326 &rarr; $795 &rarr; $6,804<span class="u">/mo&nbsp;est.</span></span>
               </p>
               <p class="payoff">
@@ -893,19 +903,9 @@
               <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
-            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:37</span></span>
+            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:43</span></span>
             <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">
           </div>
-
-          <!-- beat rail -->
-          <nav class="beat-rail" aria-label="Jump to a beat">
-            <button class="beat-chip is-active" type="button" data-beat="1"><span class="n">01</span>Brief</button>
-            <button class="beat-chip" type="button" data-beat="2"><span class="n">02</span>Design</button>
-            <button class="beat-chip" type="button" data-beat="3"><span class="n">03</span>Local agent</button>
-            <button class="beat-chip" type="button" data-beat="4"><span class="n">04</span>Deploy</button>
-            <button class="beat-chip" type="button" data-beat="5"><span class="n">05</span>Govern</button>
-            <button class="beat-chip" type="button" data-beat="6"><span class="n">06</span>Scorecard</button>
-          </nav>
 
         </div><!-- /.reel-frame -->
       </div><!-- /.reel -->
@@ -1037,7 +1037,7 @@
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
-<script src="assets/demo-reel.js?v=3"></script>
+<script src="assets/demo-reel.js?v=4"></script>
 
 <!-- ====================== LIGHTBOX ====================== -->
 <div class="lightbox" id="kit-lightbox" aria-hidden="true">
