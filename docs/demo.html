@@ -185,7 +185,7 @@
   .filetree span:nth-child(7){animation-delay:.79s} .filetree span:nth-child(8){animation-delay:.88s}
   .filetree span:nth-child(9){animation-delay:.97s} .filetree span:nth-child(10){animation-delay:1.06s}
 
-  /* — BEAT 3 · streamlit-style chat ——————————————————————— */
+  /* — BEAT 3 · local agent chat ——————————————————————————— */
   .chat { display: flex; flex-direction: column; gap: 12px; }
   .bubble {
     max-width: 88%; padding: 11px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.5;
@@ -244,6 +244,25 @@
     font-family: var(--mono); font-size: 12px; color: var(--lime-1);
     animation: reelIn .4s var(--ease-out) 3s both;
   }
+  .deploy-shot {
+    margin: 0 0 12px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+    background: var(--bg-2); box-shadow: var(--e-1); animation: reelPop .5s var(--ease-out) .2s both;
+  }
+  .deploy-frame { aspect-ratio: 16 / 10; overflow: hidden; background: var(--bg-0); border-bottom: 1px solid var(--line); }
+  .deploy-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .deploy-shot figcaption {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+    color: var(--ink-2); text-align: center; padding: 6px 6px;
+  }
+  .rg-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+  .rg-pill {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-1);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: var(--bg-1);
+    animation: reelPop .34s var(--ease-out) both;
+  }
+  .rg-pill i { color: #46c46e; font-style: normal; }
+  .rg-pill:nth-child(1){animation-delay:.5s} .rg-pill:nth-child(2){animation-delay:.66s}
+  .rg-pill:nth-child(3){animation-delay:.82s} .rg-pill:nth-child(4){animation-delay:.98s}
 
   /* — BEAT 5 · governance gate tiles ——————————————————————— */
   .gates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -550,6 +569,43 @@
   .demo-cta { padding-top: 8px; }
   .demo-cta .hero-cta-row { margin-top: 22px; }
 
+  /* — recap / outro ——————————————————————————————————————— */
+  .recap-flow {
+    list-style: none; margin: 30px 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+  }
+  .rf-step {
+    position: relative; padding: 16px 14px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--bg-1); display: flex; flex-direction: column; gap: 4px;
+  }
+  .rf-step::after {
+    content: "→"; position: absolute; right: -11px; top: 50%; transform: translateY(-50%);
+    color: var(--ink-3); font-size: 13px; z-index: 1;
+  }
+  .rf-step:last-child::after { content: none; }
+  .rf-n { font-family: var(--mono); font-size: 11px; color: var(--accent-1); letter-spacing: .06em; }
+  .rf-step b { font-family: var(--serif); font-size: 17px; color: var(--ink-0); line-height: 1.1; }
+  .rf-step span:last-child { font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+  @media (max-width: 880px) { .recap-flow { grid-template-columns: repeat(3, 1fr); }
+    .rf-step:nth-child(3)::after { content: none; } }
+  @media (max-width: 540px) { .recap-flow { grid-template-columns: 1fr 1fr; }
+    .rf-step::after { content: none; } }
+
+  .recap-outcomes {
+    margin: 14px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .oc {
+    padding: 18px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2);
+    box-shadow: var(--e-1);
+  }
+  .oc b { display: block; font-family: var(--serif); font-size: 17px; color: var(--ink-0); margin-bottom: 7px; }
+  .oc b.oc-stat { font-size: 30px; letter-spacing: -.02em; color: var(--lime-1); }
+  .oc span { font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+  @media (max-width: 880px) { .recap-outcomes { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 460px) { .recap-outcomes { grid-template-columns: 1fr; } }
+
+  .recap-visual { max-width: 760px; margin: 26px auto 0; }
+
   /* ============================================================
      STATIC FALLBACK — reduced-motion / no-JS storyboard
      ============================================================ */
@@ -689,13 +745,13 @@
                 <span class="beat-step"><b>03</b> / 06</span>
                 <h2 class="beat-title">Answering live on <em>localhost.</em></h2>
               </div>
-              <p class="beat-caption">threadlight-local-test boots the agent on localhost with a Streamlit chat. Ask it to triage a real application and it calls the tools live, then writes a credit memo with its reasoning.</p>
+              <p class="beat-caption">threadlight-local-test boots the agent on localhost. Ask it to triage a real application and it calls the tools live, then writes a credit memo with its reasoning.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-local-test</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-local-test to boot the agent</span></span><span class="term-line"><span class="cmd">locally so I can chat with it.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider + Streamlit</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use threadlight-local-test to boot the agent</span></span><span class="term-line"><span class="cmd">locally so I can chat with it.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider · tools wired</span></span><span class="term-line"><span class="out">agent ready · http://localhost:8501<span class="caret"></span></span></span></pre>
                 </div>
-                <div class="art" aria-label="Streamlit credit-memo chat">
+                <div class="art" aria-label="Local credit-memo chat">
                   <div class="art-head"><b>credit-memo · chat</b><span class="art-tag">:8501</span></div>
                   <div class="art-body chat">
                     <div class="bubble user">Triage <b>APP-4821</b> — Riverside Welding LLC, $480k equipment loan over 60 months. Approve, refer, or decline?</div>
@@ -717,24 +773,29 @@
                 <span class="beat-step"><b>04</b> / 06</span>
                 <h2 class="beat-title">Deployed to <em>your Azure.</em></h2>
               </div>
-              <p class="beat-caption">threadlight-deploy runs azd up straight into your own Azure subscription — Foundry, a hosted-agent container, Cosmos, and App Insights, provisioned and wired together. Nothing is mocked.</p>
+              <p class="beat-caption">threadlight-deploy runs azd up straight into your own Azure subscription — Foundry, a hosted-agent container, Cosmos, and App Insights, provisioned and wired together. The credit-memo agent goes live in your tenant, ready to use in a workspace or in Teams. Nothing is mocked.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-deploy · azd</span></div>
                   <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Now deploy it to my own Azure subscription</span></span><span class="term-line"><span class="cmd">with threadlight-deploy.</span></span><span class="term-line"><span class="out">azd up · tenant + subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
                 </div>
-                <div class="art" aria-label="Azure resource group">
-                  <div class="art-head"><b>rg-credit-memo</b><span class="art-tag">eastus2</span></div>
+                <div class="art" aria-label="Live credit-memo agent in your Azure tenant">
+                  <div class="art-head"><b>credit-memo · live</b><span class="art-tag">your Azure</span></div>
                   <div class="art-body">
-                    <div class="rg-list">
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Foundry account<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Foundry project<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>Container App · MCP<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>Hosted-agent container<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>Cosmos DB<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
-                      <div class="rg-row"><svg class="rg-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>App Insights<span class="rg-state"><span class="spin" aria-hidden="true"></span><span class="check" aria-hidden="true">✓</span></span></div>
+                    <figure class="deploy-shot">
+                      <div class="deploy-frame">
+                        <img src="assets/shots/deploy-workspace.png" loading="lazy" width="1440" height="900"
+                             alt="The deployed credit-memo agent running live in a branded MeridianCredit web workspace, triaging application APP-4821 and returning a ‘Refer to underwriter’ memo with DSCR 1.18, LTV 0.74 and FICO 706.">
+                      </div>
+                      <figcaption>credit-memo agent · live in your tenant</figcaption>
+                    </figure>
+                    <div class="rg-pills" aria-label="Provisioned Azure resources">
+                      <span class="rg-pill">Foundry <i>✓</i></span>
+                      <span class="rg-pill">Hosted agent <i>✓</i></span>
+                      <span class="rg-pill">Cosmos DB <i>✓</i></span>
+                      <span class="rg-pill">App Insights <i>✓</i></span>
                     </div>
-                    <p class="rg-foot">azd up · deployed ✓ — ${SERVICE_MCP_FQDN} resolved into the agent</p>
+                    <p class="rg-foot">azd up · deployed ✓ — reachable in a workspace or in Microsoft Teams</p>
                   </div>
                 </div>
               </div>
@@ -832,7 +893,7 @@
               <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
-            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:32</span></span>
+            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:37</span></span>
             <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">
           </div>
 
@@ -904,6 +965,48 @@
     </div>
   </section>
 
+  <!-- ====================== RECAP / OUTRO ====================== -->
+  <section class="scene recap" aria-labelledby="recap-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>The whole reel, in one breath</p>
+      <h2 id="recap-h" class="display reveal" data-delay="1">A paragraph in. A governed agent, <em>live in your tenant</em>, out.</h2>
+      <p class="sub reveal" data-delay="2">Six skills, one continuous run — no glue code, no hand-offs, nothing mocked.</p>
+
+      <ol class="recap-flow reveal" data-delay="2" aria-label="The six-skill pipeline">
+        <li class="rf-step"><span class="rf-n">01</span><b>Brief</b><span>one plain-English paragraph</span></li>
+        <li class="rf-step"><span class="rf-n">02</span><b>Design</b><span>spec, code &amp; sales kit</span></li>
+        <li class="rf-step"><span class="rf-n">03</span><b>Local</b><span>answers live, tools traced</span></li>
+        <li class="rf-step"><span class="rf-n">04</span><b>Deploy</b><span>azd up into your Azure</span></li>
+        <li class="rf-step"><span class="rf-n">05</span><b>Govern</b><span>policy · evals · red-team</span></li>
+        <li class="rf-step"><span class="rf-n">06</span><b>Score</b><span>13-pillar production gate</span></li>
+      </ol>
+
+      <div class="recap-outcomes reveal" data-delay="3">
+        <div class="oc"><b>Your subscription</b><span>Foundry, hosted agent, Cosmos &amp; App Insights — in your own tenant, on your data.</span></div>
+        <div class="oc"><b>Safe by default</b><span>AGT policy, evals and red-team gates run on every single pass.</span></div>
+        <div class="oc"><b class="oc-stat">92–100</b><span>The 13-pillar production-ready scorecard — earned, not asserted.</span></div>
+        <div class="oc"><b>A walk-in kit</b><span>A brand-matched talk deck and seller prep-guide, from the same run.</span></div>
+      </div>
+
+      <figure class="kit-shot recap-visual reveal" data-delay="3">
+        <div class="kit-chrome">
+          <span class="kit-dots"><span></span><span></span><span></span></span>
+          <span class="kit-url">Microsoft Teams · Credit Memo Agent</span>
+        </div>
+        <button type="button" class="kit-frame" data-caption="Microsoft Teams — the deployed credit-memo agent replying in-channel" aria-label="Enlarge the deployed agent running in Microsoft Teams">
+          <img src="assets/shots/deploy-teams.png" loading="lazy" width="1440" height="900"
+               alt="The deployed credit-memo agent answering inside Microsoft Teams: a lender @mentions the agent to triage APP-4821 and it replies with an adaptive card — ‘Refer to underwriter’, DSCR 1.18, LTV 0.74, FICO 706 — and Open-memo / Approve-with-conditions buttons.">
+          <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+        </button>
+        <figcaption>
+          <b>Live in Microsoft Teams</b>
+          <span class="kit-by">threadlight-deploy</span>
+          <span class="kit-desc">Same agent, same memo — answering where your team already works.</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
   <!-- ====================== CTA ====================== -->
   <section class="scene demo-cta" aria-labelledby="demo-cta-h">
     <div class="wrap">
@@ -934,7 +1037,7 @@
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
-<script src="assets/demo-reel.js?v=2"></script>
+<script src="assets/demo-reel.js?v=3"></script>
 
 <!-- ====================== LIGHTBOX ====================== -->
 <div class="lightbox" id="kit-lightbox" aria-hidden="true">
