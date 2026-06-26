@@ -24,7 +24,7 @@
   // Per-beat durations (ms), in DOM order. Synced to the voiceover:
   // each value is the beat's narration clip length + a ~1.3s tail so
   // the artefact reveal settles before the next beat begins.
-  var DURATIONS = [12508, 11980, 12316, 13948, 14068, 18340];
+  var DURATIONS = [12892, 17284, 13132, 14476, 14716, 19564];
   var N = beats.length;
   while (DURATIONS.length < N) DURATIONS.push(9000);
   DURATIONS = DURATIONS.slice(0, N);

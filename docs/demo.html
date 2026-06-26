@@ -152,26 +152,31 @@
   .parsed-row:nth-child(3) .chips .chip:nth-child(3){animation-delay:.86s}
   .parsed-row:nth-child(4) .chips .chip { animation-delay: 1s; }
 
-  /* — BEAT 2 · spec + file-tree ——————————————————————————— */
-  .design-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-  @media (max-width: 560px) { .design-split { grid-template-columns: 1fr; } }
-  .spec-doc { padding: 16px 18px; border-right: 1px solid var(--line); }
-  @media (max-width: 560px) { .spec-doc { border-right: 0; border-bottom: 1px solid var(--line); } }
-  .spec-doc h4 {
-    font-family: var(--mono); font-size: 12px; color: var(--accent-1); margin: 14px 0 5px;
-    letter-spacing: .02em; animation: reelIn .4s var(--ease-out) both;
+  /* — BEAT 2 · generated artifacts + file-tree ———————————— */
+  .design-arts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    padding: 16px 18px; border-bottom: 1px solid var(--line);
   }
-  .spec-doc h4:first-child { margin-top: 0; }
-  .spec-doc p {
-    font-family: var(--mono); font-size: 11.5px; line-height: 1.6; color: var(--ink-2);
-    margin: 0; animation: reelIn .4s var(--ease-out) both;
+  @media (max-width: 560px) { .design-arts { grid-template-columns: 1fr; } }
+  .da-shot {
+    margin: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+    background: var(--bg-2); box-shadow: var(--e-1);
+    animation: reelPop .5s var(--ease-out) both;
   }
-  .spec-doc h4:nth-of-type(1){animation-delay:.1s} .spec-doc h4:nth-of-type(2){animation-delay:.4s}
-  .spec-doc h4:nth-of-type(3){animation-delay:.7s}
-  .spec-doc p:nth-of-type(1){animation-delay:.2s} .spec-doc p:nth-of-type(2){animation-delay:.5s}
-  .spec-doc p:nth-of-type(3){animation-delay:.8s}
+  .da-shot:nth-child(1) { animation-delay: .2s; }
+  .da-shot:nth-child(2) { animation-delay: .36s; }
+  .da-frame {
+    aspect-ratio: 16 / 10; overflow: hidden;
+    background: var(--bg-0); border-bottom: 1px solid var(--line);
+  }
+  .da-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .da-shot figcaption {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+    color: var(--ink-2); text-align: center; padding: 6px 6px;
+  }
   .filetree { padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.85; color: var(--ink-1); }
   .filetree span { display: block; animation: reelIn .34s var(--ease-out) both; }
+  .filetree span span { display: inline; animation: none; }
   .filetree .t { color: var(--ink-3); }
   .filetree .f { color: var(--lime-1); }
   .filetree span:nth-child(1){animation-delay:.25s} .filetree span:nth-child(2){animation-delay:.34s}
@@ -490,6 +495,57 @@
   .kit-desc { display: block; margin-top: 9px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
   .kit-foot { margin: 22px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); font-family: var(--sans); }
 
+  /* — zoomable showcase frames ———————————————————————————— */
+  button.kit-frame {
+    width: 100%; padding: 0; border: 0; font: inherit; color: inherit;
+    cursor: zoom-in; -webkit-appearance: none; appearance: none;
+  }
+  button.kit-frame:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 3px; }
+  .kit-frame img { transition: transform .45s var(--ease-out); }
+  .kit-frame:hover img { transform: scale(1.045); }
+  .kit-zoom-hint {
+    position: absolute; right: 10px; bottom: 10px; z-index: 2; pointer-events: none;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; color: #fff;
+    background: rgba(10,12,20,.62); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 7px; padding: 4px 8px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    opacity: 0; transform: translateY(4px); transition: opacity .18s, transform .18s;
+  }
+  .kit-frame:hover .kit-zoom-hint,
+  button.kit-frame:focus-visible .kit-zoom-hint { opacity: 1; transform: none; }
+
+  /* — lightbox overlay ———————————————————————————————————— */
+  .lightbox {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center; padding: clamp(16px, 4vw, 56px);
+    background: rgba(6,8,14,.86); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .lightbox.is-open { display: flex; animation: lbFade .2s var(--ease-out) both; }
+  @keyframes lbFade { from { opacity: 0; } to { opacity: 1; } }
+  .lightbox figure {
+    margin: 0; max-width: 1200px; width: 100%; cursor: default;
+    animation: lbPop .26s var(--ease-out) both;
+  }
+  @keyframes lbPop { from { opacity: 0; transform: scale(.965); } to { opacity: 1; transform: none; } }
+  .lightbox img {
+    display: block; width: 100%; height: auto; max-height: 82vh; object-fit: contain;
+    border: 1px solid var(--line-2); border-radius: 12px;
+    box-shadow: 0 40px 120px -40px rgba(0,0,0,.85); background: var(--bg-0);
+  }
+  .lightbox figcaption {
+    margin-top: 12px; text-align: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: rgba(255,255,255,.74);
+  }
+  .lightbox-close {
+    position: absolute; top: clamp(12px, 2.5vw, 22px); right: clamp(12px, 2.5vw, 22px);
+    width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1; color: #fff;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22);
+  }
+  .lightbox-close:hover { background: rgba(255,255,255,.2); }
+  .lightbox-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
   /* — closing CTA strip ——————————————————————————————————— */
   .demo-cta { padding-top: 8px; }
   .demo-cta .hero-cta-row { margin-top: 22px; }
@@ -598,35 +654,30 @@
                 <span class="beat-step"><b>02</b> / 06</span>
                 <h2 class="beat-title">Specced &amp; <em>scaffolded.</em></h2>
               </div>
-              <p class="beat-caption">threadlight-design writes the spec and the AGENTS file, scaffolds the tools, seeds realistic sample data, and adds killer-prompt tests — a working project, not a slide.</p>
+              <p class="beat-caption">threadlight-design writes the spec and the AGENTS file, scaffolds the four tools, seeds realistic sample data, and adds killer-prompt tests — it even renders the customer talk-deck and the seller prep-guide. A working project, not just slideware.</p>
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-design</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">seeding specs/sample-data/ — 38 records</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
+                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">rendering demo-deck + prep-guide</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
                 </div>
-                <div class="art" aria-label="Generated spec and file tree">
-                  <div class="art-head"><b>specs/SPEC.md</b><span class="art-tag">generated</span></div>
-                  <div class="design-split">
-                    <div class="spec-doc">
-                      <h4>## Process</h4>
-                      <p>Credit-memo triage — one decision per loan application.</p>
-                      <h4>## Entities</h4>
-                      <p>Application · Applicant · BureauPull · Memo</p>
-                      <h4>## Decision branches</h4>
-                      <p>auto_approve · refer_underwriter · decline</p>
-                    </div>
-                    <div class="filetree" aria-hidden="true">
-                      <span class="t">credit-memo/</span>
-                      <span>├─ specs/SPEC.md</span>
-                      <span>├─ AGENTS.md</span>
-                      <span class="t">├─ src/agent/skills/</span>
-                      <span>│&nbsp;&nbsp;├─ <span class="f">list_applications.py</span></span>
-                      <span>│&nbsp;&nbsp;├─ <span class="f">get_application.py</span></span>
-                      <span>│&nbsp;&nbsp;├─ <span class="f">get_bureau_pull.py</span></span>
-                      <span>│&nbsp;&nbsp;└─ <span class="f">update_memo.py</span></span>
-                      <span>├─ specs/sample-data/</span>
-                      <span>└─ tests/killer-prompts.md</span>
-                    </div>
+                <div class="art" aria-label="Generated design artifacts">
+                  <div class="art-head"><b>Generated artifacts</b><span class="art-tag">design</span></div>
+                  <div class="design-arts">
+                    <figure class="da-shot">
+                      <div class="da-frame"><img src="assets/shots/sales-kit-deck.png" loading="lazy" width="1440" height="810" alt="Generated customer talk-deck — a dark, cinematic title slide for the fictional MeridianCredit sample."></div>
+                      <figcaption>demo-deck.html</figcaption>
+                    </figure>
+                    <figure class="da-shot">
+                      <div class="da-frame"><img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940" alt="Generated seller prep-guide — a MeridianCredit seller prep guide with a view-mode toggle and a section table of contents."></div>
+                      <figcaption>prep-guide.html</figcaption>
+                    </figure>
+                  </div>
+                  <div class="filetree" aria-hidden="true">
+                    <span class="t">credit-memo/</span>
+                    <span>├─ specs/SPEC.md · AGENTS.md</span>
+                    <span class="t">├─ src/agent/skills/ <span class="f">· 4 tools</span></span>
+                    <span>├─ specs/sample-data/ · tests/</span>
+                    <span>└─ specs/ <span class="f">demo-deck.html · prep-guide.html</span></span>
                   </div>
                 </div>
               </div>
@@ -781,7 +832,7 @@
               <svg class="ico-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <svg class="ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
-            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:23</span></span>
+            <span class="reel-time"><b data-reel="time">0:00</b> / <span data-reel="total">1:32</span></span>
             <input class="reel-seek" type="range" min="0" max="1000" value="0" step="1" data-reel="seek" aria-label="Seek through the reel">
           </div>
 
@@ -817,10 +868,11 @@
             <span class="kit-dots"><span></span><span></span><span></span></span>
             <span class="kit-url">demo-deck.html</span>
           </div>
-          <div class="kit-frame">
+          <button type="button" class="kit-frame" data-caption="demo-deck.html — Customer talk deck" aria-label="Enlarge the generated customer talk deck">
             <img src="assets/shots/sales-kit-deck.png" loading="lazy" width="1440" height="810"
                  alt="The generated customer talk deck: a dark, cinematic title slide reading ‘The credit memo, ready before the coffee’s cold’ with a Meridian Commercial Bank × Microsoft co-brand and a 1 / 11 slide counter.">
-          </div>
+            <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+          </button>
           <figcaption>
             <b>Customer talk deck</b>
             <span class="kit-by">threadlight-design</span>
@@ -833,10 +885,11 @@
             <span class="kit-dots"><span></span><span></span><span></span></span>
             <span class="kit-url">prep-guide.html</span>
           </div>
-          <div class="kit-frame">
+          <button type="button" class="kit-frame" data-caption="prep-guide.html — Seller prep-guide" aria-label="Enlarge the generated seller prep-guide">
             <img src="assets/shots/sales-kit-prep-guide.png" loading="lazy" width="1340" height="940"
                  alt="The generated seller prep-guide: a ‘MeridianCredit — Seller Prep Guide’ header with a seller / solution-engineer view-mode toggle, a section table of contents, and a use-case summary for the credit-memo agent.">
-          </div>
+            <span class="kit-zoom-hint" aria-hidden="true">⤢ Click to zoom</span>
+          </button>
           <figcaption>
             <b>Seller prep-guide</b>
             <span class="kit-by">threadlight-design</span>
@@ -881,7 +934,57 @@
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
-<script src="assets/demo-reel.js?v=1"></script>
+<script src="assets/demo-reel.js?v=2"></script>
+
+<!-- ====================== LIGHTBOX ====================== -->
+<div class="lightbox" id="kit-lightbox" aria-hidden="true">
+  <button class="lightbox-close" type="button" data-lb-close aria-label="Close enlarged view">✕</button>
+  <figure role="dialog" aria-modal="true" aria-label="Enlarged screenshot">
+    <img alt="">
+    <figcaption></figcaption>
+  </figure>
+</div>
+<script>
+(function () {
+  var lb = document.getElementById('kit-lightbox');
+  if (!lb) return;
+  var lbImg = lb.querySelector('img');
+  var lbCap = lb.querySelector('figcaption');
+  var frames = document.querySelectorAll('button.kit-frame');
+  var lastFocus = null;
+
+  function open(btn) {
+    var img = btn.querySelector('img');
+    if (!img) return;
+    lastFocus = btn;
+    lbImg.src = img.currentSrc || img.src;
+    lbImg.alt = img.alt || '';
+    lbCap.textContent = btn.getAttribute('data-caption') || '';
+    lb.classList.add('is-open');
+    lb.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    var closeBtn = lb.querySelector('[data-lb-close]');
+    if (closeBtn) closeBtn.focus();
+  }
+  function close() {
+    if (!lb.classList.contains('is-open')) return;
+    lb.classList.remove('is-open');
+    lb.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    lbImg.removeAttribute('src');
+    if (lastFocus) { lastFocus.focus(); lastFocus = null; }
+  }
+  Array.prototype.forEach.call(frames, function (b) {
+    b.addEventListener('click', function () { open(b); });
+  });
+  lb.addEventListener('click', function (e) {
+    if (e.target === lb || (e.target.closest && e.target.closest('[data-lb-close]'))) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') close();
+  });
+})();
+</script>
 
 </body>
 </html>
