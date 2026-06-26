@@ -1,46 +1,21 @@
 ---
 name: threadlight-customize
-description: >
-  Use when an SE (or a customer's own platform team) needs to FORK the
-  Threadlight pipeline and customize it to one specific customer's
-  environment — their landing zones, identity model, RBAC, deploy pipelines,
-  and governance — with PRODUCTION ONBOARDING as priority #1. This is the
-  final leg: it does not automate the onboarding (we can never cover every
-  customer scenario) — it is an instructions/runbooks skill that frames HOW
-  to clone and adapt the process. Four moves: (1) an intake gate that
-  captures the customer documents, environment setup, requirements, and any
-  mandated template/starter code into a customer-profile workbook; (2) a
-  customization map that classifies every Threadlight skill as
-  customer-agnostic (keep) vs needs-per-customer-override (and names the
-  SPEC section / selector / env hook to change), with the production-onboarding
-  skills flagged priority; (3) a test-in-customer-environment runbook for
-  fully-private (private-VNet) envs using GitHub Codespaces or an Azure ML
-  compute instance + VS Code; and (4) an explicit non-coverage boundary that
-  names the seams you customize and what Threadlight deliberately does not
-  automate. Ships fill-in templates and runbooks, plus a fork-runbook
-  (fork + upstream-pin + overlay merge) so customer changes survive upstream
-  updates. SE-led path first; customer-self-serve documented alongside.
-  USE FOR: fork threadlight, clone threadlight, customize threadlight,
-  customer fork, customer onboarding, production onboarding, onboard a
-  customer, adapt the pipeline, tailor threadlight to a customer, customer
-  landing zone, customer RBAC, customer governance, bring your own template
-  code, customer-mandated IaC, intake workbook, customer profile,
-  customization map, what to fork vs keep, upstream pin, overlay merge,
-  vendor overlay, test in customer environment, test on their tenant,
-  private VNet dev loop, fully private environment, GitHub Codespaces,
-  Codespaces private networking, Azure ML compute instance, Azure ML VS Code,
-  inside the boundary dev, private endpoint reachability, field notes,
-  lessons learned, final leg, clone and customize the process.
-  DO NOT USE FOR: generating the production deploy pipeline itself (OIDC/WIF
-  pipeline + env-setup runbooks — use threadlight-cicd); the
-  production-readiness scorecard / pillar assessment (use
-  threadlight-production-ready); the permissive first-run pilot deploy (use
-  threadlight-deploy); the pre/post-deploy resource gate (use
-  threadlight-safe-check); wiring a pilot to consume an existing central hub
-  via an Access Contract (use citadel-spoke-onboarding) or deploying the hub
-  (use citadel-hub-deploy in awesome-gbb); bridging a Kratos-exported agent
-  project (see docs/KRATOS-BRIDGE.md). This skill never auto-generates a
-  customer's onboarding — it tells you how to do it.
+description: >-
+  Use when an SE or a customer's platform team needs to FORK the Threadlight
+  pipeline and adapt it to one customer's environment — landing zones,
+  identity, RBAC, deploy pipelines, governance — with PRODUCTION ONBOARDING as
+  priority #1. An instructions/runbooks skill (not automation): intake gate,
+  customization map (keep vs per-customer-override),
+  test-in-customer-environment runbook for private-VNet envs, and a
+  fork-runbook (upstream-pin + overlay merge). USE FOR: fork threadlight,
+  customize threadlight, customer onboarding, production onboarding, onboard a
+  customer, adapt the pipeline, tailor threadlight, customer landing zone,
+  customer RBAC, customization map, what to fork vs keep, upstream pin,
+  overlay merge, test in customer environment. DO NOT USE FOR: generating the
+  prod deploy pipeline (use threadlight-cicd); the readiness scorecard (use
+  threadlight-production-ready); the first-run deploy (use
+  threadlight-deploy); a central hub (use citadel-spoke-onboarding /
+  citadel-hub-deploy).
 metadata:
   version: "0.1.0"
 ---

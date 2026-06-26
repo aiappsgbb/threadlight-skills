@@ -1,38 +1,19 @@
 ---
 name: threadlight-cicd
-description: >
-  Use when a Threadlight pilot has to reach production through a CI/CD pipeline
-  instead of the coding agent running `azd up` directly — i.e. the real customer
-  case where prod deploys run under a federated identity with scoped RBAC, often
-  from private-VNet runners, and the agent has no standing deploy rights. Opens
-  with an onboarding-path decision gate (is a central platform environment
-  required? already deployed?) and then generates a production deploy pipeline
-  (GitHub Actions OR Azure DevOps) plus environment-setup runbooks the customer's
-  platform team executes: user-assigned managed identity + OIDC / Workload
-  Identity Federation credentials (no secrets), least-privilege RBAC scoped to
-  the target resource group, and managed-or-self-hosted private-VNet runners.
-  Emits an auditable onboarding-path.json and a central-platform-boundary.md that
-  keeps the pilot pipeline strictly separate from central-platform deployment
-  (citadel-hub-deploy). This is the authoritative, expanded home for the basic
-  scaffold that threadlight-production-ready Phase 3 (`--scaffold-cicd`) still
-  ships for backward-compat.
-  USE FOR: ci/cd pipeline, prod deploy pipeline, github actions pipeline,
-  azure devops pipeline, azure-pipelines.yml, azd-deploy-prod.yml, OIDC,
-  federated credentials, workload identity federation, WIF, UAMI, user-assigned
-  managed identity, no secrets pipeline, scoped RBAC, least privilege role
-  assignment, self-hosted runners, managed devops pool, private vnet runners,
-  larger runners private networking, restricted environment deploy, no deploy
-  rights, platform team handoff, env setup runbook, onboarding path gate,
-  central platform boundary, parallel track, spoke pipeline, citadel-spoke prod
-  pipeline, production handoff pipeline, pipeline for restricted customer env.
-  DO NOT USE FOR: deploying the central Citadel hub / shared APIM AI gateway /
-  shared networking / platform Key Vault (that is the separate central-platform
-  track — use citadel-hub-deploy in awesome-gbb); wiring a pilot to consume an
-  existing hub via an Access Contract (use citadel-spoke-onboarding); the actual
-  first-run azd deploy of the pilot in a permissive sandbox (use
-  threadlight-deploy); the production-readiness scorecard / pillar assessment
-  (use threadlight-production-ready); full runner IaC / Bicep VMSS authoring
-  (runbook + pipeline wiring only here); GitLab CI (out of scope v1).
+description: >-
+  Use when a Threadlight pilot must reach production through a CI/CD pipeline
+  instead of the agent running `azd up` directly — prod deploys run under a
+  federated identity with scoped RBAC from private-VNet runners and the agent
+  has no standing deploy rights. Generates a GitHub Actions or Azure DevOps
+  prod-deploy pipeline + env-setup runbooks, with an onboarding-path gate and
+  a central-platform boundary vs citadel-hub-deploy. USE FOR: ci/cd pipeline,
+  prod deploy pipeline, github actions pipeline, azure devops pipeline, OIDC,
+  workload identity federation, WIF, UAMI, scoped RBAC, self-hosted runners,
+  private vnet runners, restricted environment deploy, platform team handoff,
+  onboarding path gate. DO NOT USE FOR: deploying the central Citadel hub /
+  shared AI gateway (use citadel-hub-deploy); wiring a pilot to an existing
+  hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
+  threadlight-deploy).
 metadata:
   version: "0.2.0"
 ---

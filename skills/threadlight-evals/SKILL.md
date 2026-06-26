@@ -1,6 +1,6 @@
 ---
 name: threadlight-evals
-description: >
+description: >-
   DISCOVER + GOVERN + IMPROVE evals leg for threadlight pilots on Microsoft
   Foundry. Runs and verifies offline batch quality evals, Foundry Continuous
   Evaluation on live threads, and champion-challenger comparison gates, then
@@ -8,14 +8,13 @@ description: >
   USE FOR: continuous evals, offline eval gate, eval schedule, Foundry
   Continuous Evaluation, create_agent_evaluation, Application Insights eval
   results, eval threshold alert, eval run freshness, eval dataset shape,
-  tool_calls tool_outputs, champion challenger, A/B eval gate, model swap gate,
-  prompt swap gate, foundry-evals pipeline leg, continuous-evals pillar,
-  EVAL-001, EVAL-002, EVAL-003, EVAL-004, EVAL-005, EVAL-006, EVAL-101,
-  EVAL-102, EVAL-103, EVAL-104, EVAL-105, evals-manifest.
-  DO NOT USE FOR: token-level content filtering at the model edge — use the
-  model guardrail / Azure AI Content Safety; adversarial scanning — use
-  threadlight-redteam; agent-runtime action governance — use threadlight-govern;
-  deep evaluator or dataset authoring — use foundry-evals.
+  tool_calls tool_outputs, champion challenger, A/B eval gate, model swap
+  gate, prompt swap gate, foundry-evals pipeline leg, continuous-evals pillar,
+  EVAL-001..006, EVAL-101..105, evals-manifest. DO NOT USE FOR: token-level
+  content filtering at the model edge — use the model guardrail / Azure AI
+  Content Safety; adversarial scanning — use threadlight-redteam;
+  agent-runtime action governance — use threadlight-govern; deep evaluator or
+  dataset authoring — use foundry-evals.
 metadata:
   version: "0.1.0"
 ---
