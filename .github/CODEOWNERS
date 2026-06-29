@@ -1,0 +1,6 @@
+# Code owners for threadlight-skills
+# Reviews from a code owner are required before merging to a protected branch.
+# Add or split ownership per path as the team grows.
+
+# Default owner for everything in the repo
+*       @unsafecode
