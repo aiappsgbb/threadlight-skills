@@ -30,6 +30,9 @@ name: python-pytest
 #     env-setup runbook generator — deterministic, secret-free, no network)
 #   - skills/threadlight-customize/tests/        (fork-and-customize final
 #     leg — instructions-only: version + structure + no-secrets/anonymization)
+#   - skills/threadlight-router-bench/tests/     (offline self-improvement cold-
+#     path: learn single-run CI learnings + bench cost scorecard; gh/az calls
+#     are dependency-injected with fixture runners — deterministic, no network)
 #
 # 2 e2e tests in threadlight-production-ready/tests/test_end_to_end.py
 # are pre-existing failures caused by stale safe-check fixtures and are
@@ -84,3 +87,8 @@ jobs:
         run: python -m pytest skills/threadlight-cicd/tests/ -v
       - name: Run threadlight-customize tests
         run: python -m pytest skills/threadlight-customize/tests/ -v
+      - name: Run threadlight-router-bench tests
+        # Offline self-improvement cold-path: learn (single-run CI learnings) +
+        # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network
+        # (all gh/az calls are dependency-injected with fixture runners in tests).
+        run: python -m pytest skills/threadlight-router-bench/tests/ -v
