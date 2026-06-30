@@ -153,5 +153,7 @@ def validation_scorecard(workload: str,
         "arms": out_arms,
         "router_verdict": router_verdict,
         "thresholds": {"rubric_floor": RUBRIC_FLOOR,
-                       "rounds_factor": ROUNDS_FACTOR},
+                       "rounds_factor": ROUNDS_FACTOR,
+                       "rubric_close": RUBRIC_CLOSE,
+                       "cost_close": COST_CLOSE},
     }

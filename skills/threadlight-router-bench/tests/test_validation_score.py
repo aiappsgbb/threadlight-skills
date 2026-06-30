@@ -54,3 +54,19 @@ def test_phase_failure_is_falls_behind():
     ])
     assert card["arms"]["mini"]["verdict"] == "falls-behind"
     assert "phase" in card["arms"]["mini"]["reasons"]
+
+def test_router_mixed_when_good_rubric_but_not_cheaper():
+    # rubric within 0.1 of strong (matches) but router is NOT cheaper -> mixed
+    card = score.validation_scorecard("fsi-kyc-aml", [
+        _arm("router", rounds=150, rubric=0.88, cost=25.0),
+        _arm("strong", rounds=140, rubric=0.9, cost=22.0),
+    ])
+    assert card["router_verdict"] == "mixed"
+
+def test_router_verdict_none_when_strong_absent():
+    # no strong arm -> router_verdict is None (contract: None if router or strong absent)
+    card = score.validation_scorecard("fsi-kyc-aml", [
+        _arm("mini", rounds=120, rubric=0.9, cost=1.0),
+        _arm("router", rounds=130, rubric=0.9, cost=8.0),
+    ])
+    assert card["router_verdict"] is None
