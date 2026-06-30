@@ -66,13 +66,15 @@ skills/threadlight-router-bench/
     router_bench/
       __init__.py
       cli.py                    # `python -m router_bench` entrypoint (run / analyze / prices)
-      dispatch.py               # gh workflow run x2 (router+baseline), resolve run IDs, poll
-      harvest.py                # gh run download; parse copilot-logs JSONL + phase logs + scorecard manifests; finding taxonomy
+      dispatch.py               # gh workflow run x2 (router+baseline), resolve run IDs, poll, record run start/end windows
+      harvest.py                # gh run download (phase logs + scorecard manifests + finding taxonomy); Azure Monitor token metrics per deployment+window
+      metrics.py                # az monitor metrics list: InputTokens/OutputTokens by routed ModelName, scoped to deployment + run window (poll until stable)
       score.py                  # cost (tokens x price, split by routed model) + quality (pass/fail + KPI deltas) + verdict
       prices.py                 # maintained per-model $/1M-token table (+ provenance, last_validated); optional Retail Prices API refresh
       report.py                 # render router-bench-report.md + emit manifests
     tests/
       test_score.py
+      test_metrics.py             # routed-model token aggregation + cost math against recorded metric JSON
       test_harvest.py
       test_findings.py
     fixtures/                   # captured real artifact bundle (from a full e2e run) for deterministic tests
@@ -93,9 +95,9 @@ flowchart TD
     B -->|gh workflow run x2| C{Resolve 2 run IDs}
     C --> D[Poll both to completed in parallel; record conclusions + timing]
     D --> E[harvest.py: gh run download x2]
-    E --> F[Parse copilot-logs JSONL: usage_model + in/out tokens per turn]
     E --> G[Parse quality: per-phase conclusions + Phase 5 scorecard KPIs]
     E --> J[Collect anomalies: 400s, 429 retries, slow turns, loader-drops, tool failures]
+    D --> F[Azure Monitor: InputTokens/OutputTokens per deployment + run window, split by routed ModelName]
     F --> H[score.py: cost = sum tokens x price, split by routed model; delta vs baseline]
     G --> H
     H --> I[report.py: report.md + router-bench-manifest.json]
@@ -111,29 +113,73 @@ flowchart TD
    databaseId,event,headBranch,createdAt,status` for the newest `workflow_dispatch`
    run on the ref created after that timestamp (one per config). Retry until it
    appears (bounded).
-2. **Parallel:** dispatch both, then poll both → wall time ≈ one full run
-   (~25–35 min), not two.
-3. **Depth modes:** `smoke-paired` (~$0, ~3 min, plumbing/quality-gate parity only)
+2. **Serialized, not parallel:** because Azure Monitor token metrics have no run-id
+   dimension, the two configs are isolated by `(deployment, time window)`. If both
+   configs share a deployment, dispatch them **sequentially** so their windows don't
+   overlap. (Default baseline `gpt-5.4-mini` and candidate `model-router` are
+   *different* deployments, so those can overlap — but the orchestrator records each
+   run's start/end window regardless and only widens to serialize when the two
+   configs resolve to the **same** deployment.)
+3. **Metric window capture:** `dispatch.py` records each run's first/last
+   model-calling step timestamps (start of design phase → end of last invoked phase)
+   as the `[start,end]` passed to `metrics.py`. Pad ±2 min for metric lag.
+4. **Depth modes:** `smoke-paired` (~$0, ~3 min, plumbing/quality-gate parity only)
    and `full-paired` (~$2, the real efficiency proof). Depth just sets the `mode`
    input on both dispatches.
-4. **teardown forced:** both dispatches always pass `teardown=true` — no leaked
+5. **teardown forced:** both dispatches always pass `teardown=true` — no leaked
    Azure resources.
 
 ## 6. Scoring model
 
-### 6.1 Cost axis (deterministic)
+### 6.1 Cost axis (deterministic) — Azure Monitor metrics
 
-Per turn: `(input_tokens, output_tokens, routed_model)` from the copilot-logs JSONL.
-Cost = Σ `in × price_in[model] + out × price_out[model]`.
+> **Empirically revised 2026-06-30.** The Copilot CLI does **not** expose token
+> usage for BYO providers. Its `--output-format json` `usage` object contains only
+> `premiumRequests` (0 for BYO), `totalApiDurationMs`, `sessionDurationMs`,
+> `codeChanges`; the `copilot-logs` (`--log-level info`) and phase text logs carry
+> no token counts; and the CLI reports `model: "model-router"`, never the routed
+> sub-model. **The cost axis therefore comes from Azure Monitor, not the CLI.**
 
-`prices.py` holds a maintained `$/1M-token` table (input + output) per candidate model
-with **provenance + `last_validated`** in-file. Default static (deterministic,
-auditable). Optional `prices --refresh` cross-checks the Azure Retail Prices API.
+`harvest.py` queries **Azure Monitor metrics** on the Foundry/AOAI account for each
+run's deployment over that run's start→end window:
+
+- Metrics `InputTokens` and `OutputTokens`, aggregation `Total`.
+- Filter `ModelDeploymentName eq '<deployment>' and ModelName eq '*'`.
+- The **`ModelName`** dimension is the **routed underlying model** — distinct from
+  `ModelDeploymentName`. This is what yields the routing mix for a single
+  `model-router` deployment.
+
+Verified query (today's run window) returned the routed-model split directly:
+
+```
+ModelDeploymentName='model-router', split by ModelName:
+  InputTokens:  gpt-5.4 = 7,048,336 ; gpt-5.5 = 313,389
+  OutputTokens: gpt-5.4 =   111,473 ; gpt-5.5 =  13,201
+```
+
+Cost = Σ over routed models `in[model]×price_in[model] + out[model]×price_out[model]`.
+
+`prices.py` holds a maintained `$/1M-token` table (input + output) per model with
+**provenance + `last_validated`** in-file. Default static (deterministic, auditable).
+Optional `prices --refresh` cross-checks the Azure Retail Prices API.
+
+**Attribution caveat.** Azure Monitor token metrics have no run-id dimension, so a run
+is isolated by `(deployment, time window)`. On a **shared** CI account, two benches
+hitting the same deployment concurrently would cross-contaminate. The orchestrator
+therefore **serializes** benches on a given deployment and pads the query window to
+the run's actual first/last model-call timestamps.
+
+**RBAC.** Whoever runs the skill (CI federated identity or the human) needs
+**Monitoring Reader** on the Foundry resource. Metrics lag ≈1–3 min, so `harvest.py`
+polls the metric until it is non-zero / stable before scoring.
 
 Three reported numbers (separate routing savings from token-volume noise):
 
 1. **Actual $** — candidate total vs baseline total.
-2. **Routing mix** — % of turns and % of $ per routed model (the headline Cx story).
+2. **Routing mix** — % of tokens and % of $ per routed model (the headline Cx story).
+   Derived from the `ModelName` split; per-turn attribution is **not** available
+   (the CLI exposes no per-turn token data for BYO), so the mix is token/$-weighted,
+   not turn-weighted.
 3. **Counterfactual** — candidate's *same token volume* priced at the baseline model,
    isolating "what routing alone saved."
 
@@ -175,7 +221,11 @@ gate if wired).
     "phases": [{"name": "design", "passed": true, "wall_s": 0}],
     "tokens": {"input": 0, "output": 0},
     "cost_usd": 0.0,
-    "routed_model_mix": [{"model": "gpt-4.1-mini", "turns_pct": 0, "cost_pct": 0}]
+    "routed_model_mix": [
+      {"model": "gpt-5.4", "input": 0, "output": 0, "cost_usd": 0.0, "cost_pct": 0},
+      {"model": "gpt-5.5", "input": 0, "output": 0, "cost_usd": 0.0, "cost_pct": 0},
+      {"model": "gpt-5.4-mini", "input": 0, "output": 0, "cost_usd": 0.0, "cost_pct": 0}
+    ]
   },
   "baseline": { "label": "gpt-5.4-mini", "wire_api": "responses", "...": "..." },
   "deltas": {
@@ -255,7 +305,10 @@ output locations. Guardrails: cost/time warning before `full-paired`;
 pytest under `references/tests` (mirrors `threadlight_quickstart`):
 
 - `test_score.py` — cost math + verdict logic on fixture token data (deterministic).
-- `test_harvest.py` — JSONL/scorecard parsing against a captured real fixture bundle.
+- `test_metrics.py` — routed-model token aggregation + cost rollup against a recorded
+  `az monitor metrics list` JSON (the gpt-5.4 + gpt-5.5 split); no network.
+- `test_harvest.py` — phase-log/scorecard-manifest parsing against the captured real
+  fixture bundle (`threadlight-e2e-28437323962`).
 - `test_findings.py` — taxonomy classification on synthetic signatures (400, 429,
   loader-drop).
 
@@ -268,24 +321,40 @@ unit tests).
   resolution with timeout.
 - **Poll:** overall timeout (default 90 min) → partial report + clear error.
 - **Harvest:** if a run failed early, parse what exists; mark missing phases.
-- **Cost-axis fallback:** if per-turn token fields are absent in copilot-logs, fall
-  back to Azure Cost Management actuals scoped to each run's RG, flagged
-  "estimated". *(Verified against a real full-run artifact bundle before `score.py`
-  is written — see Open Items.)*
+- **Cost-axis (Azure Monitor):** primary source is `InputTokens`/`OutputTokens`
+  metrics split by routed `ModelName` (§6.1). Guards: (a) require **Monitoring
+  Reader** on the Foundry resource — fail fast with a clear RBAC message if the
+  metric query 403s; (b) poll the metric until non-zero / stable (≈1–3 min lag),
+  bounded; (c) if metrics are still empty after the bound, fall back to **Azure Cost
+  Management** actuals scoped to each run's RG/time-window, flagged "estimated"; (d)
+  validate against the captured real artifact bundle + a recorded metric JSON fixture
+  before `score.py` ships.
 - **Price staleness:** warn if `last_validated` older than a threshold.
 
 ## 11. Open items (resolve during implementation)
 
-1. **Cost-axis verification (blocking for `score.py`):** confirm `copilot-logs`
-   (from `--log-dir /tmp/copilot-logs --log-level info`) carries per-turn token
-   counts + the routed model name. Validate against a captured full-run artifact
-   bundle; capture that bundle as the test fixture. If absent → cost-axis fallback
-   (§10).
-2. **Routed-model visibility:** confirm model-router surfaces the chosen underlying
-   model per turn (response `model` field / `usage_model`) in the CLI logs.
-3. **Price table seeding:** initial `$/1M-token` values + source for candidate models
-   (gpt-5.4-mini and the models model-router routes to).
-4. **Skill name:** `threadlight-router-bench` is provisional.
+> **Items 1 & 2 were resolved empirically on 2026-06-30** (a full e2e run +
+> artifact-bundle inspection). Recorded here as settled findings.
+
+1. **Cost-axis source — RESOLVED.** The Copilot CLI exposes **no** token usage for
+   BYO providers (verified: `result.usage` has only `premiumRequests`/durations/
+   `codeChanges`; `copilot-logs` and phase logs carry no token counts). Cost axis
+   uses **Azure Monitor** `InputTokens`/`OutputTokens` metrics instead (§6.1). The
+   captured bundle (`threadlight-e2e-28437323962`) is the harvest/quality test
+   fixture.
+2. **Routed-model visibility — RESOLVED.** The CLI reports `model: "model-router"`
+   only. The routed underlying model comes from the Azure Monitor **`ModelName`**
+   metric dimension (verified split: gpt-5.4 + gpt-5.5 for this workload). A recorded
+   `az monitor metrics list` JSON becomes the `test_metrics.py` fixture.
+3. **Empirical routing insight (motivation, not open):** for the hard agentic e2e
+   workload model-router routed almost entirely to **gpt-5.4** (7.05M in / 111K out)
+   and **gpt-5.5** (313K in / 13K out) — **zero** to gpt-5.4-mini. So "efficiency" is
+   per-turn right-sizing (it *will* pick premium models for hard tasks), not blanket
+   savings; the bench must measure **actual $**, never assume the router is cheaper.
+4. **Price table seeding (open):** initial `$/1M-token` values + provenance for the
+   models the router actually routes to — **gpt-5.4, gpt-5.5, gpt-5.4-mini** (not the
+   earlier gpt-4.1-* placeholders) plus the baseline.
+5. **Skill name:** `threadlight-router-bench` is provisional.
 
 ## 12. Future work (explicitly deferred)
 
