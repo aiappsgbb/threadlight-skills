@@ -28,6 +28,9 @@ sys.path.insert(0, str(HERE))
 import harvest  # noqa: E402
 import findings as findings_mod  # noqa: E402
 import report  # noqa: E402
+import metrics as metrics_mod  # noqa: E402
+import prices as prices_mod  # noqa: E402
+import score as score_mod  # noqa: E402
 
 Runner = Callable[[list[str]], str]
 
@@ -80,6 +83,50 @@ def run_learn(run_id: int, repo: str = "aiappsgbb/threadlight-skills",
     return digest
 
 
+def run_bench(candidate: int, baseline: int, resource_id: str,
+              baseline_model: str = "gpt-5.4-mini",
+              candidate_deployment: str = "model-router",
+              baseline_deployment: str = "",
+              repo: str = "aiappsgbb/threadlight-skills",
+              outdir: Path | None = None, prices_path: Path | None = None,
+              gh_runner: Runner | None = None,
+              az_runner: Runner | None = None) -> dict[str, Any]:
+    """Paired cost/efficiency scorecard: model-router run vs a baseline-model run.
+
+    Token usage has no run-id dimension in Azure Monitor, so each run's metric
+    window (startedAt→updatedAt) bounds its `az monitor metrics list` query.
+    """
+    price_table = prices_mod.load_prices(prices_path)
+
+    cand_meta = harvest.fetch_view(candidate, repo=repo, runner=gh_runner)
+    cand_metrics = metrics_mod.fetch_metrics(
+        resource_id, cand_meta.get("startedAt", ""), cand_meta.get("updatedAt", ""),
+        deployment=candidate_deployment, runner=az_runner)
+    candidate_usage = metrics_mod.parse_metrics(cand_metrics)
+
+    baseline_usage: dict[str, Any] | None = None
+    if baseline_deployment:
+        base_meta = harvest.fetch_view(baseline, repo=repo, runner=gh_runner)
+        base_metrics = metrics_mod.fetch_metrics(
+            resource_id, base_meta.get("startedAt", ""), base_meta.get("updatedAt", ""),
+            deployment=baseline_deployment, runner=az_runner)
+        baseline_usage = metrics_mod.parse_metrics(base_metrics)
+
+    card = score_mod.scorecard(candidate_usage=candidate_usage,
+                               baseline_model=baseline_model, prices=price_table,
+                               baseline_usage=baseline_usage)
+    card["candidate_run"] = candidate
+    card["baseline_run"] = baseline
+
+    if outdir is not None:
+        out = Path(outdir)
+        out.mkdir(parents=True, exist_ok=True)
+        stem = f"scorecard-{candidate}-vs-{baseline}"
+        (out / f"{stem}.json").write_text(json.dumps(card, indent=2), encoding="utf-8")
+        (out / f"{stem}.md").write_text(score_mod.render_scorecard(card), encoding="utf-8")
+    return card
+
+
 def _cmd_learn(args: argparse.Namespace, runner: Runner | None) -> int:
     digest = run_learn(args.run_id, repo=args.repo, outdir=Path(args.out),
                        model_deployment=args.deployment, with_legs=args.with_legs,
@@ -91,14 +138,20 @@ def _cmd_learn(args: argparse.Namespace, runner: Runner | None) -> int:
     return 0
 
 
-def _cmd_bench(args: argparse.Namespace, runner: Runner | None) -> int:
-    # Paired scorecard lives in score.py; dispatched here once built.
-    try:
-        import score  # noqa: F401
-    except ImportError:
-        print("[router-bench] bench mode not yet available in this build.", file=sys.stderr)
-        return 1
-    return score.run_bench(args, runner=runner)  # pragma: no cover
+def _cmd_bench(args: argparse.Namespace, runner: Runner | None,
+               az_runner: Runner | None) -> int:
+    card = run_bench(
+        args.candidate, args.baseline, resource_id=args.resource,
+        baseline_model=args.baseline_model,
+        candidate_deployment=args.candidate_deployment,
+        baseline_deployment=args.baseline_deployment,
+        repo=args.repo, outdir=Path(args.out), prices_path=args.prices,
+        gh_runner=runner, az_runner=az_runner)
+    print(score_mod.render_scorecard(card))
+    print(f"\n[router-bench] wrote scorecard-{args.candidate}-vs-{args.baseline}.(json|md) "
+          f"to {args.out} — verdict={card['verdict']} delta=${card['delta_usd']}.",
+          file=sys.stderr)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -120,16 +173,27 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("baseline", type=int, help="baseline-model run id")
     bench.add_argument("--repo", default="aiappsgbb/threadlight-skills")
     bench.add_argument("--out", default="router-bench-out")
+    bench.add_argument("--resource", required=True,
+                       help="AI Services account resource id for token metrics")
+    bench.add_argument("--baseline-model", default="gpt-5.4-mini",
+                       help="model name for the counterfactual reprice")
+    bench.add_argument("--candidate-deployment", default="model-router")
+    bench.add_argument("--baseline-deployment", default="",
+                       help="if set, also fetch the baseline run's actual usage")
+    bench.add_argument("--prices", type=Path, default=None, help="price override JSON")
     bench.set_defaults(func=_cmd_bench)
     return p
 
 
-def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
+def main(argv: list[str] | None = None, runner: Runner | None = None,
+         az_runner: Runner | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code or 0)
+    if args.command == "bench":
+        return _cmd_bench(args, runner, az_runner)
     return args.func(args, runner)
 
 
