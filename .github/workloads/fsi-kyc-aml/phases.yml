@@ -1,0 +1,94 @@
+# .github/workloads/fsi-kyc-aml/phases.yml
+# Complex, regulated KYC/AML onboarding scenario. The `design` prompt is the
+# crux of the validation: it loads the agent with six hard regulatory
+# requirements (see meta.yml hard_points) that a weaker model is more likely to
+# drop or muddle. local-test/deploy/invoke mirror the returns-triage structure
+# (proven to pass CI) pointed at the kyc-aml subdir so the full e2e can complete
+# and phase parity stays comparable across arms. Substitution tokens use the
+# `${VAR}` form; agent-facing `$AZURE_*` literals stay literal.
+workload: fsi-kyc-aml
+phases:
+  design:
+    prompt: |
+      Use the threadlight-design skill in Fast-PoC mode to design a regulated
+      KYC/AML customer-onboarding process in ${E2E_WORKSPACE}/kyc-aml. Consult
+      the FSI KYC/AML domain primer. The design MUST explicitly address all of:
+        - the AML 5-7 year record-retention requirement vs the GDPR right to
+          erasure (reconcile the tension, do not ignore it);
+        - beneficial ownership: identify all >=25% owners (10% for high-risk EU
+          states) including nested entity-owns-entity ownership;
+        - SAR filing within 30 days WITH the tipping-off prohibition (the
+          customer must never be notified of a SAR);
+        - CTR filing for cash >= $10,000 AND structuring detection for split
+          transactions under the threshold;
+        - EDD escalation for high-risk customers with a senior-approval gate;
+        - distinct US (BSA/FinCEN) and EU (AMLD) thresholds (do not hard-code one).
+      Produce specs/SPEC.md, AGENTS.md, specs/sample-data/*.json, and
+      tests/killer-prompts.md (>=2 prompts that probe the hard requirements).
+    gates:
+      - "specs/SPEC.md exists and mentions 'KYC' or 'AML'"
+      - "AGENTS.md exists"
+      - "specs/sample-data/ contains a non-empty JSON file (>10 bytes)"
+      - "tests/killer-prompts.md exists with at least 2 prompts"
+  local-test:
+    prompt: |
+      Use the threadlight-local-test skill to set up Pattern 0 quickstart for ${E2E_WORKSPACE}/kyc-aml. This is CI running non-interactively.
+
+      Use these settings (do NOT ask):
+        - LLM_BACKEND=aoai
+        - AZURE_OPENAI_ENDPOINT=${AZURE_AI_ENDPOINT}
+        - AZURE_OPENAI_DEPLOYMENT=${MODEL_DEPLOYMENT}
+
+      The threadlight_quickstart Python package is ALREADY pip-installed system-wide in CI — do NOT pip install it again.
+
+      Steps:
+        1. Write .env.local into ${E2E_WORKSPACE}/kyc-aml with the three keys above (LLM_BACKEND, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT).
+        2. Run: python -m threadlight_quickstart --info --root ${E2E_WORKSPACE}/kyc-aml
+        3. Run: python -m threadlight_quickstart --check --root ${E2E_WORKSPACE}/kyc-aml
+        4. Show me the full stdout of both commands.
+
+      Do NOT launch streamlit. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents. If --check exits non-zero, stop and surface the error verbatim.
+    gates: []
+  deploy:
+    prompt: |
+      Deploy the KYC/AML pilot in ${E2E_WORKSPACE}/kyc-aml to Azure. This is CI running non-interactively; do NOT pause for confirmation prompts.
+
+      In ${E2E_WORKSPACE}/kyc-aml, install the azd ai agent extension (already installed system-wide in this runner — harmless to re-run). Then create a new azd environment named ci-${GITHUB_RUN_ID} and set these env values (read from the shell env vars I've exported for you):
+        - azd env set AZURE_LOCATION "$AZURE_LOCATION"
+        - azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+        - azd env set AZUREAI_ACCOUNT_NAME "$AZUREAI_ACCOUNT_NAME"
+        - azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+        - azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
+      (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${GITHUB_RUN_ID}` and continue with the `azd env set` calls.)
+
+      Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${E2E_TENANT_ALIAS}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+
+      Posture is `demo-sandbox` for this CI run (throwaway RG, public ingress, 90d retention, no Defender, no DR, single replica). The pre-Phase-3 workflow step has already pre-created `${E2E_WORKSPACE}/kyc-aml/specs/deployment-posture.md` with `deployment_target: demo-sandbox` and `source: provided`. threadlight-deploy Phase 1.5 MUST detect this existing posture file and take Path 1 silently — do NOT ask the operator any posture questions and do NOT overwrite the file with a fresh interactive prompt.
+
+      Do the work YOURSELF — no background sub-agents. Do NOT 'git init'. Skip docs/verify.md SHA tracking (no git context).
+
+      Final state required:
+        - ${E2E_WORKSPACE}/kyc-aml/azure.yaml, infra/, src/, .azure/ all exist
+        - ${E2E_WORKSPACE}/kyc-aml/specs/deployment-posture.md exists with `deployment_target: demo-sandbox`
+        - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
+
+      If anything fails that you cannot auto-recover from, stop and surface the exact error.
+    gates: []
+  invoke:
+    prompt: |
+      Invoke at least 2 killer prompts from ${E2E_WORKSPACE}/kyc-aml/tests/killer-prompts.md against the deployed KYC/AML agent. Use the Invocations protocol against the cloud agent, not local Pattern 0.
+
+      For each prompt, capture the actual command and the agent's actual response to a transcript file BEFORE writing any summary doc:
+        - First prompt's raw output: tee to /tmp/phase-invoke-transcript-1.txt
+        - Second prompt's raw output: tee to /tmp/phase-invoke-transcript-2.txt
+      Use 'tee' (or shell redirection equivalent) — these files must contain the live transcript of the actual invocation command + actual response, not a rewritten summary.
+
+      Then save a summary to ${E2E_WORKSPACE}/kyc-aml/docs/invoke-results.md with for each prompt: (a) the prompt text, (b) the agent's final response, (c) the trace of tool calls fired (which list_/get_/update_ tools the agent invoked).
+
+      Final state required:
+        - /tmp/phase-invoke-transcript-1.txt exists and is non-empty
+        - /tmp/phase-invoke-transcript-2.txt exists and is non-empty
+        - ${E2E_WORKSPACE}/kyc-aml/docs/invoke-results.md exists with at least 2 sections
+
+      Do NOT fabricate transcripts. Do NOT write "I was unable to invoke" or "would have invoked" — if invocation truly fails, stop and surface the exact error instead. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents.
+    gates: []

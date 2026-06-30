@@ -1,0 +1,101 @@
+# .github/workloads/returns-triage/phases.yml
+# Today's simple retail returns-triage gate, lifted VERBATIM from the inline
+# heredoc prompts in .github/workflows/threadlight-e2e-foundry.yml. The only
+# change is the interpolation tokens: GitHub Actions `${{ ... }}` expressions
+# are rewritten as shell-style `${VAR}` placeholders that the workflow's pack
+# extractor substitutes at run time. Agent-facing literals like `$AZURE_LOCATION`
+# (which the agent reads from the shell env itself) are intentionally left as
+# `$VAR` and MUST NOT be in the extractor's substitution allowlist.
+workload: returns-triage
+phases:
+  design:
+    prompt: |
+      Use the threadlight-design skill in Fast-PoC mode to design a retail returns-triage process in ${E2E_WORKSPACE}/returns-triage. This is workshop quickstart §4.2 running non-interactively in CI.
+
+      Here are the answers to the Fast-PoC interview questions — do NOT ask follow-up questions; treat the below as the completed Fast-PoC interview:
+        - customer: Contoso Retail
+        - industry / vertical: retail
+        - process: returns-triage
+        - participants: customer-service agent (human), returns supervisor (human), the AI assistant
+        - upstream systems: order-management system, returns-database, customer-profile service (use stub tools — sample data only)
+        - entities: at minimum 'orders' and 'returns' (each with id, customer_id, status, plus a few representative fields); add a 'customers' entity if it helps; populate sample-data with at least 3 records per entity
+        - actions / branches: at minimum approve_refund, deny_refund, escalate_to_supervisor; add request_more_info if useful
+        - runtime: Pattern 0 local (threadlight_quickstart) for §4.3 plus Foundry hosted agent for §6.2-6.4
+
+      Final state required:
+        - ${E2E_WORKSPACE}/returns-triage/specs/SPEC.md exists and mentions 'returns'
+        - ${E2E_WORKSPACE}/returns-triage/AGENTS.md exists
+        - ${E2E_WORKSPACE}/returns-triage/specs/sample-data/ contains at least one non-empty JSON file (>10 bytes)
+        - ${E2E_WORKSPACE}/returns-triage/tests/killer-prompts.md exists with at least 2 prompts
+
+      Skip browser previews of any generated demo or sales-kit HTML — do not attempt to install Playwright. Do NOT run 'git init' or 'git commit' on the workspace — it's a /tmp throwaway. Do the work YOURSELF in this session — do NOT delegate to background sub-agents or general-purpose Task tools. If anything fails, stop and surface the exact error.
+    gates:
+      - "specs/SPEC.md exists and mentions 'returns'"
+      - "AGENTS.md exists"
+      - "specs/sample-data/ contains a non-empty JSON file (>10 bytes)"
+      - "tests/killer-prompts.md exists with at least 2 prompts"
+  local-test:
+    prompt: |
+      Use the threadlight-local-test skill to set up Pattern 0 quickstart for ${E2E_WORKSPACE}/returns-triage. This is workshop quickstart §4.3 running non-interactively in CI.
+
+      Use these settings (do NOT ask):
+        - LLM_BACKEND=aoai
+        - AZURE_OPENAI_ENDPOINT=${AZURE_AI_ENDPOINT}
+        - AZURE_OPENAI_DEPLOYMENT=${MODEL_DEPLOYMENT}
+
+      The threadlight_quickstart Python package is ALREADY pip-installed system-wide in CI — do NOT pip install it again.
+
+      Steps:
+        1. Write .env.local into ${E2E_WORKSPACE}/returns-triage with the three keys above (LLM_BACKEND, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT).
+        2. Run: python -m threadlight_quickstart --info --root ${E2E_WORKSPACE}/returns-triage
+        3. Run: python -m threadlight_quickstart --check --root ${E2E_WORKSPACE}/returns-triage
+        4. Show me the full stdout of both commands.
+
+      Do NOT launch streamlit. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents. If --check exits non-zero, stop and surface the error verbatim.
+    gates: []
+  deploy:
+    prompt: |
+      Workshop quickstart §6.2 + §6.3 — deploy the returns-triage pilot in ${E2E_WORKSPACE}/returns-triage to Azure. This is CI running non-interactively; do NOT pause for confirmation prompts.
+
+      Mirror the workshop §6.2 + §6.3 prompts exactly:
+
+      §6.2: In ${E2E_WORKSPACE}/returns-triage, install the azd ai agent extension (already installed system-wide in this runner — harmless to re-run). Then create a new azd environment named ci-${GITHUB_RUN_ID} and set these env values (read from the shell env vars I've exported for you):
+        - azd env set AZURE_LOCATION "$AZURE_LOCATION"
+        - azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+        - azd env set AZUREAI_ACCOUNT_NAME "$AZUREAI_ACCOUNT_NAME"
+        - azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+        - azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
+      (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${GITHUB_RUN_ID}` and continue with the `azd env set` calls.)
+
+      §6.3: Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${E2E_TENANT_ALIAS}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+
+      Posture is `demo-sandbox` for this CI run (throwaway RG, public ingress, 90d retention, no Defender, no DR, single replica). The pre-Phase-3 workflow step has already pre-created `${E2E_WORKSPACE}/returns-triage/specs/deployment-posture.md` with `deployment_target: demo-sandbox` and `source: provided`. threadlight-deploy Phase 1.5 MUST detect this existing posture file and take Path 1 silently — do NOT ask the operator any posture questions and do NOT overwrite the file with a fresh interactive prompt. If you find yourself about to ask "What kind of deployment is the target subscription expecting?", stop: the answer is already on disk.
+
+      Do the work YOURSELF — no background sub-agents. Do NOT 'git init'. Skip docs/verify.md SHA tracking (no git context).
+
+      Final state required:
+        - ${E2E_WORKSPACE}/returns-triage/azure.yaml, infra/, src/, .azure/ all exist
+        - ${E2E_WORKSPACE}/returns-triage/specs/deployment-posture.md exists with `deployment_target: demo-sandbox`
+        - 'azd ai agent show' (or equivalent) returns the deployed agent in an active state
+        - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
+
+      If anything fails that you cannot auto-recover from, stop and surface the exact error.
+    gates: []
+  invoke:
+    prompt: |
+      Workshop quickstart §6.4 — invoke at least 2 killer prompts from ${E2E_WORKSPACE}/returns-triage/tests/killer-prompts.md against the deployed returns-triage agent. Use the same surface the workshop documents (Invocations protocol against the cloud agent), not local Pattern 0.
+
+      For each prompt, capture the actual command and the agent's actual response to a transcript file BEFORE writing any summary doc:
+        - First prompt's raw output: tee to /tmp/phase-invoke-transcript-1.txt
+        - Second prompt's raw output: tee to /tmp/phase-invoke-transcript-2.txt
+      Use 'tee' (or shell redirection equivalent) — these files must contain the live transcript of the actual invocation command + actual response, not a rewritten summary.
+
+      Then save a summary to ${E2E_WORKSPACE}/returns-triage/docs/invoke-results.md with for each prompt: (a) the prompt text, (b) the agent's final response, (c) the trace of tool calls fired (which list_/get_/update_ tools the agent invoked).
+
+      Final state required:
+        - /tmp/phase-invoke-transcript-1.txt exists and is non-empty
+        - /tmp/phase-invoke-transcript-2.txt exists and is non-empty
+        - ${E2E_WORKSPACE}/returns-triage/docs/invoke-results.md exists with at least 2 sections
+
+      Do NOT fabricate transcripts. Do NOT write "I was unable to invoke" or "would have invoked" — if invocation truly fails, stop and surface the exact error instead. Do NOT 'git init'. Do the work YOURSELF — no background sub-agents.
+    gates: []
