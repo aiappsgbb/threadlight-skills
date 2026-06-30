@@ -11,10 +11,10 @@ description: >-
   run vs a baseline model (gpt-5.4-mini) from Azure Monitor token metrics. USE
   FOR: learn from CI run, self-improving cold-path,
   inspect GHCP logs, CI failure taxonomy, why did my e2e fail, router efficiency,
-  model-router cost, token cost vs baseline, quality and cost scorecard,
-  learnings digest, run retro. DO NOT USE FOR: dispatching or fixing the e2e
-  workflow — use threadlight-cicd; running evals/redteam/govern legs — use those
-  skills; live agent runtime monitoring.
+  model-router cost, token cost vs baseline, cost scorecard,
+  learnings digest, run retro, router quality matrix. DO NOT USE FOR: dispatching
+  or fixing the e2e workflow — use threadlight-cicd; running
+  evals/redteam/govern legs — use those skills; live agent runtime monitoring.
 metadata:
   version: "0.1.0"
 ---
@@ -37,16 +37,18 @@ cost/quality scorecard of model-router vs a standard baseline.
 > This skill does both **offline**, from runs that already happened, so you are
 > never forced to run pairs of jobs just to learn something.
 
-## Two independent modes
+## Three independent modes
 
 | Mode | Command | Needs a baseline? | Output |
 |---|---|---|---|
 | **learn** (primary) | `learn <run_id>` | **No** — any single run | `learnings-<run_id>.json` + `.md` |
 | **bench** (optional) | `bench <cand> <base>` | Yes — paired runs | `scorecard-<cand>-vs-<base>.json` + `.md` |
+| **validate** (optional) | `validate --dispatch` / `--ingest <manifest>` | No — runs its own 3-arm matrix | `router-validation.json` + `.md` |
 
 `learn` is the self-improvement cold-path the team actually asked for: point it at
-**one** run and it tells you what to fix or keep. `bench` is the customer-facing
-efficiency proof; reach for it only when you specifically want $ figures.
+**one** run and it tells you what to fix or keep. `bench` and `validate` are the
+heavier optional paths; `bench` is the customer-facing efficiency proof, and
+`validate` is the controlled quality matrix.
 
 ---
 
@@ -147,6 +149,84 @@ verdict.
 Prices in `scripts/prices.py` are **seed values for relative reasoning, not
 billing truth** — override with a current Azure price export for real figures.
 
+## Mode 3 — `validate` (router quality matrix, optional)
+
+Tests the hypothesis that `gpt-5.4-mini` "keeps up" on a simple workload but
+a complex workload needs the model-router to recover quality — via a controlled
+6-run matrix (3 arms × 2 workloads).
+
+### Infra prerequisites
+
+```bash
+# Stand up the gpt-5.4 strong-arm deployment (idempotent):
+bash scripts/ci/foundry-strong-arm.sh
+
+# Snapshot the model-router subset, then pin it to {gpt-5.4, gpt-5.4-mini}:
+bash scripts/ci/router-subset.sh record
+bash scripts/ci/router-subset.sh set
+```
+
+> **Restore is a guardrail.** `bash scripts/ci/router-subset.sh restore` MUST
+> run when the matrix finishes — or on any failure. The shared router must be
+> put back exactly as found. See Guardrails below.
+
+### Running the matrix
+
+```bash
+# Dispatch a fresh 6-run matrix (one wave per workload, runs in background):
+python skills/threadlight-router-bench/scripts/router_bench.py validate \
+  --dispatch \
+  --workloads returns-triage fsi-kyc-aml \
+  --ref unsafecode-automatic-fiesta \
+  --repo aiappsgbb/threadlight-skills \
+  --resource "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<acct>" \
+  --out router-validation-out
+
+# After runs complete, score the manifest:
+python skills/threadlight-router-bench/scripts/router_bench.py validate \
+  --ingest router-validation-out/matrix-manifest.json \
+  --resource "/subscriptions/<sub>/resourceGroups/<rg>/providers/..." \
+  --out router-validation-out
+```
+
+### Arms, workloads, and 2-wave orchestration
+
+| Arm | Deployment | Wire API |
+|---|---|---|
+| `mini` (baseline) | `gpt-5.4-mini` | `responses` |
+| `router` | `model-router` (subset: gpt-5.4, gpt-5.4-mini) | `completions` |
+| `strong` (quality ceiling) | `gpt-5.4` | `responses` |
+
+Workloads: `returns-triage` (simple) and `fsi-kyc-aml` (complex), defined as
+packs under `.github/workloads/<name>/{phases,rubric,meta}.yml`.
+
+Runs dispatch in **waves** — one wave per workload; within a wave every cell
+targets a distinct model deployment, so Azure Monitor token metrics don't bleed
+across arms (metrics carry no run-id dimension).
+
+### Scoring axes
+
+Each cell is scored on 4 axes: **phases_ok** (phase parity), **rubric**
+(keyword-rubric score over produced artifacts), **rounds** (agent turns), and
+**cost** ($).
+
+### Verdict thresholds
+
+An arm `keeps-up` iff `phases_ok AND rubric ≥ 0.8 AND rounds ≤ 1.5 × strong_rounds`;
+otherwise `falls-behind` (with reasons listed). The router additionally gets a
+three-way verdict: `closes-the-gap` / `not-worth-it` / `mixed`.
+
+> **n=1 caveat.** Each matrix is a single sample per cell. Treat close cells
+> (rubric near 0.8 or rounds near 1.5×) as inconclusive and re-run before acting.
+
+### Restore infra
+
+```bash
+bash scripts/ci/router-subset.sh restore   # MUST run — even on failure
+```
+
+---
+
 ## Guardrails
 
 - **completions wire API** for model-router e2e runs — the `responses` wire
@@ -156,6 +236,11 @@ billing truth** — override with a current Azure price export for real figures.
   shared deployment and rely on the time window for attribution.
 - **Teardown stays forced** in the e2e workflow; this skill only *reads* finished
   runs — it never provisions or deletes Azure resources.
+- **`validate` MUTATES shared infra** — it creates the `gpt-5.4` strong-arm
+  deployment and repins the model-router subset to `{gpt-5.4, gpt-5.4-mini}`.
+  Always run `bash scripts/ci/router-subset.sh restore` afterward (even on
+  failure). `learn` and `bench` are read-only; only `validate` touches live
+  deployments.
 - Stdlib-only Python; tests run under the repo's `python-pytest.yml`
   (`actions/setup-python` 3.13).
 
@@ -165,6 +250,7 @@ billing truth** — override with a current Azure price export for real figures.
 |---|---|---|
 | `learnings-<run_id>.json` / `.md` | `threadlight-router-learnings/v1` | learn |
 | `scorecard-<cand>-vs-<base>.json` / `.md` | `threadlight-router-scorecard/v1` | bench |
+| `router-validation.json` / `.md` | `threadlight-router-validation/v1` | validate |
 
 ## Layout
 
@@ -172,13 +258,17 @@ billing truth** — override with a current Azure price export for real figures.
 skills/threadlight-router-bench/
   SKILL.md
   scripts/
-    router_bench.py     # CLI dispatcher: learn (primary) + bench
+    router_bench.py     # CLI dispatcher: learn (primary) + bench + validate
     harvest.py          # gh run metadata, phase parity, leg manifests, --log-failed
     findings.py         # ordered taxonomy, message-scoped, category dedup
     report.py           # learnings/v1 digest + Markdown
     prices.py           # seed $/1M token table (+ override)
     metrics.py          # az monitor metrics parse (lowercase dims)
-    score.py            # cost rollup + counterfactual scorecard
+    score.py            # cost rollup + counterfactual scorecard + validation_scorecard
+    matrix.py           # 3-arm × N-workload matrix orchestrator, 2-wave dispatch
+    rubric.py           # keyword-rubric scorer over PoC artifacts (phases/rubric/meta)
   references/fixtures/  # real-log + az-metrics + leg-manifest fixtures
   tests/                # pytest, stdlib-only
+# Workload packs (phases, rubric, meta) live at:
+#   .github/workloads/<name>/{phases,rubric,meta}.yml
 ```
