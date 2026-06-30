@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable
 
 Runner = Callable[[list[str]], str]
+Sleeper = Callable[[float], None]
 WORKFLOW = "threadlight-e2e-foundry.yml"
 
 
@@ -34,45 +35,71 @@ def plan_waves(workloads: list[str],
     return waves
 
 
-def _latest_run_id(runner: Runner, repo: str, ref: str) -> int | None:
+def _list_runs(runner: Runner, repo: str, ref: str,
+               limit: int = 30) -> list[dict[str, Any]]:
     out = runner(["run", "list", "--workflow", WORKFLOW, "--repo", repo,
-                  "--branch", ref, "--limit", "1",
+                  "--branch", ref, "--limit", str(limit),
                   "--json", "databaseId,createdAt"])
-    rows = json.loads(out or "[]")
-    return rows[0]["databaseId"] if rows else None
+    return json.loads(out or "[]")
 
 
-def _dispatch_cell(runner: Runner, cell: dict[str, Any], repo: str,
-                   ref: str) -> dict[str, Any]:
+def _await_new_run(runner: Runner, repo: str, ref: str,
+                   before: set[int], *, timeout: float, interval: float,
+                   sleeper: Sleeper) -> int | None:
+    """Poll the run list until a run id not in `before` appears; return the
+    newest such id, or None on timeout. Snapshotting `before` avoids returning
+    a stale/previous run id when a cell's run has not yet been listed."""
+    waited = 0.0
+    while True:
+        fresh = [r for r in _list_runs(runner, repo, ref)
+                 if r.get("databaseId") not in before]
+        if fresh:
+            fresh.sort(key=lambda r: r.get("createdAt", ""), reverse=True)
+            return fresh[0]["databaseId"]
+        if waited >= timeout:
+            return None
+        sleeper(interval)
+        waited += interval
+
+
+def _dispatch_cell(runner: Runner, cell: dict[str, Any], repo: str, ref: str,
+                   *, timeout: float, interval: float,
+                   sleeper: Sleeper) -> dict[str, Any]:
+    before = {r.get("databaseId") for r in _list_runs(runner, repo, ref)}
     runner(["workflow", "run", WORKFLOW, "--repo", repo, "--ref", ref,
             "-f", f"model_deployment={cell['model_deployment']}",
             "-f", f"wire_api={cell['wire_api']}",
             "-f", f"workload={cell['workload']}",
             "-f", "mode=full", "-f", "teardown=true"])
-    time.sleep(0)  # dispatch returns no id; caller polls run list
-    run_id = _latest_run_id(runner, repo, ref)
+    run_id = _await_new_run(runner, repo, ref, before, timeout=timeout,
+                            interval=interval, sleeper=sleeper)
     return {**cell, "run_id": run_id}
 
 
 def dispatch_matrix(workloads: list[str], arms: list[dict[str, Any]], *,
                     repo: str, ref: str, runner: Runner | None = None,
-                    poll: bool = True,
-                    poll_interval: int = 60) -> list[dict[str, Any]]:
+                    poll: bool = True, poll_interval: int = 60,
+                    settle_timeout: float = 180, settle_interval: float = 5,
+                    sleeper: Sleeper = time.sleep) -> list[dict[str, Any]]:
     runner = runner or _default_runner
     cells: list[dict[str, Any]] = []
     for wave in plan_waves(workloads, arms):
-        wave_cells = [_dispatch_cell(runner, c, repo, ref) for c in wave]
+        wave_cells = [_dispatch_cell(runner, c, repo, ref,
+                                     timeout=settle_timeout,
+                                     interval=settle_interval, sleeper=sleeper)
+                      for c in wave]
         if poll:
-            _wait_for_wave(runner, wave_cells, repo, poll_interval)
+            _wait_for_wave(runner, wave_cells, repo, poll_interval,
+                           sleeper=sleeper)
         cells.extend(wave_cells)
     return cells
 
 
 def _wait_for_wave(runner: Runner, cells: list[dict[str, Any]], repo: str,
-                   interval: int) -> None:
+                   interval: float, *, sleeper: Sleeper = time.sleep) -> None:
     pending = {c["run_id"] for c in cells if c.get("run_id")}
     while pending:
-        time.sleep(interval)
+        sleeper(interval)
         done = set()
         for rid in pending:
             out = runner(["run", "view", str(rid), "--repo", repo,
