@@ -1,0 +1,60 @@
+from __future__ import annotations
+import json
+import sys
+from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+import router_bench  # noqa: E402
+
+RUN = 28435017341
+META = {"databaseId": RUN, "conclusion": "failure", "headBranch": "topic",
+        "displayTitle": "router e2e", "status": "completed",
+        "startedAt": "2026-06-30T10:21:05Z", "updatedAt": "2026-06-30T11:05:04Z"}
+JOBS = {"jobs": [{"name": "e2e", "conclusion": "failure", "steps": [
+    {"name": "Install threadlight_quickstart [aoai]", "conclusion": "failure", "number": 1},
+    {"name": "[Phase 1/4] design", "conclusion": "skipped", "number": 2},
+]}]}
+# two real-shaped failure lines: a dependency resolution + a rate limit
+LOG = ("e2e\tInstall\t2026-06-30T10:22:00Z ERROR: ResolutionImpossible: agent-framework\n"
+       "e2e\tInvoke\t2026-06-30T10:30:00Z CAPIError: exceeded rate limit, retry after 60s\n")
+
+
+def _fake_runner(args):
+    if "--json" in args and "jobs" in args:
+        return json.dumps(JOBS)
+    if "--json" in args:
+        return json.dumps(META)
+    if "--log-failed" in args or "--log" in args:
+        return LOG
+    raise AssertionError(f"unexpected gh args: {args}")
+
+
+def test_run_learn_end_to_end(tmp_path):
+    digest = router_bench.run_learn(RUN, repo="o/r", outdir=tmp_path,
+                                    model_deployment="model-router",
+                                    runner=_fake_runner)
+    assert digest["run_id"] == RUN
+    assert digest["conclusion"] == "failure"
+    cats = {f["category"] for f in digest["findings"]}
+    assert "dependency" in cats and "rate_limit" in cats
+    assert digest["phase_parity"]["install"] == "failure"
+    assert digest["window"]["start"] == "2026-06-30T10:21:05Z"
+    # artifacts written
+    assert (tmp_path / f"learnings-{RUN}.json").exists()
+    assert (tmp_path / f"learnings-{RUN}.md").exists()
+    written = json.loads((tmp_path / f"learnings-{RUN}.json").read_text())
+    assert written["schema"] == "threadlight-router-learnings/v1"
+
+
+def test_cli_learn_writes_outputs(tmp_path, capsys):
+    rc = router_bench.main(["learn", str(RUN), "--repo", "o/r",
+                            "--out", str(tmp_path), "--deployment", "model-router"],
+                           runner=_fake_runner)
+    assert rc == 0
+    assert (tmp_path / f"learnings-{RUN}.md").exists()
+
+
+def test_cli_unknown_command_errors():
+    assert router_bench.main(["bogus"], runner=_fake_runner) == 2

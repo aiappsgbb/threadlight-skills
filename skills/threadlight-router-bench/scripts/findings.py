@@ -67,23 +67,31 @@ def _message(line: str) -> str:
 
 
 def scan_lines(lines: list[str], run_id: int, phase: str,
-               source: str = "") -> list[dict[str, Any]]:
-    """Classify lines, skipping noise, deduped by category (with count + first evidence)."""
+               source: str = "", allow: set[str] | None = None) -> list[dict[str, Any]]:
+    """Classify lines, deduped by category (with count + first evidence).
+
+    Classification runs on the MESSAGE only — the gh `<job>\\t<step>\\t<ts>` prefix
+    is stripped first so step names like "threadlight-deploy + azd up" can't leak a
+    match. `allow`, when given, restricts emitted categories (green-run warnings-only).
+    """
     order: list[str] = []
     agg: dict[str, dict[str, Any]] = {}
     for i, line in enumerate(lines, start=1):
         if is_noise(line):
             continue
-        hit = classify_line(line)
+        message = _message(line)
+        hit = classify_line(message)
         if hit is None:
             continue
         category, severity = hit
+        if allow is not None and category not in allow:
+            continue
         if category not in agg:
             order.append(category)
             agg[category] = {"category": category, "severity": severity,
                              "run_id": run_id, "phase": phase, "count": 0,
                              "evidence": {"file": source, "line": i,
-                                          "excerpt": _message(line)[:200]}}
+                                          "excerpt": message[:200]}}
         agg[category]["count"] += 1
     out: list[dict[str, Any]] = []
     for n, category in enumerate(order, start=1):

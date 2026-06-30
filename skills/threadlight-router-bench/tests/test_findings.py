@@ -58,3 +58,26 @@ def test_scan_filters_echoed_grep_detector():
     # a SUCCESS-run line that lists error tokens inside the workflow's own detector
     lines = ['\x1b[36;1m  if ! tail -200 "$LOG" | grep -qE "CAPIError|429|exceeded rate limit"; then']
     assert findings.scan_lines(lines, run_id=1, phase="smoke") == []
+
+
+def test_step_name_column_does_not_leak_into_classification():
+    # Real green-run FP: the step NAME column ("threadlight-deploy + azd up") combined with
+    # an innocuous message ("...fails...") matched the deploy rule. Only the MESSAGE must classify.
+    line = ("e2e\t[Phase 3/4] Drive 6.2 - threadlight-deploy + azd up\t"
+            "2026-06-30T10:30:00Z If anything fails that you cannot auto-recover from, stop.")
+    assert findings.scan_lines([line], run_id=1, phase="deploy") == []
+
+
+def test_allow_list_restricts_categories_for_green_runs():
+    # Green-run warnings-only pass: a high-sev dependency line must be suppressed,
+    # but a low-sev retry line still surfaces.
+    lines = [
+        "2026Z ERROR: ResolutionImpossible: conflicting dependencies",
+        "2026Z Retrying... attempt 2",
+    ]
+    got = findings.scan_lines(lines, run_id=9, phase="all-steps",
+                              allow={"retry", "slow_turn", "router_fallback"})
+    cats = {f["category"] for f in got}
+    assert cats == {"retry"}
+    assert got[0]["id"] == "F-9-001"
+
