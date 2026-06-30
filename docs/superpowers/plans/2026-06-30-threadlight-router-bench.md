@@ -10,6 +10,47 @@
 
 ---
 
+## ⚠️ As-built addendum (2026-06-30) — this plan was superseded during execution
+
+This plan was written **before** a manual validation run against real CI logs. The
+build that actually shipped (commits `9b4eebb`→`b7e8fcb`) differs from the tasks
+below in three ways that matter. The shipped **SKILL.md is the source of truth**;
+read it first. The task bodies below are retained for historical context.
+
+1. **Two independent modes replace `run`/`analyze`.**
+   - `learn <run_id>` — single-run learnings digest (`threadlight-router-learnings/v1`).
+     **PRIMARY.** Works on **any one run**, green or red — no baseline, no paired
+     dispatch. This is the self-improvement cold-path the team asked for: you are
+     never forced to run pairs of jobs just to learn something.
+   - `bench <candidate> <baseline>` — the optional paired cost/efficiency scorecard
+     (`threadlight-router-scorecard/v1`), unchanged in spirit from the old `run`/`analyze`.
+   - `dispatch.py` was **not** built as a separate module — `learn`/`bench` read
+     already-finished runs; the e2e workflow is dispatched by hand / `threadlight-cicd`.
+
+2. **Findings precision rules (empirically validated, NOT in the original taxonomy task).**
+   - Primary log source is `gh run view <id> --log-failed` (failing steps only) →
+     100% precision on real failures `28435017341` + `28389162228`. A naive full
+     `--log` scan of the green run `28437323962` was **10/10 false positives**.
+   - Classify the **message only** — strip the `gh` `<job>\t<step>` prefix first, or
+     a step name like `threadlight-deploy + azd up` manufactures a `deploy` finding.
+   - Drop command-echo (`[36;1m` token) + `##[group]`/`##[command]`; do **not** strip
+     copilot glyphs `● │ └` (real signal in failing-step scope).
+   - **Green runs are warnings-only** (`retry`/`slow_turn`/`router_fallback`); a success
+     emits zero high/medium findings.
+   - Dedup is **by category** with a `count` + first evidence (the original task deduped
+     by signature).
+
+3. **Taxonomy gained two categories** validated against real logs: `dependency` (high —
+   the agent-framework 1.4 drift that forced the CI hotfix) and `model_unavailable`
+   (high — `transient API error`). Order matters: `rate_limit` precedes
+   `model_unavailable`. Full ordered list is in SKILL.md.
+
+Also shipped beyond the original plan: a `Run threadlight-router-bench tests` step in
+`.github/workflows/python-pytest.yml`, and SKILL.md `description` kept ≤1024 chars to
+satisfy `scripts/ci/check-skill-description-length.py` (silent-loader-drop guard).
+
+---
+
 ## Repo conventions (this plan follows them, correcting the spec's `references/router_bench/` sketch)
 
 The spec §4 sketched a `references/router_bench/__init__.py` package invoked via `python -m router_bench`. The established repo convention (see `threadlight-consumption-iq`, `threadlight-evals`) is different and is what this plan uses:
