@@ -45,7 +45,8 @@ def _check_passes(text: str, check: dict[str, Any]) -> bool:
         return all(s.lower() in text for s in check["all_of"])
     if "any_of" in check:
         return any(s.lower() in text for s in check["any_of"])
-    return False
+    raise ValueError(f"Unknown check strategy in {check!r}; "
+                     f"expected one of contains/regex/all_of/any_of")
 
 
 def score_rubric(target: Path, rubric: dict[str, Any]) -> dict[str, Any]:
@@ -66,5 +67,7 @@ def score_rubric(target: Path, rubric: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_rubric(path: Path) -> dict[str, Any]:
+    # Lazy import: keeps the core score_rubric path dependency-free; pyyaml is
+    # only needed to load a rubric from disk (CI installs it).
     import yaml
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))

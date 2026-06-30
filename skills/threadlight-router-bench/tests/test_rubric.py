@@ -31,6 +31,12 @@ def test_bad_spec_fails_specific_checks():
     assert {"tipping-off", "retention-tension", "structuring-ctr"} <= failed
     assert res["score"] < 0.6
 
+def test_unknown_strategy_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        rubric.score_rubric(FIX / "kyc-spec-good.md",
+                            {"checks": [{"id": "x", "weight": 1, "contain": "typo"}]})
+
 def test_score_rubric_accepts_dir(tmp_path):
     (tmp_path / "specs").mkdir()
     (tmp_path / "specs" / "SPEC.md").write_text("tipping-off prohibited", encoding="utf-8")
