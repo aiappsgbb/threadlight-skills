@@ -31,6 +31,8 @@ import report  # noqa: E402
 import metrics as metrics_mod  # noqa: E402
 import prices as prices_mod  # noqa: E402
 import score as score_mod  # noqa: E402
+import rubric as rubric_mod  # noqa: E402
+import matrix as matrix_mod  # noqa: E402
 
 Runner = Callable[[list[str]], str]
 
@@ -127,6 +129,77 @@ def run_bench(candidate: int, baseline: int, resource_id: str,
     return card
 
 
+def _score_cell(cell: dict[str, Any], repo: str = "aiappsgbb/threadlight-skills",
+                resource_id: str | None = None, runner: Runner | None = None,
+                az_runner: Runner | None = None) -> dict[str, Any]:
+    """Harvest one matrix cell into scorecard-arm shape. Network-bound; stubbed in tests."""
+    import tempfile
+    run_id = cell["run_id"]
+    jobs = harvest.fetch_jobs(run_id, repo, runner=runner)
+    phases = harvest.parse_phase_parity(jobs)
+    phases_ok = all(v == "success" for v in phases.values())
+    with tempfile.TemporaryDirectory() as td:
+        bundle = Path(td)
+        harvest.download_run(run_id, bundle, runner=runner)
+        phase_logs = list(bundle.rglob("phase-*.log"))
+        rounds = harvest.count_rounds(phase_logs)["total"]
+        specs = harvest.find_specs_dir(bundle)
+        rubric_doc = cell.get("_rubric") or {"checks": []}
+        rubric_res = rubric_mod.score_rubric(specs or bundle, rubric_doc)
+    cost = cell.get("_cost_usd", 0.0)
+    if resource_id:
+        meta = harvest.fetch_view(run_id, repo=repo, runner=runner)
+        doc = metrics_mod.fetch_metrics(
+            resource_id, meta.get("startedAt", ""), meta.get("updatedAt", ""),
+            deployment=cell.get("model_deployment", ""), runner=az_runner)
+        usage = metrics_mod.parse_metrics(doc)
+        cost = score_mod.cost_of(usage, prices_mod.load_prices(None))
+    return {"arm": cell["arm"], "phases_ok": phases_ok, "rounds": rounds,
+            "rubric": rubric_res["score"], "cost_usd": cost}
+
+
+def run_validate(manifest_path: str, out_dir: str,
+                 repo: str = "aiappsgbb/threadlight-skills",
+                 resource_id: str | None = None, runner: Runner | None = None,
+                 az_runner: Runner | None = None) -> int:
+    import collections
+    cells = json.loads(Path(manifest_path).read_text(encoding="utf-8"))["cells"]
+    by_wl: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for cell in cells:
+        pack = Path(".github/workloads") / cell["workload"] / "rubric.yml"
+        if pack.is_file():
+            cell["_rubric"] = rubric_mod.load_rubric(pack)
+        by_wl[cell["workload"]].append(
+            _score_cell(cell, repo=repo, resource_id=resource_id,
+                        runner=runner, az_runner=az_runner))
+    cards = [score_mod.validation_scorecard(wl, arms) for wl, arms in by_wl.items()]
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "router-validation.json").write_text(json.dumps(cards, indent=2), encoding="utf-8")
+    (out / "router-validation.md").write_text(
+        report.render_validation_matrix(cards), encoding="utf-8")
+    print(f"[router-bench] wrote router-validation.(json|md) to {out}")
+    return 0
+
+
+def _cmd_validate(args: argparse.Namespace, runner: Runner | None = None,
+                  az_runner: Runner | None = None) -> int:
+    if args.ingest:
+        return run_validate(args.ingest, args.out, repo=args.repo,
+                            resource_id=args.resource, runner=runner,
+                            az_runner=az_runner)
+    arms = [
+        {"arm": "mini", "model_deployment": "gpt-5.4-mini", "wire_api": "responses"},
+        {"arm": "router", "model_deployment": "model-router", "wire_api": "completions"},
+        {"arm": "strong", "model_deployment": "gpt-5.4", "wire_api": "responses"},
+    ]
+    cells = matrix_mod.dispatch_matrix(args.workloads, arms, repo=args.repo, ref=args.ref)
+    Path(args.out).mkdir(parents=True, exist_ok=True)
+    matrix_mod.write_manifest(cells, Path(args.out) / "matrix-manifest.json")
+    print(f"[router-bench] dispatched {len(cells)} runs; manifest in {args.out}")
+    return 0
+
+
 def _cmd_learn(args: argparse.Namespace, runner: Runner | None) -> int:
     digest = run_learn(args.run_id, repo=args.repo, outdir=Path(args.out),
                        model_deployment=args.deployment, with_legs=args.with_legs,
@@ -182,6 +255,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="if set, also fetch the baseline run's actual usage")
     bench.add_argument("--prices", type=Path, default=None, help="price override JSON")
     bench.set_defaults(func=_cmd_bench)
+
+    v = sub.add_parser("validate", help="run/ingest the router validation matrix")
+    v.add_argument("--ingest", help="score an existing matrix-manifest.json")
+    v.add_argument("--dispatch", action="store_true", help="dispatch a fresh matrix")
+    v.add_argument("--workloads", nargs="+", default=["returns-triage", "fsi-kyc-aml"])
+    v.add_argument("--ref", default="unsafecode-automatic-fiesta")
+    v.add_argument("--repo", default="aiappsgbb/threadlight-skills")
+    v.add_argument("--resource", help="Azure AI Services resource id for cost")
+    v.add_argument("--out", default="router-validation-out")
+    v.set_defaults(func=_cmd_validate)
     return p
 
 
@@ -194,6 +277,8 @@ def main(argv: list[str] | None = None, runner: Runner | None = None,
         return int(exc.code or 0)
     if args.command == "bench":
         return _cmd_bench(args, runner, az_runner)
+    if args.command == "validate":
+        return _cmd_validate(args, runner, az_runner)
     return args.func(args, runner)
 
 

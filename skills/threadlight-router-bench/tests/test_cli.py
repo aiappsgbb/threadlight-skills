@@ -58,3 +58,21 @@ def test_cli_learn_writes_outputs(tmp_path, capsys):
 
 def test_cli_unknown_command_errors():
     assert router_bench.main(["bogus"], runner=_fake_runner) == 2
+
+
+def test_validate_ingest_builds_scorecard(tmp_path, monkeypatch):
+    import router_bench, json
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps({"cells": [
+        {"arm": "mini", "workload": "returns-triage", "run_id": 1},
+        {"arm": "strong", "workload": "returns-triage", "run_id": 2},
+    ]}), encoding="utf-8")
+
+    # Stub the per-cell scorer so the test stays offline.
+    monkeypatch.setattr(router_bench, "_score_cell", lambda cell, **k: {
+        "arm": cell["arm"], "phases_ok": True, "rounds": 100,
+        "rubric": 0.9, "cost_usd": 1.0})
+    rc = router_bench.main(["validate", "--ingest", str(manifest),
+                            "--out", str(tmp_path)])
+    assert rc == 0
+    assert (tmp_path / "router-validation.md").exists()
