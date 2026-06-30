@@ -138,6 +138,6 @@ def test_in_memory_store_update_and_reset():
 def test_build_stub_tools_creates_crud_triple():
     layout = discover(FIXTURE)
     tools, stores = build_stub_tools(layout.sample_data_files)
-    names = sorted(t.__name__ for t in tools)
+    names = sorted(getattr(t, "name", None) or getattr(t, "__name__", "") for t in tools)
     assert names == ["get_tickets", "list_tickets", "update_tickets"]
     assert set(stores.keys()) == {"tickets"}

@@ -71,7 +71,7 @@ validation:
     . .venv/bin/activate
     pip install --quiet --upgrade pip
     pip install --quiet \
-      "agent-framework~=1.4.0" \
+      "agent-framework~=1.9.0" \
       "streamlit~=1.40.0" \
       "azure-identity~=1.21.0"
 
@@ -103,7 +103,7 @@ validation:
     - "ok agent-framework surface"
     - "ok streamlit chat surface"
 
-last_validated: 2026-05-16
+last_validated: 2026-06-30
 validated_by: ricchi
 known_issues_count: 0
 ---
@@ -117,7 +117,7 @@ Quickstart reference package under `references/quickstart/` targets.
 
 | Package | Source | Pinned version | Notes |
 |---------|--------|----------------|-------|
-| `agent-framework` | PyPI | **1.4.0** | MAF `Agent` + `SkillsProvider.from_paths` + `@tool` surface used by Pattern 0 |
+| `agent-framework` | PyPI | **1.9.0** | MAF `Agent` + `SkillsProvider.from_paths` + `@tool` surface used by Pattern 0 |
 | `streamlit` | PyPI | **1.40.0** | Pattern 0 chat UI; pinned to a minor that has stable `st.chat_message` / `st.chat_input` |
 | `azure-identity` | PyPI | **1.21.0** | `DefaultAzureCredential` for both Foundry and AOAI backends |
 
@@ -131,7 +131,7 @@ end-to-end against `fixture-poc`.
 
 ## Why these caps
 
-- **`agent-framework ~=1.4.0`** — Pattern 0 uses the same wiring shape
+- **`agent-framework ~=1.9.0`** — Pattern 0 uses the same wiring shape
   (`Agent + SkillsProvider`) documented in `foundry-hosted-agents` for prod
   deploy. Keeping the cap consistent across skills means the
   design → quickstart → deploy ergonomic story doesn't bifurcate.
