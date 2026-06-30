@@ -142,6 +142,14 @@ on:
         options:
           - full
           - smoke-only
+      wire_api:
+        description: "Copilot BYO provider wire API. 'responses' for GPT-5-series direct deployments (e.g. gpt-5.4-mini); 'completions' for model-router (its Responses v1 route returns 400 'operation unsupported', but chat-completions works)."
+        required: false
+        default: "responses"
+        type: choice
+        options:
+          - responses
+          - completions
 
 permissions:
   id-token: write
@@ -362,7 +370,7 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
           COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
-          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_PROVIDER_WIRE_API: ${{ inputs.wire_api }}
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
           # COPILOT_PROVIDER_BEARER_TOKEN already exported to $GITHUB_ENV
@@ -437,7 +445,7 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
           COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
-          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_PROVIDER_WIRE_API: ${{ inputs.wire_api }}
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
         run: |
@@ -530,7 +538,7 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
           COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
-          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_PROVIDER_WIRE_API: ${{ inputs.wire_api }}
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
           AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -653,7 +661,7 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
           COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
-          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_PROVIDER_WIRE_API: ${{ inputs.wire_api }}
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
           AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
@@ -727,7 +735,7 @@ jobs:
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
           COPILOT_PROVIDER_MODEL_ID: ${{ inputs.model_deployment }}
           COPILOT_PROVIDER_WIRE_MODEL: ${{ inputs.model_deployment }}
-          COPILOT_PROVIDER_WIRE_API: responses
+          COPILOT_PROVIDER_WIRE_API: ${{ inputs.wire_api }}
           COPILOT_ALLOW_ALL: "true"
           COPILOT_AUTO_UPDATE: "false"
           AZURE_TENANT_ALIAS: ${{ env.E2E_TENANT_ALIAS }}
