@@ -175,9 +175,24 @@ def run_validate(manifest_path: str, out_dir: str,
             print(f"[router-bench] WARNING: no rubric pack at {pack}; arm "
                   f"'{cell.get('arm')}' workload '{cell['workload']}' scores rubric=0.0",
                   file=sys.stderr)
-        by_wl[cell["workload"]].append(
-            _score_cell(cell, repo=repo, resource_id=resource_id,
-                        runner=runner, az_runner=az_runner))
+        arm = cell.get("arm", "?")
+        if cell.get("run_id") is None:
+            print(f"[router-bench] WARNING: cell arm '{arm}' workload "
+                  f"'{cell['workload']}' has no run_id (run never registered); "
+                  f"scoring it falls-behind", file=sys.stderr)
+            scored = {"arm": arm, "phases_ok": False, "rounds": 0,
+                      "rubric": 0.0, "cost_usd": 0.0}
+        else:
+            try:
+                scored = _score_cell(cell, repo=repo, resource_id=resource_id,
+                                     runner=runner, az_runner=az_runner)
+            except Exception as exc:  # one bad cell must not sink the matrix
+                print(f"[router-bench] WARNING: cell arm '{arm}' workload "
+                      f"'{cell['workload']}' run {cell.get('run_id')} failed to "
+                      f"score ({exc}); scoring it falls-behind", file=sys.stderr)
+                scored = {"arm": arm, "phases_ok": False, "rounds": 0,
+                          "rubric": 0.0, "cost_usd": 0.0}
+        by_wl[cell["workload"]].append(scored)
     cards = [score_mod.validation_scorecard(wl, arms) for wl, arms in by_wl.items()]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)

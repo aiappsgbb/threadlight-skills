@@ -83,6 +83,63 @@ def test_validate_ingest_builds_scorecard(tmp_path, monkeypatch):
     assert "mini" in cards[0]["arms"]
 
 
+def test_validate_ingest_survives_failed_cell(tmp_path, monkeypatch):
+    """A single cell that fails to harvest (e.g. a run that died before its
+    design phase uploaded any artifacts) must degrade to falls-behind, not
+    abort the whole 6-cell scorecard."""
+    import router_bench, json
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps({"cells": [
+        {"arm": "mini", "workload": "returns-triage", "run_id": 1},
+        {"arm": "strong", "workload": "returns-triage", "run_id": 2},
+        {"arm": "router", "workload": "returns-triage", "run_id": 3},
+    ]}), encoding="utf-8")
+
+    def fake_score(cell, **k):
+        if cell["arm"] == "router":
+            raise RuntimeError("gh run download failed: no artifacts found")
+        return {"arm": cell["arm"], "phases_ok": True, "rounds": 100,
+                "rubric": 0.9, "cost_usd": 1.0}
+    monkeypatch.setattr(router_bench, "_score_cell", fake_score)
+
+    rc = router_bench.main(["validate", "--ingest", str(manifest),
+                            "--out", str(tmp_path)])
+    assert rc == 0
+    cards = json.loads((tmp_path / "router-validation.json").read_text(encoding="utf-8"))
+    arms = cards[0]["arms"]
+    assert set(arms) == {"mini", "router", "strong"}
+    # The harvest failure becomes a falls-behind cell, not a crash.
+    assert arms["router"]["verdict"] == "falls-behind"
+    assert arms["router"]["phases_ok"] is False
+    # Healthy arms are scored normally and unaffected by the bad cell.
+    assert arms["mini"]["verdict"] == "keeps-up"
+
+
+def test_validate_ingest_survives_missing_run_id(tmp_path, monkeypatch):
+    """A cell whose run never registered (run_id is None) must not be passed to
+    the network harvester; it degrades to falls-behind."""
+    import router_bench, json
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps({"cells": [
+        {"arm": "mini", "workload": "returns-triage", "run_id": 1},
+        {"arm": "strong", "workload": "returns-triage", "run_id": None},
+    ]}), encoding="utf-8")
+
+    def fake_score(cell, **k):
+        assert cell.get("run_id") is not None, "must not harvest a None run_id"
+        return {"arm": cell["arm"], "phases_ok": True, "rounds": 100,
+                "rubric": 0.9, "cost_usd": 1.0}
+    monkeypatch.setattr(router_bench, "_score_cell", fake_score)
+
+    rc = router_bench.main(["validate", "--ingest", str(manifest),
+                            "--out", str(tmp_path)])
+    assert rc == 0
+    cards = json.loads((tmp_path / "router-validation.json").read_text(encoding="utf-8"))
+    arms = cards[0]["arms"]
+    assert arms["strong"]["phases_ok"] is False
+    assert arms["strong"]["verdict"] == "falls-behind"
+
+
 def test_score_cell_orchestration_offline(monkeypatch, tmp_path):
     import router_bench, harvest
     monkeypatch.setattr(harvest, "fetch_jobs", lambda run_id, repo, runner=None: {})
