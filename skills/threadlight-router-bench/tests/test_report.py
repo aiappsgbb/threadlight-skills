@@ -84,3 +84,6 @@ def test_render_validation_matrix_has_arms_and_verdict():
     assert "falls-behind" in md
     assert "closes-the-gap" in md
     assert "| mini |" in md
+    assert "| arm | phases | rounds | rubric | cost (USD) | verdict |" in md
+    assert "$1.00" in md      # cost formatted to 2 decimals with $ prefix
+    assert "0.60" in md       # rubric formatted to 2 decimals

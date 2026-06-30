@@ -103,7 +103,7 @@ def render_validation_matrix(cards: list[dict[str, Any]]) -> str:
         lines.append("|-----|--------|--------|--------|-----------|---------|")
         for arm in ("mini", "router", "strong"):
             a = card["arms"].get(arm)
-            if not a:
+            if a is None:
                 continue
             ph = "pass" if a["phases_ok"] else "FAIL"
             lines.append(
