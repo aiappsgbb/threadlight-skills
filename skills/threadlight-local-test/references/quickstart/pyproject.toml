@@ -7,14 +7,14 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "awesome-gbb contributors" }]
 dependencies = [
-    "agent-framework~=1.4.0",
+    "agent-framework~=1.9.0",
     "azure-identity~=1.21.0",
     "streamlit~=1.40.0",
 ]
 
 [project.optional-dependencies]
-foundry = ["agent-framework[foundry]~=1.4.0"]
-aoai = ["agent-framework[openai]~=1.4.0"]
+foundry = ["agent-framework[foundry]~=1.9.0"]
+aoai = ["agent-framework[openai]~=1.9.0"]
 test = ["pytest~=8.3.0"]
 
 [project.scripts]
