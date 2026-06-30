@@ -31,6 +31,9 @@ _PHASE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 _SEVERITY = {"success": 0, "skipped": 0, "neutral": 1, "cancelled": 2,
              "timed_out": 3, "failure": 3, None: 1}
 
+_STEP_RE = re.compile(r"^\u25cf ")          # '● ' agent step marker
+_ATTEMPT_RE = re.compile(r"Copilot CLI attempt \d+ of \d+")
+
 
 def _phase_for(step_name: str) -> str | None:
     for phase, pat in _PHASE_PATTERNS:
@@ -51,6 +54,27 @@ def parse_phase_parity(jobs_doc: dict[str, Any]) -> dict[str, str]:
             if phase not in worst or _SEVERITY.get(concl, 1) > _SEVERITY.get(worst[phase], 1):
                 worst[phase] = concl
     return worst
+
+
+def count_rounds(phase_log_paths: list[Path]) -> dict[str, int]:
+    """Count agent steps ('● ' lines) and retry attempts across phase logs.
+
+    Returns {'steps': int, 'attempts': int, 'total': int}. `total` == steps
+    (the headline rounds-to-done effort signal); attempts is reported
+    separately so a thrash-and-retry run is distinguishable.
+    """
+    steps = 0
+    attempts = 0
+    for path in phase_log_paths:
+        p = Path(path)
+        if not p.is_file():
+            continue
+        for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if _STEP_RE.match(line):
+                steps += 1
+            if _ATTEMPT_RE.search(line):
+                attempts += 1
+    return {"steps": steps, "attempts": attempts, "total": steps}
 
 
 def load_leg_manifests(specs_dir: Path) -> dict[str, dict[str, Any]]:
