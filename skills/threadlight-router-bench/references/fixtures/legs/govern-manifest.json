@@ -1,0 +1,63 @@
+{
+  "schema": "threadlight-govern-manifest/v1",
+  "tool_version": "0.1.0",
+  "captured_at": "2026-06-30T11:01:49+00:00",
+  "agt_profile": "auto",
+  "freshness_window_days": 90,
+  "verdict": "not-wired",
+  "must_fix": [
+    "policy_artefact_present",
+    "policy_versioned",
+    "rai_policy_present"
+  ],
+  "should_fix": [
+    "verifier_artefact_present",
+    "asi_reference_present"
+  ],
+  "not_verified": [
+    "middleware_wired_at_boundary",
+    "verifier_fresh"
+  ],
+  "capabilities": {
+    "policy_artefact_present": {
+      "status": "must-fix",
+      "evidence": null,
+      "hint": "no AGT policy artefact (agt-policy.yaml / policy.yaml) found"
+    },
+    "policy_versioned": {
+      "status": "must-fix",
+      "evidence": null,
+      "hint": "no policy artefact to version"
+    },
+    "rai_policy_present": {
+      "status": "must-fix",
+      "evidence": null,
+      "hint": "no policy artefact for RAI block"
+    },
+    "verifier_artefact_present": {
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "no committed `agt verify` evidence (docs/agt-verifier-report.md / tests/agt-verifier.json)"
+    },
+    "asi_reference_present": {
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "no OWASP ASI 2026 anchor \u2014 add to policy or verifier report"
+    },
+    "middleware_wired_at_boundary": {
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no recognised agent entry-point found to inspect"
+    },
+    "verifier_fresh": {
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no verifier artefact to age"
+    },
+    "sidecar_pattern": {
+      "status": "not-applicable",
+      "evidence": "in-process (Path A) \u2014 no sidecar",
+      "hint": null
+    }
+  }
+}
