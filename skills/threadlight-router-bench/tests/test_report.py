@@ -59,3 +59,28 @@ def test_render_markdown_green_run_states_clean():
                             legs={}, findings=[])
     md = report.render_markdown(d)
     assert "No high-severity findings" in md or "clean" in md.lower()
+
+
+def test_render_validation_matrix_has_arms_and_verdict():
+    import report
+    cards = [{
+        "schema": "threadlight-router-validation/v1",
+        "workload": "fsi-kyc-aml",
+        "router_verdict": "closes-the-gap",
+        "arms": {
+            "mini":   {"arm": "mini", "phases_ok": True, "rounds": 300,
+                       "rubric": 0.6, "cost_usd": 1.0, "verdict": "falls-behind",
+                       "reasons": ["rubric", "rounds"]},
+            "router": {"arm": "router", "phases_ok": True, "rounds": 150,
+                       "rubric": 0.88, "cost_usd": 8.0, "verdict": "keeps-up",
+                       "reasons": []},
+            "strong": {"arm": "strong", "phases_ok": True, "rounds": 140,
+                       "rubric": 0.9, "cost_usd": 22.0, "verdict": "keeps-up",
+                       "reasons": []},
+        },
+    }]
+    md = report.render_validation_matrix(cards)
+    assert "fsi-kyc-aml" in md
+    assert "falls-behind" in md
+    assert "closes-the-gap" in md
+    assert "| mini |" in md

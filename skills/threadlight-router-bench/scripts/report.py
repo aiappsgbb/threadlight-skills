@@ -91,3 +91,27 @@ def render_markdown(digest: dict[str, Any]) -> str:
         out.append("")
 
     return "\n".join(out)
+
+
+def render_validation_matrix(cards: list[dict[str, Any]]) -> str:
+    """Render a markdown matrix (workload x arm x axes) + headline verdicts."""
+    lines = ["# Router validation scorecard", ""]
+    for card in cards:
+        lines.append(f"## {card['workload']}")
+        lines.append("")
+        lines.append("| arm | phases | rounds | rubric | cost (USD) | verdict |")
+        lines.append("|-----|--------|--------|--------|-----------|---------|")
+        for arm in ("mini", "router", "strong"):
+            a = card["arms"].get(arm)
+            if not a:
+                continue
+            ph = "pass" if a["phases_ok"] else "FAIL"
+            lines.append(
+                f"| {arm} | {ph} | {a['rounds']} | {a['rubric']:.2f} | "
+                f"${a['cost_usd']:.2f} | {a['verdict']} |")
+        rv = card.get("router_verdict")
+        if rv:
+            lines.append("")
+            lines.append(f"**Router verdict:** {rv}")
+        lines.append("")
+    return "\n".join(lines)
