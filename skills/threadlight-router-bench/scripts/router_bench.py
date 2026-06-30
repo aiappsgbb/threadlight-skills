@@ -34,6 +34,8 @@ import score as score_mod  # noqa: E402
 import rubric as rubric_mod  # noqa: E402
 import matrix as matrix_mod  # noqa: E402
 
+_WORKLOADS_ROOT = HERE.parents[2] / ".github" / "workloads"
+
 Runner = Callable[[list[str]], str]
 
 
@@ -137,7 +139,7 @@ def _score_cell(cell: dict[str, Any], repo: str = "aiappsgbb/threadlight-skills"
     run_id = cell["run_id"]
     jobs = harvest.fetch_jobs(run_id, repo, runner=runner)
     phases = harvest.parse_phase_parity(jobs)
-    phases_ok = all(v == "success" for v in phases.values())
+    phases_ok = all(v in ("success", "skipped") for v in phases.values())
     with tempfile.TemporaryDirectory() as td:
         bundle = Path(td)
         harvest.download_run(run_id, bundle, runner=runner)
@@ -166,9 +168,13 @@ def run_validate(manifest_path: str, out_dir: str,
     cells = json.loads(Path(manifest_path).read_text(encoding="utf-8"))["cells"]
     by_wl: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     for cell in cells:
-        pack = Path(".github/workloads") / cell["workload"] / "rubric.yml"
+        pack = _WORKLOADS_ROOT / cell["workload"] / "rubric.yml"
         if pack.is_file():
             cell["_rubric"] = rubric_mod.load_rubric(pack)
+        else:
+            print(f"[router-bench] WARNING: no rubric pack at {pack}; arm "
+                  f"'{cell.get('arm')}' workload '{cell['workload']}' scores rubric=0.0",
+                  file=sys.stderr)
         by_wl[cell["workload"]].append(
             _score_cell(cell, repo=repo, resource_id=resource_id,
                         runner=runner, az_runner=az_runner))
@@ -188,12 +194,16 @@ def _cmd_validate(args: argparse.Namespace, runner: Runner | None = None,
         return run_validate(args.ingest, args.out, repo=args.repo,
                             resource_id=args.resource, runner=runner,
                             az_runner=az_runner)
+    if not args.dispatch:
+        print("router-bench validate: pass --ingest <manifest> to score, "
+              "or --dispatch to fire a live matrix", file=sys.stderr)
+        return 2
     arms = [
         {"arm": "mini", "model_deployment": "gpt-5.4-mini", "wire_api": "responses"},
         {"arm": "router", "model_deployment": "model-router", "wire_api": "completions"},
         {"arm": "strong", "model_deployment": "gpt-5.4", "wire_api": "responses"},
     ]
-    cells = matrix_mod.dispatch_matrix(args.workloads, arms, repo=args.repo, ref=args.ref)
+    cells = matrix_mod.dispatch_matrix(args.workloads, arms, repo=args.repo, ref=args.ref, runner=runner)
     Path(args.out).mkdir(parents=True, exist_ok=True)
     matrix_mod.write_manifest(cells, Path(args.out) / "matrix-manifest.json")
     print(f"[router-bench] dispatched {len(cells)} runs; manifest in {args.out}")

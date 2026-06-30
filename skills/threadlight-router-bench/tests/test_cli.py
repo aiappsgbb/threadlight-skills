@@ -76,3 +76,23 @@ def test_validate_ingest_builds_scorecard(tmp_path, monkeypatch):
                             "--out", str(tmp_path)])
     assert rc == 0
     assert (tmp_path / "router-validation.md").exists()
+    import json as _json
+    cards = _json.loads((tmp_path / "router-validation.json").read_text(encoding="utf-8"))
+    assert isinstance(cards, list) and cards
+    assert cards[0]["workload"] == "returns-triage"
+    assert "mini" in cards[0]["arms"]
+
+
+def test_score_cell_orchestration_offline(monkeypatch, tmp_path):
+    import router_bench, harvest
+    monkeypatch.setattr(harvest, "fetch_jobs", lambda run_id, repo, runner=None: {})
+    monkeypatch.setattr(harvest, "parse_phase_parity",
+                        lambda jobs: {"phase-1": "success", "phase-2": "skipped"})
+    monkeypatch.setattr(harvest, "download_run", lambda run_id, bundle, runner=None: None)
+    monkeypatch.setattr(harvest, "count_rounds", lambda logs: {"total": 3})
+    monkeypatch.setattr(harvest, "find_specs_dir", lambda bundle: None)
+    out = router_bench._score_cell(
+        {"arm": "mini", "run_id": 7, "_rubric": {"checks": []}},
+        resource_id=None)
+    assert out == {"arm": "mini", "phases_ok": True, "rounds": 3,
+                   "rubric": 0.0, "cost_usd": 0.0}
