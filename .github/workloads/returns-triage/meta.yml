@@ -1,0 +1,4 @@
+# .github/workloads/returns-triage/meta.yml
+workload: returns-triage
+difficulty: simple
+hard_points: []

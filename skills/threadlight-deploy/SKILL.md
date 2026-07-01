@@ -124,7 +124,7 @@ Recommended (from `threadlight-design`):
 > | `foundry-doc-vision-speech` | If SPEC § 7b selects any vision / DocIntel / Speech model |
 > | `foundry-evals` | For post-deployment evaluation AND continuous evaluation: **Plan A** (default) — Foundry's built-in scheduled evaluations (no extra infra). **Plan B** (fallback) — ACA Job cron eval that reads from App Insights and writes to Workbook (use only when Plan A doesn't yet support hosted-agent eval kinds you need). Phase 6 includes the ACA Job ONLY when SPEC § 9 sets `continuous_eval.plan: "B"` |
 > | `citadel-spoke-onboarding` | **Phase 7 (opt-in)** — runs ONLY when SPEC § 11b sets `governance_hub.required: yes` |
-> | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"`. Generates MAF Workflow container instead of Agent container. This skill then picks up the container for Phase 5-6. |
+> | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"` **AND the skill is installed** (`/skills list`). Generates a MAF Workflow container instead of an Agent container, then Phase 5-6 pick it up. **If it is not installed, do NOT block or hunt for it — fall back to the Phase 2 agent container path (see the Workflow model gate below).** |
 >
 > Use `/skills list` to check availability. If missing, install from `aiappsgbb/awesome-gbb`.
 
@@ -497,11 +497,20 @@ already exist:
 > `use-cases/<x>/evals/`, validate selectors) and resume at Phase 3.
 >
 > **Workflow model gate.** If SPEC § 11e sets `workflow_model: "workflow"`,
-> **delegate container generation to the `threadlight-workflow` skill** and
-> skip Phase 2 entirely. `threadlight-workflow` generates `container.py`,
-> `executors/`, `workflow_graph.py`, `Dockerfile`, and `pyproject.toml` in
-> the same `src/agent/` layout that Phase 5-6 expects. Resume at Phase 3
-> (Validate) after `threadlight-workflow` completes.
+> **prefer** the `threadlight-workflow` skill **when it is installed** (check
+> `/skills list` first). It generates `container.py`, `executors/`,
+> `workflow_graph.py`, `Dockerfile`, and `pyproject.toml` in the same
+> `src/agent/` layout that Phase 5-6 expects; resume at Phase 3 (Validate)
+> after it completes.
+>
+> **If `threadlight-workflow` is NOT installed, do NOT stop, retry-loop, or
+> hunt the repo for it — fall back to the Phase 2 agent container path below.**
+> The MAF **Agent** runtime executes the same multi-step logic via agent-driven
+> tool orchestration; only the deterministic workflow-graph optimization (fixed
+> executor order, durable pause points) is deferred, which is acceptable for a
+> pilot. Emit exactly one line noting the fallback (`workflow_model=workflow but
+> threadlight-workflow unavailable → generating agent container instead`) and
+> then proceed with Phase 2 exactly as for the agent path.
 >
 > If `workflow_model` is absent or `"agent"`, proceed with Phase 2 below
 > (the existing agent container path — unchanged).

@@ -1,0 +1,23 @@
+# .github/workloads/fsi-kyc-aml/rubric.yml
+# Hard-point quality rubric — one weighted check per regulatory requirement the
+# design prompt demands. Scores the concatenated PoC artifacts; all strategies
+# are case-insensitive and the artifact text is lowercased before matching.
+checks:
+  - id: retention-tension
+    weight: 1
+    all_of: ["retention", "gdpr"]
+  - id: beneficial-ownership
+    weight: 1
+    regex: "25\\s*%"
+  - id: tipping-off
+    weight: 1
+    contains: "tipping-off"
+  - id: structuring-ctr
+    weight: 1
+    all_of: ["10,000", "structuring"]
+  - id: edd-approval
+    weight: 1
+    all_of: ["enhanced due diligence", "senior"]
+  - id: multi-jurisdiction
+    weight: 1
+    all_of: ["bsa", "amld"]

@@ -108,5 +108,7 @@ Most useful when triaging:
 
 ## Cross-refs
 
+- [`self-improving-loop.md`](./self-improving-loop.md) — the **primary** `learn` cold-path that mines any single run of this workflow (green or red, no baseline) into ranked fixes
+- [`router-validation.md`](./router-validation.md) — the **optional** model-router vs `gpt-5.4-mini` validation matrix (quality + cost) driven by this workflow
 - `skills/threadlight-deploy/SKILL.md` § Deploy-time failure-mode index — F-01..F-22 lookup table
 - aiappsgbb/awesome-gbb's `copilot-cli-foundry-auth-smoke.yml` — the auth-smoke that proved BYOK Foundry routing
