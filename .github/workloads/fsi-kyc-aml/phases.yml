@@ -25,6 +25,8 @@ phases:
         - distinct US (BSA/FinCEN) and EU (AMLD) thresholds (do not hard-code one).
       Produce specs/SPEC.md, AGENTS.md, specs/sample-data/*.json, and
       tests/killer-prompts.md (>=2 prompts that probe the hard requirements).
+
+      SPEC § 13 contract (Fast-PoC, MANDATORY): the generated specs/SPEC.md MUST place the Fast-PoC silent-defaults callout in the section "## 13. Assumptions & Open Questions" — NOT in § 12 (§ 12 is "Production Readiness"). § 13 MUST open with this verbatim callout: "Fast-PoC mode: audience mode, customer context, brand, and production posture were not collected; using neutral demo defaults. Override later in SPEC § 1 / § 11f / § 13." (§ 13 is the canonical Assumptions section in the threadlight-design speckit template — the CI gate greps § 13 for 'Fast-PoC', 'not collected', and 'neutral/demo defaults'.)
     gates:
       - "specs/SPEC.md exists and mentions 'KYC' or 'AML'"
       - "AGENTS.md exists"
@@ -62,6 +64,8 @@ phases:
       (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${GITHUB_RUN_ID}` and continue with the `azd env set` calls.)
 
       Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${E2E_TENANT_ALIAS}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+
+      threadlight-deploy GENERATES the deploy scaffold for you — do NOT hunt the repo for templates, fixtures, generators, or an example azure.yaml to copy, and do NOT hand-write azure.yaml yourself. The skill's Phase 2 writes azure.yaml + src/agent/ + the container files from the design project, and its Phase 4 scaffolds infra/ (Bicep) in place. The kyc-aml design project is the complete input the skill needs; invoke threadlight-deploy and follow its documented Phase 2 → Phase 4 steps rather than reconstructing a scaffold by hand.
 
       Posture is `demo-sandbox` for this CI run (throwaway RG, public ingress, 90d retention, no Defender, no DR, single replica). The pre-Phase-3 workflow step has already pre-created `${E2E_WORKSPACE}/kyc-aml/specs/deployment-posture.md` with `deployment_target: demo-sandbox` and `source: provided`. threadlight-deploy Phase 1.5 MUST detect this existing posture file and take Path 1 silently — do NOT ask the operator any posture questions and do NOT overwrite the file with a fresh interactive prompt.
 

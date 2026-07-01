@@ -528,29 +528,31 @@ jobs:
           echo "----- SPEC.md preview -----"
           head -40 "$PILOT_DIR/specs/SPEC.md"
 
-          # Fast-PoC mode: the new Step 1.5 in threadlight-design (v1.7.0+)
-          # MUST surface a one-line callout in SPEC § 12 saying that
-          # audience mode / customer context / brand / production posture
-          # were not collected. This is the auditable trail of silent
-          # defaults — required so downstream skills (and reviewers) can
-          # see what wasn't asked. Scope the check to § 12 only (not the
-          # whole SPEC) and require multiple semantic markers so a stray
-          # "Fast-PoC" mention elsewhere can't false-positive.
-          SECTION12="$(awk '/^##[[:space:]]+12\./{flag=1; next} /^##[[:space:]]+13\./{flag=0} flag' "$PILOT_DIR/specs/SPEC.md" | tr '\n' ' ')"
-          if [ -z "$SECTION12" ]; then
-            echo "::error::SPEC.md § 12 (Assumptions) section not found — threadlight-design (≥1.7.0) must emit § 12"
+          # Fast-PoC mode: the Step 1.5 skip in threadlight-design (v1.7.0+)
+          # MUST surface a one-line callout in SPEC § 13 (Assumptions & Open
+          # Questions) saying that audience mode / customer context / brand /
+          # production posture were not collected. § 13 is the canonical
+          # assumptions section in the speckit template (§ 12 is Production
+          # Readiness); the callout is the auditable trail of silent defaults —
+          # required so downstream skills (and reviewers) can see what wasn't
+          # asked. § 13 is the last SPEC section, so capture § 13 → next
+          # top-level heading (§ 14+) or EOF, and require multiple semantic
+          # markers so a stray "Fast-PoC" mention elsewhere can't false-positive.
+          SECTION13="$(awk '/^##[[:space:]]+13\./{flag=1; next} /^##[[:space:]]+1[4-9]\./{flag=0} flag' "$PILOT_DIR/specs/SPEC.md" | tr '\n' ' ')"
+          if [ -z "$SECTION13" ]; then
+            echo "::error::SPEC.md § 13 (Assumptions & Open Questions) section not found — threadlight-design (≥1.7.0) must emit § 13"
             exit 1
           fi
           MISSING=0
-          echo "$SECTION12" | grep -qiE "fast.?poc"     || { echo "::error::SPEC § 12 callout missing 'Fast-PoC' marker"; MISSING=1; }
-          echo "$SECTION12" | grep -qiE "not collected" || { echo "::error::SPEC § 12 callout missing 'not collected' phrase"; MISSING=1; }
-          echo "$SECTION12" | grep -qiE "neutral.+defaults|demo defaults" || { echo "::error::SPEC § 12 callout missing 'neutral/demo defaults' phrase"; MISSING=1; }
+          echo "$SECTION13" | grep -qiE "fast.?poc"     || { echo "::error::SPEC § 13 callout missing 'Fast-PoC' marker"; MISSING=1; }
+          echo "$SECTION13" | grep -qiE "not collected" || { echo "::error::SPEC § 13 callout missing 'not collected' phrase"; MISSING=1; }
+          echo "$SECTION13" | grep -qiE "neutral.+defaults|demo defaults" || { echo "::error::SPEC § 13 callout missing 'neutral/demo defaults' phrase"; MISSING=1; }
           if [ "$MISSING" -ne 0 ]; then
-            echo "----- § 12 region of SPEC.md -----"
-            awk '/^##[[:space:]]+12\./,/^##[[:space:]]+13\./' "$PILOT_DIR/specs/SPEC.md" | head -40
+            echo "----- § 13 region of SPEC.md -----"
+            awk '/^##[[:space:]]+13\./,/^##[[:space:]]+1[4-9]\./' "$PILOT_DIR/specs/SPEC.md" | head -40
             exit 1
           fi
-          echo "✅ Fast-PoC silent-defaults callout present in § 12"
+          echo "✅ Fast-PoC silent-defaults callout present in § 13"
 
       - name: "[Phase 2/4] Drive §4.3 — Pattern 0 setup via agent"
         if: inputs.mode != 'smoke-only'
