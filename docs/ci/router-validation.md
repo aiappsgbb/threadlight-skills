@@ -6,7 +6,9 @@
 > [`threadlight-e2e-foundry`](./threadlight-e2e.md) pipeline, and how we mine **every
 > run** for its own improvements via a self-improving cold-path.
 >
-> Companion to the CX-facing [Efficiency chapter](../efficiency.html). The canonical,
+> The **optional** efficiency companion to the primary
+> [self-improving cold-path](./self-improving-loop.md); both are surfaced from the
+> CX-facing [Self-improving CI chapter](../self-improving.html). The canonical,
 > continuously-updated evidence log lives in the skill:
 > [`router-bench/references/findings/2026-06-30-router-validation-5.4-vs-mini.md`](../../skills/threadlight-router-bench/references/findings/2026-06-30-router-validation-5.4-vs-mini.md).
 
@@ -24,7 +26,10 @@ slide:
    harness?
 
 And a standing requirement from the field: a way to **self-improve from any single
-run**, without being forced to run matched pairs every time.
+run**, without being forced to run matched pairs every time. That requirement is the
+**primary** path and has its own doc — [the self-improving cold-path
+(`learn`)](./self-improving-loop.md); everything below is the **optional** efficiency
+proof (`bench`/`validate`).
 
 ## Experiment design
 
@@ -237,7 +242,8 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \
 
 ## Cross-refs
 
-- [Efficiency chapter](../efficiency.html) — the CX-facing narrative of this work.
+- [Self-improving CI chapter](../self-improving.html) — the CX-facing narrative (loop first, this efficiency proof second).
+- [The self-improving cold-path](./self-improving-loop.md) — the **primary** `learn` methodology this page is a companion to.
 - [`threadlight-e2e-foundry.yml` operator runbook](./threadlight-e2e.md) — the pipeline
   this matrix drives.
 - [`router-bench` findings log](../../skills/threadlight-router-bench/references/findings/2026-06-30-router-validation-5.4-vs-mini.md)
