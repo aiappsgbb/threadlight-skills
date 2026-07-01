@@ -329,7 +329,7 @@
   function esc(s) {
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function iconUse(id) {
@@ -433,7 +433,24 @@
   // ---------------------------------------------------------------
   // modal
   // ---------------------------------------------------------------
-  var modal, modalBody, lastFocus;
+  var modal, modalBody, lastFocus, inerted = [];
+
+  // While the dialog is open, make the rest of the page inert so Tab and
+  // AT can't reach controls behind the overlay (and background chips can't
+  // be activated, which would re-render the grid and detach lastFocus).
+  function setBackgroundInert(on) {
+    if (on) {
+      var kids = document.body.children;
+      for (var i = 0; i < kids.length; i++) {
+        var el = kids[i];
+        if (el === modal || el.tagName === 'SCRIPT') continue;
+        if (!el.hasAttribute('inert')) { el.setAttribute('inert', ''); inerted.push(el); }
+      }
+    } else {
+      inerted.forEach(function (el) { el.removeAttribute('inert'); });
+      inerted = [];
+    }
+  }
 
   function openModal(id) {
     var sc = SCENARIOS.find(function (s) { return s.id === id; });
@@ -466,6 +483,7 @@
     lastFocus = document.activeElement;
     modal.hidden = false;
     document.body.classList.add('exp-modal-open');
+    setBackgroundInert(true);
     var closeBtn = modalBody.querySelector('.exp-modal-close');
     if (closeBtn) closeBtn.focus();
   }
@@ -474,6 +492,7 @@
     if (modal.hidden) return;
     modal.hidden = true;
     document.body.classList.remove('exp-modal-open');
+    setBackgroundInert(false);
     modalBody.innerHTML = '';
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
@@ -542,6 +561,8 @@
     if (!gridEl) return; // not the explorer page
     countEl = document.getElementById('exp-count');
     emptyEl = document.getElementById('exp-empty');
+    var totalEl = document.getElementById('exp-total');
+    if (totalEl) totalEl.textContent = SCENARIOS.length;
     modal = document.getElementById('exp-modal');
     modalBody = document.getElementById('exp-modal-body');
 
@@ -563,6 +584,15 @@
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closeModal();
+    });
+    // keep Tab within the dialog (belt-and-braces alongside inert bg)
+    modal.addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab') return;
+      var f = modalBody.querySelectorAll('a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });
   }
 

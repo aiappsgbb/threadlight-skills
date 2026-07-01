@@ -89,7 +89,7 @@
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
             <input id="exp-search" type="search" placeholder="Search process, system, or keyword…" autocomplete="off" aria-label="Search scenarios">
           </label>
-          <span class="exp-count"><em id="exp-count">19</em> of 19 shown</span>
+          <span class="exp-count" role="status" aria-live="polite"><em id="exp-count">19</em> of <em id="exp-total">19</em> shown</span>
           <button id="exp-reset" class="exp-reset" type="button">Reset</button>
         </div>
 
@@ -104,7 +104,7 @@
         </div>
       </div>
 
-      <div class="exp-grid" id="exp-grid" aria-live="polite"></div>
+      <div class="exp-grid" id="exp-grid"></div>
       <div class="exp-empty" id="exp-empty" hidden>
         <p>No scenarios match those filters. <strong>Try fewer traits</strong> or reset.</p>
         <p style="margin-top:10px; font-size:.95rem;">Remember: the library is a head-start, not a boundary &mdash; the chain shapes any process from one paragraph.</p>
@@ -151,6 +151,6 @@
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
-<script src="assets/explorer.js?v=050cccfd"></script>
+<script src="assets/explorer.js?v=d62b98f9"></script>
 </body>
 </html>
