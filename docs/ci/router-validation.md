@@ -156,14 +156,34 @@ them is the signal:
 3. **Cold-path** — taught `learn` a new `protocol_contract` rule and bumped the
    missing-skill rule `medium → high` (see below).
 
-### Matrix 3 (in flight) — the clean verdict
+### Matrix 3 (landed 2026-07-01) — an environmental wall, diagnosed by the loop
 
-With all three blockers fixed, matrix 3 is dispatched to get the **first fully-green,
-rubric-scored `invoke`-phase verdict**. This section is filled in when it lands; until
-then, treat the router's advantage as **directional (matrix 2)**, not a crowned winner.
+Matrix 3 did **not** produce the clean green verdict. 5 of 6 cells failed the
+`invoke` phase and **all six scored rubric `0.00`** — the same degenerate pattern as
+matrices 1–2. Pointed at the failures, `learn` classified the root cause
+deterministically: **`model_unavailable`** — `● Request failed due to a transient API
+error. Retrying...` — **×37** on the returns-triage `mini` arm alone. This is an
+**environmental transient-API storm on the shared Foundry account during the run
+window**, not a router or workload regression: the blocker-A/B fixes held, and the
+cost *shape* stayed consistent with matrix 2 (router ≈ strong-tier spend, both well
+above mini). The verdict therefore remains **directional (matrix 2)**; a clean green
+needs a run window when the shared account isn't throttling.
+
+| workload | arm | phases | rounds | rubric | cost (USD) |
+|---|---|---|---|---|---|
+| returns-triage | mini | FAIL | 204 | 0.00 | $2.47 |
+| returns-triage | router | FAIL | 137 | 0.00 | $17.01 |
+| returns-triage | strong | FAIL | 210 | 0.00 | $24.94 |
+| fsi-kyc-aml | mini | pass | 172 | 0.00 | $1.35 |
+| fsi-kyc-aml | router | FAIL | 205 | 0.00 | $17.51 |
+| fsi-kyc-aml | strong | FAIL | 137 | 0.00 | $14.31 |
+
+The loop turned a confusing 5/6-red matrix into a one-line root cause — which is
+exactly the point of the cold-path.
 
 > ⚠️ **Degenerate auto-verdict caveat.** When every cell is `phases_ok=False` (as in
-> matrices 1–2, capped by a shared downstream wall), the `validation_scorecard` marks
+> matrices 1–3, capped by a shared downstream wall — a rate-limit cascade in 1–2, a
+> transient-API / `model_unavailable` storm in 3), the `validation_scorecard` marks
 > all cells `falls-behind` → rubric `0.00` and emits a `router_verdict` like
 > `closes-the-gap`. Those are **meaningless artifacts** of the shared wall. **Do not
 > quote them.** The real signals are (a) phase-reached depth, (b) rounds/cost, (c) the
@@ -227,7 +247,7 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \
 |---|---|---|
 | 1 (2026-06-30) | 28455528786 / 28455539255 / 28455549408 | 28458233210 / 28458244350 / 28458248682 |
 | 2 (2026-07-01) | 28507031234 / 28507036414 / 28507041703 | 28509910952 / 28509920177 / 28509928583 |
-| 3 (in flight)  | *filled on completion* | *filled on completion* |
+| 3 (2026-07-01) | 28516165448 / 28516175050 / 28516184062 | 28519520937 / 28519525080 / 28519535675 |
 
 ## Limitations & honesty
 

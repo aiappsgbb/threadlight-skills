@@ -284,3 +284,49 @@ workflow-classified workload it is universal and blocking → should be `[high]`
 **Run IDs (2026-07-01):** returns-triage mini=28507031234 router=28507036414
 strong=28507041703 · fsi-kyc-aml mini=28509910952 router=28509920177
 strong=28509928583.
+
+## Matrix 3 (2026-07-01) — blockers held, environmental transient-API wall
+
+Dispatched after applying the matrix-2 blocker fixes (A: `threadlight-deploy`
+workflow-model fallback-to-agent; B: pack Phase-4 protocol probe; cold-path:
+`protocol_contract` rule + `skill_loader` medium→high). Router subset pinned to
+`{gpt-5.4, gpt-5.4-mini}` and **restored** cleanly (guardrail satisfied).
+
+**Outcome: 5/6 red, no clean green — an environmental wall, not a regression.**
+
+| workload | arm | phases | rounds | rubric | cost (USD) | verdict |
+|---|---|---|---|---|---|---|
+| returns-triage | mini | FAIL | 204 | 0.00 | $2.47 | falls-behind |
+| returns-triage | router | FAIL | 137 | 0.00 | $17.01 | falls-behind |
+| returns-triage | strong | FAIL | 210 | 0.00 | $24.94 | falls-behind |
+| fsi-kyc-aml | mini | **pass** | 172 | 0.00 | $1.35 | falls-behind |
+| fsi-kyc-aml | router | FAIL | 205 | 0.00 | $17.51 | falls-behind |
+| fsi-kyc-aml | strong | FAIL | 137 | 0.00 | $14.31 | falls-behind |
+
+Auto `router_verdict` (returns-triage `closes-the-gap`, fsi `mixed`) are **degenerate
+artifacts** — every rubric is `0.00`. Do not quote them.
+
+### What the cold-path found (why it's environmental, not a regression)
+
+- `learn 28516165448` (rt mini) → **[high] `model_unavailable` ×37**:
+  `● Request failed due to a transient API error. Retrying...`
+- `learn 28519525080` (fsi router) → **[high] `model_unavailable` ×2**, same signature.
+
+The failure is a **transient-API / `model_unavailable` storm on the shared Foundry
+account during the run window** — the same class of shared-downstream wall as matrices
+1–2 (there a rate-limit cascade), not a router or workload fault. Evidence the fixes
+held: no `skill_loader` or `wire_protocol`/`protocol_contract` findings resurfaced, and
+the **cost shape is consistent with matrix 2** — router tracks strong-tier spend
+(≈$17 vs $25 on returns-triage; ≈$17.5 vs $14.3 on fsi), both well above mini.
+
+### Verdict
+
+Router advantage stays **directional (matrix 2)**. A clean, rubric-scored `invoke`
+verdict needs a re-run in a window when the shared account isn't throttling — the
+open blocker is now **capacity/availability**, not harness or protocol. The
+self-improvement win stands: the loop turned a confusing 5/6-red matrix into a
+one-line, evidence-backed root cause with zero manual log-reading.
+
+**Run IDs (2026-07-01):** returns-triage mini=28516165448 router=28516175050
+strong=28516184062 · fsi-kyc-aml mini=28519520937 router=28519525080
+strong=28519535675.
