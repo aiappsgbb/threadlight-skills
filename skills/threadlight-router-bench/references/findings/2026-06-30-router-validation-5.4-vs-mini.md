@@ -159,3 +159,128 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \
 **Run IDs (2026-06-30):** returns-triage mini=28455528786 router=28455539255
 strong=28455549408 · fsi-kyc-aml mini=28458233210 router=28458244350
 strong=28458248682.
+
+---
+
+# Matrix 2 — after the fixes (2026-07-01)
+
+The three matrix-1 blockers were fixed and the matrix re-run on the same
+`{mini, router{5.4,5.4-mini}, strong}` × `{returns-triage, fsi-kyc-aml}` grid:
+
+1. `gpt-5.4` deployment cap 100 → 250 (`scripts/ci/foundry-strong-arm.sh`).
+2. Deploy **anti-hunt** contract in both packs (let `threadlight-deploy` generate
+   `azure.yaml`/`infra/`; stop hand-scaffolding).
+3. The real skill bug: SPEC **§12 = Production Readiness**, **§13 = Assumptions &
+   Open Questions** (Fast-PoC callout). The CI assert + design prompts were flipped
+   §12 → §13 to match the canonical `speckit-template`.
+
+**The fixes worked.** The failure surface moved a *long* way downstream — from
+matrix-1's Phase 1/3 (design §12 gate + deploy 429 wall) all the way to **Phase 4
+(invoke)**. Crucially, **the design gate is now GREEN for every arm** (mini
+included): the §12→§13 fix erased matrix-1's mini design miss. Deploy's 429 wall
+is also gone.
+
+## What happened — phase reached × cost (matrix 2)
+
+| arm | workload | last phase OK | died at | rounds | cost (USD) |
+|-----|----------|---------------|---------|-------:|-----------:|
+| mini | returns-triage | pattern/deploy | **invoke** (timeout, no clean invoke) | 273 | $2.21 |
+| router | returns-triage | **deploy** | **invoke** (protocol 400) | **142** | $12.05 |
+| strong | returns-triage | **deploy** | **invoke** (protocol 400) | 232 | $23.85 |
+| mini | fsi-kyc-aml | pattern | **deploy** (missing skill → retry-loop timeout) | 174 | $1.77 |
+| router | fsi-kyc-aml | **deploy** | **invoke** (protocol 400) | 174 | $12.56 |
+| strong | fsi-kyc-aml | **deploy** | **invoke** (protocol 400) | 187 | $15.15 |
+
+No cell completed end-to-end, but **two brand-new, non-quality blockers** now cap
+everyone — and the *way* each arm meets them is the signal.
+
+### Blocker A — missing `threadlight-workflow` skill (Phase 3, complex only)
+
+`fsi-kyc-aml` correctly classifies as `workflow_model: "workflow"` (§11e), so
+`threadlight-deploy` Phase 2 delegates container generation to a
+**`threadlight-workflow` skill that does not exist in the repo**
+(`threadlight-deploy/SKILL.md` L127, L500-504 reference it; it was never authored).
+Every arm hits it:
+
+```
+✗ skill(threadlight-workflow) Skill not found: threadlight-workflow
+```
+
+strong even narrates it — *"the spec declares `workflow_model: workflow`, so I'm
+loading the workflow-specific skill"* → `Skill not found`. **The differentiator is
+recovery:** strong and router improvise the workflow container by hand and reach
+Phase 4; **mini cannot recover** — it falls into the deploy retry loop
+(mis-resolving `FOUNDRY_PROJECT_ENDPOINT`) and times out a **full phase earlier**
+at Phase 3. This is the cleanest capability signal in the whole exercise: an
+*identical* missing-dependency obstacle is a recoverable bump for router/strong and
+a terminal failure for mini.
+
+### Blocker B — Phase-4 protocol contract mismatch (invoke, all workloads)
+
+The Phase-4 pack prompt hardcodes *"use the Invocations protocol"*, but
+`threadlight-deploy` may legitimately scaffold a **Responses**-protocol runtime
+(MAF / workflow orchestrator — see deploy SKILL.md L280 protocol table). So
+`azd ai agent invoke --protocol invocations` returns
+`HTTP 400: Invoke API requires ... 'invocations' protocol version '2.0.0'`. router
+and strong made **clean** invoke attempts, then **correctly refused to fabricate**
+a transcript (anti-fabrication guard) → the "invoke-results.md" assert fails.
+**Even strong cannot pass** — this is a harness contract bug, not a model failure.
+
+## Quality read (matrix 2)
+
+- **Design: now GREEN for all arms.** The §12→§13 fix closed mini's only clean
+  matrix-1 quality miss. mini no longer fails design on either workload.
+- **Complex-workload recovery = the headline signal.** Same Phase-3 missing-skill
+  wall: **router tracks strong** (both improvise → Phase 4); **mini falls behind a
+  full phase** (can't recover → Phase-3 timeout). Router recovers quality under
+  complexity exactly as intended.
+- **Simple workload:** all three reach the same Phase-4 protocol wall, but **mini
+  burns the MOST rounds (273) hunting `SERVICE_MCP_FQDN`** and still never makes a
+  clean invoke; **router uses the FEWEST (142)**. Router is more efficient even
+  where all arms fail at the same wall.
+- **Cost:** mini is cheapest in raw dollars but it's a **false economy** — it's
+  cheap *because* it gives up / times out (and on the simple workload it burned the
+  most rounds yet still failed). Router reaches strong's phase at **~half strong's
+  cost on simple ($12 vs $24)** and **~17 % cheaper on complex ($12.6 vs $15.2)**.
+
+> ⚠️ **Degenerate verdict, again.** All 6 cells are `phases_ok=False` → rubric
+> `0.00`, per-arm verdict `falls-behind`, `router_verdict` `closes-the-gap`. These
+> are **meaningless artifacts** of the shared Phase-4 wall. Do **not** quote them.
+> The real signals are (a) phase-reached depth, (b) rounds/cost, (c) `learn`.
+
+## Cold-path (`learn`) — the self-improving loop earned its keep
+
+Run on the two most instructive red cells, **single-run, no baseline** (the whole
+point — self-improve from *any* run, not forced pairs):
+
+- `learn 28509910952` (fsi mini) → **`[medium] skill_loader:
+  Skill not found: threadlight-workflow`**. The cold-path **found Blocker A from
+  one red run** — a genuine, actionable harness gap. ✅ This is the self-improvement
+  win the field asked for.
+- `learn 28507036414` (rt router) → **0 findings, "looks clean"** — *wrong*: the
+  invoke genuinely failed on Blocker B. The classifier has **no `protocol_contract`
+  rule**, so it can't see the HTTP-400 protocol mismatch. A concrete
+  **self-improvement TODO for the tool itself**.
+
+**Calibration note:** `skill_loader` was graded `[medium]`, but on a
+workflow-classified workload it is universal and blocking → should be `[high]`.
+
+## Actionable improvements (matrix 2)
+
+1. **Author/vendor the `threadlight-workflow` skill**, OR make `threadlight-deploy`'s
+   `workflow_model: "workflow"` path resilient (inline the workflow-container
+   generation / graceful fallback with guidance). Unblocks Phase 3 for **every arm**
+   on complex/workflow workloads. Highest value.
+2. **Fix the Phase-4 protocol contract.** Phase 4 should **probe the declared
+   protocol** (read `azure.yaml` / the runtime deploy chose) instead of hardcoding
+   Invocations — or force the GHCP-SDK/Invocations runtime for these packs. Unblocks
+   `invoke` for all arms.
+3. **Teach `learn` the protocol-contract failure mode.** Add a `protocol_contract`
+   anomaly rule (match `HTTP 400` + `invocations protocol version` /
+   `responses protocol not declared`) and bump missing-skill (`skill_loader`) to
+   `[high]`. Directly improves the self-improving cold-path.
+4. **Re-run after (1)+(2)** for the first clean rubric-scored `invoke`-phase verdict.
+
+**Run IDs (2026-07-01):** returns-triage mini=28507031234 router=28507036414
+strong=28507041703 · fsi-kyc-aml mini=28509910952 router=28509920177
+strong=28509928583.
