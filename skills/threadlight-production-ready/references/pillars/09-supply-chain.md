@@ -25,6 +25,8 @@ changed under us today".
 | `SUP-005` | Dependency manifest pinned (`pyproject.toml` with `==` or hash; `requirements.txt` with `==`; `package.json` with lock file present) | `should-fix` if unpinned |
 | `SUP-006` | SBOM emitted somewhere (`docs/sbom.json`, `sbom/*.json`, or CI step) | `should-fix` if absent |
 | `SUP-007` | Dependabot / GH Advanced Security / equivalent scanning enabled (`.github/dependabot.yml` or CodeQL workflow present) | `should-fix` if absent |
+| `SUP-008` | No skill/tool **force-publish** (`--force` / `--overwrite` on an `azd ai skill` / `az … skill` / `foundry … skill\|tool` create command) in `azure.yaml` hooks, `.github/workflows/**`, or shell/PowerShell scripts | `should-fix` if found |
+| `SUP-009` | If the repo consumes agent skills/tools (a toolbox, `azd ai skill`, an MCP plugin, or a `skills/**/SKILL.md`), it declares a **pinned** `SkillVersion` / toolbox version | `should-fix` if used but unpinned; `not-applicable` if no skills/tools |
 
 ### Live (tier 1)
 
@@ -44,6 +46,22 @@ changed under us today".
 - No SBOM, so the customer's risk team can't answer "what's in this
   container?".
 - ACR has `adminUserEnabled: true` from a scaffold default.
+- A postprovision hook runs `azd ai skill create … --force`, silently
+  deleting the skill versions that production agents are pinned to.
+- The agent binds to a floating skill/tool default, so a capability
+  change reaches every agent at once with no canary.
+
+## Skill & tool artifacts (SUP-008 / SUP-009)
+
+The skills and tools an agent calls are supply chain too — and they
+change more often than the base image. Govern them as **versioned
+Foundry artifacts**: author in Git, publish an immutable version,
+reference it by a **pinned** `SkillVersion` / toolbox version, and
+promote `default_version` in a **staged** rollout — never force-publish
+over an existing version and never clone capability source at runtime.
+Full lifecycle and remediation: [`../skill-tool-supply-chain.md`](../skill-tool-supply-chain.md).
+This mirrors, for capabilities, the "pin the version, no `latest`"
+discipline pillar 13 (`model-lifecycle`) applies to model deployments.
 
 ## Remediation
 
@@ -53,6 +71,7 @@ changed under us today".
 | Pin AVM modules | `azd-patterns`, `bicepschema` |
 | Enable dependency scanning | (manual — `dependabot.yml`) |
 | Emit SBOM | (manual — `syft` / GH action) |
+| Publish skills/tools as pinned versions (no `--force`) | `foundry-skill-catalog`, `foundry-toolbox` |
 
 ## Why this pillar matters
 

@@ -24,8 +24,7 @@
 #
 # WHY THIS EXISTS
 # ===============
-# Originally ported from aiappsgbb/agentic-loop/.github/workflows/
-# lean-auto-e2e-foundry.yml with the enterprise-pilot scenario
+# This workflow originally regression-tested the enterprise-pilot scenario
 # (auto-claim-triage / credit-memo / prior-auth-healthcare). Swapped to the
 # workshop scenario in PR #N because (a) the workshop is the user-facing
 # entry point for this skill pack, so it should be the thing we regression-
@@ -278,8 +277,8 @@ jobs:
           azd auth login --check-status
 
       # ── Tenant-isolation shim ─────────────────────────────────────────
-      # threadlight-deploy's Phase 0 (and the agentic-loop SKILL it cribs)
-      # reads ~/.azure-tenants/index.json to resolve a tenant alias.
+      # threadlight-deploy's Phase 0 reads ~/.azure-tenants/index.json to
+      # resolve a tenant alias.
       # CI has no such file; write a minimal one with a "ci" alias.
       # Means NO SKILL changes are required.
       - name: Write tenant index shim
@@ -312,8 +311,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${E2E_WORKSPACE}/.github/skills"
           # Symlink the threadlight skills from the checked-out repo so the
-          # agent can read them via Skill tool. Also symlink agentic-loop
-          # SKILLs if available (defaults this repo cribs from them).
+          # agent can read them via Skill tool.
           for s in threadlight-design threadlight-deploy threadlight-safe-check \
                    threadlight-local-test threadlight-event-triggers \
                    threadlight-hitl-patterns threadlight-demo-data-factory \

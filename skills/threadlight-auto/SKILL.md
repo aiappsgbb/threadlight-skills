@@ -33,13 +33,11 @@ with a single invocation. Designed for:
 SEs who already know the per-skill chain should keep invoking those directly —
 `threadlight-auto` is a wrapper, not a replacement.
 
-> **Lineage.** Ported from `aiappsgbb/agentic-loop`'s `lean-auto` SKILL (v1.0.0),
-> which was field-tested on 10 from-scratch pilots over 6 days and proven in
-> [agentic-loop CI run #26752622265](https://github.com/aiappsgbb/agentic-loop/actions/runs/26752622265)
-> (50m57s, all 16 steps ✅). The orchestrator pattern, smart-recovery table, and
-> HARD-STOP gates are reused verbatim; only the stage labels + artifact paths
-> differ (threadlight produces `specs/SPEC.md` + `specs/manifest.json`, lean
-> produces `docs/spec.md` + `.azure/deployment-plan.md`).
+> **Design.** The orchestrator pattern, smart-recovery table, and HARD-STOP
+> gates are the load-bearing reliability contract of this skill. Threadlight's
+> stage labels + artifact paths are canonical: the design stage emits
+> `specs/SPEC.md` + `specs/manifest.json`, and every downstream stage keys off
+> their hashes.
 
 ## Position in the SKILL hierarchy
 
@@ -63,8 +61,8 @@ design            local-test       deploy             safe-check
        │                 │               │                  │
        └────────┬────────┴───────────────┴──────────────────┘
                 │ each stage benefits from the deploy-time
-                │ failure-mode index F-01..F-22 cribbed from
-                │ agentic-loop into threadlight-deploy/SKILL.md
+                │ failure-mode index F-01..F-22 in
+                │ threadlight-deploy/SKILL.md
                 ▼
        ┌──────────────────────────────────────────┐
        │ awesome-gbb companion SKILLs             │
@@ -142,7 +140,7 @@ next to the existing use-case skills.
 
 ## Stage 0 — Preflight
 
-**Always runs**, mirroring the agentic-loop bootstrap pattern. Checks:
+**Always runs** as the bootstrap preflight. Checks:
 
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
@@ -207,7 +205,7 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 
 ## Smart-recovery table — auto-retry these failures
 
-These are the 3 most common deploy failures from the agentic-loop pilots (now also
+These are the 3 most common deploy failures we see in from-scratch runs (also
 covered in [`threadlight-deploy` § Deploy-time failure-mode index](../threadlight-deploy/SKILL.md#deploy-time-failure-mode-index-signature--action)).
 `threadlight-auto` retries each ONCE, then HARD STOPs if recovery fails.
 
@@ -288,4 +286,3 @@ Next steps:
   - `threadlight-deploy` SKILL § Deploy-time failure-mode index F-01..F-22 (smart-recovery table cribs from here)
   - `threadlight-safe-check` SKILL `phase=post-deploy` (invoked at Safe-check stage)
   - `azure-tenant-isolation` SKILL (Stage 0 HARD STOP enforcer)
-  - aiappsgbb/agentic-loop `lean-auto` SKILL (this skill's lineage; same patterns, lean-toolkit labels)

@@ -635,7 +635,7 @@ that agent over the next weeks and months.
 
 | Family | What it adds after the wedge | Key skills |
 |---|---|---|
-| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry. | `foundry-hosted-agents`, `foundry-mcp-aca`, `foundry-iq`, `foundry-doc-vision-speech`, `foundry-teams-bot`, `foundry-evals`, `foundry-observability`, `foundry-toolbox`, `foundry-vnet-deploy`, `foundry-agt`, `foundry-cross-resource`, `ghcp-hosted-agents` |
+| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry, and **skills/tools published as versioned artifacts**. | `foundry-hosted-agents`, `foundry-mcp-aca`, `foundry-iq`, `foundry-doc-vision-speech`, `foundry-teams-bot`, `foundry-evals`, `foundry-observability`, `foundry-skill-catalog`, `foundry-toolbox`, `foundry-vnet-deploy`, `foundry-agt`, `foundry-cross-resource`, `ghcp-hosted-agents` |
 | **`citadel-*` governance** | The production landing zone — APIM AI Gateway, Access Contracts, JWT auth, BYO VNet, multi-region hub. | `citadel-hub-deploy`, `citadel-spoke-onboarding` |
 | **`gbb-*` content** | Pitch-side artefacts (PowerPoint generators, narrative humanisers). | `gbb-pptx`, `gbb-humanizer` |
 | **`auto-demo-producer`** | Records the deployed agent as a narrated video demo (Playwright + edge-tts + ffmpeg). | `auto-demo-producer` |
@@ -647,6 +647,35 @@ that agent over the next weeks and months.
 > each ACA workload). `foundry-evals` runs against SPEC § 9 scenarios
 > after every deploy. The pilot ships with telemetry, evals and a
 > safe-check gate from day one or it is not a pilot.
+
+### Skills & tools as governed Foundry artifacts
+
+The capabilities an agent calls — its **skills** (reusable capability
+packages) and **tools** (functions, MCP servers, toolboxes) — are part
+of its supply chain, and they change far more often than the base image.
+Threadlight treats them the same way it treats container images and
+model deployments: **publish once, pin by version, promote
+deliberately.**
+
+- **Author in Git → publish an immutable version.** The editable copy
+  lives in source control; the reviewed source is promoted to a
+  **versioned Foundry artifact** — a `SkillVersion`, a toolbox version —
+  via [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb)
+  and [`foundry-toolbox`](https://github.com/aiappsgbb/awesome-gbb).
+- **Reference by a pinned version.** Production agents bind to a specific
+  version, never a floating pointer, so "which capabilities ran during
+  the incident?" has a single, auditable answer.
+- **Promote `default_version` in a staged rollout.** New versions ship
+  canary-first, so a bad capability change is caught before it reaches
+  every agent — never force-published over an existing version.
+- **Download at deploy, not at runtime.** The pinned artifact is fetched
+  at deploy time; the running container never clones capability source
+  or rebuilds an image to pick up a change.
+
+`threadlight-production-ready` enforces this in the `supply-chain`
+pillar: **`SUP-008`** flags force-publishing in committed automation and
+**`SUP-009`** flags skills/tools that are used but not pinned. Full
+lifecycle: [`skill-tool-supply-chain.md`](skills/threadlight-production-ready/references/skill-tool-supply-chain.md).
 
 ---
 

@@ -443,6 +443,10 @@ aiappsgbb org on github, then list my installed copilot plugins</div>
             <p class="h">You'll know it worked when</p>
             <p>The plugin list shows <b>both</b> <code>threadlight-skills</code> and <code>awesome-gbb</code>, and Copilot reports the active model is <code>claude-opus-4.8</code> (or <code>gpt-5.5</code>). A stronger agent writes a stronger spec and catches its own bugs.</p>
           </div>
+          <div class="wb-check">
+            <p class="h">Why both</p>
+            <p>Threadlight stays thin where the <code>foundry-*</code> family is already deep &mdash; it <b>composes</b> with those skills rather than reimplementing them. Skills &amp; tools ship as <b>versioned, immutable Foundry artifacts</b> via <code>foundry-skill-catalog</code> and <code>foundry-toolbox</code> (pin a version, promote <code>default_version</code> in stages, download at deploy), batch scoring delegates to <code>foundry-evals</code>, agent-runtime governance to <code>foundry-agt</code>, and hosting, deploy hooks &amp; OTel build on <code>foundry-hosted-agents</code>, <code>azd-patterns</code>, and <code>foundry-observability</code>.</p>
+          </div>
         </div>
       </details>
 
