@@ -4,10 +4,9 @@ The `threadlight-auto` orchestrator reads (and writes, when `--commit` flag is s
 this file to track which stages have run, what artifact hashes they produced,
 and which auto-recovery actions fired. Format: pretty-printed JSON.
 
-> **Lineage.** Mirrors `aiappsgbb/agentic-loop`'s `.agentic-loop/auto-state.json`
-> schema with threadlight-specific stage names (preflight / design / deploy /
-> safe_check / invoke) and artifact paths (specs/SPEC.md, docs/safe-check-post.md,
-> docs/invoke-results.md).
+> **Schema.** Stage names are `preflight / design / deploy / safe_check /
+> invoke`; artifact paths are `specs/SPEC.md`, `docs/safe-check-post.md`,
+> `docs/invoke-results.md`.
 
 ## Top-level shape
 

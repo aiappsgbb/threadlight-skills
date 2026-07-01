@@ -24,8 +24,7 @@ Exit codes:
   1 — HARD STOP detected; agent must abort
 
 Reference: skills/threadlight-auto/SKILL.md § Stage-to-skill mapping +
-§ Smart-recovery table. Ported from aiappsgbb/agentic-loop lean-auto with
-threadlight-specific artifact paths.
+§ Smart-recovery table.
 """
 
 from __future__ import annotations
