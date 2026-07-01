@@ -215,11 +215,11 @@
       <code>28437323962</code> produced <strong>10/10 false positives</strong> &mdash;
       echoed shell source, prompt text, the workflow&rsquo;s own error-detectors.
       Scoping failures to <code>--log-failed</code> gave <strong>100% precision</strong>
-      on the actual failures. That one rule is the difference between a loop you trust
-      and one you mute.
+      &mdash; every flagged line a true positive. That one rule is the difference between
+      a loop you trust and one you mute.
     </p>
 
-    <section id="how" data-toc-id="how" data-toc-label="How it works">
+    <section id="how" data-toc-id="how" data-toc-label="How the loop works">
       <h2><span class="n">01</span>How the loop works</h2>
 
       <p>
@@ -250,6 +250,7 @@
         <span class="tx hi">dependency</span><span class="arw">&rsaquo;</span>
         <span class="tx hi">skill_loader</span><span class="arw">&rsaquo;</span>
         <span class="tx hi">wire_protocol</span><span class="arw">&rsaquo;</span>
+        <span class="tx hi">protocol_contract</span><span class="arw">&rsaquo;</span>
         <span class="tx">rate_limit</span><span class="arw">&rsaquo;</span>
         <span class="tx hi">model_unavailable</span><span class="arw">&rsaquo;</span>
         <span class="tx hi">auth</span><span class="arw">&rsaquo;</span>
@@ -289,11 +290,11 @@
         <li><strong>A missing skill dependency</strong> (a <code>skill_loader</code>
           finding) quietly stalling the hard workload before the agent reached its later
           phases.</li>
-        <li><strong>A protocol-contract gap</strong> (a <code>wire_protocol</code>
+        <li><strong>A wire-protocol mismatch</strong> (a <code>wire_protocol</code>
           finding) surfaced by a Phase-4 protocol probe added to the workload pack.</li>
       </ul>
       <p>
-        Three fixes shipped straight from those digests. And the more durable win: the
+        Both fixes shipped straight from those digests. And the more durable win: the
         taxonomy itself got <strong>sharper</strong>.
       </p>
       <ul>
@@ -312,45 +313,46 @@
     </section>
 
     <section id="found" data-toc-id="found" data-toc-label="One thing it found">
-      <h2><span class="n">03</span>One thing the loop found: cheaper routing works</h2>
+      <h2><span class="n">03</span>One thing the loop found: routing can right-size cost</h2>
 
       <p>
         Because we could learn from <strong>any</strong> run, we could afford to ask a
         bigger, optional question: is a <strong>model-router</strong> actually more
         efficient than a fixed cheap model? The heavier <code>bench</code> and
-        <code>validate</code> paths answer it &mdash; a controlled matrix through the
-        same <a href="./ci/threadlight-e2e.md"><code>threadlight-e2e</code> pipeline</a>:
+        <code>validate</code> paths are built to answer it &mdash; a controlled matrix
+        through the same <a href="./ci/threadlight-e2e.md"><code>threadlight-e2e</code> pipeline</a>:
         a cheap baseline (<code>gpt-5.4-mini</code>), the router constrained to
         <code>{gpt-5.4, gpt-5.4-mini}</code>, and a quality ceiling
-        (<code>gpt-5.4</code>), across a simple and a hard workload, scored on rounds
-        and <strong>real billed Azure spend</strong>.
+        (<code>gpt-5.4</code>), across a simple and a hard workload, sketched on rounds
+        and <strong>modeled Azure spend</strong>.
       </p>
 
       <div class="cost-table-wrap">
         <table class="cost-table">
           <thead>
-            <tr><th>Workload</th><th>Arm</th><th>Model(s)</th><th class="num">Rounds</th><th class="num">Billed&nbsp;Azure&nbsp;$</th></tr>
+            <tr><th>Workload</th><th>Arm</th><th>Model(s)</th><th class="num">Rounds</th><th class="num">Illustrative&nbsp;$</th></tr>
           </thead>
           <tbody>
             <tr><td rowspan="3"><strong>returns-triage</strong><br><span class="note">simple</span></td>
-                <td>cheap</td><td><code>gpt-5.4-mini</code></td><td class="num">273</td><td class="num">$2.21</td></tr>
-            <tr><td><strong>router</strong> <span class="prio">tracks</span></td><td><code>{5.4, 5.4-mini}</code></td><td class="num">142</td><td class="num">$12.05</td></tr>
-            <tr><td>ceiling</td><td><code>gpt-5.4</code></td><td class="num">232</td><td class="num">$23.85</td></tr>
+                <td>cheap</td><td><code>gpt-5.4-mini</code></td><td class="num">273</td><td class="num">&asymp;$2</td></tr>
+            <tr><td><strong>router</strong> <span class="prio">tracks</span></td><td><code>{5.4, 5.4-mini}</code></td><td class="num">142</td><td class="num">&asymp;$12</td></tr>
+            <tr><td>ceiling</td><td><code>gpt-5.4</code></td><td class="num">232</td><td class="num">&asymp;$24</td></tr>
             <tr><td rowspan="3"><strong>fsi-kyc-aml</strong><br><span class="note">hard</span></td>
-                <td>cheap</td><td><code>gpt-5.4-mini</code></td><td class="num">174</td><td class="num">$1.77</td></tr>
-            <tr><td><strong>router</strong> <span class="prio">tracks</span></td><td><code>{5.4, 5.4-mini}</code></td><td class="num">174</td><td class="num">$12.56</td></tr>
-            <tr><td>ceiling</td><td><code>gpt-5.4</code></td><td class="num">187</td><td class="num">$15.15</td></tr>
+                <td>cheap</td><td><code>gpt-5.4-mini</code></td><td class="num">174</td><td class="num">&asymp;$2</td></tr>
+            <tr><td><strong>router</strong> <span class="prio">tracks</span></td><td><code>{5.4, 5.4-mini}</code></td><td class="num">174</td><td class="num">&asymp;$13</td></tr>
+            <tr><td>ceiling</td><td><code>gpt-5.4</code></td><td class="num">187</td><td class="num">&asymp;$15</td></tr>
           </tbody>
         </table>
       </div>
       <p class="note">
-        Directional, matrix&nbsp;2 (2026-06-30), one run per cell. The honest read: the
-        cheap arm is the lowest sticker price but the router lands the ceiling&rsquo;s
-        trajectory at <strong>&asymp; half its spend on the simple workload</strong>
-        ($12.05 vs $23.85) and a smaller premium on the hard one. &ldquo;Efficiency&rdquo;
-        here means <strong>per-turn right-sizing, not a guaranteed lower bill</strong> &mdash;
-        and the scorecard says so out loud. The full quality-and-cost method, arms, and
-        caveats live in the <a href="./ci/router-validation.md">router-validation
+        <strong>Illustrative</strong> &mdash; a directional sketch from early, not-yet-complete
+        runs, not a finished benchmark. The shape to notice: the cheap arm is the lowest
+        sticker price, while the router tracks the ceiling&rsquo;s trajectory at a
+        <strong>fraction of its spend</strong> on the simple workload and a slim premium on
+        the hard one. &ldquo;Efficiency&rdquo; here means <strong>per-turn right-sizing, not a
+        guaranteed lower bill</strong>. The full quality-and-cost method, arms, and caveats
+        &mdash; including the honest note that no cell has yet completed a clean scored run
+        &mdash; live in the <a href="./ci/router-validation.md">router-validation
         companion&nbsp;&nearr;</a>.
       </p>
 
@@ -371,7 +373,7 @@
 
       <p>
         <a href="./ci/self-improving-loop.md">The self-improving method&nbsp;&nearr;</a> &middot;
-        <a href="./ci/router-validation.md">Router validation (efficiency proof)&nbsp;&nearr;</a> &middot;
+        <a href="./ci/router-validation.md">Router validation (efficiency companion)&nbsp;&nearr;</a> &middot;
         <a href="./ci/threadlight-e2e.md">The e2e pipeline runbook&nbsp;&nearr;</a> &middot;
         <a href="./production.html">Back to production-ready&nbsp;&rarr;</a>
       </p>
