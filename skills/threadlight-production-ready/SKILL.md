@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -1009,3 +1009,13 @@ handoff). v0.5.0 closes production-ready cleanup buckets: per-customer
 overrides, 8-question framing, idempotency exclusions, and recipe catalog
 promotions. v0.6.0+ will land the deferrals above. Breaking changes to
 `apply-plan.json` are gated behind `schema_version` (currently 1).
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this readiness scorecard, reach for
+the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
+*Further reading, not a dependency* — Threadlight's guidance stays the source of
+truth for the pilot flow:
+
+- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.

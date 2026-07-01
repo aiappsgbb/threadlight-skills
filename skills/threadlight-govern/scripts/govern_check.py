@@ -31,7 +31,7 @@ import os
 import re
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 MANIFEST_SCHEMA = "threadlight-govern-manifest/v1"
 
 # ── detection corpora ────────────────────────────────────────────────────

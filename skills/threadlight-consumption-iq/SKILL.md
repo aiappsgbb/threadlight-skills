@@ -16,7 +16,7 @@ description: >-
   paygo-ptu-cost-analyzer); live Cost Management actual-cost queries (stay in
   threadlight-production-ready); Bicep mutation (use threadlight-deploy).
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # Threadlight Consumption IQ — post-deploy cost projection + SKU diff
@@ -339,3 +339,14 @@ audience. Never hand the internal variant to a customer.
   emitter golden-file test and CI e2e)
 - `references/fixtures/sample-presales-rollout/` — end-to-end pre-sales
   fixture (3-phase rollout + expected golden estimate + one-pager)
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this cost projection, reach for the
+official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
+*Further reading, not a dependency* — Threadlight's guidance stays the source of
+truth for the pilot flow:
+
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
+- **[`azure-cost`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-cost/SKILL.md)** — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.

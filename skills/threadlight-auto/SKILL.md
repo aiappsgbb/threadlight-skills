@@ -71,6 +71,15 @@ design            local-test       deploy             safe-check
        └──────────────────────────────────────────┘
 ```
 
+> **Legs auto does _not_ drive.** Two production-handoff steps
+> (**`threadlight-cicd`**, **`threadlight-customize`**) and the offline
+> **`threadlight-router-bench`** *Improve* leg run outside this orchestrator.
+> `threadlight-auto` is a pilot driver — after a CI run finishes, reach for
+> `threadlight-router-bench` to harvest a grounded learnings digest (failure
+> taxonomy + recommendations) and, optionally, a model-router cost/quality
+> scorecard. It never drives prod-pipeline, customer-onboarding, or offline
+> self-improvement legs.
+
 ## Input parsing
 
 `threadlight-auto` accepts two input shapes; freeform is the default.

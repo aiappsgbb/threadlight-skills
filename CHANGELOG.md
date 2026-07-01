@@ -7,12 +7,34 @@ field.
 
 ## [Unreleased]
 
+### Changed
+
+- **Surfaced `threadlight-router-bench` as the Improve leg on the front door
+  and refreshed the plugin manifests.** The README hero now counts **16 pipeline
+  skills + the `threadlight-auto` orchestrator (17 total)**, adds a router-bench
+  row to the leg table and the **Improve** branch to the pipeline flow diagram;
+  `plugin.json` and `.github/plugin/marketplace.json` bump to `1.6.0` with the
+  matching count and router-bench keywords (`router-bench`, `self-improvement`,
+  `learnings-digest`, `ci-failure-taxonomy`, `model-router-cost`).
+- **Added "See also — official Azure Skills" cross-references** to
+  `threadlight-deploy`, `-consumption-iq`, `-evals`, `-govern`,
+  `-production-ready`, and `-cicd` (PATCH bumps). Each points at the canonical
+  Microsoft Azure Skills the leg leverages — `microsoft-foundry`,
+  `azure-reliability`, `azure-rbac`, `entra-agent-id`, `entra-app-registration`,
+  `azure-cost` — as further reading, not a dependency, so the pipeline stays a
+  thin, opinionated path *over* the platform rather than a re-implementation of
+  it.
+
 ### Fixed
 
+- **Corrected three stale companion pointers in `threadlight-deploy`** — the
+  hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
+  `pyproject.toml` / `Dockerfile` steps point at the inline templates directly
+  below them instead of a `references/` path that ships no such file.
 - **Corrected stale `.github/plugin/marketplace.json` metadata** — the
   marketplace + plugin `description` said "9 Copilot skills" and `version`
-  `1.0.0`; both now reflect the current 15 pipeline skills + `threadlight-auto`
-  orchestrator (16 total) at plugin `1.5.0`, matching `plugin.json` and the
+  `1.0.0`; both now reflect the current 16 pipeline skills + `threadlight-auto`
+  orchestrator (17 total) at plugin `1.6.0`, matching `plugin.json` and the
   README.
 
 ### Added

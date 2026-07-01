@@ -16,7 +16,7 @@ description: >-
   agent-runtime action governance — use threadlight-govern; deep evaluator or
   dataset authoring — use foundry-evals.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Threadlight Evals — run continuous evals, then prove they ran
@@ -288,3 +288,13 @@ Expected coverage:
 - `--emit` writes only the manifest/report artefacts under the target repo.
 - `--gate` returns `2` only for `must-fix`; advisory findings remain non-zero in
   the manifest but do not fail the gate.
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this evals leg, reach for the official
+**[Azure Skills](https://github.com/microsoft/azure-skills)** catalog. *Further
+reading, not a dependency* — Threadlight's guidance stays the source of truth for
+the pilot flow:
+
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `foundry-evals` + Foundry Continuous Evaluation).

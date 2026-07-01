@@ -15,7 +15,7 @@ description: >-
   (threadlight-redteam); quality evals (threadlight-evals); completeness gate
   (threadlight-safe-check); deep AGT authoring upstream (foundry-agt).
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Threadlight Govern — make AGT *enforce*, then prove it
@@ -153,3 +153,14 @@ tests/test_govern_check.py              # stdlib unittest (no pytest)
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this governance leg, reach for the
+official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
+*Further reading, not a dependency* — Threadlight's guidance stays the source of
+truth for the pilot flow:
+
+- **[`entra-agent-id`](https://github.com/microsoft/azure-skills/blob/main/skills/entra-agent-id/SKILL.md)** — **Entra Agent Identity Blueprints** + OAuth token exchange (OBO / `fmi_path`); the first-party agent-identity this governance leg binds policy to.
+- **[`azure-rbac`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-rbac/SKILL.md)** — **least-privilege role** selection + assignment for the agent's managed identity.
