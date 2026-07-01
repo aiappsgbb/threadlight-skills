@@ -78,6 +78,53 @@ Then invoke, in order: `threadlight-safe-check` → `threadlight-deploy`
 skills-root convention, what's intentionally trimmed, and the full invocation
 order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 
+## Quickstart in GitHub Codespaces
+
+Want to try the skills without installing anything? Open this repo in a
+Codespace and you get **GitHub Copilot CLI with all 16 threadlight skills
+pre-wired** from the checkout.
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)
+
+The [`.devcontainer`](.devcontainer/) installs Copilot CLI and registers the
+skills automatically. Once it boots:
+
+```bash
+copilot          # start Copilot CLI
+/login           # first launch only — sign in via device flow
+```
+
+Then just prompt, e.g. *"use threadlight-design to draft a SPEC from this
+brief: …"*.
+
+Prefer the released plugin over the local checkout? Swap in the marketplace
+version any time:
+
+```bash
+copilot plugin marketplace add aiappsgbb/threadlight-skills
+copilot plugin install threadlight-skills@threadlight-skills
+```
+
+### Limitations
+
+The Codespace is a **thin, consumer-focused** box for authoring and exploring
+skills — not a full deploy environment:
+
+- **Auth:** the first `copilot` launch needs `/login`. Codespaces injects a
+  repo-scoped `GITHUB_TOKEN` that lacks the *Copilot Requests* permission; if it
+  interferes with sign-in, run `unset GITHUB_TOKEN` in the terminal and retry
+  `/login`.
+- **No Azure deploy tooling** (`azd`, `az`, `bicep`, Docker) — the deploy and
+  production-hardening legs (`threadlight-deploy`, `threadlight-safe-check`,
+  `threadlight-production-ready`, …) need a full local or in-VNet environment.
+  See [`threadlight-customize`](skills/threadlight-customize/) for private-env
+  testing patterns.
+- Some MCP/agent tools (e.g. workiq) may not function in a Codespace.
+
+> **Tip:** to let anyone clone this setup with **Use this template**, a repo
+> admin can enable *Settings → Template repository*. That is independent of the
+> devcontainer above — no code change required.
+
 ## Install
 
 ### As a plugin (recommended)

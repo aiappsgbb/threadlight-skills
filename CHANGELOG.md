@@ -9,6 +9,15 @@ field.
 
 ### Added
 
+- **Dev Container + GitHub Codespaces quickstart.** New
+  [`.devcontainer/`](.devcontainer/) (thin `base:ubuntu` image + `github-cli`
+  feature) installs GitHub Copilot CLI and wires all 16 threadlight skills from
+  the local checkout on create, so a Codespace boots ready to explore the
+  pipeline — `copilot` → `/login` → prompt. Consumer-focused: no Python/Node
+  test toolchain and no Azure deploy tooling (`azd`/`az`/`bicep`/Docker); the
+  deploy and production legs still need a full local/VNet environment. README
+  gains an "Open in Codespaces" badge, the marketplace-install alternative, and
+  an honest limitations note (auth, workiq/MCP, deploy tooling).
 - **Executable Responsible-AI-for-Foundry control plane — `threadlight-evals`,
   `threadlight-redteam`, `threadlight-govern` v0.1.0 (plugin 1.5.0).** Closes
   the gap where `path2production` *scored* its control-plane legs but never
