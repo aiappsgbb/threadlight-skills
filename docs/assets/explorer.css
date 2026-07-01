@@ -1,0 +1,415 @@
+/* ============================================================
+   Threadlight — Scenario & Architecture Explorer styles
+   ------------------------------------------------------------
+   Layered on top of site.css: reuses its design tokens
+   (--accent, --ink-*, --bg-*, --line, shadows, easing) so the
+   explorer matches every other chapter and adapts to light mode
+   for free. Only explorer-specific structure lives here.
+   ============================================================ */
+
+body.chapter-explorer {
+  --chapter-accent:      var(--accent-1);
+  --chapter-accent-glow: rgba(110, 135, 255, .16);
+}
+
+/* --- controls -------------------------------------------------- */
+.exp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0 0 var(--s-5);
+}
+
+.exp-search-row {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.exp-search {
+  position: relative;
+  flex: 1 1 320px;
+  display: flex;
+  align-items: center;
+}
+.exp-search .icon {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.exp-search input {
+  width: 100%;
+  padding: 13px 14px 13px 42px;
+  font: 500 var(--t-body)/1.2 var(--sans);
+  color: var(--ink-0);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  transition: border-color var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out);
+}
+.exp-search input::placeholder { color: var(--ink-3); }
+.exp-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.exp-count {
+  font: 600 var(--t-meta)/1 var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.exp-count em { color: var(--chapter-accent); font-style: normal; }
+
+.exp-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.exp-filter-label {
+  font: 600 var(--t-meta)/1 var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.exp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- chips (sector + trait filters) ---------------------------- */
+.exp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  font: 600 13px/1 var(--sans);
+  color: var(--ink-1);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--d-fast) var(--ease-out);
+}
+.exp-chip .icon { width: 15px; height: 15px; color: var(--ink-2); }
+.exp-chip:hover {
+  border-color: var(--line-2);
+  color: var(--ink-0);
+  transform: translateY(-1px);
+}
+.exp-chip.is-on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px var(--accent-soft);
+}
+.exp-chip.is-on .icon { color: #fff; }
+.exp-chip-trait { font-weight: 500; }
+.exp-chip-trait.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--ink-0);
+  box-shadow: none;
+}
+
+/* non-interactive trait tags (on cards / in modal) */
+.exp-card-traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.exp-card-traits .exp-chip-trait {
+  cursor: default;
+  background: var(--bg-3);
+  color: var(--ink-2);
+}
+.exp-card-traits .exp-chip-trait:hover { transform: none; border-color: var(--line); color: var(--ink-2); }
+.exp-chip-trait.is-sm { padding: 4px 9px; font-size: 11.5px; }
+
+.exp-reset {
+  background: none;
+  border: 0;
+  padding: 6px 4px;
+  font: 600 13px/1 var(--sans);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--d-fast) var(--ease-out);
+}
+.exp-reset:hover { color: var(--accent-1); text-decoration: underline; }
+
+/* --- grid ------------------------------------------------------ */
+.exp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: var(--s-4);
+}
+
+.exp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--s-4);
+  text-align: left;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--e-1);
+  cursor: pointer;
+  transition: transform var(--d-base) var(--ease-out),
+              border-color var(--d-base) var(--ease-out),
+              box-shadow var(--d-base) var(--ease-out);
+}
+.exp-card:hover,
+.exp-card:focus-visible {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: var(--e-2), 0 0 0 1px var(--accent-soft);
+  outline: none;
+}
+.exp-card-sector {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font: 600 var(--t-meta)/1 var(--mono);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.exp-card-sector .icon { width: 15px; height: 15px; color: var(--chapter-accent); }
+.exp-card-name {
+  margin: 0;
+  font: 700 var(--t-h3)/1.15 var(--sans);
+  color: var(--ink-0);
+}
+.exp-card-blurb {
+  margin: 0;
+  font: 400 14.5px/1.5 var(--sans);
+  color: var(--ink-2);
+}
+.exp-card-diagram {
+  margin: 4px 0 2px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 150px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 45%, var(--bg-3), var(--bg-2) 70%);
+  border: 1px solid var(--line);
+}
+.exp-card-cta {
+  margin: 2px 0 0;
+  font: 600 13px/1 var(--sans);
+  color: var(--accent-1);
+}
+.exp-card:hover .exp-card-cta .arrow,
+.exp-card:focus-visible .exp-card-cta .arrow { margin-left: 4px; }
+.exp-card-cta .arrow { transition: margin-left var(--d-fast) var(--ease-out); }
+
+.exp-empty {
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  color: var(--ink-2);
+  border: 1px dashed var(--line-2);
+  border-radius: 16px;
+}
+.exp-empty strong { color: var(--ink-0); }
+
+/* --- hub-and-spoke diagram ------------------------------------- */
+.hs-svg { width: 100%; height: auto; display: block; }
+.hs-svg-lg { max-width: 560px; margin: 0 auto; }
+.hs-link { stroke: var(--line-2); stroke-width: 1.4; }
+.hs-node { stroke: var(--bg-0); stroke-width: 2; }
+.hs-hub rect {
+  fill: var(--accent);
+  stroke: var(--accent-1);
+  stroke-width: 1.5;
+}
+.hs-hub text {
+  fill: #fff;
+  font: 700 12px/1 var(--sans);
+  letter-spacing: .01em;
+}
+.hs-svg:not(.hs-svg-lg) .hs-hub text { font-size: 11px; }
+.hs-label {
+  fill: var(--ink-1);
+  font: 500 11.5px/1 var(--sans);
+}
+
+/* spoke-kind palette (shared by circles + legend swatches) */
+.k-system    { fill: var(--accent);   background-color: var(--accent); }
+.k-knowledge { fill: var(--lime);     background-color: var(--lime); }
+.k-tool      { fill: var(--accent-1); background-color: var(--accent-1); }
+.k-hitl      { fill: var(--warn);     background-color: var(--warn); }
+.k-gov       { fill: var(--ink-2);    background-color: var(--ink-2); }
+
+.hs-legend {
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+}
+.hs-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 500 12px/1 var(--sans);
+  color: var(--ink-2);
+}
+.hs-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* --- modal ----------------------------------------------------- */
+.exp-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 5vh, 64px) 16px;
+  background: rgba(4, 6, 12, .74);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+}
+.exp-modal[hidden] { display: none; }
+body.exp-modal-open { overflow: hidden; }
+
+.exp-modal-panel {
+  position: relative;
+  width: min(760px, 100%);
+  margin: auto;
+  padding: var(--s-6) var(--s-5) var(--s-5);
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 20px;
+  box-shadow: var(--e-3);
+  animation: expModalIn var(--d-base) var(--ease-spring);
+}
+@keyframes expModalIn {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.exp-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all var(--d-fast) var(--ease-out);
+}
+.exp-modal-close svg { width: 18px; height: 18px; }
+.exp-modal-close:hover { color: var(--ink-0); border-color: var(--line-2); transform: rotate(90deg); }
+
+.exp-modal-sector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font: 600 var(--t-meta)/1 var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.exp-modal-sector .icon { width: 16px; height: 16px; color: var(--chapter-accent); }
+.exp-modal-name { margin: 0 0 6px; font: 800 var(--t-h2)/1.08 var(--sans); color: var(--ink-0); }
+.exp-modal-blurb { margin: 0 0 var(--s-4); font: 400 var(--t-lede)/1.5 var(--sans); color: var(--ink-1); }
+
+.exp-modal-diagram {
+  margin: 0 0 var(--s-4);
+  padding: var(--s-4) var(--s-3);
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 42%, var(--bg-3), var(--bg-2) 72%);
+  border: 1px solid var(--line);
+}
+
+.exp-modal-cols {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--s-4);
+  margin: 0 0 var(--s-4);
+}
+.exp-modal-cols h3 {
+  margin: 0 0 10px;
+  font: 600 var(--t-meta)/1 var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.exp-modal-shape ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: beat;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.exp-modal-shape li {
+  counter-increment: beat;
+  position: relative;
+  padding-left: 34px;
+  font: 500 14.5px/1.45 var(--sans);
+  color: var(--ink-1);
+}
+.exp-modal-shape li::before {
+  content: counter(beat);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 12px/1 var(--mono);
+  color: var(--accent-1);
+  background: var(--accent-soft);
+  border-radius: 7px;
+}
+
+.exp-modal-gate {
+  margin: 0 0 var(--s-4);
+  padding: 14px 16px;
+  font: 400 13.5px/1.55 var(--sans);
+  color: var(--ink-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+}
+.exp-modal-gate strong { color: var(--ink-0); }
+
+.exp-modal-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* --- responsive ------------------------------------------------ */
+@media (max-width: 620px) {
+  .exp-modal-cols { grid-template-columns: 1fr; }
+  .exp-modal-panel { padding: var(--s-6) var(--s-4) var(--s-4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exp-card, .exp-card-cta .arrow, .exp-modal-close { transition: none; }
+  .exp-modal-panel { animation: none; }
+  .exp-card:hover, .exp-card:focus-visible { transform: none; }
+}

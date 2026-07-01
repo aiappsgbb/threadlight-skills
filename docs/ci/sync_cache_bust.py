@@ -37,6 +37,8 @@ DOCS = Path(__file__).resolve().parent.parent
 ASSETS = {
     "site.css": DOCS / "assets" / "site.css",
     "site.js": DOCS / "assets" / "site.js",
+    "explorer.css": DOCS / "assets" / "explorer.css",
+    "explorer.js": DOCS / "assets" / "explorer.js",
 }
 HASH_LEN = 8
 
