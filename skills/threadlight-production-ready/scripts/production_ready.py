@@ -803,6 +803,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-005": {"title": "Vulnerability scan step declared", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-006": {"title": "ACR scoped to private network", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-008": {"title": "Agent skills/tools not force-published in committed automation", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-009": {"title": "Agent skills/tools pinned to a version for production", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -3389,6 +3391,63 @@ def _check_supply_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("SUP-007",
         status="pass" if has_prov else "should-fix",
         detail="Provenance/attestation referenced" if has_prov else "No provenance/attestation documented"))
+    # ---- SUP-008 / SUP-009: agent skill & tool supply-chain ----------------
+    # The skills and tools an agent depends on are part of its supply chain.
+    # In production they should be published once as immutable, versioned
+    # Foundry artifacts and consumed by pinned version — never force-republished
+    # (which deletes prior versions and breaks pinned consumers) and never
+    # vendored by cloning source at runtime.
+    automation_paths = _glob_repo(
+        ctx.root,
+        ".github/workflows/*.yml", ".github/workflows/*.yaml",
+        "**/*.sh", "**/*.ps1",
+    )
+    automation_text = ctx.azure_yaml_text + "\n" + "\n".join(
+        (_read_text(p) or "") for p in automation_paths
+    )
+    # SUP-008: force-publish guard. A publish/create command for a skill or
+    # tool that carries --force / --overwrite on the same line.
+    skill_publish_re = re.compile(
+        r"(azd\s+ai\s+skill|az\s+[\w\s.-]*\bskill\b|foundry\s+[\w\s.-]*\b(?:skill|tool(?:box)?)\b)",
+        re.I,
+    )
+    force_re = re.compile(r"(--force|--overwrite)\b", re.I)
+    force_hits = [
+        ln.strip()
+        for ln in automation_text.splitlines()
+        if skill_publish_re.search(ln) and force_re.search(ln)
+    ]
+    if force_hits:
+        out.append(_mk_finding("SUP-008", status="should-fix",
+            detail=(f"{len(force_hits)} skill/tool publish command(s) use --force/--overwrite — "
+                    "force-publish deletes existing immutable versions and breaks pinned "
+                    "consumers; publish a new version and promote default_version instead")))
+    else:
+        out.append(_mk_finding("SUP-008", status="pass",
+            detail="No force-published skill/tool commands in committed automation"))
+    # SUP-009: pin skill/tool versions for production.
+    haystack = "\n".join([automation_text, ctx.spec_text, ctx.docs_text, ctx.src_text])
+    usage_re = re.compile(
+        r"(azd\s+ai\s+skill|foundry[_-]skill[_-]catalog|foundry[_-]toolbox|\btoolbox\b|mcpServers|mcp[_-]plugin)",
+        re.I,
+    )
+    pin_re = re.compile(
+        r"(skill[_-]?version|SkillVersion|default_version\s*[:=]\s*['\"]?[\w.\-]+|tool(?:box)?[_-]?version)",
+        re.I,
+    )
+    uses_skills = bool(usage_re.search(haystack)) or bool(_glob_repo(ctx.root, "skills/**/SKILL.md"))
+    has_pin = bool(pin_re.search(haystack))
+    if not uses_skills:
+        out.append(_mk_finding("SUP-009", status="not-applicable",
+            detail="No agent skills/tools referenced in repo"))
+    elif has_pin:
+        out.append(_mk_finding("SUP-009", status="pass",
+            detail="Skill/tool version pinning declared"))
+    else:
+        out.append(_mk_finding("SUP-009", status="should-fix",
+            detail=("Agent skills/tools referenced but no pinned version declared — pin an "
+                    "immutable SkillVersion / toolbox version for production and promote "
+                    "default_version in a staged rollout")))
     return out
 
 

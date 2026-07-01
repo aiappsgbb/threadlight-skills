@@ -1,0 +1,28 @@
+{
+  // Threadlight Skills — thin, consumer-focused dev box.
+  //
+  // Opens in GitHub Codespaces (or any devcontainer host) with GitHub Copilot
+  // CLI installed and all 16 threadlight skills wired from this checkout. It is
+  // deliberately lightweight: no Python/Node test toolchain and no Azure deploy
+  // tooling (azd/az/bicep/Docker). See the "Quickstart in GitHub Codespaces"
+  // section of the README for what works here and the known limitations.
+  "name": "Threadlight Skills",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  "features": {
+    // Several skills shell out to the GitHub CLI.
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  // Install Copilot CLI and wire the local skills after the container is created.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ]
+    }
+  }
+}

@@ -7,8 +7,33 @@ field.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Corrected stale `.github/plugin/marketplace.json` metadata** — the
+  marketplace + plugin `description` said "9 Copilot skills" and `version`
+  `1.0.0`; both now reflect the current 15 pipeline skills + `threadlight-auto`
+  orchestrator (16 total) at plugin `1.5.0`, matching `plugin.json` and the
+  README.
+
 ### Added
 
+- **GitHub cloud sandbox docs.** Documented running the skills in an ephemeral,
+  GitHub-hosted **cloud sandbox** (`copilot --cloud`, public preview) now that the
+  org has enabled it. README gains an "In a GitHub cloud sandbox" subsection
+  (launch, marketplace wiring since sandboxes ignore `.devcontainer/`, inherited
+  cloud-agent policy + host allow-list, and the preview/usage-billed caveats); the
+  experience site adds a "GitHub cloud sandbox" column to the private-env test
+  comparison in [`docs/customize.html`](docs/customize.html) and a zero-install
+  "try it first" callout to [`docs/workbook.html`](docs/workbook.html).
+- **Dev Container + GitHub Codespaces quickstart.** New
+  [`.devcontainer/`](.devcontainer/) (thin `base:ubuntu` image + `github-cli`
+  feature) installs GitHub Copilot CLI and wires all 16 threadlight skills from
+  the local checkout on create, so a Codespace boots ready to explore the
+  pipeline — `copilot` → `/login` → prompt. Consumer-focused: no Python/Node
+  test toolchain and no Azure deploy tooling (`azd`/`az`/`bicep`/Docker); the
+  deploy and production legs still need a full local/VNet environment. README
+  gains an "Open in Codespaces" badge, the marketplace-install alternative, and
+  an honest limitations note (auth, workiq/MCP, deploy tooling).
 - **Executable Responsible-AI-for-Foundry control plane — `threadlight-evals`,
   `threadlight-redteam`, `threadlight-govern` v0.1.0 (plugin 1.5.0).** Closes
   the gap where `path2production` *scored* its control-plane legs but never

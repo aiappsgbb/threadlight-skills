@@ -4,11 +4,9 @@
 > GitHub Actions workflow. **One-time setup** lives in
 > [`threadlight-e2e-setup.md`](./threadlight-e2e-setup.md) — do that first.
 >
-> This workflow is ported from `aiappsgbb/agentic-loop`'s
-> [`lean-auto-e2e-foundry.yml`](https://github.com/aiappsgbb/agentic-loop/blob/main/.github/workflows/lean-auto-e2e-foundry.yml).
-> The retry-on-429 wrapper + git-suppress prompt that won
-> [agentic-loop run #26752622265](https://github.com/aiappsgbb/agentic-loop/actions/runs/26752622265)
-> (50m57s, all 16 steps ✅, both demo scenarios passed live, clean teardown) are reused verbatim.
+> The retry-on-429 wrapper + git-suppress prompt are the load-bearing
+> reliability pieces here — they're what keeps a ~51-minute, 16-step run
+> green through transient 429s and clean teardown.
 
 ## What this workflow does
 
@@ -45,7 +43,7 @@ gh workflow run threadlight-e2e-foundry.yml \
 
 ## Expected wallclock
 
-Based on the proven agentic-loop run #5 (~51 min wallclock, ~47 min agent work):
+Baseline from full end-to-end runs (~51 min wallclock, ~47 min agent work):
 
 | Stage | Expected | Worst-case |
 |---|---|---|
@@ -62,7 +60,7 @@ Based on the proven agentic-loop run #5 (~51 min wallclock, ~47 min agent work):
 
 ## Cost per run
 
-Based on the agentic-loop measurement (re-estimated lower than the planning $5-10):
+Based on measured runs (re-estimated lower than the planning $5-10):
 
 | Component | Active during run |
 |---|---|
@@ -112,6 +110,5 @@ Most useful when triaging:
 
 - [`self-improving-loop.md`](./self-improving-loop.md) — the **primary** `learn` cold-path that mines any single run of this workflow (green or red, no baseline) into ranked fixes
 - [`router-validation.md`](./router-validation.md) — the **optional** model-router vs `gpt-5.4-mini` validation matrix (quality + cost) driven by this workflow
-- agentic-loop's `lean-auto-e2e-foundry.yml` — the proven-green original this workflow is ported from
-- `skills/threadlight-deploy/SKILL.md` § Deploy-time failure-mode index — F-01..F-22 lookup table (ported from agentic-loop in PR #4)
+- `skills/threadlight-deploy/SKILL.md` § Deploy-time failure-mode index — F-01..F-22 lookup table
 - aiappsgbb/awesome-gbb's `copilot-cli-foundry-auth-smoke.yml` — the auth-smoke that proved BYOK Foundry routing

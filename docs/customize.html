@@ -320,20 +320,20 @@
 
       <h3>Testing inside their boundary</h3>
       <p>
-        A private-VNet target needs a dev box inside the perimeter. Two patterns,
+        A private-VNet target needs a dev box inside the perimeter. Three patterns,
         one gate.
       </p>
 
       <div class="cost-table-wrap">
         <table class="cost-table">
           <thead>
-            <tr><th>Dimension</th><th>Azure ML compute + VS Code <span class="prio">strong</span></th><th>GitHub Codespaces</th></tr>
+            <tr><th>Dimension</th><th>Azure ML compute + VS Code <span class="prio">strong</span></th><th>GitHub Codespaces</th><th>GitHub cloud sandbox</th></tr>
           </thead>
           <tbody>
-            <tr><td><strong>Network</strong></td><td>Joined to the VNet, <strong>no public IP</strong></td><td>Public-egress by default; needs a sanctioned path or enterprise Azure private networking</td></tr>
-            <tr><td><strong>Private endpoints</strong></td><td>Reaches Foundry&nbsp;/&nbsp;ACR&nbsp;/&nbsp;Cosmos&nbsp;/&nbsp;Key&nbsp;Vault natively</td><td>Only via a sanctioned tunnel or enterprise private networking</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Fully-private, no-egress targets</td><td>Fast iteration on the non-private parts of the loop</td></tr>
-            <tr><td><strong>Honest limit</strong></td><td>Single-user box; stop it when idle to control cost</td><td>A vanilla Codespace <strong>can&rsquo;t see private endpoints</strong></td></tr>
+            <tr><td><strong>Network</strong></td><td>Joined to the VNet, <strong>no public IP</strong></td><td>Public-egress by default; needs a sanctioned path or enterprise Azure private networking</td><td>Public-egress, GitHub-hosted; traffic bounded by your org&rsquo;s <strong>Copilot cloud-agent policy</strong></td></tr>
+            <tr><td><strong>Private endpoints</strong></td><td>Reaches Foundry&nbsp;/&nbsp;ACR&nbsp;/&nbsp;Cosmos&nbsp;/&nbsp;Key&nbsp;Vault natively</td><td>Only via a sanctioned tunnel or enterprise private networking</td><td>Same as a vanilla Codespace &mdash; <strong>no line of sight to private endpoints</strong></td></tr>
+            <tr><td><strong>Best for</strong></td><td>Fully-private, no-egress targets</td><td>Fast iteration on the non-private parts of the loop</td><td>Zero-install, throwaway runs from any machine &mdash; the design&nbsp;/&nbsp;local-test legs</td></tr>
+            <tr><td><strong>Honest limit</strong></td><td>Single-user box; stop it when idle to control cost</td><td>A vanilla Codespace <strong>can&rsquo;t see private endpoints</strong></td><td>Public preview &amp; usage-billed; <strong>no <code>az</code>&nbsp;/&nbsp;<code>azd</code></strong> or subscription creds preloaded</td></tr>
           </tbody>
         </table>
       </div>

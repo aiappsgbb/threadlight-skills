@@ -3155,7 +3155,7 @@ treats them identically.
 
 **Lookup BEFORE running `az logs` / `azd ai agent monitor` blindly.** Most azd / agent errors have a known root cause and a known fix; matching the error signature here saves the 10-20 min of log-spelunking that re-derives a documented fix.
 
-This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time failure-mode index (10 from-scratch pilots, 17 + 9 MIDs captured). Threadlight's own deeper Gotchas table follows immediately below — when both apply, prefer the row here for the **fast lookup**, then jump to Gotchas for the **full forensic**.
+This index distills the deploy-time failure modes seen across 10 from-scratch pilots (17 + 9 MIDs captured). Threadlight's own deeper Gotchas table follows immediately below — when both apply, prefer the row here for the **fast lookup**, then jump to Gotchas for the **full forensic**.
 
 | # | Error signature (in az/azd output, container log, or portal) | 1-line action |
 |---|---|---|
@@ -3182,7 +3182,7 @@ This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time fail
 | **F-21** | Agent invoke returns `session_not_ready` after 60s timeout; `azd ai agent show` says `status: active`; container logs show no errors | `from azure.identity import DefaultAzureCredential` (sync) passed to `FoundryChatClient(credential=...)` → SDK is async-only, sync credential's `get_token` doesn't satisfy `get_token_async` → first request hangs until session-ready timeout fires. **MUST** use `from azure.identity.aio import DefaultAzureCredential`. |
 | **F-22** | `azd deploy <agent-service>` succeeds Foundry `Create agent` + `Polling agent status`, then `failed invoking event handlers for 'postdeploy', failed to fetch agent version for <azd-service-name>/<version>: GET .../agents/<azd-service-name>/versions/<v> 404` | The agent IS deployed (`azd ai agent show -o json` confirms `status: active`). Extension's internal postdeploy event handler looks up by **azd service name** instead of `agent.yaml .name:` — 404. **User's own postdeploy hook never gets a chance to run.** Set `azure.yaml` `services.<service>` == `agent.yaml .name:` as workaround until upstream fix lands. |
 
-> **Sourcing.** This index is mirrored from [`aiappsgbb/agentic-loop`](https://github.com/aiappsgbb/agentic-loop) SKILL § Deploy-time failure-mode index. The 22 rows came from 10 from-scratch pilots over 6 days (May 2026): weather-agent, learn-assistant ×2, hybrid-mcp-agent, smb-credit-memo, contoso-claim-triage. When threadlight's own from-scratch runs surface NEW failure modes, add a row here AND cross-update agentic-loop.
+> **Sourcing.** The 22 rows came from 10 from-scratch pilots over 6 days (May 2026): weather-agent, learn-assistant ×2, hybrid-mcp-agent, smb-credit-memo, contoso-claim-triage. When threadlight's own from-scratch runs surface NEW failure modes, add a row here.
 
 ---
 

@@ -11,11 +11,11 @@ description: >
   USE FOR: design a process, spec out a use case, create agent architecture, automate
   a regulated workflow, threadlight design, skill factory, business process
   specification, speckit, define a customer scenario, mock backend systems,
-  seller prep guide, demo script, demo prompts.
+  seller prep guide, demo script, demo prompts, lock the stack/model/hosting foundation.
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Threadlight Design
@@ -102,6 +102,7 @@ Every PoC, regardless of mode, MUST have:
 - ✅ **At least one MCP server** (mock or real) — agent must have callable tools
 - ✅ **Mock MCP server** for inaccessible systems — FastMCP backed by sample data, customer swaps endpoint later
 - ✅ **SpecKit spec** with assumptions documented in § 13
+- ✅ **`specs/foundation.md`** — the up-front technical decision record (framework, model + region + capacity, hosting, tools, identity, observability) that Step 0 locks and Step 3 pre-populates the SPEC from. **From-scratch path**; skipped on Kratos-export (already designed), house-defaulted in Fast-PoC.
 - ✅ **AGENTS.md + skills** derived from spec
 - ✅ **Deployable scaffold** (`azd up` ready)
 - ✅ **Eval dataset** from spec § 9 scenarios — so the demo can be scored
@@ -180,6 +181,64 @@ errors loudly with a pointer back to this probe.
 ---
 
 ## Phase A: Discovery → SpecKit
+
+### Step 0: Foundation (from-scratch path only)
+
+**Goal**: lock the pilot's **technical foundations up front** — before discovery
+sharpens the process and before Step 3 writes the spec — so the SPEC is authored
+on **decided ground**, not on silent defaults back-filled during generation.
+This is the **left-of-design** gate: framework, model + region + capacity,
+hosting shape, tool binding, identity/RBAC, and the observability baseline are
+deliberate, recorded choices an operator can sign off on in one review.
+
+> **When Step 0 runs.** From-scratch path only. **Kratos-export projects skip
+> it** — the exported bundle is already designed (see the path note at the top
+> of this skill). In **Fast-PoC mode**, do not interview: fill every row with
+> the house default, mark `source: defaulted-after-skip`, and let Step 3 surface
+> the one-line callout in SPEC § 13. In **Full mode**, walk the operator through
+> the rows below, defaulting anything they don't have an opinion on.
+
+Consume the **runtime capability probe** output (above) as the first input —
+it already fixes the agent-vs-workflow *shape* and what tooling the shell can
+run. Step 0 then locks the **higher-order house standards the probe does not
+cover**:
+
+1. **Framework & runtime shape** — `microsoft-agent-framework` (MAF) is the
+   house default; `copilot-agent-sdk` (M365/Teams-native surface) or
+   `foundry-native` (SDK-lite hosted agent) are deliberate deviations. The
+   agent-vs-workflow shape defers to the probe / § 11e; the Step 2 trait matrix
+   may refine it, confirmed at the Step 4 checkpoint.
+2. **Model & capacity** — default `gpt-5.4`, plus **`region`,
+   `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
+   (EU)** — the region/boundary/fallback triad § 7b does not capture but that
+   decides where capacity is provisioned and whether an EU-resident pilot can
+   run in the primary region.
+3. **Hosting shape** — `aca-hosted-agent` (default) | `azure-functions` |
+   `aca-job`; plus the `deployment_target` lever (`demo-sandbox` |
+   `customer-pilot` | `production-bound`).
+4. **Tools & data** — tool binding (`mcp` default), the curated toolbox
+   (versioned alongside skills), mock-first for inaccessible systems.
+5. **Identity & RBAC** — user-assigned managed identity, least-privilege,
+   secretless (`DefaultAzureCredential` end-to-end) — the house default; any
+   deviation is a flag.
+6. **Observability baseline** — OTel + Application Insights wired from day one,
+   `gen_ai.*` trace conventions. Observability is a foundation, not an add-on.
+7. **Data residency & compliance** — region pinning, retention, and a
+   `deferred_decisions` list for rows acknowledged but out of pilot scope
+   (WAF/Front Door, DR runbook).
+
+**Emit `specs/foundation.md`** using **`references/foundation-template.md`**
+(YAML decision blocks + a short prose rationale + a decision-summary table).
+
+> **Downstream contract.** Step 3 (Generate SpecKit) reads `specs/foundation.md`
+> and **pre-populates** SPEC **§ 7b** (model — extended with region / boundary /
+> fallback), **§ 11c** (tech stack), **§ 11e** (workflow model), **§ 11f**
+> (deployment posture), and **§ 13** (runtime / observability) from it instead
+> of re-deciding. **Absent → today's behavior**: Step 3 applies the same
+> documented defaults inline, so older runs and skipped-Step-0 runs are
+> unaffected. Authority order on rerun: `specs/foundation.md` → the SPEC
+> sections it feeds → `azd env`; a later SPEC edit that disagrees is surfaced as
+> a conflict, not silently overwritten.
 
 ### Step 1: Clarify Purpose
 
@@ -420,11 +479,14 @@ Use the template from `references/speckit-template.md`.
 
 #### Pre-generation confirmation (Full mode only)
 
-Before writing `specs/SPEC.md`, show the user a single compact table merging
-**Step 1** (clarify), **Step 1.5** (audience & presentation context), and
-**Step 2** (trait discovery) — with the **`source`** of each field
-visible — and ask one open question: _"Anything to tweak before I generate
-the spec?"_
+Before writing `specs/SPEC.md`, **read `specs/foundation.md` if it exists**
+(from-scratch path) and pre-populate SPEC § 7b / § 11c / § 11e / § 11f / § 13
+from it — Step 0 locked those foundations, so carry the values and their
+`source` forward rather than re-deciding. Then show the user a single compact
+table merging **Step 0** (foundation), **Step 1** (clarify), **Step 1.5**
+(audience & presentation context), and **Step 2** (trait discovery) — with the
+**`source`** of each field visible — and ask one open question: _"Anything to
+tweak before I generate the spec?"_
 
 Table shape (mirrors the SPEC § 13 source-taxonomy table):
 
@@ -579,7 +641,7 @@ Then also generate `specs/manifest.json` for resume durability:
   "spec_version": "1.0",
   "status": "checkpoint",
   "phase_reached": "A",
-  "generated_files": ["specs/SPEC.md", "specs/sample-data/..."],
+  "generated_files": ["specs/foundation.md", "specs/SPEC.md", "specs/sample-data/..."],
   "traits": ["{trait-1}", "{trait-2}"],
   "created_at": "{ISO date}"
 }

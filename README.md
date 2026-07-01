@@ -8,7 +8,7 @@
 
 | Skill | What it does |
 |-------|-------------|
-| [`threadlight-design`](skills/threadlight-design/) | Produces SPEC.md, demo deck, prep guide, experience page from a brief |
+| [`threadlight-design`](skills/threadlight-design/) | Locks the technical foundation (framework, model, hosting, identity, observability) up front, then produces SPEC.md, demo deck, prep guide, experience page from a brief |
 | [`threadlight-local-test`](skills/threadlight-local-test/) | Boots the agent locally for rapid iteration (Pattern 0 quickstart) |
 | [`threadlight-deploy`](skills/threadlight-deploy/) | 7-phase `azd up` orchestration — ACR, Bicep, hooks, Foundry, Citadel |
 | [`threadlight-safe-check`](skills/threadlight-safe-check/) | Pre/post-deploy gate — validates every resource selector before go-live |
@@ -78,6 +78,89 @@ Then invoke, in order: `threadlight-safe-check` → `threadlight-deploy`
 skills-root convention, what's intentionally trimmed, and the full invocation
 order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 
+## Quickstart in GitHub Codespaces
+
+Want to try the skills without installing anything? Open this repo in a
+Codespace and you get **GitHub Copilot CLI with all 16 threadlight skills
+pre-wired** from the checkout.
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)
+
+The [`.devcontainer`](.devcontainer/) installs Copilot CLI and registers the
+skills automatically. Once it boots:
+
+```bash
+copilot          # start Copilot CLI
+/login           # first launch only — sign in via device flow
+```
+
+Then just prompt, e.g. *"use threadlight-design to draft a SPEC from this
+brief: …"*.
+
+Prefer the released plugin over the local checkout? Swap in the marketplace
+version any time:
+
+```bash
+copilot plugin marketplace add aiappsgbb/threadlight-skills
+copilot plugin install threadlight-skills@threadlight-skills
+```
+
+### In a GitHub cloud sandbox
+
+Just enabled **[cloud sandboxes](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes)**
+for your org? You can run the skills in a fully isolated, **ephemeral Linux box
+hosted by GitHub** — nothing installed locally, and you can pick the session back
+up from any machine:
+
+```bash
+copilot --cloud    # launch an ephemeral cloud sandbox (public preview)
+```
+
+A cloud sandbox **does not read `.devcontainer/`**, so the auto-wiring above
+doesn't apply — install the skills from the marketplace the same way you would
+anywhere:
+
+```bash
+copilot plugin marketplace add aiappsgbb/threadlight-skills
+copilot plugin install threadlight-skills@threadlight-skills
+```
+
+A few things to know:
+
+- **Governance is inherited.** Each session runs under your org's existing
+  **Copilot cloud agent policies** — the firewall/allow-list your admins already
+  trust — with no extra setup. For the deploy and cost skills to reach Azure,
+  that policy needs to allow the hosts they call: `management.azure.com`,
+  `*.services.ai.azure.com`, `ai.azure.com`, `login.microsoftonline.com`,
+  `sts.windows.net`, `prices.azure.com`, `github.com`, `ghcr.io`,
+  `mcr.microsoft.com` and `learn.microsoft.com`.
+- **No Azure deploy tooling.** Like the Codespace, a cloud sandbox has no
+  `az` / `azd` / `bicep` / Docker or subscription credentials preloaded, so the
+  deploy and production-hardening legs still need a full local or in-VNet box.
+- **Preview + usage-billed.** Cloud sandboxes are in **public preview** and
+  billed by usage — stopping a session snapshots it; deleting it frees the
+  storage.
+
+### Limitations
+
+The Codespace is a **thin, consumer-focused** box for authoring and exploring
+skills — not a full deploy environment:
+
+- **Auth:** the first `copilot` launch needs `/login`. Codespaces injects a
+  repo-scoped `GITHUB_TOKEN` that lacks the *Copilot Requests* permission; if it
+  interferes with sign-in, run `unset GITHUB_TOKEN` in the terminal and retry
+  `/login`.
+- **No Azure deploy tooling** (`azd`, `az`, `bicep`, Docker) — the deploy and
+  production-hardening legs (`threadlight-deploy`, `threadlight-safe-check`,
+  `threadlight-production-ready`, …) need a full local or in-VNet environment.
+  See [`threadlight-customize`](skills/threadlight-customize/) for private-env
+  testing patterns.
+- Some MCP/agent tools (e.g. workiq) may not function in a Codespace.
+
+> **Tip:** to let anyone clone this setup with **Use this template**, a repo
+> admin can enable *Settings → Template repository*. That is independent of the
+> devcontainer above — no code change required.
+
 ## Install
 
 ### As a plugin (recommended)
@@ -99,6 +182,18 @@ gh skill install aiappsgbb/threadlight-skills threadlight-deploy
 
 Threadlight skills cross-reference foundry-*, azd-patterns, citadel-*, and
 other skills from [awesome-gbb](https://github.com/aiappsgbb/awesome-gbb).
+
+Threadlight is deliberately **thin where the foundry-\* family is already deep** —
+it composes with those skills rather than reimplementing them:
+
+| Companion (awesome-gbb) | Threadlight composes with it for |
+|---|---|
+| [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-skill-catalog) | Publishing skills/tools as **versioned, immutable Foundry artifacts** — pin a version, promote `default_version` in stages, download at deploy. This is the lifecycle `threadlight-production-ready`'s supply-chain pillar checks (SUP-008/009). |
+| [`foundry-toolbox`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-toolbox) | Curating the **tool set** an agent binds to, versioned alongside its skills. |
+| [`foundry-evals`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals) | Offline batch invoke + score behind `threadlight-evals`. |
+| [`foundry-agt`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-agt) | Agent-runtime governance policy behind `threadlight-govern`. |
+| [`foundry-hosted-agents`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-hosted-agents) · [`azd-patterns`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns) · [`foundry-observability`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-observability) | Hosting, deploy hooks, and OTel wiring the deploy leg builds on. |
+
 Install both plugins for the full pipeline:
 
 ```bash
