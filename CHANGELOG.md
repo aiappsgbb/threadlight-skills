@@ -7,6 +7,14 @@ field.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Corrected stale `.github/plugin/marketplace.json` metadata** — the
+  marketplace + plugin `description` said "9 Copilot skills" and `version`
+  `1.0.0`; both now reflect the current 15 pipeline skills + `threadlight-auto`
+  orchestrator (16 total) at plugin `1.5.0`, matching `plugin.json` and the
+  README.
+
 ### Added
 
 - **Dev Container + GitHub Codespaces quickstart.** New
