@@ -88,6 +88,11 @@ the region / boundary / fallback triad, which decides where capacity is
 provisioned and whether an EU-resident pilot can even run in the primary region.
 Do **not** use the legacy `GPT-4o` family — `gpt-5.4` supersedes it.
 
+> **How to choose these values** — model tier, reasoning effort, capacity type,
+> TPM, region/fallback, and data boundary — see
+> [`references/model-selection.md`](model-selection.md), the seven-decision
+> procedure that fills this block.
+
 ---
 
 ## 3. Hosting shape

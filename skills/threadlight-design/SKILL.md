@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.8.0"
+  version: "1.9.0"
 ---
 
 # Threadlight Design
@@ -212,7 +212,8 @@ cover**:
    `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
    (EU)** — the region/boundary/fallback triad § 7b does not capture but that
    decides where capacity is provisioned and whether an EU-resident pilot can
-   run in the primary region.
+   run in the primary region. See `references/model-selection.md` for the
+   tier / capacity / region decision procedure that fills this block.
 3. **Hosting shape** — `aca-hosted-agent` (default) | `azure-functions` |
    `aca-job`; plus the `deployment_target` lever (`demo-sandbox` |
    `customer-pilot` | `production-bound`).
@@ -531,7 +532,7 @@ Must include all sections from the template:
 5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `foundry-mcp-aca`.** *Required for any process that talks to external systems.*
 6. **Tool Contracts** — abstract tool definitions (not bound to any runtime)
 7. **Knowledge Sources** — reference documents, policies, search indexes — with explicit `foundry-iq` / `mcp-search` / `inline-context` backing decision
-7b. **AI Services & Model Selection** — chat / vision / DocIntel / Speech models with versions. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. *Required for every process.*
+7b. **AI Services & Model Selection** — chat / vision / DocIntel / Speech models with versions. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
 8. **Human Interaction Points** — approvals, escalations, conversational flows — with **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
 8b. **Human Interaction (Workspace UX)** — case-list / inbox / dashboard / console / kanban / map shape with primary filters, detail sections, action toolbar, audit viewer. **INPUT CONTRACT for `threadlight-workspace-ui`.** *Optional — skip if humans only interact via approval cards.*
 9. **Success Criteria** — functional, performance, quality targets + evaluation scenarios (S-XXX linked to BR-XXX) **+ Business KPIs table (BR → KPI mapping)** for continuous evaluation
