@@ -105,6 +105,42 @@ copilot plugin marketplace add aiappsgbb/threadlight-skills
 copilot plugin install threadlight-skills@threadlight-skills
 ```
 
+### In a GitHub cloud sandbox
+
+Just enabled **[cloud sandboxes](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes)**
+for your org? You can run the skills in a fully isolated, **ephemeral Linux box
+hosted by GitHub** — nothing installed locally, and you can pick the session back
+up from any machine:
+
+```bash
+copilot --cloud    # launch an ephemeral cloud sandbox (public preview)
+```
+
+A cloud sandbox **does not read `.devcontainer/`**, so the auto-wiring above
+doesn't apply — install the skills from the marketplace the same way you would
+anywhere:
+
+```bash
+copilot plugin marketplace add aiappsgbb/threadlight-skills
+copilot plugin install threadlight-skills@threadlight-skills
+```
+
+A few things to know:
+
+- **Governance is inherited.** Each session runs under your org's existing
+  **Copilot cloud agent policies** — the firewall/allow-list your admins already
+  trust — with no extra setup. For the deploy and cost skills to reach Azure,
+  that policy needs to allow the hosts they call: `management.azure.com`,
+  `*.services.ai.azure.com`, `ai.azure.com`, `login.microsoftonline.com`,
+  `sts.windows.net`, `prices.azure.com`, `github.com`, `ghcr.io`,
+  `mcr.microsoft.com` and `learn.microsoft.com`.
+- **No Azure deploy tooling.** Like the Codespace, a cloud sandbox has no
+  `az` / `azd` / `bicep` / Docker or subscription credentials preloaded, so the
+  deploy and production-hardening legs still need a full local or in-VNet box.
+- **Preview + usage-billed.** Cloud sandboxes are in **public preview** and
+  billed by usage — stopping a session snapshots it; deleting it frees the
+  storage.
+
 ### Limitations
 
 The Codespace is a **thin, consumer-focused** box for authoring and exploring

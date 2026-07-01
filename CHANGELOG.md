@@ -17,6 +17,14 @@ field.
 
 ### Added
 
+- **GitHub cloud sandbox docs.** Documented running the skills in an ephemeral,
+  GitHub-hosted **cloud sandbox** (`copilot --cloud`, public preview) now that the
+  org has enabled it. README gains an "In a GitHub cloud sandbox" subsection
+  (launch, marketplace wiring since sandboxes ignore `.devcontainer/`, inherited
+  cloud-agent policy + host allow-list, and the preview/usage-billed caveats); the
+  experience site adds a "GitHub cloud sandbox" column to the private-env test
+  comparison in [`docs/customize.html`](docs/customize.html) and a zero-install
+  "try it first" callout to [`docs/workbook.html`](docs/workbook.html).
 - **Dev Container + GitHub Codespaces quickstart.** New
   [`.devcontainer/`](.devcontainer/) (thin `base:ubuntu` image + `github-cli`
   feature) installs GitHub Copilot CLI and wires all 16 threadlight skills from
