@@ -17,7 +17,7 @@ PRECISION (learned the hard way against real logs — see the design spec):
     a rate limit) emits the same line many times.
 
 Taxonomy is ordered: the first matching rule wins, so specific signatures
-(dependency, wire_protocol) precede generic ones (retry).
+(dependency, wire_protocol, protocol_contract) precede generic ones (retry).
 """
 from __future__ import annotations
 
@@ -28,8 +28,9 @@ from typing import Any
 # Tuned against real failed logs (dependency drift + rate-limit cascade).
 _RULES: list[tuple[str, str, re.Pattern[str]]] = [
     ("dependency",       "high",   re.compile(r"ResolutionImpossible|conflicting dependencies|Cannot install .*because|no matching distribution", re.I)),
-    ("skill_loader",     "medium", re.compile(r"not in the built-in catalog|skill .*not found|unknown skill", re.I)),
+    ("skill_loader",     "high",   re.compile(r"not in the built-in catalog|skill .*not found|unknown skill", re.I)),
     ("wire_protocol",    "high",   re.compile(r"operation unsupported|\b400\b.*unsupported", re.I)),
+    ("protocol_contract","high",   re.compile(r"Invoke API requires|(invocations|responses) protocol|protocol version '|protocol not declared", re.I)),
     ("rate_limit",       "medium", re.compile(r"exceeded rate limit|rate.?limit|CAPIError|Too Many Requests|\b429\b", re.I)),
     ("model_unavailable","high",   re.compile(r"Failed to get response from the AI model|transient API error", re.I)),
     ("auth",             "high",   re.compile(r"\b401\b|\b403\b|unauthorized|forbidden|AADSTS\d+", re.I)),

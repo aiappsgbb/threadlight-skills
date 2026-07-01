@@ -26,6 +26,31 @@ def test_classify_real_signatures():
     assert findings.classify_line("a perfectly normal log line") is None
 
 
+def test_protocol_contract_invoke_mismatch():
+    # The Phase-4 terminal blocker: deploy declared `responses`, the pack asked for
+    # `invocations`, so `azd ai agent invoke --protocol invocations` gets an HTTP 400.
+    # This is NOT `wire_protocol` (no "unsupported"), so it needs its own rule —
+    # otherwise the invoke-fail run scores as "0 findings / looks clean".
+    cat, sev = findings.classify_line(
+        "HTTP 400 bad_request: Invoke API requires the request to use the "
+        "'invocations' protocol version '2.0.0'")
+    assert cat == "protocol_contract"
+    assert sev == "high"
+    # the MAF/Responses mirror of the same contract bug
+    assert findings.classify_line(
+        "Bot gets 400: responses protocol not declared")[0] == "protocol_contract"
+
+
+def test_skill_loader_is_high_severity():
+    # A missing skill on a workflow-classified workload is universal + blocking
+    # (all arms hit `Skill not found: threadlight-workflow` on fsi-kyc-aml), so it
+    # is high, not medium.
+    cat, sev = findings.classify_line(
+        "\u2717 skill(threadlight-workflow) Skill not found: threadlight-workflow")
+    assert cat == "skill_loader"
+    assert sev == "high"
+
+
 def test_noise_lines_are_not_findings():
     # command-echo (GA "Run" block echoes the script source in cyan-bold [36;1m) must be ignored,
     # otherwise the scanner flags the workflow's own defensive comments + grep-based detectors.

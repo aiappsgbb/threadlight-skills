@@ -80,7 +80,7 @@ phases:
     gates: []
   invoke:
     prompt: |
-      Invoke at least 2 killer prompts from ${E2E_WORKSPACE}/kyc-aml/tests/killer-prompts.md against the deployed KYC/AML agent. Use the Invocations protocol against the cloud agent, not local Pattern 0.
+      Invoke at least 2 killer prompts from ${E2E_WORKSPACE}/kyc-aml/tests/killer-prompts.md against the deployed KYC/AML agent (the cloud agent, not local Pattern 0). Do NOT assume a protocol: invoke using whichever protocol threadlight-deploy actually declared for this agent. Detect it first — read the generated azure.yaml / agent config (Invocations for the GHCP-SDK runtime, Responses for the MAF-agent or workflow runtime), or run `azd ai agent show` to confirm the served protocol — then match your invoke call to it. If an invoke returns HTTP 400 complaining about the protocol version (e.g. "Invoke API requires ... 'invocations' protocol version") or "responses protocol not declared", that means you picked the wrong protocol: switch to the one the agent actually serves and retry, do not give up.
 
       For each prompt, capture the actual command and the agent's actual response to a transcript file BEFORE writing any summary doc:
         - First prompt's raw output: tee to /tmp/phase-invoke-transcript-1.txt
