@@ -23,7 +23,7 @@ Cross-cutting Pattern 1 (Brand Cascade) detection order:
 3. **This table** — sector convention lookup by `domain + customer name`
 4. **Neutral fallback** — slate grey palette (no brand) + amber accent — only when none of 1-3 apply
 
-When this table is the source, the generator MUST annotate the SPEC § 12
+When this table is the source, the generator MUST annotate the SPEC § 13
 assumptions block:
 
 ```yaml
@@ -111,7 +111,7 @@ brand_palette_confirmed: false   # set true when customer confirms in next call
 3. **Use the neutral fallback.** If nothing is defensible, use the
    threadlight default slate-grey palette (`#1F2937` primary, `#F59E0B`
    amber accent). Annotate `brand_palette_source: neutral-fallback` in
-   SPEC § 12 so the next iteration replaces it.
+   SPEC § 13 so the next iteration replaces it.
 4. **Never invent.** Do not pick a colour because "it looks nice for a
    utility". The seller has to defend every visual choice — undocumented
    palettes turn into trust debt in the first call.

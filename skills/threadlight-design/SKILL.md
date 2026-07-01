@@ -101,12 +101,12 @@ Every PoC, regardless of mode, MUST have:
 - ✅ **Keyless auth** (`DefaultAzureCredential`) — no API keys
 - ✅ **At least one MCP server** (mock or real) — agent must have callable tools
 - ✅ **Mock MCP server** for inaccessible systems — FastMCP backed by sample data, customer swaps endpoint later
-- ✅ **SpecKit spec** with assumptions documented in § 12
+- ✅ **SpecKit spec** with assumptions documented in § 13
 - ✅ **AGENTS.md + skills** derived from spec
 - ✅ **Deployable scaffold** (`azd up` ready)
 - ✅ **Eval dataset** from spec § 9 scenarios — so the demo can be scored
-- ✅ **`specs/demo-deck.html`** — cinematic talk deck for the live customer moment (always — primary customer-facing artifact; **see Step 6 § 7**). Skip ONLY when spec § 12 assumptions explicitly flag `internal-no-demo: true`. Replaces the legacy `overview.html` — see migration note in `references/demo-deck-template.md`.
-- ✅ **`specs/experience.html`** — bespoke cinematic customer journey (**optional — on request**; **see Step 6 § 8**). Generate when the user asks for a "cinematic", "experience", or "journey", or when spec § 12 sets `experience: true`. Skip otherwise.
+- ✅ **`specs/demo-deck.html`** — cinematic talk deck for the live customer moment (always — primary customer-facing artifact; **see Step 6 § 7**). Skip ONLY when spec § 13 assumptions explicitly flag `internal-no-demo: true`. Replaces the legacy `overview.html` — see migration note in `references/demo-deck-template.md`.
+- ✅ **`specs/experience.html`** — bespoke cinematic customer journey (**optional — on request**; **see Step 6 § 8**). Generate when the user asks for a "cinematic", "experience", or "journey", or when spec § 13 sets `experience: true`. Skip otherwise.
 - ✅ **`tests/killer-prompts.md`** — 5–10 ranked wow-prompts wired into `STARTER_{1,2,3}_TITLE/PROMPT` env vars (see Step 6 § 11). Mandatory under the same condition as the deck.
 - ✅ **`specs/demo-rehearsal.md`** — beat-by-beat run-of-show (T-24h / T-15min / T-5min / T-0) with backup paths (see Step 6 § 12). Mandatory under the same condition as the deck.
 
@@ -116,9 +116,9 @@ Every PoC, regardless of mode, MUST have:
 > deployment posture are NOT collected interactively — neutral
 > `external-demo` defaults apply (no logo prompt, default tone, demo-deck
 > framing). Step 3 (Generate SpecKit) MUST then surface a one-line callout
-> in SPEC § 12 reading roughly: _"Fast-PoC mode: audience mode, customer
+> in SPEC § 13 reading roughly: _"Fast-PoC mode: audience mode, customer
 > context, brand, and production posture were not collected; using neutral
-> demo defaults. Override later in SPEC § 1 / § 11f / § 12."_ Downstream
+> demo defaults. Override later in SPEC § 1 / § 11f / § 13."_ Downstream
 > skills key off this so silent defaults stay auditable.
 
 ---
@@ -129,7 +129,7 @@ Before starting discovery, probe what the runtime can actually do. Some
 runtimes (Cowork sandbox, locked-down Cloud Shell images, hardened
 corporate Codespaces) lack browser automation or media tooling — finding
 out at T-0 of a live demo is the worst failure mode. **Probe once at
-session start**; record the result in `specs/SPEC.md § 12` so downstream
+session start**; record the result in `specs/SPEC.md § 13` so downstream
 skills degrade gracefully instead of crashing.
 
 Run these probes from your active shell:
@@ -142,7 +142,7 @@ Run these probes from your active shell:
 | `uv` (Astral) | `command -v uv && uv --version` | `threadlight-local-test` Pattern 0 bootstrap; `threadlight-deploy` `container.py` prebuilds | Fall back to `pip` + `python -m venv` (slower); local-test Quickstart still works, just adds ~30 s to bootstrap. |
 | `docker` + daemon | `docker info > /dev/null 2>&1 && echo OK` | `threadlight-deploy` Phase 6 image build; ACR `az acr build` is a remote fallback when this fails | If daemon absent (Cowork, some CI runners), `threadlight-deploy` MUST use `az acr build` (remote build); skip any local-image smoke step. |
 
-Then write the result into `specs/SPEC.md § 12 assumptions`:
+Then write the result into `specs/SPEC.md § 13 assumptions`:
 
 ```yaml
 runtime:
@@ -159,7 +159,7 @@ workflow_model: agent             # agent (default) | workflow
   # The trait matrix (Phase A) auto-suggests based on the process:
   #   - Deterministic multi-phase with persona gates → workflow
   #   - Open-ended chat / Q&A / RAG-heavy → agent
-  # The operator confirms or overrides in § 12.
+  # The operator confirms or overrides in § 11e.
 ```
 
 **Known-bad combinations:**
@@ -172,7 +172,7 @@ workflow_model: agent             # agent (default) | workflow
 | **Local laptop (Mac/Win/Linux)** | Full capability when the contributor has installed the tools | Probe is still mandatory — the contributor may not have `ffmpeg`/`playwright`/`docker` installed |
 
 **Downstream contract.** Every other skill in the chain reads
-`SPEC § 12 → runtime.*` and either runs the full path or its
+`SPEC § 13 → runtime.*` and either runs the full path or its
 documented manual fallback. **No skill silently skips a step it
 can't run** — it either degrades to a documented manual flow or
 errors loudly with a pointer back to this probe.
@@ -230,11 +230,11 @@ flow silently defaults — once, before discovery dives in — so SPEC § 1 /
 inherit explicit choices instead of convention-fallbacks.
 
 **Skip in Fast-PoC mode.** See the Fast-PoC callout above — Fast-PoC
-applies neutral defaults silently and records that decision in SPEC § 12.
+applies neutral defaults silently and records that decision in SPEC § 13.
 
 **Pattern**: mirror Phase 7 (Citadel handoff) in `threadlight-deploy` —
 each question is optional, defaults are explicit, and a skipped answer
-falls through to today's behaviour and gets a row in the SPEC § 12
+falls through to today's behaviour and gets a row in the SPEC § 13
 assumptions table with `source: defaulted-after-skip`.
 
 > Scope is deliberately narrow: this step does NOT re-ask anything Step 2
@@ -257,7 +257,7 @@ skip any line):
      the customer tenant are captured below.
    - `unspecified` — preserve today's behaviour; treat as `external-demo`
      for prompting purposes but leave a `source: open-question` flag in
-     § 12.
+     § 13.
 2. **Customer / org context** — Org name, sector specifics, region(s). For
    `external-demo` this is the prospect; for `internal-pilot` it's the
    user's own org; for `third-party-build` capture both the partner's org
@@ -285,7 +285,7 @@ Capture in **SPEC § 1** (audience_mode, customer.brand_palette,
 customer.region) and **SPEC § 11f** (`deployment_target` + posture
 overrides as known). Each item carries a `source` field with one of:
 `provided | inferred | defaulted-after-skip | open-question`. Skipped
-items default to today's behaviour and get a row in the **§ 12
+items default to today's behaviour and get a row in the **§ 13
 assumptions table** (see Step 3 for the table shape).
 
 **Soft-confirmation hook**: after Step 2 completes, Step 3 (Generate
@@ -354,7 +354,7 @@ Reference: `references/process-traits.md`
    > **Default:** If the user doesn't know yet, **ask** rather than assume.
    > Stateless is the wrong default for any regulated process — assume
    > **case-based** for FSI / Healthcare / regulated supplier risk and
-   > flag in spec § 12: "Defaulted to case-based; confirm lifecycle with
+   > flag in spec § 13: "Defaulted to case-based; confirm lifecycle with
    > stakeholder."
 
 8. **Does the agent take consequential actions?** (Action Criticality trait)
@@ -376,7 +376,7 @@ Reference: `references/process-traits.md`
    > ≥ 2 persona/approval gates AND the outputs are deterministic (same input
    > → same phases → same outcome), suggest `workflow`. If the process is
    > primarily conversational, knowledge-grounded, or exploratory, suggest
-   > `agent`. Record the choice in spec § 12: `workflow_model: agent | workflow`.
+   > `agent`. Record the choice in spec § 11e: `workflow_model: agent | workflow`.
    >
    > **Both are valid.** Agent mode runs as a MAF Agent with skills + tools.
    > Workflow mode runs as a MAF DurableWorkflow with typed executors and HITL
@@ -426,7 +426,7 @@ Before writing `specs/SPEC.md`, show the user a single compact table merging
 visible — and ask one open question: _"Anything to tweak before I generate
 the spec?"_
 
-Table shape (mirrors the SPEC § 12 source-taxonomy table):
+Table shape (mirrors the SPEC § 13 source-taxonomy table):
 
 ```markdown
 | Section / Field          | Effective value                  | Source                |
@@ -444,14 +444,14 @@ Tweaks are applied inline (rewrite the corresponding § 1 / § 11f field +
 flip `source` to `provided`) and the table is re-shown until the user
 accepts. Skip this step in Fast-PoC mode.
 
-#### Fast-PoC § 12 callout (mandatory when `mode == Fast-PoC`)
+#### Fast-PoC § 13 callout (mandatory when `mode == Fast-PoC`)
 
-When Step 1.5 was skipped because the user is in Fast-PoC, SPEC § 12 MUST
+When Step 1.5 was skipped because the user is in Fast-PoC, SPEC § 13 MUST
 open with a one-line callout — verbatim shape:
 
 > _Fast-PoC mode: audience mode, customer context, brand, and production
 > posture were not collected; using neutral demo defaults. Override later
-> in SPEC § 1 / § 11f / § 12._
+> in SPEC § 1 / § 11f / § 13._
 
 This is the auditable trail that silently-defaulted decisions left for
 downstream skills (and for a later reviewer).
@@ -904,7 +904,7 @@ brand has to read at projector distance:
 - **Convention fallback** — when `customer.brand_palette.primary` is NOT
   captured and there's no logo URL, consult
   `references/brand-palettes.md` for the sector convention (UK telco red
-  `#E60000`, NHS blue `#005EB8`, etc.). Annotate SPEC § 12 assumptions
+  `#E60000`, NHS blue `#005EB8`, etc.). Annotate SPEC § 13 assumptions
   with `brand_palette_source: convention-fallback` so the next iteration
   confirms with the customer.
 
@@ -1110,7 +1110,7 @@ user banned them outright.
 | Individual seller / engineer PII | first+last name of any contributor, `@github_handle`, `@msft alias`, email addresses |
 | Fabricated function names | any `_skill` / `_tool` identifier that is NOT in the AGENTS.md `Foundry tools required` table (catches `load_skill`, `customer_knowledge_base_retrieve`, etc.) — see Pattern 6 for the canonical-naming gate |
 
-**Extensible per pilot.** SPEC § 12 assumptions block can carry an
+**Extensible per pilot.** SPEC § 13 assumptions block can carry an
 `additional_denied_tokens: [...]` list that gets folded into the grep.
 Typical additions: customer-internal codenames, prior-vendor product
 names the customer has explicitly distanced from, regulatory boilerplate
@@ -1292,7 +1292,7 @@ See Cross-cutting Pattern 7 for the banned/permitted phrase enforcement.
   paraphrased MCP transports) fail validation.
 - **Convention fallback** — when brand palette isn't explicit in SPEC § 1
   and there's no logo URL, look up `references/brand-palettes.md`; annotate
-  `brand_palette_source: convention-fallback` in SPEC § 12
+  `brand_palette_source: convention-fallback` in SPEC § 13
 
 **Style:**
 
@@ -1333,7 +1333,7 @@ posture of *this* process — through visuals native to *its* domain.
 > **Generate when requested.** This artifact is optional — produce it when:
 > - The user explicitly asks for a "cinematic", "experience", "journey", or
 >   "walkthrough"
-> - SPEC § 12 assumptions set `experience: true`
+> - SPEC § 13 assumptions set `experience: true`
 > - The process has a clear dramatic moment and a seller will present live
 >
 > Skip when not requested. The demo-deck.html is the primary customer-facing
@@ -1702,7 +1702,7 @@ user's last toggle state.
 
 ### Step 6.5: Phase C — Demo Polish (mandatory for customer-facing PoCs)
 
-> **Trigger**: SPEC § 12 does NOT carry `internal-no-demo: true`. The
+> **Trigger**: SPEC § 13 does NOT carry `internal-no-demo: true`. The
 > default is on. Phase C exists because a recent PoC discovered that
 > "shipping a Foundry agent" is necessary-but-not-sufficient for landing
 > the demo — the polish layer (deck + killer prompts + rehearsal + score
@@ -1841,27 +1841,27 @@ must catch its own mistakes.
 
 **Review checklist:**
 
-- [ ] **Visual validation (MANDATORY — not replaceable by code checks).** Open `specs/demo-deck.html` in a browser at 1440×900. Advance through all 11 slides with Space. Verify: no text overflow or card overlap, every slide readable at arm's length, big numbers visible as anchors, no cramped multi-column layouts with dense text. If Playwright is available (see `runtime.playwright_available` in SPEC § 12, set by the **Runtime capability probe** earlier in this skill), take a screenshot of slides 1 and 3 and inspect; otherwise this gate is **manual** and the contributor MUST do it before declaring done. **Battle-scar:** code-level validation (HTML parsing, class counting, grep patterns) is necessary but NOT sufficient — a recent PoC passed every automated gate but was visually broken (overlapping grids, walls of text, no breathing room). The browser is the final gate.
+- [ ] **Visual validation (MANDATORY — not replaceable by code checks).** Open `specs/demo-deck.html` in a browser at 1440×900. Advance through all 11 slides with Space. Verify: no text overflow or card overlap, every slide readable at arm's length, big numbers visible as anchors, no cramped multi-column layouts with dense text. If Playwright is available (see `runtime.playwright_available` in SPEC § 13, set by the **Runtime capability probe** earlier in this skill), take a screenshot of slides 1 and 3 and inspect; otherwise this gate is **manual** and the contributor MUST do it before declaring done. **Battle-scar:** code-level validation (HTML parsing, class counting, grep patterns) is necessary but NOT sufficient — a recent PoC passed every automated gate but was visually broken (overlapping grids, walls of text, no breathing room). The browser is the final gate.
 - [ ] Every BR-XXX in `specs/SPEC.md` § 3 is referenced by at least one skill's procedure
 - [ ] Every tool contract in spec § 6 has a matching tool in AGENTS.md
 - [ ] Every mocked system in spec § 5 has sample data in `specs/sample-data/`
 - [ ] Every eval scenario (S-XXX) in spec § 9 references valid BR-XXX rules
 - [ ] AGENTS.md skills table matches the actual `src/agent/skills/` directories
 - [ ] `specs/manifest.json` matches the generated skills list and BR counts
-- [ ] **`specs/demo-deck.html` exists** (mandatory unless SPEC § 12 carries `internal-no-demo: true`): HTMLParser passes, 10–13 `<section class="slide">` elements, speaker notes count == slide count (1:1 `data-for` mapping), all 4 keyboard chords wired (Space / F / S / B), `bg-{brand}-flood` panels ≥ 4 (friction + follow-up + close are the 3 mandatory; hero may be dark-cinematic), brandmark substitute present on slide 1 AND final slide (bookend), MS co-brand bar present on hero AND close, 18-symbol icon library present and all referenced via `<use href="#ico-XXX">`. See § 7 generation block + `references/demo-deck-template.md` for the full pattern.
+- [ ] **`specs/demo-deck.html` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`): HTMLParser passes, 10–13 `<section class="slide">` elements, speaker notes count == slide count (1:1 `data-for` mapping), all 4 keyboard chords wired (Space / F / S / B), `bg-{brand}-flood` panels ≥ 4 (friction + follow-up + close are the 3 mandatory; hero may be dark-cinematic), brandmark substitute present on slide 1 AND final slide (bookend), MS co-brand bar present on hero AND close, 18-symbol icon library present and all referenced via `<use href="#ico-XXX">`. See § 7 generation block + `references/demo-deck-template.md` for the full pattern.
 - [ ] **`specs/overview.html` is either absent OR a redirect-only stub.** If a legacy `specs/overview.html` exists from an older generation, it MUST contain the literal markers `<meta http-equiv="refresh"` AND `location.replace('demo-deck.html')` and be ≤ 3 KB (the canonical migration stub). Divergent narrative content in overview.html FAILS — collapse it to the meta-refresh redirect per `references/demo-deck-template.md` § "Migration".
 - [ ] **Migration grep (when upgrading from legacy `overview.html`).** Run `grep -rn 'overview.html' specs/ src/ README.md AGENTS.md` and verify zero hits outside of `specs/overview.html` itself. Common missed references: `experience.html` CTA links, `prep-guide.html` opening hook source, `README.md` architecture section. All must point to `demo-deck.html` after migration.
-- [ ] **`specs/experience.html` if generated** (optional — only when user requested or SPEC § 12 sets `experience: true`): HTMLParser passes, whitelabel grep zero hits, **bespoke check passes (no `id="act-N"` reuse, no `giant-counter` reuse unless KYC)**, Playwright validates the paradigm's signature interaction (counter scrubs / topology heals / pages assemble / dashboard transitions / map heats) bidirectionally, `demo-deck.html` slide N-1 (Discussion) or N (Close) has a 🎬 reference link to the experience dossier, catalog index.html has Experience button
+- [ ] **`specs/experience.html` if generated** (optional — only when user requested or SPEC § 13 sets `experience: true`): HTMLParser passes, whitelabel grep zero hits, **bespoke check passes (no `id="act-N"` reuse, no `giant-counter` reuse unless KYC)**, Playwright validates the paradigm's signature interaction (counter scrubs / topology heals / pages assemble / dashboard transitions / map heats) bidirectionally, `demo-deck.html` slide N-1 (Discussion) or N (Close) has a 🎬 reference link to the experience dossier, catalog index.html has Experience button
 - [ ] **`specs/prep-guide.html` § "Demo Script" exists** with all five beats (Opening hook in direct quotes · Demo arc 4–6 acts · Bonus acts ≥ 4 · Quantified Reveal moment · Q&A handoff). For chat-style PoCs, **every** main-arc act must contain all three sub-blocks `<strong>Type this:</strong>` + `<strong>What you'll see:</strong>` + `<strong>Say:</strong>` (or `<strong>Click here:</strong>` for workspace-style). **What you'll see** must reference at least one entity name AND one numeric data point per act (grep each act for a digit; zero-digit acts fail). Each act tagged with the BR-XXX it demonstrates. **Bonus acts** card present with ≥ 4 prompts including ≥ 1 freshness/provenance edge case AND ≥ 1 out-of-scope/guardrail edge case. Reveal moment quantifies manual-effort-today vs PoC-time and cites the SPEC § 9 primary KPI. **Zero deploy-specific tokens** anywhere (no FQDNs, no `azd ` / `az ` / `python ` commands, no resource names) — those are reserved for `threadlight-deploy` Phase 6.7's "Live MVP Walkthrough" appendix.
 - [ ] **Brand cascade rule applied** (Cross-cutting Pattern 1) — if a customer brand palette was declared in SPEC § 1 or captured during discovery (or sector-convention fallback from `references/brand-palettes.md`), grep that the brand accent hex IS present in the CSS of `demo-deck.html` AND `prep-guide.html` (and `experience.html` if generated). Structural neutrals (parchment, charcoal, navy, brass) must remain untouched. Deck-specific deep checks (Pattern 1 § "Deeper rules for demo-deck.html") additionally enforced: `bg-{brand}-flood` ≥ 4 panels with friction + follow-up + close mandatory (hero may be dark-cinematic), brandmark substitute markup, MS co-brand bar present.
 - [ ] **Markdown modal pattern present** (Cross-cutting Pattern 2) — every `<a href="*.md">` in any generated HTML artefact has been rewritten to `<a data-md="*.md">` AND the host artefact contains the modal markup (`<script type="text/markdown">` blobs + JS registry + click delegate + renderer with fallback). No raw `.md` href links remain.
 - [ ] **SE-only collapsibles applied** (Cross-cutting Pattern 3) — in `prep-guide.html`, every `<pre><code>` block containing `azd ` / `az ` / `python ` commands MUST be wrapped in `<details class="se-only">` with an audience pill summary. Sellers should see no engineering content in the default closed state.
-- [ ] **Internal-jargon deny-list zero hits** (Cross-cutting Pattern 4) — grep `demo-deck.html` (and `experience.html` if generated) for every token in the baseline deny-list (MS internal product names, region/SKU labels, contributor PII, fabricated `_skill` / `_tool` identifiers) PLUS any `additional_denied_tokens` from SPEC § 12. Zero hits required. `prep-guide.html` is exempt. Record the grep result in the auto-review summary so the user can audit it.
+- [ ] **Internal-jargon deny-list zero hits** (Cross-cutting Pattern 4) — grep `demo-deck.html` (and `experience.html` if generated) for every token in the baseline deny-list (MS internal product names, region/SKU labels, contributor PII, fabricated `_skill` / `_tool` identifiers) PLUS any `additional_denied_tokens` from SPEC § 13. Zero hits required. `prep-guide.html` is exempt. Record the grep result in the auto-review summary so the user can audit it.
 - [ ] **Persona placement** (Cross-cutting Pattern 5) — if `experience.html` was generated, extract the set of persona first-names from it (the dossier where they belong). Grep `demo-deck.html` AND `prep-guide.html § Demo Script "Type this:"` prompts for any hit on that set. Zero hits required. Suggested fix: swap persona name → role descriptor from the same SPEC § 5 persona row. If `experience.html` was not generated, extract personas from SPEC § 5 directly for the same check.
 - [ ] **Canonical tool naming** (Cross-cutting Pattern 6) — extract every tool name from `<code>` blocks, pill labels, and skill-chain SVG text nodes across `demo-deck.html`, `prep-guide.html` (and `experience.html` if generated). Set-diff against the AGENTS.md `Foundry tools required` table column 1 (plus any AGENTS.md § Tool display aliases). Zero out-of-set names required. Fabricated names (e.g. `load_skill`, `customer_knowledge_base_retrieve`) are the highest-frequency battle-scar — catch them here.
 - [ ] **No-commitment closing** (Cross-cutting Pattern 7) — grep deck slides N-1 and N (Follow-up proposal + Thank you) (and the `experience.html` trust panel if generated) for banned phrases (`we'll build`, `by {date}`, `let's commit`, `next month`, `pick one journey`, any literal future date within 90 days of the generation timestamp). Zero hits required. The Thank-you slide MUST contain literal `Thank you.` and the MS × {Customer} co-brand bar; the Follow-up slide MUST have ≥ 3 step cards with concrete actions (not open questions); if any card text matches a banned phrase, fail.
-- [ ] **`tests/killer-prompts.md` exists** (mandatory unless SPEC § 12 carries `internal-no-demo: true`) with ≥ 3 ranked rows (K1, K2, K3 minimum). Each `Prompt` literal exists verbatim in `tests/eval_dataset.jsonl` (the eval-validated set). Each `BR-XXX` exists in SPEC § 3. Each `Expected anchors` row has ≥ 1 named entity + ≥ 1 digit. `agent.yaml` carries `STARTER_{1,2,3}_TITLE` + `STARTER_{1,2,3}_PROMPT` env vars synced from this file by `infra/scripts/refresh_killer_prompts.py`.
-- [ ] **`specs/demo-rehearsal.md` exists** (mandatory unless SPEC § 12 carries `internal-no-demo: true`) with all six required beat rows (T-24h, T-15min, T-5min, T-0, backup paths, ship checklist). T-0 budget ≤ 8 minutes total. Each killer prompt referenced verbatim by rank with its wow-line.
+- [ ] **`tests/killer-prompts.md` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`) with ≥ 3 ranked rows (K1, K2, K3 minimum). Each `Prompt` literal exists verbatim in `tests/eval_dataset.jsonl` (the eval-validated set). Each `BR-XXX` exists in SPEC § 3. Each `Expected anchors` row has ≥ 1 named entity + ≥ 1 digit. `agent.yaml` carries `STARTER_{1,2,3}_TITLE` + `STARTER_{1,2,3}_PROMPT` env vars synced from this file by `infra/scripts/refresh_killer_prompts.py`.
+- [ ] **`specs/demo-rehearsal.md` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`) with all six required beat rows (T-24h, T-15min, T-5min, T-0, backup paths, ship checklist). T-0 budget ≤ 8 minutes total. Each killer prompt referenced verbatim by rank with its wow-line.
 - [ ] **`tests/eval-summary.md` exists** when an eval run has produced `tests/eval-results-*.jsonl` (skip the gate gracefully if no eval results file exists yet — the dataset can be run later via `foundry-evals`). Top-line numbers present, ≥ 3 inline transcripts (K1/K2/K3), adjudicated scenarios documented when present.
 - [ ] **`prep-guide.html` contains the three required structural placeholders** — `id="demo-entrypoint"` (filled by `threadlight-deploy` Phase 6.7), `id="mvp-capabilities"` (filled by this skill from the SPEC), `id="ms-services-map"` (filled by this skill from the deployment_manifest module selectors).
 - [ ] **`prep-guide.html` dual-mode toggle present** — the file MUST contain a sticky mode-toggle bar with 🎤 Seller / 🔧 SE buttons, the `setGuideMode()` JS function, and CSS rules for `body.mode-seller details.se-only { display: none }`. In Seller mode, zero engineering tokens (MCP, Responses API, UAMI, azd, Bicep, DefaultAzureCredential, ACA, OTel, Container Apps, FastMCP, region labels, gpt-5.x model names) should be visible — grep the rendered Seller view.
@@ -1870,7 +1870,7 @@ must catch its own mistakes.
 - [ ] **`prep-guide.html` seller product grid** — Architecture section has a seller-visible emoji card grid (6 cards: Foundry, AI Search, Teams+Copilot, Cosmos DB, App Insights, Entra ID). Full architecture diagram is inside a `se-only` block below the grid.
 - [ ] **Workspace streaming endpoint exists** — `POST /api/invoke-stream` SSE endpoint present in `src/workspace/main.py`. Frontend uses `ReadableStream` progressive rendering with tool-call status badges. Fallback to `/api/invoke` on error.
 - [ ] No hardcoded secrets, API keys, or personal data in any file
-- [ ] Assumptions in spec § 12 are flagged clearly (especially fast-PoC defaults)
+- [ ] Assumptions in spec § 13 are flagged clearly (especially fast-PoC defaults)
 
 **If any check fails:** fix it before presenting the output to the user. Do not
 ask the user to fix generated content — that's the skill's responsibility.
