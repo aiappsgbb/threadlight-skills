@@ -53,21 +53,23 @@
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap wrap-wide">
       <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Three postures &middot; thirteen pillars &middot; one scorecard</p>
-      <h1 class="reveal" data-delay="2">Take an agent pilot to production &mdash; <em>with evidence a review board signs.</em></h1>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
+      <h1 class="reveal" data-delay="2">Get an agent from pilot to <em>production.</em></h1>
       <p class="lede reveal" data-delay="3">
-        <code>threadlight-production-ready</code> is a Markdown skill your coding
-        agent runs. It resolves the customer&rsquo;s architecture <strong>posture</strong>,
-        scores the pilot against <strong>thirteen production pillars</strong>, and
-        writes <strong>one scorecard</strong> plus the committed evidence behind it.
-        Soft-advisory (it never fails a build), keyless, and graceful when Azure
-        access is partial &mdash; it degrades to <code>not-verified</code>, never invents a green.
+        <strong>Threadlight is a set of Markdown playbooks that GitHub Copilot follows.</strong>
+        No app to install, no CLI to learn &mdash; you ask in plain English, and Copilot
+        runs the checks and commits the proof.
+      </p>
+      <p class="lede reveal" data-delay="4" style="margin-top:12px;">
+        This one, <code>threadlight-production-ready</code>, checks your pilot against
+        <strong>13 production pillars</strong> and writes <strong>one scorecard</strong>
+        a review board can sign.
       </p>
 
       <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
         <div class="stat" role="listitem">
           <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">command to run</span>
+          <span class="stat-label">prompt to run</span>
         </div>
         <div class="stat" role="listitem">
           <span class="stat-num"><em>13</em></span>
@@ -75,20 +77,39 @@
         </div>
         <div class="stat" role="listitem">
           <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">scorecard the board signs</span>
+          <span class="stat-label">scorecard to sign</span>
         </div>
       </div>
 
-      <p class="skill-eyebrow reveal" data-delay="7">
-        <span class="se-tag">Threadlight skills</span>
-        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
-        <span class="se-not">Not commands. Not a CLI of our own.</span>
-      </p>
-
-      <div class="cost-cta-row reveal" data-delay="8" style="margin-top:26px;">
-        <a class="btn btn-primary" href="#start">Get started &mdash; run it in one line <span class="arrow">&rarr;</span></a>
+      <div class="cost-cta-row reveal" data-delay="7" style="margin-top:26px;">
+        <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="#proof">See a real scorecard <span class="arrow">&rarr;</span></a>
       </div>
+    </div>
+  </section>
+
+  <!-- ==================== HOW IT WORKS ==================== -->
+  <section class="chapter-section" id="how" data-toc-id="how" data-toc-label="How it works">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>How it works</p>
+        <h2>A skill is an instruction &mdash; <em>not software.</em></h2>
+        <p class="section-lede">Nothing to install. You already have the tool: GitHub Copilot. A Threadlight skill just tells it what to do.</p>
+      </div>
+      <ul class="cowork-steps reveal" data-delay="1">
+        <li>
+          <span class="cowork-step-n">1</span>
+          <div class="step-body"><strong>You have GitHub Copilot.</strong> In your IDE, the CLI, or the GitHub chat panel.</div>
+        </li>
+        <li>
+          <span class="cowork-step-n">2</span>
+          <div class="step-body"><strong>Point it at a skill.</strong> A Threadlight playbook &mdash; a <code>SKILL.md</code> file in your repo.</div>
+        </li>
+        <li>
+          <span class="cowork-step-n">3</span>
+          <div class="step-body"><strong>Ask in plain English.</strong> Copilot follows the playbook, does the work, and commits the evidence.</div>
+        </li>
+      </ul>
     </div>
   </section>
 
@@ -96,40 +117,25 @@
   <section class="chapter-section" id="why" data-toc-id="why" data-toc-label="Why it matters">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Why this chapter exists</p>
-        <h2>Green safe-check isn&rsquo;t <em>go-live.</em></h2>
-        <p class="section-lede">
-          A pilot that passes <code>threadlight-safe-check</code> is
-          <em>structurally complete</em> &mdash; every selector landed, every
-          channel reaches. That is not the same as <em>ready for the customer
-          architecture review</em>. Here is what closes the gap, what you walk
-          away with, and why it&rsquo;s fast.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>Why it matters</p>
+        <h2>A demo isn&rsquo;t a <em>production system.</em></h2>
+        <p class="section-lede">Pilots stall at the architecture-review board because no one can prove they&rsquo;re safe to ship. This produces the proof.</p>
       </div>
       <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
         <article class="detail-card reveal" data-delay="1">
-          <p class="eyebrow"><span class="dot"></span>The risk it kills</p>
-          <h3>&ldquo;It demos&rdquo; is not &ldquo;it&rsquo;s governed.&rdquo;</h3>
-          <p>An agent with a real identity, network posture, audit trail, eval
-          gate and cost ceiling is defensible. Without them it&rsquo;s a demo you
-          can&rsquo;t put in front of a CISO. This chapter names every gap &mdash;
-          and who owns it.</p>
+          <p class="eyebrow"><span class="dot"></span>The problem</p>
+          <h3>&ldquo;It demos&rdquo; isn&rsquo;t &ldquo;it&rsquo;s governed.&rdquo;</h3>
+          <p>No identity, audit trail, eval gate or cost ceiling &mdash; nothing a CISO can sign.</p>
         </article>
         <article class="detail-card reveal" data-delay="2">
-          <p class="eyebrow"><span class="dot"></span>What you walk away with</p>
-          <h3>One scorecard, plus the evidence.</h3>
-          <p>Thirteen pillars in three colours &mdash; green, amber-with-owner,
-          not-verified &mdash; and a committed file behind each. The
-          architecture-review board reads the PDF in seven minutes and signs the
-          waivers.</p>
+          <p class="eyebrow"><span class="dot"></span>What you get</p>
+          <h3>One scorecard, evidence attached.</h3>
+          <p>13 pillars in three colours, each finding backed by a committed file.</p>
         </article>
         <article class="detail-card reveal" data-delay="3">
           <p class="eyebrow"><span class="dot"></span>Why it&rsquo;s fast</p>
-          <h3>It drives the platform you already own.</h3>
-          <p>Foundry Evals, the AI Red Teaming Agent, the Agent Governance
-          Toolkit, Entra identity, the Azure Retail Prices API &mdash; the skill
-          wields them for you and leaves the evidence. You adopt Microsoft&rsquo;s
-          own controls without wiring each one by hand.</p>
+          <h3>It drives what you already own.</h3>
+          <p>Foundry Evals, the AI Red Teaming Agent, Entra, the Azure Retail Prices API &mdash; wielded for you, not wired by hand.</p>
         </article>
       </div>
     </div>
@@ -139,14 +145,9 @@
   <section class="chapter-section" id="checks" data-toc-id="checks" data-toc-label="What it checks">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The questions, the pillars, the shapes</p>
-        <h2>What the scorecard checks &mdash; <em>and where it fits your estate.</em></h2>
-        <p class="section-lede">
-          Six questions a CISO asks decide <em>when</em> a pilot has outgrown the
-          laptop. Thirteen pillars decide <em>what</em> good looks like. Three
-          postures decide <em>how</em> it fits the customer&rsquo;s architecture &mdash;
-          resolved automatically before any question is asked.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>What it checks</p>
+        <h2>13 pillars, three architectures, <em>one detected posture.</em></h2>
+        <p class="section-lede">Thirteen pillars define what &ldquo;ready&rdquo; means. Three postures define how it fits your architecture &mdash; detected before the first question.</p>
       </div>
 
       <!-- 2a · six CISO questions -->
@@ -250,7 +251,7 @@
           </g>
         </svg>
         <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Production-ready is a conversation, not a button. These are its six opening questions &mdash; and governance, evals and safety are now backed by <a href="#legs">legs that actually run</a>.
+          Six questions a CISO asks. Any one fires and the pilot has outgrown the laptop &mdash; governance, evals and safety are backed by <a href="#legs">legs that run</a>.
         </figcaption>
       </figure>
 
@@ -381,7 +382,7 @@
           </g>
         </svg>
         <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Same agent &middot; three architectures &middot; <code>threadlight-production-ready</code> detects which one is live before it asks any governance question. <strong>01 Gateway-fronted</strong> is the default (Citadel spoke); <strong>02 Foundry-native</strong> is greenfield, core only; <strong>03 Customer-owned edge</strong> conforms to a brownfield gateway. If detection finds a Citadel-pattern APIM&ndash;Foundry binding, posture 01 resolves automatically; an APIM binding outside that pattern resolves to posture 03 &mdash; regardless of what the SPEC says.
+          Same agent, three architectures. The skill detects which one is live before it asks a single governance question &mdash; gateway-fronted, Foundry-native, or a customer-owned edge.
         </figcaption>
       </figure>
     </div>
@@ -391,70 +392,46 @@
   <section class="chapter-section" id="legs" data-toc-id="legs" data-toc-label="What runs &middot; what you get">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Discover &rarr; Protect &rarr; Govern</p>
-        <h2>Legs that <em>run</em> &mdash; each leaves a file the scorecard reads.</h2>
-        <p class="section-lede">
-          Production-ready used to <em>score</em> the lifecycle and hand the work
-          to other skills. Now several threadlight legs <strong>run as executable
-          checks</strong> and leave committed evidence &mdash; keyless, idempotent,
-          and degrading to <code>not-verified</code> when a permission is missing.
-          Each row is a skill you invoke, the artefact it writes, and the pillar it
-          answers.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>What runs &middot; what you get</p>
+        <h2>Each skill runs a check &mdash; <em>and leaves a file.</em></h2>
+        <p class="section-lede">Point Copilot at any of these and it runs the check, then commits the evidence the scorecard reads. Keyless; degrades to <code>not-verified</code> if it can&rsquo;t observe.</p>
       </div>
 
       <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-govern</code> &middot; <span class="pill muted">pillars 02 &middot; 07</span></p>
           <h3>Agent-runtime governance (AGT).</h3>
-          <p>Wraps <code>foundry-agt</code> to scaffold and validate a policy
-          artefact and wire in-process middleware at the container boundary.
-          <br><strong>Leaves:</strong> a committed verifier report.</p>
+          <p><strong>Leaves:</strong> a committed verifier report.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-govern" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-evals</code> &middot; <span class="pill muted">pillar 06</span></p>
-          <h3>Continuous eval + A/B gate.</h3>
-          <p>Runs the offline quality batch, wires <strong>Foundry Continuous
-          Evaluation</strong> on live threads, and gates model or prompt swaps
-          behind a champion&ndash;challenger comparison.
-          <br><strong>Leaves:</strong> <code>specs/evals-manifest.json</code> &mdash; its <code>pass_rate</code> is the KPI join key.</p>
+          <h3>Continuous eval + A/B release gate.</h3>
+          <p><strong>Leaves:</strong> <code>specs/evals-manifest.json</code> &mdash; its <code>pass_rate</code> is the KPI join key.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-redteam</code> &middot; <span class="pill muted">pillar 07</span></p>
-          <h3>An adversarial scan, not a declared shield.</h3>
-          <p>Scores the <strong>AI Red Teaming Agent</strong> (PyRIT-based) scan
-          &mdash; jailbreak, prompt-injection, data and prompt exfiltration &mdash;
-          into an attack-success-rate verdict, pre- and post-deploy.
-          <br><strong>Leaves:</strong> <code>docs/redteam-report.md</code>.</p>
+          <h3>An adversarial scan (AI Red Teaming Agent).</h3>
+          <p><strong>Leaves:</strong> <code>docs/redteam-report.md</code> &mdash; an attack-success-rate verdict.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-production-ready</code> &middot; <span class="pill muted">pillar 09</span></p>
           <h3>An SBOM for the agent&rsquo;s MCP surface.</h3>
-          <p>Discovers every MCP server the agent mounts &mdash; pinned version +
-          digest, a SHA-256 over each tool&rsquo;s schema &mdash; then diffs it so a
-          silent server swap or a rug-pulled tool is caught.
-          <br><strong>Leaves:</strong> <code>mcp-sbom.json</code> + <code>mcp-lock.json</code>.</p>
+          <p><strong>Leaves:</strong> <code>mcp-sbom.json</code> + <code>mcp-lock.json</code> &mdash; catches a silent tool swap.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-consumption-iq</code> &middot; <span class="pill muted">pillar 10</span></p>
           <h3>Forecast the bill at production load.</h3>
-          <p>Walks every deployed resource, projects it to declared production
-          load, and prices it against the <strong>Azure Retail Prices API</strong>
-          &mdash; every line tagged <code>price_source</code>, re-runnable.
-          <br><strong>Leaves:</strong> <code>specs/cost-manifest.json</code>.</p>
+          <p><strong>Leaves:</strong> <code>specs/cost-manifest.json</code> &mdash; priced against the Azure Retail Prices API.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span><code>threadlight-cicd</code> &middot; <span class="pill muted">gates the deploy</span></p>
           <h3>Eval, red-team &amp; MCP gates in CI.</h3>
-          <p>Generates an OIDC, secret-free pipeline carrying an
-          <code>eval-gate</code>, a <code>red-team-gate</code> and an
-          <code>mcp-gate</code> &mdash; soft or hard by a flag.
-          <br><strong>Leaves:</strong> <code>azd-deploy-prod.yml</code> or <code>azure-pipelines.yml</code>.</p>
+          <p><strong>Leaves:</strong> <code>azd-deploy-prod.yml</code> or <code>azure-pipelines.yml</code> &mdash; OIDC, secret-free.</p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
       </div>
@@ -470,14 +447,9 @@
   <section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Proof &middot; it works">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>A real engagement, start to finish</p>
-        <h2>Day-0 the scorecard was amber. <em>Six days later it was green.</em></h2>
-        <p class="section-lede">
-          Pattern from a recent engagement. <code>threadlight-safe-check</code>
-          opened with <strong>six amber pillars</strong>; six days later
-          production-ready closed with <strong>two waivers signed</strong> and the
-          rest green. Here is who owned each gap &mdash; and the PDF the board read.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>Proof &middot; it works</p>
+        <h2>Six amber pillars on day 0. <em>Green in six days.</em></h2>
+        <p class="section-lede">A recent engagement: six gaps opened, each with a named owner; six days later, two signed waivers and the rest green. Below &mdash; who owned what, and the PDF the board read.</p>
       </div>
 
       <div class="amber-green-track reveal" data-delay="1">
@@ -606,24 +578,22 @@
         <article class="metric-card reveal" data-delay="1">
           <span class="metric-num"><em>91</em>%</span>
           <span class="metric-label">Eval pass-rate</span>
-          <span class="metric-caption">Latest scheduled run, from <code>evals-manifest.metrics.pass_rate</code> &mdash; threshold 85%.</span>
+          <span class="metric-caption">From <code>evals-manifest.json</code> &mdash; threshold 85%.</span>
         </article>
         <article class="metric-card reveal" data-delay="2">
           <span class="metric-num">$<em>0.0123</em></span>
           <span class="metric-label">Cost / interaction</span>
-          <span class="metric-caption">Forecast from <code>cost-manifest.json</code> at 800 rpm, baselined for deviation alerts.</span>
+          <span class="metric-caption">From <code>cost-manifest.json</code> at 800 rpm.</span>
         </article>
         <article class="metric-card reveal" data-delay="3">
           <span class="metric-num"><em>0</em></span>
           <span class="metric-label">Red-team must-fix</span>
-          <span class="metric-caption">High-severity adversarial findings from the red-team leg &mdash; the safety gate is green.</span>
+          <span class="metric-caption">High-severity red-team findings. The safety gate is green.</span>
         </article>
       </div>
       <p class="section-lede" style="text-align:center; margin: 18px auto 0;">
-        The scorecard proves the pilot is <em>production-shaped</em>; these three
-        numbers prove it&rsquo;s <em>paying off</em>. Quality, unit-cost and safety
-        join to one deviation-alerted baseline &mdash; a regression on any one trips
-        the gate before the next deploy. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">See the line-by-line cost forecast &rarr;</a>
+        Quality, unit-cost and safety on one baseline &mdash; a regression on any one
+        trips the gate before the next deploy. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">See the line-by-line cost forecast &rarr;</a>
       </p>
     </div>
   </section>
@@ -632,38 +602,31 @@
   <section class="chapter-section" id="ship" data-toc-id="ship" data-toc-label="Ship it &middot; the pipeline">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>After green &middot; the handoff</p>
-        <h2>Now ship it through a pipeline &mdash; <em>not your laptop.</em></h2>
-        <p class="section-lede">
-          A green scorecard doesn&rsquo;t mean <code>azd up</code> from a laptop &mdash;
-          in a real tenant the agent rarely has those rights. Prod deploys run
-          through CI/CD under a <strong>federated identity</strong> with
-          <strong>scoped RBAC</strong>, often from a <strong>private-VNet runner</strong>.
-          <code>threadlight-cicd</code> generates that pipeline and the env-setup
-          runbooks the platform team executes &mdash; a deliberate manual handoff.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>Ship it &middot; the pipeline</p>
+        <h2>Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
+        <p class="section-lede"><code>threadlight-cicd</code> generates the pipeline and the runbooks the platform team executes: federated identity, scoped RBAC, no secret in the repo.</p>
       </div>
 
       <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>01 &middot; Two platforms</p>
           <h3>Your CI of choice.</h3>
-          <p>Ready-to-run <code>azd-deploy-prod.yml</code> (GitHub Actions) or <code>azure-pipelines.yml</code> (Azure DevOps) &mdash; gated on an environment approval, re-running production-ready post-deploy.</p>
+          <p><code>azd-deploy-prod.yml</code> (GitHub Actions) or <code>azure-pipelines.yml</code> (Azure DevOps), gated on an environment approval.</p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>02 &middot; Secret-free identity</p>
           <h3>OIDC / Workload Identity Federation.</h3>
-          <p>A UAMI plus federated credentials &mdash; no <code>AZURE_CREDENTIALS</code>, no client secret in the repo. A test asserts no secret ever ships in a template.</p>
+          <p>UAMI + federated credentials. No client secret in the repo &mdash; a test asserts it.</p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>03 &middot; Scoped RBAC</p>
           <h3>Least-privilege, spoke-RG only.</h3>
-          <p>Role assignments scoped to the target resource group &mdash; the same Identity and RBAC questions the scorecard asks, answered in IaC. Private-VNet deployments wire managed or self-hosted runners.</p>
+          <p>Role assignments scoped to the target resource group &mdash; the scorecard&rsquo;s Identity and RBAC questions, answered in IaC.</p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>04 &middot; Parallel track</p>
           <h3>Separate from the central platform.</h3>
-          <p>The pilot pipeline is its own repo. It never edits the Citadel hub, shared APIM, or platform networking &mdash; those stay with <code>citadel-hub-deploy</code>. A spoke consumes the hub through an Access Contract.</p>
+          <p>Its own repo &mdash; it never touches the shared hub, APIM or platform networking. A spoke consumes the hub through a contract.</p>
         </article>
       </div>
     </div>
@@ -675,14 +638,7 @@
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Run it on your pilot today</p>
         <h2>Getting started &mdash; <em>four prompts, one scorecard.</em></h2>
-        <p class="section-lede">
-          You need a repo with your agent pilot, <strong>GitHub Copilot</strong>
-          (IDE, CLI, or the chat panel) with the Threadlight skills available, and
-          &mdash; optionally &mdash; read access to the pilot&rsquo;s Azure
-          subscription. Without Azure access the cloud pillars resolve to
-          <code>not-verified</code> instead of green; nothing fails. You talk to the
-          agent in plain English &mdash; it reads the <code>SKILL.md</code> and does the work.
-        </p>
+        <p class="section-lede">You need your pilot in a repo and <strong>GitHub Copilot</strong> with the Threadlight skills. Azure read-access is optional &mdash; without it the cloud pillars resolve to <code>not-verified</code>, nothing fails.</p>
       </div>
 
       <div class="detail-grid" style="grid-template-columns: minmax(0,1fr); gap: var(--s-4);">
@@ -716,11 +672,7 @@
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Step 04 &middot; Read it &amp; ship</p>
           <h3>Sign the waivers, hand it over.</h3>
-          <p>Open <code>docs/production-readiness-report.md</code>, sign any amber
-          pillar&rsquo;s waiver with its named owner, and hand the pipeline to the
-          platform team. Everything the board needs is committed in the repo &mdash;
-          the scorecard, the SBOM, the eval and red-team manifests, the cost
-          forecast. Nothing lives in a console tab you have to screenshot.</p>
+          <p>Open <code>docs/production-readiness-report.md</code>, sign each amber waiver with its owner, hand the pipeline to the platform team. Everything the board needs is committed &mdash; nothing in a console tab to screenshot.</p>
         </article>
       </div>
 
@@ -737,14 +689,8 @@
     <div class="wrap">
       <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow"><span class="dot"></span>Recap</p>
-        <h2>One scorecard &mdash; <em>three colours, no judgement.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          Each pillar resolves to <strong>green</strong> (evidence found, in
-          posture), <strong>amber</strong> (gap with a named owner and a waiver
-          path), or <strong>not-verified</strong> (we couldn&rsquo;t observe,
-          here&rsquo;s why). Red doesn&rsquo;t exist on purpose &mdash; we never fail
-          a build, we surface a posture.
-        </p>
+        <h2>One scorecard &mdash; <em>three colours.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;"><strong>Green</strong>: evidence found. <strong>Amber</strong>: a gap with a named owner and a waiver. <strong>Not-verified</strong>: couldn&rsquo;t observe. There&rsquo;s no red &mdash; it never fails a build, it surfaces a posture.</p>
       </div>
 
       <div class="chapter-recap-block">
