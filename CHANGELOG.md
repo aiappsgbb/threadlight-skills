@@ -9,6 +9,17 @@ field.
 
 ### Changed
 
+- **Added an MCP supply-chain gate** across `threadlight-production-ready`
+  (0.6.0) and `threadlight-cicd` (0.3.0). The production-readiness assessor now
+  discovers MCP servers/tools declared in a repo, writes an `mcp-sbom.json`
+  sidecar, and scores four new supply-chain findings — servers pinned to a
+  version/digest (`SUP-010`), resolvable from a known registry (`SUP-011`),
+  tracked in a committed `mcp-lock.json` free of undocumented server/tool drift
+  (`SUP-012`), and free of inline credentials (`SUP-013`). The CI/CD generator
+  gains a `--mcp-gate soft|hard` knob that adds a post-deploy gate enforcing the
+  SBOM. Remediation points at `foundry-toolbox`, Key Vault, and ACR. `plugin.json`
+  and `.github/plugin/marketplace.json` bump to `1.7.0` with MCP keywords.
+
 - **Surfaced `threadlight-router-bench` as the Improve leg on the front door
   and refreshed the plugin manifests.** The README hero now counts **16 pipeline
   skills + the `threadlight-auto` orchestrator (17 total)**, adds a router-bench
