@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -241,6 +241,21 @@ about findings, not just emit them.
 | `not-applicable` | Check correctly skipped (e.g., Citadel scoring against an AGT-target deployment) | ✅ (counts as pass for raw, with justification) |
 | `not-verified` | Check could not run (no Azure auth, insufficient RBAC, static-only mode) | ⚪ (excluded from raw score; surfaced in `not_verified[]`) |
 | `waived` | Customer explicitly accepted the gap with documented compensating control | ✅ in `score_with_waivers`, ❌ in `raw_score` |
+
+### MCP supply-chain gate (SUP-010..013)
+
+When a repo declares MCP servers (a `.mcp.json`, an `mcpServers`/`servers` map in
+any JSON config, or a remote MCP URL in source), the supply-chain pillar also
+scores the MCP surface: servers must be **pinned** to an exact version or image
+digest (SUP-010), resolve from a **known registry/source** (SUP-011), be tracked
+in a committed **`mcp-lock.json`** so server/tool drift is reviewable (SUP-012),
+and never commit **inline credentials** (SUP-013). The assessor writes an
+`mcp-sbom.json` sidecar next to the manifest. Generate/refresh the lock with:
+
+`python3 scripts/mcp_sbom.py --root . --update-lock`
+
+Remediation points at `foundry-toolbox` (secret injection), Key Vault, and ACR —
+this hardens how you consume MCP on the platform; it does not replace it.
 
 ## CLI
 
@@ -935,6 +950,22 @@ sync with the awesome-gbb skill catalog as it evolves.
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
 
+## What changed since v0.5.1
+
+v0.6.0 extends the supply-chain pillar to the **MCP surface**. When a repo
+declares MCP servers, the assessor now scores four new findings — servers pinned
+to an exact version/image digest (SUP-010, must-fix), resolving from a known
+registry/source (SUP-011, should-fix), tracked in a committed `mcp-lock.json`
+free of undocumented drift (SUP-012, must-fix), and free of inline credentials
+(SUP-013, must-fix) — and writes an `mcp-sbom.json` sidecar next to the manifest.
+
+| Area | v0.6.0 delta |
+| --- | --- |
+| Supply-chain pillar | Adds SUP-010..013 for the MCP server/tool surface (pin, source, lock-drift, inline-creds). |
+| New producer | `scripts/mcp_sbom.py` — stdlib-only MCP discovery → SBOM → lock-diff, with a `--check` / `--update-lock` CLI. |
+| Recipes | Three new must-fix remediation recipes (SUP-010/012/013) point at ACR digests, the lock producer, and Key Vault / `foundry-toolbox`. |
+| Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the MCP scan. |
+
 ## What changed since v0.4.0
 
 v0.5.0 closes the cleanup buckets that make the v0.4.0 onboarding flow
@@ -1007,7 +1038,9 @@ Skill semver. v0.3.0 was soft-advisory assessor only. v0.4.0 added the
 3-phase production-onboarding flow (assess → refine+deploy → CI/CD
 handoff). v0.5.0 closes production-ready cleanup buckets: per-customer
 overrides, 8-question framing, idempotency exclusions, and recipe catalog
-promotions. v0.6.0+ will land the deferrals above. Breaking changes to
+promotions. v0.6.0 extends the supply-chain pillar to the MCP surface
+(SUP-010..013 + `mcp_sbom.py` producer + `mcp-sbom.json` sidecar); the
+deferrals above remain follow-on work. Breaking changes to
 `apply-plan.json` are gated behind `schema_version` (currently 1).
 
 ## See also — official Azure Skills

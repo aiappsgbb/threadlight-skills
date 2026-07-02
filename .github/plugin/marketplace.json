@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Threadlight pilot pipeline — 16 pipeline skills + the threadlight-auto orchestrator (17 total) that take a customer engagement from brief to a deployed, production-ready Foundry agent.",
-    "version": "1.6.0"
+    "version": "1.7.0"
   },
   "plugins": [
     {
       "name": "threadlight-skills",
       "description": "Threadlight pilot pipeline — 16 pipeline skills + the threadlight-auto orchestrator (17 total) that take a customer engagement from brief to a deployed, production-ready Foundry agent.",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "source": "."
     }
   ]

@@ -146,3 +146,45 @@ jobs:
           print(f"red-team verdict: {verdict}")
           sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
           PY
+
+  # MCP supply-chain gate — verify the deployed repo's MCP servers/tools are
+  # pinned, registry-resolvable, lock-tracked, and credential-clean before it
+  # ships. Gate mode: {{MCP_GATE_MODE}} (soft = warn-only, hard = block on any
+  # must-fix MCP finding). Reads the mcp-sbom.json the production-ready assessor
+  # writes next to its manifest (tests/mcp-sbom.json).
+  mcp-supply-chain-gate:
+    needs: deploy
+    runs-on: {{RUNNER_RUNS_ON}}
+    environment: {{ENV_NAME}}
+    env:
+      AZURE_ENV_NAME: {{ENV_NAME}}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC federated credentials)
+        uses: azure/login@v2
+        with:
+          client-id: {{AZURE_CLIENT_ID}}
+          tenant-id: {{TENANT_ID}}
+          subscription-id: {{TARGET_SUBSCRIPTION_ID}}
+
+      - name: Produce MCP SBOM (threadlight-production-ready)
+        run: >
+          echo "Run threadlight-production-ready against the repo to (re)produce
+          tests/mcp-sbom.json — MCP server/tool discovery, pin + registry
+          verification, mcp-lock.json drift, and inline-credential scan."
+
+      - name: Enforce MCP supply-chain verdict (mode={{MCP_GATE_MODE}})
+        continue-on-error: {{MCP_GATE_SOFT}}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          p = "tests/mcp-sbom.json"
+          if not os.path.exists(p):
+              print(f"::warning::{p} missing — MCP SBOM has not been produced.")
+              sys.exit(1)
+          summary = json.load(open(p)).get("summary", {})
+          must_fix = summary.get("must_fix", 0)
+          print(f"MCP must-fix findings: {must_fix}")
+          sys.exit(1 if must_fix else 0)
+          PY
