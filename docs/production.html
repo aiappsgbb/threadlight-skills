@@ -369,10 +369,11 @@
           model and agent-runtime controls to <em>protect</em>, monitor and
           evaluate on live traffic to <em>govern</em>. Production-ready used to
           <em>score</em> those stages and hand the work to other skills. Now
-          three threadlight legs <strong>run as executable checks</strong> in the
-          chain and leave committed evidence the scorecard reads &mdash; idempotent,
-          keyless, and gracefully degrading to <code>not-verified</code> when a
-          permission is missing.
+          several threadlight legs <strong>run as executable checks</strong> in the
+          chain and leave committed evidence the scorecard reads &mdash; governance,
+          evals, red-team, the CI gates, and an MCP supply-chain SBOM &mdash;
+          idempotent, keyless, and gracefully degrading to <code>not-verified</code>
+          when a permission is missing.
         </p>
         <p class="reveal" data-delay="1" style="margin-top:6px;">
           <span class="pill muted">design</span>
@@ -419,13 +420,27 @@
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Govern &middot; <code>threadlight-cicd</code></p>
-          <h3>An eval-gate and a red-team-gate in the pipeline.</h3>
+          <h3>Eval, red-team, and MCP gates in the pipeline.</h3>
           <p>The CAF process puts evaluation <em>in CI/CD</em>. The generated
-          pipeline now carries an <code>eval-gate</code> and a
-          <code>red-team-gate</code> &mdash; soft (advisory) or hard (blocking)
-          by a flag, OIDC, secret-free &mdash; so a regression or a fresh
-          jailbreak stops the deploy. <a href="#prod-cicd">See the pipeline below.</a></p>
+          pipeline now carries an <code>eval-gate</code>, a
+          <code>red-team-gate</code>, and an <code>mcp-gate</code> &mdash; soft
+          (advisory) or hard (blocking) by a flag, OIDC, secret-free &mdash; so a
+          regression, a fresh jailbreak, or an unpinned MCP server stops the
+          deploy. <a href="#prod-cicd">See the pipeline below.</a></p>
           <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Discover &middot; <code>threadlight-production-ready</code></p>
+          <h3>An SBOM for the agent&rsquo;s MCP servers &amp; tools.</h3>
+          <p>Discovers every MCP server the agent mounts and emits
+          <code>mcp-sbom.json</code> &mdash; pinned version + digest, resolved
+          registry, a SHA-256 over each tool&rsquo;s description and input schema
+          &mdash; then diffs it against a committed <code>mcp-lock.json</code> so a
+          silent server swap or a rug-pulled tool is caught. Pillar 09 reads the
+          verdict (<code>SUP-010</code>&ndash;<code>013</code>) instead of a
+          remediation pointer; the <a href="#prod-cicd"><code>--mcp-gate</code></a>
+          blocks a deploy on an unpinned or drifted server.</p>
+          <p style="margin-top:10px;"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md" target="_blank" rel="noopener">Browse the leg <span class="arrow">↗</span></a></p>
         </article>
       </div>
     </div>
@@ -605,6 +620,61 @@
       <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="How the coding agent invokes threadlight-production-ready"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready on this pilot. Detect posture; production load is 800 rpm."</span>
 <span class="out">&mdash; coding agent reads <code>skills/threadlight-production-ready/SKILL.md</code>, walks 13 pillars, writes <code>docs/production-readiness-report.md</code>
 &mdash; posture: gateway-fronted (Citadel spoke, detected via APIM binding) &middot; pillars: 10 verified, 2 amber, 1 not-verified &middot; ready in 6m44s</span></pre>
+    </div>
+  </section>
+
+  <!-- =================== 13 PILLARS / 4 THEMES =================== -->
+  <section class="chapter-section" id="prod-pillars" data-toc-id="prod-pillars" data-toc-label="Thirteen pillars &middot; four themes">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>What the scorecard checks</p>
+        <h2>Thirteen pillars, <em>four themes.</em></h2>
+        <p class="section-lede">
+          Whichever posture resolves, the pilot is scored against the same
+          thirteen cross-cutting pillars, grouped into four themes you can walk a
+          customer&rsquo;s architecture team through. Each resolves to green,
+          amber, or not-verified &mdash; and the four tagged <span class="pill">runs</span>
+          now leave committed evidence the scorecard reads, rather than a
+          remediation pointer.
+        </p>
+      </div>
+
+      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Network &amp; identity</p>
+          <h3>Where it runs, who it acts as.</h3>
+          <p><strong>01</strong>&nbsp;Network posture &middot;
+             <strong>03</strong>&nbsp;Identity &amp; access &middot;
+             <strong>04</strong>&nbsp;Secrets</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Governance &amp; HITL</p>
+          <h3>What it&rsquo;s allowed to do.</h3>
+          <p><strong>02</strong>&nbsp;Agent governance <span class="pill">runs</span> &middot;
+             <strong>07</strong>&nbsp;Responsible AI <span class="pill">runs</span> &middot;
+             <strong>08</strong>&nbsp;HITL &amp; audit</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Ops &amp; cost</p>
+          <h3>Is it running &mdash; and paying off?</h3>
+          <p><strong>05</strong>&nbsp;Observability &middot;
+             <strong>06</strong>&nbsp;Continuous evals <span class="pill">runs</span> &middot;
+             <strong>10</strong>&nbsp;Cost &middot;
+             <strong>11</strong>&nbsp;Reliability &middot;
+             <strong>12</strong>&nbsp;SRE hand-over</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Lifecycle &amp; supply-chain</p>
+          <h3>What it&rsquo;s built from, where it&rsquo;s going.</h3>
+          <p><strong>09</strong>&nbsp;Supply chain <span class="pill">runs</span> &middot;
+             <strong>13</strong>&nbsp;Model lifecycle</p>
+        </article>
+      </div>
+
+      <div class="read-deeper">
+        <span class="rd-label">All thirteen, deeply explained:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
+      </div>
     </div>
   </section>
 
@@ -934,6 +1004,54 @@
         <a class="btn btn-ghost" href="./customize.html">
           Next &middot; make it the customer&rsquo;s own <span class="arrow">→</span>
         </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== ARTEFACT INVENTORY =================== -->
+  <section class="chapter-section" id="prod-artefacts" data-toc-id="prod-artefacts" data-toc-label="What you walk away with">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Committed evidence, not slides</p>
+        <h2>What you walk away with.</h2>
+        <p class="section-lede">
+          Every leg leaves a file in the repo &mdash; version-controlled,
+          diffable, and read by the scorecard. Nothing that matters lives in a
+          console tab you have to screenshot.
+        </p>
+      </div>
+
+      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>The scorecard</p>
+          <h3>The artefact the ARB reads.</h3>
+          <p><code>docs/production-readiness-report.md</code> &mdash; per-pillar
+          findings, evidence register, waivers, go-live call &mdash; plus
+          <code>tests/production-readiness-manifest.json</code> for CI and
+          dashboards.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Supply-chain provenance</p>
+          <h3>An SBOM for the agent&rsquo;s MCP surface.</h3>
+          <p><code>mcp-sbom.json</code> &mdash; every MCP server and tool, pinned
+          by version + digest with per-tool schema hashes &mdash; plus
+          <code>mcp-lock.json</code>, the committed baseline drift is measured
+          against.</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Quality &amp; safety</p>
+          <h3>Proof it works and holds up.</h3>
+          <p><code>specs/evals-manifest.json</code> (live pass-rate, the KPI join
+          key) and <code>docs/redteam-report.md</code> (adversarial-scan verdict,
+          attack-success-rate).</p>
+        </article>
+        <article class="detail-card">
+          <p class="eyebrow"><span class="dot"></span>Cost &amp; pipeline</p>
+          <h3>The bill, and the way to ship.</h3>
+          <p><code>specs/cost-manifest.json</code> (forecast at production load)
+          and the OIDC prod pipeline &mdash; <code>azd-deploy-prod.yml</code> or
+          <code>azure-pipelines.yml</code>, secret-free.</p>
+        </article>
       </div>
     </div>
   </section>
