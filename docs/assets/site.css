@@ -3694,3 +3694,64 @@
   .ta-svg   { min-width: 680px; }
   .pipe-svg { min-width: 660px; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   PRODUCTION REDESIGN — #why "a demo isn't a production system"
+   Three icon cards (stall → scorecard → close), same visual
+   language as .gap-card so the chapter reads as one system.
+   ───────────────────────────────────────────────────────────── */
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-4);
+  margin-top: var(--s-5);
+}
+@media (max-width: 820px) { .why-grid { grid-template-columns: 1fr; } }
+.why-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 22px 20px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  transition: border-color .18s ease, transform .18s ease;
+}
+.why-card:hover { border-color: rgba(168,255,96,.42); transform: translateY(-2px); }
+.why-ico {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  background: var(--chapter-accent-glow, rgba(168,255,96,.10));
+  border: 1px solid rgba(168,255,96,.24);
+  color: var(--chapter-accent, var(--lime));
+}
+.why-ico svg { width: 22px; height: 22px; display: block; }
+.why-kicker {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 4px 0 -4px;
+}
+.why-card h3 {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--ink-0);
+  margin: 0;
+  font-weight: 400;
+}
+.why-card p {
+  font-size: 14px;
+  line-height: 1.58;
+  color: var(--ink-2);
+  margin: 0;
+}
+@media (prefers-color-scheme: light) {
+  .why-card { background: #ffffff; border-color: #d4dae7; box-shadow: 0 1px 0 rgba(15,30,55,.04); }
+  .why-ico { border-color: rgba(80,150,40,.3); color: #2f7d1e; background: #f2fbe9; }
+  .why-card h3 { color: #0a0d14; }
+  .why-card p { color: #4a5168; }
+}
