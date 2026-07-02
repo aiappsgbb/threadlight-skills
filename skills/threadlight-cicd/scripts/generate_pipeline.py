@@ -199,6 +199,11 @@ def build_context(framing: dict, resolved: dict) -> dict:
         eval_gate_mode = "soft"
     eval_gate_soft = "true" if eval_gate_mode == "soft" else "false"
 
+    mcp_gate_mode = str(framing.get("mcp_gate", "soft")).lower()
+    if mcp_gate_mode not in ("soft", "hard"):
+        mcp_gate_mode = "soft"
+    mcp_gate_soft = "true" if mcp_gate_mode == "soft" else "false"
+
     return {
         "GENERATOR_VERSION": VERSION,
         "ISO_TIMESTAMP": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -240,6 +245,8 @@ def build_context(framing: dict, resolved: dict) -> dict:
         "NEXT_ACTIONS": next_actions_md,
         "EVAL_GATE_MODE": eval_gate_mode,
         "EVAL_GATE_SOFT": eval_gate_soft,
+        "MCP_GATE_MODE": mcp_gate_mode,
+        "MCP_GATE_SOFT": mcp_gate_soft,
     }
 
 # endregion
@@ -421,6 +428,10 @@ def _parse_args(argv):
     p.add_argument("--eval-gate", choices=["soft", "hard"], default=None,
                    help="CI/CD eval + red-team gate mode: soft (warn-only, default) "
                         "or hard (block the pipeline on a non-pass verdict).")
+    p.add_argument("--mcp-gate", choices=["soft", "hard"], default=None,
+                   help="CI/CD MCP supply-chain gate mode: soft (warn-only, "
+                        "default) or hard (block the pipeline on any must-fix "
+                        "MCP finding).")
     p.add_argument("--out", default=os.getcwd(), help="Output root (default: cwd).")
     return p.parse_args(argv)
 
@@ -446,6 +457,7 @@ def _framing_from_args(args) -> dict:
         "ado_pool_name": args.ado_pool_name,
         "env_name": args.env_name,
         "eval_gate": args.eval_gate,
+        "mcp_gate": args.mcp_gate,
     }
     for k, v in cli.items():
         if v is not None:
