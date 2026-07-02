@@ -36,8 +36,8 @@ def _lower() -> str:
 # Version + routing
 # ---------------------------------------------------------------------------
 
-def test_version_bumped_to_0_3_0():
-    assert 'version: "0.3.0"' in _text()
+def test_version_bumped_to_0_3_1():
+    assert 'version: "0.3.1"' in _text()
 
 
 def test_description_carries_presales_triggers():

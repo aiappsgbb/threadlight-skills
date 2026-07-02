@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
@@ -200,3 +200,13 @@ stdlib). Tests under `tests/` pin the artifact paths, the OIDC/WIF-only invarian
   operator hand-off checklist before giving a pipeline to the customer.
 - `references/github-actions/`, `references/azure-devops/`, `references/env-setup/` —
   the `{{TOKEN}}` templates the generator renders.
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this CI/CD leg, reach for the official
+**[Azure Skills](https://github.com/microsoft/azure-skills)** catalog. *Further
+reading, not a dependency* — Threadlight's guidance stays the source of truth for
+the pilot flow:
+
+- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/main/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.

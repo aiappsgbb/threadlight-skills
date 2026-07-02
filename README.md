@@ -1,6 +1,6 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Fifteen pipeline skills + one orchestrator (16 total)** that take a customer
+> **Sixteen pipeline skills + one orchestrator (17 total)** that take a customer
 > engagement from a one-paragraph brief through to a deployed, evaluated,
 > observable, **production-ready** Microsoft Foundry hosted agent — runnable
 > on the customer's tenant in a single working session, then handed off to
@@ -23,6 +23,7 @@
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | **v0.3.0** — advisory production-readiness scorecard (BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI). Hard dep on `bicep` CLI; no regex fallback. Pillars 2/6/7 consume the govern/evals/red-team leg manifests when present + fresh. |
 | [`threadlight-cicd`](skills/threadlight-cicd/) | **NEW v0.1.0** — production deploy pipeline + env-setup runbooks for locked-down customer envs (no direct `azd up`). Onboarding-path gate (standalone / spoke-onboard / hub-deploy-then-spoke), then generates **GitHub Actions or Azure DevOps** OIDC/WIF pipelines + UAMI/federated-credential, least-privilege RBAC, and private-VNet runner runbooks. Secret-free; ships a `central-platform-boundary.md` that keeps the pilot pipeline **separate** from `citadel-hub-deploy`. |
 | [`threadlight-customize`](skills/threadlight-customize/) | **NEW v0.1.0** — the **fork-and-customize final leg**. Instructions/runbooks (not automation) for forking the Threadlight pipeline and onboarding it into **one customer's environment** — landing zones, RBAC, pipelines, governance — with **production onboarding priority #1**. Four moves: intake gate (customer-profile workbook), customization map (fork-vs-keep), test-in-customer-env runbook (private-VNet via **Azure ML VS Code** / **GH Codespaces**), and an explicit non-coverage boundary. Ships a fork-runbook (`upstream-pin` + overlay). Manual handoff — `threadlight-auto` does **not** drive it. |
+| [`threadlight-router-bench`](skills/threadlight-router-bench/) | **NEW v0.1.0** — the **IMPROVE leg**. Offline self-improvement cold-path: `learn <run_id>` harvests ONE finished CI run (green *or* red) into a grounded learnings digest — phase parity, a reality-tuned failure taxonomy, and recommendations; optional `bench <candidate> <baseline>` is a paired model-router **cost/quality scorecard** from Azure Monitor token metrics. Offline — `threadlight-auto` does **not** drive it. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Orchestrator** — wraps the 13 pipeline skills behind one freeform prompt; resumes from `.threadlight/auto-state.json`; smart-recovers quota/RBAC/ImagePull failures |
 
 ## Pipeline flow
@@ -36,6 +37,10 @@ foundry-observability →
 threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →
 threadlight-cicd (prod deploy pipeline, when the customer env is locked down) →
 threadlight-customize (fork + onboard into the customer's own environment)
+
+  ↻ IMPROVE (offline, after any CI run):
+    threadlight-router-bench — learnings digest (failure taxonomy + recommendations)
+                               + optional model-router cost/quality scorecard
 ```
 
 The spine maps to the Microsoft Responsible-AI-for-Foundry operating loop —
@@ -43,7 +48,11 @@ The spine maps to the Microsoft Responsible-AI-for-Foundry operating loop —
 **Discover** legs (`threadlight-evals`, `threadlight-redteam`) and the
 **Protect** leg (`threadlight-govern`) run *before* the readiness gate so that
 `threadlight-production-ready` verifies each control-plane leg actually ran and
-its artefact is fresh, rather than only scoring whether one was declared.
+its artefact is fresh, rather than only scoring whether one was declared. The
+loop's **Improve** phase is `threadlight-router-bench` — an offline leg that
+turns a finished CI run into a grounded learnings digest (failure taxonomy +
+recommendations) and, optionally, a model-router cost/quality scorecard, so each
+pilot feeds the next.
 
 The 13-stage pipeline above is the spine. `threadlight-auto` drives the same
 chain end-to-end when you want one-prompt automation (demos, resumption,
@@ -54,6 +63,9 @@ customer-onboarding orchestrator). `threadlight-cicd` runs on a **separate
 repo/pipeline** from central-platform deployment (`citadel-hub-deploy`);
 `threadlight-customize` is the **fork-and-customize final leg** — instructions,
 not automation, because no two customers' production onboarding are the same.
+The offline **`threadlight-router-bench`** improve leg sits outside the spine
+entirely — it runs on a *finished* CI run, so `threadlight-auto` does not drive
+it either.
 
 The full technical briefing is in [`THREADLIGHT.md`](THREADLIGHT.md).
 

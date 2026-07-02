@@ -16,7 +16,7 @@ description: >-
   GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.0"
+  version: "1.6.1"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -704,8 +704,8 @@ The runtime uses `CopilotClient` + `InvocationAgentServerHost`:
 
 #### MAF variant (when Toolbox or custom @tool needed)
 
-**Copy the reference template** from the `foundry-hosted-agents` skill or
-`references/container-runtime-template.py` and adapt:
+**Copy the reference template** from the `foundry-hosted-agents` companion
+skill and adapt:
 
 The runtime uses `Agent` + `FoundryChatClient` + `ResponsesHostServer`:
 1. `FoundryChatClient` with `DefaultAzureCredential` for Foundry auth
@@ -766,7 +766,7 @@ agent = Agent(
 
 ### 5. `src/agent/pyproject.toml` — Python Dependencies
 
-**Copy from `references/pyproject-template.toml`** and replace `__PROJECT_NAME__`:
+**Copy the inline `pyproject.toml` template below** and replace `__PROJECT_NAME__`:
 
 ```toml
 [project]
@@ -856,7 +856,7 @@ opentelemetry-sdk>=1.27.0
 
 ### 6. `src/agent/Dockerfile` — Self-Contained Container
 
-**Copy from `references/dockerfile-template`** and adapt:
+**Copy the inline `Dockerfile` template below** and adapt:
 
 ```dockerfile
 FROM mcr.microsoft.com/oryx/python:3.12
@@ -3275,3 +3275,13 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**foundry-cross-resource**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-cross-resource/) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
 | [**azure-tenant-isolation**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |
 | [**azd-patterns**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | `azd` hooks, ACA job deployment, **Composable Bicep Module Library** (the source of every module Phase 6 includes) |
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this deploy leg, reach for the official
+**[Azure Skills](https://github.com/microsoft/azure-skills)** catalog. *Further
+reading, not a dependency* — Threadlight's guidance stays the source of truth for
+the pilot flow:
+
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
