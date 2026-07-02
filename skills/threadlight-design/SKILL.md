@@ -751,6 +751,7 @@ Use the template from `references/skill-template.md`. Each skill MUST have:
 - Operational contract (inputs, outputs, deps, idempotency, failure behavior)
 - Step-by-step procedure (derived from spec process flow)
 - Output schema (derived from spec data models)
+- **Grounding & honesty contract** (knowledge-backed skills only): name the grounding source and a labeled-degradation fallback — if the source lacks the answer, say so explicitly, and label any general-knowledge answer as such. (Citation is already covered by the spec's § 7 Citation requirement.)
 
 > **Convention:** Process skills go directly into `src/agent/skills/`. Do NOT put them
 > in `.github/skills/` — that location is reserved for coding/development skills
@@ -763,7 +764,9 @@ Use the template from `references/agents-template.md`. Must include:
 - Available skills table (derived from step 5 decomposition)
 - Foundry tools required (derived from spec § 6 tool contracts)
 - Data & storage strategy
-- Behavioral guidelines
+- Behavioral guidelines. This section MUST include:
+  - **Grounding & honesty** (always): "Ground substantive answers in the agent's knowledge source (spec § 7). If the knowledge source does not contain the answer, say so explicitly; answer from general knowledge only when clearly labeled as such. Cite sources per spec § 7 Citation requirement."
+  - **Cross-skill synthesis** (only when the agent composes answers from more than one skill — i.e. ≥ 2 knowledge/analysis/synthesis skills, or the **Synthesis** trait was detected): "When more than one skill contributes to a single answer, reconcile rather than concatenate — preserve technical detail, resolve disagreements explicitly, and surface cross-domain trade-offs."
 - **Spec reference**: "This agent implements specs/SPEC.md"
 
 #### 3. `src/agent/config/{name}.json`
