@@ -472,7 +472,9 @@ def _per_server_status(server: McpServer, lock: dict | None,
         st["SUP-012"] = "should-fix"
     else:
         entry = (lock or {}).get("servers", {}).get(server.id)
-        if entry is None:
+        if not isinstance(entry, dict):
+            # Missing, or a malformed non-dict entry in a committed lock:
+            # treat like an absent entry — regenerate the lock.
             st["SUP-012"] = "should-fix"
         else:
             drift = diff_lock(server, entry)

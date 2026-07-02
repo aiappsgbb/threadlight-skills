@@ -298,6 +298,23 @@ def test_malformed_non_mcp_json_is_ignored():
     assert all(f["status"] == "not-applicable" for f in findings)
 
 
+def test_malformed_lock_entry_does_not_crash_and_flags_should_fix():
+    # A committed mcp-lock.json whose per-server entry is a non-dict (e.g. a
+    # bare string) passes load_lock's top-level shape check but must not crash
+    # the producer; treat it like a missing entry (regenerate the lock).
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]},
+    }})})
+    sid = m.discover(root)[0].id
+    (root / "mcp-lock.json").write_text(
+        json.dumps({"servers": {sid: "oops"}}), encoding="utf-8")
+    sbom, findings = m.assess(root)  # must NOT raise
+    assert sbom["servers"][0]["findings"]["SUP-012"] == "should-fix"
+    by = {f["id"]: f for f in findings}
+    assert by["SUP-012"]["status"] == "should-fix"
+    assert sbom["summary"]["must_fix"] == 0
+
+
 # --- CLI ------------------------------------------------------------------
 
 def test_cli_writes_sbom_and_check_returns_1_on_must_fix(capsys):
