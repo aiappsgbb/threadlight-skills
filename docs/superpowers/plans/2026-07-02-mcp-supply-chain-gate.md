@@ -654,6 +654,30 @@ def test_update_lock_roundtrips_through_diff():
     # re-discovering + diffing against the fresh lock yields no drift
     srv = m.discover(root)[0]
     assert m.diff_lock(srv, lock["servers"]["fs"]) == []
+
+
+# --- spec §6: malformed MCP config ---------------------------------------
+
+def test_malformed_mcp_config_is_should_fix():
+    # An unparseable .mcp.json must surface as a SUP-010 SHOULD-fix —
+    # never a crash, never a must-fix.
+    root = _write_repo(**{".mcp.json": "{ this is not valid json "})
+    sbom, findings = m.assess(root)
+    assert sbom["summary"]["must_fix"] == 0
+    assert sbom["summary"]["should_fix"] >= 1
+    broken = [s for s in sbom["servers"] if s.get("parse_error")]
+    assert len(broken) == 1
+    assert broken[0]["findings"]["SUP-010"] == "should-fix"
+    by = {f["id"]: f for f in findings}
+    assert by["SUP-010"]["status"] == "should-fix"
+
+
+def test_malformed_non_mcp_json_is_ignored():
+    # A broken package.json is NOT an MCP config → no diagnostic, no findings.
+    root = _write_repo(**{"package.json": "{ broken "})
+    assert m.discover(root) == []
+    findings = m.check(m.discover(root), lock=None, lock_exists=False)
+    assert all(f["status"] == "not-applicable" for f in findings)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -769,6 +793,11 @@ def _worst(statuses: list[str]) -> str:
 
 def _per_server_status(server: McpServer, lock: dict | None,
                        lock_exists: bool) -> dict:
+    # spec §6 — an unparseable MCP config can't be graded for
+    # registry/lock/creds; surface it as a SUP-010 should-fix only.
+    if server.parse_error:
+        return {"SUP-010": "should-fix", "SUP-011": "not-applicable",
+                "SUP-012": "not-applicable", "SUP-013": "not-applicable"}
     st: dict[str, str] = {}
     # SUP-010 — pinning
     if server.kind == "remote":
@@ -877,6 +906,48 @@ def assess(root, lock_path=None) -> tuple[dict, list[dict]]:
         sd["findings"] = per.get(sd["id"], {})
     return sbom, findings
 ```
+
+- [ ] **Step 3b: Complete the spec §6 malformed-config path**
+
+Two small edits to `mcp_sbom.py` let an unparseable MCP config surface as a
+`SUP-010` should-fix (spec §6) instead of being silently dropped, while a broken
+non-MCP file (e.g. `package.json`) is still ignored.
+
+First, add a module constant next to `_EMITTED` (top of the Discovery section):
+
+```python
+_MCP_CONFIG_NAMES = {"mcp.json", ".mcp.json"}
+```
+
+Then, in `_discover_json_configs`, replace the silent skip on bad JSON:
+
+```python
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+```
+
+with a name-gated diagnostic:
+
+```python
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as e:
+            if p.name.lower() in _MCP_CONFIG_NAMES:
+                rel = p.relative_to(root).as_posix()
+                out.append(McpServer(
+                    id=rel, kind="unknown", ref="", registry="unknown",
+                    pinned=False, version=None, digest=None, declared_in=rel,
+                    tools_declared=False, tools=[], creds_inline=False,
+                    parse_error=f"{type(e).__name__}: {e}",
+                ))
+            continue
+```
+
+The `_per_server_status` early-return added above turns any server carrying a
+`parse_error` into a `SUP-010` should-fix (the other three findings
+`not-applicable`), so `assess` counts it as `should_fix`, never `must_fix`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
