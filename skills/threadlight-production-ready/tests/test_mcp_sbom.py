@@ -296,3 +296,33 @@ def test_malformed_non_mcp_json_is_ignored():
     assert m.discover(root) == []
     findings = m.check(m.discover(root), lock=None, lock_exists=False)
     assert all(f["status"] == "not-applicable" for f in findings)
+
+
+# --- CLI ------------------------------------------------------------------
+
+def test_cli_writes_sbom_and_check_returns_1_on_must_fix(capsys):
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "loose": {"command": "npx", "args": ["-y", "@x/loose"]},
+    }})})
+    out = root / "mcp-sbom.json"
+    rc = m.main(["--root", str(root), "--out", str(out), "--check"])
+    assert rc == 1  # unpinned -> SUP-010 must-fix
+    assert out.exists()
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["summary"]["must_fix"] >= 1
+    printed = capsys.readouterr().out
+    assert "SUP-010" in printed
+
+
+def test_cli_update_lock_then_check_is_clean(capsys):
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]},
+    }})})
+    out = root / "mcp-sbom.json"
+    lock = root / "mcp-lock.json"
+    m.main(["--root", str(root), "--out", str(out),
+            "--lock", str(lock), "--update-lock"])
+    assert lock.exists()
+    rc = m.main(["--root", str(root), "--out", str(out),
+                 "--lock", str(lock), "--check"])
+    assert rc == 0  # pinned + lock present + no drift

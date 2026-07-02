@@ -564,3 +564,44 @@ def assess(root, lock_path=None) -> tuple[dict, list[dict]]:
     for sd, st in zip(sbom["servers"], per):
         sd["findings"] = st
     return sbom, findings
+
+
+# --------------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------------
+
+def main(argv=None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Discover MCP servers/tools, emit an SBOM, and gate on drift.")
+    ap.add_argument("--root", default=".", help="repo root to scan")
+    ap.add_argument("--out", default="mcp-sbom.json", help="SBOM output path")
+    ap.add_argument("--lock", default=None, help="path to mcp-lock.json")
+    ap.add_argument("--check", action="store_true",
+                    help="exit 1 if any finding is must-fix")
+    ap.add_argument("--update-lock", action="store_true",
+                    help="(re)write the lock from the current MCP surface")
+    args = ap.parse_args(argv)
+
+    root = Path(args.root)
+    sbom, findings = assess(root, lock_path=args.lock)
+
+    out_path = Path(args.out)
+    out_path.write_text(json.dumps(sbom, indent=2) + "\n", encoding="utf-8")
+
+    if args.update_lock:
+        lock_path = Path(args.lock) if args.lock else (root / "mcp-lock.json")
+        lock_path.write_text(
+            json.dumps(update_lock(sbom), indent=2) + "\n", encoding="utf-8")
+
+    for f in findings:
+        print(f"{f['id']}: {f['status']}")
+
+    if args.check and any(f["status"] == "must-fix" for f in findings):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
