@@ -70,9 +70,16 @@ A review of `hatasaki/Multi-Specialized-Agents` (MSA) — a network of five auto
 - **Zero** edits to `orchestrator.py`, `threadlight-auto`, or pipeline order.
 - Net added generated-instruction text per agent: ~2–4 lines (negligible tokens).
 
-## Deferred (recorded, not implemented now)
+## Deferred — next-wave backlog (tracked)
 
-S1 expertise-decomposition lens · S2 per-skill bounded grounding · S5 provenance-transparent output · `threadlight-deploy` per-domain evals. Each is a coherent follow-up but exceeds the "highest-value, efficiency-safe" bar for this change and would touch heavier surfaces (Step 5 recipe, knowledge-source topology, output format, eval generation).
+Explicitly carried to a **next wave**; not implemented in this change:
+
+- **S1 — expertise-decomposition lens.** Offer a domain-expertise decomposition option alongside the actor/step Skill Derivation Recipe (Step 5, `SKILL.md` 674–677), conditional for `agent`-model advisory agents.
+- **S2 — per-skill bounded grounding.** Let a skill own a scoped corpus instead of the default single Foundry IQ index per process (`SKILL.md` 690–698); changes knowledge-source topology.
+- **S5 — provenance-transparent composed output.** Surface which skill produced which part of a composed answer (builds on the speckit audit trail + `answer.citations[]`).
+- **deploy-eval — per-domain eval sets.** Have `threadlight-deploy` backfill independently-evaluable eval sets per skill/domain rather than one shared `evals/`.
+
+Each is a coherent follow-up but exceeds the "highest-value, efficiency-safe" bar for this change and would touch heavier surfaces (Step 5 recipe, knowledge-source topology, output format, eval generation). Revisit as a batch after S3/S4 land.
 
 ## Verification
 
