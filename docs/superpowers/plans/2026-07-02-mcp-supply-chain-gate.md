@@ -386,7 +386,9 @@ def _first_pkg_arg(args: list[str]) -> str:
 
 def _docker_image(args: list[str]) -> str:
     val_flags = {"-e", "--env", "-v", "--volume", "--name", "-p",
-                 "--publish", "-w", "--workdir", "--mount", "--network"}
+                 "--publish", "-w", "--workdir", "--mount", "--network",
+                 "--platform", "-u", "--user", "--entrypoint",
+                 "-l", "--label", "--add-host", "--pull"}
     i = 0
     while i < len(args):
         a = args[i]
@@ -521,7 +523,10 @@ def discover(root) -> list[McpServer]:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest skills/threadlight-production-ready/tests/test_mcp_sbom.py -v`
-Expected: all PASS (11 tests).
+Expected: all PASS (11 tests). *(A 12th regression test —
+`test_docker_platform_flag_does_not_swallow_image`, asserting `_docker_image`
+skips `--platform`/other value flags and keeps the digest — was added during code
+review; `val_flags` above already includes those flags.)*
 
 - [ ] **Step 5: Commit**
 
