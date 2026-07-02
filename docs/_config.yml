@@ -1,0 +1,26 @@
+# GitHub Pages (legacy Jekyll) build configuration.
+#
+# The public site is hand-authored static HTML/CSS plus a few Markdown pages
+# that Jekyll renders (e.g. the workbook and production-readiness reference).
+#
+# Files under superpowers/ are internal Copilot planning and spec artifacts
+# (the writing-plans / brainstorming skills write there by default). They are
+# not site pages, nothing links to them, and their code samples contain
+# workflow-template tokens like {{ ... }} that the Liquid parser cannot parse
+# — which fails the whole Pages build. Exclude the directory so Jekyll neither
+# publishes nor parses them.
+#
+# NOTE: a custom `exclude` replaces Jekyll's default list, so the standard
+# defaults are re-listed below to avoid accidentally publishing vendor files.
+exclude:
+  - superpowers/
+  - .sass-cache
+  - .jekyll-cache
+  - gemfiles
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
