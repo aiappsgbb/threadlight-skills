@@ -58,6 +58,25 @@ author in Git  →  publish immutable version  →  reference by pinned version 
 
 Both are **soft-advisory, static, tier-0** checks — they never fail a build.
 
+## MCP servers & tools
+
+MCP servers are supply chain too. Treat each server like a pinned dependency:
+reference it by an exact version or image **digest** from a known registry, and
+commit an **`mcp-lock.json`** that records each server's version/digest and a
+hash of every tool's **description** and **input schema**. Because the model acts
+on tool descriptors, an unreviewed change to a tool's description or schema is a
+capability change — the lock makes it show up as a reviewable diff (finding
+`SUP-012`) instead of a silent one.
+
+Workflow:
+
+1. Declare servers in `.mcp.json` (or any `mcpServers` / `servers` map).
+2. Pin each server (`@1.2.3`, `==1.2.3`, or `@sha256:...`) — never `latest`.
+3. Inject credentials via `foundry-toolbox` / Key Vault; never inline them.
+4. Generate the lock: `python3 scripts/mcp_sbom.py --root . --update-lock`.
+5. Commit `mcp-lock.json`. In CI, `--check` fails the build on undocumented
+   drift of a pinned server.
+
 ## See also
 
 * Parent skill: [`../../SKILL.md`](../../SKILL.md) — the 13-pillar hand-off flow.
