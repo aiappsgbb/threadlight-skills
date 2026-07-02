@@ -1321,6 +1321,11 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 Note: `mcp_sbom.py` already ships `SBOM_VERSION = "0.6.0"` from Task 1 — no change there.
 
+Execution note: beyond the version bump + the `### MCP supply-chain gate` note, a
+`## What changed since v0.5.1` delta section was added and the `## Versioning`
+paragraph updated so 0.6.0's actual scope (MCP gate) is recorded — additive
+standalone-merit doc hygiene for the bump.
+
 - [ ] **Step 1: Rewrite the version test to expect 0.6.0**
 
 Replace the body of `skills/threadlight-production-ready/tests/test_version.py` with:
@@ -1498,6 +1503,11 @@ Workflow:
 ```
 
 - [ ] **Step 5: Commit**
+
+Execution note (Step 4): the `## MCP servers & tools` section was inserted
+**before** the existing `## See also` block (not appended to the literal end of
+the file) so the See-also links stay last — a content section trailing See-also
+reads as a doc wart. Content is verbatim; only placement was refined.
 
 ```bash
 git add skills/threadlight-production-ready/references/pillars/09-supply-chain.md \
