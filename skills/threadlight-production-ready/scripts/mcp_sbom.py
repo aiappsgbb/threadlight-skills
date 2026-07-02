@@ -397,6 +397,12 @@ def load_lock(path) -> dict | None:
 
 def diff_lock(server: McpServer, lock_entry: dict) -> list[str]:
     reasons: list[str] = []
+    if lock_entry.get("kind") is not None and server.kind != lock_entry.get("kind"):
+        reasons.append(
+            f"kind changed ({lock_entry.get('kind')} -> {server.kind})")
+    if lock_entry.get("ref") is not None and server.ref != lock_entry.get("ref"):
+        reasons.append(
+            f"ref changed ({lock_entry.get('ref')} -> {server.ref})")
     if server.version != lock_entry.get("version"):
         reasons.append(
             f"version changed ({lock_entry.get('version')} -> {server.version})")
@@ -509,12 +515,12 @@ def check(servers: list[McpServer], lock: dict | None,
                  "status": "not-applicable",
                  "detail": "No MCP servers declared in this repo.",
                  "offenders": []} for fid in SUP_MCP_IDS]
-    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
+    per = [(s, _per_server_status(s, lock, lock_exists)) for s in servers]
     findings = []
     for fid in SUP_MCP_IDS:
-        statuses = [per[s.id][fid] for s in servers]
-        offenders = [s.id for s in servers
-                     if per[s.id][fid] in ("must-fix", "should-fix")]
+        statuses = [st[fid] for _s, st in per]
+        offenders = sorted({s.id for s, st in per
+                            if st[fid] in ("must-fix", "should-fix")})
         findings.append({
             "id": fid, "title": _SUP_MCP_TITLES[fid],
             "status": _worst(statuses),
@@ -554,7 +560,7 @@ def assess(root, lock_path=None) -> tuple[dict, list[dict]]:
     should = sum(1 for f in findings if f["status"] == "should-fix")
     sbom["summary"]["must_fix"] = must
     sbom["summary"]["should_fix"] = should
-    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
-    for sd in sbom["servers"]:
-        sd["findings"] = per.get(sd["id"], {})
+    per = [_per_server_status(s, lock, lock_exists) for s in servers]
+    for sd, st in zip(sbom["servers"], per):
+        sd["findings"] = st
     return sbom, findings

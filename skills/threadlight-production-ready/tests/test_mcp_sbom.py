@@ -188,6 +188,17 @@ def test_diff_lock_flags_tool_added_and_desc_changed():
     assert any("description" in r and "read" in r for r in reasons)
 
 
+def test_diff_lock_flags_ref_swap_same_version():
+    # A package swap at the same version string must be caught as drift.
+    srv = m.McpServer(id="fs", kind="npx", ref="@evil/fs@1.0.0", registry="npm",
+                      pinned=True, version="1.0.0", digest=None,
+                      declared_in=".mcp.json", tools_declared=False)
+    lock_entry = {"kind": "npx", "ref": "@trusted/fs@1.0.0", "registry": "npm",
+                  "version": "1.0.0", "digest": None, "tools": {}}
+    reasons = m.diff_lock(srv, lock_entry)
+    assert any("ref changed" in r for r in reasons)
+
+
 # --- per-server status + aggregate check ----------------------------------
 
 def test_check_returns_four_aggregate_findings():
@@ -208,6 +219,21 @@ def test_unpinned_server_makes_sup010_must_fix():
     by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
     assert by["SUP-010"]["status"] == "must-fix"
     assert by["SUP-012"]["status"] == "should-fix"  # no lock committed
+
+
+def test_duplicate_server_ids_do_not_mask_unpinned():
+    # Same id in two files: unpinned twin (sorts first) must still drive
+    # SUP-010 must-fix, not be masked by the pinned twin (sorts last).
+    root = _write_repo(**{
+        ".mcp.json": json.dumps({"mcpServers": {
+            "fs": {"command": "npx", "args": ["-y", "@x/fs"]}}}),
+        "sub/.mcp.json": json.dumps({"mcpServers": {
+            "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]}}}),
+    })
+    servers = m.discover(root)
+    assert len(servers) == 2
+    by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
+    assert by["SUP-010"]["status"] == "must-fix"
 
 
 def test_inline_cred_makes_sup013_must_fix():
