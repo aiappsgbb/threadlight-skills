@@ -596,6 +596,17 @@ def test_diff_lock_flags_tool_added_and_desc_changed():
     assert any("description" in r and "read" in r for r in reasons)
 
 
+def test_diff_lock_flags_ref_swap_same_version():
+    # A package swap at the same version string must be caught as drift.
+    srv = m.McpServer(id="fs", kind="npx", ref="@evil/fs@1.0.0", registry="npm",
+                      pinned=True, version="1.0.0", digest=None,
+                      declared_in=".mcp.json", tools_declared=False)
+    lock_entry = {"kind": "npx", "ref": "@trusted/fs@1.0.0", "registry": "npm",
+                  "version": "1.0.0", "digest": None, "tools": {}}
+    reasons = m.diff_lock(srv, lock_entry)
+    assert any("ref changed" in r for r in reasons)
+
+
 # --- per-server status + aggregate check ----------------------------------
 
 def test_check_returns_four_aggregate_findings():
@@ -616,6 +627,21 @@ def test_unpinned_server_makes_sup010_must_fix():
     by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
     assert by["SUP-010"]["status"] == "must-fix"
     assert by["SUP-012"]["status"] == "should-fix"  # no lock committed
+
+
+def test_duplicate_server_ids_do_not_mask_unpinned():
+    # Same id in two files: unpinned twin (sorts first) must still drive
+    # SUP-010 must-fix, not be masked by the pinned twin (sorts last).
+    root = _write_repo(**{
+        ".mcp.json": json.dumps({"mcpServers": {
+            "fs": {"command": "npx", "args": ["-y", "@x/fs"]}}}),
+        "sub/.mcp.json": json.dumps({"mcpServers": {
+            "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]}}}),
+    })
+    servers = m.discover(root)
+    assert len(servers) == 2
+    by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
+    assert by["SUP-010"]["status"] == "must-fix"
 
 
 def test_inline_cred_makes_sup013_must_fix():
@@ -744,6 +770,12 @@ def load_lock(path) -> dict | None:
 
 def diff_lock(server: McpServer, lock_entry: dict) -> list[str]:
     reasons: list[str] = []
+    if lock_entry.get("kind") is not None and server.kind != lock_entry.get("kind"):
+        reasons.append(
+            f"kind changed ({lock_entry.get('kind')} -> {server.kind})")
+    if lock_entry.get("ref") is not None and server.ref != lock_entry.get("ref"):
+        reasons.append(
+            f"ref changed ({lock_entry.get('ref')} -> {server.ref})")
     if server.version != lock_entry.get("version"):
         reasons.append(
             f"version changed ({lock_entry.get('version')} -> {server.version})")
@@ -856,12 +888,12 @@ def check(servers: list[McpServer], lock: dict | None,
                  "status": "not-applicable",
                  "detail": "No MCP servers declared in this repo.",
                  "offenders": []} for fid in SUP_MCP_IDS]
-    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
+    per = [(s, _per_server_status(s, lock, lock_exists)) for s in servers]
     findings = []
     for fid in SUP_MCP_IDS:
-        statuses = [per[s.id][fid] for s in servers]
-        offenders = [s.id for s in servers
-                     if per[s.id][fid] in ("must-fix", "should-fix")]
+        statuses = [st[fid] for _s, st in per]
+        offenders = sorted({s.id for s, st in per
+                            if st[fid] in ("must-fix", "should-fix")})
         findings.append({
             "id": fid, "title": _SUP_MCP_TITLES[fid],
             "status": _worst(statuses),
@@ -901,9 +933,9 @@ def assess(root, lock_path=None) -> tuple[dict, list[dict]]:
     should = sum(1 for f in findings if f["status"] == "should-fix")
     sbom["summary"]["must_fix"] = must
     sbom["summary"]["should_fix"] = should
-    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
-    for sd in sbom["servers"]:
-        sd["findings"] = per.get(sd["id"], {})
+    per = [_per_server_status(s, lock, lock_exists) for s in servers]
+    for sd, st in zip(sbom["servers"], per):
+        sd["findings"] = st
     return sbom, findings
 ```
 
@@ -2061,4 +2093,5 @@ These deliberate deviations from `docs/superpowers/specs/2026-07-02-mcp-supply-c
 - **SBOM JSON shape (spec §5.1):** the emitted `mcp-sbom.json` flattens the server `source` fields to the top level (rather than nesting under `"source"`), emits `declared_in` as a single string, attaches per-server `findings` as a `{id: status}` map (rather than an array of `"ID:status"` strings), and uses top-level keys `schema_version` / `generator` / `generator_version` with a summary of `{server_count, pinned, unpinned, remote, inline_creds, must_fix, should_fix}`. **The gate contract `summary.must_fix` / `summary.should_fix` is preserved exactly** (that is all the CI gate and the assessor read), so downstream consumers are unaffected; a later capstone can adapt keys if it needs the nested form.
 - **SUP-011 remote hosts (spec §4.3):** the spec mentions an "allowlisted remote host". v1 has no allowlist infrastructure, so any remote whose URL host parses is treated as a known source (registry = host ≠ `unknown` → pass). Tightening to an explicit allowlist is future work.
 - **Live tier `SUP-110` (spec §3 D7 / §9):** deferred, not built — as the spec directs.
+- **Drift + duplicate-id hardening (applied during execution):** `diff_lock` also compares the locked `kind` and `ref` (guarded with `is not None` for legacy locks) so a package-identity swap at the same version string is caught, not just a version/digest change. `check` / `assess` iterate per-server status positionally (a list of `(server, status)` / a status list zipped with `sbom["servers"]`) rather than keying by `server.id`, so two config files declaring the same id can no longer mask one another; `offenders` is a sorted de-duplicated set. Lock lookup inside `_per_server_status` stays id-keyed (an accepted v1 limitation).
 
