@@ -200,7 +200,9 @@ def _first_pkg_arg(args: list[str]) -> str:
 
 def _docker_image(args: list[str]) -> str:
     val_flags = {"-e", "--env", "-v", "--volume", "--name", "-p",
-                 "--publish", "-w", "--workdir", "--mount", "--network"}
+                 "--publish", "-w", "--workdir", "--mount", "--network",
+                 "--platform", "-u", "--user", "--entrypoint",
+                 "-l", "--label", "--add-host", "--pull"}
     i = 0
     while i < len(args):
         a = args[i]

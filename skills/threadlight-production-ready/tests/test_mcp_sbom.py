@@ -78,6 +78,25 @@ def test_docker_tag_only_is_unpinned():
     assert version == "latest"
 
 
+def test_docker_platform_flag_does_not_swallow_image():
+    # --platform takes a value; the image (with digest) must still be found.
+    root = _write_repo(**{
+        ".mcp.json": json.dumps({"mcpServers": {
+            "plat": {"command": "docker", "args": [
+                "run", "--rm", "--platform", "linux/amd64",
+                "ghcr.io/acme/mcp@sha256:" + "a" * 64,
+            ]},
+        }}),
+    })
+    servers = _by_id(m.discover(root))
+    s = servers["plat"]
+    assert s.kind == "docker"
+    assert s.ref == "ghcr.io/acme/mcp@sha256:" + "a" * 64
+    assert s.pinned is True
+    assert s.digest == "sha256:" + "a" * 64
+    assert s.registry == "ghcr.io"
+
+
 def test_pip_and_uvx_exact_pin():
     assert m._parse_pin("pip", "mcp-server-foo==2.0.0")[0] is True
     assert m._parse_pin("uvx", "mcp-server-foo")[0] is False
