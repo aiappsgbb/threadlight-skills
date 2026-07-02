@@ -141,3 +141,132 @@ def test_no_tools_key_means_not_declared():
     declared, tools = m._extract_tools({"command": "npx", "args": ["@x@1.0.0"]})
     assert declared is False
     assert tools == []
+
+
+# --- SBOM shape -----------------------------------------------------------
+
+def test_build_sbom_summary_counts():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]},
+        "loose": {"command": "npx", "args": ["-y", "@x/loose"]},
+        "api": {"url": "https://api.example.com/mcp"},
+        "leaky": {"command": "npx", "args": ["-y", "@x/y"],
+                  "env": {"TOKEN": "ghp_abcdef0123456789abcdef0123456789abcd"}},
+    }})})
+    sbom = m.build_sbom(m.discover(root))
+    assert sbom["schema_version"] == "1.0"
+    s = sbom["summary"]
+    assert s["server_count"] == 4
+    assert s["pinned"] == 1
+    assert s["unpinned"] == 2  # loose + leaky (remote is neither)
+    assert s["remote"] == 1
+    assert s["inline_creds"] == 1
+    assert s["must_fix"] == 0 and s["should_fix"] == 0  # filled by assess()
+
+
+# --- lock diff ------------------------------------------------------------
+
+def test_diff_lock_flags_version_change():
+    srv = m.McpServer(id="fs", kind="npx", ref="@x/fs@2.0.0", registry="npm",
+                      pinned=True, version="2.0.0", digest=None,
+                      declared_in=".mcp.json", tools_declared=False)
+    reasons = m.diff_lock(srv, {"version": "1.0.0", "digest": None, "tools": {}})
+    assert any("version" in r for r in reasons)
+
+
+def test_diff_lock_flags_tool_added_and_desc_changed():
+    tools = [m.ToolDescriptor("read", "d" * 64, "s" * 64),
+             m.ToolDescriptor("write", "e" * 64, "s" * 64)]
+    srv = m.McpServer(id="fs", kind="npx", ref="@x/fs@1.0.0", registry="npm",
+                      pinned=True, version="1.0.0", digest=None,
+                      declared_in=".mcp.json", tools_declared=True, tools=tools)
+    lock_entry = {"version": "1.0.0", "digest": None,
+                  "tools": {"read": {"description_sha256": "X" * 64,
+                                     "input_schema_sha256": "s" * 64}}}
+    reasons = m.diff_lock(srv, lock_entry)
+    assert any("added" in r and "write" in r for r in reasons)
+    assert any("description" in r and "read" in r for r in reasons)
+
+
+# --- per-server status + aggregate check ----------------------------------
+
+def test_check_returns_four_aggregate_findings():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"]},
+    }})})
+    servers = m.discover(root)
+    findings = m.check(servers, lock=None, lock_exists=False)
+    ids = sorted(f["id"] for f in findings)
+    assert ids == ["SUP-010", "SUP-011", "SUP-012", "SUP-013"]
+
+
+def test_unpinned_server_makes_sup010_must_fix():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "loose": {"command": "npx", "args": ["-y", "@x/loose"]},
+    }})})
+    servers = m.discover(root)
+    by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
+    assert by["SUP-010"]["status"] == "must-fix"
+    assert by["SUP-012"]["status"] == "should-fix"  # no lock committed
+
+
+def test_inline_cred_makes_sup013_must_fix():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "leaky": {"command": "npx", "args": ["-y", "@x/y@1.0.0"],
+                  "env": {"API_KEY": "sk-livesecret0123456789abcdefabcd"}},
+    }})})
+    servers = m.discover(root)
+    by = {f["id"]: f for f in m.check(servers, lock=None, lock_exists=False)}
+    assert by["SUP-013"]["status"] == "must-fix"
+
+
+def test_empty_repo_all_not_applicable():
+    root = _write_repo(**{"README.md": "# nothing here"})
+    findings = m.check(m.discover(root), lock=None, lock_exists=False)
+    assert all(f["status"] == "not-applicable" for f in findings)
+
+
+def test_assess_folds_counts_and_attaches_per_server_findings():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "loose": {"command": "npx", "args": ["-y", "@x/loose"]},
+    }})})
+    sbom, findings = m.assess(root)
+    assert sbom["summary"]["must_fix"] >= 1
+    assert "findings" in sbom["servers"][0]
+    assert sbom["servers"][0]["findings"]["SUP-010"] == "must-fix"
+
+
+def test_update_lock_roundtrips_through_diff():
+    root = _write_repo(**{".mcp.json": json.dumps({"mcpServers": {
+        "fs": {"command": "npx", "args": ["-y", "@x/fs@1.0.0"], "tools": [
+            {"name": "read", "description": "r", "inputSchema": {}}]},
+    }})})
+    sbom = m.build_sbom(m.discover(root))
+    lock = m.update_lock(sbom)
+    # re-discovering + diffing against the fresh lock yields no drift
+    srv = m.discover(root)[0]
+    assert m.diff_lock(srv, lock["servers"]["fs"]) == []
+
+
+# --- spec §6: malformed MCP config ---------------------------------------
+
+def test_malformed_mcp_config_is_should_fix():
+    # An unparseable .mcp.json must surface as a SUP-010 SHOULD-fix —
+    # never a crash, never a must-fix.
+    root = _write_repo(**{".mcp.json": "{ this is not valid json "})
+    sbom, findings = m.assess(root)
+    assert sbom["summary"]["must_fix"] == 0
+    assert sbom["summary"]["should_fix"] >= 1
+    broken = [s for s in sbom["servers"] if s.get("parse_error")]
+    assert len(broken) == 1
+    assert broken[0]["findings"]["SUP-010"] == "should-fix"
+    by = {f["id"]: f for f in findings}
+    assert by["SUP-010"]["status"] == "should-fix"
+
+
+def test_malformed_non_mcp_json_is_ignored():
+    # A broken package.json is NOT an MCP config → no diagnostic, no findings.
+    root = _write_repo(**{"package.json": "{ broken "})
+    assert m.discover(root) == []
+    findings = m.check(m.discover(root), lock=None, lock_exists=False)
+    assert all(f["status"] == "not-applicable" for f in findings)

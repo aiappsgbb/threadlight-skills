@@ -265,6 +265,7 @@ def _server_from_config(server_id: str, cfg: dict, declared_in: str) -> McpServe
 # --------------------------------------------------------------------------
 
 _EMITTED = {"mcp-sbom.json", "mcp-lock.json"}
+_MCP_CONFIG_NAMES = {"mcp.json", ".mcp.json"}
 _URL_MCP_RE = re.compile(r"""["']([a-z]+://[^"'\s]+?/(?:mcp|sse)(?:/[^"'\s]*)?)["']""", re.I)
 
 
@@ -284,7 +285,15 @@ def _discover_json_configs(root: Path) -> list[McpServer]:
             continue
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
+        except (ValueError, OSError) as e:
+            if p.name.lower() in _MCP_CONFIG_NAMES:
+                rel = p.relative_to(root).as_posix()
+                out.append(McpServer(
+                    id=rel, kind="unknown", ref="", registry="unknown",
+                    pinned=False, version=None, digest=None, declared_in=rel,
+                    tools_declared=False, tools=[], creds_inline=False,
+                    parse_error=f"{type(e).__name__}: {e}",
+                ))
             continue
         mp = _servers_map(data)
         if not mp:
@@ -332,3 +341,220 @@ def discover(root) -> list[McpServer]:
             have.add((s.kind, s.ref))
     servers.sort(key=lambda s: (s.declared_in, s.id))
     return servers
+
+
+# --------------------------------------------------------------------------
+# SBOM serialization
+# --------------------------------------------------------------------------
+
+def _server_to_dict(s: McpServer) -> dict:
+    return {
+        "id": s.id, "kind": s.kind, "ref": s.ref, "registry": s.registry,
+        "pinned": s.pinned, "version": s.version, "digest": s.digest,
+        "declared_in": s.declared_in, "tools_declared": s.tools_declared,
+        "creds_inline": s.creds_inline,
+        "parse_error": s.parse_error,
+        "tools": [
+            {"name": t.name, "description_sha256": t.description_sha256,
+             "input_schema_sha256": t.input_schema_sha256}
+            for t in s.tools
+        ],
+    }
+
+
+def build_sbom(servers: list[McpServer]) -> dict:
+    pinnable = [s for s in servers if s.kind in PINNABLE]
+    return {
+        "schema_version": "1.0",
+        "generator": "threadlight-production-ready/mcp_sbom",
+        "generator_version": SBOM_VERSION,
+        "servers": [_server_to_dict(s) for s in servers],
+        "summary": {
+            "server_count": len(servers),
+            "pinned": sum(1 for s in pinnable if s.pinned),
+            "unpinned": sum(1 for s in pinnable if not s.pinned),
+            "remote": sum(1 for s in servers if s.kind == "remote"),
+            "inline_creds": sum(1 for s in servers if s.creds_inline),
+            "must_fix": 0,
+            "should_fix": 0,
+        },
+    }
+
+
+# --------------------------------------------------------------------------
+# Lock loading + drift diff
+# --------------------------------------------------------------------------
+
+def load_lock(path) -> dict | None:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    if isinstance(data, dict) and isinstance(data.get("servers"), dict):
+        return data
+    return None
+
+
+def diff_lock(server: McpServer, lock_entry: dict) -> list[str]:
+    reasons: list[str] = []
+    if server.version != lock_entry.get("version"):
+        reasons.append(
+            f"version changed ({lock_entry.get('version')} -> {server.version})")
+    if server.digest != lock_entry.get("digest"):
+        reasons.append(
+            f"digest changed ({lock_entry.get('digest')} -> {server.digest})")
+    locked_tools = lock_entry.get("tools") or {}
+    cur = {t.name: t for t in server.tools}
+    for name in cur:
+        if name not in locked_tools:
+            reasons.append(f"tool added: {name}")
+    for name in locked_tools:
+        if name not in cur:
+            reasons.append(f"tool removed: {name}")
+    for name, t in cur.items():
+        lt = locked_tools.get(name)
+        if not lt:
+            continue
+        if t.description_sha256 != lt.get("description_sha256"):
+            reasons.append(f"tool description changed: {name}")
+        if t.input_schema_sha256 != lt.get("input_schema_sha256"):
+            reasons.append(f"tool input schema changed: {name}")
+    return reasons
+
+
+# --------------------------------------------------------------------------
+# Per-server status + aggregate findings
+# --------------------------------------------------------------------------
+
+_STATUS_RANK = {
+    "not-applicable": 0, "pass": 1, "should-fix": 2, "must-fix": 3,
+}
+SUP_MCP_IDS = ("SUP-010", "SUP-011", "SUP-012", "SUP-013")
+_SUP_MCP_TITLES = {
+    "SUP-010": "MCP servers are pinned",
+    "SUP-011": "MCP servers resolve from a known registry",
+    "SUP-012": "mcp-lock.json committed and drift-free",
+    "SUP-013": "MCP credentials are not committed inline",
+}
+
+
+def _worst(statuses: list[str]) -> str:
+    if not statuses:
+        return "not-applicable"
+    return max(statuses, key=lambda s: _STATUS_RANK.get(s, 0))
+
+
+def _per_server_status(server: McpServer, lock: dict | None,
+                       lock_exists: bool) -> dict:
+    # spec §6 — an unparseable MCP config can't be graded for
+    # registry/lock/creds; surface it as a SUP-010 should-fix only.
+    if server.parse_error:
+        return {"SUP-010": "should-fix", "SUP-011": "not-applicable",
+                "SUP-012": "not-applicable", "SUP-013": "not-applicable"}
+    st: dict[str, str] = {}
+    # SUP-010 — pinning
+    if server.kind == "remote":
+        st["SUP-010"] = "not-applicable"
+    elif server.kind in PINNABLE:
+        st["SUP-010"] = "pass" if server.pinned else "must-fix"
+    else:
+        st["SUP-010"] = "should-fix"
+    # SUP-011 — registry known
+    st["SUP-011"] = "pass" if server.registry != "unknown" else "should-fix"
+    # SUP-012 — lock present + drift-free
+    if not lock_exists:
+        st["SUP-012"] = "should-fix"
+    else:
+        entry = (lock or {}).get("servers", {}).get(server.id)
+        if entry is None:
+            st["SUP-012"] = "should-fix"
+        else:
+            drift = diff_lock(server, entry)
+            if not drift:
+                st["SUP-012"] = "pass"
+            else:
+                st["SUP-012"] = "must-fix" if server.pinned else "should-fix"
+    # SUP-013 — no inline creds
+    st["SUP-013"] = "must-fix" if server.creds_inline else "pass"
+    return st
+
+
+def _detail_for(fid: str, offenders: list[str], lock_exists: bool) -> str:
+    if fid == "SUP-010":
+        return ("Pin every MCP server to an exact version or image digest: "
+                + ", ".join(offenders)) if offenders else \
+            "All MCP servers are pinned to an exact version or digest."
+    if fid == "SUP-011":
+        return ("Resolve these MCP servers from a known registry/source: "
+                + ", ".join(offenders)) if offenders else \
+            "All MCP servers resolve from a known registry or source."
+    if fid == "SUP-012":
+        if not lock_exists:
+            return ("Commit an mcp-lock.json (run mcp_sbom.py --update-lock) so "
+                    "server/tool drift is reviewable.")
+        return ("Reconcile mcp-lock.json — undocumented drift in: "
+                + ", ".join(offenders)) if offenders else \
+            "mcp-lock.json is committed and matches the current MCP surface."
+    if fid == "SUP-013":
+        return ("Move inline credentials to injected secrets (foundry-toolbox / "
+                "Key Vault) for: " + ", ".join(offenders)) if offenders else \
+            "No MCP server commits credentials inline."
+    return ""
+
+
+def check(servers: list[McpServer], lock: dict | None,
+          lock_exists: bool) -> list[dict]:
+    if not servers:
+        return [{"id": fid, "title": _SUP_MCP_TITLES[fid],
+                 "status": "not-applicable",
+                 "detail": "No MCP servers declared in this repo.",
+                 "offenders": []} for fid in SUP_MCP_IDS]
+    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
+    findings = []
+    for fid in SUP_MCP_IDS:
+        statuses = [per[s.id][fid] for s in servers]
+        offenders = [s.id for s in servers
+                     if per[s.id][fid] in ("must-fix", "should-fix")]
+        findings.append({
+            "id": fid, "title": _SUP_MCP_TITLES[fid],
+            "status": _worst(statuses),
+            "detail": _detail_for(fid, offenders, lock_exists),
+            "offenders": offenders,
+        })
+    return findings
+
+
+# --------------------------------------------------------------------------
+# Lock authoring + top-level assess
+# --------------------------------------------------------------------------
+
+def update_lock(sbom: dict) -> dict:
+    servers = {}
+    for s in sbom.get("servers", []):
+        servers[s["id"]] = {
+            "kind": s["kind"], "ref": s["ref"], "registry": s["registry"],
+            "version": s.get("version"), "digest": s.get("digest"),
+            "tools": {t["name"]: {
+                "description_sha256": t["description_sha256"],
+                "input_schema_sha256": t["input_schema_sha256"],
+            } for t in s.get("tools", [])},
+        }
+    return {"schema_version": "1.0", "servers": servers}
+
+
+def assess(root, lock_path=None) -> tuple[dict, list[dict]]:
+    root = Path(root)
+    servers = discover(root)
+    sbom = build_sbom(servers)
+    lp = Path(lock_path) if lock_path else (root / "mcp-lock.json")
+    lock = load_lock(lp)
+    lock_exists = lock is not None
+    findings = check(servers, lock, lock_exists)
+    must = sum(1 for f in findings if f["status"] == "must-fix")
+    should = sum(1 for f in findings if f["status"] == "should-fix")
+    sbom["summary"]["must_fix"] = must
+    sbom["summary"]["should_fix"] = should
+    per = {s.id: _per_server_status(s, lock, lock_exists) for s in servers}
+    for sd in sbom["servers"]:
+        sd["findings"] = per.get(sd["id"], {})
+    return sbom, findings
