@@ -805,6 +805,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-008": {"title": "Agent skills/tools not force-published in committed automation", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-009": {"title": "Agent skills/tools pinned to a version for production", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-010": {"title": "MCP servers pinned to an exact version or image digest", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "SUP-011": {"title": "MCP servers resolve from a known registry or source", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-012": {"title": "mcp-lock.json committed and free of undocumented drift", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "SUP-013": {"title": "MCP server credentials are not committed inline", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
     "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -1933,6 +1937,7 @@ class RepoContext:
     src_text: str = ""
     bicep_graph: BicepGraph | None = None
     resolved_posture: str = ""
+    mcp_sbom: dict | None = None
 
     @classmethod
     def from_repo(cls, root: Path, manifest: dict) -> "RepoContext":
@@ -3335,6 +3340,39 @@ DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}", re.I)
 LATEST_TAG_RE = re.compile(r":latest\b|:main\b|:master\b", re.I)
 
 
+def _load_mcp_sbom():
+    """Import the sibling mcp_sbom producer lazily.
+
+    Tests load these scripts via spec_from_file_location, so mcp_sbom is not on
+    sys.path by name; insert the scripts dir at call time. Returns the module or
+    None (never raises) so a producer problem degrades findings, not the run.
+    """
+    try:
+        import importlib
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        return importlib.import_module("mcp_sbom")
+    except Exception:
+        return None
+
+
+def _check_mcp_supply(ctx: RepoContext) -> list[Finding]:
+    """Run the MCP producer and map its four findings into Pillar 09."""
+    mod = _load_mcp_sbom()
+    if mod is None:
+        return [_not_verified(fid, "mcp_sbom producer unavailable")
+                for fid in ("SUP-010", "SUP-011", "SUP-012", "SUP-013")]
+    try:
+        sbom, findings = mod.assess(ctx.root)
+    except Exception as e:
+        return [_not_verified(fid, f"mcp scan failed: {type(e).__name__}")
+                for fid in ("SUP-010", "SUP-011", "SUP-012", "SUP-013")]
+    ctx.mcp_sbom = sbom
+    return [_mk_finding(f["id"], status=f["status"], detail=f["detail"])
+            for f in findings]
+
+
 def _check_supply_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
@@ -3448,6 +3486,7 @@ def _check_supply_static(ctx: RepoContext) -> list[Finding]:
             detail=("Agent skills/tools referenced but no pinned version declared — pin an "
                     "immutable SkillVersion / toolbox version for production and promote "
                     "default_version in a staged rollout")))
+    out.extend(_check_mcp_supply(ctx))
     return out
 
 
@@ -5391,6 +5430,9 @@ def main(argv: list[str] | None = None) -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_md = _render_report(out_manifest, posture, pillar_findings_waived, evidence_all, waivers, warnings)
         report_path.write_text(report_md, encoding="utf-8")
+        if getattr(ctx, "mcp_sbom", None) is not None:
+            (out_path.parent / "mcp-sbom.json").write_text(
+                json.dumps(ctx.mcp_sbom, indent=2) + "\n", encoding="utf-8")
     except OSError as e:
         _eprint(f"error: failed to write outputs: {e}")
         return 3
