@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
@@ -109,6 +109,7 @@ flowchart LR
 | Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid> --hub-sub <hsub> --hub-apim-id <apim-id> --access-contract-product <product>` |
 | Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
 | Eval + red-team CI/CD gate mode | add `--eval-gate soft` (default, warn-only) or `--eval-gate hard` (block on a non-pass verdict) |
+| MCP supply-chain CI/CD gate mode | add `--mcp-gate soft` (default, warn-only) or `--mcp-gate hard` (block on any must-fix MCP finding) |
 | From a saved framing file | `--framing-file framing.json` |
 | Run the test suite | `python -m pytest tests/ -v` |
 
@@ -153,6 +154,15 @@ Rendered deterministically (offline, no Azure calls, no secrets) into the pilot 
 
 Public targets default to hosted runners (`ubuntu-latest` / ADO `vmImage`); private
 targets switch to `self-hosted` labels / a named ADO pool.
+
+### `--mcp-gate soft|hard`
+
+Adds an **MCP supply-chain gate** to the generated production pipeline, after
+deploy, alongside the eval and red-team gates. It enforces the `mcp-sbom.json`
+that `threadlight-production-ready` writes (`tests/mcp-sbom.json`): `soft`
+(default) warns only and keeps the pipeline green; `hard` blocks the pipeline on
+any must-fix MCP finding (an unpinned server, undocumented lock drift, or an
+inline credential). OIDC / WIF only — no secret.
 
 ## Relationship to threadlight-production-ready
 

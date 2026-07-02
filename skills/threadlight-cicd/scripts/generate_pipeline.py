@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 
 REF = Path(__file__).resolve().parent.parent / "references"
 
