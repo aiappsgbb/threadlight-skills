@@ -1117,6 +1117,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
   - `_check_supply_static` — call `_check_mcp_supply` just before `return out` (~3451).
   - `main()` — write the `mcp-sbom.json` sidecar after the primary manifest write (~3393).
 - Test: `skills/threadlight-production-ready/tests/test_mcp_supply_chain_pillar.py`
+- Create: `skills/threadlight-production-ready/references/remediation-recipes/SUP-010.md`, `SUP-012.md`, `SUP-013.md` — one recipe per NEW must-fix finding. The existing `tests/test_recipe_catalog.py::test_every_must_fix_has_recipe` gate fails the whole suite if a must-fix id has no recipe file. (SUP-011 is should-fix → exempt.)
 
 **Why a lazy import:** the assessor's own tests load scripts via `spec_from_file_location`, so `mcp_sbom` is NOT importable by name from `production_ready`. `_load_mcp_sbom` therefore inserts `scripts/` onto `sys.path` at call time and `importlib.import_module("mcp_sbom")`. If it fails for any reason, the four findings degrade to `not-verified` — the assessor never crashes on a producer error.
 
@@ -1275,6 +1276,19 @@ Insert the sidecar write immediately after `report_path.write_text(report_md, en
             (out_path.parent / "mcp-sbom.json").write_text(
                 json.dumps(ctx.mcp_sbom, indent=2) + "\n", encoding="utf-8")
 ```
+
+- [ ] **Step 3f: Author remediation recipes for the new must-fix findings**
+
+`test_recipe_catalog.py::test_every_must_fix_has_recipe` requires every
+non-experimental must-fix finding to have a `references/remediation-recipes/{ID}.md`
+file (with the sections `## Target file`, `## Edit type`, `## Edit recipe`,
+`## Verification` and YAML front-matter whose `kind` is in `APPLY_PLAN_KINDS`).
+SUP-010/012/013 are must-fix, so create one recipe each (SUP-011 is should-fix →
+exempt). Keep remediation platform-forward: pin to an exact version or an **ACR**
+image digest (SUP-010); author/maintain `mcp-lock.json` with the producer's
+`--update-lock` and gate drift in CI (SUP-012); move inline secrets to **Key Vault**
+references / foundry-toolbox credential binding and rotate anything ever committed
+(SUP-013). See the committed recipe files for the full text.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
