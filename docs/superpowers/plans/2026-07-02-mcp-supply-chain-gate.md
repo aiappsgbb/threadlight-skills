@@ -521,7 +521,7 @@ def discover(root) -> list[McpServer]:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest skills/threadlight-production-ready/tests/test_mcp_sbom.py -v`
-Expected: all PASS (13 tests).
+Expected: all PASS (11 tests).
 
 - [ ] **Step 5: Commit**
 
