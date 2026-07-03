@@ -39,6 +39,7 @@ ASSETS = {
     "site.js": DOCS / "assets" / "site.js",
     "blueprint-logic.js": DOCS / "assets" / "blueprint-logic.js",
     "blueprint.js": DOCS / "assets" / "blueprint.js",
+    "industries.js": DOCS / "assets" / "industries.js",
 }
 HASH_LEN = 8
 
