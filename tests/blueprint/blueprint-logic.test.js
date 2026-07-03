@@ -62,3 +62,20 @@ test('buildPrompt lists integrations + approvals when present', () => {
 test('buildAzd returns azd up quickstart', () => {
   assert.ok(L.buildAzd(base).includes('azd up'));
 });
+
+test('parseScenarioParam extracts the s id from a query string', () => {
+  assert.strictEqual(L.parseScenarioParam('?s=commercial-loan-origination'), 'commercial-loan-origination');
+  assert.strictEqual(L.parseScenarioParam('?foo=1&s=insurance-claims-processing'), 'insurance-claims-processing');
+});
+
+test('parseScenarioParam returns empty when absent or blank', () => {
+  assert.strictEqual(L.parseScenarioParam(''), '');
+  assert.strictEqual(L.parseScenarioParam('?x=1'), '');
+  assert.strictEqual(L.parseScenarioParam('?s='), '');
+  assert.strictEqual(L.parseScenarioParam(undefined), '');
+});
+
+test('parseScenarioParam sanitises to a slug charset (no injection / traversal)', () => {
+  assert.strictEqual(L.parseScenarioParam('?s=%3Cscript%3E'), 'script');
+  assert.strictEqual(L.parseScenarioParam('?s=abc/../x'), 'abcx');
+});

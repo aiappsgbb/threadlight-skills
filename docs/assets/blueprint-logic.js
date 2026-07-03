@@ -64,6 +64,20 @@
     return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
+  // Read a scenario id from a URL query string (e.g. "?s=commercial-loan-origination").
+  // Sanitised to a kebab/underscore slug charset so a deep-link can never carry
+  // markup or a path-traversal payload into the composer. Returns '' when absent.
+  function parseScenarioParam(search) {
+    var q = String(search || '');
+    var i = q.indexOf('?');
+    if (i !== -1) q = q.slice(i + 1);
+    var m = /(?:^|&)s=([^&]*)/.exec(q);
+    if (!m) return '';
+    var v;
+    try { v = decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { v = m[1]; }
+    return v.replace(/[^A-Za-z0-9_-]/g, '');
+  }
+
   function buildPrompt(p) {
     p = p || {};
     var skills = deriveSkills(p);
@@ -110,5 +124,6 @@
     buildPrompt: buildPrompt,
     buildAzd: buildAzd,
     prettyIndustry: prettyIndustry,
+    parseScenarioParam: parseScenarioParam,
   };
 }));

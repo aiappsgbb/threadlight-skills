@@ -212,6 +212,12 @@
       DATA = Array.isArray(data) ? data : [];
       fillDomainOptions();
       render();
+      var pre = L.parseScenarioParam(window.location.search);
+      if (pre) {
+        var hit = null;
+        DATA.forEach(function (e) { if (e.id === pre) hit = e; });
+        if (hit) select(hit);
+      }
     })
     .catch(function () {
       grid.textContent = '';
