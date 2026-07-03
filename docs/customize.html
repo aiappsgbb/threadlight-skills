@@ -107,6 +107,14 @@
     font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--chapter-accent);
     background: var(--chapter-accent-soft); border: 1px solid rgba(54,200,168,.32);
   }
+
+  /* ---- overlay diagram: keep nodes readable on narrow screens (scroll, don't squish) ---- */
+  @media (max-width: 760px) {
+    .doc .diagram-card { padding: 22px 14px; }
+    .doc .diagram-card .diagram-frame { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .doc .diagram-card .diagram-frame svg { min-width: 660px; }
+    .doc .diagram-card .diagram-caption { text-align: left; }
+  }
 </style>
 </head>
 <body class="chapter-page chapter-customize">
@@ -146,23 +154,80 @@
       onboarding without ever editing a skill file.
     </p>
 
-    <div class="card-grid">
-      <div class="detail-card">
-        <h3>Structured intake</h3>
+    <div class="why-grid">
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M9 12h6M9 16h4"/></svg></span>
+        <p class="why-kicker">Intake</p>
+        <h3>Structured intake.</h3>
         <p>A <code>customer-profile.md</code> captures their environment, requirements
           and mandated templates &mdash; so nothing about production is guessed.</p>
-      </div>
-      <div class="detail-card">
-        <h3>Overlay, not fork-edit</h3>
+      </article>
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
+        <p class="why-kicker">Compose</p>
+        <h3>Overlay, not fork-edit.</h3>
         <p>Every customer value lives in <code>overlay/</code> beside the untouched
           skills, so <code>git merge upstream/main</code> keeps pulling our fixes.</p>
-      </div>
-      <div class="detail-card">
-        <h3>A signed-off boundary</h3>
+      </article>
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <p class="why-kicker">Boundary</p>
+        <h3>A signed-off boundary.</h3>
         <p>A <code>non-coverage.md</code> states what Threadlight deliberately
           doesn&rsquo;t automate &mdash; and the architecture review approves it.</p>
-      </div>
+      </article>
     </div>
+
+    <figure class="diagram-card" aria-labelledby="overlay-cap">
+      <div class="diagram-frame">
+        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The overlay model: the upstream threadlight-skills repository stays untouched and keeps merging its fixes, while every customer-specific value — profile, identity, network, governance — is captured once in an overlay directory beside the skills; the two compose into the customer's production environment, and because no skill file is ever edited, git merge upstream/main never conflicts.">
+          <defs>
+            <style>
+              .cz-node { font-family: var(--mono); font-size: 13px; letter-spacing: .04em; fill: currentColor; font-weight: 600; }
+              .cz-sub  { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; fill: currentColor; opacity: .62; }
+              .cz-tag  { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; fill: currentColor; opacity: .6; }
+              .cz-flow { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; fill: currentColor; opacity: .82; }
+            </style>
+          </defs>
+
+          <!-- upstream: untouched skills -->
+          <rect x="24" y="44" width="290" height="96" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+          <text x="42" y="70" class="cz-tag">UPSTREAM</text>
+          <text x="42" y="98" class="cz-node">threadlight-skills</text>
+          <text x="42" y="118" class="cz-sub">17 skills &middot; never edited</text>
+
+          <!-- overlay: the customer's values -->
+          <rect x="24" y="164" width="290" height="96" rx="12" fill="currentColor" fill-opacity=".05" stroke="var(--lime)" stroke-opacity=".75" stroke-width="1.6"/>
+          <rect x="24" y="164" width="4" height="96" rx="2" fill="var(--lime)"/>
+          <text x="42" y="190" class="cz-tag" style="opacity:.85">OVERLAY &middot; YOUR VALUES</text>
+          <text x="42" y="218" class="cz-node">overlay/</text>
+          <text x="42" y="238" class="cz-sub">profile &middot; identity &middot; network &middot; governance</text>
+
+          <!-- merge rail: both feed one compose point -->
+          <g stroke="var(--lime)" stroke-width="1.7" fill="none">
+            <line x1="314" y1="92"  x2="430" y2="92"/><path d="M424 87 L431 92 L424 97"/>
+            <line x1="314" y1="212" x2="430" y2="212"/><path d="M424 207 L431 212 L424 217"/>
+            <line x1="430" y1="92"  x2="430" y2="212"/>
+            <line x1="430" y1="152" x2="716" y2="152"/><path d="M713 146 L721 152 L713 158"/>
+          </g>
+          <circle cx="430" cy="152" r="5" fill="var(--lime)"/>
+          <text x="430" y="138" text-anchor="middle" class="cz-tag" style="opacity:.85">COMPOSE</text>
+
+          <text x="372" y="84"  text-anchor="middle" class="cz-flow">keeps merging</text>
+          <text x="372" y="234" text-anchor="middle" class="cz-flow">captured once</text>
+          <text x="573" y="142" text-anchor="middle" class="cz-flow">no fork-edit</text>
+          <text x="573" y="170" text-anchor="middle" class="cz-sub"><tspan style="opacity:.9">git merge upstream/main</tspan> never conflicts</text>
+
+          <!-- their production -->
+          <rect x="724" y="92" width="332" height="120" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+          <text x="744" y="118" class="cz-tag">WHAT SHIPS</text>
+          <text x="744" y="146" class="cz-node">THEIR PRODUCTION</text>
+          <text x="744" y="167" class="cz-sub">the pilot, fitted to their landing zone</text>
+          <text x="744" y="190" class="cz-sub" style="opacity:.8">Foundry &middot; Entra &middot; private network &middot; signed boundary</text>
+        </svg>
+      </div>
+      <figcaption id="overlay-cap" class="diagram-caption">untouched skills + your overlay &rarr; their production &middot; upstream keeps flowing</figcaption>
+    </figure>
 
     <p class="kicker">What you actually get</p>
     <div class="outcome" aria-label="What customizing changes, default versus customized">
