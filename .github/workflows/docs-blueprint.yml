@@ -1,0 +1,31 @@
+name: docs-blueprint
+
+# Runs the Blueprint composer guards: the static data asset shape + the
+# skill-derivation logic. Pure node:test, no browser, no Azure.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/assets/process-library.json"
+      - "docs/assets/blueprint-logic.js"
+      - "scripts/build_process_library.py"
+      - "tests/blueprint/**"
+  push:
+    branches: [main]
+    paths:
+      - "docs/assets/process-library.json"
+      - "docs/assets/blueprint-logic.js"
+      - "scripts/build_process_library.py"
+      - "tests/blueprint/**"
+  workflow_dispatch: {}
+
+jobs:
+  blueprint-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run blueprint data + logic tests
+        run: node --test tests/blueprint/*.test.js
