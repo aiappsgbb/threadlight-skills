@@ -115,6 +115,14 @@
     font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--chapter-accent);
     background: var(--chapter-accent-soft); border: 1px solid rgba(224,177,58,.32);
   }
+
+  /* ---- loop diagram: keep nodes readable on narrow screens (scroll, don't squish) ---- */
+  @media (max-width: 760px) {
+    .doc .diagram-card { padding: 22px 14px; }
+    .doc .diagram-card .diagram-frame { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .doc .diagram-card .diagram-frame svg { min-width: 640px; }
+    .doc .diagram-card .diagram-caption { text-align: left; }
+  }
 </style>
 </head>
 <body class="chapter-page chapter-self-improving">
@@ -156,27 +164,97 @@
       self-improving loop the team actually asked for.
     </p>
 
-    <div class="card-grid">
-      <div class="detail-card">
-        <h3>One run, no baseline</h3>
+    <div class="why-grid">
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+        <p class="why-kicker">One run in</p>
+        <h3>One run, no baseline.</h3>
         <p><code>learn&nbsp;&lt;run_id&gt;</code> reads <strong>a single run</strong> &mdash;
           pass or fail. No paired A/B, no re-dispatching jobs just to learn something.
           A retro is <strong>one command</strong>.</p>
-      </div>
-      <div class="detail-card">
-        <h3>Grounded, not guessed</h3>
+      </article>
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 7.2V21"/><path d="M6 14a6 6 0 0 0 12 0"/><path d="M3.5 14H7M17 14h3.5"/></svg></span>
+        <p class="why-kicker">Grounded</p>
+        <h3>Grounded, not guessed.</h3>
         <p>A deterministic harvest builds phase parity and a failure taxonomy
           <strong>before any model runs</strong>. The one LLM step reads the
           <strong>digest, never the raw logs</strong>, and maps every fix to a finding
           id.</p>
-      </div>
-      <div class="detail-card">
-        <h3>Compounds over runs</h3>
+      </article>
+      <article class="why-card">
+        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M16 4h5v5"/><path d="M3 21h18"/></svg></span>
+        <p class="why-kicker">And it compounds</p>
+        <h3>Compounds over runs.</h3>
         <p>New failure signatures fold back into the taxonomy as rules and tests, so
           the loop reads the <strong>next</strong> run more sharply. It doesn&rsquo;t
           just report &mdash; it gets better.</p>
-      </div>
+      </article>
     </div>
+
+    <figure class="diagram-card" aria-labelledby="loop-cap">
+      <div class="diagram-frame">
+        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The self-improving loop: a single CI run is harvested deterministically with no model, classified into an ordered taxonomy, and written to a digest; one scoped LLM step turns the digest into ranked fixes; new signatures fold back into rules and tests so the next run reads sharper.">
+          <defs>
+            <style>
+              .lp-node { font-family: var(--mono); font-size: 13px; letter-spacing: .05em; fill: currentColor; font-weight: 600; }
+              .lp-sub  { font-family: var(--mono); font-size: 9px;  letter-spacing: .04em; fill: currentColor; opacity: .60; }
+              .lp-tag  { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; fill: currentColor; opacity: .6; }
+              .lp-flow { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; fill: currentColor; opacity: .82; }
+            </style>
+          </defs>
+
+          <!-- top brackets: deterministic vs the single model call -->
+          <path d="M197 60 L197 52 L703 52 L703 60" fill="none" stroke="currentColor" stroke-opacity=".38" stroke-width="1"/>
+          <text x="450" y="44" text-anchor="middle" class="lp-tag">DETERMINISTIC HARVEST &middot; NO LLM</text>
+          <path d="M737 60 L737 52 L883 52 L883 60" fill="none" stroke="var(--lime)" stroke-opacity=".7" stroke-width="1"/>
+          <text x="810" y="44" text-anchor="middle" class="lp-tag" style="opacity:.85">ONE LLM STEP</text>
+
+          <!-- nodes -->
+          <g>
+            <rect x="17"  y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <text x="90"  y="112" text-anchor="middle" class="lp-node">CI RUN</text>
+            <text x="90"  y="131" text-anchor="middle" class="lp-sub">green or red</text>
+
+            <rect x="197" y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <text x="270" y="112" text-anchor="middle" class="lp-node">HARVEST</text>
+            <text x="270" y="131" text-anchor="middle" class="lp-sub">gh &middot; scoped logs</text>
+
+            <rect x="377" y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <text x="450" y="112" text-anchor="middle" class="lp-node">CLASSIFY</text>
+            <text x="450" y="131" text-anchor="middle" class="lp-sub">ordered taxonomy</text>
+
+            <rect x="557" y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <text x="630" y="112" text-anchor="middle" class="lp-node">DIGEST</text>
+            <text x="630" y="131" text-anchor="middle" class="lp-sub">learnings/v1</text>
+
+            <rect x="737" y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="var(--lime)" stroke-opacity=".8" stroke-width="1.6"/>
+            <rect x="737" y="70" width="4" height="92" rx="2" fill="var(--lime)"/>
+            <text x="812" y="112" text-anchor="middle" class="lp-node">LLM STEP</text>
+            <text x="812" y="131" text-anchor="middle" class="lp-sub">ranked fixes</text>
+
+            <rect x="917" y="70" width="146" height="92" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <text x="990" y="112" text-anchor="middle" class="lp-node">FOLD BACK</text>
+            <text x="990" y="131" text-anchor="middle" class="lp-sub">rules + tests</text>
+          </g>
+
+          <!-- forward flow (lime) -->
+          <g stroke="var(--lime)" stroke-width="1.7" fill="none">
+            <line x1="167" y1="116" x2="190" y2="116"/><path d="M187 111 L194 116 L187 121"/>
+            <line x1="347" y1="116" x2="370" y2="116"/><path d="M367 111 L374 116 L367 121"/>
+            <line x1="527" y1="116" x2="550" y2="116"/><path d="M547 111 L554 116 L547 121"/>
+            <line x1="707" y1="116" x2="730" y2="116"/><path d="M727 111 L734 116 L727 121"/>
+            <line x1="887" y1="116" x2="910" y2="116"/><path d="M907 111 L914 116 L907 121"/>
+          </g>
+
+          <!-- return arc: fold back into the next run -->
+          <path d="M990 162 C 990 232 760 262 540 262 C 320 262 90 232 90 162" fill="none" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="2 5"/>
+          <path d="M85 169 L90 159 L95 169" fill="none" stroke="var(--lime)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="540" y="238" text-anchor="middle" class="lp-flow">the loop reads the next run more sharply</text>
+        </svg>
+      </div>
+      <figcaption id="loop-cap" class="diagram-caption">harvest &rarr; classify &rarr; digest &rarr; one LLM step &rarr; fold back</figcaption>
+    </figure>
 
     <p class="kicker">Why a loop, not a log-read</p>
     <div class="outcome" aria-label="Reading logs by hand versus the cold-path loop">
