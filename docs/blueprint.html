@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blueprint — your process in, the build prompt out.</title>
+<meta name="description" content="Pick a scenario or describe your own. Blueprint derives the Threadlight skill sequence that fits and hands you the copy-paste prompt that drives it end to end on Azure AI Foundry.">
+<meta name="theme-color" content="#4f6dff">
+
+<!-- OpenGraph + Twitter card -->
+<meta property="og:type"        content="website">
+<meta property="og:title"       content="Blueprint — your process in, the build prompt out.">
+<meta property="og:description" content="Pick a scenario or describe your own. Blueprint derives the Threadlight skill sequence and hands you the copy-paste prompt that drives it on Azure AI Foundry.">
+<meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/blueprint.html">
+<meta property="og:site_name"   content="Threadlight">
+<meta name="twitter:card"       content="summary_large_image">
+<meta name="twitter:title"      content="Blueprint — your process in, the build prompt out.">
+<meta name="twitter:description" content="Describe a process, get the exact Threadlight build prompt for Azure AI Foundry.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=cb8d7282">
+
+<style>
+  /* ============================================================
+     BLUEPRINT — page-scoped composer UI, built on global tokens.
+     Uses --chapter-accent / --bg-* / --ink-* / --line so light
+     mode flips for free.
+     ============================================================ */
+  body.chapter-blueprint {
+    --chapter-accent:      var(--accent);
+    --chapter-accent-glow: rgba(79,109,255,.16);
+  }
+
+  .bp-shell { margin-top: 8px; }
+
+  /* --- filter bar --- */
+  .bp-controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  }
+  .bp-field { display: flex; flex-direction: column; gap: 6px; }
+  .bp-field > label {
+    font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .bp-field.grow { flex: 1 1 220px; min-width: 180px; }
+  .bp-input, .bp-select {
+    appearance: none; font: 500 14px/1.2 var(--sans);
+    color: var(--ink-0); background: var(--bg-0);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+    min-height: 42px;
+  }
+  .bp-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e95a8' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px;
+  }
+  .bp-input:focus, .bp-select:focus {
+    outline: none; border-color: var(--chapter-accent);
+    box-shadow: 0 0 0 3px var(--chapter-accent-glow);
+  }
+  .bp-reset {
+    font: 600 13px/1 var(--sans); color: var(--ink-1);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 10px; padding: 11px 14px; min-height: 42px; cursor: pointer;
+    transition: border-color var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+  }
+  .bp-reset:hover { border-color: var(--chapter-accent); color: var(--ink-0); }
+  .bp-count { margin: 14px 2px 0; font: 500 13px/1.4 var(--mono); color: var(--ink-2); }
+  .bp-count b { color: var(--chapter-accent); font-weight: 700; }
+
+  /* --- scenario grid --- */
+  .bp-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px; margin-top: 14px;
+  }
+  .bp-card {
+    display: flex; flex-direction: column; gap: 10px; text-align: left;
+    padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--bg-1); color: inherit; cursor: pointer; height: 100%;
+    transition: border-color var(--d-fast) var(--ease-out),
+                transform var(--d-fast) var(--ease-out),
+                box-shadow var(--d-fast) var(--ease-out);
+  }
+  .bp-card:hover { border-color: var(--chapter-accent); transform: translateY(-2px); }
+  .bp-card:focus-visible {
+    outline: none; border-color: var(--chapter-accent);
+    box-shadow: 0 0 0 3px var(--chapter-accent-glow);
+  }
+  .bp-card.is-selected {
+    border-color: var(--chapter-accent);
+    box-shadow: 0 0 0 1px var(--chapter-accent), 0 12px 30px -18px var(--chapter-accent-glow);
+  }
+  .bp-card h3 { margin: 0; font: 600 15px/1.3 var(--serif); color: var(--ink-0); }
+  .bp-card p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+  .bp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .bp-chip {
+    font: 600 10.5px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase;
+    padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2);
+  }
+  .bp-chip.dom { color: var(--ink-1); }
+  .bp-chip.cx-low    { color: var(--lime);   border-color: color-mix(in srgb, var(--lime) 40%, var(--line)); }
+  .bp-chip.cx-medium { color: var(--warn);   border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+  .bp-chip.cx-high   { color: var(--accent-1); border-color: color-mix(in srgb, var(--accent-1) 40%, var(--line)); }
+
+  .bp-empty {
+    grid-column: 1 / -1; text-align: center; padding: 40px 20px;
+    border: 1px dashed var(--line); border-radius: 14px; color: var(--ink-2);
+    font: 500 14px/1.5 var(--sans);
+  }
+
+  /* --- "or describe your own" --- */
+  .bp-or {
+    display: flex; align-items: center; gap: 14px; margin: 30px 0 18px;
+    color: var(--ink-2); font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .bp-or::before, .bp-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .bp-custom {
+    display: grid; gap: 14px; padding: 18px;
+    border: 1px solid var(--line); border-radius: 14px; background: var(--bg-1);
+  }
+  .bp-custom textarea {
+    width: 100%; min-height: 96px; resize: vertical; font: 500 14px/1.5 var(--sans);
+    color: var(--ink-0); background: var(--bg-0); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px;
+  }
+  .bp-custom textarea:focus {
+    outline: none; border-color: var(--chapter-accent); box-shadow: 0 0 0 3px var(--chapter-accent-glow);
+  }
+  .bp-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .bp-row .bp-field { flex: 1 1 200px; }
+  .bp-toggles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .bp-toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px;
+    font: 500 13px/1 var(--sans); color: var(--ink-1); user-select: none;
+  }
+  .bp-toggle input { accent-color: var(--chapter-accent); width: 16px; height: 16px; }
+  .bp-toggle:has(input:checked) { border-color: var(--chapter-accent); color: var(--ink-0); }
+
+  /* --- result panel --- */
+  .bp-result { margin-top: 30px; scroll-margin-top: 90px; }
+  .bp-result[hidden] { display: none; }
+  .bp-result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; }
+  .bp-result-head h3 { margin: 0; font: 600 22px/1.2 var(--serif); color: var(--ink-0); }
+  .bp-result-head .k { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--chapter-accent); }
+
+  .bp-arc {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin: 18px 0 6px; padding: 16px; border: 1px solid var(--line);
+    border-radius: 14px; background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  }
+  .bp-skill {
+    display: inline-flex; align-items: center; gap: 7px;
+    font: 600 12.5px/1 var(--mono); color: var(--ink-1);
+    padding: 8px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-0);
+  }
+  .bp-skill .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-2); }
+  .bp-skill.base .pip { background: var(--chapter-accent); }
+  .bp-skill.added {
+    color: var(--ink-0); border-color: color-mix(in srgb, var(--lime) 45%, var(--line));
+    background: color-mix(in srgb, var(--lime) 8%, var(--bg-0));
+  }
+  .bp-skill.added .pip { background: var(--lime); }
+  .bp-arrow { color: var(--ink-2); font-size: 13px; }
+  .bp-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 2px 0; font: 500 12px/1 var(--mono); color: var(--ink-2); }
+  .bp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .bp-legend i { width: 8px; height: 8px; border-radius: 50%; }
+  .bp-legend .b { background: var(--chapter-accent); }
+  .bp-legend .a { background: var(--lime); }
+
+  .bp-outs { display: grid; gap: 16px; margin-top: 20px; }
+  .bp-out h4 {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 0 0 8px; font: 600 13px/1 var(--mono); letter-spacing: .04em;
+    text-transform: uppercase; color: var(--ink-2);
+  }
+  .bp-copy {
+    font: 600 12px/1 var(--sans); color: var(--ink-1); cursor: pointer;
+    background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: border-color var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+  }
+  .bp-copy:hover { border-color: var(--chapter-accent); color: var(--ink-0); }
+  .bp-copy.copied { border-color: var(--lime); color: var(--lime); }
+  .bp-out pre.code-callout { margin: 0; white-space: pre-wrap; word-break: break-word; }
+
+  /* --- how it works --- */
+  .bp-how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+  .bp-how-card { padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); }
+  .bp-how-ico {
+    width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 14px;
+    border-radius: 11px; border: 1px solid color-mix(in srgb, var(--chapter-accent) 34%, var(--line));
+    background: var(--chapter-accent-glow); color: var(--chapter-accent);
+  }
+  .bp-how-card h3 { margin: 0 0 6px; font: 600 16px/1.3 var(--serif); color: var(--ink-0); }
+  .bp-how-card p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+  .bp-how-card b { color: var(--ink-1); font-weight: 650; }
+
+  @media (max-width: 820px) { .bp-how { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .bp-card { transition: none; } }
+</style>
+</head>
+<body class="chapter-page chapter-blueprint">
+
+<div class="atmosphere" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name" style="text-decoration:none;color:inherit;">
+      <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
+    </a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./blueprint.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>Funnel</a>
+    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
+    <a href="./self-improving.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>Self-improving</a>
+    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./industries.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><rect x="5" y="9" width="6" height="12"/><rect x="13" y="4" width="6" height="17"/></svg>Industries</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./workbook.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2z"/></svg>Workbook</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ==================== HERO ==================== -->
+  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+    <div class="wrap wrap-wide">
+      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Blueprint</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Blueprint</p>
+      <h1 class="reveal" data-delay="2">Your process in. The exact <em>build prompt</em> out.</h1>
+      <p class="lede reveal" data-delay="3">
+        Pick a scenario &mdash; or describe your own. Blueprint reads it and derives the
+        <strong>Threadlight skill sequence</strong> that fits, then hands you the copy-paste
+        prompt that drives the whole arc on <strong>Azure AI Foundry</strong>.
+      </p>
+      <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Blueprint at a glance">
+        <div class="stat" role="listitem"><span class="stat-num"><em>89</em></span><span class="stat-label">scenarios to start from</span></div>
+        <div class="stat" role="listitem"><span class="stat-num"><em>15</em></span><span class="stat-label">industry domains</span></div>
+        <div class="stat" role="listitem"><span class="stat-num"><em>1</em></span><span class="stat-label">prompt to paste</span></div>
+      </div>
+      <div class="cost-cta-row reveal" data-delay="6" style="margin-top:26px;">
+        <a class="btn btn-primary" href="#compose">Build a prompt <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="./workbook.html">Run it yourself <span class="arrow">&rarr;</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== COMPOSE ==================== -->
+  <section id="compose" data-toc-id="compose" data-toc-label="Compose">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow reveal"><span class="dot"></span>Compose</p>
+      <h2 class="reveal" data-delay="1">Start from a scenario.</h2>
+      <p class="lede reveal" data-delay="2">
+        Filter the library, pick the closest match, and read your build below.
+        No match? <a href="#bp-custom">Describe it instead.</a>
+      </p>
+
+      <div class="bp-shell">
+        <div class="bp-controls" role="group" aria-label="Filter scenarios">
+          <div class="bp-field">
+            <label for="bp-domain">Domain</label>
+            <select id="bp-domain" class="bp-select"><option value="">All domains</option></select>
+          </div>
+          <div class="bp-field">
+            <label for="bp-complexity">Complexity</label>
+            <select id="bp-complexity" class="bp-select">
+              <option value="">Any</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="bp-field grow">
+            <label for="bp-search">Search</label>
+            <input id="bp-search" class="bp-input" type="search" placeholder="e.g. claims, onboarding, invoice…" autocomplete="off">
+          </div>
+          <button id="bp-reset" type="button" class="bp-reset">Reset</button>
+        </div>
+        <p class="bp-count" id="bp-count" role="status" aria-live="polite"></p>
+
+        <div class="bp-grid" id="bp-grid" role="list" aria-label="Scenario library"></div>
+
+        <div class="bp-or">or describe your own process</div>
+
+        <form class="bp-custom" id="bp-custom" novalidate>
+          <div class="bp-field">
+            <label for="bp-desc">What should the agent do?</label>
+            <textarea id="bp-desc" placeholder="Describe the business process in a sentence or two — what triggers it, what it decides, who signs off."></textarea>
+          </div>
+          <div class="bp-row">
+            <div class="bp-field">
+              <label for="bp-cdomain">Domain</label>
+              <select id="bp-cdomain" class="bp-select"><option value="">General</option></select>
+            </div>
+            <div class="bp-field">
+              <label for="bp-ccomplexity">Complexity</label>
+              <select id="bp-ccomplexity" class="bp-select">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+          <div class="bp-toggles" role="group" aria-label="Process traits">
+            <label class="bp-toggle"><input type="checkbox" id="bp-cint">External integrations</label>
+            <label class="bp-toggle"><input type="checkbox" id="bp-capp">Human approvals</label>
+            <label class="bp-toggle"><input type="checkbox" id="bp-creg">Regulated / audited</label>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary">Derive my build <span class="arrow">&rarr;</span></button>
+          </div>
+        </form>
+
+        <!-- result panel -->
+        <section class="bp-result" id="bp-result" hidden aria-live="polite">
+          <div class="bp-result-head">
+            <span class="k">Your build</span>
+            <h3 id="bp-result-name"></h3>
+          </div>
+
+          <div class="bp-arc" id="bp-arc" aria-label="Derived skill sequence"></div>
+          <div class="bp-legend">
+            <span><i class="b"></i> baseline arc</span>
+            <span><i class="a"></i> added for your process</span>
+          </div>
+
+          <div class="bp-outs">
+            <div class="bp-out">
+              <h4>Copilot build prompt <button type="button" class="bp-copy" data-copy="bp-prompt">Copy</button></h4>
+              <pre class="code-callout" id="bp-prompt" tabindex="0" aria-label="Copilot build prompt"></pre>
+            </div>
+            <div class="bp-out">
+              <h4>Provision &amp; deploy <button type="button" class="bp-copy" data-copy="bp-azd">Copy</button></h4>
+              <pre class="code-callout" id="bp-azd" tabindex="0" aria-label="azd quickstart"></pre>
+            </div>
+          </div>
+          <p class="lede" style="margin-top:18px;font-size:15px;">
+            Paste the prompt into <strong>GitHub Copilot</strong> &mdash; in your IDE, the CLI, or the
+            chat panel &mdash; and run the arc. Each skill reads its <code>SKILL.md</code> and leaves a
+            committed artefact behind.
+          </p>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== HOW IT WORKS ==================== -->
+  <section id="how" data-toc-id="how" data-toc-label="How it works">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow reveal"><span class="dot"></span>Under the hood</p>
+      <h2 class="reveal" data-delay="1">How Blueprint reads your process.</h2>
+      <div class="bp-how">
+        <div class="bp-how-card reveal" data-delay="2">
+          <div class="bp-how-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5"/><path d="M8 13h8M8 17h5"/></svg></div>
+          <h3>1 · Reads the shape</h3>
+          <p>Integrations, human approvals, triggers, complexity and domain &mdash; the <b>signals that decide what a build needs</b>.</p>
+        </div>
+        <div class="bp-how-card reveal" data-delay="3">
+          <div class="bp-how-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M6 8.4v7.2"/><path d="M6 12h8a4 4 0 0 1 4 4v-.4"/></svg></div>
+          <h3>2 · Derives the arc</h3>
+          <p>A baseline design&rarr;deploy&rarr;evals spine, plus <b>only the skills your process actually calls for</b> &mdash; never a fixed list.</p>
+        </div>
+        <div class="bp-how-card reveal" data-delay="4">
+          <div class="bp-how-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"/></svg></div>
+          <h3>3 · Hands you the prompt</h3>
+          <p>One copy-paste prompt that drives the arc through Copilot, plus the <b><code>azd up</code></b> that puts it on your Azure.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== CLOSE ==================== -->
+  <section id="close">
+    <div class="wrap">
+      <div class="reveal">
+        <h2>Ready to build?</h2>
+        <p class="lede">
+          Blueprint just writes the prompt. The skills do the work &mdash; on the platform,
+          never around it.
+        </p>
+        <div class="cost-cta-row" style="margin-top:22px;">
+          <a class="btn btn-primary" href="#compose">Compose a build <span class="arrow">&rarr;</span></a>
+          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills#readme">Browse the skills <span class="arrow">&#8599;</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="row">
+    <div>Microsoft GBB AI Apps · <code>threadlight-skills</code> · open guidance</div>
+    <div class="right">
+      <a href="./index.html">Home</a>
+      <a href="./blueprint.html">Blueprint</a>
+      <a href="./workbook.html">Workbook</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">THREADLIGHT.md</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills#readme">README.md</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/site.js?v=91ff002f"></script>
+<script src="assets/blueprint-logic.js?v=00000000"></script>
+<script src="assets/blueprint.js?v=00000000"></script>
+
+</body>
+</html>
