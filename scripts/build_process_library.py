@@ -3,8 +3,8 @@
 
 The raw source is NOT committed. This producer keeps only a whitelist of
 presentation fields and asserts the output carries no supply-chain leak
-markers. Business vocabulary (competitive/confidential/compliance) is LEGIT
-third-party content and is deliberately NOT scrubbed.
+markers. Generic business vocabulary in the source (e.g. audit, regulatory,
+risk) is legitimate third-party content and is deliberately NOT scrubbed.
 
 Usage:
     python3 scripts/build_process_library.py --source /tmp/process_library.json

@@ -9,7 +9,7 @@ const data = JSON.parse(fs.readFileSync(
 const REQUIRED = ['id', 'name', 'industry', 'complexity', 'summary', 'description', 'tags'];
 const INTERNAL = ['pregenerated_job_id'];
 // NARROW leak scrub for third-party data: only true supply-chain / internal
-// markers. Business words (competitive / confidential / compliance) are LEGIT.
+// markers. Generic business vocabulary (e.g. audit / regulatory / risk) is legitimate.
 const LEAK = /agentic[- ]?loop|threadlight-vnext|northcentralus|remote-gw|gpt-5\.1/i;
 
 test('library is a non-empty array', () => {

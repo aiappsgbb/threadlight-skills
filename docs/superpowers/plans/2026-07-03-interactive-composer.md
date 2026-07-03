@@ -9,7 +9,7 @@
 **Tech Stack:** Vanilla JS (no build step), Python stdlib (producer), `node --test` (unit + data guard), Playwright (local e2e), existing `site.css` design tokens.
 
 **Scrub policy (critical):**
-- **Data asset** (third-party templates) → NARROW leak scrub only: `/agentic[- ]?loop/i`, `threadlight-vnext`, internal infra tokens (`northcentralus`, `remote-gw`, `gpt-5.1`). Business words (`competitive`, `confidential`, `compliance`) are LEGIT and must pass.
+- **Data asset** (third-party templates) → NARROW leak scrub only: `/agentic[- ]?loop/i`, `threadlight-vnext`, internal infra tokens (`northcentralus`, `remote-gw`, `gpt-5.1`). Generic business vocabulary in the source (e.g. `audit`, `regulatory`, `risk`) is legitimate and must pass through untouched.
 - **My prose** (page copy, spec, plan) → full session regex.
 - Field whitelist drops `pregenerated_job_id` + any non-whitelisted field.
 
@@ -50,8 +50,8 @@
 
 The raw source is NOT committed. This producer keeps only a whitelist of
 presentation fields and asserts the output carries no supply-chain leak
-markers. Business vocabulary (competitive/confidential/compliance) is LEGIT
-third-party content and is deliberately NOT scrubbed.
+markers. Generic business vocabulary in the source (e.g. audit, regulatory,
+risk) is legitimate third-party content and is deliberately NOT scrubbed.
 """
 from __future__ import annotations
 import argparse, json, re, sys
