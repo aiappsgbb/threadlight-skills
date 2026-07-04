@@ -1,6 +1,8 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **Sixteen pipeline skills + one orchestrator (17 total)** that take a customer
+> **Watch a paragraph become a governed agent — native on Foundry, in your own tenant.**
+>
+> Sixteen pipeline skills + one orchestrator (17 total) take a customer
 > engagement from a one-paragraph brief through to a deployed, evaluated,
 > observable, **production-ready** Microsoft Foundry hosted agent — runnable
 > on the customer's tenant in a single working session, then handed off to
