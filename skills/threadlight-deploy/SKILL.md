@@ -16,7 +16,7 @@ description: >-
   GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.1"
+  version: "1.6.2"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -2266,10 +2266,16 @@ The scaffold uses **vendored Bicep modules** from the official
 template. This ensures correct resource structure for the extension while remaining
 self-contained (no network dependency on the template repo).
 
-### Step 1: Copy the scaffold
+### Step 1: Generate the base project
 
-Copy the **entire** `references/scaffold/` directory into the project root.
-This adds:
+Generate the `azd`-ready skeleton with the **`azd ai agent` extension**
+(`azd ai agent init` — `azure.ai.agents >= 0.1.0-preview`; see
+`references/upstream-pin.md` for the pinned `azd-ai-starter-basic` SHA). The
+extension emits `azure.yaml`, `agent.yaml`, and the vendored `infra/`
+(`main.bicep`, `main.parameters.json`, and `core/` — Bicep modules vendored from
+the starter, **do not modify**). Phase 2's `src/agent/` runtime files and any
+`src/mcp/` · `src/bot/` services then slot into this skeleton. The full layout
+after Phase 2 (and the optional bot in Phase 4):
 
 ```
 project/
@@ -2325,7 +2331,7 @@ project/
 
 ### Step 2: Replace placeholder tokens
 
-Replace these tokens **in all copied files**:
+Replace these tokens in the generated and Phase 2 files:
 
 | Token | Value | Source | Files |
 |-------|-------|--------|-------|
