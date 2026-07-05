@@ -186,6 +186,31 @@
   .bp-copy.copied { border-color: var(--lime); color: var(--lime); }
   .bp-out pre.code-callout { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
+  /* what-copilot-does list: derived, non-copyable, deploy step accented */
+  .bp-auto {
+    list-style: none; counter-reset: bpa; margin: 0; padding: 0;
+    display: grid; gap: 10px;
+  }
+  .bp-auto li {
+    counter-increment: bpa; position: relative;
+    padding: 12px 14px 12px 46px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--bg-1); color: var(--ink-1);
+    font: 400 15px/1.5 var(--sans);
+  }
+  .bp-auto li::before {
+    content: counter(bpa); position: absolute; left: 12px; top: 11px;
+    width: 24px; height: 24px; border-radius: 999px;
+    display: grid; place-items: center;
+    font: 700 12px/1 var(--mono); color: var(--bg-0);
+    background: var(--chapter-accent); box-shadow: 0 0 0 4px var(--chapter-accent-glow);
+  }
+  .bp-auto li.is-key {
+    border-color: var(--lime); color: var(--ink-0);
+    background: color-mix(in srgb, var(--lime) 9%, var(--bg-1));
+  }
+  .bp-auto li.is-key::before { background: var(--lime); box-shadow: 0 0 0 4px rgba(120,255,150,.18); }
+  .bp-auto li.is-key b { color: var(--lime); }
+
   /* --- how it works --- */
   .bp-how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
   .bp-how-card { padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); }
@@ -335,14 +360,15 @@
               <pre class="code-callout" id="bp-prompt" tabindex="0" aria-label="Copilot build prompt"></pre>
             </div>
             <div class="bp-out">
-              <h4>Provision &amp; deploy <button type="button" class="bp-copy" data-copy="bp-azd">Copy</button></h4>
-              <pre class="code-callout" id="bp-azd" tabindex="0" aria-label="azd quickstart"></pre>
+              <h4>What Copilot does &mdash; you run nothing</h4>
+              <ol class="bp-auto" id="bp-auto" aria-label="What Copilot does after you paste the prompt"></ol>
             </div>
           </div>
           <p class="lede" style="margin-top:18px;font-size:15px;">
             Paste the prompt into <strong>GitHub Copilot</strong> &mdash; in your IDE, the CLI, or the
-            chat panel &mdash; and run the arc. Each skill reads its <code>SKILL.md</code> and leaves a
-            committed artefact behind.
+            chat panel. That&rsquo;s the only thing you type: <strong>no <code>azd</code>, no scripts, no
+            laptop deploys</strong>. Copilot follows each skill&rsquo;s <code>SKILL.md</code>, leaves a
+            committed artefact behind, and ships to Azure through your CI/CD pipeline.
           </p>
         </section>
       </div>
@@ -367,8 +393,8 @@
         </div>
         <div class="bp-how-card reveal" data-delay="4">
           <div class="bp-how-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"/></svg></div>
-          <h3>3 · Hands you the prompt</h3>
-          <p>One copy-paste prompt that drives the arc through Copilot, plus the <b><code>azd up</code></b> that puts it on your Azure.</p>
+          <h3>3 · Hands you one prompt</h3>
+          <p>One copy-paste prompt drives the whole arc through Copilot &mdash; which ships to Azure <b>through CI/CD, not your laptop</b>. You run nothing else.</p>
         </div>
       </div>
     </div>
@@ -407,8 +433,8 @@
 </footer>
 
 <script src="assets/site.js?v=91ff002f"></script>
-<script src="assets/blueprint-logic.js?v=af8b7ee6"></script>
-<script src="assets/blueprint.js?v=7faf2142"></script>
+<script src="assets/blueprint-logic.js?v=c719be3d"></script>
+<script src="assets/blueprint.js?v=dbfebf61"></script>
 
 </body>
 </html>
