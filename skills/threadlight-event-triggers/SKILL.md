@@ -14,7 +14,7 @@ description: >
   directly), bot infrastructure (use foundry-teams-bot), MCP server
   deployment (use foundry-mcp-aca).
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Threadlight Event Triggers
@@ -176,6 +176,13 @@ dlq_rule = spec["triggers"]["dead_letter"]              # "retry 3x then DLQ", "
 ### Step 2: Pick the scaffold
 
 Copy from `references/scaffolds/{receiver-type}/` into `src/triggers/{trigger-name}/`.
+All six scaffolds are real and tested: each ships an idempotent, injectable
+`handle(...)` core with an offline `local.test.py` and a shared pytest suite in
+`tests/` (no Azure SDKs needed to run them). The `aca-*` shapes carry
+`receiver.py` + `Dockerfile` + `receiver.bicep`; the `function-*` escape hatches
+use the v2 model (`function_app.py` + a pure `receiver_core.py` + `host.json` —
+no legacy `function.json`). See
+[references/scaffolds/README.md](references/scaffolds/README.md) for the index.
 
 ### Step 3: Wire idempotency
 
@@ -461,6 +468,10 @@ For ACA Jobs, also extend `scripts/postdeploy.py` to update the job image
 (per the `azd-patterns` ACA Job pattern).
 
 ### Step 7: Validate
+
+Run the scaffold's offline test first — `python3 local.test.py` in the trigger
+directory (and `python3 -m pytest tests/` for the shared behaviour suite). Both
+run without any Azure SDK installed. Then confirm:
 
 ```
 ✅ Receiver scaffold compiles

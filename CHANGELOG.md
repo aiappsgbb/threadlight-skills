@@ -7,6 +7,23 @@ field.
 
 ## [Unreleased]
 
+### Added
+
+- **Built the six `threadlight-event-triggers` receiver scaffolds for real**
+  (1.1.0 → 1.2.0). The SKILL's "Reference files" table listed `aca-job-cron`,
+  `aca-job-manual`, `aca-consumer`, `function-http`, `function-servicebus`, and
+  `function-eventgrid` as *shipped*, but only a placeholder index existed. Each
+  scaffold now carries a pure, idempotent, injectable `handle(...)` core (derive
+  dedup key → skip duplicates → invoke the Foundry-hosted agent → dead-letter on
+  failure without marking processed), an offline `local.test.py`, and a shared
+  `pytest` suite — all runnable with no Azure SDKs installed. The `aca-*` shapes
+  ship `receiver.py` + `Dockerfile` + `receiver.bicep`; the `function-*` escape
+  hatches use the v2 Python model (`function_app.py` + a pure `receiver_core.py`
+  + `host.json`, no legacy `function.json`). A structural guard test keeps the
+  "shipped" claim self-verifying. Dead-letter strategy is per shape (Storage
+  Queue poison store, Service-Bus-native dead-letter, or platform re-raise →
+  native DLQ). No connection strings — managed identity throughout.
+
 ### Changed
 
 - **Fixed a stale scaffold reference in `threadlight-deploy` Phase 5** (1.6.1 →
