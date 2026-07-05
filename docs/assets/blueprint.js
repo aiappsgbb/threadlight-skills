@@ -124,11 +124,21 @@
     });
   }
 
+  function autoInto(el, steps) {
+    el.textContent = '';
+    steps.forEach(function (step) {
+      var li = document.createElement('li');
+      if (step.accent) li.className = 'is-key';
+      li.textContent = step.text;
+      el.appendChild(li);
+    });
+  }
+
   function renderResult(proc) {
     $('bp-result-name').textContent = proc.name || 'Your process';
     arcInto($('bp-arc'), L.deriveSkills(proc));
     $('bp-prompt').textContent = L.buildPrompt(proc);
-    $('bp-azd').textContent = L.buildAzd(proc);
+    autoInto($('bp-auto'), L.buildAutomation(proc));
     var panel = $('bp-result');
     panel.hidden = false;
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });

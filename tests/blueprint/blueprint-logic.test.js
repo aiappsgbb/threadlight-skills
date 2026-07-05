@@ -7,10 +7,10 @@ const base = {
   business_constraints: [], external_integrations: [], human_approvals: [], knowledge_sources: [], tags: [],
 };
 
-test('baseline arc always present', () => {
+test('baseline arc always present (incl. CI/CD deploy path)', () => {
   const s = L.deriveSkills(base);
   ['threadlight-design', 'threadlight-local-test', 'threadlight-safe-check',
-    'threadlight-deploy', 'threadlight-evals'].forEach(k => assert.ok(s.includes(k), `missing ${k}`));
+    'threadlight-deploy', 'threadlight-cicd', 'threadlight-evals'].forEach(k => assert.ok(s.includes(k), `missing ${k}`));
 });
 
 test('integrations add demo-data-factory', () => {
@@ -59,8 +59,33 @@ test('buildPrompt lists integrations + approvals when present', () => {
   assert.ok(p.includes('legal sign-off'));
 });
 
-test('buildAzd returns azd up quickstart', () => {
-  assert.ok(L.buildAzd(base).includes('azd up'));
+test('buildAutomation describes a hands-off CI/CD deploy with no laptop commands', () => {
+  const steps = L.buildAutomation(base);
+  assert.ok(Array.isArray(steps) && steps.length >= 3);
+  const text = steps.map(s => s.text).join('\n');
+  // The whole point: Copilot deploys through CI/CD — the user runs nothing.
+  assert.ok(/CI\/CD/.test(text), 'must state the deploy goes through CI/CD');
+  assert.ok(/never run a deploy command/i.test(text), 'must say the user runs no deploy command');
+  // The old manual-command anti-pattern must be gone.
+  assert.ok(!/azd up|azd auth|azd init/.test(text), 'must not tell the user to run azd');
+  // The deploy line is flagged for emphasis.
+  assert.ok(steps.some(s => s.accent && /CI\/CD/.test(s.text)), 'deploy step should be accented');
+});
+
+test('buildAutomation scales with the process (approvals, red-team, pricing)', () => {
+  const rich = L.buildAutomation({
+    ...base, complexity: 'high', industry: 'financial_services',
+    human_approvals: [{ step: 'legal' }],
+  });
+  const text = rich.map(s => s.text).join('\n');
+  assert.ok(/human-approval gates/.test(text), 'names the approval gates');
+  assert.ok(/red-teams it/.test(text), 'high complexity red-teams');
+  assert.ok(/prices every run/.test(text), 'regulated adds cost pricing');
+});
+
+test('buildPrompt tells Copilot to deploy through CI/CD, not the laptop', () => {
+  const p = L.buildPrompt(base);
+  assert.ok(/CI\/CD/.test(p) && /not my laptop/.test(p));
 });
 
 test('parseScenarioParam extracts the s id from a query string', () => {

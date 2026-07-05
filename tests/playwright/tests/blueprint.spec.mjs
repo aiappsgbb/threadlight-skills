@@ -28,14 +28,17 @@ test.describe('blueprint composer (blueprint.html)', () => {
     await expect(page.locator('#bp-count')).toContainText(/89 of 89/);
   });
 
-  test('selecting a scenario derives an arc + build prompt + azd', async ({ page }) => {
+  test('selecting a scenario derives an arc + build prompt + hands-off automation', async ({ page }) => {
     await page.goto(BLUEPRINT);
     await page.locator('#bp-grid .bp-card').first().click();
     const result = page.locator('#bp-result');
     await expect(result).toBeVisible();
     await expect(page.locator('#bp-arc .bp-skill').first()).toContainText('threadlight-design');
     await expect(page.locator('#bp-prompt')).toContainText('threadlight-auto');
-    await expect(page.locator('#bp-azd')).toContainText('azd up');
+    // Deploy is a hands-off CI/CD outcome — never a manual azd command block.
+    await expect(page.locator('#bp-auto')).toContainText('CI/CD');
+    await expect(page.locator('#bp-auto li.is-key')).toContainText('never run a deploy command');
+    await expect(page.locator('#bp-auto')).not.toContainText('azd up');
   });
 
   test('describe-your-own with integrations + approvals adds the right skills', async ({ page }) => {

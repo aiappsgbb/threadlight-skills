@@ -10,7 +10,7 @@
   // The always-on spine, shown as the pipeline arc on the page.
   var PIPELINE_ARC = [
     'threadlight-design', 'threadlight-local-test', 'threadlight-safe-check',
-    'threadlight-deploy', 'threadlight-evals',
+    'threadlight-deploy', 'threadlight-cicd', 'threadlight-evals',
   ];
 
   // Canonical order every derived sequence is filtered through — guarantees a
@@ -25,6 +25,7 @@
     'threadlight-redteam',
     'threadlight-govern',
     'threadlight-deploy',
+    'threadlight-cicd',
     'threadlight-production-ready',
     'threadlight-evals',
     'threadlight-consumption-iq',
@@ -39,7 +40,7 @@
     p = p || {};
     var need = {
       'threadlight-design': 1, 'threadlight-local-test': 1, 'threadlight-safe-check': 1,
-      'threadlight-deploy': 1, 'threadlight-evals': 1,
+      'threadlight-deploy': 1, 'threadlight-cicd': 1, 'threadlight-evals': 1,
     };
     if (arr(p.external_integrations).length) need['threadlight-demo-data-factory'] = 1;
     if (arr(p.human_approvals).length) need['threadlight-hitl-patterns'] = 1;
@@ -99,22 +100,40 @@
     lines.push('Run the Threadlight arc in order: ' + skills.join(' → ') + '.');
     lines.push('Follow each skill\'s SKILL.md, keep the platform (Foundry) as the runtime, ' +
       'and produce the committed artefacts each leg leaves behind.');
+    lines.push('Deploy through CI/CD (GitHub Actions + OIDC) — provision and ship from the ' +
+      'pipeline, not my laptop.');
     return lines.join('\n');
   }
 
-  function buildAzd(p) {
+  // What Copilot does once the prompt is pasted — DERIVED from the same process
+  // signals as the arc, so it always matches. The whole point: the human runs no
+  // commands. Deploy is a CI/CD outcome, never a laptop `azd up`. Each entry is
+  // { text, accent? } — accent marks the deploy line for emphasis on the page.
+  function buildAutomation(p) {
     p = p || {};
-    var slug = String(p.id || p.name || 'agent').toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'agent';
-    return [
-      '# Provision Azure + deploy the generated agent',
-      'azd auth login',
-      'azd init --template ./' + slug,
-      'azd up',
-      '',
-      '# Then run the evals leg to score it',
-      'threadlight-evals',
-    ].join('\n');
+    var skills = deriveSkills(p);
+    function has(s) { return skills.indexOf(s) !== -1; }
+    var steps = [];
+    steps.push({ text: 'Designs the agent on Azure AI Foundry and proves it locally on real cases.' });
+    if (has('threadlight-demo-data-factory'))
+      steps.push({ text: 'Wires your integrations behind a realistic demo-data harness.' });
+    if (has('threadlight-hitl-patterns'))
+      steps.push({ text: 'Adds the human-approval gates you named — it stops and waits at each.' });
+    if (has('threadlight-event-triggers'))
+      steps.push({ text: 'Stands up your event & schedule triggers.' });
+    var safe = 'Safe-checks every change';
+    if (has('threadlight-redteam')) safe += ', red-teams it';
+    if (has('threadlight-govern')) safe += ' and governs it at runtime';
+    steps.push({ text: safe + '.' });
+    steps.push({
+      text: 'Ships to Azure through your CI/CD pipeline (GitHub Actions + OIDC) — ' +
+        'you never run a deploy command.',
+      accent: true,
+    });
+    var score = 'Scores it with evals';
+    if (has('threadlight-consumption-iq')) score += ' and prices every run';
+    steps.push({ text: score + '.' });
+    return steps;
   }
 
   return {
@@ -122,7 +141,7 @@
     CANON: CANON,
     deriveSkills: deriveSkills,
     buildPrompt: buildPrompt,
-    buildAzd: buildAzd,
+    buildAutomation: buildAutomation,
     prettyIndustry: prettyIndustry,
     parseScenarioParam: parseScenarioParam,
   };
