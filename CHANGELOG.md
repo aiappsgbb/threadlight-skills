@@ -9,6 +9,14 @@ field.
 
 ### Changed
 
+- **Fixed a stale scaffold reference in `threadlight-deploy` Phase 5** (1.6.1 →
+  1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that
+  the repo never shipped. The modern flow **generates** the `azd` skeleton
+  (`azure.yaml`, `agent.yaml`, vendored `infra/`) via the pinned `azd ai agent`
+  extension — exactly as the Phase 5 header and `references/upstream-pin.md`
+  already describe. Reworded Step 1 to attribute generation to the extension and
+  reframed the tree as the generated + Phase 2 layout (no behaviour change).
+
 - **Added an MCP supply-chain gate** across `threadlight-production-ready`
   (0.6.0) and `threadlight-cicd` (0.3.0). The production-readiness assessor now
   discovers MCP servers/tools declared in a repo, writes an `mcp-sbom.json`
