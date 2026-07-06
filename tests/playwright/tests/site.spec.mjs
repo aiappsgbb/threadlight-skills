@@ -324,13 +324,14 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
       expect(hrefs.length, `${url} nav should stay under 6 links`).toBeLessThanOrEqual(6);
       for (const h of hrefs) {
         expect(h, `${url}: nav link "${h}" should be a chapter page, not an in-page anchor`)
-          .toMatch(/^(\.\/)?(index|funnel|industries|production)\.html$/);
+          .toMatch(/^(\.\/)?(index|blueprint|case-study|production|customize)\.html$/);
       }
-      // Page link labels must include all 3 chapters
+      // Page link labels must include the primary chapters
       const labels = (await page.locator('header.masthead nav.nav a').allTextContents()).join(' | ');
-      expect(labels).toMatch(/Funnel/);
+      expect(labels).toMatch(/Home/);
+      expect(labels).toMatch(/Blueprint/);
       expect(labels).toMatch(/Production-ready/);
-      expect(labels).toMatch(/Industries/);
+      expect(labels).toMatch(/Customize/);
     }
   });
 });
@@ -502,9 +503,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       await expect(page.locator('header.masthead .brand a[href="./index.html"]')).toHaveCount(1);
       const navText = (await page.locator('header.masthead nav.nav').textContent()) || '';
       expect(navText).toMatch(/Home/);
-      expect(navText).toMatch(/Funnel/);
+      expect(navText).toMatch(/Blueprint/);
       expect(navText).toMatch(/Production-ready/);
-      expect(navText).toMatch(/Industries/);
+      expect(navText).toMatch(/Customize/);
     }
   });
 
