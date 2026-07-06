@@ -109,6 +109,19 @@
     font: 500 14px/1.5 var(--sans);
   }
 
+  .bp-showall {
+    grid-column: 1 / -1; text-align: center; padding: 15px 20px; cursor: pointer;
+    border: 1px dashed var(--line); border-radius: 14px; background: var(--bg-1);
+    color: var(--ink-1); font: 600 13px/1 var(--mono); letter-spacing: .04em;
+    text-transform: uppercase;
+    transition: border-color var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+  }
+  .bp-showall:hover { border-color: var(--chapter-accent); color: var(--ink-0); }
+  .bp-showall:focus-visible {
+    outline: none; border-color: var(--chapter-accent);
+    box-shadow: 0 0 0 3px var(--chapter-accent-glow);
+  }
+
   /* --- "or describe your own" --- */
   .bp-or {
     display: flex; align-items: center; gap: 14px; margin: 30px 0 18px;
@@ -431,7 +444,7 @@
 
 <script src="assets/site.js?v=91ff002f"></script>
 <script src="assets/blueprint-logic.js?v=c719be3d"></script>
-<script src="assets/blueprint.js?v=dbfebf61"></script>
+<script src="assets/blueprint.js?v=3f405c9b"></script>
 
 </body>
 </html>

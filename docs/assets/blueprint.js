@@ -21,6 +21,8 @@
 
   var DATA = [];
   var selectedId = null;
+  var expanded = false;
+  var CAP = 12;
   var CX_LABEL = { low: 'Low', medium: 'Medium', high: 'High' };
 
   function pretty(s) { return L.prettyIndustry(s); }
@@ -94,7 +96,18 @@
       empty.textContent = 'No scenario matches those filters. Clear them, or describe your own process below.';
       grid.appendChild(empty);
     } else {
-      list.forEach(function (e) { grid.appendChild(card(e)); });
+      var capped = !expanded && list.length > CAP;
+      var shown = capped ? list.slice(0, CAP) : list;
+      shown.forEach(function (e) { grid.appendChild(card(e)); });
+      if (capped) {
+        var more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'bp-showall';
+        more.textContent = 'Show all ' + list.length + ' scenarios';
+        more.setAttribute('aria-label', 'Show all ' + list.length + ' scenarios');
+        more.addEventListener('click', function () { expanded = true; render(); });
+        grid.appendChild(more);
+      }
     }
     if (countEl) {
       countEl.textContent = '';
@@ -209,10 +222,12 @@
   }
 
   // --- filter wiring ---
-  [domainSel, cxSel].forEach(function (el) { if (el) el.addEventListener('change', render); });
-  if (searchIn) searchIn.addEventListener('input', render);
+  // Any new filter/search starts collapsed so the freeform form stays reachable.
+  function filterRender() { expanded = false; render(); }
+  [domainSel, cxSel].forEach(function (el) { if (el) el.addEventListener('change', filterRender); });
+  if (searchIn) searchIn.addEventListener('input', filterRender);
   if (resetBtn) resetBtn.addEventListener('click', function () {
-    domainSel.value = ''; cxSel.value = ''; searchIn.value = ''; render();
+    domainSel.value = ''; cxSel.value = ''; searchIn.value = ''; filterRender();
   });
 
   // --- boot ---
