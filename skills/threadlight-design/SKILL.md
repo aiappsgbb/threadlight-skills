@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.8.0"
+  version: "1.8.1"
 ---
 
 # Threadlight Design
@@ -867,7 +867,7 @@ Machine-readable deployment contract (lives with the spec):
 > `expected_resource_types` and asserts every entry is in
 > `az resource list -g <RG>` after `azd up`. The mechanical
 > implementation is the **`threadlight-safe-check`** skill — invoke
-> `python -m threadlight.safe_check --phase {design|pre-deploy|post-deploy}`
+> `python3 tests/safe_check.py --phase {design|pre-deploy|post-deploy}`
 > at the corresponding lifecycle points. If you flip a selector
 > from `yes` to `no` mid-pilot, **delete the corresponding source
 > folder and Bicep module too** ` orphans break the orphan check.

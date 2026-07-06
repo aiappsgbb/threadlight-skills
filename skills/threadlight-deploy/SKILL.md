@@ -16,7 +16,7 @@ description: >-
   GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.2"
+  version: "1.6.3"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -1347,7 +1347,7 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### `src/agent/` — Hosted agent container
 - [ ] `src/agent/container.py` — exists, matches chosen runtime (GHCP or MAF)
-- [ ] `src/agent/Dockerfile` — uses `python:3.12-slim`, `uv sync`, copies all agent files
+- [ ] `src/agent/Dockerfile` — uses `mcr.microsoft.com/oryx/python:3.12`, `uv sync`, copies all agent files
 - [ ] `src/agent/pyproject.toml` — correct deps for chosen variant, `prerelease = "if-necessary-or-explicit"`
 - [ ] `src/agent/copilot-instructions.md` — exists, 500-1500 words, matches AGENTS.md
 - [ ] `src/agent/skills/` — has all skills from AGENTS.md, no extra, no missing
@@ -1365,7 +1365,7 @@ Check every file. Mark each ✅ or fix before presenting.
 #### `src/bot/` — Teams bot (if Teams needed)
 - [ ] `src/bot/bot.py` — uses `get_openai_client(agent_name=...)` (NOT `agent_reference`)
 - [ ] `src/bot/app.py` — aiohttp server with MsalConnectionManager
-- [ ] `src/bot/Dockerfile` — python:3.12-slim, port 80
+- [ ] `src/bot/Dockerfile` — `mcr.microsoft.com/oryx/python:3.12`, port 80
 - [ ] `src/bot/requirements.txt` — includes microsoft-agents-* + openai
 - [ ] `src/bot/build_manifest.py` — replaces all manifest tokens; **MUST fail loudly** if `BOT_APP_ID` env var is missing or still a placeholder (e.g. `<uami-client-id>`) — silent fallback to a placeholder produces a zip that passes `azd deploy` but fails Teams schema validation at sideload time with `String "<uami-client-id>" does not match regex pattern`. Guard: `if not bot_id or bot_id.startswith("<"): raise SystemExit("BOT_APP_ID not set")`
 - [ ] `src/bot/teams_package/manifest.json` — has `__BOT_APP_ID__` placeholder tokens ready for postprovision (NEVER literal `<uami-client-id>` — use double-underscore `__` tokens that are obviously wrong if leaked)
@@ -1420,7 +1420,7 @@ Check every file. Mark each ✅ or fix before presenting.
 > automation is:
 >
 > ```bash
-> python -m threadlight.safe_check --phase pre-deploy
+> python3 tests/safe_check.py --phase pre-deploy
 > ```
 >
 > Wire it as an `azd hooks predeploy` so missing services abort the
@@ -1499,7 +1499,7 @@ remove them.
 > playbook. Never retry blind.
 
 > **Canonical implementation: `threadlight-safe-check` skill.** Invoke as
-> `python -m threadlight.safe_check --phase post-deploy` immediately after
+> `python3 tests/safe_check.py --phase post-deploy` immediately after
 > `azd up` returns 0 (and wire as `azd hooks postdeploy`). The detailed
 > step-by-step below is preserved for understanding what the gate does;
 > in practice run the consolidated CLI rather than reimplementing.

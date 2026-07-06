@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
 ---
 
 # Threadlight Production Ready — paving the path to production

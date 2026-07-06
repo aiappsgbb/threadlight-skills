@@ -72,6 +72,32 @@ field.
   `1.0.0`; both now reflect the current 16 pipeline skills + `threadlight-auto`
   orchestrator (17 total) at plugin `1.6.0`, matching `plugin.json` and the
   README.
+- **Fixed the CI/CD deploy-gate verdict check in `threadlight-cicd`** (0.3.0 →
+  0.3.1). The generated GitHub Actions and Azure DevOps pipelines gated on
+  eval / red-team verdict strings (`pass` / `passed` / `ok`) that the assessors
+  never emit, so a clean run could still fail the gate. The gates now match the
+  real enums — eval `comprehensive` / `partial` and red-team `hardened` /
+  `partial` (i.e. no `must-fix`) both pass — with tests that extract and execute
+  the embedded gate script against real verdict values.
+- **Fixed the `threadlight-safe-check` invocation across the skills** (1.1.0 →
+  1.1.1). Docs and sibling skills called `python -m threadlight.safe_check`, but
+  the script is vendored into the pilot repo as `tests/safe_check.py` (there is
+  no importable `threadlight` package), so the module form always raised
+  `ModuleNotFoundError`. Normalised every call site to
+  `python3 tests/safe_check.py` and removed a documented `--strict` flag the CLI
+  never defined.
+- **Fixed a contradictory Dockerfile base image in `threadlight-deploy`** (1.6.2
+  → 1.6.3). The readiness checklist told operators to build the agent and bot
+  images `FROM python:3.12-slim`, directly against the same skill's mandate to
+  use `mcr.microsoft.com/oryx/python:3.12` (Docker Hub's unauthenticated pull
+  limits break ACR Tasks builds). Both checklist rows now match the mandate.
+- **Fixed `threadlight-production-ready --remediate <id>`** so it can reach every
+  finding's recipe (0.6.0 → 0.6.1). The flag read only the legacy
+  `remediation-recipes.yaml` (~12 IDs), leaving the 70+ per-file recipes under
+  `references/remediation-recipes/{ID}.md` — the set the apply-plan machinery
+  already uses — unreachable. `--remediate` now falls back to the per-file
+  catalog when an ID is absent from the yaml, and the previously un-collected
+  renderer test file is bridged into `pytest`.
 
 ### Added
 

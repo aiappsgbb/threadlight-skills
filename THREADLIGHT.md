@@ -285,9 +285,9 @@ silent failures that `azd up` reports as success.** Three lifecycle
 phases, one CLI.
 
 ```bash
-python -m threadlight.safe_check --phase design        # SPEC ↔ manifest contract
-python -m threadlight.safe_check --phase pre-deploy    # manifest ↔ azure.yaml ↔ Bicep ↔ src/
-python -m threadlight.safe_check --phase post-deploy   # manifest ↔ deployed resources ↔ channel reach
+python3 tests/safe_check.py --phase design        # SPEC ↔ manifest contract
+python3 tests/safe_check.py --phase pre-deploy    # manifest ↔ azure.yaml ↔ Bicep ↔ src/
+python3 tests/safe_check.py --phase post-deploy   # manifest ↔ deployed resources ↔ channel reach
 ```
 
 **Inputs.** `specs/manifest.json` (the `deployment_manifest{}` block

@@ -107,7 +107,8 @@ jobs:
               sys.exit(1)
           verdict = json.load(open(p)).get("verdict", "not-verified")
           print(f"evals verdict: {verdict}")
-          sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+          # no must-fix -> comprehensive|partial ship; offline-only|none block
+          sys.exit(0 if verdict in ("comprehensive", "partial") else 1)
           PY
 
   red-team-gate:
@@ -144,7 +145,8 @@ jobs:
               sys.exit(1)
           verdict = json.load(open(p)).get("verdict", "not-verified")
           print(f"red-team verdict: {verdict}")
-          sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+          # no must-fix -> hardened|partial ship; vulnerable blocks
+          sys.exit(0 if verdict in ("hardened", "partial") else 1)
           PY
 
   # MCP supply-chain gate — verify the deployed repo's MCP servers/tools are
