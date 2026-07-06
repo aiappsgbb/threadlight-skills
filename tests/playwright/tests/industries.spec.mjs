@@ -59,9 +59,15 @@ test.describe('industries gallery (industries.html)', () => {
     await expect(page.locator('#bp-arc .bp-skill').first()).toContainText('threadlight-design');
   });
 
-  test('nav exposes Industries as the current page', async ({ page }) => {
+  test('nav is the 5-chapter set; industries is an off-nav sub-page', async ({ page }) => {
     await page.goto(INDUSTRIES);
-    const current = page.locator('header.masthead nav.nav a[aria-current="page"]');
-    await expect(current).toHaveAttribute('href', './industries.html');
+    const hrefs = await page.locator('header.masthead nav.nav a').evaluateAll(
+      els => els.map(e => e.getAttribute('href') || '')
+    );
+    // Industries is reached from Blueprint, not the primary nav
+    expect(hrefs).toContain('./blueprint.html');
+    expect(hrefs).not.toContain('./industries.html');
+    // A non-chapter sub-page marks no nav item as current
+    await expect(page.locator('header.masthead nav.nav a[aria-current="page"]')).toHaveCount(0);
   });
 });
