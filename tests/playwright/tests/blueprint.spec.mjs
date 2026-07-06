@@ -12,11 +12,19 @@ test.describe('blueprint composer (blueprint.html)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/build prompt/i);
   });
 
-  test('loads the scenario library and reports the count', async ({ page }) => {
+  test('loads the library capped so the describe-your-own form stays reachable', async ({ page }) => {
     await page.goto(BLUEPRINT);
     const cards = page.locator('#bp-grid .bp-card');
-    await expect(cards).toHaveCount(89);
+    // Only a preview renders on load — the full 89 would bury the freeform textbox.
+    await expect(cards).toHaveCount(12);
+    // The count still reports the true total, not the number shown.
     await expect(page.locator('#bp-count')).toContainText(/89 of 89 scenarios/);
+    // A show-all control reveals the rest and then disappears.
+    const showAll = page.locator('#bp-grid .bp-showall');
+    await expect(showAll).toContainText(/Show all 89/);
+    await showAll.click();
+    await expect(cards).toHaveCount(89);
+    await expect(page.locator('#bp-grid .bp-showall')).toHaveCount(0);
   });
 
   test('filtering by domain narrows the grid; reset restores it', async ({ page }) => {
