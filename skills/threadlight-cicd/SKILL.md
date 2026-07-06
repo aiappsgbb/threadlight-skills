@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
