@@ -485,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -5122,7 +5122,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--gate-preview", action="store_true",
                    help="treat any must-fix as a hard-gate preview: exit 2 if would-fail-hard-gate is true")
     p.add_argument("--remediate", metavar="FINDING_ID",
-                   help="print bash remediation recipe for a finding ID from references/remediation-recipes.yaml and exit")
+                   help="print the remediation recipe for a finding ID (from references/remediation-recipes.yaml, "
+                        "falling back to references/remediation-recipes/{FINDING_ID}.md) and exit")
     p.add_argument("--trend-csv", metavar="PATH", default="tests/production-readiness-trend.csv",
                    help="append a row per run (date, score, posture, debt) for trending; set to '' to disable")
     p.add_argument("--secure-score-floor", type=int, default=60,
@@ -5602,28 +5603,48 @@ def _diff_manifests(prior: dict, current: dict) -> str:
 
 
 def _emit_remediation(root: Path, finding_id: str) -> int:
-    """Print remediation recipe for a finding ID. Returns 0 on hit, 2 on miss."""
+    """Print remediation recipe for a finding ID. Returns 0 on hit, 2 on miss.
+
+    Resolution order:
+      1. Legacy `references/remediation-recipes.yaml` — authoritative for the
+         IDs it defines (they ship ready-to-run `bash:` blocks).
+      2. Per-file catalog `references/remediation-recipes/{FID}.md` — the
+         maintained recipe set (70+ IDs) used by the apply-plan machinery.
+    Both locations are probed root-first, then relative to this script.
+    """
     fid = finding_id.strip().upper()
-    recipe_file = root / "skills" / "threadlight-production-ready" / "references" / "remediation-recipes.yaml"
-    if not recipe_file.exists():
-        # fall back to relative to this script
-        recipe_file = Path(__file__).resolve().parent.parent / "references" / "remediation-recipes.yaml"
-    if not recipe_file.exists():
-        _eprint(f"error: remediation-recipes.yaml not found at {recipe_file}")
-        return 2
-    body = recipe_file.read_text(encoding="utf-8")
-    # Very small YAML-ish parser: split blocks by `^- id:` markers.
-    blocks = re.split(r"\n(?=- id:\s*)", "\n" + body)
-    for block in blocks:
-        m = re.search(r"- id:\s*([A-Z0-9\-]+)", block)
-        if m and m.group(1).upper() == fid:
-            # Strip leading "- id:" line and print the rest, plus a header
-            print(f"# remediation recipe — {fid}")
-            print(block.strip())
-            print()
-            return 0
+
+    def _resolve(*rel: str) -> Path:
+        p = root.joinpath("skills", "threadlight-production-ready", *rel)
+        if p.exists():
+            return p
+        return Path(__file__).resolve().parent.parent.joinpath(*rel)
+
+    # 1) legacy yaml
+    recipe_file = _resolve("references", "remediation-recipes.yaml")
+    if recipe_file.exists():
+        body = recipe_file.read_text(encoding="utf-8")
+        # Very small YAML-ish parser: split blocks by `^- id:` markers.
+        blocks = re.split(r"\n(?=- id:\s*)", "\n" + body)
+        for block in blocks:
+            m = re.search(r"- id:\s*([A-Z0-9\-]+)", block)
+            if m and m.group(1).upper() == fid:
+                print(f"# remediation recipe — {fid}")
+                print(block.strip())
+                print()
+                return 0
+
+    # 2) per-file catalog fallback — references/remediation-recipes/{FID}.md
+    recipe_md = _resolve("references", "remediation-recipes", f"{fid}.md")
+    if recipe_md.exists() and not recipe_md.name.startswith("_"):
+        print(f"# remediation recipe — {fid}")
+        print(recipe_md.read_text(encoding="utf-8").strip())
+        print()
+        return 0
+
     _eprint(f"error: no remediation recipe found for `{fid}`")
-    _eprint("       add an entry to skills/threadlight-production-ready/references/remediation-recipes.yaml")
+    _eprint("       looked in references/remediation-recipes.yaml and "
+            "references/remediation-recipes/{FID}.md")
     return 2
 
 
