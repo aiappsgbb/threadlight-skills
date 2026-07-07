@@ -98,6 +98,18 @@ field.
   already uses — unreachable. `--remediate` now falls back to the per-file
   catalog when an ID is absent from the yaml, and the previously un-collected
   renderer test file is bridged into `pytest`.
+- **Refreshed the `THREADLIGHT.md` skill inventory.** The engineering reference
+  still said "sixteen" skills and omitted `threadlight-router-bench` from both its
+  skill list and flow table. It now lists all seventeen skills (16 pipeline + the
+  `threadlight-auto` orchestrator) and documents the router-bench IMPROVE leg,
+  matching the README and marketplace metadata.
+
+### Removed
+
+- **Purged four committed `.pyc` bytecode files** from the `threadlight-local-test`
+  quickstart `__pycache__/`. They were tracked despite the existing `__pycache__/`
+  `.gitignore` rule (they were committed before it landed); Python regenerates them
+  on import.
 
 ### Added
 
