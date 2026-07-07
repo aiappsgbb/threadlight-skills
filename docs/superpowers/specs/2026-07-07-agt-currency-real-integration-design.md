@@ -35,14 +35,31 @@ This is a credibility defect in a public skill's core value proposition.
 ## 2. The real AGT model (ground truth)
 
 - **Install:** `pip install agent-governance-toolkit` → console script `agt`,
-  importable package `agent_compliance`.
-- **CLI (build / CI-time gate):**
-  - `agt lint-policy <path>` — validate policy schema.
-  - `agt test <policy> <fixtures>` — replay policy test fixtures, exit non-zero
-    on verdict mismatch.
-  - `agt verify [--evidence FILE] [--badge]` — OWASP ASI 2026 governance
-    verification → a `GovernanceAttestation` (grade, coverage %, badge, signed
-    `attestation_hash`).
+  importable package `agent_compliance`. The **policy-evaluation runtime** and
+  the **framework integration components** ship as the `[core]` / framework
+  extras (e.g. `pip install "agent-governance-toolkit[core]"`, or
+  `[openai-agents]` / `[langchain]` / `[langgraph]` / `[crewai]` …), which
+  provide the `agent_os` package. `agent_os` is **real** — it is the governance
+  runtime, not a fictional symbol; only the *specific* import surface the old
+  skill claimed (`from agt import apply_governance, create_governance_middleware`,
+  `agent_os.policies.dynamic_context`, a `~8–12µs` in-process shim, and an
+  invented `agt verify --strict` flag) was fiction.
+- **CLI:**
+  - `agt lint-policy <path>` — validate policy schema. **Base install; always
+    available.**
+  - `agt verify [--evidence FILE] [--badge]` — run **OWASP ASI 2026** governance
+    verification. Checks whether the ten ASI runtime governance controls
+    (`agent_os.integrations.*` — `PolicyInterceptor`, `GovernancePolicy`,
+    `EscalationPolicy`, `ToolAliasRegistry`, …) are present, and emits a
+    `governance-attestation/v1` JSON (`passed`, `coverage_pct`,
+    `controls_passed`/`controls_total`, per-control presence, `toolkit_version`,
+    `attestation_hash`). `--badge` prints a coverage badge; `--evidence FILE`
+    feeds **in** a runtime-evidence JSON/YAML (it is an *input*, not an output).
+    Base install; coverage reflects how much of the runtime is actually wired.
+  - `agt test <policy> <fixtures>` — replay policy fixtures through the
+    `agent_os.policies.evaluator.PolicyEvaluator`; **requires the `[core]`
+    extra** (without `agent_os` installed it errors). Exit non-zero on verdict
+    mismatch.
   - `agt red-team`, `agt integrity`, `agt doctor`.
 - **Programmatic evaluators (optional, call in your own request path):**
   `from agent_compliance import PromptDefenseEvaluator, PromptDefenseConfig,
@@ -61,11 +78,14 @@ This is a credibility defect in a public skill's core value proposition.
 - **Test-fixture schema** (for `agt test`): `{id, input: {...},
   expected_verdict, expected_rule?}`.
 
-The honest PROTECT story: **author a linted + tested `policy.yaml`, gate CI on
-`agt verify` (signed OWASP ASI attestation), and — optionally — call the real
-`agent_compliance` evaluators in the agent's own request path.** Threadlight
-still only makes the platform's own toolkit trivial to adopt; it never replaces
-it, and `foundry-agt` remains the deep upstream authoring skill.
+The honest PROTECT story: **author a linted `policy.yaml`, gate CI on
+`agt verify` (the OWASP ASI 2026 `governance-attestation/v1`) plus
+`agt lint-policy`, commit the attestation, and replay fixtures with `agt test`
+where the `[core]` runtime is installed.** Raising attestation coverage means
+wiring the real framework governance integration (`agent_os.integrations.*` via
+the matching extra) — the attestation itself names which ASI controls are still
+absent. Threadlight only makes the platform's own toolkit trivial to adopt; it
+never replaces it, and `foundry-agt` remains the deep upstream authoring skill.
 
 ## 3. Design — `govern-manifest` v2 capability model
 
@@ -81,21 +101,27 @@ manifest `schema` id bumps `threadlight-govern-manifest/v1` → `/v2`.
 | `policy_default_deny` | policy declares a default-deny posture (`deny_by_default` / `default_action: deny` / `defaults.action: deny`) | should-fix |
 | `sensitive_action_rules_present` | at least one rule `deny`/`block`/`escalate`s a sensitive/PII-bearing or state-changing action (pillar 7 posture, action-level) | should-fix¹ |
 | `policy_tests_present` | `agt test` fixtures committed (`{input, expected_verdict}`) | should-fix |
-| `ci_gate_present` | a CI workflow runs `agt verify` / `agt lint-policy` / `agt test` (proof governance actually runs — at CI time, honestly) | should-fix |
-| `verifier_artefact_present` | committed `agt verify` evidence exists | should-fix |
-| `verifier_fresh` | verifier artefact within the freshness window | should-fix |
+| `ci_gate_present` | a CI workflow runs `agt verify` / `agt lint-policy` / `agt test` or the `microsoft/agent-governance-toolkit` action (proof governance actually runs in CI) | should-fix |
+| `attestation_present` | committed `agt verify` output (`governance-attestation/v1`) exists | should-fix |
+| `attestation_fresh` | attestation within the freshness window | should-fix |
 | `asi_reference_present` | OWASP ASI 2026 anchor present | should-fix |
 
 ¹ becomes `must-fix` when no policy artefact exists at all (mirrors today's
 `rai_policy_present` roll-up).
 
-**Removed capabilities:** `middleware_wired_at_boundary` (fictional runtime
-concept) and `sidecar_pattern` (a runtime-wrapper deployment notion that only
-made sense under the middleware model). `rai_policy_present` is **renamed** to
-`sensitive_action_rules_present` and its detection is redefined from
-"content_filter / prompt_shields block" (that is the *model*-edge guardrail, not
-AGT) to "the policy has real `deny`/`block`/`escalate` rules over sensitive
-actions."
+**Removed capabilities:** `middleware_wired_at_boundary` and `sidecar_pattern`.
+Runtime governance is *not* fiction — `agt verify` attests real
+`agent_os.integrations.*` components — but a **static evidence scorer cannot
+honestly assert an in-process wiring** the way the old skill did, and the real
+attestation (`agt verify` → `governance-attestation/v1`, surfaced via
+`attestation_present` and echoed as informational `coverage_pct`) already
+carries that runtime truth. So runtime integration is **documented as the way
+to raise attestation coverage**, not scored as its own capability — keeping every
+scored signal statically checkable and every recommendation actionable.
+`rai_policy_present` is **renamed** to `sensitive_action_rules_present` and its
+detection is redefined from "content_filter / prompt_shields block" (that is the
+*model*-edge guardrail, not AGT) to "the policy has real `deny`/`block`/
+`escalate` rules over sensitive actions."
 
 **Verdict enum rename** (honesty — "wired" implies middleware):
 `wired | partial | not-wired` → **`governed | partial | ungoverned`**.
@@ -132,8 +158,9 @@ The AGT fiction leaked into pillar-02 scoring. The **v4 deep-check machinery
 (`AGT-V4-*`) is already built on real ground truth** (real distribution names,
 real `microsoft/agent-governance-toolkit/action@`, ACS `intervention_points`)
 and is preserved; only the fictional `agent_os.policies.dynamic_context` token
-is dropped from the `AGT-V4-003` regex. The **version-agnostic `AGT-001..006`
-layer** is reframed:
+is **retargeted to the real `agent_os.integrations` runtime-governance surface**
+(the components `agt verify` actually attests) in the `AGT-V4-003` regex. The
+**version-agnostic `AGT-001..006` layer** is reframed:
 
 - **Finding catalog / detection** (`_check_agt_static`):
   - `AGT-001` "AGT middleware imported in src/" → **"AGT policy is schema-valid
@@ -167,7 +194,8 @@ layer** is reframed:
 - **Recipe `AGT-001.md`** rewritten: author + `agt lint-policy` + `agt test` a
   real-schema policy and wire the `agt verify` CI gate (no fictional import).
 - **Pillar doc `02-agent-governance.md`** version-agnostic layer + capability
-  table reframed to the real model; `agent_os` token removed; the `AGT-001..006`
+  table reframed to the real model; the `agent_os` reference retargeted to the
+  real `agent_os.integrations` runtime surface; the `AGT-001..006`
   descriptions aligned to the real finding catalog.
 - **Citadel fixture** `src/app.py` (`from agt import policy`) + `specs/SPEC.md`
   line + the two committed golden lines (manifest title, glossary line) updated
