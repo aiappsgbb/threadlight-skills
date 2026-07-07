@@ -97,6 +97,21 @@ field.
 
 ### Fixed
 
+- **Hardened the `threadlight-production-ready` readiness scorecard against
+  modern ARM shapes** (0.8.0 → 0.8.1). The compiled-ARM walker (`BicepGraph`)
+  assumed the top-level `resources` was always a list, so it crashed on
+  **symbolic-name ARM** (`languageVersion 2.0` — the current azd/Bicep default,
+  where `resources` is a `{symbolicName: object}` map), aborting the whole
+  assessment before any pillar ran. `_walk` now accepts both the map and the
+  list shape (and nested-template maps). The model-lifecycle static check
+  (MDL-001) also crashed when a deployment's `model` / `version` was supplied via
+  an ARM parameter or copy-loop expression (an expression *string* rather than an
+  object); it now classifies those as `not-verified` ("verified at deploy" by the
+  live MDL-101 check) rather than crashing or raising a false must-fix. Finally, a
+  per-pillar resilience guard degrades any pillar whose static analyzer raises on
+  an unforeseen ARM shape to a **visible** `not-verified` (carrying the error) and
+  warns on stderr, so the run always completes. Twelve new tests pin the map/list
+  walk, the param-aware model check, and the guard.
 - **Corrected three stale companion pointers in `threadlight-deploy`** — the
   hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
   `pyproject.toml` / `Dockerfile` steps point at the inline templates directly

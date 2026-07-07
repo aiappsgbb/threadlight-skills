@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -993,9 +993,25 @@ sync with the awesome-gbb skill catalog as it evolves.
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
 
-## What changed since v0.7.0
+## What changed since v0.8.0
 
-v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
+v0.8.1 is a robustness patch for the readiness scorecard's compiled-ARM
+analysis. It teaches the Bicep walker to read **symbolic-name ARM**
+(`languageVersion 2.0` — the modern azd/Bicep default, where `resources` is a
+map rather than a list), makes the model-lifecycle static check tolerant of
+model deployments whose version is supplied via an ARM parameter/copy
+expression (degrading MDL-001 to `not-verified` / verify-at-deploy instead of
+crashing or raising a false must-fix), and adds a per-pillar resilience guard so
+one pillar's static analyzer hitting an unforeseen ARM shape degrades that
+pillar to a visible `not-verified` rather than aborting the whole assessment.
+
+| Area | v0.8.1 delta |
+| --- | --- |
+| Symbolic-name ARM | `BicepGraph._walk` accepts `languageVersion 2.0` resource **maps** (and nested-template maps), not just classic lists — the scorecard now runs on the modern azd/Bicep default. |
+| Param-aware model check | MDL-001 classifies expression-string models (parameter / copy-loop) as `not-verified` (verified at deploy by live MDL-101), never a crash or a false must-fix. |
+| Resilience guard | A static analyzer raising on an unexpected ARM shape degrades that pillar's tier-0 findings to a surfaced `not-verified` (with the error) and warns on stderr — the run always completes. |
+
+## What changed since v0.7.0 A new stdlib-only
 script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings
 already produce (scorecard manifest, `mcp-sbom.json`, `agent-identity.json`,
 govern + evals + red-team manifests) onto seven articles and emits a tenant-local,
