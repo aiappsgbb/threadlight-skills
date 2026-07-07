@@ -1,50 +1,80 @@
-# AGT middleware wiring snippet
+# AGT governance wiring — author, gate, attest
 
-Wire the in-process Agent Governance Toolkit middleware at the agent's
-container boundary so the committed policy is enforced on **every tool call**.
-Keyless — uses `DefaultAzureCredential`. This mirrors remediation recipe
-`AGT-001`.
-
-## Python (Microsoft Agent Framework)
-
-```python
-from agt import apply_governance, create_governance_middleware
-from agent_framework import ChatAgent
-
-def build_agent() -> ChatAgent:
-    agent = ChatAgent(name="my-pilot", instructions="...")
-    # PROTECT: enforce policy.yaml on every action, in-process (~8-12µs/eval).
-    return apply_governance(
-        agent,
-        middleware=create_governance_middleware(policy_path="policy.yaml"),
-    )
-```
-
-Place the `apply_governance(...)` call at the single composition point where
-the agent is constructed (the container entry-point: `src/app.py`,
-`src/agent/main.py`, …) so no code path can bypass it.
-
-## TypeScript
-
-```ts
-import { applyGovernance, createGovernanceMiddleware } from "@foundry/agt";
-import { ChatAgent } from "@microsoft/agent-framework";
-
-export function buildAgent(): ChatAgent {
-  const agent = new ChatAgent({ name: "my-pilot", instructions: "..." });
-  return applyGovernance(agent, {
-    middleware: createGovernanceMiddleware({ policyPath: "policy.yaml" }),
-  });
-}
-```
-
-## Verify
+Governance is proven the way the real Agent Governance Toolkit works: a
+committed, schema-valid **policy** that CI **lints, replays, and verifies**, plus
+a committed **attestation**. No in-process "governance middleware" is imported —
+enforcement is evidenced at CI time, not asserted by a runtime shim. This mirrors
+remediation recipe `AGT-001`.
 
 ```bash
-agt verify --strict          # → docs/agt-verifier-report.md (OWASP ASI 2026)
+pip install "agent-governance-toolkit[core]"   # CLI `agt`; [core] enables `agt test`
+```
+
+## 1. Author a real policy (`policy.yaml`)
+
+The real schema requires top-level `version` (the ruleset's own semver — **not**
+the toolkit version), `name`, and `rules[]`; each rule has `conditions` +
+`action` (`allow | deny | audit | block | escalate | rate_limit`). Start from
+`references/policy-templates/{default,hitl,pii-deny}.policy.yaml` and declare a
+default-deny posture.
+
+```bash
+agt lint-policy policy.yaml     # schema check (base install; always available)
+```
+
+## 2. Replay expected verdicts (`agt test`)
+
+Commit `agt test` fixtures next to the policy so its behaviour is pinned:
+
+```yaml
+# fixtures/policy-fixtures.yaml
+- id: shell-exec-is-blocked
+  input: { tool: { name: shell_exec } }
+  expected_verdict: block
+  expected_rule: block-shell-exec
+```
+
+```bash
+agt test policy.yaml fixtures/   # replay (needs the [core] runtime)
+```
+
+## 3. Gate CI and attest (`agt verify`)
+
+Run governance in CI so it can never be skipped, and commit the OWASP ASI 2026
+attestation (`governance-attestation/v1`):
+
+```yaml
+# .github/workflows/governance.yml
+- run: pip install "agent-governance-toolkit[core]"
+- run: agt lint-policy policy.yaml
+- run: agt test policy.yaml fixtures/
+- run: agt verify --badge | tee docs/agt-verifier-report.md
+```
+
+`agt verify` reports **coverage** of the ten ASI controls. Coverage reflects how
+much of the real runtime governance is wired (`agent_compliance` /
+`agent_os.integrations.*`); the attestation names any control still absent. Raise
+it by wiring the framework integration for your agent runtime — that is the deep
+upstream work `foundry-agt` owns.
+
+## 4. (Optional) defence-in-depth evaluators
+
+The real evaluators can also run in the agent's own request path:
+
+```python
+from agent_compliance import PromptDefenseEvaluator, PromptDefenseConfig
+report = PromptDefenseEvaluator(PromptDefenseConfig()).evaluate(prompt)
+if report.is_blocking(min_grade="C"):
+    ...  # reject
+```
+
+## Score the evidence
+
+```bash
 python3 scripts/govern_check.py --target . --emit   # refresh govern-manifest.json
 ```
 
-A clean `agt verify --strict` produces the committed evidence that
-`threadlight-govern` reads as `verifier_artefact_present`, and
-`threadlight-production-ready` reads to flip pillars 2 + 7 to verified.
+A committed policy + `agt test` fixtures + CI gate + `agt verify` attestation is
+what `threadlight-govern` scores as `attestation_present` / `ci_gate_present` /
+`policy_tests_present`, and what `threadlight-production-ready` reads to flip
+pillars 2 + 7 to verified.

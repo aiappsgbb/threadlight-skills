@@ -1,0 +1,18 @@
+name: agent-governance
+on: [push, pull_request]
+jobs:
+  govern:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the Agent Governance Toolkit
+        run: pip install "agent-governance-toolkit[core]"
+      - name: Lint policy schema
+        run: agt lint-policy policy.yaml
+      - name: Replay policy fixtures
+        run: agt test policy.yaml fixtures/
+      - name: Verify (OWASP ASI 2026) and attest
+        run: agt verify --badge | tee docs/agt-verifier-report.md

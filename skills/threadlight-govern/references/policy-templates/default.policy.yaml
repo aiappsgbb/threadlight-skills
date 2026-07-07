@@ -1,28 +1,50 @@
 # AGT governance policy — baseline template
 #
-# Copy to the pilot root as `policy.yaml` (or `agt-policy.yaml`), pin a real
-# `version`, and fill `tools.allow` / `tools.deny` from the pilot's agent.yaml
-# tool set. Enforced in-process by the AGT middleware on every tool call.
-version: "REPLACE_WITH_AGT_VERSION"        # e.g. 4.1.0 — never 'latest'
-agent_control_specification_version: "2026.1"
+# Copy to the pilot root as `policy.yaml` (or `agt-policy.yaml`), set a real
+# ruleset `version`, and fill the tool families from the pilot's agent.yaml
+# tool set. `version` is the semver of THIS policy document — not the AGT
+# package version.
+#
+#   pip install agent-governance-toolkit
+#   agt lint-policy policy.yaml      # schema check
+#   agt test policy.yaml fixtures/   # replay expected verdicts
+#   agt verify                       # OWASP ASI 2026 attestation (gate in CI)
+version: "1.0.0"                      # ruleset version — never 'latest'
+name: threadlight-baseline
+description: >-
+  Least-privilege, default-deny action governance for a threadlight pilot.
+metadata:
+  references:
+    - owasp-asi-2026                  # OWASP Agentic Security Initiative — Agentic Top 10
+  agent_control_specification_version: "2026.1"
 
-references:
-  - owasp-asi-2026   # OWASP Agentic Security Initiative — Agentic Top 10
+# Default-deny: an action with no matching allow rule is denied.
+deny_by_default: true
 
-# Responsible-AI posture (pillar 7). AGT references the model guardrail; the
-# token-level filter itself is configured on the model (Content Safety).
-responsible_ai:
-  content_filter: standard
-  prompt_shields: true          # jailbreak + indirect (XPIA) attack defence
-  pii_redact: true
+rules:
+  - name: block-shell-exec
+    priority: 100
+    description: Block arbitrary shell / process-execution tools (excessive agency).
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["shell_exec", "exec", "subprocess", "os_system"]
+    action: block
 
-# Action-level controls (the part AGT actually enforces).
-tools:
-  allow: []                     # explicit allow-list from agent.yaml tools
-  deny:
-    - shell_exec
-    - send_external_email
+  - name: deny-external-email
+    priority: 90
+    description: Deny unsolicited outbound email tools.
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: send_external_email
+    action: deny
 
-excessive_agency:
-  max_tool_calls_per_turn: 8
-  max_chained_actions: 16
+  - name: allow-read-only
+    priority: 10
+    description: Read-only tools are permitted.
+    conditions:
+      - field: tool.category
+        operator: eq
+        value: read
+    action: allow
