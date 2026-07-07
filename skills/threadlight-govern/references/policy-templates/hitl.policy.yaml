@@ -13,7 +13,6 @@ description: >-
 metadata:
   references:
     - owasp-asi-2026
-  agent_control_specification_version: "2026.1"
 
 deny_by_default: true
 

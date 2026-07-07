@@ -177,8 +177,12 @@ def _ci_gate(root: str) -> str | None:
         if "/.github/workflows/" not in ("/" + rel) and \
                 not rel.startswith(".github/workflows/"):
             continue
-        if path.endswith((".yml", ".yaml")) and CI_GATE.search(_read(path)):
-            return rel
+        if path.endswith((".yml", ".yaml")):
+            active = "\n".join(
+                ln for ln in _read(path).splitlines() if not ln.lstrip().startswith("#")
+            )
+            if CI_GATE.search(active):
+                return rel
     return None
 
 

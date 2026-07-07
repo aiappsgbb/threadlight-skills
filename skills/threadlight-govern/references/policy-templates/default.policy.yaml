@@ -16,7 +16,6 @@ description: >-
 metadata:
   references:
     - owasp-asi-2026                  # OWASP Agentic Security Initiative — Agentic Top 10
-  agent_control_specification_version: "2026.1"
 
 # Default-deny: an action with no matching allow rule is denied.
 deny_by_default: true

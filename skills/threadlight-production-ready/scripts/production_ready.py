@@ -2159,6 +2159,30 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
 
 # ---- pillar 2: agent-governance (AGT) --------------------------------------
 
+# A canonical AGT policy file is the single document `agt lint-policy` would be
+# pointed at. Schema-validity, version-pin and sensitive-action checks MUST read
+# one canonical file — a cross-file merge lets a sibling (e.g. `policy.prod.yaml`)
+# supply an anchor the real `policy.yaml` is missing and false-pass a hard gate.
+_CANONICAL_POLICY_NAMES = ("policy.yaml", "agt-policy.yaml", "policy.yml")
+
+
+def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
+    """Return (canonical_policy_text, canonical_present, merged_all_policy_text).
+
+    ``canonical_policy_text`` is the text of the single canonical policy file
+    (deterministic: first canonical-named file by sorted path). ``merged`` is
+    every ``policy*.y*ml`` concatenated — only for OR-presence signals
+    (OWASP/telemetry mentions), never for completeness checks.
+    """
+    pol_files = sorted(_glob_repo(ctx.root, "**/policy*.y*ml"), key=lambda p: str(p))
+    canonical = next((p for p in pol_files if p.name in _CANONICAL_POLICY_NAMES), None)
+    canon_text = (_read_text(canonical) or "") if canonical is not None else ""
+    merged = ""
+    for p in pol_files:
+        merged += "\n" + (_read_text(p) or "")
+    return canon_text, canonical is not None, merged
+
+
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
@@ -2195,17 +2219,15 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
             out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
         return out
     # ---- legacy heuristic path (no govern manifest) ----
-    # Gather policy text once — several checks read it.
-    pol_files = list(_glob_repo(ctx.root, "**/policy*.y*ml"))
-    pol_text = ""
-    for p in pol_files:
-        pol_text += "\n" + (_read_text(p) or "")
-    has_policy = any(p.name in ("policy.yaml", "agt-policy.yaml", "policy.yml") for p in pol_files)
+    # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
+    # (OWASP, telemetry) may read the merged text.
+    canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
     # AGT-001 policy is schema-valid: top-level version + name + rules present
+    # IN THE CANONICAL FILE (not merged across siblings)
     schema_valid = has_policy and bool(
-        re.search(r"^version\s*:", pol_text, re.I | re.M)
-        and re.search(r"^name\s*:", pol_text, re.I | re.M)
-        and re.search(r"^rules\s*:", pol_text, re.I | re.M)
+        re.search(r"^version\s*:", canon_text, re.I | re.M)
+        and re.search(r"^name\s*:", canon_text, re.I | re.M)
+        and re.search(r"^rules\s*:", canon_text, re.I | re.M)
     )
     out.append(_mk_finding("AGT-001",
         status="pass" if schema_valid else "must-fix",
@@ -2220,16 +2242,22 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out.append(_mk_finding("AGT-003",
         status="pass" if has_owasp else "should-fix",
         detail="OWASP ASI 2026 referenced" if has_owasp else "No OWASP ASI 2026 verifier reference found"))
-    # AGT-004 policy ruleset versioned (semver)
-    has_pin = bool(re.search(r"^version\s*:\s*['\"]?\d+\.\d+", pol_text, re.I | re.M))
+    # AGT-004 policy ruleset versioned (semver) — in the CANONICAL file
+    has_pin = bool(re.search(r"^version\s*:\s*['\"]?\d+\.\d+", canon_text, re.I | re.M))
     out.append(_mk_finding("AGT-004",
         status="pass" if has_pin else "should-fix",
         detail="AGT policy ruleset version pinned" if has_pin else "AGT policy has no pinned ruleset `version:` — risk of silent policy drift"))
-    # AGT-005 governance gate runs in CI
-    wf_text = ""
+    # AGT-005 governance gate runs in CI — require an actual toolkit invocation
+    # (an `agt` verb or the composite action), ignoring commented-out lines, so
+    # a bare `pip install agent-governance-toolkit` is not mistaken for a gate.
+    wf_lines: list[str] = []
     for p in _glob_repo(ctx.root, ".github/workflows/*.yml", ".github/workflows/*.yaml"):
-        wf_text += "\n" + (_read_text(p) or "")
-    ci_gate = bool(re.search(r"agt\s+(verify|lint-policy|test)|agent-governance-toolkit", wf_text, re.I))
+        for ln in (_read_text(p) or "").splitlines():
+            if ln.lstrip().startswith("#"):
+                continue
+            wf_lines.append(ln)
+    wf_text = "\n".join(wf_lines)
+    ci_gate = bool(re.search(r"agt\s+(verify|lint-policy|test)\b|agent-governance-toolkit/action", wf_text, re.I))
     out.append(_mk_finding("AGT-005",
         status="pass" if ci_gate else "should-fix",
         detail="AGT governance gate runs in CI" if ci_gate else "No AGT governance gate (agt verify / lint-policy / test) in .github/workflows — CI cannot block a policy regression"))
@@ -3178,20 +3206,28 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("RAI-001",
         status="pass" if has_cf else "must-fix",
         detail=detail))
-    pol_text = ""
-    for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-        pol_text += "\n" + (_read_text(p) or "")
+    # RAI-002/003 read the canonical policy for the completeness check; the
+    # merged text still feeds the OR-presence shield/PII signals below.
+    canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
     # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
     gm = _load_leg_manifest(ctx, "govern-manifest.json")
     gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
-    has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", pol_text, re.I))
+    has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
     if gm_sar is not None:
         out.append(_mk_finding("RAI-002", status=gm_sar,
             detail=f"threadlight-govern manifest: sensitive_action_rules_present={gm_sar}"))
+    elif has_sar:
+        out.append(_mk_finding("RAI-002", status="pass",
+            detail="AGT policy constrains sensitive actions"))
+    elif has_policy:
+        # A policy exists but declares no deny/block/escalate over sensitive
+        # actions — a hardening gap, not a total absence of governance. Match the
+        # govern leg (should-fix), not the no-policy must-fix.
+        out.append(_mk_finding("RAI-002", status="should-fix",
+            detail="AGT policy present but declares no deny/block/escalate rule over sensitive actions"))
     else:
-        out.append(_mk_finding("RAI-002",
-            status="pass" if has_sar else "must-fix",
-            detail="AGT policy constrains sensitive actions" if has_sar else "AGT policy has no deny/escalate/block rules for sensitive actions"))
+        out.append(_mk_finding("RAI-002", status="must-fix",
+            detail="No AGT policy constrains sensitive actions"))
     # RAI-003 prompt shields are a model-edge control (Content Safety), not part of
     # the AGT governance manifest — score it from policy/doc evidence only.
     has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text + "\n" + ctx.docs_text, re.I))

@@ -79,6 +79,13 @@ field.
   lints clean, plus a `governance.yml` CI gate) are rewritten to match. The
   version-agnostic v4 deep-checks (`AGT-V4-*`) are unchanged. Bumps the plugin
   manifest 1.9.0 → 1.10.0.
+  <br>Cross-skill hardening: policy schema-validity and the pinned `version:`
+  are evaluated against a **single canonical policy file** (never merged across
+  siblings, which could false-pass the governance hard gate); CI-gate detection
+  requires an actual toolkit invocation (an `agt` verb or the
+  `agent-governance-toolkit/action`) and ignores commented-out lines,
+  identically in both skills; and the govern baseline policy templates drop a
+  v4-only metadata key so a pilot that adopts them stays on the `v3_7` profile.
 
 
   1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that
