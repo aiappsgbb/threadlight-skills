@@ -9,6 +9,25 @@ field.
 
 ### Added
 
+- **Agent-identity binding — non-human-identity (NHI) governance in
+  `threadlight-production-ready`** (0.6.1 → 0.7.0). The identity-access pillar now
+  governs the identity the agent *is*, not just secrets in source. A new
+  stdlib-only producer, `scripts/agent_identity.py`, inventories every declared
+  agent identity (user-assigned managed identity / federated credential /
+  app-secret) from compiled ARM, Bicep, and source signals and writes an
+  `agent-identity.json` sidecar next to the report. Four new static findings score
+  it: **IAM-006** passwordless binding (must-fix — managed or federated, not a
+  client secret), **IAM-007** responsible owner (should-fix), **IAM-008**
+  least-privilege scope (must-fix — no Owner/Contributor/User-Access-Administrator
+  or wildcard `*.ReadWrite.All` Graph permission), and **IAM-009** lifecycle /
+  review (should-fix — a `reviewBy`/`expiresOn` signal, with federated identities
+  passing automatically). An optional `agent-identity.governance.json` manifest
+  supplies owner / review metadata per subject id. Remediation recipes point at
+  `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM —
+  it amplifies the platform's identity primitives, never replaces them. A producer
+  error degrades the four findings to `not-verified`; the assessor never crashes.
+  Bumps the plugin manifest 1.7.0 → 1.8.0.
+
 - **Built the six `threadlight-event-triggers` receiver scaffolds for real**
   (1.1.0 → 1.2.0). The SKILL's "Reference files" table listed `aca-job-cron`,
   `aca-job-manual`, `aca-consumer`, `function-http`, `function-servicebus`, and
