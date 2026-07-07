@@ -3,7 +3,9 @@
 # Use for pilots handling regulated / sensitive data where the agent must never
 # egress PII through tools or external sinks. Strictest default-deny baseline.
 #
-#   agt lint-policy policy.yaml && agt test policy.yaml fixtures/ && agt verify
+#   agt lint-policy policy.yaml && agt verify          # required CI gates
+#   agt test policy.yaml fixtures/                      # ADVISORY in 4.1.0: the
+#     replay schema requires singular `condition` (see wiring-snippet.md)
 version: "1.0.0"                      # ruleset version — never 'latest'
 name: threadlight-pii-deny
 description: >-

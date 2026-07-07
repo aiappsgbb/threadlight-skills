@@ -120,8 +120,10 @@ remediation is dispatched). The agent runs the leg in three moves:
    families from the pilot's `agent.yaml` tool set, and validate with
    `agt lint-policy`. Commit `agt test` fixtures alongside it.
 2. **Gate CI** — if `ci_gate_present` is missing, add a workflow that runs
-   `agt lint-policy` + `agt test` + `agt verify` (see
-   `references/wiring-snippet.md`; parity with recipe `AGT-001`).
+   `agt lint-policy` + `agt verify` as required gates, plus `agt test` as an
+   **advisory** step (`continue-on-error: true` — 4.1.0's replay schema rejects
+   valid `escalate`/`conditions[]` policies; see `references/wiring-snippet.md`;
+   parity with recipe `AGT-001`).
 3. **Attest + score** — commit the `agt verify` attestation to
    `docs/agt-verifier-report.md`, then re-run `govern_check.py --emit` so the
    manifest flips to `governed`.

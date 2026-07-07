@@ -5,7 +5,9 @@
 # Builds on the baseline and adds `escalate` rules. Pairs with the threadlight
 # HITL leg — the approver channel must be wired.
 #
-#   agt lint-policy policy.yaml && agt test policy.yaml fixtures/ && agt verify
+#   agt lint-policy policy.yaml && agt verify          # required CI gates
+#   agt test policy.yaml fixtures/                      # ADVISORY in 4.1.0: the
+#     replay schema rejects `escalate`/`conditions[]` (see wiring-snippet.md)
 version: "1.0.0"                      # ruleset version — never 'latest'
 name: threadlight-hitl
 description: >-

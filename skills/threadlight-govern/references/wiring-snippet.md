@@ -38,6 +38,15 @@ Commit `agt test` fixtures next to the policy so its behaviour is pinned:
 agt test policy.yaml fixtures/   # replay (needs the [core] runtime)
 ```
 
+> **`agt test` is advisory in 4.1.0.** Its replay path binds an `agent_os`
+> `PolicyDocument` model that requires a singular `condition:` and only allows
+> `allow|deny|audit|block` — so it rejects the `conditions[]` lists and the
+> `escalate` action that `agt lint-policy` and the `agent_os` runtime both
+> accept. A HITL (`escalate`) policy therefore lints clean and is valid at
+> runtime yet fails replay. Keep `agt test` as a non-blocking signal until the
+> toolkit reconciles the schema; `agt lint-policy` + `agt verify` are the
+> authoritative gates.
+
 ## 3. Gate CI and attest (`agt verify`)
 
 Run governance in CI so it can never be skipped, and commit the OWASP ASI 2026
@@ -46,9 +55,11 @@ attestation (`governance-attestation/v1`):
 ```yaml
 # .github/workflows/governance.yml
 - run: pip install "agent-governance-toolkit[core]"
-- run: agt lint-policy policy.yaml
-- run: agt test policy.yaml fixtures/
-- run: agt verify --badge | tee docs/agt-verifier-report.md
+- run: agt lint-policy policy.yaml                 # required gate
+- name: Replay policy fixtures (advisory)
+  continue-on-error: true                          # see the note above
+  run: agt test policy.yaml fixtures/
+- run: agt verify --badge | tee docs/agt-verifier-report.md   # required gate
 ```
 
 `agt verify` reports **coverage** of the ten ASI controls. Coverage reflects how

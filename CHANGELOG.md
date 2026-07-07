@@ -86,6 +86,14 @@ field.
   `agent-governance-toolkit/action`) and ignores commented-out lines,
   identically in both skills; and the govern baseline policy templates drop a
   v4-only metadata key so a pilot that adopts them stays on the `v3_7` profile.
+  The scaffolded CI gate treats `agt test` (fixture replay) as **advisory**
+  (`continue-on-error: true`) while keeping `agt lint-policy` + `agt verify` as
+  the required gates: shipping AGT 4.1.0's replay path binds an `agent_os`
+  `PolicyDocument` model that requires a singular `condition:` and rejects the
+  `escalate` action, so a human-in-the-loop policy that lints clean and is valid
+  at runtime would otherwise fail its own gate. The wired exemplar, wiring
+  snippet, policy-template headers, and the `AGT-005` recipe are updated to
+  match, pinned by a govern regression test.
 
 
   1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that

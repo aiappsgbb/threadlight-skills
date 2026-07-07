@@ -6,9 +6,10 @@
 # package version.
 #
 #   pip install agent-governance-toolkit
-#   agt lint-policy policy.yaml      # schema check
-#   agt test policy.yaml fixtures/   # replay expected verdicts
-#   agt verify                       # OWASP ASI 2026 attestation (gate in CI)
+#   agt lint-policy policy.yaml      # schema check (required gate)
+#   agt verify                       # OWASP ASI 2026 attestation (required gate)
+#   agt test policy.yaml fixtures/   # replay expected verdicts — ADVISORY in
+#                                    # 4.1.0 (see references/wiring-snippet.md)
 version: "1.0.0"                      # ruleset version — never 'latest'
 name: threadlight-baseline
 description: >-
