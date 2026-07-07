@@ -9,10 +9,12 @@ Three defects pinned here:
   2. ``_check_model_lifecycle_static`` (MDL-001) crashed when a deployment's
      ``properties.model`` arrived as an ARM expression STRING (parameter /
      copy-loop). It must degrade to ``not-verified`` (verify at deploy), never
-     crash and never raise a false must-fix.
+     crash and never raise a false must-fix — and it must NOT silently pass a
+     model whose ``version`` is an expression, nor mask an absent model.
   3. A single pillar's static analyzer raising must not abort the whole
-     assessment: ``_run_pillar`` degrades that pillar's tier-0 findings to
-     ``not-verified`` and keeps going.
+     assessment: ``_run_pillar`` degrades that pillar's tier-0 findings to a
+     VISIBLE, gate-blocking ``must-fix`` (failing CLOSED — an unverified
+     security pillar must not let the hard gate pass) and keeps going.
 
 pytest-collected; no ``az`` dependency (synthetic ARM / directly-built
 ``BicepGraph`` and ``RepoContext``, mirroring test_cost_006.py).
@@ -196,18 +198,54 @@ def test_mdl001_floating_wins_over_expression():
     assert _mdl001(ctx).status == "must-fix"
 
 
+def test_mdl001_expression_version_is_not_verified():
+    """model is an object but its `version` is an ARM expression string
+    (e.g. a `modelVersion` parameter). The pin is real but not statically
+    resolvable -> not-verified, NOT a false `pass`."""
+    ctx = _ctx_with_resources(
+        [_deployment("gpt", {"name": "gpt-5.1", "version": "[parameters('modelVersion')]"})]
+    )
+    f = _mdl001(ctx)
+    assert f.status == "not-verified", f"expected not-verified, got {f.status!r}: {f.detail}"
+
+
+def test_mdl001_absent_model_is_must_fix():
+    """A deployment that declares NO model at all is unambiguously unpinned —
+    it must stay must-fix, not be lumped in with deferred expressions."""
+    absent = {
+        "type": "Microsoft.CognitiveServices/accounts/deployments",
+        "name": "gpt",
+        "properties": {},
+    }
+    ctx = _ctx_with_resources([absent])
+    assert _mdl001(ctx).status == "must-fix"
+
+
+def test_mdl001_properties_expression_string_is_not_verified():
+    """The whole `properties` block is an ARM expression string -> nothing is
+    statically resolvable -> not-verified (defer to live), not a crash."""
+    prop_expr = {
+        "type": "Microsoft.CognitiveServices/accounts/deployments",
+        "name": "gpt",
+        "properties": "[parameters('deploymentProps')]",
+    }
+    ctx = _ctx_with_resources([prop_expr])
+    assert _mdl001(ctx).status == "not-verified"
+
+
 # ---------------------------------------------------------------------------
 # D. Per-pillar static-analysis resilience guard
 # ---------------------------------------------------------------------------
 
 
-def test_run_pillar_degrades_on_static_crash(monkeypatch):
+def test_run_pillar_fails_closed_on_static_crash(monkeypatch):
     """If a pillar's static runner raises, _run_pillar must degrade that
-    pillar's tier-0 findings to not-verified (surfacing the error) rather than
-    propagate the exception."""
+    pillar's tier-0 findings to a VISIBLE, gate-blocking must-fix (failing
+    CLOSED) — surfacing the error — rather than propagate the exception OR
+    silently relax the hard gate to a non-gating not-verified."""
 
     def _boom(_ctx):
-        raise RuntimeError("synthetic ARM shape the analyzer did not expect")
+        raise AttributeError("'str' object has no attribute 'get'")
 
     original = mod.PILLAR_RUNNERS["cost"]
     monkeypatch.setitem(mod.PILLAR_RUNNERS, "cost", (_boom, original[1]))
@@ -223,13 +261,41 @@ def test_run_pillar_degrades_on_static_crash(monkeypatch):
         if f.pillar == "cost" and f.tier == 0
     ]
     assert cost_tier0, "expected cost tier-0 findings to be present"
-    assert all(f.status == "not-verified" for f in cost_tier0), (
-        "all cost tier-0 findings must degrade to not-verified: "
+    assert all(f.status == "must-fix" for f in cost_tier0), (
+        "all cost tier-0 findings must fail closed to must-fix: "
         + repr([(f.id, f.status) for f in cost_tier0])
     )
-    assert any("RuntimeError" in f.detail for f in cost_tier0), (
+    assert any("AttributeError" in f.detail for f in cost_tier0), (
         "the surfaced error must name the exception type"
     )
+    # The security-critical invariant: a crashed static pillar must NOT let the
+    # hard go-live gate pass. Fail-open here was the original defect.
+    assert mod._hard_gate_would_fail(findings) is True, (
+        "a crash-degraded pillar must keep the hard gate failing (fail-closed)"
+    )
+
+
+def test_run_pillar_reraises_unexpected_exception(monkeypatch):
+    """The guard is narrowed to the JSON-shape-mismatch family; a genuinely
+    unexpected error (not that family) must still surface by propagating, not
+    be swallowed into a degraded pillar."""
+
+    def _boom(_ctx):
+        raise MemoryError("not a shape mismatch")
+
+    original = mod.PILLAR_RUNNERS["cost"]
+    monkeypatch.setitem(mod.PILLAR_RUNNERS, "cost", (_boom, original[1]))
+
+    ctx = _ctx_with_resources([])
+    raised = False
+    try:
+        mod._run_pillar(
+            "cost", ctx, static_only=True, tiers={0: True},
+            sub=None, rg=None, resolved_posture="", agt_profile="none", quick=False,
+        )
+    except MemoryError:
+        raised = True
+    assert raised, "unexpected (non-shape) exceptions must propagate, not be masked"
 
 
 if __name__ == "__main__":

@@ -4144,13 +4144,31 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
         pinned, floating, missing, deferred = [], [], [], []
         for d in deployments:
             name = d.get("name") or "<unnamed>"
-            model = _as_dict(d.get("properties")).get("model")
-            if not isinstance(model, dict):
-                # model (and thus model.version) supplied via an ARM parameter,
-                # variable, or copy-loop expression — not statically resolvable.
+            raw_props = d.get("properties")
+            if isinstance(raw_props, str):
+                # The whole `properties` block is an ARM expression (parameter /
+                # variable / copy-loop) — nothing about the model is statically
+                # resolvable. Defer to the live MDL-101 check at deploy time.
                 deferred.append(name)
                 continue
+            model = _as_dict(raw_props).get("model")
+            if isinstance(model, str):
+                # `model` supplied via an ARM expression string (e.g. a copy-loop
+                # `[parameters('deployments')[copyIndex()].model]`). Not statically
+                # resolvable — defer to the live check rather than crash.
+                deferred.append(name)
+                continue
+            if not isinstance(model, dict):
+                # `model` is absent / null — a deployment that declares no model at
+                # all is unambiguously unpinned, not a deferred expression.
+                missing.append(name)
+                continue
             v = model.get("version")
+            if isinstance(v, str) and v.startswith("[") and v.endswith("]"):
+                # `version` is an ARM expression string (e.g. a `modelVersion`
+                # parameter) — the pin is real but not statically resolvable.
+                deferred.append(name)
+                continue
             if not v:
                 missing.append(name)
             elif str(v).strip().lower() == "latest":
@@ -4408,22 +4426,29 @@ def _run_pillar(
                 findings.extend(_check_agt_static_v4(ctx))
         else:
             findings.extend(static_fn(ctx))
-    except Exception as exc:  # noqa: BLE001
-        # Resilience: one pillar's static analyzer raising (e.g. on an ARM shape
-        # it did not anticipate) must NOT abort the whole assessment. Degrade
-        # this pillar's static (tier-0) findings to a VISIBLE not-verified that
-        # carries the error, warn on stderr, and let every other pillar and the
-        # live tier proceed. This is deliberate, surfaced degradation — not
-        # exception-swallowing: the report shows the pillar as not-verified with
-        # the failure reason.
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        # Resilience: one pillar's static analyzer raising on an ARM shape it did
+        # not anticipate (e.g. an expression string where an object was expected)
+        # must NOT abort the whole assessment — every other pillar and the live
+        # tier still run. But a static analyzer that could not complete has NOT
+        # verified this pillar's must-fix controls, so degrading to a non-gating
+        # `not-verified` would silently flip the hard go-live gate from FAIL to
+        # PASS (the gate counts only must-fix). That would be fail-OPEN on a
+        # security gate. Instead we fail CLOSED: this pillar's tier-0 findings
+        # degrade to VISIBLE must-fix carrying the error, so the report shows the
+        # failure reason AND the hard gate keeps blocking until it is resolved.
+        # The catch is deliberately narrowed to the JSON-shape-mismatch family so
+        # a genuine, unexpected bug still surfaces by aborting.
         existing = {f.id for f in findings}
         for fid, meta in FINDING_CATALOG.items():
             if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
-                findings.append(_not_verified(
-                    fid, f"static analyzer error — degraded to not-verified: "
-                         f"{type(exc).__name__}: {exc}"))
+                findings.append(_mk_finding(
+                    fid, status="must-fix",
+                    detail=f"static analyzer could not verify this control "
+                           f"({type(exc).__name__}: {exc}) — failing closed; "
+                           f"resolve or re-run before go-live"))
         print(f"[warn] static checks for pillar '{pillar}' raised "
-              f"{type(exc).__name__}: {exc} — degraded to not-verified",
+              f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
               file=sys.stderr)
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)

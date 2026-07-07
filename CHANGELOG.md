@@ -107,11 +107,16 @@ field.
   (MDL-001) also crashed when a deployment's `model` / `version` was supplied via
   an ARM parameter or copy-loop expression (an expression *string* rather than an
   object); it now classifies those as `not-verified` ("verified at deploy" by the
-  live MDL-101 check) rather than crashing or raising a false must-fix. Finally, a
-  per-pillar resilience guard degrades any pillar whose static analyzer raises on
-  an unforeseen ARM shape to a **visible** `not-verified` (carrying the error) and
-  warns on stderr, so the run always completes. Twelve new tests pin the map/list
-  walk, the param-aware model check, and the guard.
+  live MDL-101 check) rather than crashing or raising a false must-fix. It also
+  no longer silently passes a model whose `version` is itself a parameter
+  expression (now `not-verified`), and a genuinely absent model stays a
+  `must-fix`. Finally, a per-pillar resilience guard makes any pillar whose
+  static analyzer raises on an unforeseen ARM shape **fail closed**: its tier-0
+  findings degrade to a **visible** gate-blocking `must-fix` (carrying the
+  error) with an stderr warning, so the run always completes but the hard
+  go-live gate keeps blocking until it is resolved — it never silently relaxes
+  the gate. Sixteen new tests pin the map/list walk, the param-aware model
+  check, and the fail-closed guard.
 - **Corrected three stale companion pointers in `threadlight-deploy`** — the
   hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
   `pyproject.toml` / `Dockerfile` steps point at the inline templates directly

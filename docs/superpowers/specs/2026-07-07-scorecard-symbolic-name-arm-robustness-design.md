@@ -18,8 +18,8 @@ Both are correctness/robustness defects: the tool must run to completion on arbi
 ## Goals
 
 - **G1** — Compile and walk symbolic-name ARM (`languageVersion >= 2.0`) so the scorecard runs on the modern azd/Bicep default.
-- **G2** — The model-lifecycle static check tolerates param/expression-driven model deployments: it neither crashes nor emits a false must-fix. Unresolvable-at-static-time pins degrade to **not-verified** ("verify at deploy", already covered by the live check MDL-101).
-- **G3** — A single pillar's static analyzer raising an unexpected exception must **not** abort the whole assessment. That pillar degrades to visible `not-verified` findings carrying the error; every other pillar still scores.
+- **G2** — The model-lifecycle static check tolerates param/expression-driven model deployments: it neither crashes nor emits a false must-fix. A model, or its version, supplied via an ARM parameter/variable/copy expression degrades to **not-verified** ("verify at deploy", already covered by the live check MDL-101). A genuinely absent model stays **must-fix** (unambiguously unpinned).
+- **G3** — A single pillar's static analyzer raising an unexpected exception must **not** abort the whole assessment, but must also **not** silently relax the hard go-live gate. That pillar **fails closed**: its tier-0 findings degrade to visible, gate-blocking `must-fix` findings carrying the error; every other pillar still scores and the run completes.
 
 ## Non-goals
 
@@ -76,8 +76,10 @@ def _walk(resources: Any) -> list[dict]:
 
 Classify each declared model deployment:
 
-- `properties.model` is a **dict** → read `version`: `latest` → *floating*; empty/missing → *missing*; else → *pinned*.
-- `properties.model` is **non-dict** (expression string) → *deferred* (version supplied via parameter/expression; not statically resolvable).
+- `properties` is a **non-dict** (whole block is an expression string) → *deferred* (nothing statically resolvable).
+- `properties.model` is a **non-dict string** (expression) → *deferred* (model supplied via parameter/copy expression).
+- `properties.model` is **absent / null** → *missing* (a deployment declaring no model at all is unambiguously unpinned).
+- `properties.model` is a **dict** → read `version`: an expression string `[...]` → *deferred* (pin real but not statically resolvable); `latest` → *floating*; empty/missing → *missing*; else → *pinned*.
 
 Verdict:
 
@@ -89,23 +91,25 @@ The live read (MDL-101) is unchanged: `az ... deployment list` returns concrete 
 
 ### D. Per-pillar static-check resilience guard (`_run_pillar`)
 
-Wrap only the **static** dispatch in a guard. On an unexpected exception, degrade that pillar's static (tier-0) catalog findings to `not-verified` — surfacing the exception type and message in the detail — and emit a `stderr` warning. The live dispatch and all other pillars proceed normally.
+Wrap only the **static** dispatch in a guard whose `except` is narrowed to the JSON-shape-mismatch family (`AttributeError`, `TypeError`, `KeyError`, `ValueError`, `IndexError`) — a genuinely unexpected error (e.g. `MemoryError`) still propagates. On a caught exception, **fail closed**: degrade that pillar's static (tier-0) catalog findings to gate-blocking `must-fix` — surfacing the exception type and message in the detail — and emit a `stderr` warning. The live dispatch and all other pillars proceed normally.
 
 ```python
 try:
     <existing static if/elif dispatch>
-except Exception as exc:  # resilience: one pillar must not abort the whole run
+except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
     existing = {f.id for f in findings}
     for fid, meta in FINDING_CATALOG.items():
         if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
-            findings.append(_not_verified(
-                fid, f"static analyzer error — degraded to not-verified: "
-                     f"{type(exc).__name__}: {exc}"))
+            findings.append(_mk_finding(
+                fid, status="must-fix",
+                detail=f"static analyzer could not verify this control "
+                       f"({type(exc).__name__}: {exc}) — failing closed; "
+                       f"resolve or re-run before go-live"))
     print(f"[warn] static checks for pillar '{pillar}' raised "
-          f"{type(exc).__name__}: {exc} — degraded to not-verified", file=sys.stderr)
+          f"{type(exc).__name__}: {exc} — failing closed (must-fix)", file=sys.stderr)
 ```
 
-This is a deliberate, **visible** degradation, not exception-swallowing: the pillar shows `not-verified` with the error in the report, and the run completes. It uses real catalog IDs via `_not_verified`, so no invariant downstream breaks. Because A–C handle the known shapes properly, the guard is a last-resort net that should rarely fire.
+This is a deliberate, **visible, fail-closed** degradation, not exception-swallowing: the pillar shows `must-fix` with the error in the report, the run completes, and — critically — the hard go-live gate keeps blocking, because a static analyzer that could not complete has NOT verified that pillar's must-fix controls (degrading to a non-gating `not-verified` would flip the gate FAIL→PASS, i.e. fail open on a security gate). It uses real catalog IDs, so no invariant downstream breaks. Because A–C handle the known shapes properly, the guard is a last-resort net that should rarely fire.
 
 ## Data flow (unchanged except at the two ARM reads)
 
@@ -119,10 +123,10 @@ New `tests/test_symbolic_name_arm.py`:
 
 - **`_as_dict`** — dict passthrough; str/None/list → `{}`.
 - **`_walk` (RED)** — a symbolic-name ARM `{ "resources": {sym1: {...vnet...}, sym2: {...law...}} }` yields both resource dicts; a `resources` list containing a bare string skips the string; a nested `Microsoft.Resources/deployments` whose `properties.template.resources` is a **map** flattens its children.
-- **model-lifecycle (RED)** — a deployment whose `properties.model` is an expression string → MDL-001 `not-verified` (no crash, not must-fix); a literal pinned model → `pass`; a literal `latest` → `must-fix`; a mix of pinned + expression-string → `not-verified`.
-- **resilience guard (RED)** — monkeypatch a pillar's static runner in `PILLAR_RUNNERS` to raise; `_run_pillar(..., static_only=True, ...)` returns that pillar's tier-0 findings as `not-verified` (detail names the exception) and does **not** propagate.
+- **model-lifecycle (RED)** — a deployment whose `properties.model` (or whose `properties` block) is an expression string → MDL-001 `not-verified` (no crash, not must-fix); a model dict whose `version` is a parameter expression → `not-verified`; a literal pinned model → `pass`; a literal `latest` → `must-fix`; an absent model → `must-fix`; a mix of pinned + expression-string → `not-verified`; a mix with a real `latest` → `must-fix`.
+- **resilience guard (RED)** — monkeypatch a pillar's static runner in `PILLAR_RUNNERS` to raise a shape-mismatch error; `_run_pillar(..., static_only=True, ...)` returns that pillar's tier-0 findings as gate-blocking `must-fix` (detail names the exception), `_hard_gate_would_fail(findings)` stays `True`, and it does **not** propagate — while a non-shape error (`MemoryError`) DOES propagate.
 
-Full `threadlight-production-ready` suite must stay green (225 pass + the 2 pre-existing time-based stale-fixture `test_end_to_end` failures that are already `continue-on-error` in CI).
+Full `threadlight-production-ready` suite must stay green (225 baseline + 16 new = 241 pass, plus the 2 pre-existing time-based stale-fixture `test_end_to_end` failures that are already `continue-on-error` in CI).
 
 ## Versioning & docs
 
