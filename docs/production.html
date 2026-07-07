@@ -124,6 +124,16 @@
         <p class="section-lede">Thirteen pillars define what &ldquo;ready&rdquo; means. Three postures define how it fits your architecture &mdash; detected before the first question.</p>
       </div>
 
+      <!-- agent-governance vs platform boundary + the deliverable -->
+      <div class="reveal" data-delay="1" style="max-width:880px; margin: var(--s-5) auto 0; border:1px solid var(--line); border-left:3px solid var(--lime); border-radius:12px; background:var(--bg-2); padding:20px 24px;">
+        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Agent governance &mdash; not platform governance</p>
+        <p style="margin:0; color:var(--ink-1); font-size:.98rem; line-height:1.62;">
+          <strong>Citadel and the platform team secure the landing zone</strong> &mdash; the hub, the shared AI gateway, network and policy.
+          <strong>Threadlight proves the agent you run in it</strong>: these 13 pillars, plus a committed supply-chain SBOM, an agent-identity AI-BOM and an EU AI Act evidence pack.
+          The governance team&rsquo;s deliverable isn&rsquo;t a meeting &mdash; it&rsquo;s that record, in the repo, versioned with the code and gating every deploy.
+        </p>
+      </div>
+
       <!-- 2a · six CISO questions -->
       <figure aria-labelledby="ciso-caption" class="reveal" data-delay="1">
         <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
@@ -446,7 +456,7 @@
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Proof &middot; it works</p>
         <h2>The evidence a board <em>actually signs.</em></h2>
-        <p class="section-lede">Not a story &mdash; the real scorecard a review board reads, and the eval, cost and safety baseline behind the go-live call.</p>
+        <p class="section-lede">Not a story &mdash; the real scorecard a review board reads, the eval, cost and safety baseline behind the go-live call, and the evidence pack a regulator reads.</p>
       </div>
 
       <!-- the scorecard PDF -->
@@ -481,6 +491,36 @@
           </p>
           <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> (cost cap, SBOM lag); model-lifecycle marked <em>not-verified</em>, owner named on page 2.</p>
         </footer>
+      </article>
+
+      <!-- regulator-facing evidence pack -->
+      <article class="scorecard-preview reveal" data-delay="1" style="margin-top: var(--s-5);">
+        <header class="sc-header">
+          <p class="sc-title">EU AI Act evidence pack</p>
+          <p class="sc-posture">Regulator-facing &middot; Art 9 &middot; 11 &middot; 12 &middot; 14 &middot; 15 &middot; 26 &middot; 27</p>
+        </header>
+        <div style="padding: 20px 28px 24px;">
+          <p style="margin:0 0 18px; color:var(--ink-1); font-size:.98rem; line-height:1.6;">
+            The same committed artifacts that turn the scorecard green map, article by article, onto the
+            EU AI Act &mdash; so the deploy carries its own compliance file. Tenant-local, offline, deterministic,
+            and it <strong>never invents coverage</strong>: a missing source is an honest gap, not a green wash.
+          </p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin-bottom:20px;">
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">annex-iv-technical-file.md</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">Art 11 / Annex IV technical documentation &mdash; every gap flagged.</p>
+            </div>
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">ai-act-evidence.json</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">The article map + coverage, with a SHA-256 per source.</p>
+            </div>
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">fria-scaffold.md</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">Art 27 fundamental-rights template for a human to complete.</p>
+            </div>
+          </div>
+          <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/eu-ai-act-evidence.md" target="_blank" rel="noopener">Read the EU AI Act evidence pack <span class="arrow">↗</span></a>
+        </div>
       </article>
 
       <!-- outcome KPIs -->
@@ -794,11 +834,6 @@
             <p>Open <code>docs/production-readiness-report.md</code>, sign each amber waiver with its owner, hand the pipeline to the platform team. Everything the board needs is committed &mdash; nothing in a console tab to screenshot.</p>
           </div>
         </div>
-      </div>
-
-      <div class="read-deeper reveal" data-delay="2" style="margin-top: var(--s-5);">
-        <span class="rd-label">Facing the EU AI Act? The same committed artifacts map, article by article, to a regulator-facing evidence pack:</span>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/eu-ai-act-evidence.md" target="_blank" rel="noopener">Read the EU AI Act evidence pack &rarr;</a>
       </div>
 
       <div class="cost-cta-row reveal" data-delay="2" style="margin-top: var(--s-5);">
