@@ -1,12 +1,12 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the sixteen-skill pilot pipeline.**
+> **Engineering reference for the seventeen-skill pilot pipeline.**
 > The narrative / pitch version of this material lives in the
 > [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **library of sixteen `threadlight-*` skills** that take a
+Threadlight is a **library of seventeen `threadlight-*` skills** that take a
 customer engagement from a one-paragraph brief through to a deployed,
 evaluated, observable, **production-ready** Microsoft Foundry hosted agent
 — runnable on the customer's tenant in a single working session, then
@@ -16,18 +16,19 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 → SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
-The sixteen skills (alphabetical, but the canonical flow order is given in
+The seventeen skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-auto                threadlight-event-triggers
-threadlight-cicd                threadlight-govern
-threadlight-consumption-iq      threadlight-hitl-patterns
-threadlight-customize           threadlight-local-test
-threadlight-demo-data-factory   threadlight-production-ready
-threadlight-deploy              threadlight-redteam
+threadlight-auto                threadlight-govern
+threadlight-cicd                threadlight-hitl-patterns
+threadlight-consumption-iq      threadlight-local-test
+threadlight-customize           threadlight-production-ready
+threadlight-demo-data-factory   threadlight-redteam
+threadlight-deploy              threadlight-router-bench
 threadlight-design              threadlight-safe-check
 threadlight-evals               threadlight-workspace-ui
+threadlight-event-triggers
 ```
 
 ---
@@ -50,6 +51,7 @@ skill sounds most exciting.
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
 | Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `citadel-hub-deploy`) |
+| A CI run finished (green **or** red) and you want to harvest it into grounded learnings, or compare model-router cost/quality before a swap | `threadlight-router-bench` (`learn <run_id>` → learnings digest: phase parity, failure taxonomy, recommendations; optional `bench <candidate> <baseline>` cost/quality scorecard from Azure Monitor token metrics) | (offline IMPROVE leg; feeds design / prompt / model tuning. Reads finished CI runs, writes nothing to prod) |
 | The pilot is proven and you need to **fork Threadlight and onboard it into one specific customer's environment** (landing zones, RBAC, pipelines, governance) — especially the **production onboarding** | `threadlight-customize` (intake gate → customization map → test-in-customer-env runbook → non-coverage boundary; instructions/runbooks, **not** automation) | (manual handoff; SE-led first. `threadlight-auto` does **not** drive it) |
 | SPEC § 8 declares HITL action gates | `threadlight-hitl-patterns` | (paired with `foundry-teams-bot`) |
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
