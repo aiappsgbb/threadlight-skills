@@ -1,4 +1,4 @@
-"""Pin v0.7.0 version across script + SKILL.md frontmatter."""
+"""Pin v0.8.0 version across script + SKILL.md frontmatter."""
 import importlib.util
 import pathlib
 import sys
@@ -13,16 +13,16 @@ sys.modules["production_ready"] = mod
 _spec.loader.exec_module(mod)
 
 
-def test_version_is_070():
-    assert mod.VERSION == "0.7.0", f"expected 0.7.0, got {mod.VERSION!r}"
+def test_version_is_080():
+    assert mod.VERSION == "0.8.0", f"expected 0.8.0, got {mod.VERSION!r}"
 
 
 def test_version_matches_skill_md():
     skill_md = (ROOT / "SKILL.md").read_text()
-    assert 'version: "0.7.0"' in skill_md, "SKILL.md frontmatter must declare version: \"0.7.0\""
+    assert 'version: "0.8.0"' in skill_md, "SKILL.md frontmatter must declare version: \"0.8.0\""
 
 
 if __name__ == "__main__":
-    test_version_is_061()
+    test_version_is_080()
     test_version_matches_skill_md()
     print("OK")

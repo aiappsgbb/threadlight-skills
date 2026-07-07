@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -277,6 +277,28 @@ Optionally declare `agent-identity.governance.json` at the repo root to supply
 owner / review metadata per subject id. Remediation points at `entra-agent-id`,
 `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
 platform's identity primitives; it does not replace them.
+
+### EU AI Act evidence pack (Art 9 / 11 / 12 / 14 / 15 / 26 / 27)
+
+The EU AI Act's high-risk obligations land in 2026. A terminal aggregator,
+`scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
+**already produce** onto seven articles and emits a **tenant-local, offline**
+evidence pack — it never calls Azure and never fabricates coverage. It reads the
+production-readiness scorecard manifest, `mcp-sbom.json` (Art 11 / 15),
+`agent-identity.json` (Art 12 / 26), the govern manifest (Art 9), and the evals /
+red-team manifests (Art 15). Each article is graded `covered` / `partial` /
+`gap` / `scaffold` with a per-source SHA-256 and a remediation pointer at a
+platform skill; a missing or malformed source degrades to `gap` / `partial` — the
+pack shows honest coverage, never a green wash. Emit it with:
+
+`python3 scripts/ai_act_evidence.py --root . --out docs/compliance`
+
+Three files land in `docs/compliance/`: `ai-act-evidence.json` (the machine map),
+`annex-iv-technical-file.md` (Art 11 technical documentation), and
+`fria-scaffold.md` (an Art 27 fundamental-rights template a human completes). Add
+`--check` to exit 3 when a load-bearing article (Art 11 / 12 / 15) is a gap. It
+amplifies Foundry's own governance outputs into regulator-facing evidence; it is
+an engineering aid, not legal advice. See `references/eu-ai-act-mapping.md`.
 
 ## CLI
 
@@ -970,6 +992,22 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Cost analysis (PAYG vs PTU) | `paygo-ptu-cost-analyzer` | `paygo-*` |
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
+
+## What changed since v0.7.0
+
+v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
+script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings
+already produce (scorecard manifest, `mcp-sbom.json`, `agent-identity.json`,
+govern + evals + red-team manifests) onto seven articles and emits a tenant-local,
+offline evidence pack — honest `covered` / `partial` / `gap` / `scaffold` coverage
+with per-source provenance, never a fabricated green.
+
+| Area | v0.8.0 delta |
+| --- | --- |
+| New aggregator | `scripts/ai_act_evidence.py` — offline, deterministic article map (Art 9 / 11 / 12 / 14 / 15 / 26 / 27) with a `--check` CLI (exit 3 on a load-bearing gap). |
+| Evidence pack | Emits `ai-act-evidence.json`, `annex-iv-technical-file.md`, and an Art 27 `fria-scaffold.md` under `docs/compliance/`. |
+| Provenance + honesty | Every mapped source carries a SHA-256; a missing / malformed artifact degrades to `gap` / `partial` — never a false `covered`. |
+| Reference | `references/eu-ai-act-mapping.md` documents the article → artifact → skill map. |
 
 ## What changed since v0.6.1
 
