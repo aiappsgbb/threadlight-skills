@@ -9,6 +9,21 @@ field.
 
 ### Added
 
+- **EU AI Act evidence pack — terminal aggregator in
+  `threadlight-production-ready`** (0.7.0 → 0.8.0). A new stdlib-only script,
+  `scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
+  already produce — the production-readiness scorecard manifest, `mcp-sbom.json`,
+  `agent-identity.json`, and the govern / evals / red-team manifests — onto seven
+  EU AI Act articles (9, 11 + Annex IV, 12, 14, 15, 26, 27) and emits a
+  **tenant-local, offline** evidence pack: `ai-act-evidence.json`,
+  `annex-iv-technical-file.md`, and an Article 27 `fria-scaffold.md` under
+  `docs/compliance/`. Each article is graded `covered` / `partial` / `gap` /
+  `scaffold` with a per-source SHA-256 for provenance; a missing or malformed
+  source degrades to `gap` / `partial` — the pack never fabricates a `covered`. A
+  `--check` flag exits 3 when a load-bearing article (Art 11 / 12 / 15) is a gap.
+  It amplifies Foundry's own governance outputs into regulator-facing evidence and
+  is an engineering aid, not legal advice. A new `references/eu-ai-act-mapping.md`
+  documents the mapping. Bumps the plugin manifest 1.8.0 → 1.9.0.
 - **Agent-identity binding — non-human-identity (NHI) governance in
   `threadlight-production-ready`** (0.6.1 → 0.7.0). The identity-access pillar now
   governs the identity the agent *is*, not just secrets in source. A new
