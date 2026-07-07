@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.6.1"
+  version: "0.7.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -256,6 +256,27 @@ and never commit **inline credentials** (SUP-013). The assessor writes an
 
 Remediation points at `foundry-toolbox` (secret injection), Key Vault, and ACR —
 this hardens how you consume MCP on the platform; it does not replace it.
+
+### Agent-identity binding — NHI governance (IAM-006..009)
+
+An agent is a **non-human identity (NHI)**. Beyond catching secrets in source
+(IAM-001..003), the identity-access pillar governs the identity the agent *is*. A
+sibling producer, `scripts/agent_identity.py`, inventories every declared identity
+(UAMI / federated / app-secret) from compiled ARM, Bicep, and source signals and
+writes an **`agent-identity.json`** sidecar next to the report. Four static checks
+score it: the binding is **passwordless** — managed identity or federated, not a
+client secret (IAM-006, must-fix); it names a **responsible owner** (IAM-007,
+should-fix); it is scoped **least-privilege** — no Owner/Contributor/UAA or
+wildcard `*.ReadWrite.All` Graph (IAM-008, must-fix); and it declares a
+**lifecycle** — a `reviewBy`/`expiresOn` signal, with federated identities passing
+automatically (IAM-009, should-fix). Inspect or refresh the inventory with:
+
+`python3 scripts/agent_identity.py --root . --out agent-identity.json`
+
+Optionally declare `agent-identity.governance.json` at the repo root to supply
+owner / review metadata per subject id. Remediation points at `entra-agent-id`,
+`foundry-agt`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
+platform's identity primitives; it does not replace them.
 
 ## CLI
 
@@ -949,6 +970,23 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Cost analysis (PAYG vs PTU) | `paygo-ptu-cost-analyzer` | `paygo-*` |
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
+
+## What changed since v0.6.1
+
+v0.7.0 extends the **identity-access** pillar to govern the agent's own non-human
+identity (NHI). A new producer, `scripts/agent_identity.py`, inventories every
+declared agent identity and writes an `agent-identity.json` sidecar; the assessor
+scores four new findings — passwordless binding (IAM-006, must-fix), responsible
+owner (IAM-007, should-fix), least-privilege scope (IAM-008, must-fix), and
+lifecycle/review (IAM-009, should-fix).
+
+| Area | v0.7.0 delta |
+| --- | --- |
+| Identity-access pillar | Adds IAM-006..009 for the agent NHI surface (passwordless, owner, least-privilege, lifecycle). |
+| New producer | `scripts/agent_identity.py` — stdlib-only identity discovery (UAMI / federated / app-secret) → `agent-identity.json`, with a `--check` CLI. |
+| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM. |
+| Governance manifest | Optional `agent-identity.governance.json` supplies owner / review metadata per subject id. |
+| Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the identity scan. |
 
 ## What changed since v0.5.1
 

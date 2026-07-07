@@ -485,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.6.1"
+VERSION = "0.7.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -713,6 +713,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "IAM-003": {"title": "RBAC scopes declared in Bicep (not subscription-wide)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
     "IAM-004": {"title": "No long-lived SAS tokens in code", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
     "IAM-005": {"title": "ACA / Functions auth enabled", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
+    "IAM-006": {"title": "Agent identity is passwordless (managed/federated)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
+    "IAM-007": {"title": "Agent identity declares a responsible owner", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
+    "IAM-008": {"title": "Agent identity scope is least-privilege", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
+    "IAM-009": {"title": "Agent identity lifecycle (expiry/review) is declared", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
     "IAM-101": {"title": "Role assignments observed in-target match Bicep", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
     "IAM-102": {"title": "No Owner/Contributor on workload identity", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
     "IAM-103": {"title": "Conditional access / Entra policies considered", "pillar": "identity-access", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -1938,6 +1942,7 @@ class RepoContext:
     bicep_graph: BicepGraph | None = None
     resolved_posture: str = ""
     mcp_sbom: dict | None = None
+    agent_identity: dict | None = None
 
     @classmethod
     def from_repo(cls, root: Path, manifest: dict) -> "RepoContext":
@@ -2552,6 +2557,7 @@ def _check_identity_static(ctx: RepoContext) -> list[Finding]:
         status = "should-fix"
         detail = "No EasyAuth / authConfigs on declared compute (ACA / Web sites) in compiled ARM"
     out.append(_mk_finding("IAM-005", status=status, detail=detail))
+    out.extend(_check_agent_identity(ctx))
     return out
 
 
@@ -3369,6 +3375,39 @@ def _check_mcp_supply(ctx: RepoContext) -> list[Finding]:
         return [_not_verified(fid, f"mcp scan failed: {type(e).__name__}")
                 for fid in ("SUP-010", "SUP-011", "SUP-012", "SUP-013")]
     ctx.mcp_sbom = sbom
+    return [_mk_finding(f["id"], status=f["status"], detail=f["detail"])
+            for f in findings]
+
+
+def _load_agent_identity():
+    """Import the sibling agent_identity producer lazily (mirrors _load_mcp_sbom).
+
+    Returns the module or None (never raises) so a producer problem degrades
+    findings, not the run.
+    """
+    try:
+        import importlib
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        return importlib.import_module("agent_identity")
+    except Exception:
+        return None
+
+
+def _check_agent_identity(ctx: RepoContext) -> list[Finding]:
+    """Run the agent-identity producer and map its four findings into Pillar 03."""
+    ids = ("IAM-006", "IAM-007", "IAM-008", "IAM-009")
+    mod = _load_agent_identity()
+    if mod is None:
+        return [_not_verified(fid, "agent_identity producer unavailable")
+                for fid in ids]
+    try:
+        bom, findings = mod.assess(ctx.root)
+    except Exception as e:
+        return [_not_verified(fid, f"identity scan failed: {type(e).__name__}")
+                for fid in ids]
+    ctx.agent_identity = bom
     return [_mk_finding(f["id"], status=f["status"], detail=f["detail"])
             for f in findings]
 
@@ -5434,6 +5473,9 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(ctx, "mcp_sbom", None) is not None:
             (out_path.parent / "mcp-sbom.json").write_text(
                 json.dumps(ctx.mcp_sbom, indent=2) + "\n", encoding="utf-8")
+        if getattr(ctx, "agent_identity", None) is not None:
+            (out_path.parent / "agent-identity.json").write_text(
+                json.dumps(ctx.agent_identity, indent=2) + "\n", encoding="utf-8")
     except OSError as e:
         _eprint(f"error: failed to write outputs: {e}")
         return 3
