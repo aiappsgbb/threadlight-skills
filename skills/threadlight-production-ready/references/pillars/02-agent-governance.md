@@ -1,10 +1,10 @@
 # Pillar 2 — `agent-governance`
 
-> **What this pillar answers.** Is the agent's behaviour governed by an
-> in-process policy layer (AGT — Agent Governance Toolkit) that:
-> (a) is wired at the **container boundary**, not just registered as
-> a skill; (b) carries a versioned policy artefact; and (c) emits
-> verifier output the SRE / CISO can read?
+> **What this pillar answers.** Is the agent's behaviour governed by a
+> committed policy (AGT — Agent Governance Toolkit) that:
+> (a) is **schema-valid** and lints clean under `agt lint-policy`;
+> (b) carries a pinned ruleset version; and (c) is gated in CI so a
+> policy regression fails the pipeline before it reaches production?
 
 This pillar is **capability-based, not version-pinned.** AGT is
 evolving rapidly (v3.7 → v4 shipped 2026-06-01) and the upstream
@@ -31,12 +31,12 @@ for the recon evidence and design rationale.
 
 | ID | Check | Default status |
 |---|---|---|
-| `AGT-001` | If `target_posture` ∈ `{citadel-spoke, agt, hybrid}` and any agent has tool calls that mutate state, AGT middleware must be wired at the agent container | `must-fix` if missing |
-| `AGT-002` | AGT policy artefact present (`agt-policy.yaml`, `policy.yaml`, or equivalent referenced from `agent.yaml` / `container.py`) | `must-fix` if AGT-001 fails |
-| `AGT-003` | Policy artefact has a version field (not `latest`, not absent) | `should-fix` if missing |
-| `AGT-004` | Verifier output artefact present (latest run committed, e.g., `docs/agt-verifier-report.md` or `tests/agt-verifier.json`) | `should-fix` if missing |
-| `AGT-005` | OWASP / Agentic-Specific Index 2026 ("ASI") evidence: file references a known ASI version | `should-fix` if absent |
-| `AGT-006` | `--agt-profile auto` (default): infer profile from policy artefact shape and skill version detected; **never hard-fail on unknown profile, mark `not-verified` instead** | n/a (control flag) |
+| `AGT-001` | Policy is **schema-valid** — top-level `version` + `name` + `rules:` present, lints clean under `agt lint-policy` | `must-fix` if not schema-valid |
+| `AGT-002` | AGT policy artefact present (`policy.yaml`, `agt-policy.yaml`, or equivalent referenced from `agent.yaml`) | `must-fix` if missing |
+| `AGT-003` | OWASP / Agentic Security Initiative 2026 ("ASI") reference present in policy / source / docs | `should-fix` if absent |
+| `AGT-004` | Policy ruleset carries a pinned semver `version:` (not `latest`, not absent) | `should-fix` if missing |
+| `AGT-005` | A CI workflow runs the toolkit (`agt verify` / `lint-policy` / `test`) so a policy regression fails the pipeline | `should-fix` if no gate |
+| `AGT-006` | Telemetry sink configured so policy decisions are auditable | `should-fix` if absent |
 
 ### Live (tier 1)
 
@@ -52,19 +52,22 @@ artefacts present:
 
 | Capability | Detection signal |
 |---|---|
-| `policy_artefact_present` | File matching `**/agt-policy.{yaml,json}` or referenced from `agent.yaml` |
-| `verifier_artefact_present` | File matching `**/agt-verifier*.{md,json}` or `docs/agt-verifier-report.md` |
-| `middleware_wired_at_boundary` | Import of `agt` / `AgentGovernance` / `apply_governance` in `container.py` or `src/agent/main.py` |
-| `sidecar_pattern` | `agt-sidecar` container in `infra/` or `agt-sidecar` service in `azure.yaml` |
-| `rai_policy_present` | Content-filter / shield / PII-redaction block in policy artefact |
+| `policy_artefact_present` | File matching `**/policy*.{yaml,yml}` or referenced from `agent.yaml` |
+| `policy_schema_valid` | That policy has top-level `version` + `name` + `rules:` (lints clean under `agt lint-policy`) |
+| `policy_versioned` | Policy carries a pinned semver `version:` (not `latest`) |
+| `policy_default_deny` | Policy sets `deny_by_default: true` or a top-level default-deny action |
+| `sensitive_action_rules_present` | Rules `deny` / `escalate` / `block` / `rate_limit` sensitive tool calls |
+| `ci_gate_present` | A workflow under `.github/workflows/` runs `agt verify` / `lint-policy` / `test` |
+| `attestation_present` | A committed `agt verify --badge` attestation (`governance-attestation/v1`) |
+| `asi_reference_present` | OWASP / ASI 2026 reference in policy, source, or docs |
 
 The `--agt-profile` flag toggles which capabilities are **required**:
 
 | Profile | Required capabilities |
 |---|---|
 | `none` | none (pillar marked `not-applicable`) |
-| `v3_7` | `policy_artefact_present`, `middleware_wired_at_boundary` |
-| `v4_preview` | `policy_artefact_present`, `verifier_artefact_present`, `middleware_wired_at_boundary`, `rai_policy_present` |
+| `v3_7` | `policy_artefact_present`, `policy_schema_valid` |
+| `v4_preview` | `policy_artefact_present`, `policy_schema_valid`, `ci_gate_present`, `asi_reference_present` |
 | `auto` (default) | Best-effort: detect profile by capability set; if unknown → `not-verified` with v4-migration callout |
 
 This survives the v3.7 → v4 transition without code changes in this
@@ -82,7 +85,7 @@ output. The full evidence trail and the exact regex anchors are in the
 |---|---|---|
 | `AGT-V4-001` | `requirements*.txt`, `pyproject.toml`, `package.json` declare one of `agent-governance-toolkit-{core,runtime,sre,cli}` or `agent-governance-toolkit[full]` | `pass` if v4 names found; `not-applicable` if no AGT deps at all; `must-fix` only if v3.7-shape names are declared without v4 names |
 | `AGT-V4-002` | A policy YAML carries `agent_control_specification_version:` and an `intervention_points:` block with at least one canonical key (`agent_startup`, `input`, `pre_model_call`, `post_model_call`, `pre_tool_call`, `post_tool_call`, `output`) | `pass` if both markers present; `not-applicable` if no policy YAML exists; `should-fix` if policy exists but lacks the ACS markers |
-| `AGT-V4-003` | A policy YAML (or `agent_os.policies.dynamic_context` import) references `time_window`, `day_of_week`, `cost_per_window`, or `token_count_per_window` | `pass` (informational — never `must-fix`); `not-applicable` if nothing dynamic detected |
+| `AGT-V4-003` | A policy YAML (or an `agent_os.integrations` block) references `time_window`, `day_of_week`, `cost_per_window`, or `token_count_per_window` | `pass` (informational — never `must-fix`); `not-applicable` if nothing dynamic detected |
 | `AGT-V4-006` | A workflow under `.github/workflows/` uses `microsoft/agent-governance-toolkit/action@vX` | `pass` if the action step also sets `toolkit-version:`; `must-fix` if the action is used without `toolkit-version:`; `not-applicable` if the action is never used |
 | `AGT-V4-007` | A committed verifier JSON (under `tests/**/verifier*.json`, `tests/**/agt-verifier*.json`, or `docs/**/agt-verifier*.json`) | `pass` if ≥3 of the 5 v4 audit fields (`arguments_hash`, `approver_did`, `policy_version`, `issued_at`, `completed_at`) are present; `should-fix` if JSON exists but is missing them; `not-verified` if no JSON exists |
 | `AGT-V4-101` (live, tier 2) | KQL probe in App Insights for denial events carrying a v4-shaped `policy_version` | Always `not-verified` in v1 (KQL probe deferred — same pattern as `AGT-102`) |
@@ -100,13 +103,12 @@ into `v4_preview`.
 
 ## Common gaps
 
-- AGT is "documented" in § 11b but never wraps the agent at the
-  container boundary — it's loaded as a skill instead, which means
-  Foundry-Agent will route around it for direct LLM calls.
-- Policy file exists but pinned to `latest` so every redeploy can change
-  the rule surface silently.
-- Verifier output is committed once at scaffold time, never refreshed.
-  Surface in the report as "verifier artefact is 90 days old".
+- Policy exists but is **not schema-valid** — missing `version` / `name` /
+  `rules:`, so `agt lint-policy` rejects it and no CI gate can score it.
+- Policy pinned to `latest` (or carries no `version:`) so every redeploy can
+  change the rule surface silently.
+- No CI gate runs the toolkit, so a weakened or broken policy reaches
+  production with nothing to fail the merge.
 - ASI version reference is missing entirely; the customer's risk team
   has no anchor for "what threats does this cover?".
 
@@ -114,7 +116,7 @@ into `v4_preview`.
 
 | Finding | Skill |
 |---|---|
-| Wire AGT middleware / scaffold policy | `foundry-agt` |
+| Author + lint + CI-gate the policy | `foundry-agt` |
 | Choose AGT vs Citadel-spoke posture | This skill's `network-posture` pillar callout + `foundry-agt` decision matrix |
 
 ## Why this pillar matters
@@ -122,9 +124,9 @@ into `v4_preview`.
 The customer's CISO will ask: "what stops the agent from sending
 customer PII into the model when answering an off-topic question?"
 "What audits the answer?" "What version is the rule set?" "Who signed
-off on this version?" If the agent has no AGT layer (or AGT exists
-nominally but isn't wired), the answer is "the prompt", which is the
-wrong answer.
+off on this version?" If the agent has no committed, linted, CI-gated
+policy (or the policy exists nominally but nothing enforces or scores
+it), the answer is "the prompt", which is the wrong answer.
 
 ## Notes on the AGT v3.7 → v4 transition
 

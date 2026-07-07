@@ -60,7 +60,27 @@ field.
 
 ### Changed
 
-- **Fixed a stale scaffold reference in `threadlight-deploy` Phase 5** (1.6.1 →
+- **Realigned the AGT (Agent Governance Toolkit) integration to the real
+  toolkit model** across `threadlight-govern` (0.1.1 → 0.2.0) and
+  `threadlight-production-ready` (0.8.0 → 0.9.0). Governance is authored as a
+  **committed policy** — `policy.yaml` with top-level `version` + `name` +
+  `rules:`, validated by `agt lint-policy` / `agt test` and attested by
+  `agt verify --badge` — not an in-process middleware import. The govern PROTECT
+  leg now scaffolds and scores a schema-valid policy, its default-deny posture,
+  its sensitive-action rules, and its CI gate. In the production-readiness
+  assessor, Pillar 02 (`AGT-001..006`) rescopes to the policy artefact: `AGT-001`
+  = the policy is schema-valid (lints clean), `AGT-004` = a pinned ruleset
+  `version:`, `AGT-005` = a CI workflow runs the toolkit (`agt verify` /
+  `lint-policy` / `test`, now `should-fix` — the gate lives in CI, not the request
+  path). `RAI-002/003` decouple from the governance manifest so a model-edge
+  control (Content Safety prompt shields) is scored on its own signals. The
+  `AGT-001/002/005` remediation recipes, Pillar 02 reference, report glossary /
+  mermaid, and the `sample-pilot-citadel` exemplar (real schema-valid policy that
+  lints clean, plus a `governance.yml` CI gate) are rewritten to match. The
+  version-agnostic v4 deep-checks (`AGT-V4-*`) are unchanged. Bumps the plugin
+  manifest 1.9.0 → 1.10.0.
+
+
   1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that
   the repo never shipped. The modern flow **generates** the `azd` skeleton
   (`azure.yaml`, `agent.yaml`, vendored `infra/`) via the pinned `azd ai agent`

@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.8.0"
+  version: "0.9.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -68,7 +68,7 @@ knowledge.
 | Provisioning Citadel hub | `citadel-hub-deploy` |
 | Onboarding spoke to Citadel | `citadel-spoke-onboarding` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
-| Authoring AGT in-process middleware | `foundry-agt` |
+| Authoring / linting the AGT policy | `foundry-agt` |
 | Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
 | Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
 
@@ -982,7 +982,7 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Citadel hub absent (need to provision) | `citadel-hub-deploy` | `citadel-*` |
 | VNet-injected Foundry needed | `foundry-vnet-deploy` | `foundry-*` |
 | Network diagnostics needed | `foundry-network-runbook` | `foundry-*` |
-| AGT in-process middleware needed | `foundry-agt` | `foundry-*` |
+| AGT policy authoring / lint / CI-gate | `foundry-agt` | `foundry-*` |
 | Cap-host lifecycle / day-2 | `foundry-caphost-lifecycle` | `foundry-*` |
 | Hosted-agent RBAC / managed identity | `foundry-hosted-agents` | `foundry-*` |
 | OTel emit / AppIn wiring | `foundry-observability` | `foundry-*` |
@@ -993,7 +993,26 @@ sync with the awesome-gbb skill catalog as it evolves.
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
 
-## What changed since v0.7.0
+## What changed since v0.8.0
+
+v0.9.0 realigns the **agent-governance** pillar to the real Agent Governance
+Toolkit model. Governance is a **committed policy** you author, lint, test, and
+gate in CI — `policy.yaml` (top-level `version` + `name` + `rules:`) validated by
+`agt lint-policy` / `agt test` and attested by `agt verify --badge` — not an
+in-process middleware import. The `AGT-001..006` checks now score the policy
+artefact, its schema validity, a pinned ruleset version, an OWASP ASI 2026
+reference, a CI governance gate, and a telemetry sink. `RAI-002/003` decouple
+from the governance manifest so a model-edge control (Content Safety prompt
+shields) is scored on its own signals.
+
+| Area | v0.9.0 delta |
+| --- | --- |
+| Pillar 02 model | `AGT-001` = policy is schema-valid (lints clean); `AGT-005` = a CI workflow runs `agt verify` / `lint-policy` / `test` (now `should-fix`, gate lives in CI not the request path). |
+| Recipes | `AGT-001/002/005` rewritten to author a real `policy.yaml`, lint it, and add a governance CI gate — no fictional `apply_governance` import. |
+| RAI decouple | `RAI-002` reads the policy's sensitive-action rules; `RAI-003` scores prompt-shield / jailbreak controls on their own signals, independent of the governance manifest. |
+| Reference exemplar | `sample-pilot-citadel` ships a real schema-valid policy that lints clean under `agt lint-policy`, plus a `governance.yml` CI gate. |
+
+
 
 v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
 script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings

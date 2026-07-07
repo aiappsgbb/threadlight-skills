@@ -1,0 +1,20 @@
+name: agent-governance
+on:
+  pull_request:
+    paths: ["policy.yaml", "src/**", ".github/workflows/governance.yml"]
+  push:
+    branches: [main]
+jobs:
+  govern:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Agent Governance Toolkit
+        run: pip install "agent-governance-toolkit[core]>=4.1.0"
+      - name: Lint policy
+        run: agt lint-policy policy.yaml
+      - name: Verify governance + emit attestation
+        run: agt verify --badge

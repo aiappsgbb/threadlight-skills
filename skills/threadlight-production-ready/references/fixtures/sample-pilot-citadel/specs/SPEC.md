@@ -38,6 +38,6 @@ between 22:00–06:00 UTC.
 - failure modes catalogued in this SPEC
 - postmortem template referenced
 - severity matrix documented
-- AGT in-process middleware imported via from agt import policy
+- AGT governance authored as a committed policy.yaml (schema-valid: version + name + rules), linted + verified in CI (.github/workflows/governance.yml)
 - OWASP ASI 2026 reference present
 - Defender for AI, Defender for Key Vault, Defender for Containers all set to Standard

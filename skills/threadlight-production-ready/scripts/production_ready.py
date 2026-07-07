@@ -485,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -689,11 +689,11 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
-    "AGT-001": {"title": "AGT middleware imported in src/", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-001": {"title": "AGT policy is schema-valid (lints clean)", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-002": {"title": "policy.yaml present in repo", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-003": {"title": "OWASP ASI 2026 verifier referenced", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
-    "AGT-004": {"title": "AGT version pinned (not floating)", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
-    "AGT-005": {"title": "AGT policy covers tool calls + prompt shields", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    "AGT-005": {"title": "AGT governance gate runs in CI", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
     "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -772,7 +772,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 
     # ---- responsible-ai
     "RAI-001": {"title": "Content filters declared on model deployments", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
-    "RAI-002": {"title": "AGT RAI policy section present", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "RAI-002": {"title": "AGT policy constrains sensitive actions", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "RAI-003": {"title": "Prompt shields enabled in policy", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "RAI-004": {"title": "PII redaction strategy documented", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-005": {"title": "Groundedness check planned for RAG", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
@@ -2170,11 +2170,11 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
         verdict = gm.get("verdict", "?")
         prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
         _agt_map = {
-            "AGT-001": "middleware_wired_at_boundary",
+            "AGT-001": "policy_schema_valid",
             "AGT-002": "policy_artefact_present",
             "AGT-003": "asi_reference_present",
             "AGT-004": "policy_versioned",
-            "AGT-005": "rai_policy_present",
+            "AGT-005": "ci_gate_present",
         }
         for fid, cap in _agt_map.items():
             st = _leg_cap_status(gm, cap)
@@ -2195,37 +2195,44 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
             out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
         return out
     # ---- legacy heuristic path (no govern manifest) ----
-    # AGT-001 imported in src
-    has_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
+    # Gather policy text once — several checks read it.
+    pol_files = list(_glob_repo(ctx.root, "**/policy*.y*ml"))
+    pol_text = ""
+    for p in pol_files:
+        pol_text += "\n" + (_read_text(p) or "")
+    has_policy = any(p.name in ("policy.yaml", "agt-policy.yaml", "policy.yml") for p in pol_files)
+    # AGT-001 policy is schema-valid: top-level version + name + rules present
+    schema_valid = has_policy and bool(
+        re.search(r"^version\s*:", pol_text, re.I | re.M)
+        and re.search(r"^name\s*:", pol_text, re.I | re.M)
+        and re.search(r"^rules\s*:", pol_text, re.I | re.M)
+    )
     out.append(_mk_finding("AGT-001",
-        status="pass" if has_import else "must-fix",
-        detail="AGT import found in src/" if has_import else "No AGT import in src/ — agent has no in-process governance"))
-    # AGT-002 policy.yaml
-    has_policy = any(p.name in ("policy.yaml", "agt-policy.yaml", "policy.yml") for p in _glob_repo(ctx.root, "**/policy*.y*ml"))
+        status="pass" if schema_valid else "must-fix",
+        detail="AGT policy has version/name/rules — lints clean" if schema_valid
+               else "No schema-valid AGT policy (author policy.yaml with top-level version + name + rules, then `agt lint-policy`)"))
+    # AGT-002 policy artefact present
     out.append(_mk_finding("AGT-002",
         status="pass" if has_policy else "must-fix",
         detail="policy.yaml present" if has_policy else "No AGT policy.yaml file found"))
     # AGT-003 OWASP ASI verifier referenced
-    has_owasp = bool(re.search(r"OWASP|ASI[- ]?2026|agent_security|asi[._-]verifier", src + "\n" + ctx.docs_text + "\n" + ctx.spec_text, re.I))
+    has_owasp = bool(re.search(r"OWASP|ASI[- ]?2026|agent_security|asi[._-]verifier", src + "\n" + ctx.docs_text + "\n" + ctx.spec_text + "\n" + pol_text, re.I))
     out.append(_mk_finding("AGT-003",
         status="pass" if has_owasp else "should-fix",
         detail="OWASP ASI 2026 referenced" if has_owasp else "No OWASP ASI 2026 verifier reference found"))
-    # AGT-004 pinned version
-    has_pin = bool(re.search(r"foundry[-_]agt[^\n]*[=@~^]\s*\d+\.\d+", ctx.src_text + ctx.docs_text, re.I)) or any(
-        "requirements" in p.name or "pyproject" in p.name or "package.json" in p.name
-        for p in _glob_repo(ctx.root, "requirements*.txt", "pyproject.toml", "package.json")
-    )
+    # AGT-004 policy ruleset versioned (semver)
+    has_pin = bool(re.search(r"^version\s*:\s*['\"]?\d+\.\d+", pol_text, re.I | re.M))
     out.append(_mk_finding("AGT-004",
         status="pass" if has_pin else "should-fix",
-        detail="AGT version constraint detected" if has_pin else "Cannot find AGT pin — risk of unintended upgrade"))
-    # AGT-005 policy covers tool calls + shields  (heuristic — check policy file content)
-    pol_text = ""
-    for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-        pol_text += "\n" + (_read_text(p) or "")
-    covers = bool(re.search(r"tool[_ ]?call|tools:", pol_text, re.I)) and bool(re.search(r"prompt[_ ]?shield|jailbreak", pol_text, re.I))
+        detail="AGT policy ruleset version pinned" if has_pin else "AGT policy has no pinned ruleset `version:` — risk of silent policy drift"))
+    # AGT-005 governance gate runs in CI
+    wf_text = ""
+    for p in _glob_repo(ctx.root, ".github/workflows/*.yml", ".github/workflows/*.yaml"):
+        wf_text += "\n" + (_read_text(p) or "")
+    ci_gate = bool(re.search(r"agt\s+(verify|lint-policy|test)|agent-governance-toolkit", wf_text, re.I))
     out.append(_mk_finding("AGT-005",
-        status="pass" if covers else "must-fix",
-        detail="Policy covers tool calls + prompt shields" if covers else "Policy missing tool-call and/or prompt-shield clauses"))
+        status="pass" if ci_gate else "should-fix",
+        detail="AGT governance gate runs in CI" if ci_gate else "No AGT governance gate (agt verify / lint-policy / test) in .github/workflows — CI cannot block a policy regression"))
     # AGT-006 telemetry sink
     has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
     out.append(_mk_finding("AGT-006",
@@ -2281,7 +2288,7 @@ V4_POLICY_REGEX = re.compile(
     re.MULTILINE,
 )
 V4_DYNAMIC_REGEX = re.compile(
-    r"\btime_window\s*:|\bcost_per_window\s*:|\btoken_count_per_window\s*:|\bday_of_week\s*:|agent_os\.policies\.dynamic_context",
+    r"\btime_window\s*:|\bcost_per_window\s*:|\btoken_count_per_window\s*:|\bday_of_week\s*:|agent_os\.integrations",
 )
 V3_7_DIST_REGEX = re.compile(
     # legacy umbrella names; if any of these appear and none of V4_DIST then v4-001 fails
@@ -3176,23 +3183,21 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
         pol_text += "\n" + (_read_text(p) or "")
     # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
     gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    gm_rai = _leg_cap_status(gm, "rai_policy_present") if (gm and gm.get("_fresh")) else None
-    has_rai_pol = bool(re.search(r"\brai\b|responsible[_ ]?ai|content[_ ]?safety", pol_text, re.I))
-    if gm_rai is not None:
-        out.append(_mk_finding("RAI-002", status=gm_rai,
-            detail=f"threadlight-govern manifest: rai_policy_present={gm_rai}"))
+    gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+    has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", pol_text, re.I))
+    if gm_sar is not None:
+        out.append(_mk_finding("RAI-002", status=gm_sar,
+            detail=f"threadlight-govern manifest: sensitive_action_rules_present={gm_sar}"))
     else:
         out.append(_mk_finding("RAI-002",
-            status="pass" if has_rai_pol else "must-fix",
-            detail="AGT policy has RAI section" if has_rai_pol else "AGT policy missing RAI/content-safety section"))
-    has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text, re.I))
-    if gm_rai is not None and gm_rai == "pass":
-        out.append(_mk_finding("RAI-003", status="pass",
-            detail="threadlight-govern manifest: RAI block declares prompt shields"))
-    else:
-        out.append(_mk_finding("RAI-003",
-            status="pass" if has_shields else "must-fix",
-            detail="Prompt shields configured" if has_shields else "Prompt shields not configured in policy"))
+            status="pass" if has_sar else "must-fix",
+            detail="AGT policy constrains sensitive actions" if has_sar else "AGT policy has no deny/escalate/block rules for sensitive actions"))
+    # RAI-003 prompt shields are a model-edge control (Content Safety), not part of
+    # the AGT governance manifest — score it from policy/doc evidence only.
+    has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text + "\n" + ctx.docs_text, re.I))
+    out.append(_mk_finding("RAI-003",
+        status="pass" if has_shields else "must-fix",
+        detail="Prompt shields configured" if has_shields else "Prompt shields not configured (model-edge Content Safety)"))
     has_pii = bool(re.search(r"pii|presidio|redact", spec + ctx.docs_text + pol_text, re.I))
     out.append(_mk_finding("RAI-004",
         status="pass" if has_pii else "should-fix",
@@ -4416,9 +4421,9 @@ def _detect_agt_profile(ctx: RepoContext, requested: str) -> str:
         return requested
     src = ctx.src_text
     # heuristics — capability based, version agnostic
-    has_legacy_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
+    has_agt_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt|from\s+agent_compliance|import\s+agent_compliance", src, re.I))
     has_v4_import = bool(re.search(r"agent_governance_toolkit_(?:core|runtime|sre|cli)|from\s+agent_governance_toolkit", src, re.I))
-    if not has_legacy_import and not has_v4_import:
+    if not has_agt_import and not has_v4_import:
         return "none"
     # v4 signals (any one is sufficient): scan only scoped artefact files,
     # NOT docs/README/SPEC prose. See _v4_scoped_files for the exact globs.
@@ -4896,11 +4901,11 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append("  entry --> hub[Citadel APIM hub]")
         out.append("  hub --> spoke[Foundry account spoke]")
     elif posture["resolved"] == POSTURE_AGT:
-        out.append("  entry --> agt[AGT middleware in-process]")
+        out.append("  entry --> agt[AGT policy-governed agent]")
         out.append("  agt --> spoke[Foundry account]")
     elif posture["resolved"] == POSTURE_HYBRID:
         out.append("  entry --> hub[Citadel APIM hub]")
-        out.append("  hub --> agt[AGT middleware]")
+        out.append("  hub --> agt[AGT policy-governed agent]")
         out.append("  agt --> spoke[Foundry account spoke]")
     else:
         out.append("  entry --> gw[Standard AI Gateway]")
@@ -5085,7 +5090,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("")
     out.append("### Glossary")
     out.append("")
-    out.append("- **AGT** — Agent Governance Toolkit. In-process middleware that enforces policy on tool calls, prompts, and outputs.")
+    out.append("- **AGT** — Agent Governance Toolkit (`agent-governance-toolkit`, CLI `agt`). A committed policy that CI lints (`agt lint-policy`), replays against fixtures (`agt test`), and verifies (`agt verify` → OWASP ASI 2026 attestation); optionally enforced in the agent runtime via `agent_compliance` evaluators.")
     out.append("- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `citadel-hub-deploy` and `citadel-spoke-onboarding`.")
     out.append("- **OWASP ASI 2026** — OWASP AI/Agentic Security Initiative top-N risks reference.")
     out.append("")
@@ -5418,7 +5423,7 @@ def main(argv: list[str] | None = None) -> int:
             status="should-fix",
             detail=(
                 f"SPEC § 12 declares `target_posture: {declared}` but live "
-                "evidence (APIM, Foundry connection, AGT middleware) did not "
+                "evidence (APIM, Foundry connection, AGT policy gate) did not "
                 "confirm it. Either the deployment hasn't reached the declared "
                 "posture yet, the operator running this skill lacks permission "
                 "to see the hub-side resources, or the declaration is stale. "
