@@ -1013,7 +1013,9 @@ aborting the whole assessment or silently letting the hard gate pass.
 | Param-aware model check | MDL-001 classifies expression-string models / versions (parameter / copy-loop) as `not-verified` (verified at deploy by live MDL-101), never a crash or a false must-fix; a genuinely absent model stays must-fix. |
 | Resilience guard | A static analyzer raising on an unexpected ARM shape **fails closed** — that pillar's tier-0 findings degrade to a visible `must-fix` (carrying the error) with an stderr warning, so the run completes but the hard go-live gate keeps blocking until it is resolved. |
 
-## What changed since v0.7.0 A new stdlib-only
+## What changed since v0.7.0
+
+v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
 script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings
 already produce (scorecard manifest, `mcp-sbom.json`, `agent-identity.json`,
 govern + evals + red-team manifests) onto seven articles and emits a tenant-local,
