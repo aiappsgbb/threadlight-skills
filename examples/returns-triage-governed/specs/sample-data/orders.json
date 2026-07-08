@@ -1,0 +1,141 @@
+{
+  "_meta": {
+    "entity": "orders",
+    "system_of_record": "order-management system (mock — swap for real OMS MCP tool later)",
+    "generated": "2026-07-07",
+    "note": "Synthetic demo data. Brand names are two-token-shifted (no real retailers). PANs never shown; amounts are order-line subtotals in the order currency.",
+    "record_count": 10
+  },
+  "records": [
+    {
+      "id": "ORD-2026-000142",
+      "customer_id": "CR-CUST-00042",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-10",
+      "delivery_date": "2026-06-14",
+      "currency": "USD",
+      "order_total": 189.00,
+      "items": [
+        { "sku": "MGS-SKU-A4012", "brand": "Glacier Outpost", "name": "Alpine Insulated Jacket", "category": "apparel", "qty": 1, "unit_price": 189.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000158",
+      "customer_id": "CR-CUST-00108",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-05-02",
+      "delivery_date": "2026-05-06",
+      "currency": "USD",
+      "order_total": 54.00,
+      "items": [
+        { "sku": "SBC-SKU-B7781", "brand": "Solstice Beauty Co.", "name": "Radiance Serum 30ml", "category": "beauty", "qty": 2, "unit_price": 27.00, "final_sale": true }
+      ]
+    },
+    {
+      "id": "ORD-2026-000171",
+      "customer_id": "CR-CUST-00256",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-28",
+      "delivery_date": "2026-07-01",
+      "currency": "USD",
+      "order_total": 420.00,
+      "items": [
+        { "sku": "CAS-SKU-C3390", "brand": "Cardinal & Stripe", "name": "Merino Overcoat", "category": "apparel", "qty": 1, "unit_price": 420.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000180",
+      "customer_id": "CR-CUST-00311",
+      "status": "delivered",
+      "channel": "store",
+      "order_date": "2026-06-20",
+      "delivery_date": "2026-06-20",
+      "currency": "USD",
+      "order_total": 96.00,
+      "items": [
+        { "sku": "PAT-SKU-D1120", "brand": "Pinnacle Athletics", "name": "Trail Runner GTX", "category": "footwear", "qty": 1, "unit_price": 96.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000195",
+      "customer_id": "CR-CUST-00042",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-30",
+      "delivery_date": "2026-07-03",
+      "currency": "USD",
+      "order_total": 312.00,
+      "items": [
+        { "sku": "NWH-SKU-E5540", "brand": "Northwind Home", "name": "Linen Duvet Set — King", "category": "home", "qty": 1, "unit_price": 312.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000201",
+      "customer_id": "CR-CUST-00409",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-04-01",
+      "delivery_date": "2026-04-05",
+      "currency": "USD",
+      "order_total": 78.00,
+      "items": [
+        { "sku": "MGS-SKU-A4088", "brand": "Glacier Outpost", "name": "Base Layer Crew", "category": "apparel", "qty": 2, "unit_price": 39.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000210",
+      "customer_id": "CR-CUST-00511",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-25",
+      "delivery_date": "2026-06-29",
+      "currency": "USD",
+      "order_total": 1180.00,
+      "items": [
+        { "sku": "CAS-SKU-C3401", "brand": "Cardinal & Stripe", "name": "Cashmere Travel Coat", "category": "apparel", "qty": 1, "unit_price": 1180.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000222",
+      "customer_id": "CR-CUST-00256",
+      "status": "shipped",
+      "channel": "online",
+      "order_date": "2026-07-04",
+      "delivery_date": null,
+      "currency": "USD",
+      "order_total": 64.00,
+      "items": [
+        { "sku": "SBC-SKU-B7799", "brand": "Solstice Beauty Co.", "name": "Hydra Cream 50ml", "category": "beauty", "qty": 1, "unit_price": 64.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000234",
+      "customer_id": "CR-CUST-00618",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-18",
+      "delivery_date": "2026-06-22",
+      "currency": "USD",
+      "order_total": 145.00,
+      "items": [
+        { "sku": "PAT-SKU-D1155", "brand": "Pinnacle Athletics", "name": "Performance Hoodie", "category": "apparel", "qty": 1, "unit_price": 145.00, "final_sale": false }
+      ]
+    },
+    {
+      "id": "ORD-2026-000240",
+      "customer_id": "CR-CUST-00311",
+      "status": "delivered",
+      "channel": "online",
+      "order_date": "2026-06-12",
+      "delivery_date": "2026-06-16",
+      "currency": "USD",
+      "order_total": 220.00,
+      "items": [
+        { "sku": "NWH-SKU-E5571", "brand": "Northwind Home", "name": "Ceramic Cookware Set", "category": "home", "qty": 1, "unit_price": 220.00, "final_sale": false }
+      ]
+    }
+  ]
+}

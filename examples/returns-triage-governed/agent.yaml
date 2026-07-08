@@ -1,0 +1,31 @@
+# ContainerAgent definition — Returns Triage assistant
+# Consumed by threadlight-deploy (Foundry hosted agent, workshop §6.2–6.4).
+name: returns-triage
+model:
+  deployment: gpt-5.4
+  version: "2026-03-05"
+  reasoning_effort: medium
+  # Model traffic routes through the Citadel governance hub (SPEC § 11b).
+  gateway_endpoint: https://apim-citadel-hub.azure-api.net
+  access_contract: tl-returns-triage
+instructions_file: AGENTS.md
+skills_dir: src/agent/skills
+tools:
+  - oms_get_order
+  - returns_get_case
+  - returns_list_open
+  - customer_get_profile
+  - returns_apply_decision
+knowledge:
+  - name: contoso-return-policy
+    backing: foundry-iq
+    citation: mandatory
+environment_variables:
+  # region: killer-prompts (managed by refresh_killer_prompts.py)
+  STARTER_1_TITLE: "BR-001"
+  STARTER_1_PROMPT: "Triage return RMA-2026-004410 and recommend a decision."
+  STARTER_2_TITLE: "BR-003"
+  STARTER_2_PROMPT: "Triage return RMA-2026-004425 — should we refund it?"
+  STARTER_3_TITLE: "BR-004"
+  STARTER_3_PROMPT: "Triage return RMA-2026-004440 for the damaged item."
+  # endregion: killer-prompts

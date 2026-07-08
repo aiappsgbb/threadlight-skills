@@ -1,0 +1,78 @@
+{
+  "phase": "post-deploy",
+  "deployed_at": "2026-07-07T13:09:52Z",
+  "rg": "rg-returns-triage-sample",
+  "checked_selectors": [
+    "aca-bot",
+    "aca-job",
+    "aca-mcp",
+    "ai-search",
+    "app-insights",
+    "cosmos-db",
+    "foundry-account",
+    "foundry-iq-index",
+    "storage-blob",
+    "workspace-ui"
+  ],
+  "deployed_resource_types": [
+    "Microsoft.CognitiveServices/accounts",
+    "Microsoft.CognitiveServices/accounts/projects",
+    "Microsoft.ContainerRegistry/registries"
+  ],
+  "image_probe": [],
+  "job_health": [],
+  "appin_health": [
+    {
+      "status": "MISSING",
+      "expected": "Microsoft.Insights/components",
+      "found_in_rg": []
+    }
+  ],
+  "bot_auth_health": [],
+  "cosmos_firewall_health": [
+    {
+      "status": "no_account_found"
+    }
+  ],
+  "channels": [
+    {
+      "name": "Returns Workspace",
+      "type": "web",
+      "service": "workspace",
+      "fqdn": null,
+      "status": "no_aca_matched"
+    },
+    {
+      "name": "Teams supervisor escalation card",
+      "type": "teams",
+      "service": "bot",
+      "fqdn": null,
+      "status": "no_aca_matched"
+    }
+  ],
+  "scheduled_jobs": [
+    {
+      "name": "open-queue-sweep",
+      "status": "missing"
+    }
+  ],
+  "gaps": [
+    "missing resource type: Microsoft.App/containerApps",
+    "missing resource type: Microsoft.App/jobs",
+    "missing resource type: Microsoft.App/managedEnvironments",
+    "missing resource type: Microsoft.BotService/botServices",
+    "missing resource type: Microsoft.DocumentDB/databaseAccounts",
+    "missing resource type: Microsoft.Insights/components",
+    "missing resource type: Microsoft.ManagedIdentity/userAssignedIdentities",
+    "missing resource type: Microsoft.Search/searchServices",
+    "selector 'workspace-ui'=yes but no ACA matched name pattern *workspace*",
+    "selector 'aca-mcp'=yes but no ACA matched name pattern *mcp*",
+    "selector 'aca-bot'=yes but no ACA matched name pattern *bot*",
+    "aca-bot:yes but no Microsoft.BotService/botServices found",
+    "appin-existence: SPEC declared app-insights but NO Microsoft.Insights/components resource exists in 'rg-returns-triage-sample'. azd up returned success but App Insights was never provisioned \u2014 agent traces, MCP tool calls, and cron logs will be silently lost. Check that infra/main.bicep includes app-insights.bicep (always-on). See foundry-observability skill for the drop-in module.",
+    "cosmos-firewall: SPEC declared cosmos-db but NO Microsoft.DocumentDB/databaseAccounts found in 'rg-returns-triage-sample'. Structural check (G7) should also have caught this \u2014 investigate Bicep composition.",
+    "channel 'Returns Workspace' (web): no matching ACA",
+    "channel 'Teams supervisor escalation card' (teams): no matching ACA",
+    "missing scheduled job: open-queue-sweep"
+  ]
+}
