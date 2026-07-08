@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
 ---
 
 # Threadlight Design
@@ -50,9 +50,13 @@ This skill is designed for two personas:
 - **Sellers (non-technical) — usually in Microsoft Copilot Cowork.** Use Cowork to
   tailor-craft a use-case pitch with the customer's named pain, sourced industry
   stats, and a customer-facing `specs/demo-deck.html` you can screen-share on the
-  next call. **Fast-PoC mode** is the right default in Cowork — the skill asks
-  2–3 essential questions, assumes sensible defaults, and produces everything in
-  one pass. You don't need to be a developer to drive this.
+  next call. **Fast-PoC mode** is the right default in Cowork **for basic
+  scenarios** — the skill asks 2–3 essential questions, assumes sensible
+  defaults, and produces everything in one pass. You don't need to be a
+  developer to drive this. For anything richer than basic — regulated domains,
+  consequential actions, case lifecycles, multi-phase workflows — the skill runs
+  a complexity triage first (see Mode-selection triage below) and steers you to
+  Full mode so a few extra questions improve the outcome.
 - **Solution Engineers (technical) — usually in GitHub Copilot CLI / Claude
   Code.** Use **Full mode** when the design will face a customer SME for
   industry-realism review, or when the design is a prelude to a workshop deploy.
@@ -89,11 +93,44 @@ Clarify → Discover → SpecKit (CHECKPOINT — stop/resume here)
 
 | Mode | When | Flow |
 |------|------|------|
-| **Full** | Production-bound work, stakeholder review needed | Full discovery → checkpoint → review → Phase B |
-| **Fast-PoC** | Demos, rapid prototyping, customer-facing PoCs | Essential questions → assume defaults → generate everything in one pass |
+| **Full** | Anything **non-basic** — production-bound work, stakeholder/SME review, regulated domains, consequential actions, case lifecycles, multi-phase workflows, or a workshop-deploy prelude | Full discovery → triage (Step 1.5) → checkpoint → review → Phase B |
+| **Fast-PoC** | **Basic scenarios only** — simple demos / rapid prototypes with no regulatory or PII weight, read-only (or trivially reversible) actions, and a conversational / single-step shape | Essential questions → assume defaults → generate everything in one pass |
 
-To activate fast-PoC mode, the user says "quick PoC", "fast demo", or similar.
-The skill can also suggest it when the brief is short or vague.
+To activate fast-PoC mode the user says "quick PoC", "fast demo", or similar —
+**but Fast-PoC is only appropriate for basic scenarios.** Run the complexity
+triage below before accepting (or suggesting) Fast-PoC. The skill should suggest
+Fast-PoC for a short or vague brief **only after** the triage confirms the
+scenario is basic — never as a blanket default.
+
+#### Mode-selection triage (run before locking a mode)
+
+A scenario is **basic** — Fast-PoC is fine — only when **all** of these hold:
+
+- **Read-only or trivially reversible** actions — no payments, approvals, or
+  irreversible external writes
+- **Stateless or session-based** — no long-lived case lifecycle
+- **Agent-shaped** — conversational / Q&A / summarize / single routing step,
+  not a deterministic ≥ 3-phase workflow with persona gates
+- **No heavy compliance weight** — not a regulated domain (FSI / Healthcare /
+  public sector) and no material PII / GDPR / HIPAA handling
+- **Narrow surface** — roughly 1–2 system integrations, no human
+  approval / escalation gates
+- **No SME / stakeholder industry-realism review**, and not a prelude to a
+  workshop deploy
+
+If **any** non-basic signal is present, **do not silently run Fast-PoC.** Ask
+the user one triage question, naming the signal you detected — for example:
+
+> This looks like a **{regulated / consequential-action / multi-phase /
+> case-based}** process. Running **Full mode** adds a short triage round
+> (Step 1.5: audience, posture, lifecycle) that materially improves the
+> result. Proceed in Full mode, or force Fast-PoC anyway (neutral defaults,
+> recorded in SPEC § 12)?
+
+**Default to Full mode** for non-basic scenarios; the user can override and
+force Fast-PoC, in which case the silent-default § 12 callout (see Step 3)
+still applies. This one triage question is the difference between a credible
+pilot and a demo that collapses under the first SME question.
 
 ### Fast-PoC Minimum Baseline
 

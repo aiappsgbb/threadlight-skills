@@ -104,7 +104,10 @@ every tool call so you can see what's running.
 > use the threadlight-design skill in fast-PoC mode to design a retail returns-triage process in ~/Repos/workshop/returns-triage — answer its setup questions interactively as it asks them, and skip browser previews of any generated demo or sales-kit HTML
 
 Fast-PoC asks 2–3 essentials, assumes sensible defaults, and produces
-everything in one pass. The live design conversation **is** the demo —
+everything in one pass. It's the right mode here because returns-triage is a
+**basic scenario** (read-only routing, no heavy compliance weight) — for a
+regulated, multi-phase, or consequential use case the skill triages first and
+steers you to Full mode instead. The live design conversation **is** the demo —
 attendees see the branches and entities get picked, not handed pre-baked.
 Design stops at the **spec + agent code**; the azd scaffold (Dockerfile,
 azure.yaml, infra/main.bicep) is `threadlight-deploy`'s job in §6, when there's
