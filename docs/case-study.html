@@ -495,7 +495,11 @@
 
   /* — run explorer: sticky rail + progressive-disclosure stages ————— */
   .cs-run { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 34px; align-items: start; margin-top: 8px; }
-  .cs-stage { scroll-margin-top: 168px; }
+  /* Clicked/deep-linked stages must land just below the sticky floating TOC
+     (bottom ~158) but at or above the scroll-spy reading line (180) so the
+     landed stage reads as active. This value STACKS with the site-wide
+     html { scroll-padding-top: 72px }, so effective landing ≈ 72 + 96 = 168. */
+  .cs-stage { scroll-margin-top: 96px; }
 
   .cs-rail { position: sticky; top: 170px; align-self: start; }
   .cs-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }

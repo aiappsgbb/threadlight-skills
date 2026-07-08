@@ -114,6 +114,30 @@ test.describe('case study run explorer (case-study.html)', () => {
     await expect(page.locator('.cs-rail a[href="#stage-08"]')).toHaveClass(/is-active/);
   });
 
+  test('clicking a rail item marks it active once the scroll settles', async ({ page }) => {
+    await page.goto(CS);
+    await settle(page);
+    // Open + scroll to a mid-run stage via its rail link, then wait for the smooth
+    // scroll to fully land before asserting. The clicked stage must end up active
+    // in the rail — this guards the interaction between scroll-margin-top and the
+    // global scroll-padding-top, whose sum must stay at or under the scroll-spy
+    // reading line (otherwise the stage lands below the line and scroll-spy marks
+    // the PREVIOUS stage active). Asserting the settled state (not the transient
+    // active set synchronously by the toggle) is what makes this meaningful.
+    await tap(page, '.cs-rail a[href="#stage-07"]');
+    await page.evaluate(() => new Promise((res) => {
+      let last = -1, stable = 0;
+      const tick = () => {
+        const y = document.body.scrollTop || document.documentElement.scrollTop;
+        if (Math.abs(y - last) < 1) { if (++stable > 5) return res(); } else stable = 0;
+        last = y; requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }));
+    const active = await page.locator('.cs-rail a.is-active').getAttribute('href');
+    expect(active).toBe('#stage-07');
+  });
+
   test('axe: no serious/critical a11y violations', async ({ page }) => {
     await page.goto(CS);
     const results = await new AxeBuilder({ page })
