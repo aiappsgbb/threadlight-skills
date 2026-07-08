@@ -132,6 +132,26 @@ field.
 
 ### Fixed
 
+- **Hardened the `threadlight-production-ready` readiness scorecard against
+  modern ARM shapes** (0.8.0 → 0.8.1). The compiled-ARM walker (`BicepGraph`)
+  assumed the top-level `resources` was always a list, so it crashed on
+  **symbolic-name ARM** (`languageVersion 2.0` — the current azd/Bicep default,
+  where `resources` is a `{symbolicName: object}` map), aborting the whole
+  assessment before any pillar ran. `_walk` now accepts both the map and the
+  list shape (and nested-template maps). The model-lifecycle static check
+  (MDL-001) also crashed when a deployment's `model` / `version` was supplied via
+  an ARM parameter or copy-loop expression (an expression *string* rather than an
+  object); it now classifies those as `not-verified` ("verified at deploy" by the
+  live MDL-101 check) rather than crashing or raising a false must-fix. It also
+  no longer silently passes a model whose `version` is itself a parameter
+  expression (now `not-verified`), and a genuinely absent model stays a
+  `must-fix`. Finally, a per-pillar resilience guard makes any pillar whose
+  static analyzer raises on an unforeseen ARM shape **fail closed**: its tier-0
+  findings degrade to a **visible** gate-blocking `must-fix` (carrying the
+  error) with an stderr warning, so the run always completes but the hard
+  go-live gate keeps blocking until it is resolved — it never silently relaxes
+  the gate. Sixteen new tests pin the map/list walk, the param-aware model
+  check, and the fail-closed guard.
 - **Corrected three stale companion pointers in `threadlight-deploy`** — the
   hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
   `pyproject.toml` / `Dockerfile` steps point at the inline templates directly
