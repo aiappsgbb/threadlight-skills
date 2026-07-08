@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -992,6 +992,26 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Cost analysis (PAYG vs PTU) | `paygo-ptu-cost-analyzer` | `paygo-*` |
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
+
+## What changed since v0.8.0
+
+v0.8.1 is a robustness patch for the readiness scorecard's compiled-ARM
+analysis. It teaches the Bicep walker to read **symbolic-name ARM**
+(`languageVersion 2.0` — the modern azd/Bicep default, where `resources` is a
+map rather than a list), makes the model-lifecycle static check tolerant of
+model deployments whose model or version is supplied via an ARM parameter/copy
+expression (degrading MDL-001 to `not-verified` / verify-at-deploy instead of
+crashing or raising a false must-fix — while still flagging a genuinely absent
+model as must-fix), and adds a per-pillar resilience guard so one pillar's
+static analyzer hitting an unforeseen ARM shape **fails closed** (that pillar's
+tier-0 findings degrade to a visible, gate-blocking `must-fix`) rather than
+aborting the whole assessment or silently letting the hard gate pass.
+
+| Area | v0.8.1 delta |
+| --- | --- |
+| Symbolic-name ARM | `BicepGraph._walk` accepts `languageVersion 2.0` resource **maps** (and nested-template maps), not just classic lists — the scorecard now runs on the modern azd/Bicep default. |
+| Param-aware model check | MDL-001 classifies expression-string models / versions (parameter / copy-loop) as `not-verified` (verified at deploy by live MDL-101), never a crash or a false must-fix; a genuinely absent model stays must-fix. |
+| Resilience guard | A static analyzer raising on an unexpected ARM shape **fails closed** — that pillar's tier-0 findings degrade to a visible `must-fix` (carrying the error) with an stderr warning, so the run completes but the hard go-live gate keeps blocking until it is resolved. |
 
 ## What changed since v0.7.0
 

@@ -485,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -1780,6 +1780,19 @@ class PrerequisiteError(RuntimeError):
     """
 
 
+def _as_dict(v: Any) -> dict:
+    """Coerce a value to a dict, or ``{}`` if it is anything else.
+
+    ARM sub-objects (e.g. ``properties``, ``properties.model``,
+    ``properties.template``) can arrive as expression STRINGS — a parameter,
+    variable, or copy-loop expression like
+    ``"[parameters('deployments')[copyIndex()].model]"`` — instead of objects.
+    Coercing non-dicts to ``{}`` keeps downstream ``.get(...)`` reads from
+    crashing on a ``str`` when a value is only resolvable at deploy time.
+    """
+    return v if isinstance(v, dict) else {}
+
+
 class BicepGraph:
     """Compile-once ARM-graph view over a repo's Bicep files.
 
@@ -1801,6 +1814,8 @@ class BicepGraph:
         self.source_files = source_files
         self._by_type: dict[str, list[dict]] = {}
         for r in resources:
+            if not isinstance(r, dict):
+                continue
             t = (r.get("type") or "").lower()
             if t:
                 self._by_type.setdefault(t, []).append(r)
@@ -1875,19 +1890,32 @@ class BicepGraph:
         return cls(all_resources, mains)
 
     @staticmethod
-    def _walk(resources: list[dict]) -> list[dict]:
+    def _walk(resources: Any) -> list[dict]:
         out: list[dict] = []
-        for r in resources:
+        # ARM templates with languageVersion >= 2.0 (symbolic names) express
+        # `resources` as a MAP {symbolicName: resourceObject}; classic ARM uses
+        # a LIST. Normalise both to an iterable of resource objects.
+        if isinstance(resources, dict):
+            items: list = list(resources.values())
+        elif isinstance(resources, list):
+            items = resources
+        else:
+            return out
+        for r in items:
+            if not isinstance(r, dict):
+                continue
             rtype = (r.get("type") or "").lower()
             if rtype == "microsoft.resources/deployments":
                 # Nested template — recurse into properties.template.resources
-                nested = (((r.get("properties") or {}).get("template") or {}).get("resources") or [])
+                # (itself a MAP under languageVersion 2.0).
+                nested = _as_dict(_as_dict(r.get("properties")).get("template")).get("resources") or []
                 out.extend(BicepGraph._walk(nested))
             else:
                 out.append(r)
-                # Some resources nest children inline.
-                kids = r.get("resources") or []
-                if isinstance(kids, list):
+                # Some resources nest children inline (list or, under
+                # languageVersion 2.0, a map).
+                kids = r.get("resources")
+                if isinstance(kids, (list, dict)):
                     out.extend(BicepGraph._walk(kids))
         return out
 
@@ -4113,11 +4141,34 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
         out.append(_mk_finding("MDL-001", status="must-fix",
             detail="No Microsoft.CognitiveServices/accounts/deployments declared in compiled ARM — cannot pin a model that doesn't exist"))
     else:
-        pinned, floating, missing = [], [], []
+        pinned, floating, missing, deferred = [], [], [], []
         for d in deployments:
-            model = ((d.get("properties") or {}).get("model") or {})
-            v = model.get("version")
             name = d.get("name") or "<unnamed>"
+            raw_props = d.get("properties")
+            if isinstance(raw_props, str):
+                # The whole `properties` block is an ARM expression (parameter /
+                # variable / copy-loop) — nothing about the model is statically
+                # resolvable. Defer to the live MDL-101 check at deploy time.
+                deferred.append(name)
+                continue
+            model = _as_dict(raw_props).get("model")
+            if isinstance(model, str):
+                # `model` supplied via an ARM expression string (e.g. a copy-loop
+                # `[parameters('deployments')[copyIndex()].model]`). Not statically
+                # resolvable — defer to the live check rather than crash.
+                deferred.append(name)
+                continue
+            if not isinstance(model, dict):
+                # `model` is absent / null — a deployment that declares no model at
+                # all is unambiguously unpinned, not a deferred expression.
+                missing.append(name)
+                continue
+            v = model.get("version")
+            if isinstance(v, str) and v.startswith("[") and v.endswith("]"):
+                # `version` is an ARM expression string (e.g. a `modelVersion`
+                # parameter) — the pin is real but not statically resolvable.
+                deferred.append(name)
+                continue
             if not v:
                 missing.append(name)
             elif str(v).strip().lower() == "latest":
@@ -4132,6 +4183,11 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
                 problems.append(f"{len(missing)} have no model.version: {missing}")
             out.append(_mk_finding("MDL-001", status="must-fix",
                 detail="Model deployments not pinned: " + "; ".join(problems)))
+        elif deferred:
+            out.append(_not_verified("MDL-001",
+                f"{len(deferred)} model deployment(s) set model/version via ARM "
+                f"parameters or expressions ({deferred}) — pin not statically "
+                f"resolvable; verified at deploy by live check MDL-101"))
         else:
             out.append(_mk_finding("MDL-001", status="pass",
                 detail=f"All {len(deployments)} model deployment(s) pinned: {pinned}"))
@@ -4359,16 +4415,41 @@ def _run_pillar(
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
     # Each pillar's static signature varies slightly; handle uniformly
-    if pillar == "network-posture":
-        findings.extend(static_fn(ctx, resolved_posture))
-    elif pillar == "agent-governance":
-        findings.extend(static_fn(ctx, agt_profile))
-        # v4-preview deep checks: gated to fire only when profile is v4_preview.
-        # Lives in _check_agt_static_v4 — never emitted by v3_7 / none / auto-as-v3_7.
-        if agt_profile == "v4_preview":
-            findings.extend(_check_agt_static_v4(ctx))
-    else:
-        findings.extend(static_fn(ctx))
+    try:
+        if pillar == "network-posture":
+            findings.extend(static_fn(ctx, resolved_posture))
+        elif pillar == "agent-governance":
+            findings.extend(static_fn(ctx, agt_profile))
+            # v4-preview deep checks: gated to fire only when profile is v4_preview.
+            # Lives in _check_agt_static_v4 — never emitted by v3_7 / none / auto-as-v3_7.
+            if agt_profile == "v4_preview":
+                findings.extend(_check_agt_static_v4(ctx))
+        else:
+            findings.extend(static_fn(ctx))
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        # Resilience: one pillar's static analyzer raising on an ARM shape it did
+        # not anticipate (e.g. an expression string where an object was expected)
+        # must NOT abort the whole assessment — every other pillar and the live
+        # tier still run. But a static analyzer that could not complete has NOT
+        # verified this pillar's must-fix controls, so degrading to a non-gating
+        # `not-verified` would silently flip the hard go-live gate from FAIL to
+        # PASS (the gate counts only must-fix). That would be fail-OPEN on a
+        # security gate. Instead we fail CLOSED: this pillar's tier-0 findings
+        # degrade to VISIBLE must-fix carrying the error, so the report shows the
+        # failure reason AND the hard gate keeps blocking until it is resolved.
+        # The catch is deliberately narrowed to the JSON-shape-mismatch family so
+        # a genuine, unexpected bug still surfaces by aborting.
+        existing = {f.id for f in findings}
+        for fid, meta in FINDING_CATALOG.items():
+            if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
+                findings.append(_mk_finding(
+                    fid, status="must-fix",
+                    detail=f"static analyzer could not verify this control "
+                           f"({type(exc).__name__}: {exc}) — failing closed; "
+                           f"resolve or re-run before go-live"))
+        print(f"[warn] static checks for pillar '{pillar}' raised "
+              f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
+              file=sys.stderr)
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)
         # v4-preview live deep checks: gated to fire only when profile is v4_preview.
