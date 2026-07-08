@@ -1,0 +1,67 @@
+{
+  "name": "returns-triage",
+  "version": "1.0.0",
+  "speckit": "specs/SPEC.md",
+  "description": "Retail returns-triage assistant — correlates order/return/customer, applies return policy, and recommends approve/deny/escalate/request-info with citations and audit.",
+  "traits": ["api-integration", "database-query", "routing", "validation", "analysis", "human-approval", "case-based", "on-demand"],
+  "business_rules_count": 5,
+  "skills": [
+    {"name": "intake-validation", "implements": ["BR-004"]},
+    {"name": "policy-eligibility", "implements": ["BR-001", "BR-002", "BR-005"]},
+    {"name": "fraud-escalation", "implements": ["BR-003"]},
+    {"name": "disposition-decision", "implements": ["BR-001", "BR-002", "BR-003", "BR-004", "BR-005"]}
+  ],
+  "mock_systems": ["order-management system", "returns-database", "customer-profile service"],
+  "compliance": {
+    "pii": true,
+    "auth_required_sources": ["order-management system", "returns-database", "customer-profile service"],
+    "regulatory": ["GDPR", "PCI-DSS-v4.0"]
+  },
+  "governance_hub": {
+    "required": true,
+    "hub_endpoint": "https://apim-citadel-hub.azure-api.net",
+    "access_contracts": ["tl-returns-triage"]
+  },
+  "deployment_manifest": {
+    "module_selectors": {
+      "foundry-account": "yes",
+      "cosmos-db": "yes",
+      "ai-search": "yes",
+      "foundry-iq-index": "yes",
+      "storage-blob": "yes",
+      "aca-mcp": "yes",
+      "aca-bot": "yes",
+      "aca-job": "yes",
+      "workspace-ui": "yes",
+      "app-insights": "yes",
+      "key-vault": "no",
+      "event-grid": "no",
+      "service-bus": "no"
+    },
+    "services": [
+      {"name": "agent", "host": "azure.ai.agent", "src": "src/agent"},
+      {"name": "mcp", "host": "containerapp", "src": "src/mcp"},
+      {"name": "bot", "host": "containerapp", "src": "src/bot"},
+      {"name": "workspace", "host": "containerapp", "src": "src/workspace"}
+    ],
+    "scheduled_jobs": [
+      {"name": "open-queue-sweep", "schedule": "*/15 * * * *", "tool": "returns_list_open", "src": "src/jobs/open-queue-sweep"}
+    ],
+    "channels": [
+      {"name": "Returns Workspace", "type": "web", "service": "workspace"},
+      {"name": "Teams supervisor escalation card", "type": "teams", "service": "bot"}
+    ],
+    "expected_resource_types": [
+      "Microsoft.CognitiveServices/accounts",
+      "Microsoft.DocumentDB/databaseAccounts",
+      "Microsoft.Search/searchServices",
+      "Microsoft.App/managedEnvironments",
+      "Microsoft.App/containerApps",
+      "Microsoft.App/jobs",
+      "Microsoft.BotService/botServices",
+      "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "Microsoft.ContainerRegistry/registries",
+      "Microsoft.Insights/components"
+    ]
+  }
+}

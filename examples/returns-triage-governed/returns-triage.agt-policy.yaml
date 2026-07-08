@@ -1,0 +1,36 @@
+version: "1.0.0"
+name: returns-triage-governance
+description: >-
+  AGT governance policy for the Contoso returns-triage hosted agent.
+  Grounded in specs/SPEC.md: auto-approve ceiling $250, refund/escalation
+  decisions, EU data boundary. Enforced in-process by agent_os_kernel.
+deny_by_default: true
+rules:
+  - name: block-dangerous-tools
+    action: deny
+    priority: 100
+    condition:
+      key: tool
+      operator: in
+      value: ["shell_exec", "send_external_email"]
+  - name: refund-above-ceiling-needs-human
+    action: escalate
+    priority: 90
+    condition:
+      key: refund_amount_usd
+      operator: gt
+      value: 250
+  - name: cap-tool-calls-per-turn
+    action: block
+    priority: 80
+    condition:
+      key: tool_calls_this_turn
+      operator: gt
+      value: 6
+  - name: audit-all-decisions
+    action: audit
+    priority: 10
+    condition:
+      key: decision
+      operator: in
+      value: ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]

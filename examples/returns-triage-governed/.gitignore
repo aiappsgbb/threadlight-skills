@@ -1,0 +1,10 @@
+# Local credentials & azd state — NEVER commit these.
+# (Excluded when this sample was captured for public release.)
+.azure/
+.env
+.env.*
+.env.local
+
+# Python
+__pycache__/
+*.pyc

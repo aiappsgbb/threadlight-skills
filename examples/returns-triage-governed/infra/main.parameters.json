@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "agentSubnetName": {
+      "value": "agent-subnet"
+    },
+    "agentSubnetPrefix": {
+      "value": ""
+    },
+    "createAgentSubnet": {
+      "value": false
+    },
+    "createPESubnet": {
+      "value": false
+    },
+    "deployments": {
+      "value": [
+        {
+          "name": "gpt-5.4",
+          "model": {
+            "name": "gpt-5.4",
+            "format": "OpenAI",
+            "version": "2026-03-05"
+          },
+          "sku": {
+            "name": "GlobalStandard",
+            "capacity": 30
+          }
+        }
+      ]
+    },
+    "dnsZonesResourceGroup": {
+      "value": ""
+    },
+    "dnsZonesSubscription": {
+      "value": ""
+    },
+    "enableNetworkIsolation": {
+      "value": false
+    },
+    "includeAcr": {
+      "value": true
+    },
+    "managedIsolationMode": {
+      "value": ""
+    },
+    "peSubnetName": {
+      "value": "pe-subnet"
+    },
+    "peSubnetPrefix": {
+      "value": ""
+    },
+    "useManagedEgress": {
+      "value": false
+    },
+    "vnetId": {
+      "value": ""
+    }
+  }
+}

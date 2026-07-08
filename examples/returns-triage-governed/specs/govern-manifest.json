@@ -1,0 +1,58 @@
+{
+  "schema": "threadlight-govern-manifest/v1",
+  "tool_version": "0.1.1",
+  "captured_at": "2026-07-07T13:02:05+00:00",
+  "agt_profile": "auto",
+  "freshness_window_days": 90,
+  "verdict": "partial",
+  "must_fix": [],
+  "should_fix": [
+    "verifier_artefact_present"
+  ],
+  "not_verified": [
+    "middleware_wired_at_boundary",
+    "verifier_fresh"
+  ],
+  "capabilities": {
+    "verifier_artefact_present": {
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "no committed `agt verify` evidence (docs/agt-verifier-report.md / tests/agt-verifier.json)"
+    },
+    "middleware_wired_at_boundary": {
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no recognised agent entry-point found to inspect"
+    },
+    "verifier_fresh": {
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no verifier artefact to age"
+    },
+    "policy_artefact_present": {
+      "status": "pass",
+      "evidence": "policy.yaml",
+      "hint": null
+    },
+    "policy_versioned": {
+      "status": "pass",
+      "evidence": "version: 1.0.0",
+      "hint": null
+    },
+    "rai_policy_present": {
+      "status": "pass",
+      "evidence": "content-filter / prompt-shield / PII block detected in policy",
+      "hint": null
+    },
+    "asi_reference_present": {
+      "status": "pass",
+      "evidence": "OWASP ASI 2026 reference found",
+      "hint": null
+    },
+    "sidecar_pattern": {
+      "status": "not-applicable",
+      "evidence": "in-process (Path A) \u2014 no sidecar",
+      "hint": null
+    }
+  }
+}

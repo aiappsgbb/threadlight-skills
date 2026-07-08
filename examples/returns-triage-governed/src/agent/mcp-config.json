@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "returns-triage-mock": {
+      "type": "http",
+      "url": "${MOCK_MCP_URL}/mcp"
+    }
+  }
+}

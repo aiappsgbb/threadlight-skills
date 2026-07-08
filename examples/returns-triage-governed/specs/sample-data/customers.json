@@ -1,0 +1,99 @@
+{
+  "_meta": {
+    "entity": "customers",
+    "system_of_record": "customer-profile service (mock — swap for real CRM/CDP MCP tool later)",
+    "generated": "2026-07-07",
+    "note": "Synthetic demo data. Emails are masked. lifetime_return_rate is share of delivered orders subsequently returned; high values (>0.40) flag serial-returner risk used by the fraud-escalation skill.",
+    "record_count": 8
+  },
+  "records": [
+    {
+      "id": "CR-CUST-00042",
+      "name": "Amelia Hart",
+      "email_masked": "a****@example.com",
+      "region": "EU",
+      "loyalty_tier": "gold",
+      "account_status": "active",
+      "lifetime_orders": 34,
+      "lifetime_return_rate": 0.18,
+      "tenure_months": 41
+    },
+    {
+      "id": "CR-CUST-00108",
+      "name": "Marc Devlin",
+      "email_masked": "m****@example.com",
+      "region": "EU",
+      "loyalty_tier": "silver",
+      "account_status": "active",
+      "lifetime_orders": 9,
+      "lifetime_return_rate": 0.22,
+      "tenure_months": 14
+    },
+    {
+      "id": "CR-CUST-00256",
+      "name": "Priya Nandakumar",
+      "email_masked": "p****@example.com",
+      "region": "EU",
+      "loyalty_tier": "gold",
+      "account_status": "active",
+      "lifetime_orders": 51,
+      "lifetime_return_rate": 0.12,
+      "tenure_months": 63
+    },
+    {
+      "id": "CR-CUST-00311",
+      "name": "Tomás Rivera",
+      "email_masked": "t****@example.com",
+      "region": "EU",
+      "loyalty_tier": "bronze",
+      "account_status": "active",
+      "lifetime_orders": 6,
+      "lifetime_return_rate": 0.16,
+      "tenure_months": 8
+    },
+    {
+      "id": "CR-CUST-00409",
+      "name": "Sofia Lindqvist",
+      "email_masked": "s****@example.com",
+      "region": "EU",
+      "loyalty_tier": "platinum",
+      "account_status": "active",
+      "lifetime_orders": 88,
+      "lifetime_return_rate": 0.09,
+      "tenure_months": 77
+    },
+    {
+      "id": "CR-CUST-00511",
+      "name": "Jonas Weber",
+      "email_masked": "j****@example.com",
+      "region": "EU",
+      "loyalty_tier": "gold",
+      "account_status": "active",
+      "lifetime_orders": 27,
+      "lifetime_return_rate": 0.20,
+      "tenure_months": 33
+    },
+    {
+      "id": "CR-CUST-00618",
+      "name": "Elena Kovač",
+      "email_masked": "e****@example.com",
+      "region": "EU",
+      "loyalty_tier": "bronze",
+      "account_status": "review_flagged",
+      "lifetime_orders": 19,
+      "lifetime_return_rate": 0.63,
+      "tenure_months": 11
+    },
+    {
+      "id": "CR-CUST-00727",
+      "name": "David Osei",
+      "email_masked": "d****@example.com",
+      "region": "EU",
+      "loyalty_tier": "silver",
+      "account_status": "active",
+      "lifetime_orders": 12,
+      "lifetime_return_rate": 0.25,
+      "tenure_months": 19
+    }
+  ]
+}

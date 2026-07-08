@@ -1,0 +1,23 @@
+# AGT governance policy — returns-triage (threadlight-govern contract shape)
+version: "1.0.0"
+agent_control_specification_version: "2026.1"
+references:
+  - owasp-asi-2026
+responsible_ai:
+  content_filter: standard
+  prompt_shields: true
+  pii_redact: true
+tools:
+  allow: []
+  deny:
+    - shell_exec
+    - send_external_email
+human_in_the_loop:
+  require_approval_for:
+    - approve_refund            # money action above the $250 auto-approve ceiling
+    - escalate_to_supervisor
+  approval_timeout_seconds: 3600
+  on_timeout: deny
+excessive_agency:
+  max_tool_calls_per_turn: 6
+  max_chained_actions: 12

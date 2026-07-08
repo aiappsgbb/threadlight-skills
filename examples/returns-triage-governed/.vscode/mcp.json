@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "returns-triage-mock": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "src.mcp.server"],
+      "env": {
+        "SAMPLE_DATA_DIR": "${workspaceFolder}/specs/sample-data"
+      }
+    }
+  },
+  "_comment_for_humans": "Local dev MCP. The returns-triage-mock server is a FastMCP wrapper over specs/sample-data/*.json exposing oms_get_order, returns_get_case, returns_list_open, customer_get_profile, returns_apply_decision. Replace with the real OMS / returns-DB / customer-profile endpoints when they become accessible (see specs/sample-data/README.md)."
+}

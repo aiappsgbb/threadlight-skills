@@ -1,0 +1,33 @@
+{
+  "name": "returns-triage",
+  "description": "Contoso Retail returns-triage assistant configuration and thresholds (from specs/SPEC.md).",
+  "model": {
+    "deployment": "gpt-5.4",
+    "version": "2026-03-05",
+    "reasoning_effort": "medium",
+    "region": "swedencentral",
+    "fallback_region": "westeurope",
+    "capacity_tpm": "50K",
+    "data_boundary": "EU",
+    "gateway": {
+      "governance_hub": "https://apim-citadel-hub.azure-api.net",
+      "access_contract": "tl-returns-triage"
+    }
+  },
+  "policy_thresholds": {
+    "return_window_days": 30,
+    "auto_approve_ceiling_usd": 250.0,
+    "serial_returner_rate": 0.40
+  },
+  "decisions": ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"],
+  "dispositions": ["restock_a", "restock_b", "liquidation", "return_to_customer", "destroy"],
+  "skills": ["intake-validation", "policy-eligibility", "fraud-escalation", "disposition-decision"],
+  "audit": {
+    "required_fields": ["decision.outcome", "decision.business_rules_fired", "answer.citations", "escalation.reason", "disposition.recommended"],
+    "retention_days": 90
+  },
+  "sla": {
+    "automated_decision_seconds": 60,
+    "manual_review_hours": 24
+  }
+}
