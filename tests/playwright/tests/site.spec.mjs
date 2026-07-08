@@ -324,13 +324,14 @@ test.describe('deck-spine additions (evolution / funnel / industries / channels)
       expect(hrefs.length, `${url} nav should stay under 6 links`).toBeLessThanOrEqual(6);
       for (const h of hrefs) {
         expect(h, `${url}: nav link "${h}" should be a chapter page, not an in-page anchor`)
-          .toMatch(/^(\.\/)?(index|funnel|industries|production)\.html$/);
+          .toMatch(/^(\.\/)?(index|blueprint|case-study|production|customize)\.html$/);
       }
-      // Page link labels must include all 3 chapters
+      // Page link labels must include the primary chapters
       const labels = (await page.locator('header.masthead nav.nav a').allTextContents()).join(' | ');
-      expect(labels).toMatch(/Funnel/);
+      expect(labels).toMatch(/Home/);
+      expect(labels).toMatch(/Blueprint/);
       expect(labels).toMatch(/Production-ready/);
-      expect(labels).toMatch(/Industries/);
+      expect(labels).toMatch(/Customize/);
     }
   });
 });
@@ -502,9 +503,9 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
       await expect(page.locator('header.masthead .brand a[href="./index.html"]')).toHaveCount(1);
       const navText = (await page.locator('header.masthead nav.nav').textContent()) || '';
       expect(navText).toMatch(/Home/);
-      expect(navText).toMatch(/Funnel/);
+      expect(navText).toMatch(/Blueprint/);
       expect(navText).toMatch(/Production-ready/);
-      expect(navText).toMatch(/Industries/);
+      expect(navText).toMatch(/Customize/);
     }
   });
 
@@ -610,17 +611,17 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
     }
   });
 
-  test('production CISO pentagon SVG shows 5 trigger questions around a core', async ({ page }) => {
+  test('production CISO pentagon SVG shows 6 trigger questions around a core', async ({ page }) => {
     await page.goto('/production.html');
     const svg = page.locator('#governance-triggers svg.ciso-pentagon-svg');
     await expect(svg).toHaveCount(1);
-    // Five numbered question tags
+    // Six numbered question tags
     const tags = (await svg.locator('text.ciso-num').allTextContents()).join(' | ');
-    for (const want of ['01 · IDENTITY', '02 · AUDIT', '03 · RBAC', '04 · TELEMETRY', '05 · EVALS']) {
+    for (const want of ['01 · IDENTITY', '02 · AUDIT', '03 · RBAC', '04 · TELEMETRY', '05 · EVALS', '06 · SAFETY']) {
       expect(tags, `CISO SVG must include ${want}`).toContain(want);
     }
-    // Five spoke lines from the core
-    await expect(svg.locator('g.ciso-spokes > line')).toHaveCount(5);
+    // Six spoke lines from the core
+    await expect(svg.locator('g.ciso-spokes > line')).toHaveCount(6);
   });
 
   test('production posture-trio hero SVG renders 3 distinct architectural shapes', async ({ page }) => {

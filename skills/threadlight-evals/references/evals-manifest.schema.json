@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-evals-manifest/v1",
+  "title": "threadlight evals manifest",
+  "description": "Emitted by threadlight-evals (scripts/evals_check.py). Consumed by threadlight-production-ready pillar 6 (continuous-evals).",
+  "type": "object",
+  "required": ["schema", "tool_version", "captured_at", "verdict", "capabilities"],
+  "properties": {
+    "schema": {"const": "threadlight-evals-manifest/v1"},
+    "tool_version": {"type": "string"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "freshness_window_days": {"type": "integer", "minimum": 0},
+    "verdict": {"enum": ["comprehensive", "partial", "offline-only", "none"]},
+    "must_fix": {"type": "array", "items": {"type": "string"}},
+    "should_fix": {"type": "array", "items": {"type": "string"}},
+    "not_verified": {"type": "array", "items": {"type": "string"}},
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eval_scenarios_present",
+        "eval_datasets_present",
+        "dataset_shape_ok",
+        "thresholds_declared",
+        "schedule_present",
+        "run_history_present",
+        "online_eval_wired",
+        "latest_eval_run_fresh",
+        "alert_wired",
+        "latest_pass_rate_ok",
+        "ab_comparison_present"
+      ],
+      "properties": {
+        "eval_scenarios_present": {"$ref": "#/definitions/capability"},
+        "eval_datasets_present": {"$ref": "#/definitions/capability"},
+        "dataset_shape_ok": {"$ref": "#/definitions/capability"},
+        "thresholds_declared": {"$ref": "#/definitions/capability"},
+        "schedule_present": {"$ref": "#/definitions/capability"},
+        "run_history_present": {"$ref": "#/definitions/capability"},
+        "online_eval_wired": {"$ref": "#/definitions/capability"},
+        "latest_eval_run_fresh": {"$ref": "#/definitions/capability"},
+        "alert_wired": {"$ref": "#/definitions/capability"},
+        "latest_pass_rate_ok": {"$ref": "#/definitions/capability"},
+        "ab_comparison_present": {"$ref": "#/definitions/capability"}
+      }
+    }
+  },
+  "definitions": {
+    "capability": {
+      "type": "object",
+      "required": ["check_id", "status"],
+      "properties": {
+        "check_id": {"type": "string"},
+        "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]},
+        "evidence": {"type": ["string", "null"]},
+        "hint": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

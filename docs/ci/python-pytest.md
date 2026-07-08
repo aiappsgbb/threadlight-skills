@@ -11,12 +11,13 @@ Runs the python unit test suites under `skills/*/tests/` on every PR
 against `main` and every push to `main`. No Azure, no model tokens, no
 external network — pure pytest against the in-tree code.
 
-Coverage as of v1.2.0:
+Coverage as of v1.3.0:
 
 | Skill | Tests | Notes |
 |---|---|---|
 | `threadlight-consumption-iq` | 125 | Includes a deterministic golden-file e2e against `references/fixtures/sample-pilot-consumption/expected/`. Uses a mock pricing client (no network) and pins `generated_at` so output is reproducible. |
 | `threadlight-production-ready` | ~150 | Includes new `tests/test_cost_006.py` covering COST-005 freshness check + COST-006 recommendation walker. 2 pre-existing `test_end_to_end.py` failures (stale safe-check fixture > 24h) are tracked separately. |
+| `threadlight-cicd` | 35 | Renders GitHub Actions + Azure DevOps pipelines and env-setup runbooks (UAMI/federated creds, RBAC, private-VNet runners) from flags/framing. Deterministic template rendering — no Azure calls. Asserts OIDC/WIF only (no client secret ever emitted) and resolves the onboarding-path gate (standalone / spoke / hub-handoff). |
 | `threadlight-auto` | ~5 | Orchestrator state machine; includes a new assertion that `cost_projection` sits between `safe_check` and `invoke` in `STAGES`. |
 
 ## When it fires

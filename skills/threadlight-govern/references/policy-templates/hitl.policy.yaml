@@ -1,0 +1,55 @@
+# AGT governance policy — human-in-the-loop template
+#
+# Use when the agent performs consequential, state-changing actions (writes,
+# purchases, ticket creation, outbound messages) that require human approval.
+# Builds on the baseline and adds `escalate` rules. Pairs with the threadlight
+# HITL leg — the approver channel must be wired.
+#
+#   agt lint-policy policy.yaml && agt verify          # required CI gates
+#   agt test policy.yaml fixtures/                      # ADVISORY in 4.1.0: the
+#     replay schema rejects `escalate`/`conditions[]` (see wiring-snippet.md)
+version: "1.0.0"                      # ruleset version — never 'latest'
+name: threadlight-hitl
+description: >-
+  Default-deny governance with human approval gates on state-changing actions.
+metadata:
+  references:
+    - owasp-asi-2026
+
+deny_by_default: true
+
+rules:
+  - name: block-shell-exec
+    priority: 100
+    description: Block arbitrary shell / process-execution tools.
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["shell_exec", "exec", "subprocess", "os_system"]
+    action: block
+
+  - name: deny-external-email
+    priority: 90
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: send_external_email
+    action: deny
+
+  - name: escalate-state-changing
+    priority: 80
+    description: >-
+      Pause for human approval before any state-changing action executes.
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["create_ticket", "send_message", "place_order"]
+    action: escalate
+
+  - name: allow-read-only
+    priority: 10
+    conditions:
+      - field: tool.category
+        operator: eq
+        value: read
+    action: allow

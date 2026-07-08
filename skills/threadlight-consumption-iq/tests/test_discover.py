@@ -71,6 +71,37 @@ _SAMPLE_ARM_JSON = {
     ]
 }
 
+# Modern Bicep (languageVersion 2.0) emits nested module templates whose
+# `resources` block is a *symbolic-name object*, not a list. The top-level
+# template wraps each module as a `Microsoft.Resources/deployments` resource.
+_SAMPLE_ARM_JSON_SYMBOLIC = {
+    "resources": {
+        "aoaiModule": {
+            "type": "Microsoft.Resources/deployments",
+            "name": "aoai-module",
+            "properties": {
+                "template": {
+                    "resources": {
+                        "gpt": _ARM_AOAI,
+                    }
+                }
+            },
+        },
+        "dataModule": {
+            "type": "Microsoft.Resources/deployments",
+            "name": "data-module",
+            "properties": {
+                "template": {
+                    "resources": {
+                        "stg": _ARM_STORAGE_LRS,
+                        "cosmos": _ARM_COSMOS,
+                    }
+                }
+            },
+        },
+    }
+}
+
 _MANIFEST_ALL_TYPES = {
     "deployment_manifest": {
         "expected_resource_types": [
@@ -117,23 +148,56 @@ def _make_failed_proc(stderr: str, returncode: int = 1):
 # ---------------------------------------------------------------------------
 
 def test_discover_requires_bicep_cli(tmp_path):
-    """shutil.which returns None for 'bicep' → FileNotFoundError with friendly message."""
+    """az bicep build reporting bicep-not-found → FileNotFoundError with friendly message.
+
+    A standalone `bicep` on PATH is NOT required (az bundles its own). The
+    friendly install hint comes from the `az bicep build` error branch.
+    """
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(_MANIFEST_ALL_TYPES), encoding="utf-8")
+    bicep = tmp_path / "main.bicep"
+    bicep.write_text("// stub", encoding="utf-8")
+
+    with (
+        patch("discover.shutil.which", return_value="/usr/bin/az"),
+        patch(
+            "discover.subprocess.run",
+            return_value=_make_failed_proc(
+                "Bicep CLI not found. Install it now by running 'az bicep install'."
+            ),
+        ),
+    ):
+        with pytest.raises(FileNotFoundError) as exc_info:
+            discover.discover_resources(bicep, manifest, use_azd_env=False)
+
+    assert "bicep" in str(exc_info.value).lower()
+    assert "az bicep install" in str(exc_info.value)
+
+
+def test_discover_does_not_require_standalone_bicep(tmp_path):
+    """A missing standalone `bicep` must NOT abort when `az bicep build` works.
+
+    Regression for the spurious `shutil.which("bicep")` pre-gate.
+    """
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps(_MANIFEST_ALL_TYPES), encoding="utf-8")
     bicep = tmp_path / "main.bicep"
     bicep.write_text("// stub", encoding="utf-8")
 
     def fake_which(name):
-        if name == "bicep":
-            return None
-        return f"/usr/bin/{name}"  # az is present
+        # az present, standalone bicep absent
+        return None if name == "bicep" else f"/usr/bin/{name}"
 
-    with patch("discover.shutil.which", side_effect=fake_which):
-        with pytest.raises(FileNotFoundError) as exc_info:
-            discover.discover_resources(bicep, manifest, use_azd_env=False)
+    with (
+        patch("discover.shutil.which", side_effect=fake_which),
+        patch(
+            "discover.subprocess.run",
+            return_value=_make_bicep_proc(_SAMPLE_ARM_JSON),
+        ),
+    ):
+        results = discover.discover_resources(bicep, manifest, use_azd_env=False)
 
-    assert "bicep" in str(exc_info.value).lower()
-    assert "az bicep install" in str(exc_info.value)
+    assert len(results) == 3
 
 
 def test_discover_requires_az_cli(tmp_path):
@@ -284,6 +348,30 @@ def test_discover_returns_expected_resources(tmp_path):
     assert all(r["source"] == "bicep" for r in results)
 
 
+def test_discover_handles_symbolic_name_object_resources(tmp_path):
+    """Nested module templates with object-shaped `resources` (Bicep
+    languageVersion 2.0) must be flattened, not crash. Regression test."""
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(_MANIFEST_ALL_TYPES), encoding="utf-8")
+    bicep = tmp_path / "main.bicep"
+    bicep.write_text("// stub", encoding="utf-8")
+
+    with (
+        patch("discover.shutil.which", return_value="/usr/bin/az"),
+        patch(
+            "discover.subprocess.run",
+            return_value=_make_bicep_proc(_SAMPLE_ARM_JSON_SYMBOLIC),
+        ),
+    ):
+        results = discover.discover_resources(bicep, manifest, use_azd_env=False)
+
+    kinds = {r["resource_kind"] for r in results}
+    assert "Microsoft.CognitiveServices/accounts/deployments" in kinds
+    assert "Microsoft.Storage/storageAccounts" in kinds
+    assert "Microsoft.DocumentDB/databaseAccounts" in kinds
+    assert len(results) == 3
+
+
 def test_discover_template_location_becomes_placeholder(tmp_path):
     """Template expression in location → 'resourceGroup-location' placeholder."""
     manifest = tmp_path / "manifest.json"
@@ -371,3 +459,104 @@ def test_parse_gib():
     assert discover._parse_gib("2Gi") == 2.0
     assert discover._parse_gib("") is None
     assert discover._parse_gib("512Mi") is None  # Mebibytes not handled, return None
+
+
+# ---------------------------------------------------------------------------
+# Test: ACA cpu resolves the Bicep `json('x')` idiom to a float
+#
+# Real-world Bicep (every azd ACA template) declares container CPU as
+# `cpu: json('0.5')` — `az bicep build --stdout` renders that as the ARM
+# expression string "[json('0.5')]". The extractor must resolve it to a
+# numeric vCPU, otherwise the projector does arithmetic on a str and crashes.
+# ---------------------------------------------------------------------------
+
+_ARM_ACA_JSON_CPU = {
+    "type": "Microsoft.App/containerApps",
+    "location": "eastus2",
+    "properties": {
+        "workloadProfileName": "Consumption",
+        "template": {
+            "scale": {"minReplicas": 1, "maxReplicas": 3},
+            "containers": [
+                {"resources": {"cpu": "[json('1.0')]", "memory": "2Gi"}}
+            ],
+        },
+    },
+}
+
+
+def test_extract_aca_resolves_json_cpu_idiom():
+    """`cpu: json('1.0')` (ARM expr "[json('1.0')]") → vcpu 1.0 as a float."""
+    sku = discover._extract_aca(_ARM_ACA_JSON_CPU)
+    assert sku["extra"]["vcpu"] == 1.0
+    assert isinstance(sku["extra"]["vcpu"], float)
+    assert sku["extra"]["memory_gib"] == 2.0
+
+
+def test_parse_vcpu():
+    assert discover._parse_vcpu("[json('0.5')]") == 0.5
+    assert discover._parse_vcpu("[json('1.0')]") == 1.0
+    assert discover._parse_vcpu("0.25") == 0.25
+    assert discover._parse_vcpu(0.5) == 0.5
+    assert discover._parse_vcpu(1) == 1.0
+    assert discover._parse_vcpu(None) is None
+    assert discover._parse_vcpu("") is None
+    assert discover._parse_vcpu("[parameters('cpu')]") is None  # unresolvable → None
+
+
+# ---------------------------------------------------------------------------
+# Finding A (discover layer): replica counts must resolve to ints
+#
+# Real Bicep parameterizes replica bounds:
+#   scale: { minReplicas: minReplicas, maxReplicas: maxReplicas }
+# which `az bicep build --stdout` renders as the ARM expression strings
+# "[parameters('minReplicas')]" / "[parameters('maxReplicas')]". The previous
+# `scale.get("maxReplicas") or 3` passed that *string* straight through, so the
+# projector later did `math.ceil(rps / str)` / `max(str, int)` → TypeError →
+# uncaught crash (exit 1, breaking the 2/3/4 exit contract). The extractor must
+# resolve resolvable values to ints and fall back to ints when unresolvable.
+# ---------------------------------------------------------------------------
+
+_ARM_ACA_PARAM_REPLICAS = {
+    "type": "Microsoft.App/containerApps",
+    "location": "eastus2",
+    "properties": {
+        "workloadProfileName": "Consumption",
+        "template": {
+            "scale": {
+                "minReplicas": "[parameters('minReplicas')]",
+                "maxReplicas": "[parameters('maxReplicas')]",
+            },
+            "containers": [
+                {"resources": {"cpu": "[json('0.5')]", "memory": "1Gi"}}
+            ],
+        },
+    },
+}
+
+
+def test_extract_aca_parameterized_replicas_resolve_to_int():
+    """Unresolvable replica params fall back to ints, never leave a str."""
+    sku = discover._extract_aca(_ARM_ACA_PARAM_REPLICAS)
+    assert isinstance(sku["extra"]["min_replicas"], int)
+    assert isinstance(sku["extra"]["max_replicas"], int)
+
+
+def test_extract_aca_numeric_string_replicas_resolve_to_int():
+    """`json('2')`/numeric-string replicas resolve to the right int."""
+    arm = {
+        "type": "Microsoft.App/containerApps",
+        "location": "eastus2",
+        "properties": {
+            "workloadProfileName": "Consumption",
+            "template": {
+                "scale": {"minReplicas": "[json('2')]", "maxReplicas": "5"},
+                "containers": [{"resources": {"cpu": "0.5", "memory": "1Gi"}}],
+            },
+        },
+    }
+    sku = discover._extract_aca(arm)
+    assert sku["extra"]["min_replicas"] == 2
+    assert sku["extra"]["max_replicas"] == 5
+    assert isinstance(sku["extra"]["min_replicas"], int)
+    assert isinstance(sku["extra"]["max_replicas"], int)

@@ -1,0 +1,8 @@
+comparison: champion_challenger
+champion:
+  model: gpt-4.1
+challenger:
+  model: gpt-4.1-mini
+baseline_vs: challenger
+minimum_delta: 0.00
+gate: challenger_pass_rate >= champion_pass_rate

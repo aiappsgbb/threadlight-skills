@@ -28,6 +28,19 @@ effect**.
 | `OBS-004` | Workbook exists in repo (`docs/workbooks/*.json`) or deployed via Bicep | `should-fix` if absent |
 | `OBS-005` | Log Analytics retention declared (`retentionInDays` set) | `should-fix` if default (30 days) for production |
 
+### Outcome-KPI scorecard (static — F7)
+
+CAF's agent observability triad puts *baselines* (latency, cost-per-interaction,
+success-rate) and *deviation alerts* under observability, and asks teams to
+measure a real outcome — not just wire traces. These join eval pass-rate +
+cost-per-interaction + live traces into one view (rendered as report § 8).
+
+| ID | Check | Default status |
+|---|---|---|
+| `KPI-001` | SPEC/docs declare all three outcome baselines: target latency, cost-per-interaction, success/pass rate | `should-fix` if any missing |
+| `KPI-002` | A deviation alert is wired against a KPI baseline (Insights `metricAlerts`/`scheduledQueryRules` referencing latency/cost/success, or a declared baseline alert) | `should-fix` if absent (recipe `KPI-002`) |
+| `KPI-003` | Outcome scorecard is joinable: eval pass-rate (`specs/evals-manifest.json`) **+** cost-per-interaction (`specs/cost-manifest.json`) **+** traces emitting all present | `should-fix` if partial, `not-verified` if no signals |
+
 ### Live (tier 2 — `Monitoring Reader` + `Log Analytics Reader`)
 
 | ID | Check | Default status |

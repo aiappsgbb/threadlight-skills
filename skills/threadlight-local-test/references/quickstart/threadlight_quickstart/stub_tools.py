@@ -114,7 +114,9 @@ def build_stub_tools(
     return tools, stores
 
 
-def _identity_decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+def _identity_decorator(func: Callable[..., Any] | None = None, **_kwargs: Any) -> Callable[..., Any]:
+    if func is None:
+        return lambda f: f
     return func
 
 
@@ -130,38 +132,37 @@ def _make_crud_tools(
     """
     name = store.name
 
-    @tool
-    def list_records(**filters: Any) -> list[dict[str, Any]]:  # noqa: ARG001
-        """List records matching the given filters (e.g. status='open').
-
-        Empty filter set returns every record. Filter values are matched
-        with equality only — no fuzzy or substring semantics in v1.
-        """
+    def _list_impl(**filters: Any) -> list[dict[str, Any]]:  # noqa: ARG001
         return store.list_all(**filters)
 
-    list_records.__name__ = f"list_{name}"
-    list_records.__doc__ = (
-        f"List `{name}` records. Pass kwargs to filter by equality "
-        f"(e.g. `status='open'`). No filters → all records."
+    list_records = tool(
+        _list_impl,
+        name=f"list_{name}",
+        description=(
+            f"List `{name}` records. Pass kwargs to filter by equality "
+            f"(e.g. `status='open'`). No filters -> all records."
+        ),
     )
 
-    @tool
-    def get_record(id: str) -> dict[str, Any] | None:  # noqa: A002
-        """Get a single record by id, or None."""
+    def _get_impl(id: str) -> dict[str, Any] | None:  # noqa: A002
         return store.get(id)
 
-    get_record.__name__ = f"get_{name}"
-    get_record.__doc__ = f"Get a single `{name}` record by id, or None."
+    get_record = tool(
+        _get_impl,
+        name=f"get_{name}",
+        description=f"Get a single `{name}` record by id, or None.",
+    )
 
-    @tool
-    def update_record(id: str, **fields: Any) -> dict[str, Any]:  # noqa: A002
-        """Update fields on a record and return the mutated record."""
+    def _update_impl(id: str, **fields: Any) -> dict[str, Any]:  # noqa: A002
         return store.update(id, **fields)
 
-    update_record.__name__ = f"update_{name}"
-    update_record.__doc__ = (
-        f"Update fields on one `{name}` record (in-memory; reset every "
-        f"`python -m threadlight_quickstart` launch)."
+    update_record = tool(
+        _update_impl,
+        name=f"update_{name}",
+        description=(
+            f"Update fields on one `{name}` record (in-memory; reset every "
+            f"`python -m threadlight_quickstart` launch)."
+        ),
     )
 
     return [list_records, get_record, update_record]

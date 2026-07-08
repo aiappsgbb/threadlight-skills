@@ -1,0 +1,50 @@
+# AGT governance policy — baseline template
+#
+# Copy to the pilot root as `policy.yaml` (or `agt-policy.yaml`), set a real
+# ruleset `version`, and fill the tool families from the pilot's agent.yaml
+# tool set. `version` is the semver of THIS policy document — not the AGT
+# package version.
+#
+#   pip install agent-governance-toolkit
+#   agt lint-policy policy.yaml      # schema check (required gate)
+#   agt verify                       # OWASP ASI 2026 attestation (required gate)
+#   agt test policy.yaml fixtures/   # replay expected verdicts — ADVISORY in
+#                                    # 4.1.0 (see references/wiring-snippet.md)
+version: "1.0.0"                      # ruleset version — never 'latest'
+name: threadlight-baseline
+description: >-
+  Least-privilege, default-deny action governance for a threadlight pilot.
+metadata:
+  references:
+    - owasp-asi-2026                  # OWASP Agentic Security Initiative — Agentic Top 10
+
+# Default-deny: an action with no matching allow rule is denied.
+deny_by_default: true
+
+rules:
+  - name: block-shell-exec
+    priority: 100
+    description: Block arbitrary shell / process-execution tools (excessive agency).
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["shell_exec", "exec", "subprocess", "os_system"]
+    action: block
+
+  - name: deny-external-email
+    priority: 90
+    description: Deny unsolicited outbound email tools.
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: send_external_email
+    action: deny
+
+  - name: allow-read-only
+    priority: 10
+    description: Read-only tools are permitted.
+    conditions:
+      - field: tool.category
+        operator: eq
+        value: read
+    action: allow

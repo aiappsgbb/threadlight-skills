@@ -1,0 +1,19 @@
+# Environment setup — runbooks for the platform team
+
+These runbooks provision the **identity, permissions, and runners** the pilot's
+prod pipeline needs. The pilot / coding agent does **not** run them and does
+**not** assume deploy rights — hand them to whoever owns the target subscription.
+
+Onboarding path: **{{ONBOARDING_PATH}}** · posture: **{{POSTURE}}** ·
+platform: **{{PLATFORM}}** · target RG: **{{TARGET_RESOURCE_GROUP}}**
+
+| Step | File | Owner | Purpose |
+|------|------|-------|---------|
+| 1 | `01-uami-federated-credentials.md` (+ `.sh`) | Platform team | UAMI + OIDC/WIF federated creds (no secrets) |
+| 2 | `02-rbac-role-assignments.md` (+ `.sh`) | Platform team | Least-privilege RBAC, scoped to the target RG |
+| 3 | `03-runners-private-vnet.md` (+ `.sh`) | Platform team | Private-VNet runners (only if private = {{PRIVATE_NETWORK}}) |
+
+## Next actions for this onboarding path
+{{NEXT_ACTIONS}}
+
+See `../central-platform-boundary.md` for the parallel-track guardrails.

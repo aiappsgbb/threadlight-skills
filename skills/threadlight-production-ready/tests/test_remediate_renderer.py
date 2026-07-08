@@ -141,6 +141,72 @@ def t_cli_end_to_end() -> None:
            "cli: ID echoed in stdout")
 
 
+# ---------------------------------------------------------------------------
+# 4) Per-file recipe catalog (pytest-collected).
+#
+#    The legacy yaml holds only ~12 finding IDs, but the maintained catalog is
+#    `references/remediation-recipes/{FID}.md` (70+ recipes). `--remediate`
+#    must resolve those too — yaml stays authoritative for the IDs it defines
+#    (they ship ready-to-run bash), with a fall-back to the per-file `.md`.
+#
+#    These are `test_*` functions so `pytest` actually collects them (the
+#    `t_*` runner above is bridged into pytest by
+#    `test_legacy_remediate_runner_passes`).
+# ---------------------------------------------------------------------------
+
+
+def test_per_file_only_recipe_is_reachable() -> None:
+    """A finding ID that exists only as references/remediation-recipes/{FID}.md
+    (never in the legacy yaml) resolves and exits 0."""
+    buf, err = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory() as td, \
+            redirect_stdout(buf), redirect_stderr(err):
+        rc = pr._emit_remediation(Path(td), "NET-502")
+    assert rc == 0, f"expected 0, got {rc}; stderr={err.getvalue()[:300]}"
+    out = buf.getvalue()
+    assert "# remediation recipe — NET-502" in out, out[:300]
+    # marker unique to NET-502.md's body
+    assert "citadel-spoke-onboarding" in out, out[:400]
+
+
+def test_per_file_recipe_case_insensitive() -> None:
+    buf, err = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory() as td, \
+            redirect_stdout(buf), redirect_stderr(err):
+        rc = pr._emit_remediation(Path(td), "net-502")  # lowercased
+    assert rc == 0, f"expected 0, got {rc}; stderr={err.getvalue()[:300]}"
+    assert "NET-502" in buf.getvalue()
+
+
+def test_yaml_recipe_still_authoritative() -> None:
+    """A yaml-only ID must still resolve after the per-file fall-back is added."""
+    buf, err = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory() as td, \
+            redirect_stdout(buf), redirect_stderr(err):
+        rc = pr._emit_remediation(Path(td), "GOV-101")
+    assert rc == 0, f"expected 0, got {rc}; stderr={err.getvalue()[:300]}"
+    assert "# remediation recipe — GOV-101" in buf.getvalue()
+
+
+def test_unknown_recipe_still_exits_2() -> None:
+    buf, err = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory() as td, \
+            redirect_stdout(buf), redirect_stderr(err):
+        rc = pr._emit_remediation(Path(td), "ZZZ-9999")
+    assert rc == 2
+    assert "no remediation recipe" in err.getvalue().lower()
+
+
+def test_legacy_remediate_runner_passes() -> None:
+    """Bridge the stdlib `t_*` runner into pytest so its contract is
+    actually CI-enforced (pytest does not collect `t_*` functions)."""
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__))],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert proc.returncode == 0, (proc.stdout or "") + (proc.stderr or "")
+
+
 def main() -> int:
     tests = [
         t_known_recipe_prints_block,

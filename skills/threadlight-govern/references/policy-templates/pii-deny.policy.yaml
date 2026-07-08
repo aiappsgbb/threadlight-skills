@@ -1,0 +1,64 @@
+# AGT governance policy — strict PII-deny template
+#
+# Use for pilots handling regulated / sensitive data where the agent must never
+# egress PII through tools or external sinks. Strictest default-deny baseline.
+#
+#   agt lint-policy policy.yaml && agt verify          # required CI gates
+#   agt test policy.yaml fixtures/                      # ADVISORY in 4.1.0: the
+#     replay schema requires singular `condition` (see wiring-snippet.md)
+version: "1.0.0"                      # ruleset version — never 'latest'
+name: threadlight-pii-deny
+description: >-
+  Strict default-deny governance blocking PII egress and arbitrary outbound sinks.
+metadata:
+  references:
+    - owasp-asi-2026
+
+deny_by_default: true
+
+rules:
+  - name: block-shell-exec
+    priority: 100
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["shell_exec", "exec", "subprocess", "os_system"]
+    action: block
+
+  - name: block-external-sinks
+    priority: 95
+    description: No arbitrary outbound sinks (email, HTTP POST, external file write).
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["send_external_email", "http_post", "file_write_external"]
+    action: block
+
+  - name: deny-pii-egress
+    priority: 90
+    description: Block any tool call whose payload carries PII out of the boundary.
+    conditions:
+      - field: data.contains_pii
+        operator: eq
+        value: true
+      - field: tool.category
+        operator: eq
+        value: egress
+    action: block
+
+  - name: audit-sensitive-read
+    priority: 50
+    description: Full I/O audit trail on reads of sensitive categories.
+    conditions:
+      - field: data.classification
+        operator: in
+        value: ["pii", "phi", "pci"]
+    action: audit
+
+  - name: allow-read-only
+    priority: 10
+    conditions:
+      - field: tool.category
+        operator: eq
+        value: read
+    action: allow

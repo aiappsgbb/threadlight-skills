@@ -3,3 +3,4 @@ date,tool_version,posture,raw_percent,with_waivers_percent,verified,total_scorea
 2026-06-10T17:20:03Z,0.3.0,standard-ai-gateway,30,30,74,137,42,not_ready
 2026-06-10T17:20:07Z,0.3.0,standard-ai-gateway,31,31,74,137,42,not_ready
 2026-06-10T17:20:11Z,0.3.0,standard-ai-gateway,30,30,74,137,42,not_ready
+2026-07-07T00:00:00Z,0.9.0,standard-ai-gateway,22,22,78,142,47,not_ready

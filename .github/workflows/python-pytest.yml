@@ -15,7 +15,29 @@ name: python-pytest
 #   - skills/threadlight-production-ready/tests/ (covers COST-005/006 +
 #     existing pillar tests)
 #   - skills/threadlight-auto/tests/             (orchestrator state
-#     machine, includes the new cost_projection stage probe)
+#     machine, includes the evals/redteam/govern Discover/Protect stage
+#     probes — run as a standalone script since the suite uses main() —
+#     PLUS test_e2e_control_plane.py, the offline cross-skill E2E that
+#     chains govern+evals+redteam → production-ready KPI scorecard →
+#     cicd gates against the green fixtures; collected by pytest)
+#   - skills/threadlight-evals/tests/            (Discover evals leg — offline
+#     batch + online/continuous eval + A/B gate; deterministic, no network)
+#   - skills/threadlight-redteam/tests/          (Discover safety leg — AI Red
+#     Teaming Agent scan mapper; deterministic, no network)
+#   - skills/threadlight-govern/tests/           (Protect leg — AGT runtime
+#     governance verifier; deterministic, no network)
+#   - skills/threadlight-cicd/tests/             (prod CI/CD pipeline +
+#     env-setup runbook generator — deterministic, secret-free, no network)
+#   - skills/threadlight-customize/tests/        (fork-and-customize final
+#     leg — instructions-only: version + structure + no-secrets/anonymization)
+#   - skills/threadlight-router-bench/tests/     (offline self-improvement cold-
+#     path: learn single-run CI learnings + bench cost scorecard; gh/az calls
+#     are dependency-injected with fixture runners — deterministic, no network)
+#   - skills/threadlight-event-triggers/tests/   (six receiver scaffolds: each
+#     pure idempotent handle() core — fresh/duplicate/failure paths + key
+#     derivation + a structural "shipped" guard that py_compiles every scaffold.
+#     Imports the receiver cores with NO azure SDKs installed — all azure.*
+#     imports are lazy — so it runs stdlib-only, no network)
 #
 # 2 e2e tests in threadlight-production-ready/tests/test_end_to_end.py
 # are pre-existing failures caused by stale safe-check fixtures and are
@@ -36,7 +58,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip pytest
+      - run: python -m pip install --upgrade pip pytest pyyaml
+      - name: Guard - SKILL.md description length (<=1024 chars)
+        # Deterministic per-PR guard for the silent loader-drop regression:
+        # any skills/*/SKILL.md whose parsed `description` exceeds 1024 chars
+        # is dropped from the Copilot CLI registry. The heavier
+        # skill-discovery-smoke.sh confirms this end-to-end but only runs on
+        # manual dispatch, so this cheap static check gates every PR.
+        run: python scripts/ci/check-skill-description-length.py
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
       - name: Run threadlight-production-ready tests
@@ -48,3 +77,30 @@ jobs:
       - name: Run threadlight-auto tests
         run: python -m pytest skills/threadlight-auto/tests/ -v
         continue-on-error: true
+      - name: Run threadlight-auto orchestrator state-machine test (standalone)
+        # The orchestrator suite drives main() rather than pytest test_ funcs,
+        # so pytest collects 0 above. Run it directly to hard-gate the
+        # evals/redteam/govern stage ordering + skip/run probes.
+        run: python skills/threadlight-auto/tests/test_threadlight_auto_orchestrator.py
+      - name: Run threadlight-evals tests
+        run: python -m pytest skills/threadlight-evals/tests/ -v
+      - name: Run threadlight-redteam tests
+        run: python -m pytest skills/threadlight-redteam/tests/ -v
+      - name: Run threadlight-govern tests
+        run: python -m pytest skills/threadlight-govern/tests/ -v
+      - name: Run threadlight-cicd tests
+        run: python -m pytest skills/threadlight-cicd/tests/ -v
+      - name: Run threadlight-customize tests
+        run: python -m pytest skills/threadlight-customize/tests/ -v
+      - name: Run threadlight-router-bench tests
+        # Offline self-improvement cold-path: learn (single-run CI learnings) +
+        # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network
+        # (all gh/az calls are dependency-injected with fixture runners in tests).
+        run: python -m pytest skills/threadlight-router-bench/tests/ -v
+      - name: Run threadlight-event-triggers tests
+        # Six receiver scaffolds. Each receiver core exposes a pure, injectable
+        # handle() (fresh/duplicate/failure + key derivation) and a structural
+        # guard that py_compiles every scaffold and asserts the "shipped" file
+        # set. All azure.* imports are lazy, so the cores import under this
+        # stdlib-only runner (pytest + pyyaml). Deterministic, no network.
+        run: python -m pytest skills/threadlight-event-triggers/tests/ -v

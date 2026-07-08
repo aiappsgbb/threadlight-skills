@@ -1,0 +1,133 @@
+{
+  "cost": 94,
+  "interval": "PT1H",
+  "namespace": "Microsoft.CognitiveServices/accounts",
+  "resourceregion": "swedencentral",
+  "timespan": "2026-06-30T10:19:00Z/2026-06-30T11:07:00Z",
+  "value": [
+    {
+      "displayDescription": "Number of prompt tokens processed (input) on a model. Applies to PTU, PTU-Managed and Pay-as-you-go deployments.",
+      "errorCode": "Success",
+      "id": "/subscriptions/2c745a8f-9d37-45e3-8506-80797e89735e/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci/providers/Microsoft.Insights/metrics/InputTokens",
+      "name": {
+        "localizedValue": "Input Tokens",
+        "value": "InputTokens"
+      },
+      "resourceGroup": "rg-shared-gbb-ci",
+      "timeseries": [
+        {
+          "data": [
+            {
+              "timeStamp": "2026-06-30T10:19:00Z",
+              "total": 7048336.0
+            }
+          ],
+          "metadatavalues": [
+            {
+              "name": {
+                "localizedValue": "modeldeploymentname",
+                "value": "modeldeploymentname"
+              },
+              "value": "model-router"
+            },
+            {
+              "name": {
+                "localizedValue": "modelname",
+                "value": "modelname"
+              },
+              "value": "gpt-5.4"
+            }
+          ]
+        },
+        {
+          "data": [
+            {
+              "timeStamp": "2026-06-30T10:19:00Z",
+              "total": 313389.0
+            }
+          ],
+          "metadatavalues": [
+            {
+              "name": {
+                "localizedValue": "modeldeploymentname",
+                "value": "modeldeploymentname"
+              },
+              "value": "model-router"
+            },
+            {
+              "name": {
+                "localizedValue": "modelname",
+                "value": "modelname"
+              },
+              "value": "gpt-5.5"
+            }
+          ]
+        }
+      ],
+      "type": "Microsoft.Insights/metrics",
+      "unit": "Count"
+    },
+    {
+      "displayDescription": "Number of tokens generated (output) from an OpenAI model. Applies to PTU, PTU-Managed and Pay-as-you-go deployments.",
+      "errorCode": "Success",
+      "id": "/subscriptions/2c745a8f-9d37-45e3-8506-80797e89735e/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci/providers/Microsoft.Insights/metrics/OutputTokens",
+      "name": {
+        "localizedValue": "Output Tokens",
+        "value": "OutputTokens"
+      },
+      "resourceGroup": "rg-shared-gbb-ci",
+      "timeseries": [
+        {
+          "data": [
+            {
+              "timeStamp": "2026-06-30T10:19:00Z",
+              "total": 111473.0
+            }
+          ],
+          "metadatavalues": [
+            {
+              "name": {
+                "localizedValue": "modeldeploymentname",
+                "value": "modeldeploymentname"
+              },
+              "value": "model-router"
+            },
+            {
+              "name": {
+                "localizedValue": "modelname",
+                "value": "modelname"
+              },
+              "value": "gpt-5.4"
+            }
+          ]
+        },
+        {
+          "data": [
+            {
+              "timeStamp": "2026-06-30T10:19:00Z",
+              "total": 13201.0
+            }
+          ],
+          "metadatavalues": [
+            {
+              "name": {
+                "localizedValue": "modeldeploymentname",
+                "value": "modeldeploymentname"
+              },
+              "value": "model-router"
+            },
+            {
+              "name": {
+                "localizedValue": "modelname",
+                "value": "modelname"
+              },
+              "value": "gpt-5.5"
+            }
+          ]
+        }
+      ],
+      "type": "Microsoft.Insights/metrics",
+      "unit": "Count"
+    }
+  ]
+}

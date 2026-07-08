@@ -20,7 +20,7 @@ description: >
   orchestration (threadlight-deploy), schema authoring
   (threadlight-design).
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -118,9 +118,9 @@ the documented trims as informational — never as gate failures.
 
 ```bash
 # From repo root
-python -m threadlight.safe_check --phase design        # after threadlight-design Phase 1-3
-python -m threadlight.safe_check --phase pre-deploy    # immediately before azd up
-python -m threadlight.safe_check --phase post-deploy   # immediately after azd up returns 0
+python3 tests/safe_check.py --phase design        # after threadlight-design Phase 1-3
+python3 tests/safe_check.py --phase pre-deploy    # immediately before azd up
+python3 tests/safe_check.py --phase post-deploy   # immediately after azd up returns 0
 ```
 
 Exit codes:
@@ -138,7 +138,6 @@ Optional flags:
 --rg <name>           # override AZURE_RESOURCE_GROUP env var (post-deploy)
 --manifest <path>     # override default specs/manifest.json
 --out <dir>           # override default tests/ output dir
---strict              # fail on warnings (default: warnings printed, exit 0 if no errors)
 --quiet               # only print final OK / FAIL line + exit code
 ```
 
@@ -723,7 +722,7 @@ az resource list -g <rg> --resource-type Microsoft.BotService/botServices -o jso
 ### 3. `az` honors `AZURE_CONFIG_DIR` only if env vars set in *parent*
 
 The Python process inherits parent env vars, but if `AZURE_CONFIG_DIR`
-isn't set in the shell that launches `python -m threadlight.safe_check`,
+isn't set in the shell that launches `python3 tests/safe_check.py`,
 `az` falls back to `~/.azure` and reads the wrong tenant. Per
 `azure-tenant-isolation`: set both `AZURE_CONFIG_DIR` and
 `AZD_CONFIG_DIR` in the shell before invoking this gate.
@@ -759,7 +758,7 @@ Add to `azure.yaml`:
 hooks:
     predeploy:
         shell: pwsh
-        run: python -m threadlight.safe_check --phase pre-deploy
+        run: python3 tests/safe_check.py --phase pre-deploy
     postdeploy:
         shell: pwsh
         run: |
@@ -767,7 +766,7 @@ hooks:
             uv sync --frozen --quiet
             uv run postdeploy.py     # existing seed script
             cd ..
-            python -m threadlight.safe_check --phase post-deploy
+            python3 tests/safe_check.py --phase post-deploy
 ```
 
 `predeploy` exits 1 → `azd deploy` aborts before the `docker build`,

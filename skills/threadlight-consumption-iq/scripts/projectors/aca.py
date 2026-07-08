@@ -106,6 +106,39 @@ def _get_consumption_prices(
     return prices, _worst_source(*sources)
 
 
+def _coerce_float(value: Any, default: float) -> float:
+    """Best-effort float coercion with a fallback.
+
+    Discovery resolves the common ``json('x')`` CPU idiom, but the projector
+    must never crash on a stray non-numeric ``vcpu`` / ``memory_gib`` (a
+    hand-authored rollout topology, or an ARM expression discovery could not
+    resolve). A ``None`` or unparseable value falls back to ``default`` rather
+    than raising ``TypeError`` mid-projection.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    """Best-effort int coercion with a fallback.
+
+    Replica bounds can arrive as ARM expression strings (parameterized
+    ``minReplicas``/``maxReplicas``) or hand-authored strings in a rollout
+    topology. The projector must never crash doing ``max()`` / ``math.ceil``
+    arithmetic on a ``str`` — an unparseable value falls back to ``default``.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _compute_consumption_cost(
     load_profile: dict[str, Any],
     current_sku: dict[str, Any],
@@ -126,10 +159,15 @@ def _compute_consumption_cost(
     monthly_requests = peak_rps * seconds_per_month
 
     extra = current_sku.get("extra", {})
-    vcpu = extra.get("vcpu", 0.5)
-    memory_gib = extra.get("memory_gib", 1.0)
+    vcpu = _coerce_float(extra.get("vcpu"), 0.5)
+    memory_gib = _coerce_float(extra.get("memory_gib"), 1.0)
     # NOTE: requests_per_second_per_replica defaults to 10 if not specified in extra.
-    rps_per_replica = extra.get("requests_per_second_per_replica", 10)
+    rps_per_replica = _coerce_float(extra.get("requests_per_second_per_replica", 10), 10.0)
+
+    # Replica bounds may arrive as strings (parameterized ARM / hand-authored
+    # topology); coerce defensively so arithmetic below never raises.
+    min_replicas = _coerce_int(min_replicas, 1)
+    max_replicas = _coerce_int(max_replicas, 10)
 
     if rps_per_replica > 0:
         avg_replicas = max(min_replicas, math.ceil(peak_rps / rps_per_replica))
@@ -168,9 +206,14 @@ def project(
     region = current_sku.get("region", "eastus2")
     extra = current_sku.get("extra", {})
 
+    # Discovery emits the Consumption tier lower-cased ("consumption"); declared
+    # topology / fixtures use "Consumption". Normalize so a discovered
+    # Consumption ACA is costed usage-based, not as flat Dedicated.
+    is_consumption = isinstance(tier, str) and tier.strip().lower() == "consumption"
+
     alternatives: list[dict[str, Any]] = []
 
-    if tier == "Consumption":
+    if is_consumption:
         min_replicas = extra.get("min_replicas", 1)
         max_replicas = extra.get("max_replicas", 10)
         prices, price_src = _get_consumption_prices(region, pricing_client)

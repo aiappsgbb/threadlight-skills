@@ -21,7 +21,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=ia-v24">
+<link rel="stylesheet" href="assets/site.css?v=cb8d7282">
 </head>
 <body class="chapter-page chapter-production">
 
@@ -32,10 +32,11 @@
     </a>
   </div>
   <nav class="nav" aria-label="Site chapters">
-    <a href="./index.html">Home</a>
-    <a href="./funnel.html">Funnel</a>
-    <a href="./production.html" aria-current="page">Production-ready</a>
-    <a href="./industries.html">Industries</a>
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./production.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
+    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
   </nav>
 </header>
 
@@ -45,183 +46,97 @@
 
 <main>
 
+  <!-- ==================== HERO ==================== -->
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap wrap-wide">
       <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Three postures &middot; thirteen pillars &middot; one scorecard</p>
-      <h1 class="reveal" data-delay="2">Green safe-check isn&rsquo;t <em>go-live.</em></h1>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
+      <h1 class="reveal" data-delay="2">Your pilot works. Now <em>prove it can ship.</em></h1>
       <p class="lede reveal" data-delay="3">
-        A pilot that passes <code>threadlight-safe-check --phase post-deploy</code>
-        is <em>structurally complete</em>: every selector landed, every channel
-        reaches, no placeholder image. That is not the same as
-        <em>ready for the customer architecture review</em>. This chapter is
-        what we walk through with the customer to answer
-        &ldquo;what posture is this in, what&rsquo;s missing, who owns each
-        gap, can we go live with waivers?&rdquo;
+        <code>threadlight-production-ready</code> turns your working demo into the
+        evidence-backed scorecard a customer&rsquo;s review board signs &mdash; so the pilot
+        <strong>ships</strong>, instead of stalling in the lab.
       </p>
-      <p class="lede reveal" data-delay="4" style="margin-top:16px; color:var(--ink-2); font-size:.98rem;">
-        <code>threadlight-production-ready</code> produces the answer in one
-        command &mdash; <strong>soft-advisory</strong> (never fails a build),
-        <strong>graceful</strong> when Azure permissions are partial
-        (degrades to <code>not-verified</code>, never invents a green), and
-        <strong>posture-aware</strong> (it doesn&rsquo;t recommend Citadel
-        if the customer is on a brownfield gateway).
+      <p class="lede reveal" data-delay="4" style="margin-top:12px;">
+        It scores the agent across <strong>13 production pillars</strong>, then hands you the
+        exact skill that <strong>closes each gap</strong>. Amber turns green &mdash; not a
+        four-week readiness scramble.
       </p>
-
       <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
         <div class="stat" role="listitem">
-          <span class="stat-num"><em>3</em></span>
-          <span class="stat-label">postures</span>
+          <span class="stat-num"><em>1</em></span>
+          <span class="stat-label">prompt to run</span>
         </div>
         <div class="stat" role="listitem">
           <span class="stat-num"><em>13</em></span>
-          <span class="stat-label">pillars, 4 themes</span>
+          <span class="stat-label">pillars scored</span>
         </div>
         <div class="stat" role="listitem">
-          <span class="stat-num"><em>7</em><span style="font-size:.6em;color:var(--ink-2);">m</span></span>
-          <span class="stat-label">to read end-to-end</span>
+          <span class="stat-num"><em>1</em></span>
+          <span class="stat-label">scorecard to sign</span>
         </div>
       </div>
 
-      <nav class="chapter-toc-inline reveal" data-delay="6" aria-label="In this chapter">
-        <a href="#amber-green">Amber &rarr; green</a>
-        <a href="#governance-triggers">When to graduate</a>
-        <a href="#posture-overview">3 postures</a>
-        <a href="#prod-scorecard">The scorecard</a>
-        <a href="#prod-cost">Cost forecast</a>
-        <a href="#chapter-recap">Recap</a>
-      </nav>
-
-      <p class="skill-eyebrow reveal" data-delay="7">
-        <span class="se-tag">Threadlight skills</span>
-        <code>.md</code> files a coding agent (GitHub Copilot in your IDE, Copilot CLI, or the GitHub chat panel) reads and follows.
-        <span class="se-not">Not commands. Not a CLI of our own.</span>
-      </p>
-    </div>
-  </section>
-
-  <!-- ==================== AMBER → GREEN JOURNEY ==================== -->
-  <section class="chapter-section" id="amber-green" data-toc-id="amber-green" data-toc-label="From amber to green">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The story we tell ARB</p>
-        <h2>Day-0 the scorecard was amber. <em>Six days later it was green.</em></h2>
-        <p class="section-lede">
-          Pattern from a recent engagement. <code>threadlight-safe-check</code>
-          opened with <strong>six amber pillars</strong>. Six days later
-          <code>threadlight-production-ready</code> closed with
-          <strong>two waivers signed</strong> and the rest green. Here is what we did,
-          who owned each gap, and what went on the scorecard.
-        </p>
-      </div>
-
-      <div class="amber-green-track reveal" data-delay="1">
-        <div class="agt-stage-labels">
-          <p class="agt-label is-amber"><span class="agt-day">Day&nbsp;0</span> safe-check opened the conversation</p>
-          <p class="agt-label is-green"><span class="agt-day">Day&nbsp;6</span> production-ready closed it</p>
-        </div>
-
-        <div class="agt-track">
-          <!-- AMBER COLUMN -->
-          <div class="agt-column is-amber">
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Identity</p>
-              <p class="agt-owner">User-assigned managed identity missing &middot; <span class="agt-owner-name">Platform &middot; Marco T.</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Network</p>
-              <p class="agt-owner">Container App on public ingress &middot; <span class="agt-owner-name">Cloud Ops &middot; Sara K.</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Continuous evals</p>
-              <p class="agt-owner">No nightly eval run scheduled &middot; <span class="agt-owner-name">AI Apps &middot; Priya R.</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Cost</p>
-              <p class="agt-owner">No budget alert &middot; $341/mo unbounded &middot; <span class="agt-owner-name">FinOps &middot; Jens H.</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">HITL audit</p>
-              <p class="agt-owner">Approvals captured, not signed &middot; <span class="agt-owner-name">Compliance &middot; Lina B.</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Supply chain</p>
-              <p class="agt-owner">No SBOM on container image &middot; <span class="agt-owner-name">Platform &middot; Marco T.</span></p>
-            </article>
-          </div>
-
-          <!-- ARROW -->
-          <div class="agt-arrow" aria-hidden="true">
-            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 10 32 L 50 32 M 38 18 L 54 32 L 38 46"
-                    fill="none" stroke="currentColor" stroke-width="3"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <p class="agt-arrow-label">Safe-check ran.<br>Waivers signed.<br>Owners did the work.</p>
-          </div>
-
-          <!-- GREEN COLUMN -->
-          <div class="agt-column is-green">
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Identity</p>
-              <p class="agt-owner">UAMI scoped to KV + ACR + ACA &middot; <span class="agt-owner-name">Marco T. &middot; landed</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Network</p>
-              <p class="agt-owner">Private endpoint + APIM front &middot; <span class="agt-owner-name">Sara K. &middot; landed</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Continuous evals</p>
-              <p class="agt-owner">Nightly GitHub Action + dashboard &middot; <span class="agt-owner-name">Priya R. &middot; landed</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Cost</p>
-              <p class="agt-owner">Budget alert + $500/mo cap &middot; <span class="agt-owner-name">Jens H. &middot; signed waiver</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">HITL audit</p>
-              <p class="agt-owner">Append-only ledger + signoff &middot; <span class="agt-owner-name">Lina B. &middot; landed</span></p>
-            </article>
-            <article class="agt-pillar">
-              <span class="agt-dot" aria-hidden="true"></span>
-              <p class="agt-name">Supply chain</p>
-              <p class="agt-owner">SBOM in pipeline &middot; SLSA L2 &middot; <span class="agt-owner-name">Marco T. &middot; signed waiver</span></p>
-            </article>
-          </div>
-        </div>
+      <div class="cost-cta-row reveal" data-delay="7" style="margin-top:26px;">
+        <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#proof">See a real scorecard <span class="arrow">&rarr;</span></a>
       </div>
     </div>
   </section>
 
-  <!-- =================== 5 GOVERNANCE TRIGGERS =================== -->
-
-  <section class="chapter-section" id="governance-triggers" data-toc-id="governance-triggers" data-toc-label="When to graduate">
+  <!-- ==================== 1 · WHY IT MATTERS ==================== -->
+  <section class="chapter-section" id="why" data-toc-id="why" data-toc-label="Why it matters">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>When to graduate</p>
-        <h2>Five questions a CISO asks. <em>If any one fires, you&rsquo;ve outgrown the laptop.</em></h2>
-        <p class="section-lede">
-          Threadlight skills run cleanly from a developer&rsquo;s machine for
-          early-stage co-design. The moment any of these five triggers turns
-          red, the pilot needs a <strong>hosted runtime, governed identity,
-          and a paved-path posture</strong> &mdash; not another iteration on
-          the laptop. This is the conversation production-ready opens with.
+        <p class="eyebrow"><span class="dot"></span>Why it matters</p>
+        <h2>A demo isn&rsquo;t a <em>production system.</em></h2>
+        <p class="section-lede">A green demo doesn&rsquo;t prove the CISO, SRE and FinOps can sign off. Without that evidence the customer defers &mdash; and the pilot dies in the lab.</p>
+      </div>
+      <div class="why-grid">
+        <article class="why-card reveal" data-delay="1">
+          <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg></span>
+          <p class="why-kicker">The stall</p>
+          <h3>&ldquo;It demos&rdquo; isn&rsquo;t &ldquo;it&rsquo;s governed.&rdquo;</h3>
+          <p>No identity, audit trail, eval gate or cost ceiling &mdash; nothing a review board can sign. So the pilot waits.</p>
+        </article>
+        <article class="why-card reveal" data-delay="2">
+          <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5h6a1 1 0 0 1 1 1V6H8v-.5a1 1 0 0 1 1-1z"/><path d="M8 6H6.2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h11.6a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H16"/><path d="M8.8 13l2.1 2.1 4.3-4.3"/></svg></span>
+          <p class="why-kicker">What you get</p>
+          <h3>The scorecard that signs.</h3>
+          <p>13 pillars scored: the posture, every gap with severity and a named owner, and the go-live call &mdash; evidence attached.</p>
+        </article>
+        <article class="why-card reveal" data-delay="3">
+          <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.8 6.5a3.9 3.9 0 0 1-5 5L5.5 15.8a1.8 1.8 0 0 0 2.6 2.6l4.3-4.3a3.9 3.9 0 0 1 5-5l-2.6 2.6-2-.5-.5-2z"/></svg></span>
+          <p class="why-kicker">And it closes them</p>
+          <h3>Every gap names its fix.</h3>
+          <p>Each finding ships the skill that closes it &mdash; threadlight or awesome-gbb. Run it, amber turns green. The platform, adopted for you.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 2 · WHAT IT CHECKS ==================== -->
+  <section class="chapter-section" id="checks" data-toc-id="checks" data-toc-label="What it checks">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>What it checks</p>
+        <h2>13 pillars, three architectures, <em>one detected posture.</em></h2>
+        <p class="section-lede">Thirteen pillars define what &ldquo;ready&rdquo; means. Three postures define how it fits your architecture &mdash; detected before the first question.</p>
+      </div>
+
+      <!-- agent-governance vs platform boundary + the deliverable -->
+      <div class="reveal" data-delay="1" style="max-width:880px; margin: var(--s-5) auto 0; border:1px solid var(--line); border-left:3px solid var(--lime); border-radius:12px; background:var(--bg-2); padding:20px 24px;">
+        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Agent governance &mdash; not platform governance</p>
+        <p style="margin:0; color:var(--ink-1); font-size:.98rem; line-height:1.62;">
+          <strong>Citadel and the platform team secure the landing zone</strong> &mdash; the hub, the shared AI gateway, network and policy.
+          <strong>Threadlight proves the agent you run in it</strong>: these 13 pillars, plus a committed supply-chain SBOM, an agent-identity AI-BOM and an EU AI Act evidence pack.
+          The governance team&rsquo;s deliverable isn&rsquo;t a meeting &mdash; it&rsquo;s that record, in the repo, versioned with the code and gating every deploy.
         </p>
       </div>
 
+      <!-- 2a · six CISO questions -->
       <figure aria-labelledby="ciso-caption" class="reveal" data-delay="1">
-        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five questions a CISO asks arranged as spokes around a central production-ready core">
+        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
           <defs>
             <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
               <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
@@ -249,6 +164,7 @@
             <line x1="540" y1="190" x2="240" y2="310"/>
             <line x1="540" y1="190" x2="840" y2="310"/>
             <line x1="540" y1="190" x2="540" y2="50"/>
+            <line x1="540" y1="190" x2="540" y2="330"/>
           </g>
 
           <!-- Core: "Is this production-ready?" -->
@@ -308,58 +224,60 @@
             <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
             <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
           </g>
+
+          <!-- 06 Safety / red-team (bottom center) -->
+          <g transform="translate(420, 312)">
+            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M 16 24 L 28 36 M 28 24 L 16 36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <text x="44" y="22" class="ciso-num">06 &middot; SAFETY</text>
+            <text x="44" y="44" class="ciso-q">Can it be jailbroken?</text>
+          </g>
         </svg>
         <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Production-ready is a conversation, not a button. These are its five opening questions.
+          Six questions a CISO asks. Any one fires and the pilot has outgrown the laptop &mdash; governance, evals and safety are backed by <a href="#legs">skills that close them</a>.
         </figcaption>
       </figure>
 
-      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+      <!-- 2b · thirteen pillars / four themes -->
+      <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: var(--s-6);">
         <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>01 &middot; Identity</p>
-          <h3>Who is the agent acting as?</h3>
-          <p>If you can&rsquo;t answer in one sentence &mdash; UAMI, Entra app, on-behalf-of &mdash; you&rsquo;re past laptop scope.</p>
+          <p class="eyebrow"><span class="dot"></span>Network &amp; identity</p>
+          <h3>Where it runs, who it acts as.</h3>
+          <p><strong>01</strong>&nbsp;Network posture &middot;
+             <strong>03</strong>&nbsp;Identity &amp; access <span class="pill">runs</span> &middot;
+             <strong>04</strong>&nbsp;Secrets</p>
         </article>
         <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>02 &middot; Audit</p>
-          <h3>What did it do, when, for whom?</h3>
-          <p>Append-only audit and OTel traces are the difference between a demo and a defensible deployment.</p>
+          <p class="eyebrow"><span class="dot"></span>Governance &amp; HITL</p>
+          <h3>What it&rsquo;s allowed to do.</h3>
+          <p><strong>02</strong>&nbsp;Agent governance <span class="pill">runs</span> &middot;
+             <strong>07</strong>&nbsp;Responsible AI <span class="pill">runs</span> &middot;
+             <strong>08</strong>&nbsp;HITL &amp; audit</p>
         </article>
         <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>03 &middot; RBAC</p>
-          <h3>Can it read this index / container / API?</h3>
-          <p>Keyless RBAC per service, scoped to the agent identity &mdash; not a developer&rsquo;s personal token.</p>
+          <p class="eyebrow"><span class="dot"></span>Ops &amp; cost</p>
+          <h3>Is it running &mdash; and paying off?</h3>
+          <p><strong>05</strong>&nbsp;Observability &middot;
+             <strong>06</strong>&nbsp;Continuous evals <span class="pill">runs</span> &middot;
+             <strong>10</strong>&nbsp;Cost &middot;
+             <strong>11</strong>&nbsp;Reliability &middot;
+             <strong>12</strong>&nbsp;SRE hand-over</p>
         </article>
         <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>04 &middot; Telemetry</p>
-          <h3>How do we know it&rsquo;s running well?</h3>
-          <p>App Insights + OTel from day one, not bolted on after the first incident.</p>
-        </article>
-        <article class="detail-card">
-          <p class="eyebrow"><span class="dot"></span>05 &middot; Evals</p>
-          <h3>How do we know the next deploy didn&rsquo;t regress?</h3>
-          <p>Foundry Evals as a continuous gate &mdash; quality is a release criterion, not a vibe-check.</p>
+          <p class="eyebrow"><span class="dot"></span>Lifecycle &amp; supply-chain</p>
+          <h3>What it&rsquo;s built from, where it&rsquo;s going.</h3>
+          <p><strong>09</strong>&nbsp;Supply chain <span class="pill">runs</span> &middot;
+             <strong>13</strong>&nbsp;Model lifecycle</p>
         </article>
       </div>
-    </div>
-  </section>
-
-  <!-- =================== POSTURES =================== -->
-
-  <section class="chapter-section" id="posture-overview" data-toc-id="posture-overview" data-toc-label="Postures &middot; the three shapes">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Postures</p>
-        <h2>Three shapes &mdash; <em>resolved from SPEC &sect; 12.</em></h2>
-        <p class="section-lede">
-          The right answer for &ldquo;is this production-ready?&rdquo; depends
-          on the customer&rsquo;s estate. We support three postures explicitly,
-          and <code>threadlight-production-ready</code> resolves which one
-          applies before it starts asking governance questions.
-        </p>
+      <div class="read-deeper">
+        <span class="rd-label">All thirteen, deeply explained:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
       </div>
 
-      <figure aria-labelledby="posture-trio-caption" class="reveal" data-delay="1">
+      <!-- 2c · three postures -->
+      <figure aria-labelledby="posture-trio-caption" class="reveal" data-delay="1" style="margin-top: var(--s-7);">
         <svg class="posture-trio-svg" viewBox="0 0 1080 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three production postures shown as distinct architectural shapes: APIM perimeter plus agent core, agent core only, and a customer-owned network boundary around the agent">
           <defs>
             <linearGradient id="posture-card-fill" x1="0" y1="0" x2="0" y2="1">
@@ -448,92 +366,101 @@
           </g>
         </svg>
         <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Same agent &middot; three architectures &middot; <code>threadlight-production-ready</code> detects which one is live before it asks any governance question
+          Same agent, three architectures. The skill detects which one is live before it asks a single governance question &mdash; gateway-fronted, Foundry-native, or a customer-owned edge.
         </figcaption>
       </figure>
-
-      <div class="poster-triptych">
-        <article class="poster-card reveal" data-delay="1">
-          <p class="poster-eyebrow"><span>01 · Gateway-fronted (Citadel spoke)</span><span style="font-family:var(--mono); font-size:9.5px; padding:2px 8px; border-radius:99px; background:var(--lime-soft); color:var(--lime); letter-spacing:.16em;">DEFAULT</span></p>
-          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
-            <rect x="4" y="4" width="152" height="62" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-width="1.5"/>
-            <rect x="48" y="20" width="64" height="30" rx="6" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
-            <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
-            <text x="80" y="14" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.7">APIM PERIMETER</text>
-          </svg>
-          <h3>Gateway-fronted &mdash; the <em>Citadel spoke</em>.</h3>
-          <p class="poster-lede">
-            Customer&rsquo;s AI Citadel hub fronts every model call via APIM (JWT, rate-limit, content filter, semantic cache, ledger). Pilot Foundry project is onboarded as a spoke; <code>agent-governance-toolkit</code> enforces fine-grained policy <em>inside</em> the agent itself.
-          </p>
-          <div class="poster-foot">
-            <span class="pill">2 layers</span>
-            <span class="pill muted">pillars 01 · 03 · 04 · 09</span>
-            <span class="pill muted">pillars 02 · 05 · 07</span>
-          </div>
-        </article>
-
-        <article class="poster-card reveal" data-delay="2">
-          <p class="poster-eyebrow"><span>02 · Foundry-native (core only)</span></p>
-          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
-            <rect x="40" y="14" width="80" height="42" rx="8" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
-            <text x="80" y="40" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
-            <text x="80" y="66" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="currentColor" letter-spacing="0.16em" opacity="0.6">FOUNDRY ONLY</text>
-          </svg>
-          <h3>Foundry-native &mdash; <em>core only</em>.</h3>
-          <p class="poster-lede">
-            No central AI gateway. Agent Governance Toolkit (v4.1 preview, detected automatically) sits inside the agent process. 8&ndash;12&nbsp;&micro;s/eval, hash-chained audit, OWASP-ASI evidence. Greenfield or experimental tenants where the gateway investment hasn&rsquo;t happened.
-          </p>
-          <div class="poster-foot">
-            <span class="pill">1 layer</span>
-            <span class="pill muted">pillars 03 · 04 · 07 · 11</span>
-          </div>
-        </article>
-
-        <article class="poster-card reveal" data-delay="3">
-          <p class="poster-eyebrow"><span>03 · Customer-owned edge</span></p>
-          <svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:160px; height:70px; color:var(--chapter-accent, var(--lime));">
-            <path d="M4 14 L156 14" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>
-            <text x="80" y="8" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="currentColor" letter-spacing="0.18em" opacity="0.7">CUSTOMER-OWNED EDGE</text>
-            <rect x="48" y="26" width="64" height="36" rx="7" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-width="1.5"/>
-            <text x="80" y="48" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing="0.12em">AGENT</text>
-          </svg>
-          <h3>Customer-owned <em>edge</em>.</h3>
-          <p class="poster-lede">
-            Brownfield or regulated estate with existing APIM, NetSec-controlled VNet injection, or Defender for Cloud baseline. Pilot conforms to the established gateway pattern rather than introducing Citadel mid-flight. The safe-check <em>verifies</em>, never prescribes.
-          </p>
-          <div class="poster-foot">
-            <span class="pill">1 layer</span>
-            <span class="pill muted">pillars 01 · 03 · 09 · 12 · 13</span>
-          </div>
-        </article>
-      </div>
-
-      <div class="detail-grid" style="grid-template-columns: minmax(0,1fr); margin-top: var(--s-5);">
-        <div class="detail-card">
-          <h3>How we pick</h3>
-          <p>The SPEC&rsquo;s &sect; 12 (governance posture) is the source of truth. If the customer hasn&rsquo;t declared one, <code>threadlight-design</code> asks the question during co-design &mdash; explicitly, with the trade-offs &mdash; rather than picking silently. If detection finds a <strong>Citadel-pattern</strong> APIM&ndash;Foundry binding, posture 01 resolves automatically; an APIM binding <em>outside</em> the Citadel pattern resolves to posture 03 (customer-owned edge) regardless of what the SPEC says.</p>
-        </div>
-      </div>
-
-      <pre class="code-callout reveal" data-delay="1" tabindex="0" aria-label="How the coding agent invokes threadlight-production-ready"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready on this pilot. Detect posture; production load is 800 rpm."</span>
-<span class="out">&mdash; coding agent reads <code>skills/threadlight-production-ready/SKILL.md</code>, walks 13 pillars, writes <code>docs/production-readiness-report.md</code>
-&mdash; posture: gateway-fronted (Citadel spoke, detected via APIM binding) &middot; pillars: 10 verified, 2 amber, 1 not-verified &middot; ready in 6m44s</span></pre>
     </div>
   </section>
 
-  <section class="chapter-section" id="prod-scorecard" data-toc-id="prod-scorecard" data-toc-label="The scorecard">
-    <div class="wrap wrap-wide">
+  <!-- ==================== 3 · WHAT RUNS -> WHAT YOU GET ==================== -->
+  <section class="chapter-section" id="legs" data-toc-id="legs" data-toc-label="Close the gaps">
+    <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The artefact ARB reads</p>
-        <h2>Day 6 &mdash; <em>this PDF closed it.</em></h2>
-        <p class="section-lede">
-          Same scorecard, end of the journey above. Thirteen pillars, three
-          colours, two signed waivers. The customer&rsquo;s architecture review
-          board reads it in seven minutes.
-        </p>
+        <p class="eyebrow"><span class="dot"></span>Close the gaps</p>
+        <h2>Every gap has a skill that <em>closes it.</em></h2>
+        <p class="section-lede">The scorecard names the gap. One prompt runs the skill that closes it &mdash; threadlight or awesome-gbb &mdash; and amber turns green. Each wields a platform capability you already own, so you adopt it in a prompt instead of a project.</p>
       </div>
 
-      <article class="scorecard-preview reveal">
+      <div class="gap-grid">
+        <article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4V2.8h5V4"/><path d="M8.8 12.6l2 2 4-4"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Know what every agent is allowed to do.</h3>
+          <p class="gap-skill"><code>threadlight-govern</code> &middot; pillars 02 &middot; 07</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-govern" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove quality didn&rsquo;t regress before you ship.</h3>
+          <p class="gap-skill"><code>threadlight-evals</code> &middot; pillar 06</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Find the jailbreak before an attacker does.</h3>
+          <p class="gap-skill"><code>threadlight-redteam</code> &middot; pillar 07</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Catch a poisoned tool swap.</h3>
+          <p class="gap-skill"><code>threadlight-production-ready</code> &middot; pillar 09</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M14.4 9.4a2.6 2.6 0 0 0-2.4-1.3c-1.5 0-2.7.9-2.7 2 0 2.5 5.4 1.3 5.4 3.7 0 1.15-1.25 2-2.7 2a2.8 2.8 0 0 1-2.5-1.35"/><path d="M12 6.6v10.8"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Forecast the bill before finance sees it.</h3>
+          <p class="gap-skill"><code>threadlight-consumption-iq</code> &middot; pillar 10</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.4"/><circle cx="7" cy="18" r="2.4"/><circle cx="17" cy="10" r="2.4"/><path d="M7 8.4v7.2"/><path d="M7 12.5h4.2a3 3 0 0 0 3-3v-.1"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Make every check a merge gate.</h3>
+          <p class="gap-skill"><code>threadlight-cicd</code> &middot; gates the deploy</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+      </div>
+
+      <div class="read-deeper">
+        <span class="rd-label">The scorecard itself:</span>
+        <span><code>docs/production-readiness-report.md</code> + <code>tests/production-readiness-manifest.json</code> &mdash; per-pillar findings, evidence register, waivers, the go-live call.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 4 · PROOF ==================== -->
+  <section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Proof &middot; it works">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Proof &middot; it works</p>
+        <h2>The evidence a board <em>actually signs.</em></h2>
+        <p class="section-lede">Not a story &mdash; the real scorecard a review board reads, the eval, cost and safety baseline behind the go-live call, and the evidence pack a regulator reads.</p>
+      </div>
+
+      <!-- the scorecard PDF -->
+      <article class="scorecard-preview reveal" style="margin-top: var(--s-6);">
         <header class="sc-header">
           <p class="sc-title">scorecard.pdf</p>
           <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
@@ -566,220 +493,391 @@
         </footer>
       </article>
 
-      <div class="read-deeper">
-        <span class="rd-label">All 13 pillars, deeply explained:</span>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Open production-readiness.md &rarr;</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- =================== COST FORECAST (pillar 10 deep-dive) =================== -->
-  <section class="chapter-section" id="prod-cost" data-toc-id="prod-cost" data-toc-label="Cost forecast">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Pillar 10 &middot; deep-dive</p>
-        <h2>Forecast the bill at <em>production load</em> &mdash; before turning on traffic.</h2>
-        <p class="section-lede">
-          <code>threadlight-consumption-iq</code> walks every deployed
-          resource, projects it to the customer&rsquo;s <strong>declared
-          production load</strong>, prices it against the public
-          <strong>Azure Retail Prices API</strong>, and emits a manifest the
-          ARB and FinOps can govern against. The number on the scorecard is
-          a <em>forecast</em>, not an invoice surprise.
-        </p>
-        <p class="section-lede" style="margin-top:10px;">
-          <strong>Three things this answers</strong> &mdash;
-          (1)&nbsp;does the pilot SKU mix <em>scale</em> from PoC traffic to
-          production load without breaking constraints? &nbsp;
-          (2)&nbsp;what&rsquo;s the <em>governance</em> tag the customer&rsquo;s
-          FinOps needs (budget, owner, posture)? &nbsp;
-          (3)&nbsp;is every line traceable to a <em>real Azure price</em> we
-          can re-run on demand?
-        </p>
-      </div>
-
-      <!-- realistic compare-pair: unreviewed prod vs tailored, reviewed prod -->
-      <div class="cost-counters reveal" data-delay="2" role="figure" aria-label="Monthly prod-load cost: unreviewed default vs tailored, reviewed config">
-        <div class="ctr">
-          <div class="ctr-label">Unreviewed prod setup</div>
-          <div class="ctr-value is-current" data-cost-counter data-to="20000" data-prefix="$" data-suffix="/mo">$0/mo</div>
-          <div class="ctr-sub">
-            Pilot SKUs left as-is at prod load &mdash; LLM PAYG, gateway
-            standard, replicas uncapped. Order-of-magnitude indicative.
-          </div>
-        </div>
-        <div class="arrow" aria-hidden="true">&rarr;</div>
-        <div class="ctr">
-          <div class="ctr-label">Tailored &amp; reviewed</div>
-          <div class="ctr-value is-recommended" data-cost-counter data-to="12000" data-prefix="$" data-suffix="/mo">$0/mo</div>
-          <div class="ctr-sub">
-            Same agent at prod load with LLM tier, replica caps, retention
-            sized to declared SLA.
-            <span class="cost-savings-pill" aria-label="Tailoring delta">forecast delta &middot; <strong>&minus;40%</strong> at design-time</span>
-          </div>
-        </div>
-      </div>
-      <p class="cost-foot reveal" data-delay="2" style="margin-top:-12px; margin-bottom:24px; font-style: italic;">
-        Numbers above are <strong>order-of-magnitude</strong> for a
-        mid-volume agent at 800 rpm in eastus2 &mdash; <em>not</em>
-        a quote. The forecast lives in the artefact below, line by line,
-        with a <code>price_source</code> tag per row that the FinOps
-        owner can audit and re-run.
-      </p>
-
-      <!-- artefact preview: faux cost-projection.md card -->
-      <article class="scorecard-preview reveal" data-delay="3" aria-label="Cost projection artefact preview">
+      <!-- regulator-facing evidence pack -->
+      <article class="scorecard-preview reveal" data-delay="1" style="margin-top: var(--s-5);">
         <header class="sc-header">
-          <p class="sc-title">cost-projection.md</p>
-          <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
-          <p class="sc-posture">Load &mdash; <strong>declared production</strong> (800 rpm, 24/7, eastus2)</p>
+          <p class="sc-title">EU AI Act evidence pack</p>
+          <p class="sc-posture">Regulator-facing &middot; Art 9 &middot; 11 &middot; 12 &middot; 14 &middot; 15 &middot; 26 &middot; 27</p>
         </header>
-
-        <div class="cost-artefact-grid">
-          <div class="ca-cell ca-cell-head"><span class="ca-label">Layer</span></div>
-          <div class="ca-cell ca-cell-head"><span class="ca-label">Pilot SKU</span></div>
-          <div class="ca-cell ca-cell-head"><span class="ca-label">Production SKU</span></div>
-          <div class="ca-cell ca-cell-head"><span class="ca-label">Forecast signal</span></div>
-
-          <div class="ca-cell"><strong>LLM</strong></div>
-          <div class="ca-cell"><span class="ca-sku">PAYG entry tier</span></div>
-          <div class="ca-cell"><span class="ca-sku">PTU / reserved capacity</span></div>
-          <div class="ca-cell"><span class="ca-note">$$$ &mdash; <strong>dominant cost</strong> at prod; token budget = governance lever</span></div>
-
-          <div class="ca-cell"><strong>Vector / search</strong></div>
-          <div class="ca-cell"><span class="ca-sku">basic shared</span></div>
-          <div class="ca-cell"><span class="ca-sku">standard replicas + partitions</span></div>
-          <div class="ca-cell"><span class="ca-note">$$ &mdash; sized to declared doc count, free tier blocks at prod</span></div>
-
-          <div class="ca-cell"><strong>Data plane</strong></div>
-          <div class="ca-cell"><span class="ca-sku">serverless / shared</span></div>
-          <div class="ca-cell"><span class="ca-sku">provisioned RU/s + autoscale</span></div>
-          <div class="ca-cell"><span class="ca-note">$$ &mdash; headroom check, serverless caps trip at prod</span></div>
-
-          <div class="ca-cell"><strong>Gateway</strong></div>
-          <div class="ca-cell"><span class="ca-sku">consumption</span></div>
-          <div class="ca-cell"><span class="ca-sku">standard / premium (capacity)</span></div>
-          <div class="ca-cell"><span class="ca-note">$$ &mdash; RPS tier = SLA + capacity governance</span></div>
-
-          <div class="ca-cell"><strong>Compute (agent)</strong></div>
-          <div class="ca-cell"><span class="ca-sku">container apps consumption</span></div>
-          <div class="ca-cell"><span class="ca-sku">consumption + KEDA autoscale</span></div>
-          <div class="ca-cell"><span class="ca-note">$ &mdash; replica ceiling = governance lever</span></div>
-
-          <div class="ca-cell"><strong>Observability + storage</strong></div>
-          <div class="ca-cell"><span class="ca-sku">defaults</span></div>
-          <div class="ca-cell"><span class="ca-sku">retention + ZRS-cool tiers</span></div>
-          <div class="ca-cell"><span class="ca-note">$ &mdash; sized to retention SLA, not traffic</span></div>
+        <div style="padding: 20px 28px 24px;">
+          <p style="margin:0 0 18px; color:var(--ink-1); font-size:.98rem; line-height:1.6;">
+            The same committed artifacts that turn the scorecard green map, article by article, onto the
+            EU AI Act &mdash; so the deploy carries its own compliance file. Tenant-local, offline, deterministic,
+            and it <strong>never invents coverage</strong>: a missing source is an honest gap, not a green wash.
+          </p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin-bottom:20px;">
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">annex-iv-technical-file.md</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">Art 11 / Annex IV technical documentation &mdash; every gap flagged.</p>
+            </div>
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">ai-act-evidence.json</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">The article map + coverage, with a SHA-256 per source.</p>
+            </div>
+            <div style="border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-1);">
+              <p style="font-family:var(--mono); font-size:12px; color:var(--ink-0); margin:0 0 4px;">fria-scaffold.md</p>
+              <p style="font-size:.82rem; color:var(--ink-2); margin:0; line-height:1.45;">Art 27 fundamental-rights template for a human to complete.</p>
+            </div>
+          </div>
+          <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/eu-ai-act-evidence.md" target="_blank" rel="noopener">Read the EU AI Act evidence pack <span class="arrow">↗</span></a>
         </div>
-
-        <footer class="sc-footer">
-          <p class="sc-legend">
-            <strong>$$$</strong> dominant &middot;
-            <strong>$$</strong> material &middot;
-            <strong>$</strong> long-tail
-          </p>
-          <p class="sc-take">
-            Every line carries <code>price_source: live | fixture | fallback</code> &mdash;
-            re-run on demand, audit on demand. Real $ values are emitted in the manifest;
-            this artefact is <em>posture-shaped</em>, intentionally not a leaderboard.
-          </p>
-        </footer>
       </article>
 
-      <!-- 3 forecast signals: forecast / scale / governance -->
-      <div class="cost-recs reveal" data-delay="5" aria-label="Three forecast signals for governance">
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#1</span>
-          <p class="rec-title">Forecast &mdash; <em>tailored review pays off</em></p>
-          <p class="rec-swap"><span class="from">unreviewed prod</span><span class="arr">&rarr;</span><span class="to">tailored, reviewed config</span></p>
-          <p class="rec-saves">~40% delta<span class="pct">order-of-magnitude, design-time, the ARB signs the budget against it</span></p>
+      <!-- outcome KPIs -->
+      <div class="outcome-band">
+        <article class="outcome-stat reveal" data-delay="1">
+          <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-8"/><path d="M17 7h4v4"/></svg></span>
+          <span class="os-num"><em>91</em>%</span>
+          <span class="os-label">Eval pass-rate</span>
+          <span class="os-cap">From <code>evals-manifest.json</code> &mdash; threshold 85%.</span>
         </article>
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#2</span>
-          <p class="rec-title">Scale &mdash; <em>which SKUs change shape</em></p>
-          <p class="rec-swap"><span class="from">PAYG / serverless / Free</span><span class="arr">&rarr;</span><span class="to">PTU / provisioned / Standard</span></p>
-          <p class="rec-saves">named upgrades<span class="pct">planned at design-time, not at launch</span></p>
+        <article class="outcome-stat reveal" data-delay="2">
+          <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.3a2.7 2.7 0 0 0-2.5-1.3c-1.6 0-2.8.9-2.8 2.1 0 2.6 5.6 1.3 5.6 3.8 0 1.2-1.3 2.1-2.8 2.1a2.9 2.9 0 0 1-2.6-1.4"/><path d="M12 6.4v11.2"/></svg></span>
+          <span class="os-num">$<em>0.0123</em></span>
+          <span class="os-label">Cost / interaction</span>
+          <span class="os-cap">From <code>cost-manifest.json</code> at 800 rpm.</span>
         </article>
-        <article class="cost-rec">
-          <span class="rank" aria-hidden="true">#3</span>
-          <p class="rec-title">Governance &mdash; <em>price source per line</em></p>
-          <p class="rec-swap"><span class="from">price_source</span><span class="arr">=</span><span class="to">live | fixture | fallback</span></p>
-          <p class="rec-saves">100% traceable<span class="pct">re-runnable, auditable</span></p>
+        <article class="outcome-stat reveal" data-delay="3">
+          <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+          <span class="os-num"><em>0</em></span>
+          <span class="os-label">Red-team must-fix</span>
+          <span class="os-cap">High-severity findings &mdash; the safety gate is green.</span>
         </article>
       </div>
-
-      <div class="cost-cta-row reveal" data-delay="6">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">
-          Browse the skill <span class="arrow">↗</span>
-        </a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/references/fixtures/sample-pilot-consumption/expected/cost-projection.md" target="_blank" rel="noopener">
-          See a deterministic golden fixture <span class="arrow">↗</span>
-        </a>
-      </div>
-
-      <p class="cost-foot reveal" data-delay="7">
-        SKUs above are <strong>shapes</strong>, not specific resource picks &mdash;
-        the actual SKU depends on the customer&rsquo;s declared load, posture,
-        and region. The $20k/$12k pair is an order-of-magnitude illustration
-        for a mid-volume LLM-dominant agent; the linked golden fixture is a
-        deterministic <em>small</em> example used in tests &mdash; same shape,
-        different scale. Real runs hit the Azure Retail Prices API and emit
-        a manifest with <code>price_source</code> tags per line.
-        <strong>Forecasting only</strong> &mdash; <code>threadlight-deploy</code>
-        is what changes infrastructure; <code>threadlight-consumption-iq</code>
-        never edits SKUs on its own, it produces evidence the FinOps owner
-        can act on.
+      <p class="section-lede" style="text-align:center; margin: 18px auto 0;">
+        Quality, unit-cost and safety on one baseline &mdash; a regression on any one
+        trips the gate before the next deploy. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">See the line-by-line cost forecast &rarr;</a>
       </p>
     </div>
   </section>
 
-  <!-- =================== RECAP =================== -->
+  <!-- ==================== 5 · TARGET ARCHITECTURE ==================== -->
+  <section class="chapter-section" id="target" data-toc-id="target" data-toc-label="Target architecture">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Target architecture</p>
+        <h2>What <em>production</em> looks like.</h2>
+        <p class="section-lede">The scorecard drives toward one recommended posture: every model call fronted by your APIM hub, the pilot Foundry project onboarded as a private, keyless spoke. Two layers, one audit chain &mdash; built on the platform you already own.</p>
+      </div>
 
-  <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap &middot; the scorecard">
+      <figure class="target-arch-fig reveal" data-delay="1" aria-labelledby="ta-cap">
+        <svg class="ta-svg" viewBox="0 0 1080 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Recommended production topology: a caller reaches an APIM Citadel hub applying JWT, rate limiting, content filtering, semantic cache and an immutable ledger, which forwards under an access contract to a private keyless Foundry spoke running the agent with AGT in-process, wired by private endpoints to managed identity, Key Vault, ACR and the model, with a telemetry tap into App Insights and OpenTelemetry.">
+          <defs>
+            <linearGradient id="ta-hub" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0.03"/>
+            </linearGradient>
+            <style>
+              .ta-tag      { font-family: var(--mono); font-size: 10px;   letter-spacing: .18em; fill: #8e95a8; }
+              .ta-edge     { font-family: var(--mono); font-size: 9.5px;  letter-spacing: .16em; fill: currentColor; opacity: .72; }
+              .ta-chip     { font-family: var(--mono); font-size: 11.5px; letter-spacing: .10em; fill: currentColor; }
+              .ta-node     { font-family: var(--mono); font-size: 11px;   letter-spacing: .08em; fill: currentColor; font-weight: 600; }
+              .ta-node-sub { font-family: var(--mono); font-size: 8.5px;  letter-spacing: .06em; fill: currentColor; opacity: .68; }
+              .ta-flow     { font-family: var(--mono); font-size: 9px;    letter-spacing: .12em; fill: currentColor; opacity: .8; }
+              @media (prefers-color-scheme: light) { .ta-tag { fill: #5f6680; } }
+            </style>
+          </defs>
+
+          <!-- Caller -->
+          <rect x="8" y="182" width="92" height="76" rx="10" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="54" y="216" text-anchor="middle" class="ta-node">CALLER</text>
+          <text x="54" y="233" text-anchor="middle" class="ta-node-sub">app &middot; user</text>
+          <line x1="100" y1="220" x2="146" y2="220" stroke="var(--lime)" stroke-width="1.7"/>
+          <path d="M141,215 L150,220 L141,225" fill="none" stroke="var(--lime)" stroke-width="1.7"/>
+
+          <!-- ===== Layer 1 · APIM Citadel hub ===== -->
+          <rect x="150" y="52" width="356" height="340" rx="16" fill="url(#ta-hub)" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.8"/>
+          <rect x="166" y="38" width="176" height="26" rx="7" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
+          <text x="254" y="55" text-anchor="middle" class="ta-tag">AI CITADEL HUB</text>
+          <text x="172" y="90" class="ta-edge">APIM GATEWAY &middot; POLICY PLANE</text>
+
+          <!-- policy chips -->
+          <g>
+            <rect x="172" y="100" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
+            <text x="328" y="125" text-anchor="middle" class="ta-chip">JWT AUTH</text>
+            <rect x="172" y="150" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
+            <text x="328" y="175" text-anchor="middle" class="ta-chip">RATE LIMIT + QUOTA</text>
+            <rect x="172" y="200" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
+            <text x="328" y="225" text-anchor="middle" class="ta-chip">CONTENT FILTER</text>
+            <rect x="172" y="250" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
+            <text x="328" y="275" text-anchor="middle" class="ta-chip">SEMANTIC CACHE</text>
+            <rect x="172" y="300" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
+            <rect x="172" y="300" width="4" height="40" rx="2" fill="var(--lime)"/>
+            <text x="330" y="325" text-anchor="middle" class="ta-chip">IMMUTABLE LEDGER</text>
+          </g>
+
+          <!-- contract arrow hub -> spoke -->
+          <text x="533" y="211" text-anchor="middle" class="ta-flow">contract</text>
+          <line x1="506" y1="220" x2="556" y2="220" stroke="var(--lime)" stroke-width="1.7"/>
+          <path d="M551,215 L560,220 L551,225" fill="none" stroke="var(--lime)" stroke-width="1.7"/>
+
+          <!-- ===== Layer 2 · Foundry spoke (private VNet) ===== -->
+          <rect x="560" y="52" width="512" height="340" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.8" stroke-dasharray="7 5"/>
+          <rect x="578" y="38" width="214" height="26" rx="7" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.55" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="685" y="55" text-anchor="middle" class="ta-tag">FOUNDRY PILOT &middot; SPOKE</text>
+          <text x="582" y="90" class="ta-edge">PRIVATE VNET &middot; KEYLESS (UAMI)</text>
+
+          <!-- agent + AGT -->
+          <rect x="666" y="104" width="300" height="88" rx="12" fill="currentColor" fill-opacity="0.30" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
+          <text x="816" y="138" text-anchor="middle" font-family="var(--mono)" font-size="14" font-weight="600" letter-spacing=".12em" fill="currentColor">FOUNDRY AGENT</text>
+          <text x="816" y="159" text-anchor="middle" font-family="var(--mono)" font-size="9.5" letter-spacing=".12em" fill="currentColor" opacity="0.8">+ AGT in-process middleware</text>
+          <text x="816" y="178" text-anchor="middle" class="ta-node-sub">capability-gated &middot; hash-chained audit</text>
+          <circle cx="950" cy="118" r="4" fill="var(--lime)"/>
+
+          <!-- private-endpoint bus to keyless services -->
+          <line x1="816" y1="192" x2="816" y2="214" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
+          <line x1="632" y1="214" x2="1001" y2="214" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3 3"/>
+          <line x1="632" y1="214" x2="632" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
+          <line x1="755" y1="214" x2="755" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
+          <line x1="878" y1="214" x2="878" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
+          <line x1="1001" y1="214" x2="1001" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
+
+          <!-- keyless service nodes -->
+          <g>
+            <rect x="578" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
+            <text x="632" y="274" text-anchor="middle" class="ta-node">IDENTITY</text>
+            <text x="632" y="292" text-anchor="middle" class="ta-node-sub">UAMI &middot; keyless</text>
+            <rect x="701" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
+            <text x="755" y="274" text-anchor="middle" class="ta-node">KEY VAULT</text>
+            <text x="755" y="292" text-anchor="middle" class="ta-node-sub">purge-protected</text>
+            <rect x="824" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
+            <text x="878" y="274" text-anchor="middle" class="ta-node">ACR</text>
+            <text x="878" y="292" text-anchor="middle" class="ta-node-sub">digest + SBOM</text>
+            <rect x="947" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
+            <text x="1001" y="274" text-anchor="middle" class="ta-node">MODEL</text>
+            <text x="1001" y="292" text-anchor="middle" class="ta-node-sub">private endpoint</text>
+          </g>
+
+          <!-- telemetry tap band -->
+          <line x1="328" y1="392" x2="328" y2="404" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.1" stroke-dasharray="2 3"/>
+          <line x1="816" y1="392" x2="816" y2="404" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.1" stroke-dasharray="2 3"/>
+          <rect x="150" y="404" width="922" height="30" rx="8" fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
+          <text x="611" y="423" text-anchor="middle" class="ta-edge">TELEMETRY TAP &rarr; APP INSIGHTS &middot; OPENTELEMETRY &middot; IMMUTABLE LEDGER</text>
+        </svg>
+        <figcaption id="ta-cap" class="ta-cap">
+          <strong>Two layers, one audit chain.</strong> Every model call passes the APIM hub; every tool call passes AGT in-process &mdash; keyless, on your network, logged once. Not a posture we invented: it is <strong>your</strong> Foundry project, hardened. Other detected postures (Foundry-native, customer-owned edge) are supported the same way.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ==================== 6 · SHIP IT ==================== -->
+  <section class="chapter-section" id="ship" data-toc-id="ship" data-toc-label="Ship it &middot; the pipeline">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Ship it &middot; the pipeline</p>
+        <h2>Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
+        <p class="section-lede">One prompt generates the pipeline <em>and</em> the runbooks the platform team runs: federated identity, scoped RBAC, no secret in the repo. Every check becomes a gate &mdash; and every gate is a knob you set.</p>
+      </div>
+
+      <figure class="pipe-fig reveal" data-delay="1" aria-labelledby="pipe-cap">
+        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The generated pipeline: a commit passes an environment approval, then azd provision and azd deploy over OIDC, then three verification gates run in parallel — evaluation, red-team and MCP supply-chain — and only when all pass does the release reach the production spoke.">
+          <defs>
+            <style>
+              .pp-tag  { font-family: var(--mono); font-size: 11px;  letter-spacing: .09em; fill: currentColor; font-weight: 600; }
+              .pp-sub  { font-family: var(--mono); font-size: 8.5px; letter-spacing: .07em; fill: currentColor; opacity: .68; }
+              .pp-note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .10em; fill: currentColor; opacity: .72; }
+            </style>
+          </defs>
+
+          <!-- spine -->
+          <rect x="6"   y="46" width="118" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="65"  y="76" text-anchor="middle" class="pp-tag">COMMIT</text>
+          <text x="65"  y="90" text-anchor="middle" class="pp-sub">git push / PR</text>
+
+          <rect x="152" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="218" y="76" text-anchor="middle" class="pp-tag">ENV APPROVAL</text>
+          <text x="218" y="90" text-anchor="middle" class="pp-sub">manual gate</text>
+
+          <rect x="312" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="378" y="76" text-anchor="middle" class="pp-tag">AZD PROVISION</text>
+          <text x="378" y="90" text-anchor="middle" class="pp-sub">OIDC &middot; WIF</text>
+
+          <rect x="472" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="538" y="76" text-anchor="middle" class="pp-tag">AZD DEPLOY</text>
+          <text x="538" y="90" text-anchor="middle" class="pp-sub">keyless</text>
+
+          <!-- forward arrows (lime) -->
+          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
+            <line x1="124" y1="72" x2="150" y2="72"/><path d="M145,67 L154,72 L145,77"/>
+            <line x1="284" y1="72" x2="310" y2="72"/><path d="M305,67 L314,72 L305,77"/>
+            <line x1="444" y1="72" x2="470" y2="72"/><path d="M465,67 L474,72 L465,77"/>
+          </g>
+
+          <!-- fan into gates -->
+          <g fill="none" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4">
+            <path d="M604,72 C 648,72 648,44 692,44"/>
+            <path d="M604,72 C 648,72 648,124 692,124"/>
+            <path d="M604,72 C 648,72 648,204 692,204"/>
+          </g>
+
+          <!-- three verification gates -->
+          <g>
+            <rect x="692" y="18" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="18" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="40" text-anchor="middle" class="pp-tag">EVAL GATE</text>
+            <text x="784" y="56" text-anchor="middle" class="pp-sub">soft | hard</text>
+
+            <rect x="692" y="98" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="98" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="120" text-anchor="middle" class="pp-tag">RED-TEAM GATE</text>
+            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack-success</text>
+
+            <rect x="692" y="178" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="178" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="200" text-anchor="middle" class="pp-tag">MCP GATE</text>
+            <text x="784" y="216" text-anchor="middle" class="pp-sub">soft | hard</text>
+          </g>
+
+          <!-- reconverge to spoke -->
+          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
+            <path d="M868,44 C 906,44 906,124 944,124"/>
+            <line x1="868" y1="124" x2="944" y2="124"/><path d="M939,119 L948,124 L939,129"/>
+            <path d="M868,204 C 906,204 906,124 944,124"/>
+          </g>
+
+          <!-- production spoke -->
+          <rect x="944" y="98" width="130" height="52" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
+          <text x="1009" y="120" text-anchor="middle" class="pp-tag">SPOKE</text>
+          <text x="1009" y="136" text-anchor="middle" class="pp-sub">production</text>
+
+          <text x="784" y="252" text-anchor="middle" class="pp-note">all gates green &rarr; ships &nbsp;&middot;&nbsp; any red &rarr; blocks (hard) or warns (soft)</text>
+        </svg>
+        <figcaption id="pipe-cap" class="pipe-cap">
+          The same amber&rarr;green checks, now enforced on merge. Nothing reaches the spoke unverified &mdash; and no client secret ever touches the repo.
+        </figcaption>
+      </figure>
+
+      <div class="knob-head">
+        <h3>Customize the whole pipeline</h3>
+        <span class="sub">One skill, one prompt &mdash; these knobs, your call.</span>
+      </div>
+      <div class="knob-grid">
+        <article class="knob reveal" data-delay="1">
+          <div class="knob-flag"><code>--platform</code></div>
+          <span class="opt">github-actions &middot; azure-devops</span>
+          <p>GitHub Actions or Azure DevOps &mdash; the pipeline is emitted for your CI.</p>
+        </article>
+        <article class="knob reveal" data-delay="1">
+          <div class="knob-flag"><code>--eval-gate</code><span class="opt">soft &middot; hard</span></div>
+          <p>Warn-only while you tune, or hard-block the merge on a failed quality verdict.</p>
+        </article>
+        <article class="knob reveal" data-delay="2">
+          <div class="knob-flag"><code>--mcp-gate</code><span class="opt">soft &middot; hard</span></div>
+          <p>Warn-only, or hard-block on an unapproved MCP tool swap against the lockfile.</p>
+        </article>
+        <article class="knob reveal" data-delay="2">
+          <div class="knob-flag"><code>--target</code></div>
+          <span class="opt">citadel-spoke &middot; agt &middot; vnet &middot; standard &middot; hybrid</span>
+          <p>Emit the pipeline for the posture you detected &mdash; spoke, in-process, or your own VNet.</p>
+        </article>
+        <article class="knob reveal" data-delay="3">
+          <div class="knob-flag"><code>--private-network</code></div>
+          <span class="opt">self-hosted &middot; managed pool</span>
+          <p>Run every gate on runners inside your network &mdash; nothing calls home over the public internet.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 6 · GETTING STARTED ==================== -->
+  <section class="chapter-section" id="start" data-toc-id="start" data-toc-label="Getting started">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Run it on your pilot today</p>
+        <h2>Getting started &mdash; <em>four prompts, one scorecard.</em></h2>
+        <p class="section-lede">You need your pilot in a repo and <strong>GitHub Copilot</strong> with the Threadlight skills. Azure read-access is optional &mdash; without it the cloud pillars resolve to <code>not-verified</code>, nothing fails.</p>
+      </div>
+
+      <div class="stepper">
+        <div class="step reveal" data-delay="1">
+          <div class="step-rail"><span class="step-num">1</span><span class="step-line"></span></div>
+          <div class="step-body">
+            <p class="kicker">Score the pilot</p>
+            <h3>Point your agent at the skill.</h3>
+            <p>One prompt resolves the posture and walks all thirteen pillars.</p>
+            <pre class="code-callout" tabindex="0" aria-label="Invoke threadlight-production-ready"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready on this pilot. Detect the posture; production load is 800 rpm."</span>
+<span class="out">&mdash; reads <code>skills/threadlight-production-ready/SKILL.md</code>, resolves posture, walks 13 pillars,
+  writes <code>docs/production-readiness-report.md</code> &middot; ready in ~7m</span></pre>
+          </div>
+        </div>
+
+        <div class="step reveal" data-delay="1">
+          <div class="step-rail"><span class="step-num">2</span><span class="step-line"></span></div>
+          <div class="step-body">
+            <p class="kicker">Close the amber gaps</p>
+            <h3>Run the skill that closes each gap.</h3>
+            <p>Each amber pillar has a skill that turns it green &mdash; and commits the proof behind it.</p>
+            <pre class="code-callout" tabindex="0" aria-label="Invoke the evidence legs"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-govern to scaffold and validate the agent policy artefact."</span>
+<span class="prompt">&gt;</span> <span class="arg">"Use threadlight-evals to wire continuous evaluation and an A/B release gate."</span>
+<span class="prompt">&gt;</span> <span class="arg">"Use threadlight-redteam to score the AI Red Teaming Agent scan into a verdict."</span>
+<span class="prompt">&gt;</span> <span class="arg">"Use threadlight-consumption-iq to forecast the bill at production load."</span></pre>
+          </div>
+        </div>
+
+        <div class="step reveal" data-delay="2">
+          <div class="step-rail"><span class="step-num">3</span><span class="step-line"></span></div>
+          <div class="step-body">
+            <p class="kicker">Gate the pipeline</p>
+            <h3>Generate the secret-free deploy.</h3>
+            <p>An OIDC pipeline with eval, red-team and MCP gates &mdash; ready for the platform team.</p>
+            <pre class="code-callout" tabindex="0" aria-label="Invoke threadlight-cicd"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-cicd to generate the OIDC deploy pipeline with eval, red-team and MCP gates."</span>
+<span class="out">&mdash; writes <code>azd-deploy-prod.yml</code> (or <code>azure-pipelines.yml</code>) + env-setup runbooks &middot; no secret in the repo</span></pre>
+          </div>
+        </div>
+
+        <div class="step reveal" data-delay="2">
+          <div class="step-rail"><span class="step-num">4</span><span class="step-line"></span></div>
+          <div class="step-body">
+            <p class="kicker">Read it &amp; ship</p>
+            <h3>Sign the waivers, hand it over.</h3>
+            <p>Open <code>docs/production-readiness-report.md</code>, sign each amber waiver with its owner, hand the pipeline to the platform team. Everything the board needs is committed &mdash; nothing in a console tab to screenshot.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cost-cta-row reveal" data-delay="2" style="margin-top: var(--s-5);">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills" target="_blank" rel="noopener">Open the repo <span class="arrow">↗</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-production-ready" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the 13-pillar reference <span class="arrow">↗</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 7 · RECAP ==================== -->
+  <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap">
     <div class="wrap">
       <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow"><span class="dot"></span>Recap</p>
-        <h2>One scorecard &mdash; <em>three colours, no judgement.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          Each pillar resolves to <strong>green</strong> (evidence found, in
-          posture), <strong>amber</strong> (gap with a named owner and a
-          waiver path), or <strong>not-verified</strong> (we couldn&rsquo;t
-          observe, here&rsquo;s why). Red doesn&rsquo;t exist on purpose
-          &mdash; we never fail a build, we surface a posture.
-        </p>
+        <h2>One scorecard &mdash; <em>three colours.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">The whole engagement reduces to one committed artifact with three honest states &mdash; and no fourth.</p>
       </div>
 
-      <div class="chapter-recap-block">
-        <p class="recap-scorecard reveal" data-delay="1">
-          <span>You walked</span>
-          <span><em>3</em> postures</span><span class="sep">·</span>
-          <span><em>4</em> themes</span><span class="sep">·</span>
-          <span><em>1</em> scorecard</span><span class="sep">·</span>
-          <span><em>0</em> red flags</span>
-        </p>
-
-        <div class="recap-metrics">
-          <article class="metric-card reveal" data-delay="2">
-            <span class="metric-num"><em>~7</em> min</span>
-            <span class="metric-label">ARB read time</span>
-            <span class="metric-caption">One PDF the architecture-review board reads in seven minutes &mdash; posture, status, gaps, evidence.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="3">
-            <span class="metric-num"><em>3</em></span>
-            <span class="metric-label">Colours, not red</span>
-            <span class="metric-caption">Green, amber, not-verified. Red is missing on purpose &mdash; we surface postures, never fail builds.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="4">
-            <span class="metric-num"><em>1</em></span>
-            <span class="metric-label">Recognisable page</span>
-            <span class="metric-caption">After three engagements, the customer&rsquo;s board recognises the scorecard on sight.</span>
-          </article>
+      <div class="legend-3 reveal" data-delay="1">
+        <div class="lg green">
+          <span class="swatch" aria-hidden="true"></span>
+          <h4>Green</h4>
+          <p>Evidence found &mdash; the pillar is verified, and the proof is committed next to your code.</p>
         </div>
+        <div class="lg amber">
+          <span class="swatch" aria-hidden="true"></span>
+          <h4>Amber</h4>
+          <p>A gap with a named owner and a signed waiver &mdash; visible, dated, on the clock to green.</p>
+        </div>
+        <div class="lg grey">
+          <span class="swatch" aria-hidden="true"></span>
+          <h4>Not-verified</h4>
+          <p>Couldn&rsquo;t observe it &mdash; no read access. It never fails the build; it just stays honest.</p>
+        </div>
+      </div>
 
+      <p class="recap-close reveal" data-delay="2">There&rsquo;s <strong>no red</strong>. The scorecard surfaces a posture, not a build failure &mdash; so the conversation with the board is about evidence, not blame.</p>
+
+      <div class="chapter-recap-block">
         <div class="recap-cta">
-          <a class="btn btn-primary" href="./funnel.html">See how stages feed the scorecard <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="./industries.html">See how sector shifts the posture <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the technical reference <span class="arrow">↗</span></a>
+          <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
+          <a class="btn btn-ghost" href="./case-study.html">See how stages feed the scorecard <span class="arrow">&rarr;</span></a>
+          <a class="btn btn-ghost" href="./industries.html">See how sector shifts the posture <span class="arrow">&rarr;</span></a>
         </div>
       </div>
     </div>
@@ -792,6 +890,6 @@
   <a href="https://github.com/aiappsgbb/threadlight-skills" style="color:var(--ink-2);">repo</a>
 </footer>
 
-<script src="assets/site.js"></script>
+<script src="assets/site.js?v=91ff002f"></script>
 </body>
 </html>

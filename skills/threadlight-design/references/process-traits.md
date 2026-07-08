@@ -40,7 +40,7 @@ What the process does with the data.
 | **Transformation** | Convert, normalize, enrich data | `transform-*` skills | Source → target format? Rules? |
 | **Comparison** | Diff, rank, score across items | `compare-*`, `rank-*` skills | What dimensions? Weighting? |
 | **Analysis** | Compute metrics, detect patterns, assess risk | `analyze-*`, `assess-*` skills | What KPIs? Thresholds? Business rules? |
-| **Synthesis** | Combine multiple sources into new content | `synthesize`, `summarize` skills | What output format? Depth? Citation needs? |
+| **Synthesis** | Combine multiple sources into new content | `synthesize`, `summarize` skills | What output format? Depth? Citation needs? Multiple skills composing one answer → require a **cross-skill reconciliation** clause (preserve detail, resolve disagreement, surface trade-offs) in AGENTS.md Behavioral guidelines. |
 | **Validation** | Check data against rules, policies, schemas | `validate-*`, `check-*` skills | What rules? What happens on failure? |
 | **Routing** | Direct items to the right handler based on criteria | `route-*`, `triage-*` skills | What criteria? How many routes? Fallback? |
 

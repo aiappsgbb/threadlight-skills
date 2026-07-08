@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "tool": "threadlight-production-ready",
-  "tool_version": "0.3.0",
-  "checked_at": "2026-06-10T17:19:29Z",
+  "tool_version": "0.9.0",
+  "checked_at": "2026-07-07T00:00:00Z",
   "mode": "static",
   "agt_profile": "v3_7",
   "posture": {
@@ -11,29 +11,29 @@
     "resolved": "citadel-spoke"
   },
   "score": {
-    "raw_percent": 54,
-    "with_waivers_percent": 54
+    "raw_percent": 47,
+    "with_waivers_percent": 47
   },
   "verification_coverage": {
-    "verified": 77,
-    "total_scoreable": 143,
-    "percent": 53
+    "verified": 85,
+    "total_scoreable": 152,
+    "percent": 55
   },
   "verification_debt": {
-    "total": 43,
+    "total": 49,
     "by_pillar": {
-      "network-posture": 4,
+      "network-posture": 5,
       "agent-governance": 1,
       "identity-access": 2,
       "secrets": 7,
       "observability": 5,
-      "continuous-evals": 0,
+      "continuous-evals": 2,
       "responsible-ai": 1,
       "hitl-audit": 2,
-      "supply-chain": 2,
-      "cost": 2,
+      "supply-chain": 3,
+      "cost": 3,
       "reliability": 3,
-      "sre-handover": 8,
+      "sre-handover": 9,
       "model-lifecycle": 6
     }
   },
@@ -48,7 +48,9 @@
     "4": false,
     "5": false
   },
-  "warnings": [],
+  "warnings": [
+    "safe-check manifest is 647.5h old (limit 24h) \u2014 accepted via --accept-stale-safe-check"
+  ],
   "safe_check_reference": {
     "phase": "post-deploy",
     "checked_at": "2026-06-10T16:07:34Z",
@@ -61,9 +63,9 @@
       "title": "1. Network posture",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 50,
-      "score_with_waivers": 50,
-      "verification_debt": 4,
+      "score_raw": 44,
+      "score_with_waivers": 44,
+      "verification_debt": 5,
       "findings": [
         {
           "id": "NET-001",
@@ -143,6 +145,17 @@
           "waiver_id": null
         },
         {
+          "id": "NET-502",
+          "title": "Foundry connection to Citadel hub reachable",
+          "pillar": "network-posture",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 5,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
           "id": "POS-001",
           "title": "Declared posture matches detected evidence",
           "pillar": "network-posture",
@@ -166,12 +179,12 @@
       "findings": [
         {
           "id": "AGT-001",
-          "title": "AGT middleware imported in src/",
+          "title": "AGT policy is schema-valid (lints clean)",
           "pillar": "agent-governance",
           "severity": "must-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "AGT import found in src/",
+          "detail": "AGT policy has version/name/rules \u2014 lints clean",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -199,23 +212,23 @@
         },
         {
           "id": "AGT-004",
-          "title": "AGT version pinned (not floating)",
+          "title": "AGT policy ruleset version pinned",
           "pillar": "agent-governance",
           "severity": "should-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "AGT version constraint detected",
+          "detail": "AGT policy ruleset version pinned",
           "evidence_refs": [],
           "waiver_id": null
         },
         {
           "id": "AGT-005",
-          "title": "AGT policy covers tool calls + prompt shields",
+          "title": "AGT governance gate runs in CI",
           "pillar": "agent-governance",
-          "severity": "must-fix",
+          "severity": "should-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "Policy covers tool calls + prompt shields",
+          "detail": "AGT governance gate runs in CI",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -248,8 +261,8 @@
       "title": "3. Identity and access",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 71,
-      "score_with_waivers": 71,
+      "score_raw": 61,
+      "score_with_waivers": 61,
       "verification_debt": 2,
       "findings": [
         {
@@ -304,6 +317,50 @@
           "status": "pass",
           "tier": 0,
           "detail": "Auth surface declared: easyauth=0, aca_with_auth=0, aca_authConfigs=1",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-006",
+          "title": "Agent identity is passwordless (managed/federated)",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "All agent identities are passwordless (managed/federated).",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-007",
+          "title": "Agent identity declares a responsible owner",
+          "pillar": "identity-access",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Declare a responsible owner (tag owner/ownerEmail/ManagedBy or agent-identity.governance.json) for: uami-pilot-citadel",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-008",
+          "title": "Agent identity scope is least-privilege",
+          "pillar": "identity-access",
+          "severity": "must-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Agent identity scope is least-privilege (no Owner/Contributor/wildcard).",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "IAM-009",
+          "title": "Agent identity lifecycle (expiry/review) is declared",
+          "pillar": "identity-access",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Declare a lifecycle (reviewBy/expiresOn tag or a federated credential with no standing secret) for: uami-pilot-citadel",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -501,8 +558,8 @@
       "title": "5. Observability",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 35,
-      "score_with_waivers": 35,
+      "score_raw": 32,
+      "score_with_waivers": 32,
       "verification_debt": 5,
       "findings": [
         {
@@ -557,6 +614,39 @@
           "status": "should-fix",
           "tier": 0,
           "detail": "No workbook scaffold found",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "KPI-001",
+          "title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)",
+          "pillar": "observability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Outcome KPI baseline(s) not declared: cost-per-interaction. Declare target latency, cost-per-interaction, and success-rate so deviation can be measured.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "KPI-002",
+          "title": "Deviation alert wired for an outcome KPI baseline",
+          "pillar": "observability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No deviation alert wired for a KPI baseline \u2014 add a metric/log alert on latency, cost-per-interaction, or success-rate drift (see recipe KPI-002).",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "KPI-003",
+          "title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces",
+          "pillar": "observability",
+          "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "Partial outcome scorecard (traces present). Join all three (eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -622,9 +712,9 @@
       "title": "6. Continuous evals",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 83,
-      "score_with_waivers": 83,
-      "verification_debt": 0,
+      "score_raw": 62,
+      "score_with_waivers": 62,
+      "verification_debt": 2,
       "findings": [
         {
           "id": "EVAL-001",
@@ -691,16 +781,38 @@
           "detail": "Dataset versioning hinted",
           "evidence_refs": [],
           "waiver_id": null
+        },
+        {
+          "id": "EVAL-101",
+          "title": "Latest eval run results retrievable",
+          "pillar": "continuous-evals",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 2,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "EVAL-102",
+          "title": "Latest eval run meets SPEC thresholds",
+          "pillar": "continuous-evals",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 2,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
         }
       ]
     },
     {
       "pillar": "responsible-ai",
       "title": "7. Responsible AI",
-      "status_raw": "red",
-      "status_with_waivers": "red",
-      "score_raw": 71,
-      "score_with_waivers": 71,
+      "status_raw": "amber",
+      "status_with_waivers": "amber",
+      "score_raw": 64,
+      "score_with_waivers": 64,
       "verification_debt": 1,
       "findings": [
         {
@@ -716,12 +828,12 @@
         },
         {
           "id": "RAI-002",
-          "title": "AGT RAI policy section present",
+          "title": "AGT policy constrains sensitive actions",
           "pillar": "responsible-ai",
           "severity": "must-fix",
-          "status": "must-fix",
+          "status": "pass",
           "tier": 0,
-          "detail": "AGT policy missing RAI/content-safety section",
+          "detail": "AGT policy constrains sensitive actions",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -741,9 +853,9 @@
           "title": "PII redaction strategy documented",
           "pillar": "responsible-ai",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "PII redaction strategy documented",
+          "detail": "No PII redaction strategy documented",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -752,9 +864,9 @@
           "title": "Groundedness check planned for RAG",
           "pillar": "responsible-ai",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Groundedness check planned",
+          "detail": "No groundedness check planned",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -875,9 +987,9 @@
       "title": "9. Supply chain",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 53,
-      "score_with_waivers": 53,
-      "verification_debt": 2,
+      "score_raw": 37,
+      "score_with_waivers": 37,
+      "verification_debt": 3,
       "findings": [
         {
           "id": "SUP-001",
@@ -917,9 +1029,9 @@
           "title": "SBOM generation step declared",
           "pillar": "supply-chain",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "SBOM generation referenced",
+          "detail": "No SBOM generation step documented",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -950,9 +1062,86 @@
           "title": "Provenance / attestation considered",
           "pillar": "supply-chain",
           "severity": "should-fix",
+          "status": "should-fix",
+          "tier": 0,
+          "detail": "No provenance/attestation documented",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-008",
+          "title": "Agent skills/tools not force-published in committed automation",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "Provenance/attestation referenced",
+          "detail": "No force-published skill/tool commands in committed automation",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-009",
+          "title": "Agent skills/tools pinned to a version for production",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No agent skills/tools referenced in repo",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-010",
+          "title": "MCP servers pinned to an exact version or image digest",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No MCP servers declared in this repo.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-011",
+          "title": "MCP servers resolve from a known registry or source",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No MCP servers declared in this repo.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-012",
+          "title": "mcp-lock.json committed and free of undocumented drift",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No MCP servers declared in this repo.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-013",
+          "title": "MCP server credentials are not committed inline",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No MCP servers declared in this repo.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SUP-101",
+          "title": "SUPPORT.md present at repo root",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -985,9 +1174,9 @@
       "title": "10. Cost",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 60,
-      "score_with_waivers": 60,
-      "verification_debt": 2,
+      "score_raw": 43,
+      "score_with_waivers": 43,
+      "verification_debt": 3,
       "findings": [
         {
           "id": "COST-001",
@@ -1035,12 +1224,23 @@
         },
         {
           "id": "COST-005",
-          "title": "Tagging strategy for cost allocation",
+          "title": "Cost-projection artefact present and fresh (docs/cost-projection.md + specs/cost-manifest.json)",
           "pillar": "cost",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "10/13 ARM resources carry tags (76%)",
+          "detail": "docs/cost-projection.md missing \u2014 run threadlight-consumption-iq to generate",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "COST-006",
+          "title": "Unaddressed cost recommendations in specs/cost-manifest.json",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run threadlight-consumption-iq to populate cost-manifest.json before scoring COST-006.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1150,7 +1350,7 @@
           "severity": "must-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "Restore-drill artefact `restore-drill-2026-05-11.md` is 0 days old (\u226490d)",
+          "detail": "Restore-drill artefact `restore-drill-2026-05-11.md` is 6 days old (\u226490d)",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1194,9 +1394,9 @@
       "title": "12. SRE handover",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 38,
-      "score_with_waivers": 38,
-      "verification_debt": 8,
+      "score_raw": 30,
+      "score_with_waivers": 30,
+      "verification_debt": 9,
       "findings": [
         {
           "id": "SRE-001",
@@ -1225,9 +1425,9 @@
           "title": "Azure SRE Agent integration considered",
           "pillar": "sre-handover",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Azure SRE Agent integration considered",
+          "detail": "No SRE Agent integration considered \u2014 see azure-sre-agent skill",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1269,6 +1469,17 @@
           "title": "SRE Agent resource present if planned",
           "pillar": "sre-handover",
           "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 1,
+          "detail": "Skipped \u2014 running in --static mode",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "SRE-103",
+          "title": "SRE runbook present (docs/sre/runbook.md)",
+          "pillar": "sre-handover",
+          "severity": "must-fix",
           "status": "not-verified",
           "tier": 1,
           "detail": "Skipped \u2014 running in --static mode",
@@ -1348,8 +1559,8 @@
       "title": "13. Model lifecycle",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 37,
-      "score_with_waivers": 37,
+      "score_raw": 23,
+      "score_with_waivers": 23,
       "verification_debt": 6,
       "findings": [
         {
@@ -1379,9 +1590,9 @@
           "title": "Model upgrade canary process documented",
           "pillar": "model-lifecycle",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Upgrade canary/blue-green referenced",
+          "detail": "No upgrade canary process documented",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1434,9 +1645,9 @@
           "title": "Knowledge index refresh cadence declared",
           "pillar": "model-lifecycle",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Index refresh cadence declared",
+          "detail": "No knowledge index refresh cadence",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1467,9 +1678,9 @@
           "title": "Agent thread retention/policy declared in SPEC",
           "pillar": "model-lifecycle",
           "severity": "should-fix",
-          "status": "pass",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "Agent thread retention/policy declared",
+          "detail": "No agent thread retention/policy mentioned in SPEC or docs",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1551,5 +1762,14 @@
     "threshold_hours": 24
   },
   "waivers": [],
-  "not_verified_count": 66
+  "not_verified_count": 67,
+  "kpi_scorecard": {
+    "latency_declared": true,
+    "cost_per_interaction_declared": false,
+    "success_rate_declared": true,
+    "deviation_alert_present": false,
+    "traces_emit": true,
+    "eval_pass_rate": null,
+    "cost_per_interaction_usd": null
+  }
 }

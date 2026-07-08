@@ -1,0 +1,10 @@
+# .github/workloads/fsi-kyc-aml/meta.yml
+workload: fsi-kyc-aml
+difficulty: complex
+hard_points:
+  - retention-tension
+  - beneficial-ownership
+  - tipping-off
+  - structuring-ctr
+  - edd-approval
+  - multi-jurisdiction

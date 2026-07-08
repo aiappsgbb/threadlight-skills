@@ -145,7 +145,7 @@ required_policy_ids:
 | Value | Meaning |
 |---|---|
 | `citadel-spoke` | Pilot is a spoke onto a Citadel Governance Hub. Pillar 1 will check APIM Access Contract presence. |
-| `agt` | Pilot relies on AGT in-process middleware. Pillar 2 checks AGT capabilities. |
+| `agt` | Pilot relies on a committed AGT policy (lint + CI gate). Pillar 2 checks AGT capabilities. |
 | `standard-ai-gateway` | Pilot routes through a customer-owned APIM AI Gateway that isn't the Citadel reference impl. |
 | `hybrid` | Mix. Some workloads citadel, others agt. |
 | `unset` | Posture not yet decided. Skill defaults to `standard-ai-gateway` for scoring (not citadel). |

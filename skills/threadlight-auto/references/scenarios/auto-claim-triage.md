@@ -1,9 +1,8 @@
 # Scenario template — Insurance auto-claim triage
 
 > Drop-in template for `threadlight-auto` when the operator picks the
-> "auto-claim-triage" path. Mirrors the proven shape from the
-> 2026-05-30 contoso-claim-triage pilot (5/5 spec demo scenarios passed live;
-> details in [`aiappsgbb/agentic-loop` SKILL Validation history row #9](https://github.com/aiappsgbb/agentic-loop/blob/main/skills/agentic-loop/SKILL.md)).
+> "auto-claim-triage" path. Proven shape from the 2026-05-30
+> contoso-claim-triage pilot (5/5 spec demo scenarios passed live).
 
 ## Quick invocation
 
@@ -85,6 +84,6 @@ a PII-masked one-paragraph summary.
 
 ## Pilot reference
 
-Field-tested via lean-toolkit on 2026-05-30; matches threadlight's 3-tool +
+Field-tested on 2026-05-30; matches threadlight's 3-tool +
 multi-business-SKILL composition pattern. Wallclock ~38 min end-to-end on
 first attempt; subsequent runs ~15 min after MID fixes land.

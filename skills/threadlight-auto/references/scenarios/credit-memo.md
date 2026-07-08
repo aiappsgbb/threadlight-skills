@@ -61,6 +61,5 @@ recommendation. Human officer always signs off.
 
 ## Pilot reference
 
-Same shape as the smb-credit-memo pilot in `aiappsgbb/agentic-loop` (Validation
-history row #8). 4/4 demo scenarios passed live; 9 MIDs captured; multi-SKILL
-composition validated.
+Same shape as the smb-credit-memo pilot: 4/4 demo scenarios passed live;
+9 MIDs captured; multi-SKILL composition validated.

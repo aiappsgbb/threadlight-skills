@@ -33,13 +33,11 @@ with a single invocation. Designed for:
 SEs who already know the per-skill chain should keep invoking those directly —
 `threadlight-auto` is a wrapper, not a replacement.
 
-> **Lineage.** Ported from `aiappsgbb/agentic-loop`'s `lean-auto` SKILL (v1.0.0),
-> which was field-tested on 10 from-scratch pilots over 6 days and proven in
-> [agentic-loop CI run #26752622265](https://github.com/aiappsgbb/agentic-loop/actions/runs/26752622265)
-> (50m57s, all 16 steps ✅). The orchestrator pattern, smart-recovery table, and
-> HARD-STOP gates are reused verbatim; only the stage labels + artifact paths
-> differ (threadlight produces `specs/SPEC.md` + `specs/manifest.json`, lean
-> produces `docs/spec.md` + `.azure/deployment-plan.md`).
+> **Design.** The orchestrator pattern, smart-recovery table, and HARD-STOP
+> gates are the load-bearing reliability contract of this skill. Threadlight's
+> stage labels + artifact paths are canonical: the design stage emits
+> `specs/SPEC.md` + `specs/manifest.json`, and every downstream stage keys off
+> their hashes.
 
 ## Position in the SKILL hierarchy
 
@@ -63,8 +61,8 @@ design            local-test       deploy             safe-check
        │                 │               │                  │
        └────────┬────────┴───────────────┴──────────────────┘
                 │ each stage benefits from the deploy-time
-                │ failure-mode index F-01..F-22 cribbed from
-                │ agentic-loop into threadlight-deploy/SKILL.md
+                │ failure-mode index F-01..F-22 in
+                │ threadlight-deploy/SKILL.md
                 ▼
        ┌──────────────────────────────────────────┐
        │ awesome-gbb companion SKILLs             │
@@ -72,6 +70,15 @@ design            local-test       deploy             safe-check
        │  foundry-observability, …)               │
        └──────────────────────────────────────────┘
 ```
+
+> **Legs auto does _not_ drive.** Two production-handoff steps
+> (**`threadlight-cicd`**, **`threadlight-customize`**) and the offline
+> **`threadlight-router-bench`** *Improve* leg run outside this orchestrator.
+> `threadlight-auto` is a pilot driver — after a CI run finishes, reach for
+> `threadlight-router-bench` to harvest a grounded learnings digest (failure
+> taxonomy + recommendations) and, optionally, a model-router cost/quality
+> scorecard. It never drives prod-pipeline, customer-onboarding, or offline
+> self-improvement legs.
 
 ## Input parsing
 
@@ -142,7 +149,7 @@ next to the existing use-case skills.
 
 ## Stage 0 — Preflight
 
-**Always runs**, mirroring the agentic-loop bootstrap pattern. Checks:
+**Always runs** as the bootstrap preflight. Checks:
 
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
@@ -167,6 +174,9 @@ and computes which stages are already done. Stages are skipped when ALL conditio
 | Deploy | `azure.yaml` + `infra/main.bicep` exist AND `azd env get-values \| grep -q AGENT_FQDN` AND first-listed agent `status: active` via `azd ai agent show` |
 | Safe-check | `docs/safe-check-post.md` exists AND `< 24 h` AND post-deploy gate exit was 0 |
 | Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.generated_at > AZURE_LAST_DEPLOY_AT` (or `auto-state.json[cost_projection].passed_at` recorded on a prior run) |
+| Evals (Discover) | `specs/evals-manifest.json` exists AND `< 24 h` old (re-runs when a fresh deploy/invoke cascades) |
+| Red-team (Discover) | `specs/redteam-manifest.json` exists AND `< 24 h` old |
+| Govern (Protect) | `specs/govern-manifest.json` exists AND `< 24 h` old |
 | Sell (optional) | `docs/{seller-prep.md,demo-rehearsal.md}` exist |
 
 If a stage's freshness check fails, that stage AND all downstream stages re-run
@@ -188,8 +198,11 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + behavioral gates green |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
-| 7 | Production-ready (OPTIONAL, advisory) | `threadlight-production-ready` (file-path CLI) | `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json` — never blocks. Run when the customer asked for a paved-path / architecture-review artifact alongside the demo. Skip for pure throwaway demos. |
-| 8 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
+| 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `foundry-evals`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
+| 8 | Red-team — Discover (advisory) | `threadlight-redteam` (`scripts/redteam_check.py`) | `docs/redteam-report.md` + `specs/redteam-manifest.json` — AI Red Teaming Agent adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content). Mapped to production-ready pillar 7 (SAFE-101..106). Advisory — never blocks. |
+| 9 | Govern — Protect (advisory) | `threadlight-govern` (`scripts/govern_check.py`) | verifier report + `specs/govern-manifest.json` — wraps `foundry-agt`: policy artefact + in-process middleware at the container boundary. Consumed by production-ready pillar 2 (AGT-001..005) + pillar 7 (RAI-002/003). Advisory — never blocks. |
+| 10 | Production-ready (OPTIONAL, advisory) | `threadlight-production-ready` (file-path CLI) | `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json` — never blocks. Run when the customer asked for a paved-path / architecture-review artifact alongside the demo. Skip for pure throwaway demos. |
+| 11 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
 
 ### Per-stage HARD STOPs (in addition to global tenant + quota)
 
@@ -201,7 +214,7 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 
 ## Smart-recovery table — auto-retry these failures
 
-These are the 3 most common deploy failures from the agentic-loop pilots (now also
+These are the 3 most common deploy failures we see in from-scratch runs (also
 covered in [`threadlight-deploy` § Deploy-time failure-mode index](../threadlight-deploy/SKILL.md#deploy-time-failure-mode-index-signature--action)).
 `threadlight-auto` retries each ONCE, then HARD STOPs if recovery fails.
 
@@ -282,4 +295,3 @@ Next steps:
   - `threadlight-deploy` SKILL § Deploy-time failure-mode index F-01..F-22 (smart-recovery table cribs from here)
   - `threadlight-safe-check` SKILL `phase=post-deploy` (invoked at Safe-check stage)
   - `azure-tenant-isolation` SKILL (Stage 0 HARD STOP enforcer)
-  - aiappsgbb/agentic-loop `lean-auto` SKILL (this skill's lineage; same patterns, lean-toolkit labels)

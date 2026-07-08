@@ -9,6 +9,442 @@ field.
 
 ### Added
 
+- **EU AI Act evidence pack — terminal aggregator in
+  `threadlight-production-ready`** (0.7.0 → 0.8.0). A new stdlib-only script,
+  `scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
+  already produce — the production-readiness scorecard manifest, `mcp-sbom.json`,
+  `agent-identity.json`, and the govern / evals / red-team manifests — onto seven
+  EU AI Act articles (9, 11 + Annex IV, 12, 14, 15, 26, 27) and emits a
+  **tenant-local, offline** evidence pack: `ai-act-evidence.json`,
+  `annex-iv-technical-file.md`, and an Article 27 `fria-scaffold.md` under
+  `docs/compliance/`. Each article is graded `covered` / `partial` / `gap` /
+  `scaffold` with a per-source SHA-256 for provenance; a missing or malformed
+  source degrades to `gap` / `partial` — the pack never fabricates a `covered`. A
+  `--check` flag exits 3 when a load-bearing article (Art 11 / 12 / 15) is a gap.
+  It amplifies Foundry's own governance outputs into regulator-facing evidence and
+  is an engineering aid, not legal advice. A new `references/eu-ai-act-mapping.md`
+  documents the mapping. Bumps the plugin manifest 1.8.0 → 1.9.0.
+- **Agent-identity binding — non-human-identity (NHI) governance in
+  `threadlight-production-ready`** (0.6.1 → 0.7.0). The identity-access pillar now
+  governs the identity the agent *is*, not just secrets in source. A new
+  stdlib-only producer, `scripts/agent_identity.py`, inventories every declared
+  agent identity (user-assigned managed identity / federated credential /
+  app-secret) from compiled ARM, Bicep, and source signals and writes an
+  `agent-identity.json` sidecar next to the report. Four new static findings score
+  it: **IAM-006** passwordless binding (must-fix — managed or federated, not a
+  client secret), **IAM-007** responsible owner (should-fix), **IAM-008**
+  least-privilege scope (must-fix — no Owner/Contributor/User-Access-Administrator
+  or wildcard `*.ReadWrite.All` Graph permission), and **IAM-009** lifecycle /
+  review (should-fix — a `reviewBy`/`expiresOn` signal, with federated identities
+  passing automatically). An optional `agent-identity.governance.json` manifest
+  supplies owner / review metadata per subject id. Remediation recipes point at
+  `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM —
+  it amplifies the platform's identity primitives, never replaces them. A producer
+  error degrades the four findings to `not-verified`; the assessor never crashes.
+  Bumps the plugin manifest 1.7.0 → 1.8.0.
+
+- **Built the six `threadlight-event-triggers` receiver scaffolds for real**
+  (1.1.0 → 1.2.0). The SKILL's "Reference files" table listed `aca-job-cron`,
+  `aca-job-manual`, `aca-consumer`, `function-http`, `function-servicebus`, and
+  `function-eventgrid` as *shipped*, but only a placeholder index existed. Each
+  scaffold now carries a pure, idempotent, injectable `handle(...)` core (derive
+  dedup key → skip duplicates → invoke the Foundry-hosted agent → dead-letter on
+  failure without marking processed), an offline `local.test.py`, and a shared
+  `pytest` suite — all runnable with no Azure SDKs installed. The `aca-*` shapes
+  ship `receiver.py` + `Dockerfile` + `receiver.bicep`; the `function-*` escape
+  hatches use the v2 Python model (`function_app.py` + a pure `receiver_core.py`
+  + `host.json`, no legacy `function.json`). A structural guard test keeps the
+  "shipped" claim self-verifying. Dead-letter strategy is per shape (Storage
+  Queue poison store, Service-Bus-native dead-letter, or platform re-raise →
+  native DLQ). No connection strings — managed identity throughout.
+
+### Changed
+
+- **Realigned the AGT (Agent Governance Toolkit) integration to the real
+  toolkit model** across `threadlight-govern` (0.1.1 → 0.2.0) and
+  `threadlight-production-ready` (0.8.0 → 0.9.0). Governance is authored as a
+  **committed policy** — `policy.yaml` with top-level `version` + `name` +
+  `rules:`, validated by `agt lint-policy` / `agt test` and attested by
+  `agt verify --badge` — not an in-process middleware import. The govern PROTECT
+  leg now scaffolds and scores a schema-valid policy, its default-deny posture,
+  its sensitive-action rules, and its CI gate. In the production-readiness
+  assessor, Pillar 02 (`AGT-001..006`) rescopes to the policy artefact: `AGT-001`
+  = the policy is schema-valid (lints clean), `AGT-004` = a pinned ruleset
+  `version:`, `AGT-005` = a CI workflow runs the toolkit (`agt verify` /
+  `lint-policy` / `test`, now `should-fix` — the gate lives in CI, not the request
+  path). `RAI-002/003` decouple from the governance manifest so a model-edge
+  control (Content Safety prompt shields) is scored on its own signals. The
+  `AGT-001/002/005` remediation recipes, Pillar 02 reference, report glossary /
+  mermaid, and the `sample-pilot-citadel` exemplar (real schema-valid policy that
+  lints clean, plus a `governance.yml` CI gate) are rewritten to match. The
+  version-agnostic v4 deep-checks (`AGT-V4-*`) are unchanged. Bumps the plugin
+  manifest 1.9.0 → 1.10.0.
+  <br>Cross-skill hardening: policy schema-validity and the pinned `version:`
+  are evaluated against a **single canonical policy file** (never merged across
+  siblings, which could false-pass the governance hard gate); CI-gate detection
+  requires an actual toolkit invocation (an `agt` verb or the
+  `agent-governance-toolkit/action`) and ignores commented-out lines,
+  identically in both skills; and the govern baseline policy templates drop a
+  v4-only metadata key so a pilot that adopts them stays on the `v3_7` profile.
+  The scaffolded CI gate treats `agt test` (fixture replay) as **advisory**
+  (`continue-on-error: true`) while keeping `agt lint-policy` + `agt verify` as
+  the required gates: shipping AGT 4.1.0's replay path binds an `agent_os`
+  `PolicyDocument` model that requires a singular `condition:` and rejects the
+  `escalate` action, so a human-in-the-loop policy that lints clean and is valid
+  at runtime would otherwise fail its own gate. The wired exemplar, wiring
+  snippet, policy-template headers, and the `AGT-005` recipe are updated to
+  match, pinned by a govern regression test.
+
+
+  1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that
+  the repo never shipped. The modern flow **generates** the `azd` skeleton
+  (`azure.yaml`, `agent.yaml`, vendored `infra/`) via the pinned `azd ai agent`
+  extension — exactly as the Phase 5 header and `references/upstream-pin.md`
+  already describe. Reworded Step 1 to attribute generation to the extension and
+  reframed the tree as the generated + Phase 2 layout (no behaviour change).
+
+- **Added an MCP supply-chain gate** across `threadlight-production-ready`
+  (0.6.0) and `threadlight-cicd` (0.3.0). The production-readiness assessor now
+  discovers MCP servers/tools declared in a repo, writes an `mcp-sbom.json`
+  sidecar, and scores four new supply-chain findings — servers pinned to a
+  version/digest (`SUP-010`), resolvable from a known registry (`SUP-011`),
+  tracked in a committed `mcp-lock.json` free of undocumented server/tool drift
+  (`SUP-012`), and free of inline credentials (`SUP-013`). The CI/CD generator
+  gains a `--mcp-gate soft|hard` knob that adds a post-deploy gate enforcing the
+  SBOM. Remediation points at `foundry-toolbox`, Key Vault, and ACR. `plugin.json`
+  and `.github/plugin/marketplace.json` bump to `1.7.0` with MCP keywords.
+
+- **Surfaced `threadlight-router-bench` as the Improve leg on the front door
+  and refreshed the plugin manifests.** The README hero now counts **16 pipeline
+  skills + the `threadlight-auto` orchestrator (17 total)**, adds a router-bench
+  row to the leg table and the **Improve** branch to the pipeline flow diagram;
+  `plugin.json` and `.github/plugin/marketplace.json` bump to `1.6.0` with the
+  matching count and router-bench keywords (`router-bench`, `self-improvement`,
+  `learnings-digest`, `ci-failure-taxonomy`, `model-router-cost`).
+- **Added "See also — official Azure Skills" cross-references** to
+  `threadlight-deploy`, `-consumption-iq`, `-evals`, `-govern`,
+  `-production-ready`, and `-cicd` (PATCH bumps). Each points at the canonical
+  Microsoft Azure Skills the leg leverages — `microsoft-foundry`,
+  `azure-reliability`, `azure-rbac`, `entra-agent-id`, `entra-app-registration`,
+  `azure-cost` — as further reading, not a dependency, so the pipeline stays a
+  thin, opinionated path *over* the platform rather than a re-implementation of
+  it.
+
+### Fixed
+
+- **Hardened the `threadlight-production-ready` readiness scorecard against
+  modern ARM shapes** (0.8.0 → 0.8.1). The compiled-ARM walker (`BicepGraph`)
+  assumed the top-level `resources` was always a list, so it crashed on
+  **symbolic-name ARM** (`languageVersion 2.0` — the current azd/Bicep default,
+  where `resources` is a `{symbolicName: object}` map), aborting the whole
+  assessment before any pillar ran. `_walk` now accepts both the map and the
+  list shape (and nested-template maps). The model-lifecycle static check
+  (MDL-001) also crashed when a deployment's `model` / `version` was supplied via
+  an ARM parameter or copy-loop expression (an expression *string* rather than an
+  object); it now classifies those as `not-verified` ("verified at deploy" by the
+  live MDL-101 check) rather than crashing or raising a false must-fix. It also
+  no longer silently passes a model whose `version` is itself a parameter
+  expression (now `not-verified`), and a genuinely absent model stays a
+  `must-fix`. Finally, a per-pillar resilience guard makes any pillar whose
+  static analyzer raises on an unforeseen ARM shape **fail closed**: its tier-0
+  findings degrade to a **visible** gate-blocking `must-fix` (carrying the
+  error) with an stderr warning, so the run always completes but the hard
+  go-live gate keeps blocking until it is resolved — it never silently relaxes
+  the gate. Sixteen new tests pin the map/list walk, the param-aware model
+  check, and the fail-closed guard.
+- **Corrected three stale companion pointers in `threadlight-deploy`** — the
+  hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
+  `pyproject.toml` / `Dockerfile` steps point at the inline templates directly
+  below them instead of a `references/` path that ships no such file.
+- **Corrected stale `.github/plugin/marketplace.json` metadata** — the
+  marketplace + plugin `description` said "9 Copilot skills" and `version`
+  `1.0.0`; both now reflect the current 16 pipeline skills + `threadlight-auto`
+  orchestrator (17 total) at plugin `1.6.0`, matching `plugin.json` and the
+  README.
+- **Fixed the CI/CD deploy-gate verdict check in `threadlight-cicd`** (0.3.0 →
+  0.3.1). The generated GitHub Actions and Azure DevOps pipelines gated on
+  eval / red-team verdict strings (`pass` / `passed` / `ok`) that the assessors
+  never emit, so a clean run could still fail the gate. The gates now match the
+  real enums — eval `comprehensive` / `partial` and red-team `hardened` /
+  `partial` (i.e. no `must-fix`) both pass — with tests that extract and execute
+  the embedded gate script against real verdict values.
+- **Fixed the `threadlight-safe-check` invocation across the skills** (1.1.0 →
+  1.1.1). Docs and sibling skills called `python -m threadlight.safe_check`, but
+  the script is vendored into the pilot repo as `tests/safe_check.py` (there is
+  no importable `threadlight` package), so the module form always raised
+  `ModuleNotFoundError`. Normalised every call site to
+  `python3 tests/safe_check.py` and removed a documented `--strict` flag the CLI
+  never defined.
+- **Fixed a contradictory Dockerfile base image in `threadlight-deploy`** (1.6.2
+  → 1.6.3). The readiness checklist told operators to build the agent and bot
+  images `FROM python:3.12-slim`, directly against the same skill's mandate to
+  use `mcr.microsoft.com/oryx/python:3.12` (Docker Hub's unauthenticated pull
+  limits break ACR Tasks builds). Both checklist rows now match the mandate.
+- **Fixed `threadlight-production-ready --remediate <id>`** so it can reach every
+  finding's recipe (0.6.0 → 0.6.1). The flag read only the legacy
+  `remediation-recipes.yaml` (~12 IDs), leaving the 70+ per-file recipes under
+  `references/remediation-recipes/{ID}.md` — the set the apply-plan machinery
+  already uses — unreachable. `--remediate` now falls back to the per-file
+  catalog when an ID is absent from the yaml, and the previously un-collected
+  renderer test file is bridged into `pytest`.
+- **Refreshed the `THREADLIGHT.md` skill inventory.** The engineering reference
+  still said "sixteen" skills and omitted `threadlight-router-bench` from both its
+  skill list and flow table. It now lists all seventeen skills (16 pipeline + the
+  `threadlight-auto` orchestrator) and documents the router-bench IMPROVE leg,
+  matching the README and marketplace metadata.
+
+### Removed
+
+- **Purged four committed `.pyc` bytecode files** from the `threadlight-local-test`
+  quickstart `__pycache__/`. They were tracked despite the existing `__pycache__/`
+  `.gitignore` rule (they were committed before it landed); Python regenerates them
+  on import.
+
+### Added
+
+- **GitHub cloud sandbox docs.** Documented running the skills in an ephemeral,
+  GitHub-hosted **cloud sandbox** (`copilot --cloud`, public preview) now that the
+  org has enabled it. README gains an "In a GitHub cloud sandbox" subsection
+  (launch, marketplace wiring since sandboxes ignore `.devcontainer/`, inherited
+  cloud-agent policy + host allow-list, and the preview/usage-billed caveats); the
+  experience site adds a "GitHub cloud sandbox" column to the private-env test
+  comparison in [`docs/customize.html`](docs/customize.html) and a zero-install
+  "try it first" callout to [`docs/workbook.html`](docs/workbook.html).
+- **Dev Container + GitHub Codespaces quickstart.** New
+  [`.devcontainer/`](.devcontainer/) (thin `base:ubuntu` image + `github-cli`
+  feature) installs GitHub Copilot CLI and wires all 16 threadlight skills from
+  the local checkout on create, so a Codespace boots ready to explore the
+  pipeline — `copilot` → `/login` → prompt. Consumer-focused: no Python/Node
+  test toolchain and no Azure deploy tooling (`azd`/`az`/`bicep`/Docker); the
+  deploy and production legs still need a full local/VNet environment. README
+  gains an "Open in Codespaces" badge, the marketplace-install alternative, and
+  an honest limitations note (auth, workiq/MCP, deploy tooling).
+- **Executable Responsible-AI-for-Foundry control plane — `threadlight-evals`,
+  `threadlight-redteam`, `threadlight-govern` v0.1.0 (plugin 1.5.0).** Closes
+  the gap where `path2production` *scored* its control-plane legs but never
+  *ran* them. The pipeline now operationalizes the Microsoft RAI-for-Foundry
+  loop — **Design → Build/Deploy → Discover → Protect → Govern → Improve** —
+  with three new first-class legs wired into the spine and verified by
+  `production-ready`:
+  - **NEW skill: [`skills/threadlight-evals/`](skills/threadlight-evals/SKILL.md)**
+    — the **Discover** evals leg. Offline batch quality evals (delegates
+    invoke+score to `foundry-evals`), **online / continuous evaluation** on
+    live threads (Foundry `create_agent_evaluation` → App Insights, with
+    reasoning), and an **A/B champion–challenger** comparison gate before a
+    model/prompt swap. Emits `specs/evals-manifest.json` consumed by
+    `production-ready` pillar 6 (EVAL-001..004). 10 stdlib tests.
+  - **NEW skill: [`skills/threadlight-redteam/`](skills/threadlight-redteam/SKILL.md)**
+    — the **Discover** safety leg. Runs the **AI Red Teaming Agent**
+    (PyRIT-based) adversarial scan for jailbreak / prompt-injection /
+    data-exfiltration / harmful-content, emits `docs/redteam-report.md` +
+    `specs/redteam-manifest.json`, and maps attack-success-rate to
+    `production-ready` pillar 7 findings **SAFE-101..106**. Replaces the old
+    static "is a jailbreak shield declared?" check with an actual scan. 10
+    stdlib tests + 3 remediation recipes (SAFE-101/102/103).
+  - **NEW skill: [`skills/threadlight-govern/`](skills/threadlight-govern/SKILL.md)**
+    — the **Protect** leg. Wraps `foundry-agt`: scaffolds/validates the
+    agent-runtime governance policy artefact, verifies in-process governance
+    middleware at the container boundary, and emits a committed verifier
+    report + `specs/govern-manifest.json`. Produces the artefacts
+    `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look
+    for. 12 stdlib tests.
+  - **`production-ready` flip.** Pillars 2/6/7 move from "remediate → go run
+    X" to "**verify the leg ran + artefact fresh**" when the govern/evals/
+    red-team manifest is present and within the 90-day window; they fall back
+    to the legacy heuristics when a manifest is absent or stale.
+    `_load_leg_manifest`/`_leg_cap_status` helpers added (never raise); new
+    SAFE-101..106 catalog entries + a `_check_redteam_static` finding mapper.
+    Backward-compatible — existing fixtures (no manifests) keep unchanged
+    finding sets.
+  - **Spine wiring.** `threadlight-auto` gains three resumable stages
+    (`evals`, `redteam`, `govern`) after `invoke`, each gated on a fresh
+    `specs/*-manifest.json` (missing/stale-24h → run, fresh → skip) so a
+    re-deploy upstream cascades a fresh evaluation / scan / governance pass.
+    `orchestrator.py` (STAGES + `_check_leg_manifest` probe), `state-schema.md`,
+    and the auto `SKILL.md` Resumption + Sub-stages tables updated.
+  - **Docs:** `README.md` (now **fifteen pipeline skills + one orchestrator,
+    16 total**, skills table, Discover/Protect pipeline-flow + RAI operating
+    loop), `THREADLIGHT.md` (sixteen-skill count, alphabetical list, three
+    new entry-skill picker rows + chain sections 9/10/11, production-ready →
+    12 / cicd → 13 / customize → 14), and
+    `docs/IDEA-TO-PRODUCTION-WORKBOOK.md` (arc diagram + steps 8/8a/8b)
+    updated. `plugin.json` bumped 1.4.0 → 1.5.0 with new keywords.
+  - **CI:** `.github/workflows/python-pytest.yml` runs the three new skills'
+    stdlib test suites as hard-fail steps (deterministic, secret-free, no
+    network).
+  - **`threadlight-cicd` eval + red-team gate (F6, v0.2.0).** The generated
+    production pipelines now run the two Discover legs as post-deploy gates —
+    `eval-gate` + `red-team-gate` jobs (GitHub Actions, `needs: deploy`, OIDC)
+    and `eval_gate` + `red_team_gate` stages (Azure DevOps, `dependsOn: deploy`,
+    WIF) — each enforcing the leg's `specs/{evals,redteam}-manifest.json`
+    verdict. New `--eval-gate soft|hard` flag: **soft** (default) is warn-only
+    so a first onboarding isn't wedged before a baseline manifest exists;
+    **hard** blocks on a missing or non-pass verdict. Secret-free (OIDC + WIF
+    only). 9 stdlib tests; full cicd suite 44 passing.
+  - **`production-ready` outcome-KPI scorecard (F7).** Report § 8 ("Outcome KPI
+    scorecard") now joins the three signals CAF asks teams to measure as a real
+    outcome — eval pass-rate (`specs/evals-manifest.json`), cost-per-interaction
+    (`specs/cost-manifest.json`), and live traces (foundry-observability
+    wiring) — plus the declared baselines (latency / cost-per-interaction /
+    success-rate) and whether a deviation alert is wired. Scored as
+    **KPI-001..003** (should-fix, tier-0) under pillar 5 (observability), where
+    CAF's agent-observability triad places baselines + deviation alerts.
+    `_kpi_signals` join helper + `_check_kpi_static` (never raise); the
+    `kpi_scorecard` block is stashed into the JSON manifest. 11 stdlib tests +
+    a `KPI-002` deviation-alert remediation recipe.
+  - **Deferred (truthful):** the P2 `threadlight-optimize` eval-driven
+    optimization loop + central eval-catalog conventions are planned as
+    fast-follow commits.
+- **`threadlight-consumption-iq` v0.3.0 — pre-sales phased estimate mode
+  (plugin 1.5.0).** Extends the post-deploy SKU-diff projector with the
+  **pre-sales / pre-deploy** front-end it explicitly lacked: estimate Azure
+  consumption for a workload that **isn't deployed yet**, across the customer's
+  adoption ramp (POC → expansion → business-wide). **Cost-estimation only — no
+  customer/CX specifics; a generic pilot throughout.**
+  - **Phased rollout** — a new `rollout_profile{}` (`references/rollout-profile-schema.md`)
+    models N phases, each its own `load_profile{}` + hardening `posture`
+    (`demo` | `production` | `production-hardened`). New `scripts/rollout.py`,
+    `scripts/estimate.py` orchestrator, `estimate` CLI subcommand +
+    `run --all --pre-sales`.
+  - **Production-hardening / estate delta** — `scripts/hardening.py` +
+    `references/hardening-delta-catalog.json` add the SKUs that appear at
+    production scale (Front Door + WAF, Private Endpoints, Defender, Sentinel,
+    DDoS, multi-region DR, non-prod estate) as a labelled **delta**, with
+    `shared_platform_billed` honesty on estate-amortised items.
+  - **Observability ingestion projector** — `scripts/projectors/observability.py`
+    sizes Log Analytics / App Insights GenAI-OTel ingestion (the frequently
+    top-3, frequently-forgotten line), wired into the standard projector
+    dispatch so the post-deploy path benefits too.
+  - **EA/MCA discount multiplier** — `scripts/discount.py` applies an optional
+    `--discount`/`--discount-basis` multiplier; retail is always preserved
+    alongside, with a caveat that it's a planning **estimate, not a quote**.
+  - **Shareable seller one-pager** — `scripts/onepager.py` +
+    `references/onepager-template.html` render an HTML (best-effort PDF)
+    leave-behind with estimate-framing, internal-vs-customer classification
+    (a "do not share" strip + seller talk-track on the internal variant), and
+    the PayGo-vs-PTU-as-SLA narrative.
+  - **Manifest schema 1.1** — additive (`pre_sales`, `phases[]`, `discount{}`,
+    `totals.*` — including a `monthly_cost_hardening_shared_usd` breakout of the
+    estate-amortised portion — mirror the current phase **exactly**, even under
+    a discount) so `threadlight-production-ready` COST-005/006 still read a
+    number. New `references/cost-estimate-manifest-schema.md`.
+  - **Repo-free, per-phase topology** — a rollout profile may declare its own
+    `resources[]` (top-level and/or per-phase), so an estimate runs with **no
+    Bicep / `azd` discovery** and the topology can *evolve* across phases — the
+    real land-and-expand SKU step (AI Search Basic → S1 → S2). The CLI only
+    falls back to repo discovery when no topology is declared.
+  - **SKILL.md discipline** — new "Pre-sales phased estimate mode" section with
+    an **estimate-framing** rationalization table + red-flags list and an
+    **internal/customer classification** rule, asserted by
+    `tests/test_skill_discipline.py`.
+  - **Fail-fast guardrails** — `retail` basis can't carry a real discount; a
+    `1.0` multiplier is a no-op for any basis; an out-of-range/invalid discount
+    exits 4 (not an uncaught traceback). The seller one-pager carries the
+    estate-billed caveat through to the forwarded artefact.
+  - **Tests:** +100 unit/golden/discipline tests (rollout, observability,
+    hardening, discount, one-pager, emitter, estimate, CLI, two e2e golden
+    fixtures, skill-discipline, no-VF3/no-secrets denylist); new
+    `references/fixtures/sample-presales-rollout/` and
+    `references/fixtures/sample-presales-topology-rollout/` golden fixtures.
+
+- **`threadlight-customize` v0.1.0 — fork-and-customize final leg (plugin
+  1.4.0).** Closes the last unstated assumption in the pipeline: that an SE
+  can stand Threadlight up **inside one specific customer's environment** and
+  adapt its production onboarding. We deliberately ship **instructions, not
+  automation** — per-customer prod onboarding is too high-variance to encode,
+  so the deliverables are fill-in workbooks + runbooks, informed by a real
+  large-European-telco AI pilot (anonymized).
+  - **NEW skill: [`skills/threadlight-customize/`](skills/threadlight-customize/SKILL.md)**
+    — a four-move meta-skill after `threadlight-cicd`: **Move 1 intake gate**
+    (a `customer-profile.md.tmpl` workbook capturing customer documents,
+    environment setup, requirements, and mandated template/starter code);
+    **Move 2 customization map** (classifies every Threadlight skill as
+    customer-agnostic *keep* vs needs-per-customer *override*, with the
+    **production-onboarding leg flagged priority** — `deploy`, `safe-check`,
+    `cicd`, `production-ready`); **Move 3 test-in-customer-env runbook** for
+    fully-private VNet envs (**Azure ML compute instance + VS Code Remote**
+    recommended, **GitHub Codespaces** quick-box, plus a private-VNet
+    pre-flight reachability checklist); **Move 4 non-coverage boundary** +
+    decision log that keeps expectations honest.
+  - **Fork mechanics: [`references/fork-runbook.md`](skills/threadlight-customize/references/fork-runbook.md)**
+    — fork the plugin, **pin upstream**, and keep customer changes in an
+    **overlay** (not in-place forks of skill files) so upstream Threadlight
+    updates still merge.
+  - **Anonymized field notes** — the telco-pilot learnings ship under
+    *"a large European telco AI pilot"*, never naming the customer (public
+    MIT repo); enforced by `tests/test_no_secrets_in_templates.py` (secret
+    literals **and** a customer-name denylist).
+  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's
+    instructions-only test suite (version + structure + no-secrets) as a
+    hard-fail step (deterministic, secret-free, no network).
+  - **Docs:** `README.md` (now **twelve pipeline skills + one orchestrator,
+    13 total**, skills table, pipeline-flow + manual-handoff note) and
+    `THREADLIGHT.md` (new chain section 11 + entry-skill picker row +
+    thirteen-skill count) updated. `threadlight-auto` deliberately does
+    **not** drive this skill — like `cicd`, it's a manual handoff leg.
+
+
+  skill (plugin 1.3.0).** Closes the biggest unstated assumption in the
+  production leg: that the coding agent can run `azd up` with broad rights.
+  Real customer prod environments deploy through a **CI/CD pipeline**, under
+  a **federated identity** with **scoped RBAC**, often from **private-VNet
+  runners**. The new skill generates that pipeline plus the env-setup
+  runbooks the customer's platform team runs.
+  - **NEW skill: [`skills/threadlight-cicd/`](skills/threadlight-cicd/SKILL.md)**
+    — opens with an **onboarding-path decision gate** (is a central platform
+    env required? already deployed?) that resolves to one of three paths:
+    `standalone`, `spoke-onboard` (consume an existing hub via an Access
+    Contract → `citadel-spoke-onboarding`), or `hub-deploy-then-spoke`
+    (stand the hub up on the **separate** central track → `citadel-hub-deploy`,
+    then onboard). The resolved path is written to an auditable
+    `onboarding-path.json`.
+  - **Generates `.github/workflows/azd-deploy-prod.yml` (GitHub OIDC) or
+    `azure-pipelines.yml` (Azure DevOps Workload Identity Federation)** plus
+    `docs/threadlight-cicd/env-setup/` runbooks + `.sh` scripts — `01` UAMI +
+    federated credentials, `02` least-privilege RBAC (scoped to the
+    target/spoke RG only), `03` private-VNet runners (managed **and**
+    self-hosted) — and a `central-platform-boundary.md`. Generation is
+    **deterministic, offline, and secret-free** (OIDC/WIF only; no
+    `AZURE_CREDENTIALS`, client secret, or PAT ever emitted — enforced by the
+    test suite).
+  - **Parallel-track boundary (the must-tell).** The pilot pipeline is a
+    **separate repo/pipeline** from central-platform deployment. It deploys
+    **only** use-case resources into the spoke/target RG and **must never**
+    deploy or modify the Citadel hub, shared APIM, shared networking, or
+    platform Key Vault — those are owned by `citadel-hub-deploy` (awesome-gbb).
+    Documented in `SKILL.md`, the generated boundary doc, and `THREADLIGHT.md`.
+  - **`threadlight-production-ready`** — Phase 3 (`--scaffold-cicd`) keeps its
+    *basic* GitHub-Actions-only scaffold for backward-compat but now
+    **delegates** to `threadlight-cicd` as the authoritative/expanded home
+    (stderr pointer after the scaffold write, SKILL.md Phase 3 pointer, and a
+    new **section G** in `references/handoff-checklist.md`: "The production
+    deploy path exists (CI/CD)"). No behavior change — existing tests stay
+    green.
+  - **CI:** `.github/workflows/python-pytest.yml` runs the new skill's 35
+    tests as a hard-fail step (deterministic, secret-free, no network).
+  - **Hardening (pre-merge adversarial review).** Two adverse passes (security
+    review + a fresh-agent apply-test against a private-VNet bank scenario)
+    drove fixes now pinned by tests: (1) **RBAC** — the deploy identity also
+    gets *Role Based Access Control Administrator* at the **same target-RG
+    scope** so keyless Foundry `azd provision` can perform
+    `roleAssignments/write` (Contributor alone → `AuthorizationFailed`);
+    (2) **azd env seeding** — pipelines run `azd env new ... || true` before
+    `provision` so a clean CI checkout doesn't abort; (3) **ADO** now uses
+    **separate** provision and deploy `AzureCLI@2` tasks (matches the
+    checklist) and reuses the az session (`auth.useAzCliAuth`); (4) **GitHub**
+    drops the redundant `azd auth login` token exchange; (5) **path-aware
+    boundary doc** — on the spoke-onboard path it explicitly says *do not run
+    `citadel-hub-deploy`* and surfaces the hub coordinates + Access Contract
+    product (`--hub-sub` / `--hub-apim-id` / `--access-contract-product`);
+    (6) **private-runner runbook** now spells out Managed DevOps Pool / subnet
+    delegation / egress / private-DNS prerequisites and adds `--ado-pool-name`;
+    (7) **RBAC runbook** ensures the target RG exists first.
+  - **Docs:** `README.md` (now **eleven pipeline skills + one orchestrator**,
+    skills table, pipeline-flow note) and `THREADLIGHT.md` (new chain
+    section 10 + entry-skill picker row + twelve-skill count) updated.
+    `threadlight-auto` deliberately does **not** drive this skill — it's a
+    manual handoff step, not part of the pilot-driver state machine.
+
 - **Kratos-export bridge (issue #39)** — Threadlight skills now compose
   cleanly on a **Kratos-exported agent project** (`<use-case>-foundry-agent.zip`:
   `src/hosted-agent/` + `use-cases/<x>/` + trimmed `infra/`), so an SE can
@@ -114,6 +550,50 @@ field.
   Retail Prices API and fixture both miss the current SKU). Sort order
   pushes None-cost alternatives to the bottom of the table.
 
+### Fixed
+
+- **`threadlight-consumption-iq` — pre-sales reference-repo mode crashed over
+  real repos using the canonical Bicep `cpu: json('x')` ACA idiom.** Every azd
+  Container-Apps template declares container CPU as `cpu: json('0.5')`, which
+  `az bicep build --stdout` renders as the ARM expression string
+  `"[json('0.5')]"`. Discovery passed that string straight through as `vcpu`,
+  and the ACA projector then did arithmetic on it (`str * int` → `str - int`)
+  and died with an uncaught `TypeError` the moment a phased estimate ran in
+  reference-repo / expansion mode against an undeployed real repo. Now
+  `discover._parse_vcpu` resolves the `json('x')` idiom (and plain numeric
+  strings) to a float, and `projectors/aca.py` defensively coerces `vcpu` /
+  `memory_gib` with a safe fallback so any stray non-numeric value falls back to
+  the 0.5 vCPU / 1.0 GiB default instead of crashing. +5 tests (discover idiom
+  resolution + `_parse_vcpu` unit table; projector string/unresolved/None
+  coercion). Surfaced by a real-repo smoke of the hardened pre-sales path.
+
+- **`threadlight-consumption-iq` — four robustness/accuracy fixes from a final
+  adverse review of the pre-sales mode.**
+  - **Discovered Consumption ACA was mis-costed as flat Dedicated.** Discovery
+    emits the tier lower-cased (`"consumption"`) but the projector compared
+    `tier == "Consumption"`, so a discovered Consumption Container App fell
+    through to the flat Dedicated branch (`0.20 × 730 = $146/mo`) instead of the
+    free-grant usage-based formula — inflating every reference-repo estimate.
+    The tier check is now case-insensitive.
+  - **Parameterized replica bounds crashed the projector.** Real Bicep
+    parameterizes `minReplicas`/`maxReplicas`, which render as ARM expression
+    strings; discovery passed them through raw and the projector's
+    `max()`/`math.ceil` arithmetic raised an uncaught `TypeError` (exit 1,
+    breaking the 2/3/4 exit contract). Discovery now resolves replica values to
+    ints (with int fallback for unresolvable `parameters()` refs), the projector
+    defensively int-coerces replica bounds, and declared-topology numeric
+    `current_sku.extra` fields are type-checked at load time (→ exit 4).
+  - **Negative/non-numeric load fields produced negative totals.** The
+    rollout JSON/YAML path bypassed the wizard's `>= 0` guard, so a
+    hand-authored `peak_requests_per_second: -5` yielded a negative monthly
+    total. `validate_rollout_profile` now rejects non-numeric or negative
+    required load fields (→ exit 4).
+  - **Partial per-phase topology silently projected a $0-compute phase.** When
+    one phase declared `resources` (globally skipping discovery) but another
+    omitted them with no top-level fallback, that phase resolved to an empty
+    topology and silently showed $0 compute. It is now rejected fail-fast
+    (→ exit 4). +11 tests; full consumption-iq suite 241 → 252.
+
 ### Pending for v0.2
 
 - Live-pricing population for the 6 non-AOAI resource-kind fixtures
@@ -127,7 +607,7 @@ field.
 
 ### Changed
 
-- **`threadlight-design` v1.8.0 — Fast-PoC scoped to basic scenarios +
+- **`threadlight-design` v1.10.0 — Fast-PoC scoped to basic scenarios +
   mode-selection triage**: Fast-PoC is no longer a blanket default. The skill now runs a
   **complexity triage** before locking a mode — a scenario is "basic"
   (Fast-PoC OK) only when it is read-only/trivially-reversible, stateless or
@@ -137,11 +617,7 @@ field.
   skill asks **one triage question** naming the signal and defaults to Full
   mode (Step 1.5) so the extra round improves the outcome; the user can still
   force Fast-PoC. Docs updated to match: `THREADLIGHT.md` mode summary +
-  quick-ref, `docs/WORKSHOP-1H-QUICKSTART.md` basic-scenario note, and the
-  `docs/index.html` / `docs/funnel.html` entry cards (FSI claims-triage example
-  no longer says "Fast PoC mode"; a note explains Fast-PoC is for basic
-  scenarios). New `.skill-note` style in `assets/site.css` (cache-buster
-  `ia-v24`).
+  quick-ref, and `docs/WORKSHOP-1H-QUICKSTART.md` basic-scenario note.
 - **`threadlight-production-ready` COST-005 tightened**: previously checked
   only `docs/cost-projection.md` existence. Now requires ALL of:
   `docs/cost-projection.md` present AND `specs/cost-manifest.json` present

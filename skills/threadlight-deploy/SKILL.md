@@ -1,23 +1,22 @@
 ---
 name: threadlight-deploy
-description: >
-  Take a designed agent project (from threadlight-design or manually crafted) and generate
-  all deployment artifacts for Microsoft Foundry Hosted Agents. Reads specs/SPEC.md,
-  AGENTS.md, and skills to produce container.py, Dockerfile, pyproject.toml, azd project,
-  and deploy-notes.md. One-command deployment via `azd up`. Also runs in
-  Kratos-export mode: when handed a Kratos-exported full-clone project
-  (src/hosted-agent/ + use-cases/<x>/), it enriches/validates only — it does
-  NOT regenerate the Dockerfile/main.py/azure.yaml Kratos already shipped — and
-  backfills the missing evals/ directory.
-  USE FOR: deploy to Foundry, make this deployable, generate deployment files, Foundry hosted agent,
-  containerize agent, prepare for Foundry, package agent, deploy agent, hosted deployment,
-  agent deployment, azd deploy, azd up, Kratos export, Kratos-exported project, foundry-agent.zip,
-  enrich Kratos export, backfill evals, use-cases skills bundle.
-  DO NOT USE FOR: designing the process (use threadlight-design), running evals (use foundry-evals),
-  Teams bot deep dive (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
-  GHCP SDK variant (use ghcp-hosted-agents), tenant/subscription isolation for azd (use azure-tenant-isolation).
+description: >-
+  Take a designed agent project (from threadlight-design or hand-crafted) and
+  generate all deployment artifacts for Microsoft Foundry Hosted Agents. Reads
+  specs/SPEC.md, AGENTS.md, and skills to produce container.py, Dockerfile,
+  pyproject.toml, an azd project, and deploy-notes.md for one-command `azd
+  up`. Also runs in Kratos-export mode: handed a Kratos-exported project
+  (src/hosted-agent/ + use-cases/<x>/) it enriches/validates only and
+  backfills the missing evals/ directory. USE FOR: deploy to Foundry, make
+  this deployable, generate deployment files, Foundry hosted agent,
+  containerize agent, package agent, deploy agent, azd deploy, azd up, Kratos
+  export, foundry-agent.zip, backfill evals. DO NOT USE FOR: designing the
+  process (use threadlight-design), running evals (use foundry-evals), Teams
+  bot (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
+  GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
+  azure-tenant-isolation).
 metadata:
-  version: "1.6.0"
+  version: "1.6.3"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -125,7 +124,7 @@ Recommended (from `threadlight-design`):
 > | `foundry-doc-vision-speech` | If SPEC § 7b selects any vision / DocIntel / Speech model |
 > | `foundry-evals` | For post-deployment evaluation AND continuous evaluation: **Plan A** (default) — Foundry's built-in scheduled evaluations (no extra infra). **Plan B** (fallback) — ACA Job cron eval that reads from App Insights and writes to Workbook (use only when Plan A doesn't yet support hosted-agent eval kinds you need). Phase 6 includes the ACA Job ONLY when SPEC § 9 sets `continuous_eval.plan: "B"` |
 > | `citadel-spoke-onboarding` | **Phase 7 (opt-in)** — runs ONLY when SPEC § 11b sets `governance_hub.required: yes` |
-> | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"`. Generates MAF Workflow container instead of Agent container. This skill then picks up the container for Phase 5-6. |
+> | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"` **AND the skill is installed** (`/skills list`). Generates a MAF Workflow container instead of an Agent container, then Phase 5-6 pick it up. **If it is not installed, do NOT block or hunt for it — fall back to the Phase 2 agent container path (see the Workflow model gate below).** |
 >
 > Use `/skills list` to check availability. If missing, install from `aiappsgbb/awesome-gbb`.
 
@@ -498,11 +497,20 @@ already exist:
 > `use-cases/<x>/evals/`, validate selectors) and resume at Phase 3.
 >
 > **Workflow model gate.** If SPEC § 11e sets `workflow_model: "workflow"`,
-> **delegate container generation to the `threadlight-workflow` skill** and
-> skip Phase 2 entirely. `threadlight-workflow` generates `container.py`,
-> `executors/`, `workflow_graph.py`, `Dockerfile`, and `pyproject.toml` in
-> the same `src/agent/` layout that Phase 5-6 expects. Resume at Phase 3
-> (Validate) after `threadlight-workflow` completes.
+> **prefer** the `threadlight-workflow` skill **when it is installed** (check
+> `/skills list` first). It generates `container.py`, `executors/`,
+> `workflow_graph.py`, `Dockerfile`, and `pyproject.toml` in the same
+> `src/agent/` layout that Phase 5-6 expects; resume at Phase 3 (Validate)
+> after it completes.
+>
+> **If `threadlight-workflow` is NOT installed, do NOT stop, retry-loop, or
+> hunt the repo for it — fall back to the Phase 2 agent container path below.**
+> The MAF **Agent** runtime executes the same multi-step logic via agent-driven
+> tool orchestration; only the deterministic workflow-graph optimization (fixed
+> executor order, durable pause points) is deferred, which is acceptable for a
+> pilot. Emit exactly one line noting the fallback (`workflow_model=workflow but
+> threadlight-workflow unavailable → generating agent container instead`) and
+> then proceed with Phase 2 exactly as for the agent path.
 >
 > If `workflow_model` is absent or `"agent"`, proceed with Phase 2 below
 > (the existing agent container path — unchanged).
@@ -696,8 +704,8 @@ The runtime uses `CopilotClient` + `InvocationAgentServerHost`:
 
 #### MAF variant (when Toolbox or custom @tool needed)
 
-**Copy the reference template** from the `foundry-hosted-agents` skill or
-`references/container-runtime-template.py` and adapt:
+**Copy the reference template** from the `foundry-hosted-agents` companion
+skill and adapt:
 
 The runtime uses `Agent` + `FoundryChatClient` + `ResponsesHostServer`:
 1. `FoundryChatClient` with `DefaultAzureCredential` for Foundry auth
@@ -758,7 +766,7 @@ agent = Agent(
 
 ### 5. `src/agent/pyproject.toml` — Python Dependencies
 
-**Copy from `references/pyproject-template.toml`** and replace `__PROJECT_NAME__`:
+**Copy the inline `pyproject.toml` template below** and replace `__PROJECT_NAME__`:
 
 ```toml
 [project]
@@ -848,7 +856,7 @@ opentelemetry-sdk>=1.27.0
 
 ### 6. `src/agent/Dockerfile` — Self-Contained Container
 
-**Copy from `references/dockerfile-template`** and adapt:
+**Copy the inline `Dockerfile` template below** and adapt:
 
 ```dockerfile
 FROM mcr.microsoft.com/oryx/python:3.12
@@ -1339,7 +1347,7 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### `src/agent/` — Hosted agent container
 - [ ] `src/agent/container.py` — exists, matches chosen runtime (GHCP or MAF)
-- [ ] `src/agent/Dockerfile` — uses `python:3.12-slim`, `uv sync`, copies all agent files
+- [ ] `src/agent/Dockerfile` — uses `mcr.microsoft.com/oryx/python:3.12`, `uv sync`, copies all agent files
 - [ ] `src/agent/pyproject.toml` — correct deps for chosen variant, `prerelease = "if-necessary-or-explicit"`
 - [ ] `src/agent/copilot-instructions.md` — exists, 500-1500 words, matches AGENTS.md
 - [ ] `src/agent/skills/` — has all skills from AGENTS.md, no extra, no missing
@@ -1357,7 +1365,7 @@ Check every file. Mark each ✅ or fix before presenting.
 #### `src/bot/` — Teams bot (if Teams needed)
 - [ ] `src/bot/bot.py` — uses `get_openai_client(agent_name=...)` (NOT `agent_reference`)
 - [ ] `src/bot/app.py` — aiohttp server with MsalConnectionManager
-- [ ] `src/bot/Dockerfile` — python:3.12-slim, port 80
+- [ ] `src/bot/Dockerfile` — `mcr.microsoft.com/oryx/python:3.12`, port 80
 - [ ] `src/bot/requirements.txt` — includes microsoft-agents-* + openai
 - [ ] `src/bot/build_manifest.py` — replaces all manifest tokens; **MUST fail loudly** if `BOT_APP_ID` env var is missing or still a placeholder (e.g. `<uami-client-id>`) — silent fallback to a placeholder produces a zip that passes `azd deploy` but fails Teams schema validation at sideload time with `String "<uami-client-id>" does not match regex pattern`. Guard: `if not bot_id or bot_id.startswith("<"): raise SystemExit("BOT_APP_ID not set")`
 - [ ] `src/bot/teams_package/manifest.json` — has `__BOT_APP_ID__` placeholder tokens ready for postprovision (NEVER literal `<uami-client-id>` — use double-underscore `__` tokens that are obviously wrong if leaked)
@@ -1412,7 +1420,7 @@ Check every file. Mark each ✅ or fix before presenting.
 > automation is:
 >
 > ```bash
-> python -m threadlight.safe_check --phase pre-deploy
+> python3 tests/safe_check.py --phase pre-deploy
 > ```
 >
 > Wire it as an `azd hooks predeploy` so missing services abort the
@@ -1491,7 +1499,7 @@ remove them.
 > playbook. Never retry blind.
 
 > **Canonical implementation: `threadlight-safe-check` skill.** Invoke as
-> `python -m threadlight.safe_check --phase post-deploy` immediately after
+> `python3 tests/safe_check.py --phase post-deploy` immediately after
 > `azd up` returns 0 (and wire as `azd hooks postdeploy`). The detailed
 > step-by-step below is preserved for understanding what the gate does;
 > in practice run the consolidated CLI rather than reimplementing.
@@ -2258,10 +2266,16 @@ The scaffold uses **vendored Bicep modules** from the official
 template. This ensures correct resource structure for the extension while remaining
 self-contained (no network dependency on the template repo).
 
-### Step 1: Copy the scaffold
+### Step 1: Generate the base project
 
-Copy the **entire** `references/scaffold/` directory into the project root.
-This adds:
+Generate the `azd`-ready skeleton with the **`azd ai agent` extension**
+(`azd ai agent init` — `azure.ai.agents >= 0.1.0-preview`; see
+`references/upstream-pin.md` for the pinned `azd-ai-starter-basic` SHA). The
+extension emits `azure.yaml`, `agent.yaml`, and the vendored `infra/`
+(`main.bicep`, `main.parameters.json`, and `core/` — Bicep modules vendored from
+the starter, **do not modify**). Phase 2's `src/agent/` runtime files and any
+`src/mcp/` · `src/bot/` services then slot into this skeleton. The full layout
+after Phase 2 (and the optional bot in Phase 4):
 
 ```
 project/
@@ -2317,7 +2331,7 @@ project/
 
 ### Step 2: Replace placeholder tokens
 
-Replace these tokens **in all copied files**:
+Replace these tokens in the generated and Phase 2 files:
 
 | Token | Value | Source | Files |
 |-------|-------|--------|-------|
@@ -3147,7 +3161,7 @@ treats them identically.
 
 **Lookup BEFORE running `az logs` / `azd ai agent monitor` blindly.** Most azd / agent errors have a known root cause and a known fix; matching the error signature here saves the 10-20 min of log-spelunking that re-derives a documented fix.
 
-This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time failure-mode index (10 from-scratch pilots, 17 + 9 MIDs captured). Threadlight's own deeper Gotchas table follows immediately below — when both apply, prefer the row here for the **fast lookup**, then jump to Gotchas for the **full forensic**.
+This index distills the deploy-time failure modes seen across 10 from-scratch pilots (17 + 9 MIDs captured). Threadlight's own deeper Gotchas table follows immediately below — when both apply, prefer the row here for the **fast lookup**, then jump to Gotchas for the **full forensic**.
 
 | # | Error signature (in az/azd output, container log, or portal) | 1-line action |
 |---|---|---|
@@ -3174,7 +3188,7 @@ This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time fail
 | **F-21** | Agent invoke returns `session_not_ready` after 60s timeout; `azd ai agent show` says `status: active`; container logs show no errors | `from azure.identity import DefaultAzureCredential` (sync) passed to `FoundryChatClient(credential=...)` → SDK is async-only, sync credential's `get_token` doesn't satisfy `get_token_async` → first request hangs until session-ready timeout fires. **MUST** use `from azure.identity.aio import DefaultAzureCredential`. |
 | **F-22** | `azd deploy <agent-service>` succeeds Foundry `Create agent` + `Polling agent status`, then `failed invoking event handlers for 'postdeploy', failed to fetch agent version for <azd-service-name>/<version>: GET .../agents/<azd-service-name>/versions/<v> 404` | The agent IS deployed (`azd ai agent show -o json` confirms `status: active`). Extension's internal postdeploy event handler looks up by **azd service name** instead of `agent.yaml .name:` — 404. **User's own postdeploy hook never gets a chance to run.** Set `azure.yaml` `services.<service>` == `agent.yaml .name:` as workaround until upstream fix lands. |
 
-> **Sourcing.** This index is mirrored from [`aiappsgbb/agentic-loop`](https://github.com/aiappsgbb/agentic-loop) SKILL § Deploy-time failure-mode index. The 22 rows came from 10 from-scratch pilots over 6 days (May 2026): weather-agent, learn-assistant ×2, hybrid-mcp-agent, smb-credit-memo, contoso-claim-triage. When threadlight's own from-scratch runs surface NEW failure modes, add a row here AND cross-update agentic-loop.
+> **Sourcing.** The 22 rows came from 10 from-scratch pilots over 6 days (May 2026): weather-agent, learn-assistant ×2, hybrid-mcp-agent, smb-credit-memo, contoso-claim-triage. When threadlight's own from-scratch runs surface NEW failure modes, add a row here.
 
 ---
 
@@ -3267,3 +3281,13 @@ This index is ported from the `aiappsgbb/agentic-loop` SKILL § Deploy-time fail
 | [**foundry-cross-resource**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-cross-resource/) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
 | [**azure-tenant-isolation**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |
 | [**azd-patterns**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | `azd` hooks, ACA job deployment, **Composable Bicep Module Library** (the source of every module Phase 6 includes) |
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this deploy leg, reach for the official
+**[Azure Skills](https://github.com/microsoft/azure-skills)** catalog. *Further
+reading, not a dependency* — Threadlight's guidance stays the source of truth for
+the pilot flow:
+
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.

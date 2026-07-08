@@ -120,7 +120,7 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 |---|---|---|---|
 | 1 | [`network-posture`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `citadel-spoke-onboarding`, `foundry-vnet-deploy` |
 | 2 | [`agent-governance`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | AGT in-process middleware wired (capability-based, version-agnostic); policy + verifier artefacts present; OWASP-ASI evidence current; v4-preview deep checks when v4 detected | `foundry-agt` |
-| 3 | [`identity-access`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
+| 3 | [`identity-access`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies; **agent (non-human) identity governed** &mdash; passwordless binding, named owner, least-privilege scope, lifecycle/review (emits `agent-identity.json`) | `foundry-hosted-agents`, `entra-agent-id`, `foundry-agt`, `azure-tenant-isolation` |
 | 4 | [`secrets`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
 | 6 | [`continuous-evals`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `foundry-evals` |
@@ -185,6 +185,7 @@ This skill is **the cross-cutting scorecard.** It does not replace any of the fo
 |---|---|
 | Authoring SPEC / `deployment_manifest{}` | `threadlight-design` |
 | Running `azd up` | `threadlight-deploy` |
+| Generating the prod CI/CD pipeline + env (UAMI / federated creds, RBAC, private-VNet runners) | `threadlight-cicd` |
 | Structural / behavioural deploy gate | `threadlight-safe-check --phase post-deploy` |
 | Invocation testing of the agent | `foundry-evals` |
 | Wiring App Insights / OTel | `foundry-observability` |
@@ -286,6 +287,8 @@ threadlight-design        →  threadlight-local-test  →  threadlight-deploy  
 
 **Soft-advisory by design.** The skill before it (`safe-check`) is the structural gate. The skills after it are conversations with humans. This skill is the **bridge** — the artefact that turns "we built something that works" into "here is the evidence the customer's production team needs."
 
+**Then the pilot ships through a pipeline, not a laptop.** Once the scorecard is green, [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) generates the production deploy pipeline (GitHub Actions / Azure DevOps) and the env-setup runbooks the platform team runs — OIDC/WIF identity, least-privilege RBAC scoped to the spoke RG, and private-VNet runners — because in a real customer tenant the agent rarely has rights to run `azd up` itself. It is a deliberate **manual handoff** (not part of the auto chain), and it stays a **separate repo/pipeline** from the central platform: it never touches the Citadel hub, shared APIM, or platform networking — those remain `citadel-hub-deploy`.
+
 ---
 
 ## Read next
@@ -293,6 +296,7 @@ threadlight-design        →  threadlight-local-test  →  threadlight-deploy  
 - **Full skill metadata + invocation patterns:** [`skills/threadlight-production-ready/SKILL.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md)
 - **Author SPEC § 12 from scratch:** [`references/spec-section-12-template.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md)
 - **Pre-go-live handoff checklist:** [`references/handoff-checklist.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/handoff-checklist.md)
+- **Generate the prod CI/CD pipeline + env (UAMI/federated creds, RBAC, private-VNet runners):** [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) · [onboarding-path decision tree](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/references/onboarding-path-decision.md)
 - **Per-pillar Azure RBAC for live probes:** [`references/live-probe-permissions.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/live-probe-permissions.md)
 - **Sample CI workflow (PR comments + artefacts):** [`references/ci-github-actions.yml`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/ci-github-actions.yml)
 - **End-to-end workshop (1 hour, includes a production-readiness pass):** [WORKSHOP-1H-QUICKSTART.md](WORKSHOP-1H-QUICKSTART.md)

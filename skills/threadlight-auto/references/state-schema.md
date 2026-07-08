@@ -4,10 +4,9 @@ The `threadlight-auto` orchestrator reads (and writes, when `--commit` flag is s
 this file to track which stages have run, what artifact hashes they produced,
 and which auto-recovery actions fired. Format: pretty-printed JSON.
 
-> **Lineage.** Mirrors `aiappsgbb/agentic-loop`'s `.agentic-loop/auto-state.json`
-> schema with threadlight-specific stage names (preflight / design / deploy /
-> safe_check / invoke) and artifact paths (specs/SPEC.md, docs/safe-check-post.md,
-> docs/invoke-results.md).
+> **Schema.** Stage names are `preflight / design / deploy / safe_check /
+> invoke`; artifact paths are `specs/SPEC.md`, `docs/safe-check-post.md`,
+> `docs/invoke-results.md`.
 
 ## Top-level shape
 
@@ -26,6 +25,9 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
   "deploy":     { "..." },
   "safe_check": { "..." },
   "invoke":     { "..." },
+  "evals":      { "..." },
+  "redteam":    { "..." },
+  "govern":     { "..." },
   "recovery_events": [ "...event shape (below)..." ]
 }
 ```
@@ -57,6 +59,9 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
 | deploy | `infra/main.bicep` | Bicep authoring is the load-bearing artifact for safe-check |
 | safe_check | `docs/safe-check-post.md` | End-state record for resumption-aware invoke |
 | invoke | `docs/invoke-results.md` | Demo-scenario evidence; freshness gates re-run after spec change |
+| evals | `specs/evals-manifest.json` | Discover leg — offline + online (Foundry CE) + A/B eval evidence consumed by production-ready pillar 6 |
+| redteam | `specs/redteam-manifest.json` | Discover leg — AI Red Teaming Agent scan evidence consumed by production-ready pillar 7 (SAFE-1xx) |
+| govern | `specs/govern-manifest.json` | Protect leg — AGT runtime-governance artefact consumed by production-ready pillar 2 + pillar 7 (RAI-002/003) |
 
 ## `recovery_events` shape
 

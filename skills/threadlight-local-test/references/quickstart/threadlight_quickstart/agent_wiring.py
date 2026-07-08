@@ -80,7 +80,7 @@ def _build_foundry_client():
 
 
 def _build_aoai_client():
-    from agent_framework.openai import AzureOpenAIChatClient  # type: ignore[import-not-found]
+    from agent_framework.openai import OpenAIChatCompletionClient  # type: ignore[import-not-found]
     from azure.identity import DefaultAzureCredential  # type: ignore[import-not-found]
 
     endpoint = _require_env(
@@ -91,9 +91,12 @@ def _build_aoai_client():
         "AZURE_OPENAI_DEPLOYMENT",
         "Set AZURE_OPENAI_DEPLOYMENT to a deployed model name.",
     )
-    return AzureOpenAIChatClient(
-        endpoint=endpoint,
-        deployment_name=deployment,
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
+    log.info("Azure OpenAI backend: deployment=%s api_version=%s", deployment, api_version)
+    return OpenAIChatCompletionClient(
+        model=deployment,
+        azure_endpoint=endpoint,
+        api_version=api_version,
         credential=DefaultAzureCredential(),
     )
 

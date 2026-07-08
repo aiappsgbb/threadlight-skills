@@ -443,6 +443,12 @@ def _scaffold_cicd(framing: dict, repo_full_name: str, out_root) -> list:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(_render_template(tmpl, ctx))
         written.append(dest)
+    _eprint(
+        "note: this is the *basic* GitHub-Actions scaffold. For the authoritative, "
+        "expanded pipeline (GitHub Actions AND Azure DevOps, UAMI/federated-credential "
+        "+ least-privilege RBAC + private-VNet runner runbooks, onboarding-path gate, and "
+        "the central-platform boundary), use the dedicated `threadlight-cicd` skill."
+    )
     return written
 
 
@@ -479,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.5.0"
+VERSION = "0.9.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -683,11 +689,11 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
-    "AGT-001": {"title": "AGT middleware imported in src/", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-001": {"title": "AGT policy is schema-valid (lints clean)", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-002": {"title": "policy.yaml present in repo", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-003": {"title": "OWASP ASI 2026 verifier referenced", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
-    "AGT-004": {"title": "AGT version pinned (not floating)", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
-    "AGT-005": {"title": "AGT policy covers tool calls + prompt shields", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    "AGT-005": {"title": "AGT governance gate runs in CI", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
     "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -707,6 +713,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "IAM-003": {"title": "RBAC scopes declared in Bicep (not subscription-wide)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
     "IAM-004": {"title": "No long-lived SAS tokens in code", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
     "IAM-005": {"title": "ACA / Functions auth enabled", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
+    "IAM-006": {"title": "Agent identity is passwordless (managed/federated)", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
+    "IAM-007": {"title": "Agent identity declares a responsible owner", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
+    "IAM-008": {"title": "Agent identity scope is least-privilege", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
+    "IAM-009": {"title": "Agent identity lifecycle (expiry/review) is declared", "pillar": "identity-access", "severity": "should-fix", "tier": 0},
     "IAM-101": {"title": "Role assignments observed in-target match Bicep", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
     "IAM-102": {"title": "No Owner/Contributor on workload identity", "pillar": "identity-access", "severity": "must-fix", "tier": 1},
     "IAM-103": {"title": "Conditional access / Entra policies considered", "pillar": "identity-access", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -738,6 +748,14 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "OBS-104": {"title": "Alert rules wired in target RG", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-105": {"title": "Action group with notification channel", "pillar": "observability", "severity": "must-fix", "tier": 1},
     "OBS-106": {"title": "Diagnostic settings on Foundry account -> LA", "pillar": "observability", "severity": "must-fix", "tier": 1},
+    # ---- observability — outcome-KPI scorecard (F7)
+    # CAF agent observability triad: baselines (latency, cost-per-interaction,
+    # success-rate) + deviation alerts live under observability. KPI-001..003
+    # join eval pass-rate + cost-per-interaction + traces into one measurable
+    # outcome view. should-fix / tier-0 (static synthesis, never must-fix).
+    "KPI-001": {"title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-002": {"title": "Deviation alert wired for an outcome KPI baseline", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
 
     # ---- continuous-evals
     "EVAL-001": {"title": "SPEC sec 9 declares eval scenarios", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
@@ -754,13 +772,22 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 
     # ---- responsible-ai
     "RAI-001": {"title": "Content filters declared on model deployments", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
-    "RAI-002": {"title": "AGT RAI policy section present", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "RAI-002": {"title": "AGT policy constrains sensitive actions", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "RAI-003": {"title": "Prompt shields enabled in policy", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "RAI-004": {"title": "PII redaction strategy documented", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-005": {"title": "Groundedness check planned for RAG", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-006": {"title": "RAI incident escalation owner named", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
     "RAI-101": {"title": "Content filter resource present in target", "pillar": "responsible-ai", "severity": "must-fix", "tier": 1},
     "RAI-102": {"title": "AGT RAI denials observable in last 24h", "pillar": "responsible-ai", "severity": "should-fix", "tier": 2, "experimental": True},
+    # ---- responsible-ai — adversarial red-team evidence (threadlight-redteam)
+    # Emitted only when specs/redteam-manifest.json is present; gives pillar 7
+    # live attack evidence instead of static configuration only.
+    "SAFE-101": {"title": "Red-team jailbreak attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-102": {"title": "Red-team prompt-injection attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-103": {"title": "Red-team data/prompt exfiltration attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "SAFE-104": {"title": "Adversarial red-team scan present and fresh", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    "SAFE-105": {"title": "Red-team harmful-content attack-success-rate within threshold", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    "SAFE-106": {"title": "Red-team attack coverage sufficient", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
 
     # ---- hitl-audit
     "HITL-001": {"title": "SPEC sec 8 declares HITL gates if user-facing", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
@@ -780,6 +807,12 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-005": {"title": "Vulnerability scan step declared", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-006": {"title": "ACR scoped to private network", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-007": {"title": "Provenance / attestation considered", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-008": {"title": "Agent skills/tools not force-published in committed automation", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-009": {"title": "Agent skills/tools pinned to a version for production", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-010": {"title": "MCP servers pinned to an exact version or image digest", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "SUP-011": {"title": "MCP servers resolve from a known registry or source", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
+    "SUP-012": {"title": "mcp-lock.json committed and free of undocumented drift", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "SUP-013": {"title": "MCP server credentials are not committed inline", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
     "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -1658,6 +1691,66 @@ def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]
 
 
 # ---------------------------------------------------------------------------
+# threadlight leg manifests (govern / evals / redteam)
+# ---------------------------------------------------------------------------
+#
+# The executable threadlight legs each emit a manifest under `specs/`:
+#   threadlight-govern   -> specs/govern-manifest.json   (AGT wiring)
+#   threadlight-evals    -> specs/evals-manifest.json     (eval coverage)
+#   threadlight-redteam  -> specs/redteam-manifest.json   (adversarial scan)
+#
+# When a fresh manifest is present, the corresponding pillar reports the leg's
+# own verdict as *evidence the leg ran* — flipping findings from "go run the
+# remediation skill" to "verified". When no manifest is present the pillar
+# falls back to its legacy static heuristics, so behaviour is unchanged for
+# pilots that have not adopted the legs yet.
+
+_LEG_FRESHNESS_DAYS = 90
+
+
+def _load_leg_manifest(ctx: RepoContext, filename: str,
+                       max_age_days: int = _LEG_FRESHNESS_DAYS) -> dict | None:
+    """Load a threadlight leg manifest from specs/<filename>.
+
+    Returns the parsed dict with two computed keys injected — ``_age_days``
+    (float | None) and ``_fresh`` (bool) — or ``None`` if the file is absent
+    or unparseable. Never raises.
+    """
+    path = ctx.root / "specs" / filename
+    raw = _read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    age: float | None = None
+    captured = data.get("captured_at") or ""
+    if captured:
+        try:
+            cap_dt = datetime.fromisoformat(str(captured).replace("Z", "+00:00"))
+            now = datetime.now(cap_dt.tzinfo) if cap_dt.tzinfo else datetime.now()
+            age = round((now - cap_dt).total_seconds() / 86400.0, 1)
+        except (ValueError, TypeError):
+            age = None
+    data["_age_days"] = age
+    data["_fresh"] = age is not None and 0 <= age <= max_age_days
+    return data
+
+
+def _leg_cap_status(manifest: dict, key: str) -> str | None:
+    """Return the status string for a capability key in a leg manifest."""
+    cap = (manifest.get("capabilities") or {}).get(key)
+    if isinstance(cap, dict):
+        status = cap.get("status")
+        if status in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable"):
+            return status
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Bicep ARM-graph parser (v0.3.0 — closes the smoking gun)
 # ---------------------------------------------------------------------------
 #
@@ -1687,6 +1780,19 @@ class PrerequisiteError(RuntimeError):
     """
 
 
+def _as_dict(v: Any) -> dict:
+    """Coerce a value to a dict, or ``{}`` if it is anything else.
+
+    ARM sub-objects (e.g. ``properties``, ``properties.model``,
+    ``properties.template``) can arrive as expression STRINGS — a parameter,
+    variable, or copy-loop expression like
+    ``"[parameters('deployments')[copyIndex()].model]"`` — instead of objects.
+    Coercing non-dicts to ``{}`` keeps downstream ``.get(...)`` reads from
+    crashing on a ``str`` when a value is only resolvable at deploy time.
+    """
+    return v if isinstance(v, dict) else {}
+
+
 class BicepGraph:
     """Compile-once ARM-graph view over a repo's Bicep files.
 
@@ -1708,6 +1814,8 @@ class BicepGraph:
         self.source_files = source_files
         self._by_type: dict[str, list[dict]] = {}
         for r in resources:
+            if not isinstance(r, dict):
+                continue
             t = (r.get("type") or "").lower()
             if t:
                 self._by_type.setdefault(t, []).append(r)
@@ -1782,19 +1890,32 @@ class BicepGraph:
         return cls(all_resources, mains)
 
     @staticmethod
-    def _walk(resources: list[dict]) -> list[dict]:
+    def _walk(resources: Any) -> list[dict]:
         out: list[dict] = []
-        for r in resources:
+        # ARM templates with languageVersion >= 2.0 (symbolic names) express
+        # `resources` as a MAP {symbolicName: resourceObject}; classic ARM uses
+        # a LIST. Normalise both to an iterable of resource objects.
+        if isinstance(resources, dict):
+            items: list = list(resources.values())
+        elif isinstance(resources, list):
+            items = resources
+        else:
+            return out
+        for r in items:
+            if not isinstance(r, dict):
+                continue
             rtype = (r.get("type") or "").lower()
             if rtype == "microsoft.resources/deployments":
                 # Nested template — recurse into properties.template.resources
-                nested = (((r.get("properties") or {}).get("template") or {}).get("resources") or [])
+                # (itself a MAP under languageVersion 2.0).
+                nested = _as_dict(_as_dict(r.get("properties")).get("template")).get("resources") or []
                 out.extend(BicepGraph._walk(nested))
             else:
                 out.append(r)
-                # Some resources nest children inline.
-                kids = r.get("resources") or []
-                if isinstance(kids, list):
+                # Some resources nest children inline (list or, under
+                # languageVersion 2.0, a map).
+                kids = r.get("resources")
+                if isinstance(kids, (list, dict)):
                     out.extend(BicepGraph._walk(kids))
         return out
 
@@ -1848,6 +1969,8 @@ class RepoContext:
     src_text: str = ""
     bicep_graph: BicepGraph | None = None
     resolved_posture: str = ""
+    mcp_sbom: dict | None = None
+    agent_identity: dict | None = None
 
     @classmethod
     def from_repo(cls, root: Path, manifest: dict) -> "RepoContext":
@@ -2064,40 +2187,108 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
 
 # ---- pillar 2: agent-governance (AGT) --------------------------------------
 
+# A canonical AGT policy file is the single document `agt lint-policy` would be
+# pointed at. Schema-validity, version-pin and sensitive-action checks MUST read
+# one canonical file — a cross-file merge lets a sibling (e.g. `policy.prod.yaml`)
+# supply an anchor the real `policy.yaml` is missing and false-pass a hard gate.
+_CANONICAL_POLICY_NAMES = ("policy.yaml", "agt-policy.yaml", "policy.yml")
+
+
+def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
+    """Return (canonical_policy_text, canonical_present, merged_all_policy_text).
+
+    ``canonical_policy_text`` is the text of the single canonical policy file
+    (deterministic: first canonical-named file by sorted path). ``merged`` is
+    every ``policy*.y*ml`` concatenated — only for OR-presence signals
+    (OWASP/telemetry mentions), never for completeness checks.
+    """
+    pol_files = sorted(_glob_repo(ctx.root, "**/policy*.y*ml"), key=lambda p: str(p))
+    canonical = next((p for p in pol_files if p.name in _CANONICAL_POLICY_NAMES), None)
+    canon_text = (_read_text(canonical) or "") if canonical is not None else ""
+    merged = ""
+    for p in pol_files:
+        merged += "\n" + (_read_text(p) or "")
+    return canon_text, canonical is not None, merged
+
+
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
-    # AGT-001 imported in src
-    has_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
+    # Prefer the threadlight-govern leg manifest when it is present and fresh:
+    # the leg has already verified AGT wiring, so report its verdict as
+    # evidence rather than re-deriving from heuristics.
+    gm = _load_leg_manifest(ctx, "govern-manifest.json")
+    if gm is not None and gm.get("_fresh"):
+        verdict = gm.get("verdict", "?")
+        prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
+        _agt_map = {
+            "AGT-001": "policy_schema_valid",
+            "AGT-002": "policy_artefact_present",
+            "AGT-003": "asi_reference_present",
+            "AGT-004": "policy_versioned",
+            "AGT-005": "ci_gate_present",
+        }
+        for fid, cap in _agt_map.items():
+            st = _leg_cap_status(gm, cap)
+            if st is None:
+                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+            else:
+                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
+        # AGT-006 telemetry sink is not part of the govern manifest — keep the
+        # legacy heuristic so the finding still scores.
+        pol_text = ""
+        for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
+            pol_text += "\n" + (_read_text(p) or "")
+        has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
+        out.append(_mk_finding("AGT-006",
+            status="pass" if has_telemetry else "should-fix",
+            detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
+        if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
+            out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
+        return out
+    # ---- legacy heuristic path (no govern manifest) ----
+    # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
+    # (OWASP, telemetry) may read the merged text.
+    canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
+    # AGT-001 policy is schema-valid: top-level version + name + rules present
+    # IN THE CANONICAL FILE (not merged across siblings)
+    schema_valid = has_policy and bool(
+        re.search(r"^version\s*:", canon_text, re.I | re.M)
+        and re.search(r"^name\s*:", canon_text, re.I | re.M)
+        and re.search(r"^rules\s*:", canon_text, re.I | re.M)
+    )
     out.append(_mk_finding("AGT-001",
-        status="pass" if has_import else "must-fix",
-        detail="AGT import found in src/" if has_import else "No AGT import in src/ — agent has no in-process governance"))
-    # AGT-002 policy.yaml
-    has_policy = any(p.name in ("policy.yaml", "agt-policy.yaml", "policy.yml") for p in _glob_repo(ctx.root, "**/policy*.y*ml"))
+        status="pass" if schema_valid else "must-fix",
+        detail="AGT policy has version/name/rules — lints clean" if schema_valid
+               else "No schema-valid AGT policy (author policy.yaml with top-level version + name + rules, then `agt lint-policy`)"))
+    # AGT-002 policy artefact present
     out.append(_mk_finding("AGT-002",
         status="pass" if has_policy else "must-fix",
         detail="policy.yaml present" if has_policy else "No AGT policy.yaml file found"))
     # AGT-003 OWASP ASI verifier referenced
-    has_owasp = bool(re.search(r"OWASP|ASI[- ]?2026|agent_security|asi[._-]verifier", src + "\n" + ctx.docs_text + "\n" + ctx.spec_text, re.I))
+    has_owasp = bool(re.search(r"OWASP|ASI[- ]?2026|agent_security|asi[._-]verifier", src + "\n" + ctx.docs_text + "\n" + ctx.spec_text + "\n" + pol_text, re.I))
     out.append(_mk_finding("AGT-003",
         status="pass" if has_owasp else "should-fix",
         detail="OWASP ASI 2026 referenced" if has_owasp else "No OWASP ASI 2026 verifier reference found"))
-    # AGT-004 pinned version
-    has_pin = bool(re.search(r"foundry[-_]agt[^\n]*[=@~^]\s*\d+\.\d+", ctx.src_text + ctx.docs_text, re.I)) or any(
-        "requirements" in p.name or "pyproject" in p.name or "package.json" in p.name
-        for p in _glob_repo(ctx.root, "requirements*.txt", "pyproject.toml", "package.json")
-    )
+    # AGT-004 policy ruleset versioned (semver) — in the CANONICAL file
+    has_pin = bool(re.search(r"^version\s*:\s*['\"]?\d+\.\d+", canon_text, re.I | re.M))
     out.append(_mk_finding("AGT-004",
         status="pass" if has_pin else "should-fix",
-        detail="AGT version constraint detected" if has_pin else "Cannot find AGT pin — risk of unintended upgrade"))
-    # AGT-005 policy covers tool calls + shields  (heuristic — check policy file content)
-    pol_text = ""
-    for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-        pol_text += "\n" + (_read_text(p) or "")
-    covers = bool(re.search(r"tool[_ ]?call|tools:", pol_text, re.I)) and bool(re.search(r"prompt[_ ]?shield|jailbreak", pol_text, re.I))
+        detail="AGT policy ruleset version pinned" if has_pin else "AGT policy has no pinned ruleset `version:` — risk of silent policy drift"))
+    # AGT-005 governance gate runs in CI — require an actual toolkit invocation
+    # (an `agt` verb or the composite action), ignoring commented-out lines, so
+    # a bare `pip install agent-governance-toolkit` is not mistaken for a gate.
+    wf_lines: list[str] = []
+    for p in _glob_repo(ctx.root, ".github/workflows/*.yml", ".github/workflows/*.yaml"):
+        for ln in (_read_text(p) or "").splitlines():
+            if ln.lstrip().startswith("#"):
+                continue
+            wf_lines.append(ln)
+    wf_text = "\n".join(wf_lines)
+    ci_gate = bool(re.search(r"agt\s+(verify|lint-policy|test)\b|agent-governance-toolkit/action", wf_text, re.I))
     out.append(_mk_finding("AGT-005",
-        status="pass" if covers else "must-fix",
-        detail="Policy covers tool calls + prompt shields" if covers else "Policy missing tool-call and/or prompt-shield clauses"))
+        status="pass" if ci_gate else "should-fix",
+        detail="AGT governance gate runs in CI" if ci_gate else "No AGT governance gate (agt verify / lint-policy / test) in .github/workflows — CI cannot block a policy regression"))
     # AGT-006 telemetry sink
     has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
     out.append(_mk_finding("AGT-006",
@@ -2153,7 +2344,7 @@ V4_POLICY_REGEX = re.compile(
     re.MULTILINE,
 )
 V4_DYNAMIC_REGEX = re.compile(
-    r"\btime_window\s*:|\bcost_per_window\s*:|\btoken_count_per_window\s*:|\bday_of_week\s*:|agent_os\.policies\.dynamic_context",
+    r"\btime_window\s*:|\bcost_per_window\s*:|\btoken_count_per_window\s*:|\bday_of_week\s*:|agent_os\.integrations",
 )
 V3_7_DIST_REGEX = re.compile(
     # legacy umbrella names; if any of these appear and none of V4_DIST then v4-001 fails
@@ -2429,6 +2620,7 @@ def _check_identity_static(ctx: RepoContext) -> list[Finding]:
         status = "should-fix"
         detail = "No EasyAuth / authConfigs on declared compute (ACA / Web sites) in compiled ARM"
     out.append(_mk_finding("IAM-005", status=status, detail=detail))
+    out.extend(_check_agent_identity(ctx))
     return out
 
 
@@ -2650,6 +2842,159 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("OBS-005",
         status="pass" if has_workbook else "should-fix",
         detail="Workbook scaffold present" if has_workbook else "No workbook scaffold found"))
+    out.extend(_check_kpi_static(ctx))
+    return out
+
+
+# ---- outcome-KPI scorecard (F7) -------------------------------------------
+#
+# CAF's agent observability triad puts *baselines* (latency, cost-per-interaction,
+# success-rate) and *deviation alerts* under observability, and asks teams to
+# measure a real outcome — not just wire traces. `_kpi_signals` joins three
+# already-collected signals into one view:
+#
+#   * eval pass-rate        specs/evals-manifest.json   (threadlight-evals)
+#   * cost-per-interaction  specs/cost-manifest.json    (threadlight-consumption-iq)
+#   * traces emitting       foundry-observability / OTel wiring in infra+src
+#
+# plus the declared baseline targets + a deviation-alert resource. Pure file
+# reads; never raises (missing/garbage inputs degrade to None / False).
+
+
+def _kpi_signals(ctx: RepoContext) -> dict:
+    """Join the outcome-KPI signals. Pure, side-effect-free, never raises."""
+    spec = ctx.spec_text or ""
+    bicep = ctx.bicep_text or ""
+    src = ctx.src_text or ""
+    docs = getattr(ctx, "docs_text", "") or ""
+    prose = spec + "\n" + docs
+
+    latency_declared = bool(re.search(
+        r"(p9[59]|latency|response[ _-]?time)\D{0,24}\d", prose, re.I))
+    cost_per_interaction_declared = bool(re.search(
+        r"cost[ _-]?per[ _-]?(interaction|request|call|message|conversation)", prose, re.I))
+    success_rate_declared = bool(re.search(
+        r"((success|pass|task[ _-]?success|resolution)[ _-]?rate)\D{0,24}\d"
+        r"|\d+\s*%\s*(success|pass)", prose, re.I))
+
+    # Deviation alert: an Insights alert resource that references a KPI metric,
+    # or an explicit "deviation/baseline alert" declaration in prose.
+    alert_resource = bool(re.search(
+        r"Microsoft\.Insights/(metricAlerts|scheduledQueryRules)", bicep, re.I))
+    kpi_metric_ref = bool(re.search(
+        r"latency|duration|success|availability|cost|failed|requests", bicep, re.I))
+    deviation_alert_present = (alert_resource and kpi_metric_ref) or bool(
+        re.search(r"(deviation|baseline)\s*alert", prose, re.I))
+
+    traces_emit = bool(re.search(
+        r"foundry[._-]observability|opentelemetry|azure[._-]monitor[._-]opentelemetry"
+        r"|configure_azure_monitor|@opentelemetry|AzureMonitorTraceExporter",
+        bicep + src, re.I))
+
+    eval_pass_rate = _read_eval_pass_rate(ctx)
+    cost_per_interaction_usd = _read_cost_per_interaction(ctx)
+
+    return {
+        "latency_declared": latency_declared,
+        "cost_per_interaction_declared": cost_per_interaction_declared,
+        "success_rate_declared": success_rate_declared,
+        "deviation_alert_present": deviation_alert_present,
+        "traces_emit": traces_emit,
+        "eval_pass_rate": eval_pass_rate,
+        "cost_per_interaction_usd": cost_per_interaction_usd,
+    }
+
+
+def _read_eval_pass_rate(ctx: RepoContext) -> float | None:
+    """Read the eval pass-rate (0..1) from specs/evals-manifest.json. None if
+    absent/garbage. Accepts `metrics.pass_rate` or top-level `pass_rate`."""
+    data = _load_leg_manifest(ctx, "evals-manifest.json")
+    if not isinstance(data, dict):
+        return None
+    for path in (("metrics", "pass_rate"), ("pass_rate",)):
+        node: object = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            val = float(node)
+            return val / 100.0 if val > 1.0 else val
+    return None
+
+
+def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
+    """Read cost-per-interaction (USD) from specs/cost-manifest.json. None if
+    absent/garbage. Accepts `cost_per_interaction_usd` or
+    `unit_economics.cost_per_interaction_usd`."""
+    path = ctx.root / "specs" / "cost-manifest.json"
+    raw = _read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for keypath in (("cost_per_interaction_usd",), ("unit_economics", "cost_per_interaction_usd")):
+        node: object = data
+        for key in keypath:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)) and not isinstance(node, bool):
+            return float(node)
+    return None
+
+
+def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
+    """Emit the three outcome-KPI findings (F7). should-fix / tier-0; never raises."""
+    out: list[Finding] = []
+    sig = _kpi_signals(ctx)
+
+    # KPI-001 — baselines declared
+    triples = (
+        ("latency", sig["latency_declared"]),
+        ("cost-per-interaction", sig["cost_per_interaction_declared"]),
+        ("success-rate", sig["success_rate_declared"]),
+    )
+    missing = [name for name, ok in triples if not ok]
+    if not missing:
+        out.append(_mk_finding("KPI-001", status="pass",
+            detail="Outcome KPI baselines declared: latency, cost-per-interaction, success-rate "
+                   "(CAF agent observability baselines)."))
+    else:
+        out.append(_mk_finding("KPI-001", status="should-fix",
+            detail=f"Outcome KPI baseline(s) not declared: {', '.join(missing)}. "
+                   "Declare target latency, cost-per-interaction, and success-rate so deviation "
+                   "can be measured."))
+
+    # KPI-002 — deviation alert wired
+    if sig["deviation_alert_present"]:
+        out.append(_mk_finding("KPI-002", status="pass",
+            detail="Deviation alert wired against a KPI baseline (latency/cost/success drift)."))
+    else:
+        out.append(_mk_finding("KPI-002", status="should-fix",
+            detail="No deviation alert wired for a KPI baseline — add a metric/log alert on "
+                   "latency, cost-per-interaction, or success-rate drift (see recipe KPI-002)."))
+
+    # KPI-003 — joined outcome scorecard
+    have = []
+    if sig["eval_pass_rate"] is not None:
+        have.append("eval pass-rate")
+    if sig["cost_per_interaction_usd"] is not None:
+        have.append("cost-per-interaction")
+    if sig["traces_emit"]:
+        have.append("traces")
+    if len(have) == 3:
+        out.append(_mk_finding("KPI-003", status="pass",
+            detail=(f"Outcome scorecard joinable: eval pass-rate {sig['eval_pass_rate']:.0%}, "
+                    f"cost-per-interaction ${sig['cost_per_interaction_usd']:.4f}, traces emitting.")))
+    elif not have:
+        out.append(_mk_finding("KPI-003", status="not-verified",
+            detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq, "
+                   "and foundry-observability to populate the scorecard."))
+    else:
+        out.append(_mk_finding("KPI-003", status="should-fix",
+            detail=(f"Partial outcome scorecard ({', '.join(have)} present). Join all three "
+                    "(eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.")))
     return out
 
 
@@ -2781,6 +3126,46 @@ def _check_observability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str
 def _check_evals_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
+    # Prefer the threadlight-evals leg manifest when present and fresh.
+    em = _load_leg_manifest(ctx, "evals-manifest.json")
+    em_fresh = em is not None and em.get("_fresh")
+    if em_fresh:
+        prov = f"threadlight-evals manifest (verdict: {em.get('verdict', '?')}, {em.get('_age_days')}d old)"
+        _eval_map = {
+            "EVAL-001": "eval_scenarios_present",
+            "EVAL-002": "eval_datasets_present",
+            "EVAL-003": "schedule_present",
+            "EVAL-004": "thresholds_declared",
+        }
+        for fid, cap in _eval_map.items():
+            st = _leg_cap_status(em, cap)
+            if st is None:
+                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+            else:
+                extra = ""
+                if fid == "EVAL-003":
+                    online = _leg_cap_status(em, "online_eval_wired")
+                    ab = _leg_cap_status(em, "ab_comparison_present")
+                    bits = []
+                    if online == "pass":
+                        bits.append("online/continuous eval wired")
+                    if ab == "pass":
+                        bits.append("A/B champion-challenger gate present")
+                    if bits:
+                        extra = " — " + "; ".join(bits)
+                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}{extra}"))
+        # EVAL-005 (grader strategy) + EVAL-006 (dataset versioning) are not in
+        # the evals manifest — keep the legacy SPEC heuristics for those.
+        has_grader = bool(re.search(r"grader|judge|llm[-_ ]as[-_ ]a[-_ ]judge", spec, re.I))
+        out.append(_mk_finding("EVAL-005",
+            status="pass" if has_grader else "should-fix",
+            detail="Grader strategy named" if has_grader else "No grader strategy named in SPEC"))
+        has_versioning = bool(re.search(r"dataset.*version|v\d+\.\d+", spec, re.I))
+        out.append(_mk_finding("EVAL-006",
+            status="pass" if has_versioning else "should-fix",
+            detail="Dataset versioning hinted" if has_versioning else "No dataset versioning documented"))
+        return out
+    # ---- legacy heuristic path (no evals manifest) ----
     m = re.search(r"##\s*9\.?\s+Eval", spec, re.I)
     sec9_present = bool(m)
     out.append(_mk_finding("EVAL-001",
@@ -2849,17 +3234,34 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("RAI-001",
         status="pass" if has_cf else "must-fix",
         detail=detail))
-    pol_text = ""
-    for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-        pol_text += "\n" + (_read_text(p) or "")
-    has_rai_pol = bool(re.search(r"\brai\b|responsible[_ ]?ai|content[_ ]?safety", pol_text, re.I))
-    out.append(_mk_finding("RAI-002",
-        status="pass" if has_rai_pol else "must-fix",
-        detail="AGT policy has RAI section" if has_rai_pol else "AGT policy missing RAI/content-safety section"))
-    has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text, re.I))
+    # RAI-002/003 read the canonical policy for the completeness check; the
+    # merged text still feeds the OR-presence shield/PII signals below.
+    canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
+    # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
+    gm = _load_leg_manifest(ctx, "govern-manifest.json")
+    gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+    has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
+    if gm_sar is not None:
+        out.append(_mk_finding("RAI-002", status=gm_sar,
+            detail=f"threadlight-govern manifest: sensitive_action_rules_present={gm_sar}"))
+    elif has_sar:
+        out.append(_mk_finding("RAI-002", status="pass",
+            detail="AGT policy constrains sensitive actions"))
+    elif has_policy:
+        # A policy exists but declares no deny/block/escalate over sensitive
+        # actions — a hardening gap, not a total absence of governance. Match the
+        # govern leg (should-fix), not the no-policy must-fix.
+        out.append(_mk_finding("RAI-002", status="should-fix",
+            detail="AGT policy present but declares no deny/block/escalate rule over sensitive actions"))
+    else:
+        out.append(_mk_finding("RAI-002", status="must-fix",
+            detail="No AGT policy constrains sensitive actions"))
+    # RAI-003 prompt shields are a model-edge control (Content Safety), not part of
+    # the AGT governance manifest — score it from policy/doc evidence only.
+    has_shields = bool(re.search(r"prompt[_ ]?shield|jailbreak|indirect[_ ]?attack", pol_text + "\n" + ctx.docs_text, re.I))
     out.append(_mk_finding("RAI-003",
         status="pass" if has_shields else "must-fix",
-        detail="Prompt shields configured" if has_shields else "Prompt shields not configured in policy"))
+        detail="Prompt shields configured" if has_shields else "Prompt shields not configured (model-edge Content Safety)"))
     has_pii = bool(re.search(r"pii|presidio|redact", spec + ctx.docs_text + pol_text, re.I))
     out.append(_mk_finding("RAI-004",
         status="pass" if has_pii else "should-fix",
@@ -2872,6 +3274,50 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("RAI-006",
         status="pass" if has_owner else "should-fix",
         detail="RAI/incident owner named in SPEC" if has_owner else "No RAI incident owner named"))
+    # Adversarial red-team evidence (threadlight-redteam). Emitted only when the
+    # leg has produced specs/redteam-manifest.json; gives pillar 7 live attack
+    # evidence rather than static configuration alone.
+    out.extend(_check_redteam_static(ctx))
+    return out
+
+
+def _check_redteam_static(ctx: RepoContext) -> list[Finding]:
+    """Map the threadlight-redteam manifest to SAFE-1xx findings.
+
+    Returns [] when no manifest is present so pilots that have not run an
+    adversarial scan keep their existing pillar-7 finding set unchanged.
+    """
+    rm = _load_leg_manifest(ctx, "redteam-manifest.json")
+    if rm is None:
+        return []
+    out: list[Finding] = []
+    fresh = rm.get("_fresh")
+    prov = f"threadlight-redteam manifest (verdict: {rm.get('verdict', '?')}, {rm.get('_age_days')}d old)"
+    _safe_map = {
+        "SAFE-101": "jailbreak_asr_ok",
+        "SAFE-102": "prompt_injection_asr_ok",
+        "SAFE-103": "exfiltration_asr_ok",
+        "SAFE-105": "harmful_content_asr_ok",
+        "SAFE-106": "coverage_ok",
+    }
+    # SAFE-104: scan present + fresh.
+    scan_present = _leg_cap_status(rm, "scan_present")
+    if scan_present == "pass" and not fresh:
+        out.append(_mk_finding("SAFE-104", status="should-fix",
+            detail=f"{prov}: scan present but stale (> {_LEG_FRESHNESS_DAYS}d) — re-run red-team scan"))
+    elif scan_present is not None:
+        out.append(_mk_finding("SAFE-104", status=scan_present, detail=f"{prov}: scan_present={scan_present}"))
+    else:
+        out.append(_not_verified("SAFE-104", f"{prov}: scan_present not reported"))
+    for fid, cap in _safe_map.items():
+        st = _leg_cap_status(rm, cap)
+        if st is None:
+            out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
+        elif not fresh and st != "pass":
+            # Stale findings are downgraded to not-verified — re-scan required.
+            out.append(_not_verified(fid, f"{prov}: stale; re-run red-team scan to confirm {cap}"))
+        else:
+            out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
     return out
 
 
@@ -2969,6 +3415,72 @@ DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}", re.I)
 LATEST_TAG_RE = re.compile(r":latest\b|:main\b|:master\b", re.I)
 
 
+def _load_mcp_sbom():
+    """Import the sibling mcp_sbom producer lazily.
+
+    Tests load these scripts via spec_from_file_location, so mcp_sbom is not on
+    sys.path by name; insert the scripts dir at call time. Returns the module or
+    None (never raises) so a producer problem degrades findings, not the run.
+    """
+    try:
+        import importlib
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        return importlib.import_module("mcp_sbom")
+    except Exception:
+        return None
+
+
+def _check_mcp_supply(ctx: RepoContext) -> list[Finding]:
+    """Run the MCP producer and map its four findings into Pillar 09."""
+    mod = _load_mcp_sbom()
+    if mod is None:
+        return [_not_verified(fid, "mcp_sbom producer unavailable")
+                for fid in ("SUP-010", "SUP-011", "SUP-012", "SUP-013")]
+    try:
+        sbom, findings = mod.assess(ctx.root)
+    except Exception as e:
+        return [_not_verified(fid, f"mcp scan failed: {type(e).__name__}")
+                for fid in ("SUP-010", "SUP-011", "SUP-012", "SUP-013")]
+    ctx.mcp_sbom = sbom
+    return [_mk_finding(f["id"], status=f["status"], detail=f["detail"])
+            for f in findings]
+
+
+def _load_agent_identity():
+    """Import the sibling agent_identity producer lazily (mirrors _load_mcp_sbom).
+
+    Returns the module or None (never raises) so a producer problem degrades
+    findings, not the run.
+    """
+    try:
+        import importlib
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        return importlib.import_module("agent_identity")
+    except Exception:
+        return None
+
+
+def _check_agent_identity(ctx: RepoContext) -> list[Finding]:
+    """Run the agent-identity producer and map its four findings into Pillar 03."""
+    ids = ("IAM-006", "IAM-007", "IAM-008", "IAM-009")
+    mod = _load_agent_identity()
+    if mod is None:
+        return [_not_verified(fid, "agent_identity producer unavailable")
+                for fid in ids]
+    try:
+        bom, findings = mod.assess(ctx.root)
+    except Exception as e:
+        return [_not_verified(fid, f"identity scan failed: {type(e).__name__}")
+                for fid in ids]
+    ctx.agent_identity = bom
+    return [_mk_finding(f["id"], status=f["status"], detail=f["detail"])
+            for f in findings]
+
+
 def _check_supply_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     bicep = ctx.bicep_text
@@ -3025,6 +3537,64 @@ def _check_supply_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("SUP-007",
         status="pass" if has_prov else "should-fix",
         detail="Provenance/attestation referenced" if has_prov else "No provenance/attestation documented"))
+    # ---- SUP-008 / SUP-009: agent skill & tool supply-chain ----------------
+    # The skills and tools an agent depends on are part of its supply chain.
+    # In production they should be published once as immutable, versioned
+    # Foundry artifacts and consumed by pinned version — never force-republished
+    # (which deletes prior versions and breaks pinned consumers) and never
+    # vendored by cloning source at runtime.
+    automation_paths = _glob_repo(
+        ctx.root,
+        ".github/workflows/*.yml", ".github/workflows/*.yaml",
+        "**/*.sh", "**/*.ps1",
+    )
+    automation_text = ctx.azure_yaml_text + "\n" + "\n".join(
+        (_read_text(p) or "") for p in automation_paths
+    )
+    # SUP-008: force-publish guard. A publish/create command for a skill or
+    # tool that carries --force / --overwrite on the same line.
+    skill_publish_re = re.compile(
+        r"(azd\s+ai\s+skill|az\s+[\w\s.-]*\bskill\b|foundry\s+[\w\s.-]*\b(?:skill|tool(?:box)?)\b)",
+        re.I,
+    )
+    force_re = re.compile(r"(--force|--overwrite)\b", re.I)
+    force_hits = [
+        ln.strip()
+        for ln in automation_text.splitlines()
+        if skill_publish_re.search(ln) and force_re.search(ln)
+    ]
+    if force_hits:
+        out.append(_mk_finding("SUP-008", status="should-fix",
+            detail=(f"{len(force_hits)} skill/tool publish command(s) use --force/--overwrite — "
+                    "force-publish deletes existing immutable versions and breaks pinned "
+                    "consumers; publish a new version and promote default_version instead")))
+    else:
+        out.append(_mk_finding("SUP-008", status="pass",
+            detail="No force-published skill/tool commands in committed automation"))
+    # SUP-009: pin skill/tool versions for production.
+    haystack = "\n".join([automation_text, ctx.spec_text, ctx.docs_text, ctx.src_text])
+    usage_re = re.compile(
+        r"(azd\s+ai\s+skill|foundry[_-]skill[_-]catalog|foundry[_-]toolbox|\btoolbox\b|mcpServers|mcp[_-]plugin)",
+        re.I,
+    )
+    pin_re = re.compile(
+        r"(skill[_-]?version|SkillVersion|default_version\s*[:=]\s*['\"]?[\w.\-]+|tool(?:box)?[_-]?version)",
+        re.I,
+    )
+    uses_skills = bool(usage_re.search(haystack)) or bool(_glob_repo(ctx.root, "skills/**/SKILL.md"))
+    has_pin = bool(pin_re.search(haystack))
+    if not uses_skills:
+        out.append(_mk_finding("SUP-009", status="not-applicable",
+            detail="No agent skills/tools referenced in repo"))
+    elif has_pin:
+        out.append(_mk_finding("SUP-009", status="pass",
+            detail="Skill/tool version pinning declared"))
+    else:
+        out.append(_mk_finding("SUP-009", status="should-fix",
+            detail=("Agent skills/tools referenced but no pinned version declared — pin an "
+                    "immutable SkillVersion / toolbox version for production and promote "
+                    "default_version in a staged rollout")))
+    out.extend(_check_mcp_supply(ctx))
     return out
 
 
@@ -3612,11 +4182,34 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
         out.append(_mk_finding("MDL-001", status="must-fix",
             detail="No Microsoft.CognitiveServices/accounts/deployments declared in compiled ARM — cannot pin a model that doesn't exist"))
     else:
-        pinned, floating, missing = [], [], []
+        pinned, floating, missing, deferred = [], [], [], []
         for d in deployments:
-            model = ((d.get("properties") or {}).get("model") or {})
-            v = model.get("version")
             name = d.get("name") or "<unnamed>"
+            raw_props = d.get("properties")
+            if isinstance(raw_props, str):
+                # The whole `properties` block is an ARM expression (parameter /
+                # variable / copy-loop) — nothing about the model is statically
+                # resolvable. Defer to the live MDL-101 check at deploy time.
+                deferred.append(name)
+                continue
+            model = _as_dict(raw_props).get("model")
+            if isinstance(model, str):
+                # `model` supplied via an ARM expression string (e.g. a copy-loop
+                # `[parameters('deployments')[copyIndex()].model]`). Not statically
+                # resolvable — defer to the live check rather than crash.
+                deferred.append(name)
+                continue
+            if not isinstance(model, dict):
+                # `model` is absent / null — a deployment that declares no model at
+                # all is unambiguously unpinned, not a deferred expression.
+                missing.append(name)
+                continue
+            v = model.get("version")
+            if isinstance(v, str) and v.startswith("[") and v.endswith("]"):
+                # `version` is an ARM expression string (e.g. a `modelVersion`
+                # parameter) — the pin is real but not statically resolvable.
+                deferred.append(name)
+                continue
             if not v:
                 missing.append(name)
             elif str(v).strip().lower() == "latest":
@@ -3631,6 +4224,11 @@ def _check_model_lifecycle_static(ctx: RepoContext) -> list[Finding]:
                 problems.append(f"{len(missing)} have no model.version: {missing}")
             out.append(_mk_finding("MDL-001", status="must-fix",
                 detail="Model deployments not pinned: " + "; ".join(problems)))
+        elif deferred:
+            out.append(_not_verified("MDL-001",
+                f"{len(deferred)} model deployment(s) set model/version via ARM "
+                f"parameters or expressions ({deferred}) — pin not statically "
+                f"resolvable; verified at deploy by live check MDL-101"))
         else:
             out.append(_mk_finding("MDL-001", status="pass",
                 detail=f"All {len(deployments)} model deployment(s) pinned: {pinned}"))
@@ -3858,16 +4456,41 @@ def _run_pillar(
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
     # Each pillar's static signature varies slightly; handle uniformly
-    if pillar == "network-posture":
-        findings.extend(static_fn(ctx, resolved_posture))
-    elif pillar == "agent-governance":
-        findings.extend(static_fn(ctx, agt_profile))
-        # v4-preview deep checks: gated to fire only when profile is v4_preview.
-        # Lives in _check_agt_static_v4 — never emitted by v3_7 / none / auto-as-v3_7.
-        if agt_profile == "v4_preview":
-            findings.extend(_check_agt_static_v4(ctx))
-    else:
-        findings.extend(static_fn(ctx))
+    try:
+        if pillar == "network-posture":
+            findings.extend(static_fn(ctx, resolved_posture))
+        elif pillar == "agent-governance":
+            findings.extend(static_fn(ctx, agt_profile))
+            # v4-preview deep checks: gated to fire only when profile is v4_preview.
+            # Lives in _check_agt_static_v4 — never emitted by v3_7 / none / auto-as-v3_7.
+            if agt_profile == "v4_preview":
+                findings.extend(_check_agt_static_v4(ctx))
+        else:
+            findings.extend(static_fn(ctx))
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        # Resilience: one pillar's static analyzer raising on an ARM shape it did
+        # not anticipate (e.g. an expression string where an object was expected)
+        # must NOT abort the whole assessment — every other pillar and the live
+        # tier still run. But a static analyzer that could not complete has NOT
+        # verified this pillar's must-fix controls, so degrading to a non-gating
+        # `not-verified` would silently flip the hard go-live gate from FAIL to
+        # PASS (the gate counts only must-fix). That would be fail-OPEN on a
+        # security gate. Instead we fail CLOSED: this pillar's tier-0 findings
+        # degrade to VISIBLE must-fix carrying the error, so the report shows the
+        # failure reason AND the hard gate keeps blocking until it is resolved.
+        # The catch is deliberately narrowed to the JSON-shape-mismatch family so
+        # a genuine, unexpected bug still surfaces by aborting.
+        existing = {f.id for f in findings}
+        for fid, meta in FINDING_CATALOG.items():
+            if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
+                findings.append(_mk_finding(
+                    fid, status="must-fix",
+                    detail=f"static analyzer could not verify this control "
+                           f"({type(exc).__name__}: {exc}) — failing closed; "
+                           f"resolve or re-run before go-live"))
+        print(f"[warn] static checks for pillar '{pillar}' raised "
+              f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
+              file=sys.stderr)
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)
         # v4-preview live deep checks: gated to fire only when profile is v4_preview.
@@ -3915,9 +4538,9 @@ def _detect_agt_profile(ctx: RepoContext, requested: str) -> str:
         return requested
     src = ctx.src_text
     # heuristics — capability based, version agnostic
-    has_legacy_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt", src, re.I))
+    has_agt_import = bool(re.search(r"foundry[-_]agt|from\s+agt\b|import\s+agt\b|@foundry/agt|from\s+agent_compliance|import\s+agent_compliance", src, re.I))
     has_v4_import = bool(re.search(r"agent_governance_toolkit_(?:core|runtime|sre|cli)|from\s+agent_governance_toolkit", src, re.I))
-    if not has_legacy_import and not has_v4_import:
+    if not has_agt_import and not has_v4_import:
         return "none"
     # v4 signals (any one is sufficient): scan only scoped artefact files,
     # NOT docs/README/SPEC prose. See _v4_scoped_files for the exact globs.
@@ -4395,11 +5018,11 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append("  entry --> hub[Citadel APIM hub]")
         out.append("  hub --> spoke[Foundry account spoke]")
     elif posture["resolved"] == POSTURE_AGT:
-        out.append("  entry --> agt[AGT middleware in-process]")
+        out.append("  entry --> agt[AGT policy-governed agent]")
         out.append("  agt --> spoke[Foundry account]")
     elif posture["resolved"] == POSTURE_HYBRID:
         out.append("  entry --> hub[Citadel APIM hub]")
-        out.append("  hub --> agt[AGT middleware]")
+        out.append("  hub --> agt[AGT policy-governed agent]")
         out.append("  agt --> spoke[Foundry account spoke]")
     else:
         out.append("  entry --> gw[Standard AI Gateway]")
@@ -4486,10 +5109,38 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("- Pricing plan declared in SPEC § 10: " + ("yes" if any(f.id == "COST-001" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no"))
     out.append("- Budget alerts wired: " + ("yes" if any(f.id == "COST-101" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no / not-verified"))
     out.append("")
-    # 8. Eval summary
-    out.append("## 8. Eval summary")
+    # 8. Outcome KPI scorecard
+    out.append("## 8. Outcome KPI scorecard")
     out.append("")
-    out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
+    kpi = manifest.get("kpi_scorecard") or {}
+    if kpi:
+        def _yn(v: bool) -> str:
+            return "✅ yes" if v else "⚠️ no"
+        pr_val = kpi.get("eval_pass_rate")
+        cpi_val = kpi.get("cost_per_interaction_usd")
+        pr_str = f"{pr_val:.0%}" if isinstance(pr_val, (int, float)) else "not-verified"
+        cpi_str = f"${cpi_val:.4f}" if isinstance(cpi_val, (int, float)) else "not-verified"
+        out.append("Joins the three signals CAF asks teams to measure as a real outcome "
+                   "(eval quality + unit cost + live telemetry):")
+        out.append("")
+        out.append("| KPI signal | Value | Source |")
+        out.append("|---|---|---|")
+        out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
+        out.append(f"| Cost-per-interaction | {cpi_str} | `specs/cost-manifest.json` (threadlight-consumption-iq) |")
+        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
+        out.append("")
+        out.append("| Baseline declared | Status |")
+        out.append("|---|---|")
+        out.append(f"| Latency | {_yn(bool(kpi.get('latency_declared')))} |")
+        out.append(f"| Cost-per-interaction | {_yn(bool(kpi.get('cost_per_interaction_declared')))} |")
+        out.append(f"| Success-rate | {_yn(bool(kpi.get('success_rate_declared')))} |")
+        out.append(f"| Deviation alert wired | {_yn(bool(kpi.get('deviation_alert_present')))} |")
+        out.append("")
+        out.append("_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` "
+                   "(scorecard joinable) under pillar 5. Run `foundry-evals` and paste eval "
+                   "thresholds into SPEC § 9._")
+    else:
+        out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
     out.append("")
     # 9. Residual risk + rollout/rollback
     out.append("## 9. Residual risk, RACI, rollout / rollback / cutover")
@@ -4556,7 +5207,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("")
     out.append("### Glossary")
     out.append("")
-    out.append("- **AGT** — Agent Governance Toolkit. In-process middleware that enforces policy on tool calls, prompts, and outputs.")
+    out.append("- **AGT** — Agent Governance Toolkit (`agent-governance-toolkit`, CLI `agt`). A committed policy that CI lints (`agt lint-policy`), replays against fixtures (`agt test`), and verifies (`agt verify` → OWASP ASI 2026 attestation); optionally enforced in the agent runtime via `agent_compliance` evaluators.")
     out.append("- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `citadel-hub-deploy` and `citadel-spoke-onboarding`.")
     out.append("- **OWASP ASI 2026** — OWASP AI/Agentic Security Initiative top-N risks reference.")
     out.append("")
@@ -4632,7 +5283,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--gate-preview", action="store_true",
                    help="treat any must-fix as a hard-gate preview: exit 2 if would-fail-hard-gate is true")
     p.add_argument("--remediate", metavar="FINDING_ID",
-                   help="print bash remediation recipe for a finding ID from references/remediation-recipes.yaml and exit")
+                   help="print the remediation recipe for a finding ID (from references/remediation-recipes.yaml, "
+                        "falling back to references/remediation-recipes/{FINDING_ID}.md) and exit")
     p.add_argument("--trend-csv", metavar="PATH", default="tests/production-readiness-trend.csv",
                    help="append a row per run (date, score, posture, debt) for trending; set to '' to disable")
     p.add_argument("--secure-score-floor", type=int, default=60,
@@ -4888,7 +5540,7 @@ def main(argv: list[str] | None = None) -> int:
             status="should-fix",
             detail=(
                 f"SPEC § 12 declares `target_posture: {declared}` but live "
-                "evidence (APIM, Foundry connection, AGT middleware) did not "
+                "evidence (APIM, Foundry connection, AGT policy gate) did not "
                 "confirm it. Either the deployment hasn't reached the declared "
                 "posture yet, the operator running this skill lacks permission "
                 "to see the hub-side resources, or the declaration is stale. "
@@ -4931,7 +5583,7 @@ def main(argv: list[str] | None = None) -> int:
         freshness_hours=args.freshness_hours,
         include_experimental=args.include_experimental,
     )
-
+    out_manifest["kpi_scorecard"] = _kpi_signals(ctx)
     out_path = root / args.out
     report_path = root / args.report
     try:
@@ -4940,6 +5592,12 @@ def main(argv: list[str] | None = None) -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_md = _render_report(out_manifest, posture, pillar_findings_waived, evidence_all, waivers, warnings)
         report_path.write_text(report_md, encoding="utf-8")
+        if getattr(ctx, "mcp_sbom", None) is not None:
+            (out_path.parent / "mcp-sbom.json").write_text(
+                json.dumps(ctx.mcp_sbom, indent=2) + "\n", encoding="utf-8")
+        if getattr(ctx, "agent_identity", None) is not None:
+            (out_path.parent / "agent-identity.json").write_text(
+                json.dumps(ctx.agent_identity, indent=2) + "\n", encoding="utf-8")
     except OSError as e:
         _eprint(f"error: failed to write outputs: {e}")
         return 3
@@ -5109,28 +5767,48 @@ def _diff_manifests(prior: dict, current: dict) -> str:
 
 
 def _emit_remediation(root: Path, finding_id: str) -> int:
-    """Print remediation recipe for a finding ID. Returns 0 on hit, 2 on miss."""
+    """Print remediation recipe for a finding ID. Returns 0 on hit, 2 on miss.
+
+    Resolution order:
+      1. Legacy `references/remediation-recipes.yaml` — authoritative for the
+         IDs it defines (they ship ready-to-run `bash:` blocks).
+      2. Per-file catalog `references/remediation-recipes/{FID}.md` — the
+         maintained recipe set (70+ IDs) used by the apply-plan machinery.
+    Both locations are probed root-first, then relative to this script.
+    """
     fid = finding_id.strip().upper()
-    recipe_file = root / "skills" / "threadlight-production-ready" / "references" / "remediation-recipes.yaml"
-    if not recipe_file.exists():
-        # fall back to relative to this script
-        recipe_file = Path(__file__).resolve().parent.parent / "references" / "remediation-recipes.yaml"
-    if not recipe_file.exists():
-        _eprint(f"error: remediation-recipes.yaml not found at {recipe_file}")
-        return 2
-    body = recipe_file.read_text(encoding="utf-8")
-    # Very small YAML-ish parser: split blocks by `^- id:` markers.
-    blocks = re.split(r"\n(?=- id:\s*)", "\n" + body)
-    for block in blocks:
-        m = re.search(r"- id:\s*([A-Z0-9\-]+)", block)
-        if m and m.group(1).upper() == fid:
-            # Strip leading "- id:" line and print the rest, plus a header
-            print(f"# remediation recipe — {fid}")
-            print(block.strip())
-            print()
-            return 0
+
+    def _resolve(*rel: str) -> Path:
+        p = root.joinpath("skills", "threadlight-production-ready", *rel)
+        if p.exists():
+            return p
+        return Path(__file__).resolve().parent.parent.joinpath(*rel)
+
+    # 1) legacy yaml
+    recipe_file = _resolve("references", "remediation-recipes.yaml")
+    if recipe_file.exists():
+        body = recipe_file.read_text(encoding="utf-8")
+        # Very small YAML-ish parser: split blocks by `^- id:` markers.
+        blocks = re.split(r"\n(?=- id:\s*)", "\n" + body)
+        for block in blocks:
+            m = re.search(r"- id:\s*([A-Z0-9\-]+)", block)
+            if m and m.group(1).upper() == fid:
+                print(f"# remediation recipe — {fid}")
+                print(block.strip())
+                print()
+                return 0
+
+    # 2) per-file catalog fallback — references/remediation-recipes/{FID}.md
+    recipe_md = _resolve("references", "remediation-recipes", f"{fid}.md")
+    if recipe_md.exists() and not recipe_md.name.startswith("_"):
+        print(f"# remediation recipe — {fid}")
+        print(recipe_md.read_text(encoding="utf-8").strip())
+        print()
+        return 0
+
     _eprint(f"error: no remediation recipe found for `{fid}`")
-    _eprint("       add an entry to skills/threadlight-production-ready/references/remediation-recipes.yaml")
+    _eprint("       looked in references/remediation-recipes.yaml and "
+            "references/remediation-recipes/{FID}.md")
     return 2
 
 

@@ -1,0 +1,96 @@
+# Customer profile — Threadlight onboarding intake
+
+> **Move 1 of `threadlight-customize`.** Copy this file to
+> `docs/threadlight-customize/customer-profile.md` and fill it in **with** the
+> customer's cloud/platform owner. This is the single source of truth every
+> later move reads. **Every unfilled field is a blocker, not a TODO** — a blank
+> "private DNS zones" line will stop the deploy in Move 3.
+>
+> Fill-in markers are written as `_<…>_`. Replace them. Use `n/a` explicitly
+> when a field genuinely does not apply (so a blank always means "not yet
+> answered").
+
+- **Customer / engagement:** _<name or anonymized code, e.g. "telco-emea-01">_
+- **Date / SE:** _<date>_ / _<se alias>_
+- **Operator path:** _<SE-led | customer-self-serve>_
+- **Target go-live posture:** _<pilot-to-prod | net-new prod | parallel run>_
+
+---
+
+## Block A — Customer documents (collect, then link)
+
+Link each document into the engagement repo (or note where it lives). Do not
+paraphrase from memory — get the artifact.
+
+- [ ] **Cloud architecture / reference architecture** — _<link or "received">_
+- [ ] **Security & governance policy** (Azure Policy set, allowed SKUs/regions,
+      tagging standard) — _<link>_
+- [ ] **Network topology** (hub/spoke, VNets, subnets, firewall/egress, private
+      DNS) — _<link>_
+- [ ] **Naming & tagging standard** — _<link>_
+- [ ] **Identity model** (Entra tenant, PIM, managed-identity policy, who can
+      grant RBAC) — _<link>_
+- [ ] **Compliance / data residency** (in-scope regulations, data classes,
+      allowed geographies) — _<link>_
+- [ ] **Change-management / approval process** (who signs off a prod deploy,
+      gates, freeze windows) — _<link>_
+
+> If a document does not exist, write that explicitly — its absence is itself a
+> finding for the architecture review.
+
+## Block B — Environment setup (drives every override)
+
+This block and Block D drive Move 2. Do not start Move 2 until this is complete.
+
+- **Subscription(s) / management group:** _<sub id(s), MG path>_
+- **Landing zone type:** _<CAF platform LZ | application LZ | standalone sub | other>_
+- **Target resource group(s):** _<rg name(s) or "to be created by platform team">_
+- **Allowed regions:** _<region allow-list>_
+- **Network exposure:** _<public | private-endpoints | fully-private VNet, no egress>_
+- **VNet / subnet for the workload:** _<vnet/subnet ids or "to be provisioned">_
+- **Private DNS zones in use:** _<list, e.g. privatelink.openai.azure.com,
+  privatelink.blob.core.windows.net, privatelink.documents.azure.com,
+  privatelink.vaultcore.azure.net>_
+- **Egress / firewall posture:** _<NSG/Azure Firewall/UDR notes; allowed FQDNs>_
+- **Deploy identity model:** _<UAMI + OIDC/WIF | SP | PIM-elevated human; who owns it>_
+- **Who can assign RBAC (and at what scope):** _<role/owner>_
+- **Central platform dependency:** _<none | consume existing Citadel hub |
+  hub-deploy-then-spoke>_  → if not "none", this is a `threadlight-cicd` +
+  `citadel-spoke-onboarding` concern, not this skill's.
+- **Foundry / AOAI account:** _<existing account + region, or to be created>_
+- **Container registry (ACR):** _<existing or to be created; private?>_
+- **State / data stores in scope:** _<Cosmos, Storage, AI Search, Key Vault — ids/regions>_
+
+## Block C — Requirements
+
+- **Primary process / use-case:** _<one paragraph>_
+- **Functional requirements:** _<list or link to SPEC>_
+- **Non-functional requirements:** _<latency, availability, throughput, RTO/RPO>_
+- **Compliance gates that block go-live:** _<list>_
+- **HITL / approval requirements:** _<SPEC § 8 actions needing human gates>_
+- **Observability / SRE expectations:** _<who operates it, what they need>_
+- **Success criteria for "onboarded":** _<measurable definition of done>_
+
+## Block D — Mandated template / starter code (build ON this, not around it)
+
+Customers frequently require you to build on **their** IaC and pipeline
+templates, not greenfield. Capture what you must reuse; these become overlay
+inputs in Move 2.
+
+- **Mandated IaC modules / golden modules:** _<repo/registry + which modules>_
+- **Required pipeline templates** (GitHub Actions / Azure DevOps shared
+  templates): _<repo + template paths>_
+- **Required base images / build standards:** _<registry, base image policy>_
+- **Required repo/branch/PR policy:** _<protected branches, required reviewers>_
+- **Bring-your-own constraints** (anything that overrides a Threadlight
+  default): _<list>_
+
+---
+
+## Intake sign-off
+
+- [ ] Block A documents collected (or absences recorded)
+- [ ] **Block B environment setup complete** (gate to Move 2)
+- [ ] Block C requirements agreed with customer
+- [ ] **Block D mandated template code captured** (gate to Move 2)
+- **Open blockers carried into Move 2:** _<list, or "none">_

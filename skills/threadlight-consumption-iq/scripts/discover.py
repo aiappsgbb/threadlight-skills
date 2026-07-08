@@ -105,17 +105,37 @@ def _resolve_location(location: str) -> str:
     return location or "unknown"
 
 
-def _flatten_resources(resources: list[dict]) -> list[dict]:
-    """Recursively flatten nested ARM deployment templates (from Bicep modules)."""
+def _as_resource_list(resources) -> list[dict]:
+    """Normalize an ARM template `resources` block to a list of resource dicts.
+
+    ARM `resources` comes in two shapes:
+      * classic list  — `"resources": [ {...}, {...} ]`
+      * symbolic-name object — `"resources": { "fooBar": {...}, ... }`
+        which modern Bicep emits for nested module templates
+        (languageVersion 2.0). Iterating that dict directly yields the
+        symbolic *names* (strings), which then crash on `.get(...)`.
+    """
+    if isinstance(resources, dict):
+        return list(resources.values())
+    return resources or []
+
+
+def _flatten_resources(resources) -> list[dict]:
+    """Recursively flatten nested ARM deployment templates (from Bicep modules).
+
+    Accepts either the classic list shape or the symbolic-name object shape
+    (see `_as_resource_list`) at every level — Bicep modules compile to nested
+    deployments whose inner `template.resources` is frequently the object form.
+    """
     out: list[dict] = []
-    for r in resources:
+    for r in _as_resource_list(resources):
         rtype = (r.get("type") or "").lower()
         if rtype == "microsoft.resources/deployments":
             # Bicep modules compile to nested deployment resources; recurse.
             nested = (
                 (r.get("properties") or {})
                 .get("template", {})
-                .get("resources") or []
+                .get("resources")
             )
             out.extend(_flatten_resources(nested))
         else:
@@ -181,23 +201,19 @@ def discover_resources(
     """Walk Bicep + (optionally) azd env + deployment manifest -> normalized list."""
 
     # ------------------------------------------------------------------
-    # 1. Verify prerequisites: az and bicep CLIs.
-    # NOTE: `bicep` as a standalone binary is placed on PATH by
-    # `az bicep install` (via ~/.azure/bin). We check with shutil.which
-    # so tests can monkeypatch it without actually invoking subprocesses.
+    # 1. Verify prerequisites: az CLI. The bicep compiler is invoked below
+    # via `az bicep build`, which uses az's own bundled bicep (under
+    # ~/.azure/bin) — there is NO requirement for a standalone `bicep`
+    # binary on PATH. A genuinely-missing bicep is handled by the
+    # `az bicep build` error branch (which prints the `az bicep install`
+    # hint), so we deliberately do NOT pre-gate on `shutil.which("bicep")`:
+    # doing so spuriously aborted on machines where `az bicep` works fine
+    # but no standalone `bicep` is on PATH.
     # ------------------------------------------------------------------
     if shutil.which("az") is None:
         msg = (
             "az CLI not found on PATH; "
             "install Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli"
-        )
-        print(msg, file=sys.stderr)
-        raise FileNotFoundError(msg)
-
-    if shutil.which("bicep") is None:
-        msg = (
-            "bicep CLI not found; install via `az bicep install` "
-            "and re-run the consumption-iq skill"
         )
         print(msg, file=sys.stderr)
         raise FileNotFoundError(msg)
@@ -245,7 +261,7 @@ def discover_resources(
     # ------------------------------------------------------------------
     # 3. Walk resources[] — flatten nested templates from Bicep modules.
     # ------------------------------------------------------------------
-    raw_resources = arm.get("resources") or []
+    raw_resources = arm.get("resources")
     arm_resources = _flatten_resources(raw_resources)
 
     results: list[dict[str, Any]] = []
@@ -448,8 +464,8 @@ def _extract_aca(arm_resource: dict[str, Any]) -> dict[str, Any]:
     profile_name = props.get("workloadProfileName") or "Consumption"
     sku_name = "consumption" if profile_name == "Consumption" else profile_name
 
-    max_replicas = scale.get("maxReplicas") or 3
-    min_replicas = scale.get("minReplicas") or 0
+    max_replicas = _parse_replicas(scale.get("maxReplicas"), 3)
+    min_replicas = _parse_replicas(scale.get("minReplicas"), 0)
 
     # Parse memory like "0.5Gi" → 0.5 (GiB as float).
     raw_memory = first_container_resources.get("memory") or ""
@@ -463,10 +479,56 @@ def _extract_aca(arm_resource: dict[str, Any]) -> dict[str, Any]:
         "extra": {
             "min_replicas": min_replicas,
             "max_replicas": max_replicas,
-            "vcpu": first_container_resources.get("cpu"),
+            "vcpu": _parse_vcpu(first_container_resources.get("cpu")),
             "memory_gib": memory_gib,
         },
     }
+
+
+def _parse_vcpu(value: Any) -> float | None:
+    """Resolve a container CPU value to a float number of vCPUs.
+
+    Handles a plain number, a numeric string ("0.5"), and the canonical Bicep
+    idiom ``cpu: json('0.5')`` which ``az bicep build --stdout`` renders as the
+    ARM expression string ``"[json('0.5')]"``. Returns None when the value is
+    absent or cannot be resolved to a number (e.g. an unresolved
+    ``parameters('...')`` reference).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):  # guard: bool is an int subclass
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        candidate = _strip_template_expr(value.strip())
+        try:
+            return float(candidate)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _parse_replicas(value: Any, default: int) -> int:
+    """Resolve an ACA replica bound to an int.
+
+    Handles a plain number, a numeric string ("5"), and the Bicep ``json('2')``
+    idiom (ARM expr ``"[json('2')]"``). An unresolvable ``parameters('...')``
+    reference (or any non-numeric / falsy value) falls back to ``default`` —
+    never a raw string, so the projector's ``max()`` / ``math.ceil`` arithmetic
+    can't crash on it.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        candidate = _strip_template_expr(value.strip())
+        try:
+            return int(float(candidate))
+        except (TypeError, ValueError):
+            return default
+    return default
 
 
 def _parse_gib(value: str) -> float | None:

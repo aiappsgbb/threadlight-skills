@@ -73,10 +73,18 @@ These are starting points; the wizard always lets the user override.
 
 ## Forward compatibility
 
-v2 will add:
+**Implemented in v0.3.0 (pre-sales mode):**
+
+  - `discounts: { ea_multiplier: 0.87 }` — EA / MCA multiplier, now wired via
+    `--discount` / the rollout profile's `discount{}` block (see
+    `rollout-profile-schema.md`). Always an internal planning **estimate**.
+  - Phased adoption — N phases, each its own load profile, modelled by
+    `rollout_profile{}` (replaces the single deferred `monthly_growth_rate`
+    multiplier for the pre-sales path).
+
+Still deferred to v2:
 
   - `reservations: { aoai_ptu_units: 25, ... }` — for Savings Plans
-  - `discounts: { ea_multiplier: 0.87 }` — for EA / MCA
   - `forecast: { months_out: 12, growth_curve: linear|exponential }`
 
 v1 ignores any unknown keys but logs a `warning` so future adds are
