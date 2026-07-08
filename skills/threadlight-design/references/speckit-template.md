@@ -244,6 +244,11 @@ For each AI capability the agent needs:
 > template, that's a bug — sweep to **`gpt-5.4`** (default for pilots) or pick from
 > the table above based on the capability profile.
 
+> **Choosing the model / capacity / region behind this table** — see
+> [`model-selection.md`](model-selection.md) in the design skill's references:
+> the seven-decision procedure that fills `specs/foundation.md` § 2 and this
+> section.
+
 ---
 
 ## 8. Human Interaction Points
