@@ -533,7 +533,7 @@ fallback:
 - Works in all browsers including `file://` protocol (shows monogram)
 - **Never** download, trace, or recreate the logo as an SVG path — that's
   copyright infringement regardless of intent
-- Document the source URL in SPEC § 12 assumptions:
+- Document the source URL in SPEC § 13 assumptions:
   `brand_logo_source: https://customer.com/path/to/logo.png`
 
 **Battle-scar.** A recent PoC attempted to recreate the logo as an

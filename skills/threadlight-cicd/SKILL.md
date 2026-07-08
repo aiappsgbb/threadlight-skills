@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.2.0"
+  version: "0.3.1"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
@@ -109,6 +109,7 @@ flowchart LR
 | Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid> --hub-sub <hsub> --hub-apim-id <apim-id> --access-contract-product <product>` |
 | Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
 | Eval + red-team CI/CD gate mode | add `--eval-gate soft` (default, warn-only) or `--eval-gate hard` (block on a non-pass verdict) |
+| MCP supply-chain CI/CD gate mode | add `--mcp-gate soft` (default, warn-only) or `--mcp-gate hard` (block on any must-fix MCP finding) |
 | From a saved framing file | `--framing-file framing.json` |
 | Run the test suite | `python -m pytest tests/ -v` |
 
@@ -153,6 +154,15 @@ Rendered deterministically (offline, no Azure calls, no secrets) into the pilot 
 
 Public targets default to hosted runners (`ubuntu-latest` / ADO `vmImage`); private
 targets switch to `self-hosted` labels / a named ADO pool.
+
+### `--mcp-gate soft|hard`
+
+Adds an **MCP supply-chain gate** to the generated production pipeline, after
+deploy, alongside the eval and red-team gates. It enforces the `mcp-sbom.json`
+that `threadlight-production-ready` writes (`tests/mcp-sbom.json`): `soft`
+(default) warns only and keeps the pipeline green; `hard` blocks the pipeline on
+any must-fix MCP finding (an unpinned server, undocumented lock drift, or an
+inline credential). OIDC / WIF only — no secret.
 
 ## Relationship to threadlight-production-ready
 
@@ -200,3 +210,13 @@ stdlib). Tests under `tests/` pin the artifact paths, the OIDC/WIF-only invarian
   operator hand-off checklist before giving a pipeline to the customer.
 - `references/github-actions/`, `references/azure-devops/`, `references/env-setup/` —
   the `{{TOKEN}}` templates the generator renders.
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this CI/CD leg, reach for the official
+**[Azure Skills](https://github.com/microsoft/azure-skills)** catalog. *Further
+reading, not a dependency* — Threadlight's guidance stays the source of truth for
+the pilot flow:
+
+- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/main/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.

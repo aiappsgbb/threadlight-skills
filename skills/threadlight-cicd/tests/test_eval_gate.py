@@ -9,9 +9,12 @@ OIDC / WIF only (no secret), and honour a soft|hard mode:
   * hard  -> block the pipeline on a non-pass eval / red-team verdict.
 """
 import importlib.util
+import json
 import pathlib
+import subprocess
 import sys
 import tempfile
+import textwrap
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -63,6 +66,84 @@ def _ado_pipeline(framing):
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(framing, out_root=tmp)
     return (tmp / "azure-pipelines.yml").read_text()
+
+
+# --- Gate-script behaviour (the enforcement step actually runs) -----------
+# The generated gates embed a `python3 - <<'PY' ... PY` verdict check. Extract
+# that script and run it against real manifest verdicts to prove a *passing*
+# eval / red-team run is accepted (and a failing one is rejected).
+
+def _heredoc_scripts(text):
+    scripts = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if "<<'PY'" in lines[i]:
+            body = []
+            i += 1
+            while i < len(lines) and lines[i].strip() != "PY":
+                body.append(lines[i])
+                i += 1
+            scripts.append(textwrap.dedent("\n".join(body)))
+        i += 1
+    return scripts
+
+
+def _gate_script(text, manifest):
+    for body in _heredoc_scripts(text):
+        if manifest in body:
+            return body
+    raise AssertionError(f"no embedded gate script references {manifest}")
+
+
+def _run_gate(script, manifest_rel, verdict_obj):
+    d = pathlib.Path(tempfile.mkdtemp())
+    p = d / manifest_rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(verdict_obj))
+    return subprocess.run(
+        [sys.executable, "-c", script], cwd=d,
+        capture_output=True, text=True).returncode
+
+
+def test_github_eval_gate_accepts_real_passing_verdicts():
+    wf = _gh_workflow(_gh_framing())
+    s = _gate_script(wf, "specs/evals-manifest.json")
+    # comprehensive / partial carry no must-fix -> ship
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "comprehensive"}) == 0
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "partial"}) == 0
+    # offline-only / none imply a must-fix or absence -> block
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "offline-only"}) == 1
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "none"}) == 1
+
+
+def test_github_redteam_gate_accepts_real_passing_verdicts():
+    wf = _gh_workflow(_gh_framing())
+    s = _gate_script(wf, "specs/redteam-manifest.json")
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "hardened"}) == 0
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "partial"}) == 0
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "vulnerable"}) == 1
+
+
+def test_ado_eval_gate_accepts_real_passing_verdicts():
+    pipe = _ado_pipeline(_ado_framing())
+    s = _gate_script(pipe, "specs/evals-manifest.json")
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "comprehensive"}) == 0
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "partial"}) == 0
+    assert _run_gate(s, "specs/evals-manifest.json", {"verdict": "none"}) == 1
+
+
+def test_ado_redteam_gate_accepts_real_passing_verdicts():
+    pipe = _ado_pipeline(_ado_framing())
+    s = _gate_script(pipe, "specs/redteam-manifest.json")
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "hardened"}) == 0
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "partial"}) == 0
+    assert _run_gate(s, "specs/redteam-manifest.json", {"verdict": "vulnerable"}) == 1
+
+
+def test_gates_drop_the_bogus_pass_verdict_enum():
+    for text in (_gh_workflow(_gh_framing()), _ado_pipeline(_ado_framing())):
+        assert '("pass", "passed", "ok")' not in text
 
 
 # --- GitHub Actions -------------------------------------------------------

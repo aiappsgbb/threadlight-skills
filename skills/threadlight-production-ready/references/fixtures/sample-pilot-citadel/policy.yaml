@@ -1,12 +1,39 @@
-version: 1
-shields:
-  prompt_shield: { enabled: true, severity: high }
-  jailbreak: { enabled: true }
-tools:
-  - name: web_search
-    require_approval: false
-  - name: external_api_call
-    require_approval: true
-telemetry:
-  sink: app_insights
-  emit: [allow, deny, escalate]
+version: "1.0.0"
+name: citadel-spoke-agent-policy
+description: >-
+  Governance policy for the Citadel-spoke pilot agent. Linted with
+  `agt lint-policy`, replayed with `agt test`, and verified in CI with
+  `agt verify` (emits an OWASP ASI 2026 governance attestation).
+deny_by_default: true
+default_action: deny
+metadata:
+  owasp_asi: "OWASP ASI 2026"
+  # Prompt shields / jailbreak defence are model-edge Content Safety controls,
+  # declared here for traceability; they are enforced at the model boundary,
+  # not by this policy.
+  model_edge_controls: [prompt_shield, jailbreak]
+  telemetry:
+    sink: app_insights
+    emit: [allow, deny, escalate]
+rules:
+  - name: allow-web-search
+    priority: 10
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: web_search
+    action: allow
+  - name: escalate-external-api
+    priority: 20
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: external_api_call
+    action: escalate
+  - name: block-shell
+    priority: 30
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: shell
+    action: block

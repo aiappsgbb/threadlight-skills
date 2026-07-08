@@ -113,7 +113,8 @@ stages:
                     sys.exit(1)
                 verdict = json.load(open(p)).get("verdict", "not-verified")
                 print(f"evals verdict: {verdict}")
-                sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+                # no must-fix -> comprehensive|partial ship; offline-only|none block
+                sys.exit(0 if verdict in ("comprehensive", "partial") else 1)
                 PY
 
   - stage: red_team_gate
@@ -152,5 +153,48 @@ stages:
                     sys.exit(1)
                 verdict = json.load(open(p)).get("verdict", "not-verified")
                 print(f"red-team verdict: {verdict}")
-                sys.exit(0 if verdict in ("pass", "passed", "ok") else 1)
+                # no must-fix -> hardened|partial ship; vulnerable blocks
+                sys.exit(0 if verdict in ("hardened", "partial") else 1)
+                PY
+
+  # MCP supply-chain gate — see the GitHub template for rationale.
+  # Gate mode: {{MCP_GATE_MODE}} (soft = warn-only, hard = block on must-fix).
+  - stage: mcp_supply_chain_gate
+    displayName: MCP supply-chain gate ({{MCP_GATE_MODE}})
+    dependsOn: deploy
+    jobs:
+      - job: mcp_supply_chain
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: Produce MCP SBOM (threadlight-production-ready)
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Run threadlight-production-ready against the repo to \
+                  (re)produce tests/mcp-sbom.json — MCP server/tool discovery, \
+                  pin + registry verification, mcp-lock.json drift, and \
+                  inline-credential scan."
+          - task: AzureCLI@2
+            displayName: Enforce MCP supply-chain verdict (mode={{MCP_GATE_MODE}})
+            continueOnError: {{MCP_GATE_SOFT}}
+            inputs:
+              azureSubscription: {{ADO_SERVICE_CONNECTION}}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                python3 - <<'PY'
+                import json, os, sys
+                p = "tests/mcp-sbom.json"
+                if not os.path.exists(p):
+                    print(f"##vso[task.logissue type=warning]{p} missing — MCP SBOM has not been produced.")
+                    sys.exit(1)
+                summary = json.load(open(p)).get("summary", {})
+                must_fix = summary.get("must_fix", 0)
+                print(f"MCP must-fix findings: {must_fix}")
+                sys.exit(1 if must_fix else 0)
                 PY

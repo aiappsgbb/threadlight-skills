@@ -30,6 +30,14 @@ name: python-pytest
 #     env-setup runbook generator — deterministic, secret-free, no network)
 #   - skills/threadlight-customize/tests/        (fork-and-customize final
 #     leg — instructions-only: version + structure + no-secrets/anonymization)
+#   - skills/threadlight-router-bench/tests/     (offline self-improvement cold-
+#     path: learn single-run CI learnings + bench cost scorecard; gh/az calls
+#     are dependency-injected with fixture runners — deterministic, no network)
+#   - skills/threadlight-event-triggers/tests/   (six receiver scaffolds: each
+#     pure idempotent handle() core — fresh/duplicate/failure paths + key
+#     derivation + a structural "shipped" guard that py_compiles every scaffold.
+#     Imports the receiver cores with NO azure SDKs installed — all azure.*
+#     imports are lazy — so it runs stdlib-only, no network)
 #
 # 2 e2e tests in threadlight-production-ready/tests/test_end_to_end.py
 # are pre-existing failures caused by stale safe-check fixtures and are
@@ -84,3 +92,15 @@ jobs:
         run: python -m pytest skills/threadlight-cicd/tests/ -v
       - name: Run threadlight-customize tests
         run: python -m pytest skills/threadlight-customize/tests/ -v
+      - name: Run threadlight-router-bench tests
+        # Offline self-improvement cold-path: learn (single-run CI learnings) +
+        # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network
+        # (all gh/az calls are dependency-injected with fixture runners in tests).
+        run: python -m pytest skills/threadlight-router-bench/tests/ -v
+      - name: Run threadlight-event-triggers tests
+        # Six receiver scaffolds. Each receiver core exposes a pure, injectable
+        # handle() (fresh/duplicate/failure + key derivation) and a structural
+        # guard that py_compiles every scaffold and asserts the "shipped" file
+        # set. All azure.* imports are lazy, so the cores import under this
+        # stdlib-only runner (pytest + pyyaml). Deterministic, no network.
+        run: python -m pytest skills/threadlight-event-triggers/tests/ -v

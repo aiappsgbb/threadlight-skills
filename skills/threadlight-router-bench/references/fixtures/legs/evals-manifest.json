@@ -1,0 +1,94 @@
+{
+  "schema": "threadlight-evals-manifest/v1",
+  "tool_version": "0.1.0",
+  "captured_at": "2026-06-30T11:01:49+00:00",
+  "freshness_window_days": 7,
+  "verdict": "none",
+  "must_fix": [
+    "eval_datasets_present",
+    "schedule_present"
+  ],
+  "should_fix": [
+    "run_history_present",
+    "online_eval_wired",
+    "ab_comparison_present"
+  ],
+  "not_verified": [
+    "dataset_shape_ok",
+    "latest_eval_run_fresh",
+    "latest_pass_rate_ok"
+  ],
+  "metrics": {
+    "pass_rate": null,
+    "threshold": null,
+    "latest_run": null
+  },
+  "capabilities": {
+    "eval_scenarios_present": {
+      "check_id": "EVAL-001",
+      "status": "pass",
+      "evidence": "1 scenario marker(s); first: specs/SPEC.md",
+      "hint": null
+    },
+    "eval_datasets_present": {
+      "check_id": "EVAL-002",
+      "status": "must-fix",
+      "evidence": null,
+      "hint": "store held-out datasets under evals/ or specs/evals/"
+    },
+    "dataset_shape_ok": {
+      "check_id": "EVAL-003",
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no dataset to inspect"
+    },
+    "thresholds_declared": {
+      "check_id": "EVAL-004",
+      "status": "pass",
+      "evidence": "specs/demo-rehearsal.md",
+      "hint": null
+    },
+    "schedule_present": {
+      "check_id": "EVAL-005",
+      "status": "must-fix",
+      "evidence": null,
+      "hint": "wire Plan A Foundry Continuous Evaluation or Plan B cron-based evals"
+    },
+    "run_history_present": {
+      "check_id": "EVAL-006",
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "commit latest eval run output under evals/runs/*.json or docs/eval-runs/"
+    },
+    "online_eval_wired": {
+      "check_id": "EVAL-101",
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "no live create_agent_evaluation wiring with Application Insights connection found"
+    },
+    "latest_eval_run_fresh": {
+      "check_id": "EVAL-102/EVAL-103",
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no eval run history to age"
+    },
+    "alert_wired": {
+      "check_id": "EVAL-104",
+      "status": "pass",
+      "evidence": "specs/SPEC.md",
+      "hint": null
+    },
+    "latest_pass_rate_ok": {
+      "check_id": "EVAL-105",
+      "status": "not-verified",
+      "evidence": null,
+      "hint": "no latest eval run to score"
+    },
+    "ab_comparison_present": {
+      "check_id": "F3",
+      "status": "should-fix",
+      "evidence": null,
+      "hint": "add champion/challenger comparison config or evals/ab/ gate before swaps"
+    }
+  }
+}

@@ -8,7 +8,7 @@ Three lifecycle phases:
 Drop into a pilot repo as `tests/safe_check.py` (or install as a package)
 and invoke:
 
-    python -m threadlight.safe_check --phase post-deploy
+    python3 tests/safe_check.py --phase post-deploy
 
 Exit codes:
     0  gate passed (gaps empty)

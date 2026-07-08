@@ -7,13 +7,198 @@ field.
 
 ## [Unreleased]
 
+### Added
+
+- **EU AI Act evidence pack — terminal aggregator in
+  `threadlight-production-ready`** (0.7.0 → 0.8.0). A new stdlib-only script,
+  `scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
+  already produce — the production-readiness scorecard manifest, `mcp-sbom.json`,
+  `agent-identity.json`, and the govern / evals / red-team manifests — onto seven
+  EU AI Act articles (9, 11 + Annex IV, 12, 14, 15, 26, 27) and emits a
+  **tenant-local, offline** evidence pack: `ai-act-evidence.json`,
+  `annex-iv-technical-file.md`, and an Article 27 `fria-scaffold.md` under
+  `docs/compliance/`. Each article is graded `covered` / `partial` / `gap` /
+  `scaffold` with a per-source SHA-256 for provenance; a missing or malformed
+  source degrades to `gap` / `partial` — the pack never fabricates a `covered`. A
+  `--check` flag exits 3 when a load-bearing article (Art 11 / 12 / 15) is a gap.
+  It amplifies Foundry's own governance outputs into regulator-facing evidence and
+  is an engineering aid, not legal advice. A new `references/eu-ai-act-mapping.md`
+  documents the mapping. Bumps the plugin manifest 1.8.0 → 1.9.0.
+- **Agent-identity binding — non-human-identity (NHI) governance in
+  `threadlight-production-ready`** (0.6.1 → 0.7.0). The identity-access pillar now
+  governs the identity the agent *is*, not just secrets in source. A new
+  stdlib-only producer, `scripts/agent_identity.py`, inventories every declared
+  agent identity (user-assigned managed identity / federated credential /
+  app-secret) from compiled ARM, Bicep, and source signals and writes an
+  `agent-identity.json` sidecar next to the report. Four new static findings score
+  it: **IAM-006** passwordless binding (must-fix — managed or federated, not a
+  client secret), **IAM-007** responsible owner (should-fix), **IAM-008**
+  least-privilege scope (must-fix — no Owner/Contributor/User-Access-Administrator
+  or wildcard `*.ReadWrite.All` Graph permission), and **IAM-009** lifecycle /
+  review (should-fix — a `reviewBy`/`expiresOn` signal, with federated identities
+  passing automatically). An optional `agent-identity.governance.json` manifest
+  supplies owner / review metadata per subject id. Remediation recipes point at
+  `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM —
+  it amplifies the platform's identity primitives, never replaces them. A producer
+  error degrades the four findings to `not-verified`; the assessor never crashes.
+  Bumps the plugin manifest 1.7.0 → 1.8.0.
+
+- **Built the six `threadlight-event-triggers` receiver scaffolds for real**
+  (1.1.0 → 1.2.0). The SKILL's "Reference files" table listed `aca-job-cron`,
+  `aca-job-manual`, `aca-consumer`, `function-http`, `function-servicebus`, and
+  `function-eventgrid` as *shipped*, but only a placeholder index existed. Each
+  scaffold now carries a pure, idempotent, injectable `handle(...)` core (derive
+  dedup key → skip duplicates → invoke the Foundry-hosted agent → dead-letter on
+  failure without marking processed), an offline `local.test.py`, and a shared
+  `pytest` suite — all runnable with no Azure SDKs installed. The `aca-*` shapes
+  ship `receiver.py` + `Dockerfile` + `receiver.bicep`; the `function-*` escape
+  hatches use the v2 Python model (`function_app.py` + a pure `receiver_core.py`
+  + `host.json`, no legacy `function.json`). A structural guard test keeps the
+  "shipped" claim self-verifying. Dead-letter strategy is per shape (Storage
+  Queue poison store, Service-Bus-native dead-letter, or platform re-raise →
+  native DLQ). No connection strings — managed identity throughout.
+
+### Changed
+
+- **Realigned the AGT (Agent Governance Toolkit) integration to the real
+  toolkit model** across `threadlight-govern` (0.1.1 → 0.2.0) and
+  `threadlight-production-ready` (0.8.0 → 0.9.0). Governance is authored as a
+  **committed policy** — `policy.yaml` with top-level `version` + `name` +
+  `rules:`, validated by `agt lint-policy` / `agt test` and attested by
+  `agt verify --badge` — not an in-process middleware import. The govern PROTECT
+  leg now scaffolds and scores a schema-valid policy, its default-deny posture,
+  its sensitive-action rules, and its CI gate. In the production-readiness
+  assessor, Pillar 02 (`AGT-001..006`) rescopes to the policy artefact: `AGT-001`
+  = the policy is schema-valid (lints clean), `AGT-004` = a pinned ruleset
+  `version:`, `AGT-005` = a CI workflow runs the toolkit (`agt verify` /
+  `lint-policy` / `test`, now `should-fix` — the gate lives in CI, not the request
+  path). `RAI-002/003` decouple from the governance manifest so a model-edge
+  control (Content Safety prompt shields) is scored on its own signals. The
+  `AGT-001/002/005` remediation recipes, Pillar 02 reference, report glossary /
+  mermaid, and the `sample-pilot-citadel` exemplar (real schema-valid policy that
+  lints clean, plus a `governance.yml` CI gate) are rewritten to match. The
+  version-agnostic v4 deep-checks (`AGT-V4-*`) are unchanged. Bumps the plugin
+  manifest 1.9.0 → 1.10.0.
+  <br>Cross-skill hardening: policy schema-validity and the pinned `version:`
+  are evaluated against a **single canonical policy file** (never merged across
+  siblings, which could false-pass the governance hard gate); CI-gate detection
+  requires an actual toolkit invocation (an `agt` verb or the
+  `agent-governance-toolkit/action`) and ignores commented-out lines,
+  identically in both skills; and the govern baseline policy templates drop a
+  v4-only metadata key so a pilot that adopts them stays on the `v3_7` profile.
+  The scaffolded CI gate treats `agt test` (fixture replay) as **advisory**
+  (`continue-on-error: true`) while keeping `agt lint-policy` + `agt verify` as
+  the required gates: shipping AGT 4.1.0's replay path binds an `agent_os`
+  `PolicyDocument` model that requires a singular `condition:` and rejects the
+  `escalate` action, so a human-in-the-loop policy that lints clean and is valid
+  at runtime would otherwise fail its own gate. The wired exemplar, wiring
+  snippet, policy-template headers, and the `AGT-005` recipe are updated to
+  match, pinned by a govern regression test.
+
+
+  1.6.2). Step 1 told the agent to *copy* a `references/scaffold/` directory that
+  the repo never shipped. The modern flow **generates** the `azd` skeleton
+  (`azure.yaml`, `agent.yaml`, vendored `infra/`) via the pinned `azd ai agent`
+  extension — exactly as the Phase 5 header and `references/upstream-pin.md`
+  already describe. Reworded Step 1 to attribute generation to the extension and
+  reframed the tree as the generated + Phase 2 layout (no behaviour change).
+
+- **Added an MCP supply-chain gate** across `threadlight-production-ready`
+  (0.6.0) and `threadlight-cicd` (0.3.0). The production-readiness assessor now
+  discovers MCP servers/tools declared in a repo, writes an `mcp-sbom.json`
+  sidecar, and scores four new supply-chain findings — servers pinned to a
+  version/digest (`SUP-010`), resolvable from a known registry (`SUP-011`),
+  tracked in a committed `mcp-lock.json` free of undocumented server/tool drift
+  (`SUP-012`), and free of inline credentials (`SUP-013`). The CI/CD generator
+  gains a `--mcp-gate soft|hard` knob that adds a post-deploy gate enforcing the
+  SBOM. Remediation points at `foundry-toolbox`, Key Vault, and ACR. `plugin.json`
+  and `.github/plugin/marketplace.json` bump to `1.7.0` with MCP keywords.
+
+- **Surfaced `threadlight-router-bench` as the Improve leg on the front door
+  and refreshed the plugin manifests.** The README hero now counts **16 pipeline
+  skills + the `threadlight-auto` orchestrator (17 total)**, adds a router-bench
+  row to the leg table and the **Improve** branch to the pipeline flow diagram;
+  `plugin.json` and `.github/plugin/marketplace.json` bump to `1.6.0` with the
+  matching count and router-bench keywords (`router-bench`, `self-improvement`,
+  `learnings-digest`, `ci-failure-taxonomy`, `model-router-cost`).
+- **Added "See also — official Azure Skills" cross-references** to
+  `threadlight-deploy`, `-consumption-iq`, `-evals`, `-govern`,
+  `-production-ready`, and `-cicd` (PATCH bumps). Each points at the canonical
+  Microsoft Azure Skills the leg leverages — `microsoft-foundry`,
+  `azure-reliability`, `azure-rbac`, `entra-agent-id`, `entra-app-registration`,
+  `azure-cost` — as further reading, not a dependency, so the pipeline stays a
+  thin, opinionated path *over* the platform rather than a re-implementation of
+  it.
+
 ### Fixed
 
+- **Hardened the `threadlight-production-ready` readiness scorecard against
+  modern ARM shapes** (0.8.0 → 0.8.1). The compiled-ARM walker (`BicepGraph`)
+  assumed the top-level `resources` was always a list, so it crashed on
+  **symbolic-name ARM** (`languageVersion 2.0` — the current azd/Bicep default,
+  where `resources` is a `{symbolicName: object}` map), aborting the whole
+  assessment before any pillar ran. `_walk` now accepts both the map and the
+  list shape (and nested-template maps). The model-lifecycle static check
+  (MDL-001) also crashed when a deployment's `model` / `version` was supplied via
+  an ARM parameter or copy-loop expression (an expression *string* rather than an
+  object); it now classifies those as `not-verified` ("verified at deploy" by the
+  live MDL-101 check) rather than crashing or raising a false must-fix. It also
+  no longer silently passes a model whose `version` is itself a parameter
+  expression (now `not-verified`), and a genuinely absent model stays a
+  `must-fix`. Finally, a per-pillar resilience guard makes any pillar whose
+  static analyzer raises on an unforeseen ARM shape **fail closed**: its tier-0
+  findings degrade to a **visible** gate-blocking `must-fix` (carrying the
+  error) with an stderr warning, so the run always completes but the hard
+  go-live gate keeps blocking until it is resolved — it never silently relaxes
+  the gate. Sixteen new tests pin the map/list walk, the param-aware model
+  check, and the fail-closed guard.
+- **Corrected three stale companion pointers in `threadlight-deploy`** — the
+  hosted-agent fallback now names the `foundry-hosted-agents` companion, and the
+  `pyproject.toml` / `Dockerfile` steps point at the inline templates directly
+  below them instead of a `references/` path that ships no such file.
 - **Corrected stale `.github/plugin/marketplace.json` metadata** — the
   marketplace + plugin `description` said "9 Copilot skills" and `version`
-  `1.0.0`; both now reflect the current 15 pipeline skills + `threadlight-auto`
-  orchestrator (16 total) at plugin `1.5.0`, matching `plugin.json` and the
+  `1.0.0`; both now reflect the current 16 pipeline skills + `threadlight-auto`
+  orchestrator (17 total) at plugin `1.6.0`, matching `plugin.json` and the
   README.
+- **Fixed the CI/CD deploy-gate verdict check in `threadlight-cicd`** (0.3.0 →
+  0.3.1). The generated GitHub Actions and Azure DevOps pipelines gated on
+  eval / red-team verdict strings (`pass` / `passed` / `ok`) that the assessors
+  never emit, so a clean run could still fail the gate. The gates now match the
+  real enums — eval `comprehensive` / `partial` and red-team `hardened` /
+  `partial` (i.e. no `must-fix`) both pass — with tests that extract and execute
+  the embedded gate script against real verdict values.
+- **Fixed the `threadlight-safe-check` invocation across the skills** (1.1.0 →
+  1.1.1). Docs and sibling skills called `python -m threadlight.safe_check`, but
+  the script is vendored into the pilot repo as `tests/safe_check.py` (there is
+  no importable `threadlight` package), so the module form always raised
+  `ModuleNotFoundError`. Normalised every call site to
+  `python3 tests/safe_check.py` and removed a documented `--strict` flag the CLI
+  never defined.
+- **Fixed a contradictory Dockerfile base image in `threadlight-deploy`** (1.6.2
+  → 1.6.3). The readiness checklist told operators to build the agent and bot
+  images `FROM python:3.12-slim`, directly against the same skill's mandate to
+  use `mcr.microsoft.com/oryx/python:3.12` (Docker Hub's unauthenticated pull
+  limits break ACR Tasks builds). Both checklist rows now match the mandate.
+- **Fixed `threadlight-production-ready --remediate <id>`** so it can reach every
+  finding's recipe (0.6.0 → 0.6.1). The flag read only the legacy
+  `remediation-recipes.yaml` (~12 IDs), leaving the 70+ per-file recipes under
+  `references/remediation-recipes/{ID}.md` — the set the apply-plan machinery
+  already uses — unreachable. `--remediate` now falls back to the per-file
+  catalog when an ID is absent from the yaml, and the previously un-collected
+  renderer test file is bridged into `pytest`.
+- **Refreshed the `THREADLIGHT.md` skill inventory.** The engineering reference
+  still said "sixteen" skills and omitted `threadlight-router-bench` from both its
+  skill list and flow table. It now lists all seventeen skills (16 pipeline + the
+  `threadlight-auto` orchestrator) and documents the router-bench IMPROVE leg,
+  matching the README and marketplace metadata.
+
+### Removed
+
+- **Purged four committed `.pyc` bytecode files** from the `threadlight-local-test`
+  quickstart `__pycache__/`. They were tracked despite the existing `__pycache__/`
+  `.gitignore` rule (they were committed before it landed); Python regenerates them
+  on import.
 
 ### Added
 

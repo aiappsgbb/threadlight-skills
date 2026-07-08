@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "threadlight-govern-manifest/v1",
+  "$id": "threadlight-govern-manifest/v2",
   "title": "threadlight govern manifest",
   "description": "Emitted by threadlight-govern (scripts/govern_check.py). Consumed by threadlight-production-ready pillars 2 (agent-governance) and 7 (responsible-ai).",
   "type": "object",
   "required": ["schema", "tool_version", "captured_at", "verdict", "capabilities"],
   "properties": {
-    "schema": {"const": "threadlight-govern-manifest/v1"},
+    "schema": {"const": "threadlight-govern-manifest/v2"},
     "tool_version": {"type": "string"},
     "captured_at": {"type": "string", "format": "date-time"},
     "agt_profile": {"enum": ["auto", "v3_7", "v4_preview", "none"]},
     "freshness_window_days": {"type": "integer", "minimum": 0},
-    "verdict": {"enum": ["wired", "partial", "not-wired"]},
+    "verdict": {"enum": ["governed", "partial", "ungoverned"]},
     "must_fix": {"type": "array", "items": {"type": "string"}},
     "should_fix": {"type": "array", "items": {"type": "string"}},
     "not_verified": {"type": "array", "items": {"type": "string"}},
@@ -30,14 +30,16 @@
       },
       "propertyNames": {
         "enum": [
-          "middleware_wired_at_boundary",
           "policy_artefact_present",
+          "policy_schema_valid",
           "policy_versioned",
-          "rai_policy_present",
-          "verifier_artefact_present",
-          "verifier_fresh",
-          "asi_reference_present",
-          "sidecar_pattern"
+          "policy_default_deny",
+          "sensitive_action_rules_present",
+          "policy_tests_present",
+          "ci_gate_present",
+          "attestation_present",
+          "attestation_fresh",
+          "asi_reference_present"
         ]
       }
     }

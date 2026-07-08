@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.5.0"
+  version: "0.9.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -68,7 +68,7 @@ knowledge.
 | Provisioning Citadel hub | `citadel-hub-deploy` |
 | Onboarding spoke to Citadel | `citadel-spoke-onboarding` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
-| Authoring AGT in-process middleware | `foundry-agt` |
+| Authoring / linting the AGT policy | `foundry-agt` |
 | Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
 | Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
 
@@ -241,6 +241,64 @@ about findings, not just emit them.
 | `not-applicable` | Check correctly skipped (e.g., Citadel scoring against an AGT-target deployment) | ✅ (counts as pass for raw, with justification) |
 | `not-verified` | Check could not run (no Azure auth, insufficient RBAC, static-only mode) | ⚪ (excluded from raw score; surfaced in `not_verified[]`) |
 | `waived` | Customer explicitly accepted the gap with documented compensating control | ✅ in `score_with_waivers`, ❌ in `raw_score` |
+
+### MCP supply-chain gate (SUP-010..013)
+
+When a repo declares MCP servers (a `.mcp.json`, an `mcpServers`/`servers` map in
+any JSON config, or a remote MCP URL in source), the supply-chain pillar also
+scores the MCP surface: servers must be **pinned** to an exact version or image
+digest (SUP-010), resolve from a **known registry/source** (SUP-011), be tracked
+in a committed **`mcp-lock.json`** so server/tool drift is reviewable (SUP-012),
+and never commit **inline credentials** (SUP-013). The assessor writes an
+`mcp-sbom.json` sidecar next to the manifest. Generate/refresh the lock with:
+
+`python3 scripts/mcp_sbom.py --root . --update-lock`
+
+Remediation points at `foundry-toolbox` (secret injection), Key Vault, and ACR —
+this hardens how you consume MCP on the platform; it does not replace it.
+
+### Agent-identity binding — NHI governance (IAM-006..009)
+
+An agent is a **non-human identity (NHI)**. Beyond catching secrets in source
+(IAM-001..003), the identity-access pillar governs the identity the agent *is*. A
+sibling producer, `scripts/agent_identity.py`, inventories every declared identity
+(UAMI / federated / app-secret) from compiled ARM, Bicep, and source signals and
+writes an **`agent-identity.json`** sidecar next to the report. Four static checks
+score it: the binding is **passwordless** — managed identity or federated, not a
+client secret (IAM-006, must-fix); it names a **responsible owner** (IAM-007,
+should-fix); it is scoped **least-privilege** — no Owner/Contributor/UAA or
+wildcard `*.ReadWrite.All` Graph (IAM-008, must-fix); and it declares a
+**lifecycle** — a `reviewBy`/`expiresOn` signal, with federated identities passing
+automatically (IAM-009, should-fix). Inspect or refresh the inventory with:
+
+`python3 scripts/agent_identity.py --root . --out agent-identity.json`
+
+Optionally declare `agent-identity.governance.json` at the repo root to supply
+owner / review metadata per subject id. Remediation points at `entra-agent-id`,
+`foundry-agt`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
+platform's identity primitives; it does not replace them.
+
+### EU AI Act evidence pack (Art 9 / 11 / 12 / 14 / 15 / 26 / 27)
+
+The EU AI Act's high-risk obligations land in 2026. A terminal aggregator,
+`scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
+**already produce** onto seven articles and emits a **tenant-local, offline**
+evidence pack — it never calls Azure and never fabricates coverage. It reads the
+production-readiness scorecard manifest, `mcp-sbom.json` (Art 11 / 15),
+`agent-identity.json` (Art 12 / 26), the govern manifest (Art 9), and the evals /
+red-team manifests (Art 15). Each article is graded `covered` / `partial` /
+`gap` / `scaffold` with a per-source SHA-256 and a remediation pointer at a
+platform skill; a missing or malformed source degrades to `gap` / `partial` — the
+pack shows honest coverage, never a green wash. Emit it with:
+
+`python3 scripts/ai_act_evidence.py --root . --out docs/compliance`
+
+Three files land in `docs/compliance/`: `ai-act-evidence.json` (the machine map),
+`annex-iv-technical-file.md` (Art 11 technical documentation), and
+`fria-scaffold.md` (an Art 27 fundamental-rights template a human completes). Add
+`--check` to exit 3 when a load-bearing article (Art 11 / 12 / 15) is a gap. It
+amplifies Foundry's own governance outputs into regulator-facing evidence; it is
+an engineering aid, not legal advice. See `references/eu-ai-act-mapping.md`.
 
 ## CLI
 
@@ -924,7 +982,7 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Citadel hub absent (need to provision) | `citadel-hub-deploy` | `citadel-*` |
 | VNet-injected Foundry needed | `foundry-vnet-deploy` | `foundry-*` |
 | Network diagnostics needed | `foundry-network-runbook` | `foundry-*` |
-| AGT in-process middleware needed | `foundry-agt` | `foundry-*` |
+| AGT policy authoring / lint / CI-gate | `foundry-agt` | `foundry-*` |
 | Cap-host lifecycle / day-2 | `foundry-caphost-lifecycle` | `foundry-*` |
 | Hosted-agent RBAC / managed identity | `foundry-hosted-agents` | `foundry-*` |
 | OTel emit / AppIn wiring | `foundry-observability` | `foundry-*` |
@@ -934,6 +992,94 @@ sync with the awesome-gbb skill catalog as it evolves.
 | Cost analysis (PAYG vs PTU) | `paygo-ptu-cost-analyzer` | `paygo-*` |
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
+
+## What changed since v0.8.1
+
+v0.9.0 realigns the **agent-governance** pillar to the real Agent Governance
+Toolkit model. Governance is a **committed policy** you author, lint, test, and
+gate in CI — `policy.yaml` (top-level `version` + `name` + `rules:`) validated by
+`agt lint-policy` / `agt test` and attested by `agt verify --badge` — not an
+in-process middleware import. The `AGT-001..006` checks now score the policy
+artefact, its schema validity, a pinned ruleset version, an OWASP ASI 2026
+reference, a CI governance gate, and a telemetry sink. `RAI-002/003` decouple
+from the governance manifest so a model-edge control (Content Safety prompt
+shields) is scored on its own signals.
+
+| Area | v0.9.0 delta |
+| --- | --- |
+| Pillar 02 model | `AGT-001` = policy is schema-valid (lints clean); `AGT-005` = a CI workflow runs `agt verify` / `lint-policy` / `test` (now `should-fix`, gate lives in CI not the request path). |
+| Recipes | `AGT-001/002/005` rewritten to author a real `policy.yaml`, lint it, and add a governance CI gate — no fictional `apply_governance` import. |
+| RAI decouple | `RAI-002` reads the policy's sensitive-action rules; `RAI-003` scores prompt-shield / jailbreak controls on their own signals, independent of the governance manifest. |
+| Reference exemplar | `sample-pilot-citadel` ships a real schema-valid policy that lints clean under `agt lint-policy`, plus a `governance.yml` CI gate. |
+
+## What changed since v0.8.0
+
+v0.8.1 is a robustness patch for the readiness scorecard's compiled-ARM
+analysis. It teaches the Bicep walker to read **symbolic-name ARM**
+(`languageVersion 2.0` — the modern azd/Bicep default, where `resources` is a
+map rather than a list), makes the model-lifecycle static check tolerant of
+model deployments whose model or version is supplied via an ARM parameter/copy
+expression (degrading MDL-001 to `not-verified` / verify-at-deploy instead of
+crashing or raising a false must-fix — while still flagging a genuinely absent
+model as must-fix), and adds a per-pillar resilience guard so one pillar's
+static analyzer hitting an unforeseen ARM shape **fails closed** (that pillar's
+tier-0 findings degrade to a visible, gate-blocking `must-fix`) rather than
+aborting the whole assessment or silently letting the hard gate pass.
+
+| Area | v0.8.1 delta |
+| --- | --- |
+| Symbolic-name ARM | `BicepGraph._walk` accepts `languageVersion 2.0` resource **maps** (and nested-template maps), not just classic lists — the scorecard now runs on the modern azd/Bicep default. |
+| Param-aware model check | MDL-001 classifies expression-string models / versions (parameter / copy-loop) as `not-verified` (verified at deploy by live MDL-101), never a crash or a false must-fix; a genuinely absent model stays must-fix. |
+| Resilience guard | A static analyzer raising on an unexpected ARM shape **fails closed** — that pillar's tier-0 findings degrade to a visible `must-fix` (carrying the error) with an stderr warning, so the run completes but the hard go-live gate keeps blocking until it is resolved. |
+
+## What changed since v0.7.0
+
+v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
+script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings
+already produce (scorecard manifest, `mcp-sbom.json`, `agent-identity.json`,
+govern + evals + red-team manifests) onto seven articles and emits a tenant-local,
+offline evidence pack — honest `covered` / `partial` / `gap` / `scaffold` coverage
+with per-source provenance, never a fabricated green.
+
+| Area | v0.8.0 delta |
+| --- | --- |
+| New aggregator | `scripts/ai_act_evidence.py` — offline, deterministic article map (Art 9 / 11 / 12 / 14 / 15 / 26 / 27) with a `--check` CLI (exit 3 on a load-bearing gap). |
+| Evidence pack | Emits `ai-act-evidence.json`, `annex-iv-technical-file.md`, and an Art 27 `fria-scaffold.md` under `docs/compliance/`. |
+| Provenance + honesty | Every mapped source carries a SHA-256; a missing / malformed artifact degrades to `gap` / `partial` — never a false `covered`. |
+| Reference | `references/eu-ai-act-mapping.md` documents the article → artifact → skill map. |
+
+## What changed since v0.6.1
+
+v0.7.0 extends the **identity-access** pillar to govern the agent's own non-human
+identity (NHI). A new producer, `scripts/agent_identity.py`, inventories every
+declared agent identity and writes an `agent-identity.json` sidecar; the assessor
+scores four new findings — passwordless binding (IAM-006, must-fix), responsible
+owner (IAM-007, should-fix), least-privilege scope (IAM-008, must-fix), and
+lifecycle/review (IAM-009, should-fix).
+
+| Area | v0.7.0 delta |
+| --- | --- |
+| Identity-access pillar | Adds IAM-006..009 for the agent NHI surface (passwordless, owner, least-privilege, lifecycle). |
+| New producer | `scripts/agent_identity.py` — stdlib-only identity discovery (UAMI / federated / app-secret) → `agent-identity.json`, with a `--check` CLI. |
+| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM. |
+| Governance manifest | Optional `agent-identity.governance.json` supplies owner / review metadata per subject id. |
+| Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the identity scan. |
+
+## What changed since v0.5.1
+
+v0.6.0 extends the supply-chain pillar to the **MCP surface**. When a repo
+declares MCP servers, the assessor now scores four new findings — servers pinned
+to an exact version/image digest (SUP-010, must-fix), resolving from a known
+registry/source (SUP-011, should-fix), tracked in a committed `mcp-lock.json`
+free of undocumented drift (SUP-012, must-fix), and free of inline credentials
+(SUP-013, must-fix) — and writes an `mcp-sbom.json` sidecar next to the manifest.
+
+| Area | v0.6.0 delta |
+| --- | --- |
+| Supply-chain pillar | Adds SUP-010..013 for the MCP server/tool surface (pin, source, lock-drift, inline-creds). |
+| New producer | `scripts/mcp_sbom.py` — stdlib-only MCP discovery → SBOM → lock-diff, with a `--check` / `--update-lock` CLI. |
+| Recipes | Three new must-fix remediation recipes (SUP-010/012/013) point at ACR digests, the lock producer, and Key Vault / `foundry-toolbox`. |
+| Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the MCP scan. |
 
 ## What changed since v0.4.0
 
@@ -1007,5 +1153,17 @@ Skill semver. v0.3.0 was soft-advisory assessor only. v0.4.0 added the
 3-phase production-onboarding flow (assess → refine+deploy → CI/CD
 handoff). v0.5.0 closes production-ready cleanup buckets: per-customer
 overrides, 8-question framing, idempotency exclusions, and recipe catalog
-promotions. v0.6.0+ will land the deferrals above. Breaking changes to
+promotions. v0.6.0 extends the supply-chain pillar to the MCP surface
+(SUP-010..013 + `mcp_sbom.py` producer + `mcp-sbom.json` sidecar); the
+deferrals above remain follow-on work. Breaking changes to
 `apply-plan.json` are gated behind `schema_version` (currently 1).
+
+## See also — official Azure Skills
+
+Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
+to replace it. For first-party depth behind this readiness scorecard, reach for
+the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
+*Further reading, not a dependency* — Threadlight's guidance stays the source of
+truth for the pilot flow:
+
+- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.

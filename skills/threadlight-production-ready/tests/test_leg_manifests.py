@@ -67,15 +67,19 @@ def _make_ctx(*, manifests: dict[str, dict] | None = None) -> "pr.RepoContext":
 
 def _fresh_govern_manifest() -> dict:
     return {
-        "schema": "threadlight-govern-manifest/v1",
+        "schema": "threadlight-govern-manifest/v2",
         "captured_at": _iso(datetime.now(timezone.utc)),
-        "verdict": "wired",
+        "verdict": "governed",
         "capabilities": _caps({
-            "middleware_wired_at_boundary": "pass",
             "policy_artefact_present": "pass",
+            "policy_schema_valid": "pass",
             "policy_versioned": "pass",
-            "rai_policy_present": "pass",
-            "verifier_artefact_present": "pass",
+            "policy_default_deny": "pass",
+            "sensitive_action_rules_present": "pass",
+            "policy_tests_present": "pass",
+            "ci_gate_present": "pass",
+            "attestation_present": "pass",
+            "attestation_fresh": "pass",
             "asi_reference_present": "pass",
         }),
     }
@@ -156,7 +160,9 @@ def test_evals_manifest_flips_and_notes_online_ab() -> None:
 
 
 # ---------------------------------------------------------------------------
-# RAI (pillar 7): govern manifest flips RAI-002/003; red-team emits SAFE-1xx
+# RAI (pillar 7): govern manifest flips RAI-002 (sensitive-action rules);
+# RAI-003 (prompt shields) is a model-edge control, NOT sourced from the govern
+# manifest, so it stays on its own evidence heuristic. Red-team emits SAFE-1xx.
 # ---------------------------------------------------------------------------
 
 def test_rai_manifest_flips_and_emits_safe() -> None:
@@ -166,7 +172,12 @@ def test_rai_manifest_flips_and_emits_safe() -> None:
     })
     f = _by_id(pr._check_rai_static(ctx))
     assert f["RAI-002"].status == "pass", f["RAI-002"].detail
-    assert f["RAI-003"].status == "pass", f["RAI-003"].detail
+    assert "sensitive_action_rules_present" in f["RAI-002"].detail
+    # RAI-003 is decoupled from the govern manifest (prompt shields = model-edge
+    # Content Safety). The synthetic ctx has no shield evidence -> must-fix.
+    assert f["RAI-003"].status == "must-fix", f["RAI-003"].detail
+    assert "manifest" not in f["RAI-003"].detail.lower(), \
+        "RAI-003 must not cite the govern manifest (model-edge control)"
     for fid in ("SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"):
         assert fid in f, f"{fid} not emitted"
         assert f[fid].status == "pass", f"{fid} expected pass, got {f[fid].status}: {f[fid].detail}"

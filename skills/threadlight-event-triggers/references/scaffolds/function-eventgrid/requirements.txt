@@ -1,0 +1,5 @@
+# Azure Functions Python v2 — Flex Consumption. Managed identity only.
+azure-functions
+azure-ai-projects>=2.0.0
+azure-identity>=1.19.0
+azure-cosmos>=4.9.0

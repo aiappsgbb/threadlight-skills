@@ -22,7 +22,7 @@
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/site.css?v=20739484">
+<link rel="stylesheet" href="assets/site.css?v=cb8d7282">
 
 <style>
   /* ============================================================
@@ -735,11 +735,94 @@
     .rg-row .check { opacity: 1 !important; }
   }
 
+  /* — HOW IT WORKS · primer band ————————————————————————— */
+  .how-it-works .sub { max-width: 64ch; }
+
+  .hiw-stack {
+    display: flex; align-items: stretch; gap: var(--s-2);
+    margin: var(--s-6) 0 var(--s-4);
+  }
+  .hiw-role {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3);
+    padding: var(--s-4);
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: var(--e-1);
+    transition: transform var(--d-base) var(--ease-out), border-color var(--d-base) var(--ease-out);
+  }
+  .hiw-role:hover { transform: translateY(-3px); border-color: var(--line-2); }
+  .hiw-ico {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 46px; height: 46px; border-radius: 13px;
+    background: var(--accent-soft); color: var(--accent-1);
+    border: 1px solid rgba(110,135,255,.30);
+  }
+  .hiw-ico svg { width: 23px; height: 23px; }
+  .hiw-role b {
+    font-family: var(--sans); font-weight: 700;
+    font-size: var(--t-h3); color: var(--ink-0); line-height: 1.12;
+  }
+  .hiw-verb {
+    font-family: var(--mono); font-size: var(--t-meta);
+    letter-spacing: .10em; text-transform: uppercase;
+    color: var(--accent-1); background: var(--accent-soft);
+    border: 1px solid rgba(110,135,255,.30);
+    padding: 3px 11px; border-radius: 999px;
+  }
+  .hiw-say { color: var(--ink-1); font-size: 15px; line-height: 1.5; }
+
+  .hiw-role.is-run .hiw-ico { color: var(--ink-1); background: var(--bg-3); border-color: var(--line-2); }
+  .hiw-role.is-run .hiw-verb { color: var(--ink-1); background: var(--bg-3); border-color: var(--line-2); }
+  .hiw-role.is-govern .hiw-ico { color: var(--lime-1); background: var(--lime-soft); border-color: rgba(168,255,96,.32); }
+  .hiw-role.is-govern .hiw-verb { color: var(--lime-1); background: var(--lime-soft); border-color: rgba(168,255,96,.32); }
+
+  .hiw-arrow {
+    flex: 0 0 auto; align-self: center;
+    display: inline-flex; color: var(--ink-3);
+  }
+  .hiw-arrow svg { width: 26px; height: 26px; }
+
+  .hiw-defs {
+    margin: 0; padding: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2);
+  }
+  .hiw-def {
+    display: flex; flex-direction: column; gap: var(--s-3);
+    padding: var(--s-4);
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: 14px;
+    transition: transform var(--d-base) var(--ease-out), border-color var(--d-base) var(--ease-out);
+  }
+  .hiw-def:hover { transform: translateY(-3px); border-color: var(--line-2); }
+  .hiw-def .hiw-ico {
+    width: 40px; height: 40px; border-radius: 11px;
+    color: var(--ink-0); background: var(--bg-3); border-color: var(--line-2);
+  }
+  .hiw-def .hiw-ico svg { width: 20px; height: 20px; }
+  .hiw-def dt {
+    font-family: var(--sans); font-weight: 700;
+    font-size: var(--t-h3); color: var(--ink-0);
+  }
+  .hiw-def dd { margin: 0; color: var(--ink-1); font-size: 14.5px; line-height: 1.5; }
+
+  @media (max-width: 900px) {
+    .hiw-stack { flex-direction: column; }
+    .hiw-arrow { transform: rotate(90deg); }
+    .hiw-defs { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 540px) {
+    .hiw-defs { grid-template-columns: 1fr; }
+  }
+
   /* — light mode bespoke tweaks ——————————————————————————— */
   @media (prefers-color-scheme: light) {
     .art, .gate, .chip, .tool, .beat-chip, .reel-btn { background: #ffffff; }
     .art-head, .reel-transport, .beat-rail { background: #eef0f7; }
     .reel-frame { background: linear-gradient(180deg, #ffffff, #f6f7fb); }
+    .hiw-role.is-run .hiw-ico,
+    .hiw-role.is-run .hiw-verb { color: var(--ink-0); }
+    .hiw-role.is-govern .hiw-ico,
+    .hiw-role.is-govern .hiw-verb { color: #2c7a2f; border-color: rgba(120,190,70,.55); }
   }
 </style>
 </head>
@@ -755,12 +838,10 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>Funnel</a>
+    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
     <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
     <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
-    <a href="./industries.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><rect x="5" y="9" width="6" height="12"/><rect x="13" y="4" width="6" height="17"/></svg>Industries</a>
-    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./workbook.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2z"/></svg>Workbook</a>
   </nav>
 </header>
 
@@ -778,6 +859,65 @@
         engineer drives from GitHub Copilot. The CLI types itself; the artefacts
         appear in sync. <strong>Press play, or scrub to any beat.</strong>
       </p>
+    </div>
+  </section>
+
+  <!-- ====================== HOW IT WORKS (primer) ====================== -->
+  <section class="scene how-it-works" id="how-it-works" aria-labelledby="hiw-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>Before you press play · how it actually works</p>
+      <h2 id="hiw-h" class="display reveal" data-delay="1">You describe it. <em>Copilot builds it. Foundry runs &amp; governs it.</em></h2>
+      <p class="sub reveal" data-delay="2">
+        Threadlight is 17 <strong>skills</strong> — Markdown playbooks GitHub&nbsp;Copilot follows in your
+        repo to <strong>drive Azure&nbsp;AI&nbsp;Foundry, not replace it</strong>. Here&rsquo;s the whole stack —
+        and the four words you&rsquo;ll see in the reel — in one glance.
+      </p>
+
+      <div class="hiw-stack reveal" data-delay="2" role="list" aria-label="Who does what across the stack">
+        <div class="hiw-role is-build" role="listitem">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+          <b>GitHub Copilot</b>
+          <span class="hiw-verb">builds</span>
+          <span class="hiw-say">Reads a Threadlight skill and writes the spec, code, infra and tests &mdash; right in your repo.</span>
+        </div>
+        <span class="hiw-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
+        <div class="hiw-role is-run" role="listitem">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg></span>
+          <b>Azure AI Foundry</b>
+          <span class="hiw-verb">runs</span>
+          <span class="hiw-say">Your agent runs as a Foundry <strong>Hosted Agent</strong> &mdash; in your own tenant, on your data.</span>
+        </div>
+        <span class="hiw-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
+        <div class="hiw-role is-govern" role="listitem">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+          <b>Foundry models &amp; evals</b>
+          <span class="hiw-verb">govern</span>
+          <span class="hiw-say">Policy, evals and a red-team scan score every pass before it&rsquo;s allowed to ship.</span>
+        </div>
+      </div>
+
+      <dl class="hiw-defs reveal" data-delay="3" aria-label="The four building blocks, in plain English">
+        <div class="hiw-def">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></span>
+          <dt>Agent</dt>
+          <dd>An LLM that works in a loop &mdash; it plans, calls a tool, reads the result, and repeats until the job&rsquo;s done.</dd>
+        </div>
+        <div class="hiw-def">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>
+          <dt>Skill</dt>
+          <dd>A plain-Markdown playbook Copilot reads and runs. You trigger it by asking, in English.</dd>
+        </div>
+        <div class="hiw-def">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <dt>Tool</dt>
+          <dd>A function the agent can call &mdash; search a document, hit an API, run code, post to Teams.</dd>
+        </div>
+        <div class="hiw-def">
+          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.26A7 7 0 1 0 4 15.25"/></svg></span>
+          <dt>Hosted runtime</dt>
+          <dd>Where it lives in production &mdash; a Foundry Hosted Agent with identity, scaling and tracing built in.</dd>
+        </div>
+      </dl>
     </div>
   </section>
 

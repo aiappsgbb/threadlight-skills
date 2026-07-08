@@ -42,7 +42,7 @@
 graph TD
     A[Spoke RG: {resource_group}] -->|target: {posture.resolved}| B{Resolved posture}
     B -->|citadel-spoke| C[Citadel Hub: APIM + Access Contract]
-    B -->|agt| D[AGT in-process middleware]
+    B -->|agt| D[AGT policy + CI gate]
     B -->|standard-ai-gateway| E[Customer APIM AI Gateway]
     B -->|hybrid| F[Mixed: per-workload]
 ```
@@ -228,7 +228,7 @@ Strategy: `{rollback_strategy}` (per SPEC § 12).
 | Term | Meaning |
 |---|---|
 | Posture | The customer's declared production-ready shape: Citadel-spoke / AGT / standard-AI-gateway / hybrid |
-| AGT | Agent Governance Toolkit — in-process middleware enforcing policy at the agent boundary |
+| AGT | Agent Governance Toolkit — a committed, schema-valid policy (`policy.yaml`) linted, tested, and CI-gated (`agt lint-policy` / `test` / `verify`) |
 | Citadel | The AI Citadel Governance Hub reference implementation (APIM AI Gateway + Foundry control plane + access contracts) |
 | Pillar | One of the 13 production-readiness dimensions assessed by this skill |
 | `pass` / `should-fix` / `must-fix` / `not-applicable` / `not-verified` / `waived` | Per-finding status taxonomy |

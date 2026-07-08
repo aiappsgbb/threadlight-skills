@@ -1,0 +1,14 @@
+# .github/workloads/returns-triage/rubric.yml
+# Low-bar quality rubric mirroring the simple workflow gates. Checks score the
+# concatenated PoC artifacts (SPEC.md, AGENTS.md, sample-data, killer-prompts);
+# strategies (contains/any_of/all_of/regex) are case-insensitive.
+checks:
+  - id: mentions-returns
+    weight: 1
+    contains: "returns"
+  - id: has-sample-data
+    weight: 1
+    any_of: ["sample-data", "sample_data"]
+  - id: killer-prompts
+    weight: 1
+    contains: "killer"

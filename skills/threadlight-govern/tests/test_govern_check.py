@@ -13,50 +13,92 @@ FIXTURES = os.path.join(SKILL, "references", "fixtures")
 WIRED = os.path.join(FIXTURES, "sample-wired")
 BARE = os.path.join(FIXTURES, "sample-bare")
 
+# The real, v2 capability set. Keep in lockstep with govern_check + the
+# production-ready pillar-02 map.
+V2_CAPS = {
+    "policy_artefact_present",
+    "policy_schema_valid",
+    "policy_versioned",
+    "policy_default_deny",
+    "sensitive_action_rules_present",
+    "policy_tests_present",
+    "ci_gate_present",
+    "attestation_present",
+    "attestation_fresh",
+    "asi_reference_present",
+}
+# Capabilities that were part of the old fictional runtime-middleware model and
+# must no longer exist.
+REMOVED_CAPS = {"middleware_wired_at_boundary", "sidecar_pattern",
+                "rai_policy_present", "verifier_artefact_present",
+                "verifier_fresh"}
 
-class WiredFixtureTests(unittest.TestCase):
+
+class GovernedFixtureTests(unittest.TestCase):
     def setUp(self):
         self.caps = gc.evaluate(WIRED, freshness_days=3650)
         self.man = gc.manifest(WIRED, self.caps, "auto", 3650)
 
-    def test_middleware_detected(self):
-        self.assertEqual(self.caps["middleware_wired_at_boundary"]["status"], "pass")
+    def test_exact_capability_set(self):
+        self.assertEqual(set(self.caps), V2_CAPS)
 
-    def test_policy_present_and_versioned(self):
+    def test_no_fictional_caps(self):
+        self.assertEqual(set(self.caps) & REMOVED_CAPS, set())
+
+    def test_policy_present_schema_valid_versioned(self):
         self.assertEqual(self.caps["policy_artefact_present"]["status"], "pass")
+        self.assertEqual(self.caps["policy_schema_valid"]["status"], "pass")
         self.assertEqual(self.caps["policy_versioned"]["status"], "pass")
 
-    def test_rai_block_detected(self):
-        self.assertEqual(self.caps["rai_policy_present"]["status"], "pass")
+    def test_default_deny_detected(self):
+        self.assertEqual(self.caps["policy_default_deny"]["status"], "pass")
 
-    def test_verifier_present(self):
-        self.assertEqual(self.caps["verifier_artefact_present"]["status"], "pass")
+    def test_sensitive_action_rules_detected(self):
+        self.assertEqual(
+            self.caps["sensitive_action_rules_present"]["status"], "pass")
+
+    def test_policy_tests_present(self):
+        self.assertEqual(self.caps["policy_tests_present"]["status"], "pass")
+
+    def test_ci_gate_present(self):
+        self.assertEqual(self.caps["ci_gate_present"]["status"], "pass")
+
+    def test_attestation_present_and_fresh(self):
+        self.assertEqual(self.caps["attestation_present"]["status"], "pass")
+        self.assertEqual(self.caps["attestation_fresh"]["status"], "pass")
 
     def test_asi_reference(self):
         self.assertEqual(self.caps["asi_reference_present"]["status"], "pass")
 
-    def test_verdict_no_must_fix(self):
+    def test_verdict_governed(self):
         self.assertEqual(self.man["must_fix"], [])
-        self.assertIn(self.man["verdict"], ("wired", "partial"))
+        self.assertEqual(self.man["should_fix"], [])
+        self.assertEqual(self.man["verdict"], "governed")
 
 
-class BareFixtureTests(unittest.TestCase):
+class UngovernedFixtureTests(unittest.TestCase):
     def setUp(self):
         self.caps = gc.evaluate(BARE, freshness_days=90)
         self.man = gc.manifest(BARE, self.caps, "auto", 90)
 
-    def test_middleware_missing_is_must_fix(self):
-        self.assertEqual(self.caps["middleware_wired_at_boundary"]["status"], "must-fix")
-
     def test_policy_missing_is_must_fix(self):
         self.assertEqual(self.caps["policy_artefact_present"]["status"], "must-fix")
 
-    def test_verdict_not_wired(self):
-        self.assertEqual(self.man["verdict"], "not-wired")
+    def test_schema_valid_missing_is_must_fix(self):
+        self.assertEqual(self.caps["policy_schema_valid"]["status"], "must-fix")
+
+    def test_verdict_ungoverned(self):
+        self.assertEqual(self.man["verdict"], "ungoverned")
         self.assertIn("policy_artefact_present", self.man["must_fix"])
+
+    def test_no_fictional_caps(self):
+        self.assertEqual(set(self.caps) & REMOVED_CAPS, set())
 
 
 class ManifestShapeTests(unittest.TestCase):
+    def test_schema_is_v2(self):
+        self.assertEqual(gc.MANIFEST_SCHEMA, "threadlight-govern-manifest/v2")
+
     def test_schema_and_keys(self):
         caps = gc.evaluate(WIRED, 3650)
         man = gc.manifest(WIRED, caps, "auto", 3650)
@@ -65,8 +107,13 @@ class ManifestShapeTests(unittest.TestCase):
                     "captured_at", "tool_version"):
             self.assertIn(key, man)
 
+    def test_verdict_enum_values(self):
+        for target in (WIRED, BARE):
+            caps = gc.evaluate(target, 3650)
+            man = gc.manifest(target, caps, "auto", 3650)
+            self.assertIn(man["verdict"], ("governed", "partial", "ungoverned"))
+
     def test_gate_exit_code(self):
-        # bare fixture must trip the gate
         rc = gc.main(["--target", BARE, "--gate"])
         self.assertEqual(rc, 2)
 
@@ -98,6 +145,7 @@ class GracefulDegradationTests(unittest.TestCase):
                 man = json.loads(open(path, encoding="utf-8").read())
                 self.assertEqual(man["verdict"], "partial")
                 self.assertEqual(man["must_fix"], [])
+                self.assertEqual(set(man["capabilities"]), V2_CAPS)
         finally:
             gc.evaluate = original
 
