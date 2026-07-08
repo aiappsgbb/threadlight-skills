@@ -1012,7 +1012,7 @@ shields) is scored on its own signals.
 | RAI decouple | `RAI-002` reads the policy's sensitive-action rules; `RAI-003` scores prompt-shield / jailbreak controls on their own signals, independent of the governance manifest. |
 | Reference exemplar | `sample-pilot-citadel` ships a real schema-valid policy that lints clean under `agt lint-policy`, plus a `governance.yml` CI gate. |
 
-
+## What changed since v0.7.0
 
 v0.8.0 adds a terminal **EU AI Act evidence-pack** aggregator. A new stdlib-only
 script, `scripts/ai_act_evidence.py`, maps artifacts the skill and its siblings
