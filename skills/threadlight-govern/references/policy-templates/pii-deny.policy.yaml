@@ -1,38 +1,64 @@
 # AGT governance policy — strict PII-deny template
 #
-# Use for pilots handling regulated / sensitive data where the agent must
-# never egress PII through tools or external sinks. Strictest baseline.
-version: "REPLACE_WITH_AGT_VERSION"
-agent_control_specification_version: "2026.1"
+# Use for pilots handling regulated / sensitive data where the agent must never
+# egress PII through tools or external sinks. Strictest default-deny baseline.
+#
+#   agt lint-policy policy.yaml && agt verify          # required CI gates
+#   agt test policy.yaml fixtures/                      # ADVISORY in 4.1.0: the
+#     replay schema requires singular `condition` (see wiring-snippet.md)
+version: "1.0.0"                      # ruleset version — never 'latest'
+name: threadlight-pii-deny
+description: >-
+  Strict default-deny governance blocking PII egress and arbitrary outbound sinks.
+metadata:
+  references:
+    - owasp-asi-2026
 
-references:
-  - owasp-asi-2026
+deny_by_default: true
 
-responsible_ai:
-  content_filter: strict
-  prompt_shields: true
-  pii_redact: true
-  pii_deny: true                # block, do not just redact, on PII egress
-  pii_categories:
-    - person_name
-    - email
-    - phone
-    - national_id
-    - payment_card
-    - address
+rules:
+  - name: block-shell-exec
+    priority: 100
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["shell_exec", "exec", "subprocess", "os_system"]
+    action: block
 
-tools:
-  allow: []                     # explicit allow-list from agent.yaml tools
-  deny:
-    - shell_exec
-    - send_external_email
-    - http_post                 # no arbitrary outbound sinks
-    - file_write_external
+  - name: block-external-sinks
+    priority: 95
+    description: No arbitrary outbound sinks (email, HTTP POST, external file write).
+    conditions:
+      - field: tool.name
+        operator: in
+        value: ["send_external_email", "http_post", "file_write_external"]
+    action: block
 
-data_egress:
-  block_external_pii: true
-  audit_all_tool_io: true       # full I/O audit trail for compliance
+  - name: deny-pii-egress
+    priority: 90
+    description: Block any tool call whose payload carries PII out of the boundary.
+    conditions:
+      - field: data.contains_pii
+        operator: eq
+        value: true
+      - field: tool.category
+        operator: eq
+        value: egress
+    action: block
 
-excessive_agency:
-  max_tool_calls_per_turn: 4
-  max_chained_actions: 8
+  - name: audit-sensitive-read
+    priority: 50
+    description: Full I/O audit trail on reads of sensitive categories.
+    conditions:
+      - field: data.classification
+        operator: in
+        value: ["pii", "phi", "pci"]
+    action: audit
+
+  - name: allow-read-only
+    priority: 10
+    conditions:
+      - field: tool.category
+        operator: eq
+        value: read
+    action: allow

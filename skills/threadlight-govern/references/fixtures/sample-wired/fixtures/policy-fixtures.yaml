@@ -1,0 +1,29 @@
+# agt test fixtures — replayed against policy.yaml by `agt test policy.yaml fixtures/`
+# Each fixture asserts the verdict the committed policy must produce.
+- id: shell-exec-is-blocked
+  input:
+    tool:
+      name: shell_exec
+  expected_verdict: block
+  expected_rule: block-shell-exec
+
+- id: external-email-is-denied
+  input:
+    tool:
+      name: send_external_email
+  expected_verdict: deny
+  expected_rule: deny-external-email
+
+- id: create-ticket-escalates
+  input:
+    tool:
+      name: create_ticket
+  expected_verdict: escalate
+  expected_rule: escalate-create-ticket
+
+- id: search-catalog-is-allowed
+  input:
+    tool:
+      name: search_catalog
+  expected_verdict: allow
+  expected_rule: allow-search-catalog

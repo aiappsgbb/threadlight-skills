@@ -1,24 +1,44 @@
-# AGT governance policy (FIXTURE — wired)
-# Action-level controls enforced in-process by the AGT middleware.
-version: "4.1.0"
-agent_control_specification_version: "2026.1"
+# AGT governance policy (FIXTURE — governed pilot)
+# Real agent-governance-toolkit schema: lints clean, has test fixtures, CI-gated.
+version: "1.0.0"                      # ruleset version (this policy), not the AGT package
+name: contoso-pilot-governance
+description: Default-deny action governance for the contoso pilot.
+metadata:
+  references:
+    - owasp-asi-2026
 
-references:
-  - owasp-asi-2026   # OWASP Agentic Security Initiative — Agentic Top 10
+deny_by_default: true
 
-responsible_ai:
-  content_filter: standard
-  prompt_shields: true          # jailbreak + indirect (XPIA) attack defence
-  pii_redact: true
+rules:
+  - name: block-shell-exec
+    priority: 100
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: shell_exec
+    action: block
 
-tools:
-  allow:
-    - search_catalog
-    - create_ticket
-  deny:
-    - shell_exec
-    - send_external_email
+  - name: deny-external-email
+    priority: 90
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: send_external_email
+    action: deny
 
-human_in_the_loop:
-  require_approval_for:
-    - create_ticket
+  - name: escalate-create-ticket
+    priority: 80
+    description: create_ticket pauses for human approval.
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: create_ticket
+    action: escalate
+
+  - name: allow-search-catalog
+    priority: 10
+    conditions:
+      - field: tool.name
+        operator: eq
+        value: search_catalog
+    action: allow
