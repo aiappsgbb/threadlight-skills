@@ -99,7 +99,7 @@ test.describe('case study wizard (case-study.html)', () => {
     await expect(page.locator('.cs-wiz-menu')).not.toHaveClass(/is-open/);
   });
 
-  test('deep links: #proof opens proof; #stage-07 opens the run at stage 7', async ({ page }) => {
+  test('deep links: #proof opens proof; #stage-07 opens the run scrolled to stage 7', async ({ page }) => {
     await page.goto(CS + '#proof');
     await ready(page);
     await expect(page.locator('#proof')).toHaveClass(/is-current/);
@@ -107,35 +107,61 @@ test.describe('case study wizard (case-study.html)', () => {
     await page.goto(CS + '#stage-07');
     await ready(page);
     await expect(page.locator('#run')).toHaveClass(/is-current/);
-    await expect(page.locator('#stage-07')).toHaveClass(/is-shown/);
+    // the rail marks stage 7 active and the stage is scrolled into view
     await expect(page.locator('.cs-rail-item[data-target="stage-07"]')).toHaveClass(/is-active/);
-    await expect(page.locator('.cs-run-pos')).toContainText('7');
+    const inView = await page.evaluate(() => {
+      const el = document.getElementById('stage-07');
+      const c = el.closest('main > section');
+      const er = el.getBoundingClientRect();
+      const cr = c.getBoundingClientRect();
+      return er.top >= cr.top - 6 && er.top <= cr.bottom;
+    });
+    expect(inView).toBe(true);
   });
 
-  test('sub-stepper: one stage at a time, Next cycles 1..14 then exits, rail jumps, Prev re-enters at 14', async ({ page }) => {
+  test('run is one shot: all 14 stages visible at once, Prev/Next move between chapters', async ({ page }) => {
     await page.goto(CS + '#run');
     await ready(page);
     await expect(page.locator('#run')).toHaveClass(/is-current/);
-    await expect(page.locator('#run .cs-stage.is-shown')).toHaveCount(1);
-    await expect(page.locator('#stage-01')).toHaveClass(/is-shown/);
+    // no one-at-a-time sub-stepper — every stage is rendered on the single slide
+    const shown = await page.evaluate(() =>
+      [...document.querySelectorAll('#run .cs-stage')]
+        .filter((s) => getComputedStyle(s).display !== 'none').length);
+    expect(shown).toBe(14);
 
-    // Next advances the stage but stays on the run step
-    await tap(page, '.cs-wiz-next');
-    await expect(page.locator('#stage-02')).toHaveClass(/is-shown/);
-    await expect(page.locator('#run')).toHaveClass(/is-current/);
-
-    // rail click jumps directly to a stage
-    await tap(page, '.cs-rail-item[data-target="stage-14"]');
-    await expect(page.locator('#stage-14')).toHaveClass(/is-shown/);
-
-    // Next from the last stage exits to the next top-level step (Act III)
+    // Next moves to the NEXT chapter (Act III), not the next stage
     await tap(page, '.cs-wiz-next');
     await expect(page.locator('#act-3')).toHaveClass(/is-current/);
-
-    // Prev re-enters the run at the LAST stage (continuous backward reading)
+    // Prev returns to the run, then to the previous chapter (arch)
     await tap(page, '.cs-wiz-prev');
     await expect(page.locator('#run')).toHaveClass(/is-current/);
-    await expect(page.locator('#stage-14')).toHaveClass(/is-shown/);
+    await tap(page, '.cs-wiz-prev');
+    await expect(page.locator('#arch')).toHaveClass(/is-current/);
+  });
+
+  test('run rail is a scroll-spy jump list: click scrolls to + activates a stage, others stay visible', async ({ page }) => {
+    await page.goto(CS + '#run');
+    await ready(page);
+    await expect(page.locator('.cs-rail-item')).toHaveCount(14);
+    // landing at the top of the slide → the first stage is the active one
+    await expect(page.locator('.cs-rail-item[data-target="stage-01"]')).toHaveClass(/is-active/);
+
+    // clicking a later rail item scrolls that stage into view and marks it active
+    await tap(page, '.cs-rail-item[data-target="stage-10"]');
+    await expect(page.locator('.cs-rail-item[data-target="stage-10"]')).toHaveClass(/is-active/);
+    const state = await page.evaluate(() => {
+      const el = document.getElementById('stage-10');
+      const c = el.closest('main > section');
+      const er = el.getBoundingClientRect();
+      const cr = c.getBoundingClientRect();
+      return {
+        inView: er.top >= cr.top - 6 && er.top <= cr.bottom,
+        // jumping does NOT hide the other stages (not a stepper swap)
+        firstStillVisible: getComputedStyle(document.getElementById('stage-01')).display !== 'none',
+      };
+    });
+    expect(state.inView).toBe(true);
+    expect(state.firstStillVisible).toBe(true);
   });
 
   test('content integrity: every stage + the load-run receipts stay in the DOM', async ({ page }) => {
