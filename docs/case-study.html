@@ -493,7 +493,7 @@
     .cs-proof-grid { grid-template-columns: 1fr; }
   }
 
-  /* — run stages: rail picker + one-stage timeline (wizard sub-stepper) —— */
+  /* — run stages: sticky rail + full timeline (wizard scroll-spy) —— */
   .cs-run { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 34px; align-items: start; margin-top: 8px; }
 
   .cs-rail { position: sticky; top: 170px; align-self: start; }
@@ -641,18 +641,17 @@
   .cs-wiz-jump .jn { font-family: var(--mono); font-size: .72rem; color: var(--chapter-accent, var(--lime)); }
   .cs-wiz-jump:focus-visible { outline: 2px solid var(--lime); outline-offset: 1px; }
 
-  /* run chapter as a sub-stepper — one stage on screen, rail = stage picker */
-  .cs-wiz #run .cs-rail { position: static; top: auto; }
-  .cs-wiz #run .cs-timeline::before { display: none; }
-  .cs-wiz #run .cs-stage { display: none; }
-  .cs-wiz #run .cs-stage.is-shown { display: grid; }
-  .cs-run-pos { margin: 12px 2px 0; font-family: var(--mono); font-size: .67rem; letter-spacing: .05em; text-transform: uppercase; color: var(--chapter-accent, var(--lime)); }
+  /* run chapter = one scrollable slide showing all 14 stages at once; on desktop
+     the rail stays sticky and scroll-spies the stage currently in view. */
+  .cs-wiz #run .cs-rail { top: clamp(12px, 3vh, 28px); }
+  .cs-wiz #run .cs-rail-list { max-height: calc(100dvh - var(--wiz-mast, 64px) - var(--wiz-bar-h) - var(--wiz-nav-h) - 48px); }
+  .cs-wiz #run .cs-stage { scroll-margin-top: 18px; }
 
   /* Lime reads poorly as small text on a light surface; use the site's light-mode green
      for the wizard's own accent numerals (chrome only — content chips are untouched). */
   @media (prefers-color-scheme: light) {
-    html.cs-wiz .cs-run-pos,
-    html.cs-wiz .cs-wiz-jump .jn { color: #2e7d32; }
+    html.cs-wiz .cs-wiz-jump .jn,
+    html.cs-wiz #run .cs-rail-item.is-active .n { color: #2e7d32; }
   }
 
   @media (max-width: 620px) {
@@ -1954,11 +1953,12 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 
 <script>
 /* Guided wizard — re-presents the case study as a one-chapter-per-screen deck.
-   Each direct <section> of <main> is a step; the 14-stage run chapter hosts an
-   inner stage-by-stage sub-stepper driven by the same Prev/Next. Progressive
-   enhancement: with JS off, html.cs-wiz is never added and the page stays a
-   normal vertical read. Content is only shown/hidden and re-indexed, never
-   rewritten. */
+   Each direct <section> of <main> is a step. The 14-stage run chapter is a
+   single scrollable slide that shows every stage at once, with a sticky rail
+   that scroll-spies the stage in view and jumps to any stage on click.
+   Progressive enhancement: with JS off, html.cs-wiz is never added and the page
+   stays a normal vertical read. Content is only shown/hidden and re-indexed,
+   never rewritten. */
 (function () {
   var main = document.querySelector('main');
   if (!main) return;
@@ -1975,15 +1975,12 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     return k ? k.textContent.trim() : (sec.id || '');
   };
 
-  /* ---- run sub-stepper wiring --------------------------------------- */
+  /* ---- run rail wiring (scroll-spy jump list) ----------------------- */
   var runSec = document.getElementById('run');
   var runIndex = runSec ? steps.indexOf(runSec) : -1;
   var stages = runSec ? Array.prototype.slice.call(runSec.querySelectorAll('.cs-stage')) : [];
   var subN = stages.length;
   var railList = runSec ? runSec.querySelector('.cs-rail-list') : null;
-  var railEl = runSec ? runSec.querySelector('.cs-rail') : null;
-  var runPos = null;
-  var stageCats = [];
   var STAT = { pass: 'passed', cond: 'conditional', op: 'operator review' };
   var statusOf = function (s) {
     return s.classList.contains('is-cond') ? 'cond' : s.classList.contains('is-op') ? 'op' : 'pass';
@@ -1994,7 +1991,6 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     var st = statusOf(stage);
     var catEl = stage.querySelector('.cs-cat');
     var cat = (catEl ? catEl.textContent : 'Stage ' + (i + 1)).trim();
-    stageCats.push(cat);
     if (!railList) return;
     var a = document.createElement('a');
     a.className = 'cs-rail-item is-' + st;
@@ -2007,12 +2003,6 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     a.appendChild(n); a.appendChild(l); a.appendChild(s);
     var li = document.createElement('li'); li.appendChild(a); railList.appendChild(li);
   });
-  if (runSec && subN) {
-    runPos = document.createElement('p');
-    runPos.className = 'cs-run-pos';
-    runPos.setAttribute('aria-live', 'polite');
-    (railEl || runSec).appendChild(runPos);
-  }
 
   /* ---- chrome injection --------------------------------------------- */
   steps.forEach(function (sec) { sec.classList.add('cs-slide'); });
@@ -2072,19 +2062,32 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   }
 
   /* ---- state + render ----------------------------------------------- */
-  var cur = 0, sub = 0;
+  var cur = 0;
 
-  function showStage(i) {
-    sub = Math.max(0, Math.min(subN - 1, i));
-    stages.forEach(function (st, k) { st.classList.toggle('is-shown', k === sub); });
-    if (railList) {
-      Array.prototype.forEach.call(railList.querySelectorAll('.cs-rail-item'), function (a) {
-        var on = a.getAttribute('data-target') === 'stage-' + pad2(sub + 1);
-        a.classList.toggle('is-active', on);
-        if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
-      });
+  var railItems = railList ? Array.prototype.slice.call(railList.querySelectorAll('.cs-rail-item')) : [];
+  var spyLock = 0;
+  function setActiveStage(id) {
+    railItems.forEach(function (a) {
+      var on = a.getAttribute('data-target') === id;
+      a.classList.toggle('is-active', on);
+      if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+    });
+  }
+  function currentStageId() {
+    if (!runSec || !subN) return null;
+    var band = runSec.getBoundingClientRect().top + runSec.clientHeight * 0.35;
+    var id = stages[0].id;
+    for (var i = 0; i < stages.length; i++) {
+      if (stages[i].getBoundingClientRect().top <= band) id = stages[i].id; else break;
     }
-    if (runPos) runPos.textContent = 'Stage ' + (sub + 1) + ' / ' + subN + ' \u2014 ' + (stageCats[sub] || '');
+    return id;
+  }
+  function goToStage(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    spyLock = Date.now() + 400;
+    el.scrollIntoView({ block: 'start' });
+    setActiveStage(id);
   }
 
   function render(focus) {
@@ -2097,7 +2100,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     Array.prototype.forEach.call(menuList.querySelectorAll('.cs-wiz-jump'), function (b) {
       b.classList.toggle('is-active', b.getAttribute('data-jump') === steps[cur].id);
     });
-    if (cur === runIndex && subN) showStage(sub);
+    if (cur === runIndex && subN) setActiveStage(stages[0].id);
     steps[cur].scrollTop = 0;
     if (focus) {
       var h = steps[cur].querySelector('h1, h2, h3');
@@ -2112,26 +2115,17 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   function goTo(i, opts) {
     opts = opts || {};
     i = Math.max(0, Math.min(steps.length - 1, i));
-    if (i === runIndex && subN) {
-      sub = opts.sub != null ? opts.sub : (opts.fromRight ? subN - 1 : 0);
-    }
     cur = i;
     render(opts.focus !== false);
     syncHash();
   }
-  function goNext() {
-    if (cur === runIndex && subN && sub < subN - 1) { showStage(sub + 1); syncHash(); return; }
-    if (cur < steps.length - 1) goTo(cur + 1, { focus: true });
-  }
-  function goPrev() {
-    if (cur === runIndex && subN && sub > 0) { showStage(sub - 1); syncHash(); return; }
-    if (cur > 0) goTo(cur - 1, { fromRight: true, focus: true });
-  }
+  function goNext() { if (cur < steps.length - 1) goTo(cur + 1, { focus: true }); }
+  function goPrev() { if (cur > 0) goTo(cur - 1, { focus: true }); }
 
   /* ---- hash sync + deep-link ---------------------------------------- */
   var lockHash = false;
-  function syncHash() {
-    var id = (cur === runIndex && subN) ? 'stage-' + pad2(sub + 1) : steps[cur].id;
+  function syncHash() { syncHashTo(steps[cur].id); }
+  function syncHashTo(id) {
     if (!id) return;
     lockHash = true;
     if (history.replaceState) history.replaceState(null, '', '#' + id);
@@ -2141,8 +2135,8 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   function fromHash(focus) {
     var raw = (location.hash || '').replace(/^#/, '');
     if (/^stage-\d{2}$/.test(raw) && runIndex >= 0 && subN) {
-      var si = parseInt(raw.slice(6), 10) - 1;
-      if (si >= 0 && si < subN) { cur = runIndex; sub = si; render(focus); return; }
+      var si = parseInt(raw.slice(6), 10);
+      if (si >= 1 && si <= subN) { cur = runIndex; render(focus); goToStage('stage-' + pad2(si)); return; }
     }
     var el = raw ? document.getElementById(raw) : null;
     var idx = -1;
@@ -2151,7 +2145,6 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
       idx = sec ? steps.indexOf(sec) : -1;
     }
     cur = idx >= 0 ? idx : 0;
-    if (cur === runIndex && subN) sub = 0;
     render(focus);
   }
 
@@ -2178,8 +2171,9 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
       var a = e.target.closest ? e.target.closest('.cs-rail-item') : null;
       if (!a) return;
       e.preventDefault();
-      showStage(parseInt(a.getAttribute('data-target').slice(6), 10) - 1);
-      syncHash();
+      var id = a.getAttribute('data-target');
+      goToStage(id);
+      syncHashTo(id);
     });
   }
   document.addEventListener('click', function (e) {
@@ -2189,7 +2183,8 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     if (!id) return;
     if (/^stage-\d{2}$/.test(id) && runIndex >= 0 && subN) {
       e.preventDefault();
-      cur = runIndex; sub = parseInt(id.slice(6), 10) - 1; render(true); syncHash();
+      if (cur !== runIndex) { cur = runIndex; render(true); }
+      goToStage(id); syncHashTo(id);
       return;
     }
     var el = document.getElementById(id);
@@ -2215,10 +2210,22 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
   window.addEventListener('hashchange', function () { if (!lockHash) fromHash(true); });
   window.addEventListener('resize', measure);
 
+  /* ---- scroll-spy: highlight the run stage currently in view --------- */
+  if (runSec && subN) {
+    var spyRAF = 0;
+    runSec.addEventListener('scroll', function () {
+      if (spyRAF) return;
+      spyRAF = requestAnimationFrame(function () {
+        spyRAF = 0;
+        if (cur === runIndex && Date.now() >= spyLock) setActiveStage(currentStageId());
+      });
+    }, { passive: true });
+  }
+
   /* ---- boot --------------------------------------------------------- */
   doc.classList.add('cs-wiz');
   measure();
-  if (subN) showStage(0);
+  if (subN) setActiveStage(stages[0].id);
   fromHash(false);
 })();
 </script>
