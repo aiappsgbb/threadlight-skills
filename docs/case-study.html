@@ -493,25 +493,12 @@
     .cs-proof-grid { grid-template-columns: 1fr; }
   }
 
-  /* — run explorer: sticky rail + progressive-disclosure stages ————— */
+  /* — run stages: rail picker + one-stage timeline (wizard sub-stepper) —— */
   .cs-run { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 34px; align-items: start; margin-top: 8px; }
-  /* Clicked/deep-linked stages must land just below the sticky floating TOC
-     (bottom ~158) but at or above the scroll-spy reading line (180) so the
-     landed stage reads as active. This value STACKS with the site-wide
-     html { scroll-padding-top: 72px }, so effective landing ≈ 72 + 96 = 168. */
-  .cs-stage { scroll-margin-top: 96px; }
 
   .cs-rail { position: sticky; top: 170px; align-self: start; }
   .cs-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }
   .cs-rail-title { margin: 0; font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-  .cs-rail-ctl { display: flex; gap: 5px; }
-  .cs-rail-btn {
-    font-family: var(--mono); font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2);
-    background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; cursor: pointer;
-    transition: border-color var(--d-base) var(--ease-out), color var(--d-base) var(--ease-out);
-  }
-  .cs-rail-btn:hover { border-color: var(--line-2); color: var(--ink-0); }
-  .cs-rail-btn:focus-visible { outline: 2px solid var(--chapter-accent); outline-offset: 2px; }
   .cs-rail-list {
     list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
     max-height: calc(100vh - 210px); overflow-y: auto;
@@ -533,25 +520,6 @@
   .cs-rail-item.is-active { background: var(--bg-2); border-color: var(--line-2); color: var(--ink-0); }
   .cs-rail-item.is-active .n { color: var(--chapter-accent); }
 
-  /* stages become native disclosures — summary stays skimmable, body collapses */
-  details.cs-card { padding: 0; }
-  .cs-sum {
-    position: relative; display: block; list-style: none; cursor: pointer;
-    padding: 22px 32px 22px 24px; border-radius: 14px;
-  }
-  .cs-sum::-webkit-details-marker { display: none; }
-  .cs-sum h3 { margin: 0; }
-  .cs-sum::after {
-    content: ""; position: absolute; top: 26px; right: 22px; width: 9px; height: 9px;
-    border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(45deg);
-    transition: transform var(--d-base) var(--ease-out);
-  }
-  details.cs-card[open] .cs-sum::after { transform: rotate(-135deg); }
-  details.cs-card[open] .cs-sum { padding-bottom: 14px; }
-  .cs-sum:focus-visible { outline: 2px solid var(--chapter-accent); outline-offset: -3px; border-radius: 14px; }
-  .cs-body { padding: 0 24px 22px; }
-  .cs-body > p:first-child { margin-top: 0; }
-
   @media (max-width: 820px) {
     .cs-run { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .cs-rail { position: static; top: auto; }
@@ -560,7 +528,137 @@
     .cs-rail-item .l { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .cs-sum::after, .cs-rail-item, .cs-rail-btn { transition: none; }
+    .cs-rail-item { transition: none; }
+  }
+
+  /* ============================================================
+     GUIDED WIZARD — one chapter per screen. Every rule gates on
+     html.cs-wiz, which the inline controller adds on boot. With JS
+     off the class never appears and the page stays a normal vertical
+     read (progressive enhancement). Content is shown/hidden and
+     re-indexed here, never rewritten.
+     ============================================================ */
+  :root { --wiz-bar-h: 46px; --wiz-nav-h: 74px; }
+  html.cs-wiz, html.cs-wiz body { height: 100%; overflow: hidden; }
+  .cs-wiz .floating-toc, .cs-wiz body > footer, .cs-wiz .scroll-cue { display: none !important; }
+  .cs-wiz .reveal { opacity: 1 !important; transform: none !important; }
+
+  /* deck viewport — fixed between the masthead+bar (top) and the nav (bottom) */
+  .cs-wiz main {
+    position: fixed; left: 0; right: 0;
+    top: calc(var(--wiz-mast, 64px) + var(--wiz-bar-h));
+    bottom: var(--wiz-nav-h);
+    overflow: hidden; background: var(--bg-0);
+  }
+  .cs-wiz main > section.cs-slide {
+    position: absolute; inset: 0; display: none;
+    overflow-y: auto; overflow-x: hidden;
+    min-height: 0 !important; margin: 0 !important; border: 0;
+    padding: clamp(20px, 4.4vh, 58px) 0 clamp(26px, 6vh, 70px);
+    background: var(--bg-0);
+  }
+  .cs-wiz main > section.cs-slide.is-current { display: block; }
+  @media (prefers-reduced-motion: no-preference) {
+    .cs-wiz main > section.cs-slide.is-current { animation: cs-slide-in .34s cubic-bezier(.22,.61,.36,1); }
+  }
+  @keyframes cs-slide-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* short chapters (hero + the Act title cards) center via auto margins —
+     they still scroll if they ever exceed the viewport (never clipped). */
+  .cs-wiz main > section.scene.is-current,
+  .cs-wiz main > section.cs-act.is-current { display: flex; flex-direction: column; }
+  .cs-wiz main > section.scene .hero-inner,
+  .cs-wiz main > section.cs-act .inner { margin-block: auto; }
+  .cs-wiz main > section.scene .hero-stage { opacity: .5; }
+
+  /* top progress bar */
+  .cs-wiz-bar, .cs-wiz-nav, .cs-wiz-menu { display: none; }
+  .cs-wiz .cs-wiz-bar {
+    display: flex; align-items: center; gap: 14px;
+    position: fixed; left: 0; right: 0; top: var(--wiz-mast, 64px); height: var(--wiz-bar-h);
+    padding: 0 clamp(14px, 3vw, 32px); z-index: 45;
+    background: var(--bg-0); border-bottom: 1px solid var(--line);
+  }
+  .cs-wiz-progress { display: flex; gap: 4px; flex: 1; min-width: 40px; }
+  .cs-wiz-progress .seg { flex: 1; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s var(--ease-out); }
+  .cs-wiz-progress .seg.on { background: var(--chapter-accent, var(--lime)); }
+  .cs-wiz-label { font-family: var(--serif); font-size: .96rem; color: var(--ink-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+  .cs-wiz-count { font-family: var(--mono); font-size: .72rem; color: var(--ink-2); white-space: nowrap; }
+  .cs-wiz-menu-btn {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--ink-1); background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px;
+    transition: border-color var(--d-base) var(--ease-out), color var(--d-base) var(--ease-out);
+  }
+  .cs-wiz-menu-btn:hover { border-color: var(--line-2); color: var(--ink-0); }
+  .cs-wiz-menu-btn:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+  .cs-wiz-menu-btn .ico { position: relative; width: 13px; height: 9px; border-top: 2px solid currentColor; }
+  .cs-wiz-menu-btn .ico::before, .cs-wiz-menu-btn .ico::after { content: ""; position: absolute; left: 0; right: 0; border-top: 2px solid currentColor; }
+  .cs-wiz-menu-btn .ico::before { top: 3px; }
+  .cs-wiz-menu-btn .ico::after { top: 7px; }
+
+  /* bottom nav */
+  .cs-wiz .cs-wiz-nav {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: fixed; left: 0; right: 0; bottom: 0; height: var(--wiz-nav-h);
+    padding: 0 clamp(14px, 4vw, 40px); z-index: 45;
+    background: var(--bg-0); border-top: 1px solid var(--line);
+  }
+  .cs-wiz-nav button {
+    display: inline-flex; align-items: center; gap: 9px; cursor: pointer;
+    font-family: var(--sans); font-size: .92rem; font-weight: 600;
+    padding: 12px 22px; border-radius: 11px; border: 1px solid var(--line-2);
+    background: var(--bg-1); color: var(--ink-1);
+    transition: border-color var(--d-base) var(--ease-out), color var(--d-base) var(--ease-out), background var(--d-base) var(--ease-out), opacity var(--d-base) var(--ease-out);
+  }
+  .cs-wiz-nav .cs-wiz-next { background: var(--lime); border-color: transparent; color: #07130a; }
+  .cs-wiz-nav button:hover { border-color: var(--lime); color: var(--ink-0); }
+  .cs-wiz-nav .cs-wiz-next:hover { color: #07130a; filter: brightness(1.06); }
+  .cs-wiz-nav button:disabled { opacity: .34; cursor: default; pointer-events: none; }
+  .cs-wiz-nav button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+  /* chapter menu overlay */
+  .cs-wiz .cs-wiz-menu.is-open { display: flex; }
+  .cs-wiz-menu {
+    position: fixed; inset: 0; z-index: 60; align-items: flex-start; justify-content: center;
+    background: rgba(4,6,10,.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  }
+  .cs-wiz-menu-inner {
+    margin-top: calc(var(--wiz-mast, 64px) + 56px); width: min(560px, 92vw); max-height: 70vh; overflow-y: auto;
+    background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 16px; padding: 18px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.5);
+  }
+  .cs-wiz-menu-title { margin: 2px 4px 12px; font-family: var(--mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+  .cs-wiz-menu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .cs-wiz-jump {
+    display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 11px 13px;
+    color: var(--ink-1); font-family: var(--serif); font-size: 1.02rem;
+    transition: background var(--d-base) var(--ease-out), color var(--d-base) var(--ease-out);
+  }
+  .cs-wiz-jump:hover { background: var(--bg-2); color: var(--ink-0); }
+  .cs-wiz-jump.is-active { background: var(--bg-2); border-color: var(--line-2); color: var(--ink-0); }
+  .cs-wiz-jump .jn { font-family: var(--mono); font-size: .72rem; color: var(--chapter-accent, var(--lime)); }
+  .cs-wiz-jump:focus-visible { outline: 2px solid var(--lime); outline-offset: 1px; }
+
+  /* run chapter as a sub-stepper — one stage on screen, rail = stage picker */
+  .cs-wiz #run .cs-rail { position: static; top: auto; }
+  .cs-wiz #run .cs-timeline::before { display: none; }
+  .cs-wiz #run .cs-stage { display: none; }
+  .cs-wiz #run .cs-stage.is-shown { display: grid; }
+  .cs-run-pos { margin: 12px 2px 0; font-family: var(--mono); font-size: .67rem; letter-spacing: .05em; text-transform: uppercase; color: var(--chapter-accent, var(--lime)); }
+
+  /* Lime reads poorly as small text on a light surface; use the site's light-mode green
+     for the wizard's own accent numerals (chrome only — content chips are untouched). */
+  @media (prefers-color-scheme: light) {
+    html.cs-wiz .cs-run-pos,
+    html.cs-wiz .cs-wiz-jump .jn { color: #2e7d32; }
+  }
+
+  @media (max-width: 620px) {
+    :root { --wiz-nav-h: 66px; }
+    .cs-wiz-label { display: none; }
+    .cs-wiz-nav button { padding: 11px 15px; font-size: .85rem; }
   }
 </style>
 </head>
@@ -921,14 +1019,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </p>
       </div>
 
-      <div class="cs-run" data-cs-run>
+      <div class="cs-run">
         <nav class="cs-rail" aria-label="The fourteen stages — jump to any one">
           <div class="cs-rail-head">
             <p class="cs-rail-title">The 14 stages</p>
-            <div class="cs-rail-ctl">
-              <button type="button" class="cs-rail-btn" data-cs="expand">Expand all</button>
-              <button type="button" class="cs-rail-btn" data-cs="collapse">Collapse all</button>
-            </div>
           </div>
           <ol class="cs-rail-list"></ol>
         </nav>
@@ -1859,153 +1953,273 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 </footer>
 
 <script>
-/* Run Explorer — turns the 14 contiguous stage cards into a navigable, skimmable
-   index: native <details> per stage (collapsed by default, headline always
-   visible), a sticky rail that deep-links + tracks the active stage, and
-   expand/collapse-all. Progressive enhancement: with JS off the page degrades to
-   the fully-expanded cards it shipped as. Content is only re-parented, never
+/* Guided wizard — re-presents the case study as a one-chapter-per-screen deck.
+   Each direct <section> of <main> is a step; the 14-stage run chapter hosts an
+   inner stage-by-stage sub-stepper driven by the same Prev/Next. Progressive
+   enhancement: with JS off, html.cs-wiz is never added and the page stays a
+   normal vertical read. Content is only shown/hidden and re-indexed, never
    rewritten. */
 (function () {
-  var run = document.querySelector('[data-cs-run]');
-  if (!run) return;
-  var timeline = run.querySelector('.cs-timeline');
-  var railList = run.querySelector('.cs-rail-list');
-  if (!timeline || !railList) return;
-  var stages = Array.prototype.slice.call(timeline.querySelectorAll('.cs-stage'));
-  if (!stages.length) return;
+  var main = document.querySelector('main');
+  if (!main) return;
+  var steps = Array.prototype.slice.call(main.children).filter(function (el) {
+    return el.tagName === 'SECTION';
+  });
+  if (steps.length < 3) return;
 
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var STATUS_LABEL = { pass: 'passed', cond: 'conditional', op: 'operator review' };
+  var doc = document.documentElement;
+  var pad2 = function (n) { return ('0' + n).slice(-2); };
+  var labelOf = function (sec) {
+    if (sec.hasAttribute('data-toc-label')) return sec.getAttribute('data-toc-label');
+    var k = sec.querySelector('.kicker');
+    return k ? k.textContent.trim() : (sec.id || '');
+  };
 
-  function statusOf(stage) {
-    if (stage.classList.contains('is-cond')) return 'cond';
-    if (stage.classList.contains('is-op')) return 'op';
-    return 'pass';
-  }
+  /* ---- run sub-stepper wiring --------------------------------------- */
+  var runSec = document.getElementById('run');
+  var runIndex = runSec ? steps.indexOf(runSec) : -1;
+  var stages = runSec ? Array.prototype.slice.call(runSec.querySelectorAll('.cs-stage')) : [];
+  var subN = stages.length;
+  var railList = runSec ? runSec.querySelector('.cs-rail-list') : null;
+  var railEl = runSec ? runSec.querySelector('.cs-rail') : null;
+  var runPos = null;
+  var stageCats = [];
+  var STAT = { pass: 'passed', cond: 'conditional', op: 'operator review' };
+  var statusOf = function (s) {
+    return s.classList.contains('is-cond') ? 'cond' : s.classList.contains('is-op') ? 'op' : 'pass';
+  };
 
-  function setActive(id) {
-    Array.prototype.forEach.call(railList.querySelectorAll('.cs-rail-item'), function (a) {
-      var on = a.getAttribute('data-target') === id;
-      a.classList.toggle('is-active', on);
-      if (on) a.setAttribute('aria-current', 'true');
-      else a.removeAttribute('aria-current');
-    });
-  }
-
-  function openStage(id) {
-    var stage = document.getElementById(id);
-    if (!stage) return;
-    var d = stage.querySelector('details');
-    if (d) d.open = true;
-    setActive(id);
-  }
-
-  function scrollToStage(id, smooth) {
-    var stage = document.getElementById(id);
-    if (!stage) return;
-    stage.scrollIntoView({ behavior: (smooth && !reduce) ? 'smooth' : 'auto', block: 'start' });
-  }
-
-  // 1) Re-parent each stage into a <details>/<summary>/<body> and build its rail row.
   stages.forEach(function (stage, i) {
-    var pad = ('0' + (i + 1)).slice(-2);
-    stage.id = 'stage-' + pad;
-    var status = statusOf(stage);
+    stage.id = 'stage-' + pad2(i + 1);
+    var st = statusOf(stage);
     var catEl = stage.querySelector('.cs-cat');
     var cat = (catEl ? catEl.textContent : 'Stage ' + (i + 1)).trim();
-
-    var card = stage.querySelector('.cs-card');
-    if (card && card.tagName !== 'DETAILS') {
-      var details = document.createElement('details');
-      details.className = card.className;
-      var summary = document.createElement('summary');
-      summary.className = 'cs-sum';
-      var body = document.createElement('div');
-      body.className = 'cs-body';
-      var inBody = false;
-      Array.prototype.slice.call(card.childNodes).forEach(function (node) {
-        if (!inBody) {
-          summary.appendChild(node);
-          if (node.nodeType === 1 && node.tagName === 'H3') inBody = true;
-        } else {
-          body.appendChild(node);
-        }
-      });
-      details.appendChild(summary);
-      details.appendChild(body);
-      card.replaceWith(details);
-      details.addEventListener('toggle', function () {
-        if (details.open) setActive(stage.id);
-      });
-    }
-
+    stageCats.push(cat);
+    if (!railList) return;
     var a = document.createElement('a');
-    a.className = 'cs-rail-item is-' + status;
+    a.className = 'cs-rail-item is-' + st;
     a.href = '#' + stage.id;
     a.setAttribute('data-target', stage.id);
-    a.setAttribute('aria-label', 'Stage ' + (i + 1) + ' \u2014 ' + cat + ' (' + STATUS_LABEL[status] + ')');
-    var n = document.createElement('span'); n.className = 'n'; n.textContent = pad;
+    a.setAttribute('aria-label', 'Stage ' + (i + 1) + ' \u2014 ' + cat + ' (' + STAT[st] + ')');
+    var n = document.createElement('span'); n.className = 'n'; n.textContent = pad2(i + 1);
     var l = document.createElement('span'); l.className = 'l'; l.textContent = cat;
     var s = document.createElement('span'); s.className = 's'; s.setAttribute('aria-hidden', 'true');
     a.appendChild(n); a.appendChild(l); a.appendChild(s);
+    var li = document.createElement('li'); li.appendChild(a); railList.appendChild(li);
+  });
+  if (runSec && subN) {
+    runPos = document.createElement('p');
+    runPos.className = 'cs-run-pos';
+    runPos.setAttribute('aria-live', 'polite');
+    (railEl || runSec).appendChild(runPos);
+  }
+
+  /* ---- chrome injection --------------------------------------------- */
+  steps.forEach(function (sec) { sec.classList.add('cs-slide'); });
+
+  var bar = document.createElement('div');
+  bar.className = 'cs-wiz-bar';
+  var prog = document.createElement('div');
+  prog.className = 'cs-wiz-progress'; prog.setAttribute('aria-hidden', 'true');
+  steps.forEach(function () {
+    var seg = document.createElement('span'); seg.className = 'seg'; prog.appendChild(seg);
+  });
+  var label = document.createElement('span'); label.className = 'cs-wiz-label';
+  var count = document.createElement('span'); count.className = 'cs-wiz-count';
+  var menuBtn = document.createElement('button');
+  menuBtn.type = 'button'; menuBtn.className = 'cs-wiz-menu-btn';
+  menuBtn.setAttribute('aria-haspopup', 'true'); menuBtn.setAttribute('aria-expanded', 'false');
+  var ico = document.createElement('span'); ico.className = 'ico'; ico.setAttribute('aria-hidden', 'true');
+  menuBtn.appendChild(ico); menuBtn.appendChild(document.createTextNode('Chapters'));
+  bar.appendChild(prog); bar.appendChild(label); bar.appendChild(count); bar.appendChild(menuBtn);
+
+  var nav = document.createElement('nav');
+  nav.className = 'cs-wiz-nav'; nav.setAttribute('aria-label', 'Case study navigation');
+  var prev = document.createElement('button');
+  prev.type = 'button'; prev.className = 'cs-wiz-prev'; prev.setAttribute('aria-label', 'Previous chapter');
+  prev.innerHTML = '<span class="ar" aria-hidden="true">\u2190</span> Prev';
+  var next = document.createElement('button');
+  next.type = 'button'; next.className = 'cs-wiz-next'; next.setAttribute('aria-label', 'Next chapter');
+  next.innerHTML = 'Next <span class="ar" aria-hidden="true">\u2192</span>';
+  nav.appendChild(prev); nav.appendChild(next);
+
+  var menu = document.createElement('div');
+  menu.className = 'cs-wiz-menu'; menu.setAttribute('role', 'dialog');
+  menu.setAttribute('aria-label', 'Chapters'); menu.setAttribute('aria-modal', 'false');
+  var menuInner = document.createElement('div'); menuInner.className = 'cs-wiz-menu-inner';
+  var menuTitle = document.createElement('p'); menuTitle.className = 'cs-wiz-menu-title'; menuTitle.textContent = 'Chapters';
+  var menuList = document.createElement('ul'); menuList.className = 'cs-wiz-menu-list';
+  var chapters = steps.filter(function (s) { return s.hasAttribute('data-toc-label'); });
+  chapters.forEach(function (sec, ci) {
     var li = document.createElement('li');
-    li.appendChild(a);
-    railList.appendChild(li);
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'cs-wiz-jump'; b.setAttribute('data-jump', sec.id);
+    var jn = document.createElement('span'); jn.className = 'jn'; jn.textContent = pad2(ci + 1);
+    var jt = document.createElement('span'); jt.className = 'jt'; jt.textContent = labelOf(sec);
+    b.appendChild(jn); b.appendChild(jt); li.appendChild(b); menuList.appendChild(li);
   });
-  timeline.classList.add('cs-enhanced');
+  menuInner.appendChild(menuTitle); menuInner.appendChild(menuList); menu.appendChild(menuInner);
 
-  // 2) Rail clicks open + scroll their stage.
-  railList.addEventListener('click', function (e) {
-    var a = e.target.closest ? e.target.closest('.cs-rail-item') : null;
-    if (!a) return;
-    e.preventDefault();
-    var id = a.getAttribute('data-target');
-    openStage(id);
-    scrollToStage(id, true);
-    if (history.replaceState) history.replaceState(null, '', '#' + id);
-  });
+  document.body.appendChild(bar);
+  document.body.appendChild(nav);
+  document.body.appendChild(menu);
 
-  // 3) Expand / collapse all.
-  run.addEventListener('click', function (e) {
-    var btn = e.target.closest ? e.target.closest('[data-cs]') : null;
-    if (!btn) return;
-    var want = btn.getAttribute('data-cs') === 'expand';
-    stages.forEach(function (stage) {
-      var d = stage.querySelector('details');
-      if (d) d.open = want;
-    });
-  });
-
-  // 4) Deep-link: open the stage named in the URL hash on load.
-  var initial = (location.hash || '').replace(/^#/, '');
-  if (/^stage-\d{2}$/.test(initial) && document.getElementById(initial)) {
-    openStage(initial);
-    scrollToStage(initial, false);
+  /* ---- measurement -------------------------------------------------- */
+  function measure() {
+    var mast = document.querySelector('.masthead');
+    var h = mast ? Math.round(mast.getBoundingClientRect().height) : 64;
+    doc.style.setProperty('--wiz-mast', h + 'px');
   }
 
-  // 5) Scroll-spy: the active stage is the last one whose top has crossed a
-  //    reading line near the top of the viewport (robust to tall cards, where a
-  //    partly-scrolled predecessor still overlaps the viewport).
-  var ticking = false;
-  function updateActive() {
-    ticking = false;
-    var line = 180, current = null;
-    for (var k = 0; k < stages.length; k++) {
-      if (stages[k].getBoundingClientRect().top <= line) current = stages[k];
-      else break;
+  /* ---- state + render ----------------------------------------------- */
+  var cur = 0, sub = 0;
+
+  function showStage(i) {
+    sub = Math.max(0, Math.min(subN - 1, i));
+    stages.forEach(function (st, k) { st.classList.toggle('is-shown', k === sub); });
+    if (railList) {
+      Array.prototype.forEach.call(railList.querySelectorAll('.cs-rail-item'), function (a) {
+        var on = a.getAttribute('data-target') === 'stage-' + pad2(sub + 1);
+        a.classList.toggle('is-active', on);
+        if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+      });
     }
-    setActive((current || stages[0]).id);
+    if (runPos) runPos.textContent = 'Stage ' + (sub + 1) + ' / ' + subN + ' \u2014 ' + (stageCats[sub] || '');
   }
-  function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    (window.requestAnimationFrame || window.setTimeout)(updateActive);
+
+  function render(focus) {
+    steps.forEach(function (sec, i) { sec.classList.toggle('is-current', i === cur); });
+    Array.prototype.forEach.call(prog.children, function (seg, i) { seg.classList.toggle('on', i <= cur); });
+    label.textContent = labelOf(steps[cur]);
+    count.textContent = (cur + 1) + ' / ' + steps.length;
+    prev.disabled = (cur === 0);
+    next.disabled = (cur === steps.length - 1);
+    Array.prototype.forEach.call(menuList.querySelectorAll('.cs-wiz-jump'), function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-jump') === steps[cur].id);
+    });
+    if (cur === runIndex && subN) showStage(sub);
+    steps[cur].scrollTop = 0;
+    if (focus) {
+      var h = steps[cur].querySelector('h1, h2, h3');
+      if (h) {
+        h.setAttribute('tabindex', '-1');
+        try { h.focus({ preventScroll: true }); } catch (e) { h.focus(); }
+      }
+    }
   }
-  // The page scrolls inside document.body (overflow:auto), not the window, so
-  // listen in the capture phase to catch that non-bubbling scroll event.
-  window.addEventListener('scroll', onScroll, { passive: true, capture: true });
-  window.addEventListener('resize', onScroll, { passive: true });
-  updateActive();
+
+  /* ---- navigation --------------------------------------------------- */
+  function goTo(i, opts) {
+    opts = opts || {};
+    i = Math.max(0, Math.min(steps.length - 1, i));
+    if (i === runIndex && subN) {
+      sub = opts.sub != null ? opts.sub : (opts.fromRight ? subN - 1 : 0);
+    }
+    cur = i;
+    render(opts.focus !== false);
+    syncHash();
+  }
+  function goNext() {
+    if (cur === runIndex && subN && sub < subN - 1) { showStage(sub + 1); syncHash(); return; }
+    if (cur < steps.length - 1) goTo(cur + 1, { focus: true });
+  }
+  function goPrev() {
+    if (cur === runIndex && subN && sub > 0) { showStage(sub - 1); syncHash(); return; }
+    if (cur > 0) goTo(cur - 1, { fromRight: true, focus: true });
+  }
+
+  /* ---- hash sync + deep-link ---------------------------------------- */
+  var lockHash = false;
+  function syncHash() {
+    var id = (cur === runIndex && subN) ? 'stage-' + pad2(sub + 1) : steps[cur].id;
+    if (!id) return;
+    lockHash = true;
+    if (history.replaceState) history.replaceState(null, '', '#' + id);
+    else location.hash = id;
+    setTimeout(function () { lockHash = false; }, 0);
+  }
+  function fromHash(focus) {
+    var raw = (location.hash || '').replace(/^#/, '');
+    if (/^stage-\d{2}$/.test(raw) && runIndex >= 0 && subN) {
+      var si = parseInt(raw.slice(6), 10) - 1;
+      if (si >= 0 && si < subN) { cur = runIndex; sub = si; render(focus); return; }
+    }
+    var el = raw ? document.getElementById(raw) : null;
+    var idx = -1;
+    if (el) {
+      var sec = el.closest ? el.closest('main > section') : null;
+      idx = sec ? steps.indexOf(sec) : -1;
+    }
+    cur = idx >= 0 ? idx : 0;
+    if (cur === runIndex && subN) sub = 0;
+    render(focus);
+  }
+
+  /* ---- menu --------------------------------------------------------- */
+  function openMenu() { menu.classList.add('is-open'); menuBtn.setAttribute('aria-expanded', 'true'); }
+  function closeMenu() { menu.classList.remove('is-open'); menuBtn.setAttribute('aria-expanded', 'false'); }
+
+  /* ---- events ------------------------------------------------------- */
+  next.addEventListener('click', goNext);
+  prev.addEventListener('click', goPrev);
+  menuBtn.addEventListener('click', function () {
+    if (menu.classList.contains('is-open')) closeMenu(); else openMenu();
+  });
+  menu.addEventListener('click', function (e) { if (e.target === menu) closeMenu(); });
+  menuList.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.cs-wiz-jump') : null;
+    if (!b) return;
+    var idx = steps.indexOf(document.getElementById(b.getAttribute('data-jump')));
+    closeMenu();
+    if (idx >= 0) goTo(idx, { focus: true });
+  });
+  if (railList) {
+    railList.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('.cs-rail-item') : null;
+      if (!a) return;
+      e.preventDefault();
+      showStage(parseInt(a.getAttribute('data-target').slice(6), 10) - 1);
+      syncHash();
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
+    if (!a || (a.closest && a.closest('.cs-rail-list'))) return;
+    var id = a.getAttribute('href').slice(1);
+    if (!id) return;
+    if (/^stage-\d{2}$/.test(id) && runIndex >= 0 && subN) {
+      e.preventDefault();
+      cur = runIndex; sub = parseInt(id.slice(6), 10) - 1; render(true); syncHash();
+      return;
+    }
+    var el = document.getElementById(id);
+    if (!el) return;
+    var sec = el.closest ? el.closest('main > section') : null;
+    var idx = sec ? steps.indexOf(sec) : -1;
+    if (idx >= 0) { e.preventDefault(); goTo(idx, { focus: true }); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var t = e.target;
+    if (t && t.matches && t.matches('input, textarea, select, [contenteditable], [contenteditable="true"]')) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'PageDown': e.preventDefault(); goNext(); break;
+      case 'ArrowLeft': case 'PageUp': e.preventDefault(); goPrev(); break;
+      case 'Home': e.preventDefault(); goTo(0, { focus: true }); break;
+      case 'End': e.preventDefault(); goTo(steps.length - 1, { focus: true }); break;
+      case 'Escape':
+        if (menu.classList.contains('is-open')) { e.preventDefault(); closeMenu(); menuBtn.focus(); }
+        break;
+    }
+  });
+  window.addEventListener('hashchange', function () { if (!lockHash) fromHash(true); });
+  window.addEventListener('resize', measure);
+
+  /* ---- boot --------------------------------------------------------- */
+  doc.classList.add('cs-wiz');
+  measure();
+  if (subN) showStage(0);
+  fromHash(false);
 })();
 </script>
 <script src="assets/site.js?v=91ff002f"></script>
