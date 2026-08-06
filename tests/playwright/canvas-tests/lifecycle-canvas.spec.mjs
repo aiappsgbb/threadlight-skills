@@ -5,6 +5,15 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/?token=canvas-test");
 });
 
+test("declares an inline favicon for self-contained loopback loads", async ({
+  page,
+}) => {
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    /^data:/,
+  );
+});
+
 test("shows six outcome phase buttons while hiding technical skill names", async ({
   page,
 }) => {
