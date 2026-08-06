@@ -217,20 +217,42 @@ remediated by asking the user to split the repo.
    Prerequisites above), so this file is expected to exist whenever
    `threadlight-design` is present — its absence is a broken installation,
    not a signal to guess.
+   **Kratos-export mode gate:** after this dependency check, if
+   `src/hosted-agent/` + `use-cases/<x>/` identify **Kratos-export mode**,
+   **skip selector migration and validation steps 2–5 below**. The policy-file
+   dependency check in step 1 still applies, but Kratos's runtime is preserved
+   verbatim and **Phase 2 is skipped entirely**, so there is no Threadlight
+   runtime selector to resolve or `specs/foundation.md` to create.
 2. **Legacy-foundation migration (partial tuple).** If a pre-existing
    `specs/foundation.md` has `framework` + `runtime_shape` but is **missing
-   `protocol` and/or `policy_route`**: resolve the unique
-   `compatible_combinations` entry whose `framework` + `runtime_shape` match
-   the recorded pair, infer the matching concrete `routes[]` entry, and
-   **write the missing `protocol` / `policy_route` fields back to
-   `specs/foundation.md`** with a migration note (`source:
-   migrated-from-legacy-foundation`, citing the route id used to infer them).
+   `protocol` and/or `policy_route`**: inspect the recorded framework
+   decision's `source` before trusting the pair.
+   - `source`: `provided` is an explicit operator choice: preserve the recorded
+     pair, resolve its unique `compatible_combinations` entry to recover the
+     missing `protocol`, and set `policy_route: explicit-supported-choice`.
+     Enforce that route's `requires_resolved_signals` and `blocked_when` gates
+     before honoring it; an unresolved or blocked legacy choice → **HARD
+     STOP** to `threadlight-design`, not relabeling it as a concrete
+     capability/default route.
+   - `source`: `defaulted`, `defaulted-after-skip`, or `inferred`
+     is **not** an explicit runtime choice. In particular,
+     `microsoft-agent-framework` with a defaulted source is the pre-contract
+     MAF house default and **must not be migrated, promoted, or preserved** as
+     an intentional MAF route. Require current SPEC § 11e `workflow_model` /
+     `capability_signals`, apply the first matching policy route, and
+     **re-resolve** the complete tuple from those signals. If the signals are
+     absent, HARD STOP to `threadlight-design`.
+   - A missing or unknown `source` is untrustworthy provenance → **HARD STOP**
+     to `threadlight-design`; never switch runtime or protocol by inference.
+   Write the completed tuple to `specs/foundation.md` with a migration note
+   (`source: migrated-from-legacy-foundation`, citing the route id used).
    Then continue to step 3 (this record predates `protocol` / `policy_route`
    entirely, so it almost certainly predates `capability_signals` too).
    - **Zero or multiple matching compatible combinations** for that
-     `framework` + `runtime_shape` pair → **HARD STOP** and send the operator
-     back to `threadlight-design` to re-resolve the foundation. This skill
-     must never guess between ambiguous or unsupported routes.
+     explicitly provided `framework` + `runtime_shape` pair → **HARD STOP**
+     and send the operator back to `threadlight-design` to re-resolve the
+     foundation. This skill must never guess between ambiguous or unsupported
+     routes.
 3. **Legacy-foundation migration (missing `capability_signals`).** A distinct
    gap from step 2 above — not a fallthrough of it: a pre-existing
    `specs/foundation.md` may already carry the **full** `framework` +

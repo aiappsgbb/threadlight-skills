@@ -601,6 +601,114 @@ test('threadlight-deploy documents legacy-foundation migration, ambiguous-match 
   );
 });
 
+test('threadlight-deploy skips selector migration for Kratos-export mode after checking the policy dependency', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+  const runtimePolicyHeadingMatch = content.match(/### Runtime-policy pre-flight \(mandatory[^\n]*\n/);
+  assert.ok(runtimePolicyHeadingMatch, 'expected the Runtime-policy pre-flight section');
+  const afterHeading = content.slice(runtimePolicyHeadingMatch.index + runtimePolicyHeadingMatch[0].length);
+  const nextHeadingMatch = afterHeading.match(/\n#{2,3} /);
+  const runtimePolicySection = nextHeadingMatch
+    ? afterHeading.slice(0, nextHeadingMatch.index)
+    : afterHeading;
+
+  assert.match(
+    runtimePolicySection,
+    /Kratos-export mode[\s\S]{0,300}(?:skip|does not run)[\s\S]{0,120}(?:selector|migration|steps 2)/i,
+    'Kratos-export mode must skip selector migration because it preserves the exported runtime',
+  );
+  assert.match(
+    runtimePolicySection,
+    /Kratos-export mode[\s\S]{0,400}Phase 2[\s\S]{0,80}skip/i,
+    'the exemption must be justified by Kratos-export mode skipping runtime generation in Phase 2',
+  );
+  assert.match(
+    runtimePolicySection,
+    /Kratos-export mode[\s\S]{0,400}(?:dependency|policy file|step 1)[\s\S]{0,100}(?:still|required|applies)/i,
+    'the policy dependency/readability check must still apply in Kratos-export mode',
+  );
+});
+
+test('threadlight-auto defers greenfield selector validation until Design and Deploy and exempts Kratos artifacts', () => {
+  const content = read('skills/threadlight-auto/SKILL.md');
+  const stage0HeadingMatch = content.match(/## Stage 0 — Preflight/);
+  const resumptionHeadingMatch = content.match(/## Resumption/);
+  assert.ok(stage0HeadingMatch && resumptionHeadingMatch, 'expected Stage 0 and Resumption headings');
+  const stage0Section = content.slice(stage0HeadingMatch.index, resumptionHeadingMatch.index);
+
+  assert.match(
+    stage0Section,
+    /runtime-policy\.json[\s\S]{0,180}(?:always|unconditionally)[\s\S]{0,80}(?:readable|available)/i,
+    'Stage 0 must always check that the policy dependency is readable',
+  );
+  assert.match(
+    stage0Section,
+    /greenfield[\s\S]{0,240}foundation\.md[\s\S]{0,160}(?:does not exist|created)[\s\S]{0,180}(?:defer|Design)[\s\S]{0,120}Deploy/i,
+    'greenfield Stage 0 must defer selector validation until Design creates foundation.md and Deploy validates it',
+  );
+  assert.match(
+    stage0Section,
+    /Kratos-export mode[\s\S]{0,220}(?:skip|exempt)[\s\S]{0,120}(?:foundation|selector)/i,
+    'Kratos-export Stage 0 must not require Threadlight foundation selectors for a preserved runtime',
+  );
+  assert.match(
+    stage0Section,
+    /when `?specs\/foundation\.md`? exists[\s\S]{0,160}(?:validate|resolve)/i,
+    'Stage 0 selector validation must be conditional on foundation.md already existing',
+  );
+  assert.match(
+    stage0Section,
+    /explicit-supported-choice[\s\S]{0,180}(?:requires_resolved_signals|unresolved_signals[\s\S]{0,60}empty)/i,
+    'existing explicit-supported-choice foundations must satisfy the policy resolved-signal gate in Stage 0',
+  );
+});
+
+test('legacy partial migration does not promote the pre-contract defaulted MAF value to an operator choice', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+  const branchHeadingMatch = content.match(/Legacy-foundation migration \(partial tuple\)/);
+  assert.ok(branchHeadingMatch, 'expected the partial-tuple legacy migration branch');
+  const branchSection = content.slice(branchHeadingMatch.index, branchHeadingMatch.index + 1800);
+  const providedStart = branchSection.indexOf('`source`: `provided`');
+  const defaultedStart = branchSection.indexOf('`source`: `defaulted`');
+  assert.ok(providedStart >= 0 && defaultedStart > providedStart, 'expected distinct provided and defaulted migration branches');
+  const providedSection = branchSection.slice(providedStart, defaultedStart);
+
+  assert.match(
+    branchSection,
+    /source[\s\S]{0,120}`provided`[\s\S]{0,220}(?:preserve|verbatim|recorded pair)/i,
+    'only a source: provided legacy runtime pair may be preserved verbatim',
+  );
+  assert.match(
+    providedSection,
+    /compatible_combinations[\s\S]{0,220}protocol[\s\S]{0,180}explicit-supported-choice/i,
+    'a trusted operator-provided pair must recover its protocol from compatible_combinations and use explicit-supported-choice',
+  );
+  assert.match(
+    providedSection,
+    /requires_resolved_signals[\s\S]{0,160}blocked_when|blocked_when[\s\S]{0,160}requires_resolved_signals/i,
+    'a migrated explicit operator choice must enforce both explicit-supported-choice gates',
+  );
+  assert.doesNotMatch(
+    providedSection,
+    /concrete `routes\[\]` entry/i,
+    'a trusted operator choice must not be relabeled as a concrete capability/default route',
+  );
+  assert.match(
+    branchSection,
+    /microsoft-agent-framework[\s\S]{0,180}(?:defaulted-after-skip|defaulted)[\s\S]{0,260}(?:must not|do not)[\s\S]{0,100}(?:migrate|promote|preserve)/i,
+    'the old defaulted MAF house default must not be promoted into an intentional MAF route',
+  );
+  assert.match(
+    branchSection,
+    /(?:defaulted-after-skip|defaulted)[\s\S]{0,420}(?:capability_signals|workflow_model)[\s\S]{0,260}(?:re-resolve|first matching policy route)/i,
+    'defaulted legacy values must be re-resolved from current capability/workflow signals',
+  );
+  assert.match(
+    branchSection,
+    /(?:missing|unknown)[\s\S]{0,80}source[\s\S]{0,180}HARD STOP/i,
+    'legacy records without trustworthy source provenance must hard-stop instead of switching runtimes',
+  );
+});
+
 test('threadlight-deploy hard-stops the hand-crafted/no-foundation branch when SPEC § 11e has no capability_signals block', () => {
   const content = read('skills/threadlight-deploy/SKILL.md');
 

@@ -154,18 +154,23 @@ next to the existing use-case skills.
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
 3. `azd ai agent` extension installed in the alias's `AZD_CONFIG_DIR`
-4. `specs/foundation.md` selectors (`framework` / `runtime_shape` /
-   `protocol` / `policy_route`) resolve against
-   `../threadlight-design/references/runtime-policy.json`'s
-   `compatible_combinations` — `specs/foundation.md` is the selector
-   authority, not `specs/SPEC.md` (SPEC supplies `workflow_model` /
-   capability signals only); any explicit selector tuple must also be free of
-   its route's `blocked_when` capability signals; `threadlight-auto` owns
-   **no separate framework or protocol default**. If
-   `../threadlight-design/references/runtime-policy.json` cannot be read
-   (the `threadlight-design` dependency is not installed/enabled), **HARD
-   STOP** and tell the operator to install or enable `threadlight-design` —
-   never fall back to a remembered default.
+4. The `../threadlight-design/references/runtime-policy.json` dependency must
+   **always be readable**. If `threadlight-design` is not installed/enabled,
+   **HARD STOP** and tell the operator to install or enable it — never fall
+   back to a remembered default. Selector validation then depends on the input
+   path:
+   - **Resume / hand-crafted path:** when `specs/foundation.md` exists, validate
+     its `framework` / `runtime_shape` / `protocol` / `policy_route` against
+     `compatible_combinations` and the route's `blocked_when` signals. An
+     `explicit-supported-choice` must also satisfy
+     `requires_resolved_signals`: its `unresolved_signals` list must be empty.
+   - **Greenfield path:** `specs/foundation.md` does not exist yet; Stage 1
+     Design creates it. Do not hard-stop in Stage 0. **Defer** selector
+     resolution to Design and enforce validation again at Stage 3 Deploy.
+   - **Kratos-export mode:** **skip foundation/selector validation** because
+     the exported runtime is preserved verbatim and deploy Phase 2 is skipped;
+     only the unconditional policy-dependency readability check above applies.
+   `threadlight-auto` owns **no separate framework or protocol default**.
 5. Writes `.threadlight/preflight-passed.json` marker (24h validity)
 
 > **🛑 HARD STOP #1 — Tenant assertion failure.** If tenant verification fails (wrong
@@ -175,10 +180,10 @@ next to the existing use-case skills.
 
 > **Runtime-policy contract.** `threadlight-design` and `threadlight-deploy`
 > both inherit `../threadlight-design/references/runtime-policy.json`.
-> `threadlight-auto` never invents a competing default; any policy mismatch
-> between design artifacts and deploy inputs, or a missing/unavailable
-> `threadlight-design` dependency, is a hard stop before Azure work — install
-> or enable `threadlight-design` and re-run.
+> `threadlight-auto` never invents a competing default. A missing/unavailable
+> `threadlight-design` dependency is a Stage-0 hard stop; greenfield selector
+> validation begins after Design creates the foundation, Kratos-export mode
+> preserves its supplied runtime, and Deploy remains the final policy gate.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 ## Resumption — read `.threadlight/auto-state.json` first
