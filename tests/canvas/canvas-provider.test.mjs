@@ -63,6 +63,8 @@ test("provider exposes refresh and prepare_intent actions in order", () => {
     canvas.actions.map((action) => action.name),
     ["refresh", "prepare_intent"],
   );
+  assert.equal(canvas.inputSchema.properties.phase.type, "string");
+  assert.equal(Object.hasOwn(canvas, "title"), false);
 });
 
 test("supported open projects workspace and closes its loopback server", async () => {

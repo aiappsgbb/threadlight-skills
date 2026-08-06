@@ -13,7 +13,7 @@ const PHASES = [
 const OPEN_INPUT_SCHEMA = {
   type: "object",
   properties: {
-    phase: { enum: PHASES },
+    phase: { type: "string", enum: PHASES },
   },
   additionalProperties: false,
 };
@@ -53,7 +53,6 @@ export function createLifecycleCanvas({
   return createCanvas({
     id: "threadlight-lifecycle",
     displayName: "Threadlight Lifecycle",
-    title: "Threadlight Lifecycle",
     description:
       "Start and inspect a Threadlight pilot by outcome without needing skill names.",
     inputSchema: OPEN_INPUT_SCHEMA,
