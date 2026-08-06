@@ -31,9 +31,13 @@ metadata:
 Take a project folder (containing AGENTS.md, `src/agent/skills/`, config/, etc.) and enrich
 it with all files needed to deploy as a **Microsoft Foundry Hosted Agent**.
 
-**Default runtime: GHCP SDK** (`CopilotClient` + `InvocationAgentServerHost`, Invocations
-protocol). Falls back to **MAF** (`Agent` + `FoundryChatClient` + `ResponsesHostServer`,
-Responses protocol) when Toolbox tools or custom `@tool` functions are needed.
+**Canonical runtime policy:**
+`skills/threadlight-design/references/runtime-policy.json`. The locked default
+route remains `github-copilot-sdk` + `agent` + `invocations`
+(`policy_route: default-agent`). Exception routes are
+`deterministic-workflow` → MAF workflow + Responses,
+`maf-agent-capabilities` → MAF agent + Responses, and
+`explicit-supported-choice` for supported, compatible operator overrides.
 
 Uses the **`azd ai agent` extension** for declarative deployment — `azure.yaml` defines
 agent configuration, model deployments, and container resources; `azd up` handles everything.
@@ -164,6 +168,11 @@ to split the repo before proceeding**:
 - The folder contains nested `specs/<process-slug>/SPEC.md` siblings
 - A previous run produced an `azure.yaml` with multiple `services:` entries that
   point to different agent containers
+- `specs/foundation.md` or SPEC selectors disagree with
+  `skills/threadlight-design/references/runtime-policy.json`, use an unknown
+  selector, or declare an incompatible `framework` + `runtime_shape` +
+  `protocol` combination. **Stop before Phase 1** — this skill must not invent a
+  new route.
 
 ### How to split
 
@@ -261,6 +270,10 @@ SpecKit specification from `threadlight-design`. Extract:
 - **§ 9 Success Criteria** → eval scenarios for post-deploy validation (→ `foundry-evals`)
 - **§ 10 Trigger & Run Model** → model capacity, container resources
 - **§ 11 Security/Compliance** → regulatory constraints, data retention
+- **`specs/foundation.md` + SPEC § 11c / § 11e selectors** → validate
+  `framework`, `runtime_shape`, `protocol`, and `policy_route` against
+  `skills/threadlight-design/references/runtime-policy.json`; stop on unknown or
+  incompatible combinations before generating files
 - **§ 11e Workflow Model** → `agent` (default) or `workflow` → drives Phase 1d variant selection and Phase 2 container shape
 
 #### 1c. Read `AGENTS.md` and all skills (always)
@@ -274,7 +287,7 @@ Core deployment inputs:
 
 #### 1d. Choose runtime variant
 
-| | **GHCP SDK (default)** | **MAF Agent (fallback)** | **MAF Workflow** (when `workflow_model: "workflow"` in SPEC § 11e) |
+| | **github-copilot-sdk** (`default-agent` route) | **MAF Agent** (`maf-agent-capabilities` route) | **MAF Workflow** (`deterministic-workflow` route when `workflow_model: "workflow"` in SPEC § 11e) |
 |--|----------------------|-------------------|-----|
 | **Runtime** | `CopilotClient` + `InvocationAgentServerHost` | `Agent` + `FoundryChatClient` + `ResponsesHostServer` | `Workflow` + typed `Executor` nodes + `FoundryChatClient` |
 | **Protocol** | Invocations (SSE streaming) | Responses | Responses (workflow orchestrator manages step sequence) |
@@ -288,11 +301,30 @@ Core deployment inputs:
 | **Best for** | Open-ended chat, Q&A, RAG, exploration | Data queries, Toolbox, file generation | **Deterministic multi-phase processes with persona gates** (expense claim, hiring, KYC, contract review) |
 
 **Decision rules:**
-- **Default to GHCP** — preferred runtime, progressive skills, no timeout limits
-- **Use MAF Agent when**: agent needs Foundry Toolbox (web_search, code_interpreter) OR custom `@tool` functions OR **file generation** (save_report → XLSX/PDF/CSV)
-- **Use MAF Agent when**: agent primarily does data queries with fast MCP tools — MAF is 10-20x faster for these (19s vs 220s+). The 20-34 extra `load_skill`-shaped calls per query are **`CopilotClient` runtime overhead**, NOT `SkillsProvider` overhead — `SkillsProvider` itself only adds +1 `load_skill` per skill the agent activates per query, and works on both runtimes (see `foundry-hosted-agents` § Skill Loading)
-- **Use MAF Workflow when**: SPEC § 11e sets `workflow_model: "workflow"` — deterministic multi-phase processes where the phase order is fixed, persona gates control progression, and the orchestrator (not the LLM) decides what runs next. This is the MAF equivalent of Zava-style durable orchestration.
-- If the spec doesn't indicate either way → use GHCP
+- **Trust the policy contract first.** Read
+  `skills/threadlight-design/references/runtime-policy.json` plus any committed
+  `specs/foundation.md`. If `framework` / `runtime_shape` / `protocol` /
+  `policy_route` disagree across foundation and SPEC, or if the combination is
+  not one of the policy routes, stop and send the operator back to design.
+- **Default route** — `github-copilot-sdk` + `agent` + `invocations`
+  (`policy_route: default-agent`). This is still the preferred hosted-agent
+  baseline until GHCP Responses works end to end.
+- **Use MAF Agent when**: the resolved route is `maf-agent-capabilities`, i.e.
+  the agent needs Foundry Toolbox (web_search, code_interpreter), custom
+  `@tool` functions, **file generation** (save_report → XLSX/PDF/CSV), or
+  latency-sensitive data queries. MAF is also 10-20x faster for these query
+  patterns (19s vs 220s+). The 20-34 extra `load_skill`-shaped calls per query
+  are **`CopilotClient` runtime overhead**, NOT `SkillsProvider` overhead —
+  `SkillsProvider` itself only adds +1 `load_skill` per skill the agent
+  activates per query, and works on both runtimes (see
+  `foundry-hosted-agents` § Skill Loading).
+- **Use MAF Workflow when**: the resolved route is
+  `deterministic-workflow` / SPEC § 11e `workflow_model: "workflow"` —
+  deterministic multi-phase processes where the phase order is fixed, persona
+  gates control progression, and the orchestrator (not the LLM) decides what
+  runs next. This is the MAF equivalent of Zava-style durable orchestration.
+- **Use explicit-supported-choice only when** the operator picked a supported,
+  compatible route and design recorded that override explicitly.
 
 #### 1e. Choose model access pattern
 

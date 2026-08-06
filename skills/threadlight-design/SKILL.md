@@ -191,9 +191,10 @@ runtime:
   uv_available: true
   docker_available: false         # if false, deploy must use az acr build
 workflow_model: agent             # agent (default) | workflow
-  # agent   — MAF Agent.run() with skills + tools (current threadlight default)
-  # workflow — MAF DurableWorkflow with typed executors + HITL pause points
-  #            (deterministic multi-phase processes; Zava-style orchestration)
+  # agent   — agent-driven runtime; resolve the concrete framework/protocol via
+  #           skills/threadlight-design/references/runtime-policy.json
+  # workflow — deterministic-workflow route → MAF DurableWorkflow +
+  #            Responses with typed executors + HITL pause points
   # The trait matrix (Phase A) auto-suggests based on the process:
   #   - Deterministic multi-phase with persona gates → workflow
   #   - Open-ended chat / Q&A / RAG-heavy → agent
@@ -230,21 +231,30 @@ deliberate, recorded choices an operator can sign off on in one review.
 
 > **When Step 0 runs.** From-scratch path only. **Kratos-export projects skip
 > it** — the exported bundle is already designed (see the path note at the top
-> of this skill). In **Fast-PoC mode**, do not interview: fill every row with
-> the house default, mark `source: defaulted-after-skip`, and let Step 3 surface
-> the one-line callout in SPEC § 13. In **Full mode**, walk the operator through
-> the rows below, defaulting anything they don't have an opinion on.
+> of this skill). Before locking `framework`, `runtime_shape`, or `protocol`,
+> read `skills/threadlight-design/references/runtime-policy.json`, apply the
+> **first matching route**, and copy its selectors plus `policy_route` into
+> `specs/foundation.md`. Use `explicit-supported-choice` only when the operator
+> explicitly asks for a supported, compatible override. In **Fast-PoC mode**, do
+> not interview: use the policy's `default-agent` route unless a higher-priority
+> route matches, mark `source: defaulted-after-skip`, and let Step 3 surface the
+> one-line callout in SPEC § 13. In **Full mode**, walk the operator through the
+> rows below, defaulting anything they don't have an opinion on.
 
 Consume the **runtime capability probe** output (above) as the first input —
 it already fixes the agent-vs-workflow *shape* and what tooling the shell can
 run. Step 0 then locks the **higher-order house standards the probe does not
 cover**:
 
-1. **Framework & runtime shape** — `microsoft-agent-framework` (MAF) is the
-   house default; `copilot-agent-sdk` (M365/Teams-native surface) or
-   `foundry-native` (SDK-lite hosted agent) are deliberate deviations. The
-   agent-vs-workflow shape defers to the probe / § 11e; the Step 2 trait matrix
-   may refine it, confirmed at the Step 4 checkpoint.
+1. **Framework, runtime shape, and protocol** — resolve them from
+   `skills/threadlight-design/references/runtime-policy.json`. The locked
+   default route is `github-copilot-sdk` + `agent` + `invocations`
+   (`policy_route: default-agent`). The policy's MAF exception routes are
+   `deterministic-workflow` (`workflow` → MAF workflow + Responses) and
+   `maf-agent-capabilities` (Toolbox / custom Python tools / file generation /
+   latency-sensitive data queries → MAF agent + Responses). The
+   agent-vs-workflow shape still defers to the probe / § 11e, confirmed at the
+   Step 4 checkpoint.
 2. **Model & capacity** — default `gpt-5.4`, plus **`region`,
    `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
    (EU)** — the region/boundary/fallback triad § 7b does not capture but that
@@ -266,7 +276,8 @@ cover**:
    (WAF/Front Door, DR runbook).
 
 **Emit `specs/foundation.md`** using **`references/foundation-template.md`**
-(YAML decision blocks + a short prose rationale + a decision-summary table).
+(YAML decision blocks + a short prose rationale + a decision-summary table) and
+carry forward the resolved `policy_route`.
 
 > **Downstream contract.** Step 3 (Generate SpecKit) reads `specs/foundation.md`
 > and **pre-populates** SPEC **§ 7b** (model — extended with region / boundary /

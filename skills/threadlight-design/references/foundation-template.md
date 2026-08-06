@@ -13,6 +13,12 @@ instead of silent defaults back-filled during generation.
 > before: it applies documented defaults inline. **Kratos-export projects skip
 > Step 0 entirely** — the bundle is already designed.
 
+> **Runtime-policy authority.**
+> `skills/threadlight-design/references/runtime-policy.json` is the canonical
+> selector contract for `framework`, `runtime_shape`, `protocol`, and
+> `policy_route`. This template records the chosen route; it does not invent a
+> competing default table.
+
 > **Fast-PoC mode.** Do not interview the operator. Fill every row with the
 > **house default** below, set `source: defaulted-after-skip`, and have Step 3
 > surface a one-line callout in SPEC § 12 (_"Foundation not collected; using
@@ -30,14 +36,16 @@ instead of silent defaults back-filled during generation.
 
 | # | Decision | Choice | `source` | Pre-populates | Refined by |
 |---|----------|--------|----------|---------------|-----------|
-| 1 | Framework | `microsoft-agent-framework` | provided \| defaulted | § 11c, § 11e | — |
-| 1 | Runtime shape | `agent` | inferred | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
-| 2 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
-| 3 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
-| 4 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
-| 5 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
-| 6 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
-| 7 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
+| 1 | Framework | `github-copilot-sdk` | provided \| defaulted | § 11c, § 12 | `runtime-policy.json` route resolution |
+| 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
+| 3 | Protocol | `invocations` | provided \| defaulted | § 12 | `runtime-policy.json` route resolution |
+| 4 | Policy route | `default-agent` | inferred \| defaulted | § 11c, § 12 | `runtime-policy.json` route resolution |
+| 5 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
+| 6 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
+| 7 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
+| 8 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
+| 9 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
+| 10 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
 
 `source` taxonomy (same as SPEC § 13): `provided` (operator stated it) ·
 `inferred` (from the brief / trait matrix) · `defaulted` (house default, not
@@ -49,13 +57,16 @@ unresolved).
 ## 1. Framework & runtime shape
 
 ```yaml
-framework: microsoft-agent-framework    # house default (MAF)
-  # alternatives + when to deviate:
-  #   copilot-agent-sdk  — the surface is M365 / Teams-native and the agent
-  #                        lives inside a Copilot experience
-  #   foundry-native     — SDK-lite hosted agent, no custom orchestration layer
-  # MAF is the threadlight default; deviating is a deliberate, recorded choice.
+framework: github-copilot-sdk           # default route from references/runtime-policy.json
 runtime_shape: agent                    # agent (default) | workflow
+protocol: invocations                   # invocations (default) | responses
+policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
+  # Apply the first matching route from
+  # skills/threadlight-design/references/runtime-policy.json.
+  # The locked default route is github-copilot-sdk + agent + invocations.
+  # MAF exceptions are documented there: deterministic-workflow →
+  # microsoft-agent-framework + workflow + responses;
+  # maf-agent-capabilities → microsoft-agent-framework + agent + responses.
   # Source of truth for the agent-vs-workflow shape is the runtime probe /
   # SPEC § 11e. The Step 2 trait matrix auto-suggests `workflow` for
   # deterministic multi-phase processes with persona gates; the operator
@@ -63,8 +74,9 @@ runtime_shape: agent                    # agent (default) | workflow
   # record the current choice and let discovery refine it.
 ```
 
-→ **Pre-populates** SPEC § 11e (`workflow_model`) and § 12. `framework` is
-net-new here — the runtime probe records the *shape* but not the SDK.
+→ **Pre-populates** SPEC § 11e (`workflow_model`) and § 12. `framework`,
+`protocol`, and `policy_route` are net-new here — the runtime probe records the
+*shape* but not the full runtime selector contract.
 
 ---
 

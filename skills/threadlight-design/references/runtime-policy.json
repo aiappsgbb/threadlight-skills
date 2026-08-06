@@ -1,0 +1,60 @@
+{
+  "schema": "threadlight.runtime-policy/v1",
+  "version": 1,
+  "selectors": {
+    "frameworks": [
+      "github-copilot-sdk",
+      "microsoft-agent-framework"
+    ],
+    "runtime_shapes": [
+      "agent",
+      "workflow"
+    ],
+    "protocols": [
+      "invocations",
+      "responses"
+    ]
+  },
+  "default": {
+    "framework": "github-copilot-sdk",
+    "runtime_shape": "agent",
+    "protocol": "invocations",
+    "policy_route": "default-agent"
+  },
+  "routes": [
+    {
+      "id": "explicit-supported-choice",
+      "priority": 1,
+      "selection": "operator",
+      "when": "operator explicitly chooses a supported, policy-compatible framework/runtime_shape/protocol combination",
+      "rationale": "Honor a compatible explicit operator override before house routing."
+    },
+    {
+      "id": "deterministic-workflow",
+      "priority": 2,
+      "when": "workflow_model=workflow",
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "workflow",
+      "protocol": "responses",
+      "rationale": "Deterministic multi-phase flows need the MAF workflow runtime."
+    },
+    {
+      "id": "maf-agent-capabilities",
+      "priority": 3,
+      "when": "requires_toolbox || requires_custom_python_tools || requires_file_generation || latency_sensitive_data_queries",
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "agent",
+      "protocol": "responses",
+      "rationale": "Toolbox, custom tools, file generation, and fast data queries fit MAF agent best today."
+    },
+    {
+      "id": "default-agent",
+      "priority": 4,
+      "when": "no higher-priority route matches",
+      "framework": "github-copilot-sdk",
+      "runtime_shape": "agent",
+      "protocol": "invocations",
+      "rationale": "Keep the proven GHCP Invocations path until Responses works end to end."
+    }
+  ]
+}

@@ -154,12 +154,18 @@ next to the existing use-case skills.
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
 3. `azd ai agent` extension installed in the alias's `AZD_CONFIG_DIR`
-4. Writes `.threadlight/preflight-passed.json` marker (24h validity)
+4. `skills/threadlight-design/references/runtime-policy.json` agrees with any committed `specs/foundation.md` / `specs/SPEC.md` selectors; `threadlight-auto` owns **no separate framework or protocol default**
+5. Writes `.threadlight/preflight-passed.json` marker (24h validity)
 
 > **🛑 HARD STOP #1 — Tenant assertion failure.** If tenant verification fails (wrong
 > tenant or wrong subscription active), `threadlight-auto` STOPS IMMEDIATELY. No
 > auto-recovery. Money is about to be spent in the wrong place — operator must
 > fix isolation before retrying.
+
+> **Runtime-policy contract.** `threadlight-design` and `threadlight-deploy`
+> both inherit `skills/threadlight-design/references/runtime-policy.json`.
+> `threadlight-auto` never invents a competing default; any policy mismatch
+> between design artifacts and deploy inputs is a hard stop before Azure work.
 
 ## Resumption — read `.threadlight/auto-state.json` first
 
