@@ -73,28 +73,40 @@ export const SKILL_REGISTRY = Object.freeze([
     "design",
     "Create credible demo data",
     [artifactGroup("specs/sample-data")],
-    { applicability: "mock-systems" },
+    {
+      applicability: "mock-systems",
+      prerequisiteSkills: ["threadlight-design"],
+    },
   ),
   skill(
     "threadlight-event-triggers",
     "design",
     "Define event entry points",
     [artifactGroup("src/triggers")],
-    { applicability: "event-trigger" },
+    {
+      applicability: "event-trigger",
+      prerequisiteSkills: ["threadlight-design"],
+    },
   ),
   skill(
     "threadlight-hitl-patterns",
     "design",
     "Design human decisions",
     [artifactGroup("src/bot")],
-    { applicability: "human-approval" },
+    {
+      applicability: "human-approval",
+      prerequisiteSkills: ["threadlight-design"],
+    },
   ),
   skill(
     "threadlight-workspace-ui",
     "design",
     "Shape the operator workspace",
     [artifactGroup("src/workspace")],
-    { applicability: "workspace-ui" },
+    {
+      applicability: "workspace-ui",
+      prerequisiteSkills: ["threadlight-design"],
+    },
   ),
   skill(
     "threadlight-auto",
@@ -105,6 +117,7 @@ export const SKILL_REGISTRY = Object.freeze([
       role: "orchestrator",
       completionMode: "artifact-running",
       affectsPhaseStatus: false,
+      prerequisiteSkills: ["threadlight-design"],
     },
   ),
   skill(
@@ -115,6 +128,7 @@ export const SKILL_REGISTRY = Object.freeze([
     {
       completionMode: "manual",
       affectsPhaseStatus: false,
+      prerequisiteSkills: ["threadlight-design"],
     },
   ),
   skill(
@@ -122,7 +136,10 @@ export const SKILL_REGISTRY = Object.freeze([
     "build-deploy",
     "Deploy to the sandbox",
     [artifactGroup("azure.yaml"), artifactGroup("infra/main.bicep")],
-    { completionArtifact: "docs/safe-check-post.md" },
+    {
+      completionArtifact: "docs/safe-check-post.md",
+      prerequisiteSkills: ["threadlight-design"],
+    },
   ),
   skill(
     "threadlight-safe-check",

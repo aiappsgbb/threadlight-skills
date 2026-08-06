@@ -53,6 +53,42 @@ test("registry exposes the exact phase order and memberships", () => {
   }
 });
 
+test("registry preserves the exact prerequisite contracts", () => {
+  const expectedPrerequisites = new Map([
+    ["threadlight-design", []],
+    ["threadlight-demo-data-factory", ["threadlight-design"]],
+    ["threadlight-event-triggers", ["threadlight-design"]],
+    ["threadlight-hitl-patterns", ["threadlight-design"]],
+    ["threadlight-workspace-ui", ["threadlight-design"]],
+    ["threadlight-auto", ["threadlight-design"]],
+    ["threadlight-local-test", ["threadlight-design"]],
+    ["threadlight-deploy", ["threadlight-design"]],
+    ["threadlight-safe-check", ["threadlight-deploy"]],
+    ["threadlight-consumption-iq", ["threadlight-safe-check"]],
+    ["threadlight-evals", ["threadlight-safe-check"]],
+    ["threadlight-redteam", ["threadlight-safe-check"]],
+    ["threadlight-govern", ["threadlight-safe-check"]],
+    ["threadlight-router-bench", ["threadlight-evals"]],
+    ["threadlight-production-ready", ["threadlight-safe-check"]],
+    ["threadlight-cicd", ["threadlight-production-ready"]],
+    ["threadlight-customize", ["threadlight-production-ready"]],
+  ]);
+
+  assert.equal(SKILL_REGISTRY.length, expectedPrerequisites.size);
+  assert.deepEqual(
+    new Set(SKILL_REGISTRY.map(({ id }) => id)),
+    new Set(expectedPrerequisites.keys()),
+  );
+
+  for (const skill of SKILL_REGISTRY) {
+    assert.deepEqual(
+      skill.prerequisiteSkills,
+      expectedPrerequisites.get(skill.id),
+      skill.id,
+    );
+  }
+});
+
 test("skills remain declarative and have no command handlers", () => {
   for (const skill of SKILL_REGISTRY) {
     assert.equal(Object.hasOwn(skill, "command"), false, skill.id);
