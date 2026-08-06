@@ -86,6 +86,15 @@ export function createLifecycleCanvas({
         };
       }
 
+      const existingInstance = instances.get(context.instanceId);
+      if (existingInstance) {
+        return {
+          url: existingInstance.server.url,
+          title: "Threadlight Lifecycle",
+          status: existingInstance.model.summary,
+        };
+      }
+
       const workspace = context.session?.workingDirectory;
       if (!workspace) {
         throw new Error("Canvas session has no working directory");

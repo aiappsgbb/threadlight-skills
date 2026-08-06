@@ -92,6 +92,31 @@ test("supported open projects workspace and closes its loopback server", async (
   assert.equal(servers[0].closed, true);
 });
 
+test("supported open reuses an existing instance for the same canvas id", async () => {
+  const { canvas, projected, servers } = createHarness();
+
+  const first = await canvas.open({
+    instanceId: "threadlight-spike",
+    session: { workingDirectory: "/tmp/pilot" },
+  });
+  const second = await canvas.open({
+    instanceId: "threadlight-spike",
+    session: { workingDirectory: "/tmp/pilot" },
+  });
+
+  assert.deepEqual(first, {
+    url: "http://127.0.0.1/fake",
+    title: "Threadlight Lifecycle",
+    status: "Projected /tmp/pilot",
+  });
+  assert.deepEqual(second, first);
+  assert.equal(servers.length, 1);
+  assert.deepEqual(projected, ["/tmp/pilot"]);
+
+  await canvas.onClose({ instanceId: "threadlight-spike" });
+  assert.equal(servers[0].closed, true);
+});
+
 test("server intent handler sends exactly one visible chat prompt", async () => {
   const { canvas, sent, servers } = createHarness();
 
