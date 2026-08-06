@@ -1,6 +1,6 @@
 # Runtime Policy and Playbook Metadata — Design Spec
 
-- **Status:** Draft (awaiting user review)
+- **Status:** Implemented
 - **Date:** 2026-08-05
 - **Author:** Brainstormed with Copilot CLI
 - **Related upstream:** `aiappsgbb/agentic-loop` PRs

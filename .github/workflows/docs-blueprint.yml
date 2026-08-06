@@ -9,6 +9,12 @@ on:
       - "docs/assets/process-library.json"
       - "docs/assets/blueprint-logic.js"
       - "scripts/build_process_library.py"
+      - "THREADLIGHT.md"
+      - "skills/threadlight-auto/SKILL.md"
+      - "skills/threadlight-deploy/SKILL.md"
+      - "skills/threadlight-design/SKILL.md"
+      - "skills/threadlight-design/references/foundation-template.md"
+      - "skills/threadlight-design/references/runtime-policy.json"
       - "tests/blueprint/**"
   push:
     branches: [main]
@@ -16,6 +22,12 @@ on:
       - "docs/assets/process-library.json"
       - "docs/assets/blueprint-logic.js"
       - "scripts/build_process_library.py"
+      - "THREADLIGHT.md"
+      - "skills/threadlight-auto/SKILL.md"
+      - "skills/threadlight-deploy/SKILL.md"
+      - "skills/threadlight-design/SKILL.md"
+      - "skills/threadlight-design/references/foundation-template.md"
+      - "skills/threadlight-design/references/runtime-policy.json"
       - "tests/blueprint/**"
   workflow_dispatch: {}
 
