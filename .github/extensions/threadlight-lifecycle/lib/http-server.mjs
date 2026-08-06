@@ -180,6 +180,7 @@ export async function createLoopbackServer({
   getModel,
   onIntent,
   token = randomBytes(24).toString("base64url"),
+  port = 0,
 } = {}) {
   if (typeof getModel !== "function") {
     throw new TypeError("createLoopbackServer requires getModel function");
@@ -207,7 +208,7 @@ export async function createLoopbackServer({
 
   await new Promise((resolve, reject) => {
     httpServer.once("error", reject);
-    httpServer.listen(0, "127.0.0.1", () => {
+    httpServer.listen(port, "127.0.0.1", () => {
       httpServer.off("error", reject);
       resolve();
     });

@@ -27,6 +27,35 @@ test("loopback server protects APIs while serving static Canvas assets", async (
       onIntent: async (intent) => intents.push(intent),
     });
 
+    test("loopback server can bind an explicit loopback port", async () => {
+      const webRoot = new URL(
+        `./.tmp-http-server-port-${process.pid}-${Date.now()}/`,
+        import.meta.url,
+      );
+      let server;
+
+      await mkdir(webRoot, { recursive: true });
+      await writeFile(
+        new URL("index.html", webRoot),
+        "<!doctype html><title>Canvas</title>",
+        "utf8",
+      );
+
+      try {
+        server = await createLoopbackServer({
+          webRoot,
+          port: 4191,
+          getModel: async () => ({ phases: [] }),
+          onIntent: async () => {},
+        });
+
+        assert.equal(server.origin, "http://127.0.0.1:4191");
+      } finally {
+        await server?.close();
+        await rm(webRoot, { recursive: true, force: true });
+      }
+    });
+
     assert.match(server.url, /^http:\/\/127\.0\.0\.1:\d+/);
 
     const unauthenticatedModel = await fetch(
