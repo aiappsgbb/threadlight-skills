@@ -37,6 +37,23 @@ test('no supply-chain leak markers', () => {
   assert.ok(!LEAK.test(JSON.stringify(data)));
 });
 
+test('playbook level maps exactly low->Starter, medium->Intermediate, high->Advanced', () => {
+  const LEVEL_BY_COMPLEXITY = { low: 'Starter', medium: 'Intermediate', high: 'Advanced' };
+  assert.deepStrictEqual(
+    Object.keys(LEVEL_BY_COMPLEXITY).sort(),
+    ['high', 'low', 'medium'],
+    'sanity-check: the exact complexity set this map covers must not silently grow or shrink',
+  );
+  for (const e of data) {
+    assert.strictEqual(
+      e.playbook.level,
+      LEVEL_BY_COMPLEXITY[e.complexity],
+      `${e.id} playbook.level must be the exact complexity->level map result for complexity=${e.complexity} ` +
+        '(low->Starter, medium->Intermediate, high->Advanced), not merely one of PLAYBOOK_LEVELS',
+    );
+  }
+});
+
 test('every entry has complete valid generated playbook metadata', () => {
   for (const e of data) {
     const p = e.playbook;

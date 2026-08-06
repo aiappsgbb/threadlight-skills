@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -8,7 +9,6 @@ const L = require('../../docs/assets/blueprint-logic.js');
 
 const repoRoot = path.join(__dirname, '../..');
 const generatorPath = path.join(repoRoot, 'scripts/build_process_library.py');
-const scratchRoot = path.join(repoRoot, '.process-library-generator-test-work');
 
 const BASE_SKILLS = [
   'threadlight-design',
@@ -77,12 +77,10 @@ const PREREQUISITES = [
 ];
 
 function makeWorkDir(label) {
-  const workDir = path.join(
-    scratchRoot,
-    `${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  );
-  fs.mkdirSync(workDir, { recursive: true });
-  return workDir;
+  // A fresh OS-temp scratch directory per run — never a repo-root path — so
+  // a killed/failed run can't leave stray untracked directories behind in
+  // the working tree; cleanup() below removes it fully.
+  return fs.mkdtempSync(path.join(os.tmpdir(), `threadlight-playbook-${label}-`));
 }
 
 function runGenerator(entries, label) {

@@ -67,7 +67,10 @@ instead of silent defaults back-filled during generation.
 `source` taxonomy (same as SPEC § 13): `provided` (operator stated it) ·
 `inferred` (from the brief / trait matrix) · `defaulted` (house default, not
 raised) · `defaulted-after-skip` (Fast-PoC) · `open-question` (acknowledged,
-unresolved).
+unresolved) · `migrated-from-legacy-foundation` (`threadlight-deploy`
+backfilled a pre-existing foundation record that predated this contract) ·
+`hand-crafted-deploy-inferred` (`threadlight-deploy` inferred and wrote a
+minimal foundation record from `specs/SPEC.md § 11e` because none existed).
 
 ---
 
@@ -108,7 +111,7 @@ capability_signals:                     # machine-readable booleans + unresolved
     - requires_custom_python_tools
     - requires_file_generation
     - latency_sensitive_data_queries
-  source: open-question                 # provided | inferred | defaulted-after-skip | open-question
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question | migrated-from-legacy-foundation | hand-crafted-deploy-inferred
 ```
 
 → **Pre-populates** SPEC § 11e (`workflow_model` from `runtime_shape`, and the

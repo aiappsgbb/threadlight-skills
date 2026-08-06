@@ -525,7 +525,7 @@ capability_signals:                     # machine-readable booleans + unresolved
     - requires_custom_python_tools
     - requires_file_generation
     - latency_sensitive_data_queries
-  source: open-question                 # provided | inferred | defaulted-after-skip | open-question
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question | migrated-from-legacy-foundation | hand-crafted-deploy-inferred
 ```
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`

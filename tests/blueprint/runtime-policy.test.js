@@ -147,6 +147,44 @@ function extractCapabilitySignalsBlock(content) {
   return blockLines.join('\n');
 }
 
+// Pull the `paths:` list out of a top-level GitHub Actions trigger block
+// (`pull_request:` or `push:`) inside a workflow YAML file — a deliberately
+// line-based / textual extraction (2-space-indented trigger key, 4-space
+// `paths:` heading, 6-space `- "..."` entries), not a full YAML parser, so
+// this repo avoids adding a YAML dependency just for a CI-config test.
+function extractWorkflowPathsList(content, triggerKey) {
+  const triggerHeadingMatch = content.match(new RegExp(`\\n {2}${escapeRegex(triggerKey)}:\\n`));
+  assert.ok(triggerHeadingMatch, `expected a top-level \`${triggerKey}:\` trigger block in the workflow file`);
+  const afterTrigger = content.slice(triggerHeadingMatch.index + triggerHeadingMatch[0].length);
+  const nextTopLevelKeyMatch = afterTrigger.match(/\n {2}\S/);
+  const triggerBlock = nextTopLevelKeyMatch ? afterTrigger.slice(0, nextTopLevelKeyMatch.index) : afterTrigger;
+
+  const pathsHeadingMatch = triggerBlock.match(/ {4}paths:\n/);
+  assert.ok(pathsHeadingMatch, `expected a \`paths:\` list under \`${triggerKey}:\``);
+  const pathsBlock = triggerBlock.slice(pathsHeadingMatch.index + pathsHeadingMatch[0].length);
+
+  const entries = pathsBlock
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim().replace(/^"|"$/g, ''));
+  assert.ok(entries.length > 0, `expected at least one path entry under \`${triggerKey}: paths:\``);
+  return entries;
+}
+
+// A workflow `paths:` entry either matches a file exactly, or (when it ends
+// in `/**`) matches any file nested under that directory prefix.
+function workflowPathsCover(pathEntries, targetPath) {
+  return pathEntries.some((entry) => {
+    if (entry === targetPath) return true;
+    if (entry.endsWith('/**')) {
+      const prefix = entry.slice(0, -'**'.length);
+      return targetPath.startsWith(prefix);
+    }
+    return false;
+  });
+}
+
 // Parse an extracted `capability_signals:` block into a plain object, so
 // tests can deep-compare *values* (booleans, the `unresolved_signals` list,
 // `source`) instead of relying on incidental comment text lining up. Strips
@@ -563,6 +601,26 @@ test('threadlight-deploy documents legacy-foundation migration, ambiguous-match 
   );
 });
 
+test('threadlight-deploy hard-stops the hand-crafted/no-foundation branch when SPEC § 11e has no capability_signals block', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+
+  const handCraftedHeadingMatch = content.match(/Foundation entirely absent[\s\S]{0,40}hand-crafted deploy mode/);
+  assert.ok(handCraftedHeadingMatch, 'expected to locate the hand-crafted-deploy-mode branch');
+  const handCraftedSection = content.slice(handCraftedHeadingMatch.index, handCraftedHeadingMatch.index + 1800);
+
+  assert.match(
+    handCraftedSection,
+    /SPEC[^\n]{0,10}§\s*11e[\s\S]{0,100}no[\s\S]{0,20}capability_signals[\s\S]{0,200}HARD STOP/i,
+    'the hand-crafted/no-foundation branch must HARD STOP to threadlight-design when specs/SPEC.md § 11e itself ' +
+      'has no capability_signals block — this skill has no other signal source once foundation.md is absent too',
+  );
+  assert.match(
+    handCraftedSection,
+    /HARD STOP[\s\S]{0,300}never[\s\S]{0,40}default[\s\S]{0,60}four booleans[\s\S]{0,60}false/i,
+    'the hand-crafted/no-foundation branch must never default the four booleans to false on its own authority',
+  );
+});
+
 test('threadlight-deploy documents a distinct legacy-foundation branch for a full tuple missing capability_signals', () => {
   const content = read('skills/threadlight-deploy/SKILL.md');
 
@@ -906,6 +964,44 @@ test('foundation-template decision-summary row 5 updates the source taxonomy to 
   );
 });
 
+test('foundation-template source taxonomy and capability_signals source comment document the two deploy-preflight-written source values', () => {
+  const content = read('skills/threadlight-design/references/foundation-template.md');
+  const deployContent = read('skills/threadlight-deploy/SKILL.md');
+  const deployWrittenSourceValues = ['migrated-from-legacy-foundation', 'hand-crafted-deploy-inferred'];
+
+  // Both values must match the exact `source:` strings threadlight-deploy
+  // actually writes back to specs/foundation.md — the taxonomy documents
+  // what the preflight does, it does not invent its own vocabulary.
+  for (const sourceValue of deployWrittenSourceValues) {
+    assert.match(
+      deployContent,
+      new RegExp(`source:\\s*${escapeRegex(sourceValue)}`),
+      `threadlight-deploy must write \`source: ${sourceValue}\` somewhere in its runtime-policy pre-flight`,
+    );
+  }
+
+  const taxonomyHeadingMatch = content.match(/`source` taxonomy \(same as SPEC § 13\):/);
+  assert.ok(taxonomyHeadingMatch, 'expected the `source` taxonomy paragraph below the decision-summary table');
+  const taxonomySection = content.slice(taxonomyHeadingMatch.index, taxonomyHeadingMatch.index + 700);
+  for (const sourceValue of deployWrittenSourceValues) {
+    assert.match(
+      taxonomySection,
+      new RegExp('`' + escapeRegex(sourceValue) + '`'),
+      `the source taxonomy paragraph must document \`${sourceValue}\` with a concise meaning`,
+    );
+  }
+
+  const capabilitySignalsBlock = extractCapabilitySignalsBlock(content);
+  const sourceCommentLine = capabilitySignalsBlock.split('\n').find((line) => /^\s*source:/.test(line));
+  assert.ok(sourceCommentLine, 'expected a `source:` line inside the capability_signals sample block');
+  for (const sourceValue of deployWrittenSourceValues) {
+    assert.ok(
+      sourceCommentLine.includes(sourceValue),
+      `the capability_signals source comment must list \`${sourceValue}\` as an allowed value`,
+    );
+  }
+});
+
 test('foundation-template documents the Fast-PoC capability_signals escalation guard', () => {
   const content = read('skills/threadlight-design/references/foundation-template.md');
   assert.match(
@@ -1017,5 +1113,48 @@ test('threadlight-deploy describes ghcp-hosted-agents as the canonical runtime i
     ghcpSeeAlsoRow,
     /Canonical runtime/i,
     'the ghcp-hosted-agents See Also row must describe it relative to the canonical runtime default',
+  );
+});
+
+test('docs-blueprint workflow paths (pull_request and push) cover every file this runtime-policy suite reads', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  // Every distinct file this test suite loads via read()/loadPolicy() —
+  // the CI trigger must re-run whenever any of these changes, or a drifted
+  // contract doc/example could merge without the guard ever executing.
+  const testInputPaths = [
+    ...new Set([
+      ...consumerPaths,
+      'skills/threadlight-design/references/speckit-template.md',
+      'skills/threadlight-design/references/runtime-policy.json',
+      exampleFoundationPath,
+      exampleSpecPath,
+      exampleAzureYamlPath,
+      examplePyprojectPath,
+      exampleContainerPath,
+    ]),
+  ];
+
+  for (const triggerKey of ['pull_request', 'push']) {
+    const pathEntries = extractWorkflowPathsList(workflowContent, triggerKey);
+    for (const testInputPath of testInputPaths) {
+      assert.ok(
+        workflowPathsCover(pathEntries, testInputPath),
+        `${triggerKey}.paths must cover \`${testInputPath}\` (directly or via a \`**\` glob) so CI re-runs when it changes`,
+      );
+    }
+  }
+});
+
+test('docs-blueprint workflow keeps pull_request.paths and push.paths symmetric', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  const prPaths = extractWorkflowPathsList(workflowContent, 'pull_request');
+  const pushPaths = extractWorkflowPathsList(workflowContent, 'push');
+
+  assert.deepStrictEqual(
+    prPaths,
+    pushPaths,
+    'pull_request.paths and push.paths must list the exact same entries in the exact same order',
   );
 });

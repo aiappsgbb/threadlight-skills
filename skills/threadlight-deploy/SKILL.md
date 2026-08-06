@@ -263,7 +263,13 @@ remediated by asking the user to split the repo.
    Step-0-designed project. This preserves documented hand-crafted-deploy
    support. Auto and Design flows should normally already have a
    `specs/foundation.md` with its own `capability_signals`, so this path is
-   the exception, not the default.
+   the exception, not the default. **If `specs/SPEC.md § 11e` itself has no
+   `capability_signals` block** (a hand-crafted SPEC predating the contract,
+   with no prior `threadlight-design` run), there is no signal source left to
+   read at all — **HARD STOP** to `threadlight-design` instead of applying
+   any policy route, and **never default the four booleans to `false`** on
+   this skill's own authority — an unread signal is not a confirmed-absent
+   one.
 5. **Complete foundation — validate.** Otherwise (or once steps 2–4 above
    have finished migrating/creating the record), **only when**
    `specs/foundation.md`'s `capability_signals` block exists, **cross-check**
