@@ -17,6 +17,7 @@ const refreshButton = document.querySelector("#refresh");
 const startButton = document.querySelector("#start-pilot");
 const startDialog = document.querySelector("#start-dialog");
 const startForm = document.querySelector("#start-form");
+const cancelBriefButton = document.querySelector("#cancel-brief");
 const pilotBrief = document.querySelector("#pilot-brief");
 
 function endpoint(path) {
@@ -301,11 +302,11 @@ startButton.addEventListener("click", () => {
   pilotBrief.focus();
 });
 
-startForm.addEventListener("submit", async (event) => {
-  if (event.submitter?.value === "cancel") {
-    return;
-  }
+cancelBriefButton.addEventListener("click", () => {
+  startDialog.close();
+});
 
+startForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     await postIntent({ type: "start_pilot", brief: pilotBrief.value });

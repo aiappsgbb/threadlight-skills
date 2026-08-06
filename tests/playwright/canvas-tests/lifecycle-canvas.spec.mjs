@@ -42,6 +42,27 @@ test("posts a start pilot brief to chat", async ({ page }) => {
   );
 });
 
+test("cancels an empty start pilot dialog without sending intent", async ({
+  page,
+}) => {
+  const intentRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/intent")) {
+      intentRequests.push(request);
+    }
+  });
+
+  await page.getByRole("button", { name: "Start a pilot" }).click();
+  const dialog = page.getByRole("dialog", { name: "Start a pilot" });
+  await expect(dialog).toBeVisible();
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.waitForTimeout(100);
+
+  await expect(dialog).toBeHidden();
+  expect(intentRequests).toHaveLength(0);
+});
+
 test("reveals technical skill details only after explicit disclosure", async ({
   page,
 }) => {
