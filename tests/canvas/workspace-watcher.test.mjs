@@ -72,8 +72,6 @@ test("workspace watcher refreshes Improve and Handoff evidence", async () => {
   let refreshes = 0;
 
   try {
-    await mkdir(path.join(root, "tests"));
-    await mkdir(path.join(root, "router-bench-out"));
     watcher = await watchWorkspace(
       root,
       async () => {
@@ -82,19 +80,23 @@ test("workspace watcher refreshes Improve and Handoff evidence", async () => {
       { debounceMs: 40 },
     );
 
+    await mkdir(path.join(root, "tests"));
+    await mkdir(path.join(root, "router-bench-out"));
+    await waitForRefreshCount(() => refreshes, 1);
+
     await writeFile(
       path.join(root, "tests", "production-readiness-manifest.json"),
       "{}\n",
     );
-    await waitForRefreshCount(() => refreshes, 1);
+    await waitForRefreshCount(() => refreshes, 2);
 
     await writeFile(
       path.join(root, "router-bench-out", "learnings-1.md"),
       "# Learnings\n",
     );
-    await waitForRefreshCount(() => refreshes, 2);
+    await waitForRefreshCount(() => refreshes, 3);
 
-    assert.equal(refreshes, 2);
+    assert.equal(refreshes, 3);
   } finally {
     watcher?.close();
     await rm(root, { recursive: true, force: true });
