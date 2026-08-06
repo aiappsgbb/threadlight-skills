@@ -243,11 +243,21 @@ deliberate, recorded choices an operator can sign off on in one review.
 > `requires_file_generation`, `latency_sensitive_data_queries`) apply — when one
 > does, the capability route that owns that signal wins instead, or the
 > selection hard-stops
-> if the operator's explicit choice directly conflicts with it. In
+> if the operator's explicit choice directly conflicts with it. **Refuse** to
+> honor `explicit-supported-choice` while `unresolved_signals` is non-empty —
+> `runtime-policy.json`'s `requires_resolved_signals` gate on this route means
+> an operator's choice stays deferred, never guessed, until every name is
+> removed from `capability_signals.unresolved_signals`. In
 > **Fast-PoC mode**, do
 > not interview: use the policy's `default-agent` route unless a higher-priority
 > route matches, mark `source: defaulted-after-skip`, and let Step 3 surface the
-> one-line callout in SPEC § 13. In **Full mode**, walk the operator through the
+> one-line callout in SPEC § 13. Fast-PoC may only collapse `capability_signals`
+> straight to all-`false` + `unresolved_signals: []` +
+> `source: defaulted-after-skip` after its basic-scenario complexity triage
+> positively confirms none of the four is needed — if the triage cannot
+> confirm that for even one signal, **escalate to Full mode** for that
+> decision instead of silently defaulting it. In **Full mode**, walk the
+> operator through the
 > rows below, defaulting anything they don't have an opinion on.
 
 Consume the **runtime capability probe** output (above) as the first input —
@@ -620,7 +630,7 @@ Must include all sections from the template:
 > ```
 > If missing: read the existing `azure.yaml` services + `infra/main.bicep` modules, write the corresponding kebab-case selector table, prepend it to the SPEC at the right anchor, and re-validate.
 11d. **Demo Data (Realism rules)** — per-entity volumes, distribution, golden cases, reset semantics, industry realism rules. **INPUT CONTRACT for `threadlight-demo-data-factory`.** *Required for every process with mocked systems.*
-11e. **Workflow Model** — `workflow_model: agent | workflow` plus a machine-readable `capability_signals` block (`requires_toolbox`, `requires_custom_python_tools`, `requires_file_generation`, `latency_sensitive_data_queries`). **INPUT CONTRACT for `threadlight-deploy` Phase 2** (determines whether to generate an Agent container or a DurableWorkflow container). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions. Write `capability_signals` verbatim from `specs/foundation.md § 1` (when present) — the two blocks must stay consistent; a mismatch is drift, not two independent sources of truth.
+11e. **Workflow Model** — `workflow_model: agent | workflow` plus a machine-readable `capability_signals` block (`requires_toolbox`, `requires_custom_python_tools`, `requires_file_generation`, `latency_sensitive_data_queries`, `unresolved_signals`). **INPUT CONTRACT for `threadlight-deploy` Phase 2** (determines whether to generate an Agent container or a DurableWorkflow container). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions. Write `capability_signals` verbatim from `specs/foundation.md § 1` (when present) — the two blocks must stay consistent; a mismatch is drift, not two independent sources of truth. An empty `unresolved_signals` means all four booleans are resolved decisions, not placeholders.
 11f. **Deployment Posture** — `deployment_target: demo-sandbox | customer-pilot | production-bound` plus posture overrides (networking, replicas, retention, model_pinning) and a `deferred_decisions:` list. **INPUT CONTRACT for `threadlight-deploy` Phase 1.5**: when populated, Phase 1.5 takes Path 1 (proceed with matching posture defaults, no operator prompt); when absent, Phase 1.5 asks the operator once. Pre-populated by Step 1.5 of this skill (Full mode); left empty by Fast-PoC.
 12. **Production Readiness** — target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner, pricing plan, model list, waivers, Defender/Policy floor. Includes a **`load_profile{}`** sub-block (consumed by `threadlight-consumption-iq` wizard to produce cost projections and SKU recommendations — see `references/speckit-template.md § 12`).
 13. **Assumptions & Open Questions** — what's given, what needs stakeholder input

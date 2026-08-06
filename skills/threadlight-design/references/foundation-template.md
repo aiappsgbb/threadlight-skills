@@ -32,7 +32,14 @@ instead of silent defaults back-filled during generation.
 > **house default** below, set `source: defaulted-after-skip`, and have Step 3
 > surface a one-line callout in SPEC § 12 (_"Foundation not collected; using
 > house defaults — override in specs/foundation.md"_). Silent defaults stay
-> auditable.
+> auditable. **`capability_signals` is the one row that is not a blind
+> default**: Fast-PoC may only collapse it straight to all four booleans
+> `false` + `unresolved_signals: []` + `source: defaulted-after-skip` **after**
+> its basic-scenario complexity triage positively confirms none of the four is
+> needed. If that triage cannot confirm absence for even one signal, **escalate
+> to Full mode** for that decision instead of silently defaulting it —
+> Fast-PoC never guesses a capability signal false merely because it wasn't
+> asked about.
 
 > **Authority order** (drift mitigation): `specs/foundation.md` → the SPEC
 > sections it pre-populates → `azd env` vars. On rerun, a decision changed in
@@ -49,7 +56,7 @@ instead of silent defaults back-filled during generation.
 | 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
 | 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
-| 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) | inferred \| defaulted \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` |
+| 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) + `unresolved_signals` (per-signal unknown marker) | inferred \| defaulted-after-skip \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` / `requires_resolved_signals` |
 | 6 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
 | 7 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
 | 8 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
@@ -80,7 +87,9 @@ protocol: invocations                   # invocations (default) | responses
 policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
   # Canonical default tuple: github-copilot-sdk + agent + invocations (policy_route: default-agent).
   # Explicit operator overrides must match a compatible_combinations tuple AND
-  # be free of that route's blocked_when capability signals.
+  # be free of that route's blocked_when capability signals AND have every
+  # capability signal resolved (unresolved_signals empty — runtime-policy.json's
+  # requires_resolved_signals gate on this route).
   # MAF exceptions: deterministic-workflow →
   # microsoft-agent-framework + workflow + responses;
   # maf-agent-capabilities → microsoft-agent-framework + agent + responses.
@@ -89,12 +98,17 @@ policy_route: default-agent             # explicit-supported-choice | determinis
   # deterministic multi-phase processes with persona gates; the operator
   # confirms or overrides at the Step 4 checkpoint. Do NOT re-litigate here —
   # record the current choice and let discovery refine it.
-capability_signals:                     # the machine-readable booleans runtime-policy.json's blocked_when keys on
+capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
   requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
   requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
   requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
   latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
-  source: defaulted-after-skip          # provided | inferred | defaulted-after-skip | open-question
+  unresolved_signals:                   # per-signal unknown marker — a listed name means its boolean above is a placeholder, not a decision
+    - requires_toolbox
+    - requires_custom_python_tools
+    - requires_file_generation
+    - latency_sensitive_data_queries
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question
 ```
 
 → **Pre-populates** SPEC § 11e (`workflow_model` from `runtime_shape`, and the
@@ -107,10 +121,14 @@ to duplicate the selector.
 > **Deriving `capability_signals`.** Set each boolean from what Step 0–2
 > discovery actually found: `false` only when the requirement or tooling is
 > **confirmed absent**, never merely unknown. If discovery cannot determine a
-> signal yet, leave it unresolved (`source: open-question`) instead of
-> guessing `false` — and do not honor an explicit `explicit-supported-choice`
-> GHCP override until every signal here is resolved, since an unresolved
-> signal could still turn out to be the one a `blocked_when` route owns.
+> signal yet, leave its name in `unresolved_signals` (`source: open-question`)
+> instead of guessing `false`. As each signal resolves, **remove** its name
+> from `unresolved_signals` and set its boolean accurately — an **empty**
+> `unresolved_signals` list means all four are resolved. **Refuse** to honor an
+> explicit `explicit-supported-choice` GHCP override while `unresolved_signals`
+> is non-empty (`runtime-policy.json`'s `requires_resolved_signals` gate on
+> that route) — an unresolved signal could still turn out to be the one a
+> `blocked_when` route owns.
 
 ---
 

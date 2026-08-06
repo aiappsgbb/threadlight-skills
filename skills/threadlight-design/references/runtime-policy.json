@@ -45,6 +45,7 @@
       "selection": "operator",
       "allowed_combinations_ref": "compatible_combinations",
       "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
+      "requires_resolved_signals": true,
       "blocked_when": [
         "workflow_model=workflow",
         "requires_toolbox",
@@ -52,7 +53,7 @@
         "requires_file_generation",
         "latency_sensitive_data_queries"
       ],
-      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — the capability route that owns that signal takes the case instead, regardless of compatible_combinations membership."
+      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — the capability route that owns that signal takes the case instead, regardless of compatible_combinations membership. requires_resolved_signals is a separate gate: false-vs-unknown is never ambiguous here, so this route also refuses to fire while capability_signals.unresolved_signals is non-empty — an unresolved signal must be resolved (or the case escalated) before an operator's explicit choice can be honored, since it could still turn out to be the one a blocked_when route owns."
     },
     {
       "id": "deterministic-workflow",

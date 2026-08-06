@@ -515,12 +515,17 @@ that integration explicitly in § 5).
 ```yaml
 workflow_model: agent  # agent | workflow
 
-capability_signals:                     # mirrors specs/foundation.md § 1 verbatim — must stay consistent with it
+capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
   requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
   requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
   requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
   latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
-  source: inferred                      # provided | inferred | defaulted-after-skip | open-question
+  unresolved_signals:                   # per-signal unknown marker — a listed name means its boolean above is a placeholder, not a decision
+    - requires_toolbox
+    - requires_custom_python_tools
+    - requires_file_generation
+    - latency_sensitive_data_queries
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question
 ```
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
@@ -534,10 +539,15 @@ capability_signals:                     # mirrors specs/foundation.md § 1 verba
 > **Deriving `capability_signals`.** Set each boolean from what discovery
 > actually found: `false` only when the requirement or tooling is **confirmed
 > absent**, never merely unknown. If discovery cannot determine a signal yet,
-> leave it unresolved (`source: open-question`) instead of guessing `false`
-> — and do not honor an explicit `explicit-supported-choice` GHCP override
-> until every signal here is resolved, since an unresolved signal could still
-> turn out to be the one a `blocked_when` route owns.
+> leave its name in `unresolved_signals` (`source: open-question`) instead of
+> guessing `false`. As each signal resolves, **remove** its name from
+> `unresolved_signals` and set its boolean accurately — an **empty**
+> `unresolved_signals` list means all four are resolved. This block mirrors
+> `specs/foundation.md § 1` verbatim; the two must stay consistent. **Refuse**
+> to honor an explicit `explicit-supported-choice` GHCP override while
+> `unresolved_signals` is non-empty (`runtime-policy.json`'s
+> `requires_resolved_signals` gate on that route) — an unresolved signal could
+> still turn out to be the one a `blocked_when` route owns.
 
 ---
 

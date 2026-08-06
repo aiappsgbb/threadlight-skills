@@ -225,36 +225,63 @@ remediated by asking the user to split the repo.
    **write the missing `protocol` / `policy_route` fields back to
    `specs/foundation.md`** with a migration note (`source:
    migrated-from-legacy-foundation`, citing the route id used to infer them).
-   Then validate as normal.
+   Then continue to step 3 (this record predates `protocol` / `policy_route`
+   entirely, so it almost certainly predates `capability_signals` too).
    - **Zero or multiple matching compatible combinations** for that
      `framework` + `runtime_shape` pair → **HARD STOP** and send the operator
      back to `threadlight-design` to re-resolve the foundation. This skill
      must never guess between ambiguous or unsupported routes.
-3. **Foundation entirely absent — hand-crafted deploy mode.** If
+3. **Legacy-foundation migration (missing `capability_signals`).** A distinct
+   gap from step 2 above — not a fallthrough of it: a pre-existing
+   `specs/foundation.md` may already carry the **full** `framework` +
+   `runtime_shape` + `protocol` + `policy_route` tuple (step 2 does not apply)
+   but still **predate the `capability_signals` contract entirely**. When
+   `specs/foundation.md` has no `capability_signals` block (whether it
+   started that way or step 2 just migrated the tuple), derive the four
+   booleans and `unresolved_signals` from `specs/SPEC.md § 11e`'s
+   `capability_signals` mirror — the only other place they could already be
+   recorded — and **write them back to `specs/foundation.md`** with
+   `source: migrated-from-legacy-foundation`. If **neither**
+   `specs/foundation.md` **nor** `specs/SPEC.md § 11e` carries a
+   `capability_signals` block, **HARD STOP** to `threadlight-design` — an
+   unread signal is not a confirmed-absent one, so this skill must never
+   default the four booleans to `false` on its own authority. Then continue
+   to step 5.
+4. **Foundation entirely absent — hand-crafted deploy mode.** If
    `specs/foundation.md` does not exist at all (no `threadlight-design` run
-   preceded this deploy, so there is no foundation `capability_signals` block
-   to read), apply the **first matching policy route** using capability
-   signals read directly from SPEC § 11e (`workflow_model`, `requires_toolbox`,
+   preceded this deploy), `specs/SPEC.md § 11e` is the **sole signal source**
+   for this path — apply the **first matching policy route** using capability
+   signals read directly from it (`workflow_model`, `requires_toolbox`,
    `requires_custom_python_tools`, `requires_file_generation`,
    `latency_sensitive_data_queries`) per
    `../threadlight-design/references/runtime-policy.json`, then **create a
    minimal foundation selection record** (`framework`, `runtime_shape`,
    `protocol`, `policy_route`, `capability_signals`,
    `source: hand-crafted-deploy-inferred`) at `specs/foundation.md` before
-   generation. This preserves documented hand-crafted-deploy support. Auto
-   and Design flows should normally already have a `specs/foundation.md` with
-   its own `capability_signals`, so this path is the exception, not the
-   default.
-4. **Complete foundation — validate.** Otherwise, read `capability_signals`
-   from `specs/foundation.md § 1` (not SPEC) and **cross-check** them against
-   SPEC § 11e's `workflow_model` / `capability_signals` mirror before route
-   validation — a mismatch between the two is drift and must be surfaced, not
-   silently resolved in either direction. Then validate `framework` +
-   `runtime_shape` + `protocol` + `policy_route` from `specs/foundation.md`
-   against `../threadlight-design/references/runtime-policy.json`'s
+   generation. Once written, `specs/foundation.md` **becomes the selector
+   authority** for every subsequent read, exactly as it would for a normal
+   Step-0-designed project. This preserves documented hand-crafted-deploy
+   support. Auto and Design flows should normally already have a
+   `specs/foundation.md` with its own `capability_signals`, so this path is
+   the exception, not the default.
+5. **Complete foundation — validate.** Otherwise (or once steps 2–4 above
+   have finished migrating/creating the record), **only when**
+   `specs/foundation.md`'s `capability_signals` block exists, **cross-check**
+   it against SPEC § 11e's `workflow_model` / `capability_signals` mirror
+   before route validation — a mismatch between the two is drift and must be
+   surfaced, not silently resolved in either direction. (By this point steps
+   3–4 will already have given every foundation a `capability_signals` block,
+   so this guard is defensive, not the common case.) Then validate
+   `framework` + `runtime_shape` + `protocol` + `policy_route` from
+   `specs/foundation.md` against
+   `../threadlight-design/references/runtime-policy.json`'s
    `compatible_combinations`. **Stop before Phase 1** on any unknown selector
    or a combination not listed in `compatible_combinations` — this skill must
-   not invent a new route. Remediation for any failure in this subsection is
+   not invent a new route. If the resolved `policy_route` is
+   `explicit-supported-choice`, **refuse** it while `unresolved_signals` is
+   non-empty (`requires_resolved_signals`) — resolve the remaining signals, or
+   hard-stop back to `threadlight-design`, before honoring the operator's
+   choice. Remediation for any failure in this subsection is
    always **return to `threadlight-design` to re-resolve the foundation, or
    install the missing dependency** — never split the repo, and never fall
    back to a remembered default.
@@ -263,11 +290,14 @@ Selector values (`framework` / `runtime_shape` / `protocol` / `policy_route`)
 always come from `specs/foundation.md` — SPEC never carries a competing
 selector of its own. Capability signals (`workflow_model`, `requires_toolbox`,
 `requires_custom_python_tools`, `requires_file_generation`,
-`latency_sensitive_data_queries`) are read from `specs/foundation.md`'s
-`capability_signals` block and **cross-checked** against SPEC § 11e's
-`workflow_model` / `capability_signals` mirror before route validation (step 4
-above) and before any hand-crafted-deploy inference (step 3 above) —
-`specs/foundation.md` remains the sole selector authority.
+`latency_sensitive_data_queries`, `unresolved_signals`) are read from
+`specs/foundation.md`'s `capability_signals` block and, only when that block
+exists, **cross-checked** against SPEC § 11e's `workflow_model` /
+`capability_signals` mirror before route validation (step 5 above) — and
+`specs/SPEC.md § 11e` is read directly instead whenever `capability_signals` is
+still missing from `specs/foundation.md` (steps 3–4 above) —
+`specs/foundation.md` remains the sole selector authority once it carries the
+block.
 
 ---
 
@@ -416,7 +446,10 @@ Core deployment inputs:
   `requires_file_generation`, `latency_sensitive_data_queries`) apply.
   Otherwise the capability route that owns that signal wins, or the selection
   hard-stops if the operator's explicit choice directly conflicts with an
-  active `blocked_when` signal.
+  active `blocked_when` signal. **Refuse** the route while `unresolved_signals`
+  is non-empty (`runtime-policy.json`'s `requires_resolved_signals` gate) —
+  resolve the remaining signals, or hard-stop back to `threadlight-design`,
+  before honoring the operator's choice.
 
 #### 1e. Choose model access pattern
 

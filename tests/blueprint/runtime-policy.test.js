@@ -36,6 +36,7 @@ const expectedBlockedWhen = ['workflow_model=workflow', ...capabilitySignalKeys]
 
 const exampleDir = 'examples/returns-triage-governed';
 const exampleFoundationPath = `${exampleDir}/specs/foundation.md`;
+const exampleSpecPath = `${exampleDir}/specs/SPEC.md`;
 const exampleAzureYamlPath = `${exampleDir}/azure.yaml`;
 const examplePyprojectPath = `${exampleDir}/src/agent/pyproject.toml`;
 const exampleContainerPath = `${exampleDir}/src/agent/container.py`;
@@ -124,6 +125,72 @@ function firstAzureYamlProtocol(content) {
 // specs/foundation.md claims.
 function pyprojectDeclaresAgentFramework(content) {
   return /["']agent-framework(?:-[\w.-]+)?["'\s=<>!]/.test(content);
+}
+
+// Extract the exact `capability_signals:` block (the top-level key line plus
+// every immediately-following indented line) out of a foundation/SPEC-shaped
+// document. Deliberately a line-based extraction, not a YAML parser — this
+// repo avoids adding a YAML dependency just for test assertions.
+function extractCapabilitySignalsBlock(content) {
+  const lines = content.split('\n');
+  const startIndex = lines.findIndex((line) => /^capability_signals:/.test(line));
+  assert.ok(startIndex !== -1, 'expected a top-level `capability_signals:` line');
+  const blockLines = [lines[startIndex]];
+  for (let i = startIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^[ \t]+\S/.test(line)) {
+      blockLines.push(line);
+    } else {
+      break;
+    }
+  }
+  return blockLines.join('\n');
+}
+
+// Parse an extracted `capability_signals:` block into a plain object, so
+// tests can deep-compare *values* (booleans, the `unresolved_signals` list,
+// `source`) instead of relying on incidental comment text lining up. Strips
+// trailing `#`-comments before parsing. Handles both the multi-line
+// `- item` list form and the empty inline `[]` form for `unresolved_signals`.
+function parseCapabilitySignalsBlock(blockText) {
+  const rawLines = blockText
+    .split('\n')
+    .map((line) => line.replace(/#.*$/, '').replace(/\s+$/, ''));
+
+  const result = {};
+  let currentListKey = null;
+
+  for (let i = 1; i < rawLines.length; i += 1) {
+    const line = rawLines[i];
+    if (!line.trim()) continue;
+
+    const listItemMatch = line.match(/^\s*-\s*(.+)$/);
+    if (listItemMatch && currentListKey) {
+      result[currentListKey].push(listItemMatch[1].trim());
+      continue;
+    }
+
+    const kvMatch = line.match(/^\s*([A-Za-z_]+):\s*(.*)$/);
+    assert.ok(kvMatch, `unexpected line in capability_signals block: \`${line}\``);
+    const [, key, rawValue] = kvMatch;
+    const value = rawValue.trim();
+
+    if (value === '') {
+      result[key] = [];
+      currentListKey = key;
+    } else if (value === '[]') {
+      result[key] = [];
+      currentListKey = null;
+    } else if (value === 'true' || value === 'false') {
+      result[key] = value === 'true';
+      currentListKey = null;
+    } else {
+      result[key] = value;
+      currentListKey = null;
+    }
+  }
+
+  return result;
 }
 
 test('runtime policy file declares the supported selectors, compatible combinations, and valid default route', () => {
@@ -278,6 +345,19 @@ test('explicit-supported-choice declares the exact blocked_when capability-signa
       `blocked_when signal \`${signal}\` must be owned by a documented higher-priority route`,
     );
   }
+});
+
+test('explicit-supported-choice requires every capability signal to be resolved before an operator override is honored', () => {
+  const policy = loadPolicy();
+  const explicitRoute = policy.routes.find((route) => route.id === 'explicit-supported-choice');
+
+  assert.ok(explicitRoute, 'explicit-supported-choice route must exist');
+  assert.strictEqual(
+    explicitRoute.requires_resolved_signals,
+    true,
+    'explicit-supported-choice must declare `requires_resolved_signals: true` — a false-vs-unknown signal must never be ' +
+      'silently treated as resolved',
+  );
 });
 
 test('runtime policy is referenced by the exact skill-relative or repo-root path each consumer needs', () => {
@@ -465,6 +545,61 @@ test('threadlight-deploy documents legacy-foundation migration, ambiguous-match 
     /hand-crafted-deploy-inferred/,
     'must document the source value recorded for the hand-crafted minimal foundation record',
   );
+
+  // Hand-crafted step: SPEC § 11e is the sole signal source, and the newly
+  // written foundation record becomes the selector authority afterward.
+  const handCraftedHeadingMatch = content.match(/Foundation entirely absent[\s\S]{0,40}hand-crafted deploy mode/);
+  assert.ok(handCraftedHeadingMatch, 'expected to locate the hand-crafted-deploy-mode branch');
+  const handCraftedSection = content.slice(handCraftedHeadingMatch.index, handCraftedHeadingMatch.index + 1200);
+  assert.match(
+    handCraftedSection,
+    /sole signal source/i,
+    'the hand-crafted-deploy branch must state SPEC § 11e is the sole signal source (no foundation capability_signals exists yet)',
+  );
+  assert.match(
+    handCraftedSection,
+    /becomes[\s\S]{0,40}authority/i,
+    'the hand-crafted-deploy branch must state the newly written foundation record becomes the selector authority',
+  );
+});
+
+test('threadlight-deploy documents a distinct legacy-foundation branch for a full tuple missing capability_signals', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+
+  assert.match(
+    content,
+    /Legacy-foundation migration \(missing `?capability_signals`?\)/,
+    'must explicitly cover the full-tuple-but-missing-capability_signals legacy case as its own branch, distinct from the partial-tuple case',
+  );
+
+  const branchHeadingMatch = content.match(/Legacy-foundation migration \(missing `?capability_signals`?\)/);
+  const branchSection = content.slice(branchHeadingMatch.index, branchHeadingMatch.index + 900);
+
+  assert.match(
+    branchSection,
+    /SPEC[^\n]{0,10}§\s*11e/,
+    'the missing-capability_signals branch must derive signals from SPEC § 11e',
+  );
+  assert.match(
+    branchSection,
+    /migrated-from-legacy-foundation/,
+    'the missing-capability_signals branch must write back source: migrated-from-legacy-foundation',
+  );
+  assert.match(
+    branchSection,
+    /neither[\s\S]{0,160}nor[\s\S]{0,200}HARD STOP/i,
+    'must hard-stop to threadlight-design when neither foundation nor SPEC carries a capability_signals block',
+  );
+});
+
+test('threadlight-deploy cross-checks capability_signals against SPEC only when the foundation block actually exists', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+
+  assert.match(
+    content,
+    /only when[\s\S]{0,80}capability_signals[\s\S]{0,120}cross-check/i,
+    'the complete-foundation validate step must guard the SPEC cross-check on capability_signals actually existing',
+  );
 });
 
 test('design and deploy prose gate explicit-supported-choice on the absence of blocked_when signals', () => {
@@ -479,6 +614,27 @@ test('design and deploy prose gate explicit-supported-choice on the absence of b
       content,
       /blocked_when/,
       `${label} must reference blocked_when when describing explicit-supported-choice`,
+    );
+  }
+});
+
+test('design Step 0 and deploy preflight refuse explicit-supported-choice while unresolved_signals is non-empty', () => {
+  const designContent = read('skills/threadlight-design/SKILL.md');
+  const deployContent = read('skills/threadlight-deploy/SKILL.md');
+
+  for (const [label, content] of [
+    ['threadlight-design', designContent],
+    ['threadlight-deploy', deployContent],
+  ]) {
+    assert.match(
+      content,
+      /unresolved_signals/,
+      `${label} must reference \`unresolved_signals\` when gating explicit-supported-choice`,
+    );
+    assert.match(
+      content,
+      /refuse[\s\S]{0,200}unresolved_signals[\s\S]{0,80}non-empty/i,
+      `${label} must explicitly refuse to honor explicit-supported-choice while unresolved_signals is non-empty`,
     );
   }
 });
@@ -506,20 +662,73 @@ test("example foundation.md's resolved selector tuple exists in compatible_combi
 
   const namedRoute = policy.routes.find((route) => route.id === policyRoute);
   assert.ok(namedRoute, `${exampleFoundationPath} policy_route \`${policyRoute}\` must name a real route`);
-  assert.deepStrictEqual(
-    selectorTuple(namedRoute),
-    tuple,
-    `${exampleFoundationPath} selector tuple must match the \`${policyRoute}\` route's own tuple`,
-  );
+  if (namedRoute.selection === 'operator') {
+    // explicit-supported-choice has no concrete tuple of its own — it
+    // validates against compatible_combinations instead (already checked
+    // above); assert that ref explicitly here too.
+    assert.strictEqual(
+      namedRoute.allowed_combinations_ref,
+      'compatible_combinations',
+      `${exampleFoundationPath}'s \`${policyRoute}\` route must validate against compatible_combinations`,
+    );
+  } else {
+    assert.deepStrictEqual(
+      selectorTuple(namedRoute),
+      tuple,
+      `${exampleFoundationPath} selector tuple must match the \`${policyRoute}\` route's own tuple`,
+    );
+  }
 
   // This example actually runs Microsoft Agent Framework (SkillsProvider +
   // FoundryChatClient + ResponsesHostServer over the Responses protocol) per
-  // src/agent/container.py + pyproject.toml + azure.yaml — it must be pinned
-  // to the `maf-agent-capabilities` route, not the GHCP `default-agent` one.
+  // src/agent/container.py + pyproject.toml + azure.yaml. No capability
+  // signal mandates MAF for this pilot (no Toolbox/custom-tool/file-gen/
+  // latency-sensitive trigger) — it is an explicit, compatible operator
+  // choice, not a capability-mandated route.
   assert.strictEqual(framework, 'microsoft-agent-framework');
   assert.strictEqual(runtimeShape, 'agent');
   assert.strictEqual(protocol, 'responses');
-  assert.strictEqual(policyRoute, 'maf-agent-capabilities');
+  assert.strictEqual(policyRoute, 'explicit-supported-choice');
+});
+
+test('example foundation.md does not emit a customer-project-broken references/runtime-policy.json filesystem path', () => {
+  const content = read(exampleFoundationPath);
+  assert.ok(
+    !content.includes('references/runtime-policy.json'),
+    `${exampleFoundationPath} must not paste a references/runtime-policy.json path — the recorded schema id already ` +
+      'identifies the contract version, and that path does not exist relative to a customer project',
+  );
+});
+
+test("example foundation.md and SPEC.md § 11e capability_signals blocks are identical, fully resolved, and provided", () => {
+  const foundationContent = read(exampleFoundationPath);
+  const specContent = read(exampleSpecPath);
+
+  const foundationBlock = extractCapabilitySignalsBlock(foundationContent);
+  const specBlock = extractCapabilitySignalsBlock(specContent);
+
+  const foundationParsed = parseCapabilitySignalsBlock(foundationBlock);
+  const specParsed = parseCapabilitySignalsBlock(specBlock);
+
+  assert.deepStrictEqual(
+    foundationParsed,
+    specParsed,
+    `${exampleFoundationPath} and ${exampleSpecPath} § 11e capability_signals blocks must carry identical resolved values`,
+  );
+
+  for (const key of capabilitySignalKeys) {
+    assert.strictEqual(
+      foundationParsed[key],
+      false,
+      `\`${key}\` must be resolved \`false\` for this pilot (confirmed absent, not merely unknown)`,
+    );
+  }
+  assert.deepStrictEqual(
+    foundationParsed.unresolved_signals,
+    [],
+    'every capability signal is resolved for this pilot — unresolved_signals must be empty',
+  );
+  assert.strictEqual(foundationParsed.source, 'provided');
 });
 
 test('example azure.yaml declared protocol matches the protocol resolved in specs/foundation.md', () => {
@@ -611,6 +820,104 @@ test('capability_signals is a machine-readable contract block in both foundation
       `${label} must state that an unresolved signal blocks honoring an explicit GHCP override`,
     );
   }
+});
+
+test('capability_signals sample block is byte/structure identical between foundation-template and speckit-template § 11e', () => {
+  const foundationContent = read('skills/threadlight-design/references/foundation-template.md');
+  const speckitContent = read('skills/threadlight-design/references/speckit-template.md');
+
+  const foundationBlock = extractCapabilitySignalsBlock(foundationContent);
+  const speckitBlock = extractCapabilitySignalsBlock(speckitContent);
+
+  assert.strictEqual(
+    foundationBlock,
+    speckitBlock,
+    'capability_signals sample block text must be byte-for-byte identical between foundation-template.md § 1 and ' +
+      'speckit-template.md § 11e',
+  );
+
+  const foundationParsed = parseCapabilitySignalsBlock(foundationBlock);
+  const speckitParsed = parseCapabilitySignalsBlock(speckitBlock);
+  assert.deepStrictEqual(
+    foundationParsed,
+    speckitParsed,
+    'parsed capability_signals key/list values must match between the two templates',
+  );
+
+  // The template sample represents the unresolved placeholder state — every
+  // boolean is a placeholder, not a decision, while its name is still listed
+  // in unresolved_signals.
+  for (const key of capabilitySignalKeys) {
+    assert.strictEqual(
+      foundationParsed[key],
+      false,
+      `template sample \`${key}\` is a placeholder value, but the field must still be present as a boolean`,
+    );
+  }
+  assert.deepStrictEqual(
+    foundationParsed.unresolved_signals,
+    capabilitySignalKeys,
+    'the template sample must list all four signal names as unresolved by default',
+  );
+  assert.strictEqual(
+    foundationParsed.source,
+    'open-question',
+    'the template sample source must be open-question — a placeholder, not a resolved decision',
+  );
+});
+
+test('both templates document the unresolved_signals derivation rule (remove resolved names; empty list means fully resolved)', () => {
+  const templates = {
+    'skills/threadlight-design/references/foundation-template.md': read(
+      'skills/threadlight-design/references/foundation-template.md',
+    ),
+    'skills/threadlight-design/references/speckit-template.md': read(
+      'skills/threadlight-design/references/speckit-template.md',
+    ),
+  };
+
+  for (const [label, content] of Object.entries(templates)) {
+    assert.match(
+      content,
+      /unresolved_signals/,
+      `${label} must reference the \`unresolved_signals\` per-signal unknown marker`,
+    );
+    assert.match(
+      content,
+      /remove[\s\S]{0,120}unresolved_signals/i,
+      `${label} must document removing a resolved signal's name from unresolved_signals`,
+    );
+    assert.match(
+      content,
+      /empty[\s\S]{0,80}unresolved_signals[\s\S]{0,80}(?:all four|resolved)|unresolved_signals[\s\S]{0,80}empty[\s\S]{0,80}(?:all four|resolved)/i,
+      `${label} must document that an empty unresolved_signals list means all four signals are resolved`,
+    );
+  }
+});
+
+test('foundation-template decision-summary row 5 updates the source taxonomy to inferred | defaulted-after-skip | open-question', () => {
+  const content = read('skills/threadlight-design/references/foundation-template.md');
+  const rowMatch = content.match(/\|\s*5\s*\|\s*Capability signals[^\n]*\|/);
+  assert.ok(rowMatch, 'expected to find decision-summary row 5 (Capability signals)');
+  assert.match(
+    rowMatch[0],
+    /inferred \\?\|\s*defaulted-after-skip \\?\|\s*open-question/,
+    'row 5 source taxonomy must read inferred | defaulted-after-skip | open-question, not the bare "defaulted"',
+  );
+});
+
+test('foundation-template documents the Fast-PoC capability_signals escalation guard', () => {
+  const content = read('skills/threadlight-design/references/foundation-template.md');
+  assert.match(
+    content,
+    /Fast-PoC[\s\S]{0,600}complexity triage/i,
+    'Fast-PoC prose must reference a basic-scenario complexity triage before defaulting capability_signals',
+  );
+  assert.match(
+    content,
+    /complexity triage[\s\S]{0,300}escalate[\s\S]{0,80}Full/i,
+    'Fast-PoC must escalate to Full mode when the complexity triage cannot confirm a signal is unneeded, instead of silently defaulting it',
+  );
 });
 
 test('all five route-selection signals (workflow_model + capability booleans) are documented across design and deploy instructions', () => {
