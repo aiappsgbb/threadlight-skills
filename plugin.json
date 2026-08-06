@@ -106,5 +106,6 @@
     "governance-ci-gate",
     "governance-attestation"
   ],
-  "skills": "skills/"
+  "skills": "skills/",
+  "extensions": ".github/extensions/"
 }
