@@ -65,3 +65,39 @@ test("workspace watcher attaches newly created roots before publishing debounced
     await rm(SCRATCH_ROOT, { recursive: true, force: true });
   }
 });
+
+test("workspace watcher refreshes Improve and Handoff evidence", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-evidence");
+  let watcher;
+  let refreshes = 0;
+
+  try {
+    await mkdir(path.join(root, "tests"));
+    await mkdir(path.join(root, "router-bench-out"));
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      { debounceMs: 40 },
+    );
+
+    await writeFile(
+      path.join(root, "tests", "production-readiness-manifest.json"),
+      "{}\n",
+    );
+    await waitForRefreshCount(() => refreshes, 1);
+
+    await writeFile(
+      path.join(root, "router-bench-out", "learnings-1.md"),
+      "# Learnings\n",
+    );
+    await waitForRefreshCount(() => refreshes, 2);
+
+    assert.equal(refreshes, 2);
+  } finally {
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(SCRATCH_ROOT, { recursive: true, force: true });
+  }
+});

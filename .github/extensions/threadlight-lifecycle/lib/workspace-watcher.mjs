@@ -5,11 +5,20 @@ import path from "node:path";
 export const WATCH_ROOTS = [
   ".",
   "specs",
+  "specs/sample-data",
   ".threadlight",
   "docs",
+  "docs/threadlight-customize",
   "infra",
   "src",
+  "src/agent",
+  "src/bot",
+  "src/triggers",
+  "src/workspace",
+  ".github",
   ".github/workflows",
+  "tests",
+  "router-bench-out",
 ];
 
 export async function watchWorkspace(
