@@ -23,6 +23,7 @@ GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 > runtime files. The intentional default stays `github-copilot-sdk` + `agent` +
 > `invocations` (`policy_route: default-agent`) until GHCP Responses works end
 > to end.
+> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 The seventeen skills (alphabetical, but the canonical flow order is given in
 the next section):

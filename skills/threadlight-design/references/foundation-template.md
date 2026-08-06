@@ -18,6 +18,7 @@ instead of silent defaults back-filled during generation.
 > selector contract for `framework`, `runtime_shape`, `protocol`, and
 > `policy_route`. This template records the chosen route; it does not invent a
 > competing default table.
+> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 > **Fast-PoC mode.** Do not interview the operator. Fill every row with the
 > **house default** below, set `source: defaulted-after-skip`, and have Step 3
@@ -63,7 +64,9 @@ protocol: invocations                   # invocations (default) | responses
 policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
   # Apply the first matching route from
   # skills/threadlight-design/references/runtime-policy.json.
-  # The locked default route is github-copilot-sdk + agent + invocations.
+  # Canonical default tuple: github-copilot-sdk + agent + invocations (policy_route: default-agent).
+  # Explicit operator overrides must match compatible_combinations in
+  # skills/threadlight-design/references/runtime-policy.json.
   # MAF exceptions are documented there: deterministic-workflow →
   # microsoft-agent-framework + workflow + responses;
   # maf-agent-capabilities → microsoft-agent-framework + agent + responses.

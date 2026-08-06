@@ -37,7 +37,9 @@ route remains `github-copilot-sdk` + `agent` + `invocations`
 (`policy_route: default-agent`). Exception routes are
 `deterministic-workflow` → MAF workflow + Responses,
 `maf-agent-capabilities` → MAF agent + Responses, and
-`explicit-supported-choice` for supported, compatible operator overrides.
+`explicit-supported-choice` for operator overrides listed in
+`compatible_combinations`. Canonical default tuple: `github-copilot-sdk` +
+`agent` + `invocations` (`policy_route: default-agent`).
 
 Uses the **`azd ai agent` extension** for declarative deployment — `azure.yaml` defines
 agent configuration, model deployments, and container resources; `azd up` handles everything.
@@ -272,8 +274,9 @@ SpecKit specification from `threadlight-design`. Extract:
 - **§ 11 Security/Compliance** → regulatory constraints, data retention
 - **`specs/foundation.md` + SPEC § 11c / § 11e selectors** → validate
   `framework`, `runtime_shape`, `protocol`, and `policy_route` against
-  `skills/threadlight-design/references/runtime-policy.json`; stop on unknown or
-  incompatible combinations before generating files
+  `skills/threadlight-design/references/runtime-policy.json`; stop on unknown
+  selectors or selector tuples not listed in `compatible_combinations` before
+  generating files
 - **§ 11e Workflow Model** → `agent` (default) or `workflow` → drives Phase 1d variant selection and Phase 2 container shape
 
 #### 1c. Read `AGENTS.md` and all skills (always)
@@ -305,7 +308,8 @@ Core deployment inputs:
   `skills/threadlight-design/references/runtime-policy.json` plus any committed
   `specs/foundation.md`. If `framework` / `runtime_shape` / `protocol` /
   `policy_route` disagree across foundation and SPEC, or if the combination is
-  not one of the policy routes, stop and send the operator back to design.
+  not listed in `compatible_combinations`, stop and send the operator back to
+  design.
 - **Default route** — `github-copilot-sdk` + `agent` + `invocations`
   (`policy_route: default-agent`). This is still the preferred hosted-agent
   baseline until GHCP Responses works end to end.

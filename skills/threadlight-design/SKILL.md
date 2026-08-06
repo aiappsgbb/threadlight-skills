@@ -234,8 +234,10 @@ deliberate, recorded choices an operator can sign off on in one review.
 > of this skill). Before locking `framework`, `runtime_shape`, or `protocol`,
 > read `skills/threadlight-design/references/runtime-policy.json`, apply the
 > **first matching route**, and copy its selectors plus `policy_route` into
-> `specs/foundation.md`. Use `explicit-supported-choice` only when the operator
-> explicitly asks for a supported, compatible override. In **Fast-PoC mode**, do
+> `specs/foundation.md`. Canonical default tuple: `github-copilot-sdk` +
+> `agent` + `invocations` (`policy_route: default-agent`). Use
+> `explicit-supported-choice` only when the operator explicitly asks for a
+> selector tuple listed in `compatible_combinations`. In **Fast-PoC mode**, do
 > not interview: use the policy's `default-agent` route unless a higher-priority
 > route matches, mark `source: defaulted-after-skip`, and let Step 3 surface the
 > one-line callout in SPEC § 13. In **Full mode**, walk the operator through the
@@ -249,7 +251,8 @@ cover**:
 1. **Framework, runtime shape, and protocol** — resolve them from
    `skills/threadlight-design/references/runtime-policy.json`. The locked
    default route is `github-copilot-sdk` + `agent` + `invocations`
-   (`policy_route: default-agent`). The policy's MAF exception routes are
+   (`policy_route: default-agent`). Operator overrides must be selector tuples
+   listed in `compatible_combinations`. The policy's MAF exception routes are
    `deterministic-workflow` (`workflow` → MAF workflow + Responses) and
    `maf-agent-capabilities` (Toolbox / custom Python tools / file generation /
    latency-sensitive data queries → MAF agent + Responses). The

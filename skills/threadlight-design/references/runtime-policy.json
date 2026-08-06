@@ -21,12 +21,30 @@
     "protocol": "invocations",
     "policy_route": "default-agent"
   },
+  "compatible_combinations": [
+    {
+      "framework": "github-copilot-sdk",
+      "runtime_shape": "agent",
+      "protocol": "invocations"
+    },
+    {
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "agent",
+      "protocol": "responses"
+    },
+    {
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "workflow",
+      "protocol": "responses"
+    }
+  ],
   "routes": [
     {
       "id": "explicit-supported-choice",
       "priority": 1,
       "selection": "operator",
-      "when": "operator explicitly chooses a supported, policy-compatible framework/runtime_shape/protocol combination",
+      "allowed_combinations_ref": "compatible_combinations",
+      "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
       "rationale": "Honor a compatible explicit operator override before house routing."
     },
     {
