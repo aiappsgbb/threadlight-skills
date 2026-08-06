@@ -109,6 +109,14 @@ export async function createArtifactReader(workspace) {
       );
     }
 
+    const resolvedRelative = path
+      .relative(workspaceReal, realCandidate)
+      .split(path.sep)
+      .join("/");
+    if (!isAllowed(resolvedRelative)) {
+      throw new ArtifactAccessError(normalized, "resolved path is not allowlisted");
+    }
+
     return { normalized, candidate: realCandidate, exists: true };
   }
 

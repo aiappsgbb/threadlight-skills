@@ -88,6 +88,26 @@ test("reader rejects allowlisted symlinks escaping the workspace", async () => {
   });
 });
 
+test("reader rejects allowlisted symlinks targeting denied workspace files", async () => {
+  await withWorkspace("denied-symlink-target", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL("specs/", workspace), { recursive: true });
+    await writeFile(new URL(".env", workspace), "SECRET=leaked", "utf8");
+    await symlink(
+      "../.env",
+      fileURLToPath(new URL("specs/manifest.json", workspace)),
+    );
+
+    const reader = await createArtifactReader(workspacePath);
+
+    await assert.rejects(
+      reader.readText("specs/manifest.json"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === "specs/manifest.json",
+    );
+  });
+});
+
 test("reader wraps malformed JSON parse failures", async () => {
   await withWorkspace("malformed-json", async ({ workspace, workspacePath }) => {
     await mkdir(new URL("specs/", workspace), { recursive: true });
