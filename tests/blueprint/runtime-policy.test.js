@@ -1127,6 +1127,7 @@ test('docs-blueprint workflow paths (pull_request and push) cover every file thi
       ...consumerPaths,
       'skills/threadlight-design/references/speckit-template.md',
       'skills/threadlight-design/references/runtime-policy.json',
+      '.github/workflows/docs-blueprint.yml',
       exampleFoundationPath,
       exampleSpecPath,
       exampleAzureYamlPath,
