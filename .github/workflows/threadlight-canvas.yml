@@ -2,11 +2,12 @@ name: threadlight-canvas
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - ".github/extensions/threadlight-lifecycle/**"
       - "tests/canvas/**"
       - "tests/playwright/canvas-tests/**"
-      - "canvas.config"
       - "tests/playwright/canvas.config.mjs"
       - "tests/playwright/package*.json"
       - "plugin.json"
@@ -18,7 +19,6 @@ on:
       - ".github/extensions/threadlight-lifecycle/**"
       - "tests/canvas/**"
       - "tests/playwright/canvas-tests/**"
-      - "canvas.config"
       - "tests/playwright/canvas.config.mjs"
       - "tests/playwright/package*.json"
       - "plugin.json"

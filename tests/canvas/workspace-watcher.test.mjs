@@ -11,6 +11,18 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForRefreshCount(getCount, expected, timeoutMs = 2_000) {
+  const startedAt = Date.now();
+  while (getCount() < expected) {
+    if (Date.now() - startedAt >= timeoutMs) {
+      assert.fail(
+        `Timed out waiting for ${expected} refresh(es); received ${getCount()}`,
+      );
+    }
+    await delay(10);
+  }
+}
+
 async function createScratchWorkspace(name) {
   const workspace = path.join(
     SCRATCH_ROOT,
@@ -37,12 +49,14 @@ test("workspace watcher attaches newly created roots before publishing debounced
     await mkdir(path.join(root, "specs"));
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
     await writeFile(path.join(root, "specs", "manifest.json"), "{}\n");
-    await delay(120);
+    await waitForRefreshCount(() => refreshes, 1);
+    // Any duplicate callback from this burst is due within one debounce window.
+    await delay(80);
 
     assert.equal(refreshes, 1);
 
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
-    await delay(120);
+    await waitForRefreshCount(() => refreshes, 2);
 
     assert.equal(refreshes, 2);
   } finally {
