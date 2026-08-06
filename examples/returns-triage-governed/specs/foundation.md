@@ -8,19 +8,28 @@
 
 ```yaml
 schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
-framework: github-copilot-sdk           # GHCP SDK — canonical default (policy_route: default-agent)
+framework: microsoft-agent-framework    # MAF — src/agent/container.py Agent + SkillsProvider + FoundryChatClient
 runtime_shape: agent                    # single agent + skills + tools (not a DurableWorkflow)
-protocol: invocations                   # GHCP Invocations (SSE streaming)
-policy_route: default-agent             # references/runtime-policy.json default route
+protocol: responses                     # ResponsesHostServer (azure.yaml `protocols: [{ protocol: responses }]`)
+policy_route: maf-agent-capabilities    # references/runtime-policy.json — requires_toolbox triggers this route
 source: defaulted-after-skip
 ```
 
 Rationale: returns triage is a per-case decision with tool-gathering + a small
 rule set + one human gate — an **agent** with skills fits better than a
-deterministic multi-phase DurableWorkflow. No `blocked_when` capability signal
-(`workflow_model=workflow`, `requires_toolbox`, `requires_custom_python_tools`,
-`requires_file_generation`, `latency_sensitive_data_queries`) applies, so the
-policy's `default-agent` route stands. Confirm at SPEC § 11e.
+deterministic multi-phase DurableWorkflow. `requires_toolbox` is the active
+`blocked_when` capability signal: the agent binds five Foundry/MCP tools
+(`oms_get_order`, `returns_get_case`, `returns_list_open`,
+`customer_get_profile`, `returns_apply_decision`) plus a **Foundry IQ**
+knowledge surface for the return policy, so the policy routes this pilot to
+`maf-agent-capabilities` instead of the GHCP `default-agent` default.
+`src/agent/container.py` builds the runtime as **Microsoft Agent Framework**
+`Agent` + `FoundryChatClient`, with progressive skill loading via
+`SkillsProvider.from_paths("skills/")`, served by
+`agent_framework_foundry_hosting.ResponsesHostServer`; `pyproject.toml` pins
+`agent-framework-core` / `agent-framework-foundry` /
+`agent-framework-foundry-hosting`; and `azure.yaml`'s `returns-triage` service
+declares `protocols: [{ protocol: responses }]`. Confirm at SPEC § 11e.
 
 ## Model & capacity
 
@@ -89,7 +98,7 @@ source: defaulted-after-skip
 
 | Area | Choice | Source |
 |------|--------|--------|
-| Framework | github-copilot-sdk + agent + invocations (`policy_route: default-agent`) | defaulted-after-skip |
+| Framework | microsoft-agent-framework + agent + responses (`policy_route: maf-agent-capabilities`) | defaulted-after-skip |
 | Model | gpt-5.4 @ Sweden Central, GlobalStandard 50K TPM, EU boundary | defaulted-after-skip |
 | Hosting | ACA hosted agent (Foundry) + local `threadlight_quickstart` | defaulted-after-skip |
 | Tools | MCP, mock-first (3 mocked systems) | defaulted-after-skip |

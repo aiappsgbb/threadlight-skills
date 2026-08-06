@@ -23,13 +23,22 @@ const consumerRuntimePolicyPaths = {
 };
 const consumerPaths = Object.keys(consumerRuntimePolicyPaths);
 const selectorKeys = ['framework', 'runtime_shape', 'protocol'];
-const expectedBlockedWhen = [
-  'workflow_model=workflow',
+const capabilitySignalKeys = [
   'requires_toolbox',
   'requires_custom_python_tools',
   'requires_file_generation',
   'latency_sensitive_data_queries',
 ];
+// The five fields `runtime-policy.json` routes (and `blocked_when`) key on:
+// `workflow_model` plus the four capability booleans above.
+const routeSignals = ['workflow_model', ...capabilitySignalKeys];
+const expectedBlockedWhen = ['workflow_model=workflow', ...capabilitySignalKeys];
+
+const exampleDir = 'examples/returns-triage-governed';
+const exampleFoundationPath = `${exampleDir}/specs/foundation.md`;
+const exampleAzureYamlPath = `${exampleDir}/azure.yaml`;
+const examplePyprojectPath = `${exampleDir}/src/agent/pyproject.toml`;
+const exampleContainerPath = `${exampleDir}/src/agent/container.py`;
 
 function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -97,6 +106,24 @@ function firstValueAfterHeading(content, headingPattern, key) {
   const keyMatch = block.match(new RegExp(`^${escapeRegex(key)}:\\s*(\\S+)`, 'm'));
   assert.ok(keyMatch, `expected key \`${key}\` in the fenced yaml block`);
   return keyMatch[1];
+}
+
+// azure.yaml (azd schema) declares its protocol under a service's
+// `protocols: [{ protocol: <value> }]` list — pull the first one out without
+// a full YAML parser (the runtime-policy tests avoid a new dependency).
+function firstAzureYamlProtocol(content) {
+  const match = content.match(/protocols:\s*\n\s*-\s*protocol:\s*(\S+)/);
+  assert.ok(match, 'expected to find `protocols:\\n  - protocol: <value>` in azure.yaml');
+  return match[1];
+}
+
+// The `microsoft-agent-framework` selector maps to the `agent-framework*`
+// PyPI package family (agent-framework-core, agent-framework-foundry, ...).
+// Presence of any such dependency in pyproject.toml is the ground-truth
+// signal that the example is actually wired to MAF, independent of what
+// specs/foundation.md claims.
+function pyprojectDeclaresAgentFramework(content) {
+  return /["']agent-framework(?:-[\w.-]+)?["'\s=<>!]/.test(content);
 }
 
 test('runtime policy file declares the supported selectors, compatible combinations, and valid default route', () => {
@@ -458,8 +485,7 @@ test('design and deploy prose gate explicit-supported-choice on the absence of b
 
 test("example foundation.md's resolved selector tuple exists in compatible_combinations and matches its named concrete route", () => {
   const policy = loadPolicy();
-  const foundationPath = 'examples/returns-triage-governed/specs/foundation.md';
-  const content = read(foundationPath);
+  const content = read(exampleFoundationPath);
   const headingPattern = /## Framework & runtime shape\n/;
 
   const framework = firstValueAfterHeading(content, headingPattern, 'framework');
@@ -467,29 +493,222 @@ test("example foundation.md's resolved selector tuple exists in compatible_combi
   const protocol = firstValueAfterHeading(content, headingPattern, 'protocol');
   const policyRoute = firstValueAfterHeading(content, headingPattern, 'policy_route');
 
-  assertValidSelector(policy, 'frameworks', framework, foundationPath);
-  assertValidSelector(policy, 'runtime_shapes', runtimeShape, foundationPath);
-  assertValidSelector(policy, 'protocols', protocol, foundationPath);
+  assertValidSelector(policy, 'frameworks', framework, exampleFoundationPath);
+  assertValidSelector(policy, 'runtime_shapes', runtimeShape, exampleFoundationPath);
+  assertValidSelector(policy, 'protocols', protocol, exampleFoundationPath);
 
   const tuple = { framework, runtime_shape: runtimeShape, protocol };
   const compatibleCombinationKeys = new Set(policy.compatible_combinations.map(tupleKey));
   assert.ok(
     compatibleCombinationKeys.has(tupleKey(tuple)),
-    `${foundationPath} selector tuple (${tupleKey(tuple)}) must exist in compatible_combinations`,
+    `${exampleFoundationPath} selector tuple (${tupleKey(tuple)}) must exist in compatible_combinations`,
   );
 
   const namedRoute = policy.routes.find((route) => route.id === policyRoute);
-  assert.ok(namedRoute, `${foundationPath} policy_route \`${policyRoute}\` must name a real route`);
+  assert.ok(namedRoute, `${exampleFoundationPath} policy_route \`${policyRoute}\` must name a real route`);
   assert.deepStrictEqual(
     selectorTuple(namedRoute),
     tuple,
-    `${foundationPath} selector tuple must match the \`${policyRoute}\` route's own tuple`,
+    `${exampleFoundationPath} selector tuple must match the \`${policyRoute}\` route's own tuple`,
   );
 
-  // This example is pinned to the canonical GHCP default, not the old MAF
-  // house default.
-  assert.strictEqual(framework, 'github-copilot-sdk');
+  // This example actually runs Microsoft Agent Framework (SkillsProvider +
+  // FoundryChatClient + ResponsesHostServer over the Responses protocol) per
+  // src/agent/container.py + pyproject.toml + azure.yaml — it must be pinned
+  // to the `maf-agent-capabilities` route, not the GHCP `default-agent` one.
+  assert.strictEqual(framework, 'microsoft-agent-framework');
   assert.strictEqual(runtimeShape, 'agent');
-  assert.strictEqual(protocol, 'invocations');
-  assert.strictEqual(policyRoute, 'default-agent');
+  assert.strictEqual(protocol, 'responses');
+  assert.strictEqual(policyRoute, 'maf-agent-capabilities');
+});
+
+test('example azure.yaml declared protocol matches the protocol resolved in specs/foundation.md', () => {
+  const foundationContent = read(exampleFoundationPath);
+  const headingPattern = /## Framework & runtime shape\n/;
+  const foundationProtocol = firstValueAfterHeading(foundationContent, headingPattern, 'protocol');
+
+  const azureYamlContent = read(exampleAzureYamlPath);
+  const azureYamlProtocol = firstAzureYamlProtocol(azureYamlContent);
+
+  assert.strictEqual(
+    azureYamlProtocol,
+    foundationProtocol,
+    `${exampleAzureYamlPath} protocol (\`${azureYamlProtocol}\`) must match ${exampleFoundationPath}'s resolved protocol (\`${foundationProtocol}\`)`,
+  );
+});
+
+test("example pyproject.toml's agent-framework packages map to microsoft-agent-framework and match specs/foundation.md's framework", () => {
+  const foundationContent = read(exampleFoundationPath);
+  const headingPattern = /## Framework & runtime shape\n/;
+  const foundationFramework = firstValueAfterHeading(foundationContent, headingPattern, 'framework');
+
+  const pyprojectContent = read(examplePyprojectPath);
+  const hasAgentFrameworkPackages = pyprojectDeclaresAgentFramework(pyprojectContent);
+
+  assert.ok(
+    hasAgentFrameworkPackages,
+    `${examplePyprojectPath} must declare at least one agent-framework* dependency (the example runs MAF)`,
+  );
+  assert.strictEqual(
+    foundationFramework,
+    'microsoft-agent-framework',
+    `${exampleFoundationPath}'s \`framework\` must be microsoft-agent-framework to match the agent-framework* packages declared in ${examplePyprojectPath}`,
+  );
+});
+
+test('example container.py names the MAF runtime surfaces (SkillsProvider, ResponsesHostServer) claimed by specs/foundation.md', () => {
+  const content = read(exampleContainerPath);
+
+  // Kept intentionally loose (substring checks, no line/format coupling) so
+  // this stays robust to refactors of container.py that preserve the same
+  // runtime surfaces.
+  assert.ok(
+    content.includes('SkillsProvider'),
+    `${exampleContainerPath} must reference SkillsProvider (progressive skill loading) to back the MAF framework claim`,
+  );
+  assert.ok(
+    content.includes('ResponsesHostServer'),
+    `${exampleContainerPath} must reference ResponsesHostServer to back the \`protocol: responses\` claim`,
+  );
+});
+
+test('capability_signals is a machine-readable contract block in both foundation and speckit templates', () => {
+  const templates = {
+    'skills/threadlight-design/references/foundation-template.md': read(
+      'skills/threadlight-design/references/foundation-template.md',
+    ),
+    'skills/threadlight-design/references/speckit-template.md': read(
+      'skills/threadlight-design/references/speckit-template.md',
+    ),
+  };
+
+  for (const [label, content] of Object.entries(templates)) {
+    assert.match(
+      content,
+      /capability_signals:/,
+      `${label} must declare a machine-readable \`capability_signals:\` block`,
+    );
+    for (const key of capabilitySignalKeys) {
+      assert.match(
+        content,
+        new RegExp(`${key}:\\s*(?:true|false)`),
+        `${label}'s capability_signals block must set \`${key}\` to a boolean`,
+      );
+    }
+    assert.match(
+      content,
+      /false`?\s*only when[\s\S]{0,80}absent/i,
+      `${label} must document that a capability signal is \`false\` only when confirmed absent, not merely unknown`,
+    );
+    assert.match(
+      content,
+      /open.question/i,
+      `${label} must document the open-question fallback when discovery cannot determine a signal`,
+    );
+    assert.match(
+      content,
+      /explicit-supported-choice[\s\S]{0,80}(?:GHCP )?override/i,
+      `${label} must state that an unresolved signal blocks honoring an explicit GHCP override`,
+    );
+  }
+});
+
+test('all five route-selection signals (workflow_model + capability booleans) are documented across design and deploy instructions', () => {
+  const targets = {
+    'skills/threadlight-design/references/speckit-template.md': read(
+      'skills/threadlight-design/references/speckit-template.md',
+    ),
+    'skills/threadlight-design/references/foundation-template.md': read(
+      'skills/threadlight-design/references/foundation-template.md',
+    ),
+    'skills/threadlight-design/SKILL.md': read('skills/threadlight-design/SKILL.md'),
+    'skills/threadlight-deploy/SKILL.md': read('skills/threadlight-deploy/SKILL.md'),
+  };
+
+  for (const [label, content] of Object.entries(targets)) {
+    for (const signal of routeSignals) {
+      assert.ok(content.includes(signal), `${label} must reference the \`${signal}\` route-selection signal`);
+    }
+  }
+});
+
+test('threadlight-design Step 3 writes capability_signals into SPEC § 11e consistent with foundation', () => {
+  const content = read('skills/threadlight-design/SKILL.md');
+
+  assert.match(
+    content,
+    /11e[\s\S]{0,600}capability_signals/,
+    'Step 3 generation instructions for § 11e must mention writing the capability_signals block',
+  );
+  assert.match(
+    content,
+    /capability_signals[\s\S]{0,200}consisten/i,
+    'Step 3 instructions must require capability_signals to remain consistent with specs/foundation.md',
+  );
+});
+
+test('threadlight-deploy preflight reads capability signals from foundation and cross-checks SPEC before route validation and hand-crafted inference', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+
+  assert.match(
+    content,
+    /capability_signals/,
+    'threadlight-deploy must reference the capability_signals contract field',
+  );
+  assert.match(
+    content,
+    /cross-check[\s\S]{0,150}(?:§\s*11e|workflow_model)/i,
+    'threadlight-deploy preflight must cross-check capability signals against SPEC § 11e / workflow_model',
+  );
+});
+
+test('blocked_when consumer prose avoids the misleading "higher-priority route" phrasing introduced by this feature', () => {
+  const policy = loadPolicy();
+  const explicitRoute = policy.routes.find((route) => route.id === 'explicit-supported-choice');
+
+  assert.doesNotMatch(
+    explicitRoute.rationale,
+    /higher-priority/i,
+    'explicit-supported-choice rationale must not describe a blocked_when route as "higher-priority"',
+  );
+  assert.match(
+    explicitRoute.rationale,
+    /capability route that owns/i,
+    'explicit-supported-choice rationale must describe the owning capability route instead',
+  );
+
+  // Only the blocked_when-conflict sentence introduced by this feature is
+  // checked here — routine route-priority language predating it (e.g. the
+  // Fast-PoC "unless a higher-priority route matches" sentence, describing
+  // normal priority-1..4 route resolution) is unrelated prose and stays as-is.
+  assert.doesNotMatch(
+    read('skills/threadlight-design/SKILL.md'),
+    /higher-priority MAF route/,
+    'threadlight-design must not describe the blocked_when-owning route as the "higher-priority MAF route"',
+  );
+  assert.doesNotMatch(
+    read('skills/threadlight-deploy/SKILL.md'),
+    /higher-priority required MAF route/,
+    'threadlight-deploy must not describe the blocked_when-owning route as the "higher-priority required MAF route"',
+  );
+});
+
+test('threadlight-deploy describes ghcp-hosted-agents as the canonical runtime implementation companion, not an "Alternative runtime"', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+
+  assert.doesNotMatch(
+    content,
+    /Alternative runtime/,
+    'threadlight-deploy must not label ghcp-hosted-agents as an "Alternative runtime" — GHCP Invocations is the canonical default route',
+  );
+
+  const ghcpSeeAlsoRow = content
+    .split('\n')
+    .find((line) => line.includes('ghcp-hosted-agents') && line.trim().startsWith('|'));
+  assert.ok(ghcpSeeAlsoRow, 'expected a See Also table row referencing ghcp-hosted-agents');
+  assert.match(
+    ghcpSeeAlsoRow,
+    /Canonical runtime/i,
+    'the ghcp-hosted-agents See Also row must describe it relative to the canonical runtime default',
+  );
 });

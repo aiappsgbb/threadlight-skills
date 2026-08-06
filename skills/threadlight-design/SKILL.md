@@ -241,7 +241,8 @@ deliberate, recorded choices an operator can sign off on in one review.
 > route's `blocked_when` capability signals (`workflow_model=workflow`,
 > `requires_toolbox`, `requires_custom_python_tools`,
 > `requires_file_generation`, `latency_sensitive_data_queries`) apply — when one
-> does, the higher-priority MAF route wins instead, or the selection hard-stops
+> does, the capability route that owns that signal wins instead, or the
+> selection hard-stops
 > if the operator's explicit choice directly conflicts with it. In
 > **Fast-PoC mode**, do
 > not interview: use the policy's `default-agent` route unless a higher-priority
@@ -264,7 +265,11 @@ cover**:
    `maf-agent-capabilities` (Toolbox / custom Python tools / file generation /
    latency-sensitive data queries → MAF agent + Responses). The
    agent-vs-workflow shape still defers to the probe / § 11e, confirmed at the
-   Step 4 checkpoint.
+   Step 4 checkpoint. Record the resolved `capability_signals`
+   (`requires_toolbox`, `requires_custom_python_tools`,
+   `requires_file_generation`, `latency_sensitive_data_queries`) in
+   `specs/foundation.md § 1` alongside the tuple — they are the concrete
+   fields `blocked_when` evaluates, not free-floating prose.
 2. **Model & capacity** — default `gpt-5.4`, plus **`region`,
    `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
    (EU)** — the region/boundary/fallback triad § 7b does not capture but that
@@ -292,12 +297,14 @@ carry forward the resolved `policy_route`.
 > **Downstream contract.** Step 3 (Generate SpecKit) reads `specs/foundation.md`
 > and **pre-populates** SPEC **§ 7b** (model — extended with region / boundary /
 > fallback), **§ 11c** (tech stack), **§ 11e** (workflow model, i.e.
-> `runtime_shape`), **§ 11f** (deployment posture), and **§ 13** (runtime /
+> `runtime_shape`, plus the `capability_signals` block mirrored verbatim from
+> foundation § 1), **§ 11f** (deployment posture), and **§ 13** (runtime /
 > observability) from it instead of re-deciding. **`framework`, `protocol`, and
 > `policy_route` stay in `specs/foundation.md` only** — they are never
 > duplicated into a SPEC section; SPEC's `workflow_model` /
-> `requires_toolbox` / `requires_custom_python_tools` /
-> `requires_file_generation` / `latency_sensitive_data_queries` signals are
+> `capability_signals` (`requires_toolbox` / `requires_custom_python_tools` /
+> `requires_file_generation` / `latency_sensitive_data_queries`) are written
+> into § 11e from foundation and must remain consistent with it — they are
 > read back only to confirm the resolved `policy_route` still matches current
 > signals, not to re-decide the tuple. **Absent → today's behavior**: Step 3
 > applies the same documented defaults inline, so older runs and
@@ -613,7 +620,7 @@ Must include all sections from the template:
 > ```
 > If missing: read the existing `azure.yaml` services + `infra/main.bicep` modules, write the corresponding kebab-case selector table, prepend it to the SPEC at the right anchor, and re-validate.
 11d. **Demo Data (Realism rules)** — per-entity volumes, distribution, golden cases, reset semantics, industry realism rules. **INPUT CONTRACT for `threadlight-demo-data-factory`.** *Required for every process with mocked systems.*
-11e. **Workflow Model** — `workflow_model: agent | workflow`. **INPUT CONTRACT for `threadlight-deploy` Phase 2** (determines whether to generate an Agent container or a DurableWorkflow container). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions.
+11e. **Workflow Model** — `workflow_model: agent | workflow` plus a machine-readable `capability_signals` block (`requires_toolbox`, `requires_custom_python_tools`, `requires_file_generation`, `latency_sensitive_data_queries`). **INPUT CONTRACT for `threadlight-deploy` Phase 2** (determines whether to generate an Agent container or a DurableWorkflow container). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions. Write `capability_signals` verbatim from `specs/foundation.md § 1` (when present) — the two blocks must stay consistent; a mismatch is drift, not two independent sources of truth.
 11f. **Deployment Posture** — `deployment_target: demo-sandbox | customer-pilot | production-bound` plus posture overrides (networking, replicas, retention, model_pinning) and a `deferred_decisions:` list. **INPUT CONTRACT for `threadlight-deploy` Phase 1.5**: when populated, Phase 1.5 takes Path 1 (proceed with matching posture defaults, no operator prompt); when absent, Phase 1.5 asks the operator once. Pre-populated by Step 1.5 of this skill (Full mode); left empty by Fast-PoC.
 12. **Production Readiness** — target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner, pricing plan, model list, waivers, Defender/Policy floor. Includes a **`load_profile{}`** sub-block (consumed by `threadlight-consumption-iq` wizard to produce cost projections and SKU recommendations — see `references/speckit-template.md § 12`).
 13. **Assumptions & Open Questions** — what's given, what needs stakeholder input

@@ -506,10 +506,21 @@ that integration explicitly in § 5).
 
 > **INPUT CONTRACT for `threadlight-deploy` Phase 2.** Determines whether
 > the deploy skill generates an Agent container or a DurableWorkflow
-> container. Defaults to `agent` when absent.
+> container. Defaults to `agent` when absent. Also carries the
+> `capability_signals` block that `threadlight-deploy`'s Runtime-policy
+> pre-flight cross-checks against `specs/foundation.md § 1` before route
+> validation — the two must stay consistent (see
+> `references/runtime-policy.json`'s `blocked_when`).
 
 ```yaml
 workflow_model: agent  # agent | workflow
+
+capability_signals:                     # mirrors specs/foundation.md § 1 verbatim — must stay consistent with it
+  requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
+  requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
+  requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
+  latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
+  source: inferred                      # provided | inferred | defaulted-after-skip | open-question
 ```
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
@@ -519,6 +530,14 @@ workflow_model: agent  # agent | workflow
   scaffolds a DurableWorkflow container instead of a single agent. Use when
   the process has fixed phases, long-running waits, retries with explicit
   back-off, or human approvals between stages.
+
+> **Deriving `capability_signals`.** Set each boolean from what discovery
+> actually found: `false` only when the requirement or tooling is **confirmed
+> absent**, never merely unknown. If discovery cannot determine a signal yet,
+> leave it unresolved (`source: open-question`) instead of guessing `false`
+> — and do not honor an explicit `explicit-supported-choice` GHCP override
+> until every signal here is resolved, since an unresolved signal could still
+> turn out to be the one a `blocked_when` route owns.
 
 ---
 

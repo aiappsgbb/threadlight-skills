@@ -49,12 +49,13 @@ instead of silent defaults back-filled during generation.
 | 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
 | 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
-| 5 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
-| 6 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
-| 7 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
-| 8 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
-| 9 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
-| 10 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
+| 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) | inferred \| defaulted \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` |
+| 6 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
+| 7 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
+| 8 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
+| 9 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
+| 10 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
+| 11 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
 
 `source` taxonomy (same as SPEC § 13): `provided` (operator stated it) ·
 `inferred` (from the brief / trait matrix) · `defaulted` (house default, not
@@ -88,13 +89,28 @@ policy_route: default-agent             # explicit-supported-choice | determinis
   # deterministic multi-phase processes with persona gates; the operator
   # confirms or overrides at the Step 4 checkpoint. Do NOT re-litigate here —
   # record the current choice and let discovery refine it.
+capability_signals:                     # the machine-readable booleans runtime-policy.json's blocked_when keys on
+  requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
+  requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
+  requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
+  latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
+  source: defaulted-after-skip          # provided | inferred | defaulted-after-skip | open-question
 ```
 
-→ **Pre-populates** SPEC § 11e (`workflow_model`, from `runtime_shape`) only.
-`framework`, `protocol`, and `policy_route` stay in `specs/foundation.md` —
-they are **not** emitted into SPEC § 12 or any other section; SPEC's
-`workflow_model` / capability signals are read back only to confirm the
-resolved `policy_route` still matches, not to duplicate the selector.
+→ **Pre-populates** SPEC § 11e (`workflow_model` from `runtime_shape`, and the
+`capability_signals` block verbatim) only. `framework`, `protocol`, and
+`policy_route` stay in `specs/foundation.md` — they are **not** emitted into
+SPEC § 12 or any other section; SPEC's `workflow_model` / `capability_signals`
+are read back only to confirm the resolved `policy_route` still matches, not
+to duplicate the selector.
+
+> **Deriving `capability_signals`.** Set each boolean from what Step 0–2
+> discovery actually found: `false` only when the requirement or tooling is
+> **confirmed absent**, never merely unknown. If discovery cannot determine a
+> signal yet, leave it unresolved (`source: open-question`) instead of
+> guessing `false` — and do not honor an explicit `explicit-supported-choice`
+> GHCP override until every signal here is resolved, since an unresolved
+> signal could still turn out to be the one a `blocked_when` route owns.
 
 ---
 

@@ -232,18 +232,24 @@ remediated by asking the user to split the repo.
      must never guess between ambiguous or unsupported routes.
 3. **Foundation entirely absent — hand-crafted deploy mode.** If
    `specs/foundation.md` does not exist at all (no `threadlight-design` run
-   preceded this deploy), apply the **first matching policy route** from
-   SPEC capability signals (`workflow_model`, `requires_toolbox`,
+   preceded this deploy, so there is no foundation `capability_signals` block
+   to read), apply the **first matching policy route** using capability
+   signals read directly from SPEC § 11e (`workflow_model`, `requires_toolbox`,
    `requires_custom_python_tools`, `requires_file_generation`,
    `latency_sensitive_data_queries`) per
    `../threadlight-design/references/runtime-policy.json`, then **create a
    minimal foundation selection record** (`framework`, `runtime_shape`,
-   `protocol`, `policy_route`, `source: hand-crafted-deploy-inferred`) at
-   `specs/foundation.md` before generation. This preserves documented
-   hand-crafted-deploy support. Auto and Design flows should normally already
-   have a `specs/foundation.md`, so this path is the exception, not the
+   `protocol`, `policy_route`, `capability_signals`,
+   `source: hand-crafted-deploy-inferred`) at `specs/foundation.md` before
+   generation. This preserves documented hand-crafted-deploy support. Auto
+   and Design flows should normally already have a `specs/foundation.md` with
+   its own `capability_signals`, so this path is the exception, not the
    default.
-4. **Complete foundation — validate.** Otherwise, validate `framework` +
+4. **Complete foundation — validate.** Otherwise, read `capability_signals`
+   from `specs/foundation.md § 1` (not SPEC) and **cross-check** them against
+   SPEC § 11e's `workflow_model` / `capability_signals` mirror before route
+   validation — a mismatch between the two is drift and must be surfaced, not
+   silently resolved in either direction. Then validate `framework` +
    `runtime_shape` + `protocol` + `policy_route` from `specs/foundation.md`
    against `../threadlight-design/references/runtime-policy.json`'s
    `compatible_combinations`. **Stop before Phase 1** on any unknown selector
@@ -253,13 +259,15 @@ remediated by asking the user to split the repo.
    install the missing dependency** — never split the repo, and never fall
    back to a remembered default.
 
-`threadlight-deploy` may additionally read SPEC `workflow_model` /
-`requires_toolbox` / `requires_custom_python_tools` /
-`requires_file_generation` / `latency_sensitive_data_queries` as capability
-**signals** to confirm the resolved `policy_route` still matches — SPEC never
-carries a competing `framework` / `runtime_shape` / `protocol` / `policy_route`
-selector of its own; `specs/foundation.md` remains the sole selector
-authority.
+Selector values (`framework` / `runtime_shape` / `protocol` / `policy_route`)
+always come from `specs/foundation.md` — SPEC never carries a competing
+selector of its own. Capability signals (`workflow_model`, `requires_toolbox`,
+`requires_custom_python_tools`, `requires_file_generation`,
+`latency_sensitive_data_queries`) are read from `specs/foundation.md`'s
+`capability_signals` block and **cross-checked** against SPEC § 11e's
+`workflow_model` / `capability_signals` mirror before route validation (step 4
+above) and before any hand-crafted-deploy inference (step 3 above) —
+`specs/foundation.md` remains the sole selector authority.
 
 ---
 
@@ -406,7 +414,7 @@ Core deployment inputs:
   `blocked_when` capability signals (`workflow_model=workflow`,
   `requires_toolbox`, `requires_custom_python_tools`,
   `requires_file_generation`, `latency_sensitive_data_queries`) apply.
-  Otherwise the higher-priority required MAF route wins, or the selection
+  Otherwise the capability route that owns that signal wins, or the selection
   hard-stops if the operator's explicit choice directly conflicts with an
   active `blocked_when` signal.
 
@@ -3392,7 +3400,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Generates Adaptive Cards + audit trail for SPEC § 8 action gates |
 | [**threadlight-event-triggers**](../threadlight-event-triggers/) | Generates trigger receivers from SPEC § 10b (ACA Job cron/manual, Functions, ACA consumer) |
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Generates realistic demo data when SPEC § 5 marks any system as `mock` |
-| [**ghcp-hosted-agents**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/ghcp-hosted-agents/) | Alternative runtime — GHCP SDK with Invocations protocol (for long-running agents >120s) |
+| [**ghcp-hosted-agents**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/ghcp-hosted-agents/) | Canonical runtime implementation companion — deep reference for the `default-agent` route (GHCP SDK + Invocations, container.py template, long-running agents >120s) |
 | [**citadel-spoke-onboarding**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/citadel-spoke-onboarding/) | **Phase 7 (opt-in)** — onboards as a spoke under an AI Governance Hub when SPEC § 11b sets `governance_hub.required: yes` |
 | [**foundry-cross-resource**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-cross-resource/) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
 | [**azure-tenant-isolation**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |

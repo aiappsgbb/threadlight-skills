@@ -52,7 +52,7 @@
         "requires_file_generation",
         "latency_sensitive_data_queries"
       ],
-      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — those higher-priority capability routes own that case regardless of compatible_combinations membership."
+      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — the capability route that owns that signal takes the case instead, regardless of compatible_combinations membership."
     },
     {
       "id": "deterministic-workflow",
