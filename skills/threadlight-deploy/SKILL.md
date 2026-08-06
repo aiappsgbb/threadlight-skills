@@ -13,7 +13,8 @@ description: >-
   export, foundry-agent.zip, backfill evals. DO NOT USE FOR: designing the
   process (use threadlight-design), running evals (use foundry-evals), Teams
   bot (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
-  GHCP SDK variant (use ghcp-hosted-agents), azd tenant isolation (use
+  standalone/non-Threadlight GHCP runtime customization (use
+  ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
   version: "1.6.3"
@@ -32,14 +33,17 @@ Take a project folder (containing AGENTS.md, `src/agent/skills/`, config/, etc.)
 it with all files needed to deploy as a **Microsoft Foundry Hosted Agent**.
 
 **Canonical runtime policy:**
-`skills/threadlight-design/references/runtime-policy.json`. The locked default
+`../threadlight-design/references/runtime-policy.json`. The locked default
 route remains `github-copilot-sdk` + `agent` + `invocations`
 (`policy_route: default-agent`). Exception routes are
 `deterministic-workflow` → MAF workflow + Responses,
 `maf-agent-capabilities` → MAF agent + Responses, and
 `explicit-supported-choice` for operator overrides listed in
-`compatible_combinations`. Canonical default tuple: `github-copilot-sdk` +
-`agent` + `invocations` (`policy_route: default-agent`).
+`compatible_combinations` **and** free of that route's `blocked_when`
+capability signals. Canonical default tuple: `github-copilot-sdk` +
+`agent` + `invocations` (`policy_route: default-agent`). `specs/foundation.md`
+is the selector authority (see Phase 0 Runtime-policy pre-flight below); SPEC
+only supplies capability signals, never a competing selector.
 
 Uses the **`azd ai agent` extension** for declarative deployment — `azure.yaml` defines
 agent configuration, model deployments, and container resources; `azd up` handles everything.
@@ -161,8 +165,9 @@ repos:
 
 ### Pre-flight checklist (run this FIRST, before Phase 1)
 
-Inspect the input folder. If ANY of these are true, **stop and ask the user
-to split the repo before proceeding**:
+Inspect the input folder. These are **repo-shape signals only**. If ANY of
+these are true, **stop and ask the user to split the repo before
+proceeding**:
 
 - More than one `specs/SPEC.md` exists at any depth
 - More than one `AGENTS.md` exists at any depth
@@ -170,11 +175,10 @@ to split the repo before proceeding**:
 - The folder contains nested `specs/<process-slug>/SPEC.md` siblings
 - A previous run produced an `azure.yaml` with multiple `services:` entries that
   point to different agent containers
-- `specs/foundation.md` or SPEC selectors disagree with
-  `skills/threadlight-design/references/runtime-policy.json`, use an unknown
-  selector, or declare an incompatible `framework` + `runtime_shape` +
-  `protocol` combination. **Stop before Phase 1** — this skill must not invent a
-  new route.
+
+A runtime-policy mismatch is **never** one of these signals and is **never**
+remediated by splitting the repo — see the mandatory **Runtime-policy
+pre-flight** subsection below, which runs independently of this checklist.
 
 ### How to split
 
@@ -195,6 +199,67 @@ Before (rejected):                  After (each is its own azd up):
 
 The `threadlight-design` skill respects this by default — it generates one
 self-contained subtree per process. This skill enforces it.
+
+### Runtime-policy pre-flight (mandatory — separate from the Poly-Repo checklist above)
+
+`specs/foundation.md` is the **selector authority** for the runtime tuple
+(`framework` + `runtime_shape` + `protocol` + `policy_route`) — this is a
+cross-skill contract check, not a repo-shape signal, and it is **never**
+remediated by asking the user to split the repo.
+
+1. **Missing dependency — HARD STOP, never fall back to a remembered
+   default.** If
+   `../threadlight-design/references/runtime-policy.json` cannot be read
+   (the skill isn't installed/enabled), stop immediately and tell the
+   operator to install or enable **`threadlight-design`** (`/skills list`; if
+   missing, install from `aiappsgbb/awesome-gbb`). `threadlight-deploy`
+   already declares `threadlight-design` an **Always** dependency (see
+   Prerequisites above), so this file is expected to exist whenever
+   `threadlight-design` is present — its absence is a broken installation,
+   not a signal to guess.
+2. **Legacy-foundation migration (partial tuple).** If a pre-existing
+   `specs/foundation.md` has `framework` + `runtime_shape` but is **missing
+   `protocol` and/or `policy_route`**: resolve the unique
+   `compatible_combinations` entry whose `framework` + `runtime_shape` match
+   the recorded pair, infer the matching concrete `routes[]` entry, and
+   **write the missing `protocol` / `policy_route` fields back to
+   `specs/foundation.md`** with a migration note (`source:
+   migrated-from-legacy-foundation`, citing the route id used to infer them).
+   Then validate as normal.
+   - **Zero or multiple matching compatible combinations** for that
+     `framework` + `runtime_shape` pair → **HARD STOP** and send the operator
+     back to `threadlight-design` to re-resolve the foundation. This skill
+     must never guess between ambiguous or unsupported routes.
+3. **Foundation entirely absent — hand-crafted deploy mode.** If
+   `specs/foundation.md` does not exist at all (no `threadlight-design` run
+   preceded this deploy), apply the **first matching policy route** from
+   SPEC capability signals (`workflow_model`, `requires_toolbox`,
+   `requires_custom_python_tools`, `requires_file_generation`,
+   `latency_sensitive_data_queries`) per
+   `../threadlight-design/references/runtime-policy.json`, then **create a
+   minimal foundation selection record** (`framework`, `runtime_shape`,
+   `protocol`, `policy_route`, `source: hand-crafted-deploy-inferred`) at
+   `specs/foundation.md` before generation. This preserves documented
+   hand-crafted-deploy support. Auto and Design flows should normally already
+   have a `specs/foundation.md`, so this path is the exception, not the
+   default.
+4. **Complete foundation — validate.** Otherwise, validate `framework` +
+   `runtime_shape` + `protocol` + `policy_route` from `specs/foundation.md`
+   against `../threadlight-design/references/runtime-policy.json`'s
+   `compatible_combinations`. **Stop before Phase 1** on any unknown selector
+   or a combination not listed in `compatible_combinations` — this skill must
+   not invent a new route. Remediation for any failure in this subsection is
+   always **return to `threadlight-design` to re-resolve the foundation, or
+   install the missing dependency** — never split the repo, and never fall
+   back to a remembered default.
+
+`threadlight-deploy` may additionally read SPEC `workflow_model` /
+`requires_toolbox` / `requires_custom_python_tools` /
+`requires_file_generation` / `latency_sensitive_data_queries` as capability
+**signals** to confirm the resolved `policy_route` still matches — SPEC never
+carries a competing `framework` / `runtime_shape` / `protocol` / `policy_route`
+selector of its own; `specs/foundation.md` remains the sole selector
+authority.
 
 ---
 
@@ -272,12 +337,16 @@ SpecKit specification from `threadlight-design`. Extract:
 - **§ 9 Success Criteria** → eval scenarios for post-deploy validation (→ `foundry-evals`)
 - **§ 10 Trigger & Run Model** → model capacity, container resources
 - **§ 11 Security/Compliance** → regulatory constraints, data retention
-- **`specs/foundation.md` + SPEC § 11c / § 11e selectors** → validate
-  `framework`, `runtime_shape`, `protocol`, and `policy_route` against
-  `skills/threadlight-design/references/runtime-policy.json`; stop on unknown
-  selectors or selector tuples not listed in `compatible_combinations` before
-  generating files
-- **§ 11e Workflow Model** → `agent` (default) or `workflow` → drives Phase 1d variant selection and Phase 2 container shape
+- **`specs/foundation.md` selectors** → already resolved and validated by the
+  Phase 0 Runtime-policy pre-flight (`framework`, `runtime_shape`,
+  `protocol`, `policy_route` against
+  `../threadlight-design/references/runtime-policy.json`). Do not re-resolve
+  them here.
+- **§ 11e Workflow Model** → `agent` (default) or `workflow` — a **capability
+  signal** read back only to confirm `runtime_shape` / the resolved
+  `policy_route` still matches current signals; it also drives Phase 1d
+  variant selection and Phase 2 container shape. SPEC never carries its own
+  competing `framework` / `protocol` / `policy_route` selector.
 
 #### 1c. Read `AGENTS.md` and all skills (always)
 Core deployment inputs:
@@ -304,12 +373,17 @@ Core deployment inputs:
 | **Best for** | Open-ended chat, Q&A, RAG, exploration | Data queries, Toolbox, file generation | **Deterministic multi-phase processes with persona gates** (expense claim, hiring, KYC, contract review) |
 
 **Decision rules:**
-- **Trust the policy contract first.** Read
-  `skills/threadlight-design/references/runtime-policy.json` plus any committed
-  `specs/foundation.md`. If `framework` / `runtime_shape` / `protocol` /
-  `policy_route` disagree across foundation and SPEC, or if the combination is
-  not listed in `compatible_combinations`, stop and send the operator back to
-  design.
+- **Trust the resolved foundation tuple first.** `specs/foundation.md` is the
+  selector authority — the Phase 0 Runtime-policy pre-flight already resolved
+  and validated `framework` / `runtime_shape` / `protocol` / `policy_route`
+  against
+  `../threadlight-design/references/runtime-policy.json`'s
+  `compatible_combinations`. SPEC supplies capability **signals** only
+  (`workflow_model`, `requires_toolbox`, `requires_custom_python_tools`,
+  `requires_file_generation`, `latency_sensitive_data_queries`) — it never
+  carries a competing selector. If a SPEC signal implies a different route
+  than the one recorded in foundation, stop and send the operator back to
+  `threadlight-design` to re-resolve.
 - **Default route** — `github-copilot-sdk` + `agent` + `invocations`
   (`policy_route: default-agent`). This is still the preferred hosted-agent
   baseline until GHCP Responses works end to end.
@@ -328,7 +402,13 @@ Core deployment inputs:
   gates control progression, and the orchestrator (not the LLM) decides what
   runs next. This is the MAF equivalent of Zava-style durable orchestration.
 - **Use explicit-supported-choice only when** the operator picked a supported,
-  compatible route and design recorded that override explicitly.
+  compatible route recorded by design **and** none of that route's
+  `blocked_when` capability signals (`workflow_model=workflow`,
+  `requires_toolbox`, `requires_custom_python_tools`,
+  `requires_file_generation`, `latency_sensitive_data_queries`) apply.
+  Otherwise the higher-priority required MAF route wins, or the selection
+  hard-stops if the operator's explicit choice directly conflicts with an
+  active `blocked_when` signal.
 
 #### 1e. Choose model access pattern
 

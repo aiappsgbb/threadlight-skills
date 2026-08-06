@@ -154,7 +154,18 @@ next to the existing use-case skills.
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
 3. `azd ai agent` extension installed in the alias's `AZD_CONFIG_DIR`
-4. `skills/threadlight-design/references/runtime-policy.json` agrees with any committed `specs/foundation.md` / `specs/SPEC.md` selectors, and any explicit selector tuple is listed in `compatible_combinations`; `threadlight-auto` owns **no separate framework or protocol default**
+4. `specs/foundation.md` selectors (`framework` / `runtime_shape` /
+   `protocol` / `policy_route`) resolve against
+   `../threadlight-design/references/runtime-policy.json`'s
+   `compatible_combinations` — `specs/foundation.md` is the selector
+   authority, not `specs/SPEC.md` (SPEC supplies `workflow_model` /
+   capability signals only); any explicit selector tuple must also be free of
+   its route's `blocked_when` capability signals; `threadlight-auto` owns
+   **no separate framework or protocol default**. If
+   `../threadlight-design/references/runtime-policy.json` cannot be read
+   (the `threadlight-design` dependency is not installed/enabled), **HARD
+   STOP** and tell the operator to install or enable `threadlight-design` —
+   never fall back to a remembered default.
 5. Writes `.threadlight/preflight-passed.json` marker (24h validity)
 
 > **🛑 HARD STOP #1 — Tenant assertion failure.** If tenant verification fails (wrong
@@ -163,9 +174,11 @@ next to the existing use-case skills.
 > fix isolation before retrying.
 
 > **Runtime-policy contract.** `threadlight-design` and `threadlight-deploy`
-> both inherit `skills/threadlight-design/references/runtime-policy.json`.
+> both inherit `../threadlight-design/references/runtime-policy.json`.
 > `threadlight-auto` never invents a competing default; any policy mismatch
-> between design artifacts and deploy inputs is a hard stop before Azure work.
+> between design artifacts and deploy inputs, or a missing/unavailable
+> `threadlight-design` dependency, is a hard stop before Azure work — install
+> or enable `threadlight-design` and re-run.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 ## Resumption — read `.threadlight/auto-state.json` first
@@ -215,6 +228,7 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 
 | Stage | HARD STOP signature | Why no auto-recover |
 |---|---|---|
+| Preflight | `../threadlight-design/references/runtime-policy.json` unreadable (`threadlight-design` not installed/enabled) | Cross-skill contract missing — install/enable `threadlight-design`, never fall back to a remembered default |
 | Design | `[NEEDS CLARIFICATION:` markers remain in `specs/SPEC.md` after design | Spec is ambiguous; agent should not guess on operator's behalf |
 | Deploy | `az bicep build` exits non-zero with a real syntax error (not just warnings) | Bicep malformed; would fail in ARM validate anyway |
 | Deploy | `az deployment sub validate` returns `ValidationError` other than `InsufficientQuota` | Resource shape / RBAC scope / API version error — needs operator review |

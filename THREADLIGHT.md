@@ -17,9 +17,12 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
 > **Runtime-policy authority.**
-> `skills/threadlight-design/references/runtime-policy.json` is the canonical
-> selector contract. Authority order:
-> `runtime-policy.json` → `specs/foundation.md` → SPEC selectors → generated
+> [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
+> is the canonical selector contract. Authority order:
+> `runtime-policy.json` → `specs/foundation.md` (the selector authority) →
+> SPEC capability signals (`workflow_model`, `requires_toolbox`,
+> `requires_custom_python_tools`, `requires_file_generation`,
+> `latency_sensitive_data_queries` — never a competing selector) → generated
 > runtime files. The intentional default stays `github-copilot-sdk` + `agent` +
 > `invocations` (`policy_route: default-agent`) until GHCP Responses works end
 > to end.

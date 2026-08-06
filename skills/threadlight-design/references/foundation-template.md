@@ -7,17 +7,25 @@ instead of silent defaults back-filled during generation.
 > **Single source of truth for the pilot's technical foundations.**
 > `threadlight-design` **Step 3 (Generate SpecKit)** reads this file and
 > pre-populates SPEC **§ 7b** (model), **§ 11c** (tech stack), **§ 11e**
-> (workflow model), **§ 11f** (deployment posture), and **§ 12** (runtime /
-> observability) from it — it does not re-decide. When this file is **absent**
+> (workflow model, i.e. `runtime_shape`), **§ 11f** (deployment posture), and
+> **§ 12** (runtime / observability) from it — it does not re-decide.
+> **`framework`, `protocol`, and `policy_route` are never pre-populated into a
+> SPEC section** — `specs/foundation.md` stays their sole selector authority;
+> SPEC only supplies `workflow_model` / capability signals used to confirm the
+> resolved `policy_route` still matches. When this file is **absent**
 > (older runs, or an operator who skipped Step 0), Step 3 behaves exactly as
 > before: it applies documented defaults inline. **Kratos-export projects skip
 > Step 0 entirely** — the bundle is already designed.
 
 > **Runtime-policy authority.**
-> `skills/threadlight-design/references/runtime-policy.json` is the canonical
-> selector contract for `framework`, `runtime_shape`, `protocol`, and
-> `policy_route`. This template records the chosen route; it does not invent a
-> competing default table.
+> [`runtime-policy.json`](runtime-policy.json) (sibling of this template) is
+> the canonical selector contract for `framework`, `runtime_shape`,
+> `protocol`, and `policy_route`. **Record the resolved `schema` +
+> `policy_route` in `specs/foundation.md`** (see § 1 below) — do not emit a
+> filesystem link back to this skill's `references/` folder into a customer
+> project's `specs/foundation.md`; that path does not exist relative to the
+> customer project and would be a broken link. This template records the
+> chosen route; it does not invent a competing default table.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 > **Fast-PoC mode.** Do not interview the operator. Fill every row with the
@@ -37,10 +45,10 @@ instead of silent defaults back-filled during generation.
 
 | # | Decision | Choice | `source` | Pre-populates | Refined by |
 |---|----------|--------|----------|---------------|-----------|
-| 1 | Framework | `github-copilot-sdk` | provided \| defaulted | § 11c, § 12 | `runtime-policy.json` route resolution |
+| 1 | Framework | `github-copilot-sdk` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
-| 3 | Protocol | `invocations` | provided \| defaulted | § 12 | `runtime-policy.json` route resolution |
-| 4 | Policy route | `default-agent` | inferred \| defaulted | § 11c, § 12 | `runtime-policy.json` route resolution |
+| 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
+| 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 5 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
 | 6 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
 | 7 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
@@ -57,17 +65,22 @@ unresolved).
 
 ## 1. Framework & runtime shape
 
+> Resolve the tuple from [`runtime-policy.json`](runtime-policy.json) (the
+> sibling contract file in this same `references/` folder) and record the
+> **schema id + resolved `policy_route`** below — do not paste a filesystem
+> path to this skill's `references/` folder into the customer project; that
+> path won't exist there and the link would be broken.
+
 ```yaml
-framework: github-copilot-sdk           # default route from references/runtime-policy.json
+schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
+framework: github-copilot-sdk           # resolved via the design skill's runtime-policy route (schema above)
 runtime_shape: agent                    # agent (default) | workflow
 protocol: invocations                   # invocations (default) | responses
 policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
-  # Apply the first matching route from
-  # skills/threadlight-design/references/runtime-policy.json.
   # Canonical default tuple: github-copilot-sdk + agent + invocations (policy_route: default-agent).
-  # Explicit operator overrides must match compatible_combinations in
-  # skills/threadlight-design/references/runtime-policy.json.
-  # MAF exceptions are documented there: deterministic-workflow →
+  # Explicit operator overrides must match a compatible_combinations tuple AND
+  # be free of that route's blocked_when capability signals.
+  # MAF exceptions: deterministic-workflow →
   # microsoft-agent-framework + workflow + responses;
   # maf-agent-capabilities → microsoft-agent-framework + agent + responses.
   # Source of truth for the agent-vs-workflow shape is the runtime probe /
@@ -77,9 +90,11 @@ policy_route: default-agent             # explicit-supported-choice | determinis
   # record the current choice and let discovery refine it.
 ```
 
-→ **Pre-populates** SPEC § 11e (`workflow_model`) and § 12. `framework`,
-`protocol`, and `policy_route` are net-new here — the runtime probe records the
-*shape* but not the full runtime selector contract.
+→ **Pre-populates** SPEC § 11e (`workflow_model`, from `runtime_shape`) only.
+`framework`, `protocol`, and `policy_route` stay in `specs/foundation.md` —
+they are **not** emitted into SPEC § 12 or any other section; SPEC's
+`workflow_model` / capability signals are read back only to confirm the
+resolved `policy_route` still matches, not to duplicate the selector.
 
 ---
 

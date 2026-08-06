@@ -192,7 +192,7 @@ runtime:
   docker_available: false         # if false, deploy must use az acr build
 workflow_model: agent             # agent (default) | workflow
   # agent   — agent-driven runtime; resolve the concrete framework/protocol via
-  #           skills/threadlight-design/references/runtime-policy.json
+  #           references/runtime-policy.json
   # workflow — deterministic-workflow route → MAF DurableWorkflow +
   #            Responses with typed executors + HITL pause points
   # The trait matrix (Phase A) auto-suggests based on the process:
@@ -232,12 +232,18 @@ deliberate, recorded choices an operator can sign off on in one review.
 > **When Step 0 runs.** From-scratch path only. **Kratos-export projects skip
 > it** — the exported bundle is already designed (see the path note at the top
 > of this skill). Before locking `framework`, `runtime_shape`, or `protocol`,
-> read `skills/threadlight-design/references/runtime-policy.json`, apply the
+> read `references/runtime-policy.json`, apply the
 > **first matching route**, and copy its selectors plus `policy_route` into
 > `specs/foundation.md`. Canonical default tuple: `github-copilot-sdk` +
 > `agent` + `invocations` (`policy_route: default-agent`). Use
 > `explicit-supported-choice` only when the operator explicitly asks for a
-> selector tuple listed in `compatible_combinations`. In **Fast-PoC mode**, do
+> selector tuple listed in `compatible_combinations` **and** none of that
+> route's `blocked_when` capability signals (`workflow_model=workflow`,
+> `requires_toolbox`, `requires_custom_python_tools`,
+> `requires_file_generation`, `latency_sensitive_data_queries`) apply — when one
+> does, the higher-priority MAF route wins instead, or the selection hard-stops
+> if the operator's explicit choice directly conflicts with it. In
+> **Fast-PoC mode**, do
 > not interview: use the policy's `default-agent` route unless a higher-priority
 > route matches, mark `source: defaulted-after-skip`, and let Step 3 surface the
 > one-line callout in SPEC § 13. In **Full mode**, walk the operator through the
@@ -249,10 +255,11 @@ run. Step 0 then locks the **higher-order house standards the probe does not
 cover**:
 
 1. **Framework, runtime shape, and protocol** — resolve them from
-   `skills/threadlight-design/references/runtime-policy.json`. The locked
+   `references/runtime-policy.json`. The locked
    default route is `github-copilot-sdk` + `agent` + `invocations`
    (`policy_route: default-agent`). Operator overrides must be selector tuples
-   listed in `compatible_combinations`. The policy's MAF exception routes are
+   listed in `compatible_combinations` **and** free of any active
+   `blocked_when` signal on that route. The policy's MAF exception routes are
    `deterministic-workflow` (`workflow` → MAF workflow + Responses) and
    `maf-agent-capabilities` (Toolbox / custom Python tools / file generation /
    latency-sensitive data queries → MAF agent + Responses). The
@@ -284,13 +291,19 @@ carry forward the resolved `policy_route`.
 
 > **Downstream contract.** Step 3 (Generate SpecKit) reads `specs/foundation.md`
 > and **pre-populates** SPEC **§ 7b** (model — extended with region / boundary /
-> fallback), **§ 11c** (tech stack), **§ 11e** (workflow model), **§ 11f**
-> (deployment posture), and **§ 13** (runtime / observability) from it instead
-> of re-deciding. **Absent → today's behavior**: Step 3 applies the same
-> documented defaults inline, so older runs and skipped-Step-0 runs are
-> unaffected. Authority order on rerun: `specs/foundation.md` → the SPEC
-> sections it feeds → `azd env`; a later SPEC edit that disagrees is surfaced as
-> a conflict, not silently overwritten.
+> fallback), **§ 11c** (tech stack), **§ 11e** (workflow model, i.e.
+> `runtime_shape`), **§ 11f** (deployment posture), and **§ 13** (runtime /
+> observability) from it instead of re-deciding. **`framework`, `protocol`, and
+> `policy_route` stay in `specs/foundation.md` only** — they are never
+> duplicated into a SPEC section; SPEC's `workflow_model` /
+> `requires_toolbox` / `requires_custom_python_tools` /
+> `requires_file_generation` / `latency_sensitive_data_queries` signals are
+> read back only to confirm the resolved `policy_route` still matches current
+> signals, not to re-decide the tuple. **Absent → today's behavior**: Step 3
+> applies the same documented defaults inline, so older runs and
+> skipped-Step-0 runs are unaffected. Authority order on rerun:
+> `specs/foundation.md` → the SPEC sections it feeds → `azd env`; a later SPEC
+> edit that disagrees is surfaced as a conflict, not silently overwritten.
 
 ### Step 1: Clarify Purpose
 

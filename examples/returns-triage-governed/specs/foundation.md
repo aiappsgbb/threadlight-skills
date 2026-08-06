@@ -7,14 +7,20 @@
 ## Framework & runtime shape
 
 ```yaml
-framework: microsoft-agent-framework   # MAF — house default
+schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
+framework: github-copilot-sdk           # GHCP SDK — canonical default (policy_route: default-agent)
 runtime_shape: agent                    # single agent + skills + tools (not a DurableWorkflow)
+protocol: invocations                   # GHCP Invocations (SSE streaming)
+policy_route: default-agent             # references/runtime-policy.json default route
 source: defaulted-after-skip
 ```
 
 Rationale: returns triage is a per-case decision with tool-gathering + a small
 rule set + one human gate — an **agent** with skills fits better than a
-deterministic multi-phase DurableWorkflow. Confirm at SPEC § 11e.
+deterministic multi-phase DurableWorkflow. No `blocked_when` capability signal
+(`workflow_model=workflow`, `requires_toolbox`, `requires_custom_python_tools`,
+`requires_file_generation`, `latency_sensitive_data_queries`) applies, so the
+policy's `default-agent` route stands. Confirm at SPEC § 11e.
 
 ## Model & capacity
 
@@ -83,7 +89,7 @@ source: defaulted-after-skip
 
 | Area | Choice | Source |
 |------|--------|--------|
-| Framework | microsoft-agent-framework (agent shape) | defaulted-after-skip |
+| Framework | github-copilot-sdk + agent + invocations (`policy_route: default-agent`) | defaulted-after-skip |
 | Model | gpt-5.4 @ Sweden Central, GlobalStandard 50K TPM, EU boundary | defaulted-after-skip |
 | Hosting | ACA hosted agent (Foundry) + local `threadlight_quickstart` | defaulted-after-skip |
 | Tools | MCP, mock-first (3 mocked systems) | defaulted-after-skip |

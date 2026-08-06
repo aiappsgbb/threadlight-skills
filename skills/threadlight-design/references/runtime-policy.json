@@ -45,7 +45,14 @@
       "selection": "operator",
       "allowed_combinations_ref": "compatible_combinations",
       "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
-      "rationale": "Honor a compatible explicit operator override before house routing."
+      "blocked_when": [
+        "workflow_model=workflow",
+        "requires_toolbox",
+        "requires_custom_python_tools",
+        "requires_file_generation",
+        "latency_sensitive_data_queries"
+      ],
+      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — those higher-priority capability routes own that case regardless of compatible_combinations membership."
     },
     {
       "id": "deterministic-workflow",
