@@ -3,10 +3,13 @@ import test from "node:test";
 
 import { createLifecycleCanvas } from "../../.github/extensions/threadlight-lifecycle/lib/canvas-provider.mjs";
 
-function createHarness() {
+function createHarness({ projectWorkspace, watchWorkspace } = {}) {
   const sent = [];
+  const logs = [];
   const projected = [];
   const servers = [];
+  const watchers = [];
+  const closeEvents = [];
   const canvas = createLifecycleCanvas({
     createCanvas: (options) => options,
     webRoot: new URL("../../.github/extensions/threadlight-lifecycle/web/", import.meta.url),
@@ -14,11 +17,33 @@ function createHarness() {
       send: async (payload) => {
         sent.push(payload);
       },
+      log: async (message, options) => {
+        logs.push({ message, options });
+      },
     }),
     projectWorkspace: async (workspace) => {
       projected.push(workspace);
-      return { summary: `Projected ${workspace}`, phases: [] };
+      if (projectWorkspace) {
+        return projectWorkspace(workspace);
+      }
+      return { summary: `Projected ${workspace}`, phases: [], errors: [] };
     },
+    watchWorkspace:
+      watchWorkspace ??
+      (async (workspace, callback, options) => {
+        const watcher = {
+          workspace,
+          callback,
+          options,
+          closed: false,
+          close() {
+            this.closed = true;
+            closeEvents.push("watcher");
+          },
+        };
+        watchers.push(watcher);
+        return watcher;
+      }),
     createServer: async (options) => {
       const server = {
         url: "http://127.0.0.1/fake",
@@ -30,6 +55,7 @@ function createHarness() {
         },
         async close() {
           this.closed = true;
+          closeEvents.push("server");
         },
       };
       servers.push(server);
@@ -37,7 +63,7 @@ function createHarness() {
     },
   });
 
-  return { canvas, projected, sent, servers };
+  return { canvas, projected, sent, logs, servers, watchers, closeEvents };
 }
 
 test("unsupported hosts report unavailable without starting a server", async () => {
@@ -67,8 +93,8 @@ test("provider exposes refresh and prepare_intent actions in order", () => {
   assert.equal(Object.hasOwn(canvas, "title"), false);
 });
 
-test("supported open projects workspace and closes its loopback server", async () => {
-  const { canvas, projected, servers } = createHarness();
+test("supported open projects workspace and closes its loopback server and watcher", async () => {
+  const { canvas, projected, servers, watchers, closeEvents } = createHarness();
 
   const result = await canvas.open({
     instanceId: "threadlight-spike",
@@ -82,18 +108,26 @@ test("supported open projects workspace and closes its loopback server", async (
   });
   assert.deepEqual(projected, ["/tmp/pilot"]);
   assert.equal(servers.length, 1);
+  assert.equal(watchers.length, 1);
+  assert.equal(watchers[0].workspace, "/tmp/pilot");
+  assert.equal(typeof watchers[0].callback, "function");
+  assert.equal(watchers[0].options.debounceMs, undefined);
+  assert.equal(typeof watchers[0].options.onError, "function");
   assert.equal(typeof servers[0].options.getModel, "function");
   assert.deepEqual(await servers[0].options.getModel(), {
     summary: "Projected /tmp/pilot",
     phases: [],
+    errors: [],
   });
 
   await canvas.onClose({ instanceId: "threadlight-spike" });
+  assert.equal(watchers[0].closed, true);
   assert.equal(servers[0].closed, true);
+  assert.deepEqual(closeEvents, ["watcher", "server"]);
 });
 
 test("supported open reuses an existing instance for the same canvas id", async () => {
-  const { canvas, projected, servers } = createHarness();
+  const { canvas, projected, servers, watchers } = createHarness();
 
   const first = await canvas.open({
     instanceId: "threadlight-spike",
@@ -111,9 +145,98 @@ test("supported open reuses an existing instance for the same canvas id", async 
   });
   assert.deepEqual(second, first);
   assert.equal(servers.length, 1);
+  assert.equal(watchers.length, 1);
   assert.deepEqual(projected, ["/tmp/pilot"]);
 
   await canvas.onClose({ instanceId: "threadlight-spike" });
+  assert.equal(watchers[0].closed, true);
+  assert.equal(servers[0].closed, true);
+});
+
+test("watcher callback reprojects the workspace model and publishes it", async () => {
+  let projectionCount = 0;
+  const { canvas, projected, servers, watchers } = createHarness({
+    projectWorkspace: async (workspace) => {
+      projectionCount += 1;
+      return {
+        summary: `Projected ${workspace} #${projectionCount}`,
+        phases: [],
+        errors: [],
+      };
+    },
+  });
+
+  await canvas.open({
+    instanceId: "threadlight-spike",
+    session: { workingDirectory: "/tmp/pilot" },
+  });
+  await watchers[0].callback();
+
+  assert.deepEqual(projected, ["/tmp/pilot", "/tmp/pilot"]);
+  assert.equal(servers[0].publishCount, 1);
+  assert.deepEqual(await servers[0].options.getModel(), {
+    summary: "Projected /tmp/pilot #2",
+    phases: [],
+    errors: [],
+  });
+});
+
+test("watcher errors become visible model errors and extension logs", async () => {
+  const existingError = {
+    code: "artifact-parse-failed",
+    path: "specs/manifest.json",
+    message: "Bad JSON",
+  };
+  const { canvas, logs, servers, watchers } = createHarness({
+    projectWorkspace: async (workspace) => ({
+      summary: `Projected ${workspace}`,
+      phases: [],
+      errors: [existingError],
+    }),
+  });
+
+  await canvas.open({
+    instanceId: "threadlight-spike",
+    session: { workingDirectory: "/tmp/pilot" },
+  });
+  await watchers[0].options.onError(new Error("watch blew up"));
+
+  assert.equal(servers[0].publishCount, 1);
+  assert.deepEqual(await servers[0].options.getModel(), {
+    summary: "Workspace refresh failed",
+    phases: [],
+    errors: [
+      existingError,
+      {
+        code: "workspace-refresh-failed",
+        path: null,
+        message: "watch blew up",
+      },
+    ],
+  });
+  assert.deepEqual(logs, [
+    {
+      message: "Threadlight Canvas refresh failed: watch blew up",
+      options: { level: "error" },
+    },
+  ]);
+});
+
+test("watcher setup failure closes the server before propagating", async () => {
+  const { canvas, servers } = createHarness({
+    watchWorkspace: async () => {
+      throw new Error("watch unavailable");
+    },
+  });
+
+  await assert.rejects(
+    canvas.open({
+      instanceId: "threadlight-spike",
+      session: { workingDirectory: "/tmp/pilot" },
+    }),
+    /watch unavailable/,
+  );
+  assert.equal(servers.length, 1);
   assert.equal(servers[0].closed, true);
 });
 

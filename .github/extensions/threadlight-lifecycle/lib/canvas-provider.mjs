@@ -46,6 +46,7 @@ export function createLifecycleCanvas({
   webRoot,
   getSession,
   projectWorkspace,
+  watchWorkspace,
   createServer = createLoopbackServer,
 } = {}) {
   const instances = new Map();
@@ -113,12 +114,48 @@ export function createLifecycleCanvas({
         broker,
         model: await projectWorkspace(workspace),
         server: undefined,
+        watcher: undefined,
       };
       instance.server = await createServer({
         webRoot,
         getModel: async () => instance.model,
         onIntent: (intent) => broker.submit(intent),
       });
+      try {
+        instance.watcher = await watchWorkspace(
+          workspace,
+          async () => {
+            instance.model = await projectWorkspace(workspace);
+            instance.server.publish();
+          },
+          {
+            onError: async (error) => {
+              instance.model = {
+                ...instance.model,
+                summary: "Workspace refresh failed",
+                errors: [
+                  ...(Array.isArray(instance.model.errors)
+                    ? instance.model.errors
+                    : []),
+                  {
+                    code: "workspace-refresh-failed",
+                    path: null,
+                    message: error.message,
+                  },
+                ],
+              };
+              instance.server.publish();
+              await session.log(
+                `Threadlight Canvas refresh failed: ${error.message}`,
+                { level: "error" },
+              );
+            },
+          },
+        );
+      } catch (error) {
+        await instance.server.close();
+        throw error;
+      }
       instances.set(context.instanceId, instance);
 
       return {
@@ -134,6 +171,7 @@ export function createLifecycleCanvas({
       }
 
       instances.delete(instanceId);
+      instance.watcher.close();
       await instance.server.close();
     },
   });
