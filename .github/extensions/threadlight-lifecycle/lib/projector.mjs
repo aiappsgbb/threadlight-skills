@@ -34,13 +34,8 @@ function isYes(value) {
   return ["1", "true", "yes", "enabled"].includes(value.trim().toLowerCase());
 }
 
-function manifestSelector(manifest, key) {
-  return (
-    manifest?.selectors?.[key] ??
-    manifest?.selectors?.[key.replaceAll("-", "_")] ??
-    manifest?.[key] ??
-    manifest?.[key.replaceAll("-", "_")]
-  );
+function moduleSelectors(manifest) {
+  return manifest?.deployment_manifest?.module_selectors ?? {};
 }
 
 function hasTrait(manifest, trait) {
@@ -61,20 +56,26 @@ function isSkillApplicable(definition, manifest, manifestInvalid) {
   switch (definition.applicability) {
     case "mock-systems":
       return hasItems(manifest?.mock_systems);
-    case "human-approval":
+    case "human-approval": {
+      const selectors = moduleSelectors(manifest);
       return (
         hasTrait(manifest, "human-approval") ||
-        isYes(manifestSelector(manifest, "aca-bot"))
+        isYes(selectors["aca-bot"])
       );
-    case "workspace-ui":
-      return isYes(manifestSelector(manifest, "workspace-ui"));
-    case "event-trigger":
+    }
+    case "workspace-ui": {
+      const selectors = moduleSelectors(manifest);
+      return isYes(selectors["workspace-ui"]);
+    }
+    case "event-trigger": {
+      const selectors = moduleSelectors(manifest);
       return (
-        isYes(manifestSelector(manifest, "aca-job")) ||
-        isYes(manifestSelector(manifest, "event-grid")) ||
-        isYes(manifestSelector(manifest, "service-bus")) ||
-        hasItems(manifest?.scheduled_jobs)
+        isYes(selectors["aca-job"]) ||
+        isYes(selectors["event-grid"]) ||
+        isYes(selectors["service-bus"]) ||
+        hasItems(manifest?.deployment_manifest?.scheduled_jobs)
       );
+    }
     default:
       return true;
   }
@@ -100,22 +101,14 @@ function evidenceTimestamp(json, metadata) {
   return parseTimestamp(metadata?.modifiedAt);
 }
 
-function hasHardGate(value) {
-  return (
-    value?.hard_gate === true ||
-    value?.hardGate === true ||
-    value?.["hard gate"] === true
-  );
-}
-
 function evidenceStatus(value) {
   if (!isPlainObject(value)) {
     return null;
   }
   if (
     hasItems(value.must_fix) ||
-    hasHardGate(value) ||
-    value.go_live === "not_ready"
+    value.would_fail_hard_gate === true ||
+    value.go_live_recommendation === "not_ready"
   ) {
     return "failed";
   }

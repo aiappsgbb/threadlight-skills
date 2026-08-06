@@ -89,6 +89,21 @@ test("partial governance evidence keeps govern skill running", async () => {
   });
 });
 
+test("canonical failed production readiness blocks handoff", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("tests/production-readiness-manifest.json", {
+      checked_at: "2026-08-06T08:00:00Z",
+      go_live_recommendation: "not_ready",
+      would_fail_hard_gate: true,
+    });
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-production-ready").status, "failed");
+    assert.notEqual(findPhase(model, "handoff").status, "complete");
+  });
+});
+
 test("complete pilot projects all phases complete without errors", async () => {
   await withFixture("complete-pilot", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });

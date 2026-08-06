@@ -48,13 +48,15 @@ export async function createWorkspaceFixture(name) {
   await fixture.writeJson("specs/manifest.json", {
     traits: ["human-approval"],
     mock_systems: ["orders"],
-    selectors: {
-      "workspace-ui": "yes",
-      "aca-job": "no",
-      "event-grid": "no",
-      "service-bus": "no",
+    deployment_manifest: {
+      module_selectors: {
+        "workspace-ui": "yes",
+        "aca-job": "no",
+        "event-grid": "no",
+        "service-bus": "no",
+      },
+      scheduled_jobs: [],
     },
-    scheduled_jobs: [],
   });
 
   if (name === "design-only") {
@@ -103,8 +105,8 @@ export async function createWorkspaceFixture(name) {
   });
   await fixture.writeJson("tests/production-readiness-manifest.json", {
     checked_at: "2026-08-06T08:00:00Z",
-    go_live: "ready",
-    hard_gate: false,
+    go_live_recommendation: "ready",
+    would_fail_hard_gate: false,
   });
   await fixture.writeString("router-bench-out/learnings-1.md", "# Learnings\n");
   await fixture.writeString(
