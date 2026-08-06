@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { projectWorkspace } from "../../.github/extensions/threadlight-lifecycle/lib/projector.mjs";
 import { createWorkspaceFixture } from "./fixtures.mjs";
 
 const NOW = new Date("2026-08-06T09:00:00Z");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 
 async function withFixture(name, callback) {
   const fixture = await createWorkspaceFixture(name);
@@ -115,4 +121,25 @@ test("complete pilot projects all phases complete without errors", async () => {
     );
     assert.deepEqual(model.errors, []);
   });
+});
+
+test("projects the governed returns-triage sample without secret reads", async () => {
+  const workspace = path.join(REPO_ROOT, "examples/returns-triage-governed");
+  const model = await projectWorkspace(workspace);
+  const evidencePaths = model.phases.flatMap((phase) =>
+    phase.evidence.map((item) => item.path),
+  );
+  const skillIds = model.phases.flatMap((phase) =>
+    phase.skills.map((skill) => skill.definition.id),
+  );
+
+  assert.equal(model.phases.length, 6);
+  assert.deepEqual(model.errors, []);
+  assert.ok(
+    evidencePaths.every(
+      (itemPath) =>
+        !itemPath.includes(".env") && !itemPath.split("/").includes(".azure"),
+    ),
+  );
+  assert.ok(skillIds.includes("threadlight-govern"));
 });

@@ -1,0 +1,52 @@
+name: threadlight-canvas
+
+on:
+  pull_request:
+    paths:
+      - ".github/extensions/threadlight-lifecycle/**"
+      - "tests/canvas/**"
+      - "tests/playwright/canvas-tests/**"
+      - "canvas.config"
+      - "tests/playwright/canvas.config.mjs"
+      - "tests/playwright/package*.json"
+      - "plugin.json"
+      - ".github/plugin/marketplace.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/extensions/threadlight-lifecycle/**"
+      - "tests/canvas/**"
+      - "tests/playwright/canvas-tests/**"
+      - "canvas.config"
+      - "tests/playwright/canvas.config.mjs"
+      - "tests/playwright/package*.json"
+      - "plugin.json"
+      - ".github/plugin/marketplace.json"
+  workflow_dispatch:
+
+jobs:
+  node-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --test tests/canvas/*.test.mjs
+
+  canvas-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tests/playwright/package-lock.json
+      - run: npm ci
+        working-directory: tests/playwright
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/playwright
+      - run: npm run test:canvas
+        working-directory: tests/playwright
