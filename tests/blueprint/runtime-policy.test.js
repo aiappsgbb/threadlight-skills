@@ -662,6 +662,83 @@ test('threadlight-auto defers greenfield selector validation until Design and De
   );
 });
 
+test('threadlight-auto defers incomplete legacy foundations to deploy migration', () => {
+  const content = read('skills/threadlight-auto/SKILL.md');
+  const stage0HeadingMatch = content.match(/## Stage 0 — Preflight/);
+  const resumptionHeadingMatch = content.match(/## Resumption/);
+  assert.ok(stage0HeadingMatch && resumptionHeadingMatch, 'expected Stage 0 and Resumption headings');
+  const stage0Section = content.slice(stage0HeadingMatch.index, resumptionHeadingMatch.index);
+
+  assert.match(
+    stage0Section,
+    /legacy[\s\S]{0,180}foundation\.md[\s\S]{0,220}(?:missing|without)[\s\S]{0,100}(?:protocol|policy_route|capability_signals)[\s\S]{0,260}(?:defer|continue)[\s\S]{0,160}Deploy/i,
+    'Stage 0 must let Deploy migrate a pre-contract foundation instead of rejecting its incomplete tuple',
+  );
+  assert.match(
+    stage0Section,
+    /complete[\s\S]{0,100}foundation\.md[\s\S]{0,180}validate/i,
+    'Stage 0 must keep validating already-complete foundations',
+  );
+});
+
+test('threadlight-auto applies deploy route-integrity rules to complete foundations', () => {
+  const content = read('skills/threadlight-auto/SKILL.md');
+  const stage0HeadingMatch = content.match(/## Stage 0 — Preflight/);
+  const resumptionHeadingMatch = content.match(/## Resumption/);
+  assert.ok(stage0HeadingMatch && resumptionHeadingMatch, 'expected Stage 0 and Resumption headings');
+  const stage0Section = content.slice(stage0HeadingMatch.index, resumptionHeadingMatch.index);
+
+  assert.match(
+    stage0Section,
+    /complete foundation[\s\S]{0,420}(?:same|identical)[\s\S]{0,120}Deploy[\s\S]{0,120}(?:step 5|complete-foundation)/i,
+    'Auto must use the same complete-foundation validation contract as Deploy',
+  );
+  assert.match(
+    stage0Section,
+    /concrete[\s\S]{0,80}policy_route[\s\S]{0,220}(?:exact|first matching route)/i,
+    'Auto must reject a complete foundation whose concrete route does not own the resolved tuple/signals',
+  );
+  assert.match(
+    stage0Section,
+    /explicit-supported-choice[\s\S]{0,260}(?:source|provenance)[\s\S]{0,100}provided/i,
+    'Auto must require operator-provided provenance for an explicit choice',
+  );
+});
+
+test('threadlight-auto resumes when foundation exists before SPEC generation completes', () => {
+  const content = read('skills/threadlight-auto/SKILL.md');
+  const stage0HeadingMatch = content.match(/## Stage 0 — Preflight/);
+  const resumptionHeadingMatch = content.match(/## Resumption/);
+  assert.ok(stage0HeadingMatch && resumptionHeadingMatch, 'expected Stage 0 and Resumption headings');
+  const stage0Section = content.slice(stage0HeadingMatch.index, resumptionHeadingMatch.index);
+
+  assert.match(
+    stage0Section,
+    /foundation[\s\S]{0,220}SPEC[^\n]{0,20}(?:absent|does not exist|not yet)[\s\S]{0,260}(?:do not|must not)[\s\S]{0,80}(?:hard-stop|reject)/i,
+    'an interrupted Design run with Foundation but no SPEC must remain resumable',
+  );
+  assert.match(
+    stage0Section,
+    /SPEC[^\n]{0,20}(?:absent|does not exist|not yet)[\s\S]{0,260}defer[\s\S]{0,120}(?:mirror|cross-check)[\s\S]{0,180}(?:Design|Deploy)/i,
+    'only the SPEC mirror cross-check should be deferred until SPEC exists',
+  );
+});
+
+test('threadlight-auto binds preflight freshness to the current foundation hash', () => {
+  const content = read('skills/threadlight-auto/SKILL.md');
+
+  assert.match(
+    content,
+    /preflight-passed\.json[\s\S]{0,220}foundation_sha256/i,
+    'the preflight marker contract must record the foundation hash (or null before Foundation exists)',
+  );
+  assert.match(
+    content,
+    /Preflight[\s\S]{0,180}< 24 h[\s\S]{0,220}foundation_sha256[\s\S]{0,180}(?:match|unchanged)/i,
+    'a fresh preflight marker may skip only when its recorded foundation hash still matches',
+  );
+});
+
 test('legacy partial migration does not promote the pre-contract defaulted MAF value to an operator choice', () => {
   const content = read('skills/threadlight-deploy/SKILL.md');
   const branchHeadingMatch = content.match(/Legacy-foundation migration \(partial tuple\)/);
@@ -687,10 +764,25 @@ test('legacy partial migration does not promote the pre-contract defaulted MAF v
     /requires_resolved_signals[\s\S]{0,160}blocked_when|blocked_when[\s\S]{0,160}requires_resolved_signals/i,
     'a migrated explicit operator choice must enforce both explicit-supported-choice gates',
   );
+  assert.match(
+    providedSection,
+    /(?:defer|after)[\s\S]{0,180}(?:requires_resolved_signals|blocked_when)[\s\S]{0,220}(?:step 3|capability_signals)[\s\S]{0,180}step 5/i,
+    'explicit-choice gates must run only after step 3 has recovered the legacy capability signals',
+  );
   assert.doesNotMatch(
     providedSection,
     /concrete `routes\[\]` entry/i,
     'a trusted operator choice must not be relabeled as a concrete capability/default route',
+  );
+  assert.match(
+    providedSection,
+    /(?:preserve|keep)[\s\S]{0,180}(?:source|provenance)[\s\S]{0,80}provided/i,
+    'migrating an explicit legacy choice must preserve its operator-provided framework provenance',
+  );
+  assert.match(
+    branchSection,
+    /separate[\s\S]{0,100}migration[\s\S]{0,120}migrated-from-legacy-foundation/i,
+    'tuple migration provenance must be recorded separately instead of overwriting the framework decision source',
   );
   assert.match(
     branchSection,
@@ -739,7 +831,7 @@ test('threadlight-deploy documents a distinct legacy-foundation branch for a ful
   );
 
   const branchHeadingMatch = content.match(/Legacy-foundation migration \(missing `?capability_signals`?\)/);
-  const branchSection = content.slice(branchHeadingMatch.index, branchHeadingMatch.index + 900);
+  const branchSection = content.slice(branchHeadingMatch.index, branchHeadingMatch.index + 1300);
 
   assert.match(
     branchSection,
@@ -749,7 +841,22 @@ test('threadlight-deploy documents a distinct legacy-foundation branch for a ful
   assert.match(
     branchSection,
     /migrated-from-legacy-foundation/,
-    'the missing-capability_signals branch must write back source: migrated-from-legacy-foundation',
+    'the missing-capability_signals branch must record migrated-from-legacy-foundation provenance',
+  );
+  assert.match(
+    branchSection,
+    /(?:copy|write)[\s\S]{0,120}verbatim[\s\S]{0,120}(?:including|preserve)[\s\S]{0,80}source/i,
+    'the missing-capability_signals branch must preserve the SPEC signal block source when mirroring it into foundation',
+  );
+  assert.match(
+    branchSection,
+    /separate[\s\S]{0,100}migration[\s\S]{0,120}migrated-from-legacy-foundation/i,
+    'capability-signal migration provenance must be separate from the mirrored block source',
+  );
+  assert.match(
+    branchSection,
+    /(?:incomplete|missing)[\s\S]{0,120}(?:source|required fields)[\s\S]{0,180}HARD STOP/i,
+    'an incomplete SPEC capability_signals block must hard-stop instead of creating a mismatched mirror',
   );
   assert.match(
     branchSection,
@@ -765,6 +872,62 @@ test('threadlight-deploy cross-checks capability_signals against SPEC only when 
     content,
     /only when[\s\S]{0,80}capability_signals[\s\S]{0,120}cross-check/i,
     'the complete-foundation validate step must guard the SPEC cross-check on capability_signals actually existing',
+  );
+});
+
+test('threadlight-deploy validates the complete capability_signals schema before route evaluation', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+  const completeHeadingMatch = content.match(/Complete foundation — validate/);
+  assert.ok(completeHeadingMatch, 'expected the complete-foundation validation branch');
+  const completeSection = content.slice(completeHeadingMatch.index, completeHeadingMatch.index + 2600);
+
+  assert.match(
+    completeSection,
+    /before[\s\S]{0,120}(?:cross-check|route)[\s\S]{0,220}four[\s\S]{0,80}boolean/i,
+    'all four capability fields must be validated as booleans before cross-checking or selecting a route',
+  );
+  assert.match(
+    completeSection,
+    /unresolved_signals[\s\S]{0,160}(?:array|list)[\s\S]{0,180}(?:known|allowed)[\s\S]{0,100}(?:signal|name)/i,
+    'unresolved_signals must be a list containing only known capability-signal names',
+  );
+  assert.match(
+    completeSection,
+    /source[\s\S]{0,160}(?:present|allowed|taxonomy)/i,
+    'the capability_signals source must be present and valid',
+  );
+  assert.match(
+    completeSection,
+    /(?:incomplete|malformed)[\s\S]{0,220}HARD STOP/i,
+    'an incomplete existing capability_signals block must hard-stop instead of treating omissions as false',
+  );
+});
+
+test('threadlight-deploy requires concrete policy routes to own the exact foundation selector tuple', () => {
+  const content = read('skills/threadlight-deploy/SKILL.md');
+  const completeHeadingMatch = content.match(/Complete foundation — validate/);
+  assert.ok(completeHeadingMatch, 'expected the complete-foundation validation branch');
+  const completeSection = content.slice(completeHeadingMatch.index, completeHeadingMatch.index + 3200);
+
+  assert.match(
+    completeSection,
+    /concrete[\s\S]{0,80}policy_route[\s\S]{0,220}exact(?:ly)?[\s\S]{0,100}(?:framework|selectors)[\s\S]{0,180}(?:runtime_shape|protocol)/i,
+    'a concrete route id must be validated against the selectors declared by that exact route',
+  );
+  assert.match(
+    completeSection,
+    /first matching[\s\S]{0,100}(?:policy )?route[\s\S]{0,220}(?:capability_signals|workflow_model)[\s\S]{0,220}(?:equal|match)[\s\S]{0,100}policy_route/i,
+    'a concrete route must also be the first route activated by the current workflow/capability signals',
+  );
+  assert.match(
+    completeSection,
+    /explicit-supported-choice[\s\S]{0,260}(?:source|provenance)[\s\S]{0,100}provided/i,
+    'explicit-supported-choice must be backed by operator-provided provenance',
+  );
+  assert.match(
+    completeSection,
+    /explicit-supported-choice[\s\S]{0,420}blocked_when[\s\S]{0,220}requires_resolved_signals|explicit-supported-choice[\s\S]{0,420}requires_resolved_signals[\s\S]{0,220}blocked_when/i,
+    'complete-foundation explicit choices must enforce both policy gates',
   );
 });
 

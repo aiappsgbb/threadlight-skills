@@ -11,8 +11,10 @@ Exit codes: 0 = all green; N = failures.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -49,6 +51,13 @@ def main() -> int:
             print(f"❌ {fixture_name}: fixture dir missing")
             failures += 1
             continue
+        if fixture_name == "all-complete":
+            for rel in (
+                ".threadlight/preflight-passed.json",
+                "docs/safe-check-post.md",
+                "docs/invoke-results.md",
+            ):
+                os.utime(fixture / rel)
         try:
             report = run(fixture)
         except Exception as exc:  # noqa: BLE001
@@ -98,6 +107,61 @@ def main() -> int:
             failures += 1
         else:
             print(f"✅ STAGES order: safe_check({sc_idx}) < cost_projection({cp_idx}) < invoke({inv_idx})")
+
+    # A fresh marker is reusable only while it remains bound to the exact
+    # Foundation that passed runtime-policy validation.
+    with tempfile.TemporaryDirectory(prefix="threadlight-foundation-created-") as tmp:
+        workspace = Path(tmp)
+        marker = workspace / ".threadlight" / "preflight-passed.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text(json.dumps({"version": "1.0.0", "foundation_sha256": None}), encoding="utf-8")
+        foundation = workspace / "specs" / "foundation.md"
+        foundation.parent.mkdir(parents=True)
+        foundation.write_text("# Foundation\n", encoding="utf-8")
+        decision = _m._check_preflight(workspace, {})
+        if decision.decision != "run":
+            print(f"❌ foundation-created-after-preflight: expected run, got {decision.decision}")
+            failures += 1
+        else:
+            print("✅ foundation-created-after-preflight: preflight invalidated")
+
+    with tempfile.TemporaryDirectory(prefix="threadlight-legacy-marker-") as tmp:
+        workspace = Path(tmp)
+        marker = workspace / ".threadlight" / "preflight-passed.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text(json.dumps({"version": "1.0.0"}), encoding="utf-8")
+        decision = _m._check_preflight(workspace, {})
+        if decision.decision != "run":
+            print(f"❌ legacy-marker-without-foundation-hash: expected run, got {decision.decision}")
+            failures += 1
+        else:
+            print("✅ legacy-marker-without-foundation-hash: preflight invalidated")
+
+    with tempfile.TemporaryDirectory(prefix="threadlight-foundation-matching-") as tmp:
+        workspace = Path(tmp)
+        foundation = workspace / "specs" / "foundation.md"
+        foundation.parent.mkdir(parents=True)
+        foundation.write_text("# Foundation\n", encoding="utf-8")
+        marker = workspace / ".threadlight" / "preflight-passed.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text(
+            json.dumps({"version": "1.0.0", "foundation_sha256": _m._sha256(foundation)}),
+            encoding="utf-8",
+        )
+        decision = _m._check_preflight(workspace, {})
+        if decision.decision != "skip":
+            print(f"❌ foundation-hash-matches: expected skip, got {decision.decision}")
+            failures += 1
+        else:
+            print("✅ foundation-hash-matches: fresh preflight reused")
+
+        foundation.write_text("# Foundation\n\nedited: true\n", encoding="utf-8")
+        decision = _m._check_preflight(workspace, {})
+        if decision.decision != "run":
+            print(f"❌ foundation-edited-after-preflight: expected run, got {decision.decision}")
+            failures += 1
+        else:
+            print("✅ foundation-edited-after-preflight: preflight invalidated")
 
     # --- extra: assert the discover/protect legs follow invoke in STAGES ---
     for leg in ("evals", "redteam", "govern"):

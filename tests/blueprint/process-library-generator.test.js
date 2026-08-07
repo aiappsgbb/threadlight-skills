@@ -56,6 +56,8 @@ const FULL_ARTIFACTS = [
   'src/agent/skills/*/SKILL.md',
   'specs/sample-data/*.json',
   'src/agent/skills/*/cards/*.json',
+  'src/triggers/*/',
+  'infra/triggers/*.bicep',
   'docs/safe-check-post.md',
   'docs/redteam-report.md',
   'specs/redteam-manifest.json',
@@ -165,6 +167,39 @@ test('generator derives conditional skills and deduplicated artifacts in canonic
     assert.deepStrictEqual(outputEntry.playbook.build_skills, L.deriveSkills(outputEntry));
     assert.deepStrictEqual(outputEntry.playbook.artifacts, FULL_ARTIFACTS);
     assert.strictEqual(new Set(outputEntry.playbook.artifacts).size, outputEntry.playbook.artifacts.length);
+  } finally {
+    cleanup(run.workDir);
+  }
+});
+
+test('generator adds event-trigger output artifacts when the skill is selected', () => {
+  const entry = {
+    id: 'scheduled-order-sync',
+    name: 'Scheduled Order Sync',
+    industry: 'retail',
+    complexity: 'low',
+    summary: 'Synchronizes orders on a schedule.',
+    description: 'A scheduled order synchronization process.',
+    tags: ['scheduled'],
+    business_constraints: [],
+    external_integrations: [],
+    human_approvals: [],
+    knowledge_sources: [],
+  };
+
+  const run = runGenerator([entry], 'event-trigger-artifacts');
+  try {
+    assert.strictEqual(run.result.status, 0, run.result.stderr);
+    assert.ok(run.output[0].playbook.build_skills.includes('threadlight-event-triggers'));
+    assert.deepStrictEqual(
+      run.output[0].playbook.artifacts.filter((artifact) =>
+        ['src/triggers/*/', 'infra/triggers/*.bicep'].includes(artifact)),
+      ['src/triggers/*/', 'infra/triggers/*.bicep'],
+    );
+    assert.ok(
+      !run.output[0].playbook.artifacts.includes('scripts/postdeploy.py'),
+      'postdeploy.py is conditional on ACA Job receiver shape and is not a stable event-trigger artifact',
+    );
   } finally {
     cleanup(run.workDir);
   }

@@ -72,7 +72,10 @@ SKILL_ARTIFACTS = {
     "threadlight-hitl-patterns": [
         "src/agent/skills/*/cards/*.json",
     ],
-    "threadlight-event-triggers": [],
+    "threadlight-event-triggers": [
+        "src/triggers/*/",
+        "infra/triggers/*.bicep",
+    ],
     "threadlight-safe-check": [
         "docs/safe-check-post.md",
     ],

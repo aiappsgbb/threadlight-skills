@@ -228,12 +228,14 @@ remediated by asking the user to split the repo.
    `protocol` and/or `policy_route`**: inspect the recorded framework
    decision's `source` before trusting the pair.
    - `source`: `provided` is an explicit operator choice: preserve the recorded
-     pair, resolve its unique `compatible_combinations` entry to recover the
-     missing `protocol`, and set `policy_route: explicit-supported-choice`.
-     Enforce that route's `requires_resolved_signals` and `blocked_when` gates
-     before honoring it; an unresolved or blocked legacy choice → **HARD
-     STOP** to `threadlight-design`, not relabeling it as a concrete
-     capability/default route.
+     pair **and keep its framework decision provenance as `source:
+     provided`**. Resolve its unique `compatible_combinations` entry to recover
+     the missing `protocol`, and set `policy_route:
+     explicit-supported-choice`. **Defer** that route's
+     `requires_resolved_signals` and `blocked_when` gates until step 3 has
+     recovered `capability_signals`; enforce both in step 5. If step 3 cannot
+     recover the signals, it hard-stops rather than guessing, and step 5 never
+     runs.
    - `source`: `defaulted`, `defaulted-after-skip`, or `inferred`
      is **not** an explicit runtime choice. In particular,
      `microsoft-agent-framework` with a defaulted source is the pre-contract
@@ -244,8 +246,11 @@ remediated by asking the user to split the repo.
      absent, HARD STOP to `threadlight-design`.
    - A missing or unknown `source` is untrustworthy provenance → **HARD STOP**
      to `threadlight-design`; never switch runtime or protocol by inference.
-   Write the completed tuple to `specs/foundation.md` with a migration note
-   (`source: migrated-from-legacy-foundation`, citing the route id used).
+   Write the completed tuple to `specs/foundation.md`. For the `provided`
+   branch, preserve `source: provided` and add a **separate migration note**
+   (`migration_note: migrated-from-legacy-foundation via <route-id>`). For a
+   re-resolved defaulted/inferred branch, set `source:
+   migrated-from-legacy-foundation` and cite the route id used.
    Then continue to step 3 (this record predates `protocol` / `policy_route`
    entirely, so it almost certainly predates `capability_signals` too).
    - **Zero or multiple matching compatible combinations** for that
@@ -259,16 +264,18 @@ remediated by asking the user to split the repo.
    `runtime_shape` + `protocol` + `policy_route` tuple (step 2 does not apply)
    but still **predate the `capability_signals` contract entirely**. When
    `specs/foundation.md` has no `capability_signals` block (whether it
-   started that way or step 2 just migrated the tuple), derive the four
-   booleans and `unresolved_signals` from `specs/SPEC.md § 11e`'s
-   `capability_signals` mirror — the only other place they could already be
-   recorded — and **write them back to `specs/foundation.md`** with
-   `source: migrated-from-legacy-foundation`. If **neither**
-   `specs/foundation.md` **nor** `specs/SPEC.md § 11e` carries a
-   `capability_signals` block, **HARD STOP** to `threadlight-design` — an
-   unread signal is not a confirmed-absent one, so this skill must never
-   default the four booleans to `false` on its own authority. Then continue
-   to step 5.
+   started that way or step 2 just migrated the tuple), take
+   `specs/SPEC.md § 11e`'s `capability_signals` mirror — the only other place
+   it could already be recorded — and **copy the block verbatim** into
+   `specs/foundation.md`, including preserving its `source`. Record a
+   **separate migration note** (`capability_signals_migration_note:
+   migrated-from-legacy-foundation`). If the SPEC block is incomplete or
+   missing required fields (including `source`), **HARD STOP** to
+   `threadlight-design`. If **neither** `specs/foundation.md` **nor**
+   `specs/SPEC.md § 11e` carries a `capability_signals` block, **HARD STOP** to
+   `threadlight-design` — an unread signal is not a confirmed-absent one, so
+   this skill must never default the four booleans to `false` on its own
+   authority. Then continue to step 5.
 4. **Foundation entirely absent — hand-crafted deploy mode.** If
    `specs/foundation.md` does not exist at all (no `threadlight-design` run
    preceded this deploy), `specs/SPEC.md § 11e` is the **sole signal source**
@@ -293,23 +300,38 @@ remediated by asking the user to split the repo.
    this skill's own authority — an unread signal is not a confirmed-absent
    one.
 5. **Complete foundation — validate.** Otherwise (or once steps 2–4 above
-   have finished migrating/creating the record), **only when**
-   `specs/foundation.md`'s `capability_signals` block exists, **cross-check**
-   it against SPEC § 11e's `workflow_model` / `capability_signals` mirror
-   before route validation — a mismatch between the two is drift and must be
-   surfaced, not silently resolved in either direction. (By this point steps
-   3–4 will already have given every foundation a `capability_signals` block,
-   so this guard is defensive, not the common case.) Then validate
-   `framework` + `runtime_shape` + `protocol` + `policy_route` from
+   have finished migrating/creating the record), **before any cross-check or
+   route evaluation**, validate the complete `capability_signals` schema:
+   all four named capability fields must be present and actual booleans;
+   `unresolved_signals` must be an array/list containing only known capability
+   signal names (with no duplicates); and `source` must be present and belong
+   to the taxonomy declared in `foundation-template.md`. An incomplete or
+   malformed existing block → **HARD STOP** to `threadlight-design`; omitted
+   values are never treated as `false`.
+   **Only when** this complete `capability_signals` block exists and passes the
+   schema check, **cross-check** the Foundation block against SPEC § 11e's
+   `workflow_model` / `capability_signals` mirror — a mismatch between the two
+   is drift and must be surfaced, not silently resolved in either direction.
+   Then validate the
+   `framework` + `runtime_shape` + `protocol` tuple from
    `specs/foundation.md` against
    `../threadlight-design/references/runtime-policy.json`'s
-   `compatible_combinations`. **Stop before Phase 1** on any unknown selector
-   or a combination not listed in `compatible_combinations` — this skill must
-   not invent a new route. If the resolved `policy_route` is
-   `explicit-supported-choice`, **refuse** it while `unresolved_signals` is
-   non-empty (`requires_resolved_signals`) — resolve the remaining signals, or
-   hard-stop back to `threadlight-design`, before honoring the operator's
-   choice. Remediation for any failure in this subsection is
+   `compatible_combinations`, and validate `policy_route` separately:
+   - For a **concrete `policy_route`** (a `routes[]` entry that declares
+     selectors), require the foundation tuple to **exactly match** that route's
+     `framework` + `runtime_shape` + `protocol`. Then apply the **first matching
+     policy route** in priority order using the current `workflow_model` /
+     `capability_signals`, and require its id to equal the recorded
+     `policy_route`. A compatible tuple paired with the wrong or inactive route
+     id is drift, not a valid selection.
+   - For `explicit-supported-choice`, require the corresponding framework
+     decision's provenance to be `source: provided`, require none of its
+     `blocked_when` signals to be active, and **refuse** it while
+     `unresolved_signals` is non-empty (`requires_resolved_signals`).
+   **Stop before Phase 1** on an unknown route/selector, a tuple absent from
+   `compatible_combinations`, a concrete-route mismatch, or a failed explicit
+   choice gate — this skill must not invent or relabel a route. Remediation for
+   any failure in this subsection is
    always **return to `threadlight-design` to re-resolve the foundation, or
    install the missing dependency** — never split the repo, and never fall
    back to a remembered default.
