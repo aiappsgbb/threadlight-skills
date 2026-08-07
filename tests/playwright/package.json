@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
+    "test:canvas": "playwright test --config canvas.config.mjs",
     "test:headed": "playwright test --headed",
     "install:browsers": "playwright install chromium"
   },

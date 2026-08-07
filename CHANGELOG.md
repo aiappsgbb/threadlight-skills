@@ -9,6 +9,12 @@ field.
 
 ### Added
 
+- **Threadlight Lifecycle Canvas** (plugin 1.10.0 → 1.11.0). The optional,
+  experimental GitHub Copilot App cockpit organizes all 17 skills into six
+  outcome phases, derives status from canonical allowlisted artifacts, refreshes
+  from workspace changes, and sends validated next-action intents back to chat.
+  It binds only to tokenized `127.0.0.1`; existing CLI, Cowork, and Coding Agent
+  workflows remain unchanged.
 - **EU AI Act evidence pack — terminal aggregator in
   `threadlight-production-ready`** (0.7.0 → 0.8.0). A new stdlib-only script,
   `scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings

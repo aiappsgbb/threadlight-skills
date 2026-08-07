@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Threadlight Lifecycle Canvas pilot steering workspace."
+    />
+    <title>Threadlight Lifecycle Canvas</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-labelledby="canvas-title">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">THREADLIGHT LIFECYCLE</p>
+          <h1 id="canvas-title">Start and steer a pilot</h1>
+        </div>
+        <button id="refresh" class="secondary" type="button">Refresh</button>
+      </header>
+
+      <p id="status" class="muted" role="status">Loading workspace.</p>
+
+      <nav id="phase-nav" class="phase-nav" aria-label="Pilot lifecycle"></nav>
+
+      <section class="overview surface" aria-labelledby="overview-title">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Current outcome</p>
+            <h2 id="overview-title">Current outcome</h2>
+          </div>
+          <button id="start-pilot" class="primary" type="button">Start a pilot</button>
+        </div>
+        <div id="phase-summary" class="phase-summary"></div>
+      </section>
+
+      <section id="phase-detail" class="phase-detail" aria-live="polite"></section>
+    </main>
+
+    <dialog id="start-dialog" aria-labelledby="start-title">
+      <form id="start-form" method="dialog">
+        <h2 id="start-title">Start a pilot</h2>
+        <label for="pilot-brief">Pilot brief</label>
+        <textarea id="pilot-brief" name="brief" required maxlength="4000"></textarea>
+        <div class="dialog-actions">
+          <button id="cancel-brief" class="secondary" type="button">Cancel</button>
+          <button id="send-brief" class="primary" type="submit" value="default">
+            Send to chat
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
