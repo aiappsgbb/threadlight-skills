@@ -1,20 +1,52 @@
 # Foundation — Returns Triage (Contoso Retail)
 
 > Fast-PoC mode: this record was **house-defaulted after skipping the interactive
-> Step 0 foundation interview**. Every row is `source: defaulted-after-skip`.
+> Step 0 foundation interview**. Every row is `source: defaulted-after-skip`
+> except **Framework** (`provided` — captured from the already-shipped MAF /
+> Responses implementation; an explicit, compatible choice, not a house
+> default) and **Governance** (`provided` — explicit override, see below).
 > Override in SPEC § 7b / § 11c / § 11e / § 11f / § 13 when a real review happens.
 
 ## Framework & runtime shape
 
 ```yaml
-framework: microsoft-agent-framework   # MAF — house default
+schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
+framework: microsoft-agent-framework    # already-shipped — src/agent/container.py Agent + SkillsProvider + FoundryChatClient
 runtime_shape: agent                    # single agent + skills + tools (not a DurableWorkflow)
-source: defaulted-after-skip
+protocol: responses                     # ResponsesHostServer (azure.yaml `protocols: [{ protocol: responses }]`)
+policy_route: explicit-supported-choice # operator's compatible tuple choice — no capability signal mandates MAF here
+source: provided                        # captured from the already-shipped run, not guessed or re-decided
+capability_signals:
+  requires_toolbox: false
+  requires_custom_python_tools: false
+  requires_file_generation: false
+  latency_sensitive_data_queries: false
+  unresolved_signals: []
+  source: provided
 ```
 
 Rationale: returns triage is a per-case decision with tool-gathering + a small
 rule set + one human gate — an **agent** with skills fits better than a
-deterministic multi-phase DurableWorkflow. Confirm at SPEC § 11e.
+deterministic multi-phase DurableWorkflow. None of the four `capability_signals`
+are active for this pilot: the five bound tools (`oms_get_order`,
+`returns_get_case`, `returns_list_open`, `customer_get_profile`,
+`returns_apply_decision`) plus the **Foundry IQ** knowledge surface for the
+return policy are ordinary MCP-bound tool calls, not a curated Foundry
+Toolbox — and there is no bespoke `@tool` Python function, no file-generation
+output, and no latency-sensitive fast-path query in this pilot.
+`unresolved_signals` is empty, so `maf-agent-capabilities` does not apply here.
+The MAF + Responses tuple recorded above is instead an **explicit, compatible
+operator choice** (`policy_route: explicit-supported-choice`) that matches
+what `src/agent/container.py` already ships: **Microsoft Agent Framework**
+`Agent` + `FoundryChatClient`, with progressive skill loading via
+`SkillsProvider.from_paths("skills/")`, served by
+`agent_framework_foundry_hosting.ResponsesHostServer`; `pyproject.toml` pins
+`agent-framework-core` / `agent-framework-foundry` /
+`agent-framework-foundry-hosting`; and `azure.yaml`'s `returns-triage` service
+declares `protocols: [{ protocol: responses }]`. `source: provided` — this
+record was **captured from the already-shipped run**, not freshly decided;
+nothing here forces MAF, it is simply the framework this pilot already uses.
+Confirm at SPEC § 11e.
 
 ## Model & capacity
 
@@ -83,7 +115,8 @@ source: defaulted-after-skip
 
 | Area | Choice | Source |
 |------|--------|--------|
-| Framework | microsoft-agent-framework (agent shape) | defaulted-after-skip |
+| Framework | microsoft-agent-framework + agent + responses (`policy_route: explicit-supported-choice`) | provided |
+| Capability signals | requires_toolbox=false, requires_custom_python_tools=false, requires_file_generation=false, latency_sensitive_data_queries=false; `unresolved_signals: []` | provided |
 | Model | gpt-5.4 @ Sweden Central, GlobalStandard 50K TPM, EU boundary | defaulted-after-skip |
 | Hosting | ACA hosted agent (Foundry) + local `threadlight_quickstart` | defaulted-after-skip |
 | Tools | MCP, mock-first (3 mocked systems) | defaulted-after-skip |

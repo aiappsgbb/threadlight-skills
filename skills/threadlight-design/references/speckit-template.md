@@ -506,10 +506,26 @@ that integration explicitly in § 5).
 
 > **INPUT CONTRACT for `threadlight-deploy` Phase 2.** Determines whether
 > the deploy skill generates an Agent container or a DurableWorkflow
-> container. Defaults to `agent` when absent.
+> container. Defaults to `agent` when absent. Also carries the
+> `capability_signals` block that `threadlight-deploy`'s Runtime-policy
+> pre-flight cross-checks against `specs/foundation.md § 1` before route
+> validation — the two must stay consistent (see
+> `references/runtime-policy.json`'s `blocked_when`).
 
 ```yaml
 workflow_model: agent  # agent | workflow
+
+capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
+  requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
+  requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
+  requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
+  latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
+  unresolved_signals:                   # per-signal unknown marker — a listed name means its boolean above is a placeholder, not a decision
+    - requires_toolbox
+    - requires_custom_python_tools
+    - requires_file_generation
+    - latency_sensitive_data_queries
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question | migrated-from-legacy-foundation | hand-crafted-deploy-inferred
 ```
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
@@ -519,6 +535,19 @@ workflow_model: agent  # agent | workflow
   scaffolds a DurableWorkflow container instead of a single agent. Use when
   the process has fixed phases, long-running waits, retries with explicit
   back-off, or human approvals between stages.
+
+> **Deriving `capability_signals`.** Set each boolean from what discovery
+> actually found: `false` only when the requirement or tooling is **confirmed
+> absent**, never merely unknown. If discovery cannot determine a signal yet,
+> leave its name in `unresolved_signals` (`source: open-question`) instead of
+> guessing `false`. As each signal resolves, **remove** its name from
+> `unresolved_signals` and set its boolean accurately — an **empty**
+> `unresolved_signals` list means all four are resolved. This block mirrors
+> `specs/foundation.md § 1` verbatim; the two must stay consistent. **Refuse**
+> to honor an explicit `explicit-supported-choice` GHCP override while
+> `unresolved_signals` is non-empty (`runtime-policy.json`'s
+> `requires_resolved_signals` gate on that route) — an unresolved signal could
+> still turn out to be the one a `blocked_when` route owns.
 
 ---
 

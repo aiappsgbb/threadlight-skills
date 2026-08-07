@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const L = require('../../docs/assets/blueprint-logic.js');
+const processLibrary = require('../../docs/assets/process-library.json');
 
 const base = {
   name: 'X', summary: 'do X', industry: 'retail', complexity: 'low',
@@ -37,6 +38,36 @@ test('high complexity adds production/govern/redteam', () => {
 test('regulated industry adds consumption-iq', () => {
   assert.ok(L.deriveSkills({ ...base, industry: 'financial_services' })
     .includes('threadlight-consumption-iq'));
+});
+
+test('deriveSkills prefers generated playbook metadata', () => {
+  const s = L.deriveSkills({
+    ...base,
+    complexity: 'high',
+    playbook: { build_skills: ['threadlight-deploy', 'threadlight-design'] },
+  });
+  assert.deepStrictEqual(s, ['threadlight-design', 'threadlight-deploy']);
+});
+
+test('deriveSkills retains signal fallback for legacy entries', () => {
+  const s = L.deriveSkills({
+    ...base,
+    complexity: 'high',
+    industry: 'financial_services',
+    human_approvals: [{ step: 'review' }],
+  });
+  ['threadlight-hitl-patterns', 'threadlight-production-ready', 'threadlight-consumption-iq']
+    .forEach(k => assert.ok(s.includes(k), `missing ${k}`));
+});
+
+test('committed process entries keep metadata and legacy deriveSkills aligned', () => {
+  processLibrary.forEach((entry) => {
+    assert.deepStrictEqual(
+      L.deriveSkills(entry),
+      L.deriveSkills({ ...entry, playbook: undefined }),
+      `entry ${entry.id}`,
+    );
+  });
 });
 
 test('deriveSkills is deterministic + de-duplicated', () => {

@@ -38,6 +38,11 @@
 
   function deriveSkills(p) {
     p = p || {};
+    if (p.playbook && Array.isArray(p.playbook.build_skills)) {
+      return CANON.filter(function (s) {
+        return p.playbook.build_skills.indexOf(s) !== -1;
+      });
+    }
     var need = {
       'threadlight-design': 1, 'threadlight-local-test': 1, 'threadlight-safe-check': 1,
       'threadlight-deploy': 1, 'threadlight-cicd': 1, 'threadlight-evals': 1,

@@ -512,10 +512,23 @@ the optional sweep.
 
 ```yaml
 workflow_model: agent  # single agent + skills + tools
+
+capability_signals:
+  requires_toolbox: false
+  requires_custom_python_tools: false
+  requires_file_generation: false
+  latency_sensitive_data_queries: false
+  unresolved_signals: []
+  source: provided
 ```
 
 Rationale: per-case decision with tool-gathering + rule set + one human gate fits
 an agent better than a DurableWorkflow. *(Source: defaulted-after-skip.)*
+`capability_signals` mirrors `specs/foundation.md § 1` verbatim — none of the
+four signals are active for this pilot (the bound MCP tools + Foundry IQ
+knowledge surface are ordinary tool calls, not a curated Toolbox; no custom
+`@tool`, file generation, or latency-sensitive query) — `unresolved_signals`
+is empty, `source: provided`.
 
 ---
 

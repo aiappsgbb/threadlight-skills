@@ -154,12 +154,53 @@ next to the existing use-case skills.
 1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
 3. `azd ai agent` extension installed in the alias's `AZD_CONFIG_DIR`
-4. Writes `.threadlight/preflight-passed.json` marker (24h validity)
+4. The `../threadlight-design/references/runtime-policy.json` dependency must
+   **always be readable**. If `threadlight-design` is not installed/enabled,
+   **HARD STOP** and tell the operator to install or enable it — never fall
+   back to a remembered default. Selector validation then depends on the input
+   path:
+   - **Resume / hand-crafted path (complete foundation):** when `specs/foundation.md` exists,
+     validate the record using the **same complete-foundation rules as Deploy
+     Runtime-policy pre-flight step 5**. The tuple must be compatible; a
+     concrete `policy_route` must exactly match its declared selectors and be
+     the first matching route for the current signals; and
+     `explicit-supported-choice` requires operator provenance
+     `source: provided`, no active `blocked_when` signals, and an empty
+     `unresolved_signals` list (`requires_resolved_signals`). If Foundation
+     exists but SPEC § 11e is **not yet present** because Design stopped between
+     those writes, **do not hard-stop or reject** the resume: validate the
+     Foundation internally using `runtime_shape` plus its capability signals,
+     and **defer only the mirror cross-check** until Design resumes or Deploy
+     runs after SPEC exists. A **legacy
+     foundation.md** that is missing `protocol`,
+     `policy_route`, or `capability_signals` is not complete: do not reject or
+     default it in Stage 0; **defer migration and final validation to Stage 3
+     Deploy** (Runtime-policy pre-flight steps 2–3).
+   - **Greenfield path:** `specs/foundation.md` does not exist yet; Stage 1
+     Design creates it. Do not hard-stop in Stage 0. **Defer** selector
+     resolution to Design and enforce validation again at Stage 3 Deploy.
+   - **Kratos-export mode:** **skip foundation/selector validation** because
+     the exported runtime is preserved verbatim and deploy Phase 2 is skipped;
+     only the unconditional policy-dependency readability check above applies.
+   `threadlight-auto` owns **no separate framework or protocol default**.
+5. Writes `.threadlight/preflight-passed.json` with
+   `foundation_sha256: <sha256>` when Foundation exists, or
+   `foundation_sha256: null` before it exists. The marker has 24h maximum
+   validity, but Foundation creation, editing, or removal invalidates it
+   immediately.
 
 > **🛑 HARD STOP #1 — Tenant assertion failure.** If tenant verification fails (wrong
 > tenant or wrong subscription active), `threadlight-auto` STOPS IMMEDIATELY. No
 > auto-recovery. Money is about to be spent in the wrong place — operator must
 > fix isolation before retrying.
+
+> **Runtime-policy contract.** `threadlight-design` and `threadlight-deploy`
+> both inherit `../threadlight-design/references/runtime-policy.json`.
+> `threadlight-auto` never invents a competing default. A missing/unavailable
+> `threadlight-design` dependency is a Stage-0 hard stop; greenfield selector
+> validation begins after Design creates the foundation, Kratos-export mode
+> preserves its supplied runtime, and Deploy remains the final policy gate.
+> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 ## Resumption — read `.threadlight/auto-state.json` first
 
@@ -168,7 +209,7 @@ and computes which stages are already done. Stages are skipped when ALL conditio
 
 | Stage | Skip when |
 |---|---|
-| Preflight | `.threadlight/preflight-passed.json` exists AND `< 24 h` old |
+| Preflight | `.threadlight/preflight-passed.json` exists AND is `< 24 h` old AND its `foundation_sha256` matches the current Foundation (including `null` while absent) |
 | Design | `specs/SPEC.md` exists AND `sha256(SPEC.md) == auto-state.json[design].artifact_hash` AND no `[NEEDS CLARIFICATION:` markers |
 | Local-test | `specs/SPEC.md` exists AND `src/agent/main.py` runs locally (optional stage; skipped on freshness if SPEC unchanged) |
 | Deploy | `azure.yaml` + `infra/main.bicep` exist AND `azd env get-values \| grep -q AGENT_FQDN` AND first-listed agent `status: active` via `azd ai agent show` |
@@ -208,6 +249,7 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 
 | Stage | HARD STOP signature | Why no auto-recover |
 |---|---|---|
+| Preflight | `../threadlight-design/references/runtime-policy.json` unreadable (`threadlight-design` not installed/enabled) | Cross-skill contract missing — install/enable `threadlight-design`, never fall back to a remembered default |
 | Design | `[NEEDS CLARIFICATION:` markers remain in `specs/SPEC.md` after design | Spec is ambiguous; agent should not guess on operator's behalf |
 | Deploy | `az bicep build` exits non-zero with a real syntax error (not just warnings) | Bicep malformed; would fail in ARM validate anyway |
 | Deploy | `az deployment sub validate` returns `ValidationError` other than `InsufficientQuota` | Resource shape / RBAC scope / API version error — needs operator review |

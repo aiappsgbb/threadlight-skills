@@ -16,6 +16,18 @@ sections, kebab-case selectors, the three-lifecycle gate), and the seller
 → SE persona split. The contracts are markdown, not code; the runtime is
 GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
+> **Runtime-policy authority.**
+> [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
+> is the canonical selector contract. Authority order:
+> `runtime-policy.json` → `specs/foundation.md` (the selector authority) →
+> SPEC capability signals (`workflow_model`, `requires_toolbox`,
+> `requires_custom_python_tools`, `requires_file_generation`,
+> `latency_sensitive_data_queries` — never a competing selector) → generated
+> runtime files. The intentional default stays `github-copilot-sdk` + `agent` +
+> `invocations` (`policy_route: default-agent`) until GHCP Responses works end
+> to end.
+> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
+
 The seventeen skills (alphabetical, but the canonical flow order is given in
 the next section):
 
@@ -260,10 +272,12 @@ for RBAC + identity, `foundry-mcp-aca` for MCP deploy, and
 
 **Outputs.**
 - `container.py` — **GHCP SDK runtime by default**
-  (`CopilotClient` + `InvocationAgentServerHost`, Invocations protocol).
-  Falls back to **MAF** (`Agent` + `FoundryChatClient` +
-  `ResponsesHostServer`, Responses protocol) when Toolbox tools or
-  custom `@tool` functions are needed.
+  per `skills/threadlight-design/references/runtime-policy.json`: default route
+  = `github-copilot-sdk` + `agent` + `invocations`
+  (`CopilotClient` + `InvocationAgentServerHost`). MAF routes remain the
+  documented exceptions: `maf-agent-capabilities` for Toolbox / custom tools /
+  file generation / latency-sensitive data queries, and
+  `deterministic-workflow` for workflow-model builds.
 - `Dockerfile` — uv-based on `python:3.12-slim`.
 - `pyproject.toml` — with prerelease handling for hosting packages.
 - `agent.yaml` + `azure.yaml` — `azd ai agent` extension scaffold.

@@ -95,10 +95,45 @@ def _check_preflight(workspace: Path, _: dict[str, Any]) -> StageDecision:
             f"Preflight marker is {int(age/3600)} h old (> 24 h); re-running.",
             artifacts_seen=[str(PREFLIGHT_MARKER)],
         )
+
+    try:
+        marker_data = json.loads(marker.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return StageDecision(
+            "preflight",
+            "run",
+            f"Preflight marker is unreadable ({exc}); re-running.",
+            artifacts_seen=[str(PREFLIGHT_MARKER)],
+        )
+    if not isinstance(marker_data, dict):
+        return StageDecision(
+            "preflight",
+            "run",
+            "Preflight marker is not a JSON object; re-running.",
+            artifacts_seen=[str(PREFLIGHT_MARKER)],
+        )
+
+    foundation = workspace / "specs" / "foundation.md"
+    current_foundation_hash = _sha256(foundation)
+    if "foundation_sha256" not in marker_data:
+        return StageDecision(
+            "preflight",
+            "run",
+            "Legacy preflight marker is not bound to Foundation state; re-running.",
+            artifacts_seen=[str(PREFLIGHT_MARKER)],
+        )
+    if marker_data["foundation_sha256"] != current_foundation_hash:
+        return StageDecision(
+            "preflight",
+            "run",
+            "Foundation was created, edited, or removed after preflight; re-running runtime-policy validation.",
+            artifacts_seen=[str(PREFLIGHT_MARKER)],
+        )
+
     return StageDecision(
         "preflight",
         "skip",
-        f"Preflight marker is {int(age/60)} m old (< 24 h).",
+        f"Preflight marker is {int(age/60)} m old (< 24 h) and Foundation hash is unchanged.",
         artifacts_seen=[str(PREFLIGHT_MARKER)],
     )
 

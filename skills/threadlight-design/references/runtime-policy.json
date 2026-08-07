@@ -1,0 +1,86 @@
+{
+  "schema": "threadlight.runtime-policy/v1",
+  "version": 1,
+  "selectors": {
+    "frameworks": [
+      "github-copilot-sdk",
+      "microsoft-agent-framework"
+    ],
+    "runtime_shapes": [
+      "agent",
+      "workflow"
+    ],
+    "protocols": [
+      "invocations",
+      "responses"
+    ]
+  },
+  "default": {
+    "framework": "github-copilot-sdk",
+    "runtime_shape": "agent",
+    "protocol": "invocations",
+    "policy_route": "default-agent"
+  },
+  "compatible_combinations": [
+    {
+      "framework": "github-copilot-sdk",
+      "runtime_shape": "agent",
+      "protocol": "invocations"
+    },
+    {
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "agent",
+      "protocol": "responses"
+    },
+    {
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "workflow",
+      "protocol": "responses"
+    }
+  ],
+  "routes": [
+    {
+      "id": "explicit-supported-choice",
+      "priority": 1,
+      "selection": "operator",
+      "allowed_combinations_ref": "compatible_combinations",
+      "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
+      "requires_resolved_signals": true,
+      "blocked_when": [
+        "workflow_model=workflow",
+        "requires_toolbox",
+        "requires_custom_python_tools",
+        "requires_file_generation",
+        "latency_sensitive_data_queries"
+      ],
+      "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — the capability route that owns that signal takes the case instead, regardless of compatible_combinations membership. requires_resolved_signals is a separate gate: false-vs-unknown is never ambiguous here, so this route also refuses to fire while capability_signals.unresolved_signals is non-empty — an unresolved signal must be resolved (or the case escalated) before an operator's explicit choice can be honored, since it could still turn out to be the one a blocked_when route owns."
+    },
+    {
+      "id": "deterministic-workflow",
+      "priority": 2,
+      "when": "workflow_model=workflow",
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "workflow",
+      "protocol": "responses",
+      "rationale": "Deterministic multi-phase flows need the MAF workflow runtime."
+    },
+    {
+      "id": "maf-agent-capabilities",
+      "priority": 3,
+      "when": "requires_toolbox || requires_custom_python_tools || requires_file_generation || latency_sensitive_data_queries",
+      "framework": "microsoft-agent-framework",
+      "runtime_shape": "agent",
+      "protocol": "responses",
+      "rationale": "Toolbox, custom tools, file generation, and fast data queries fit MAF agent best today."
+    },
+    {
+      "id": "default-agent",
+      "priority": 4,
+      "when": "no higher-priority route matches",
+      "framework": "github-copilot-sdk",
+      "runtime_shape": "agent",
+      "protocol": "invocations",
+      "rationale": "Keep the proven GHCP Invocations path until Responses works end to end."
+    }
+  ]
+}

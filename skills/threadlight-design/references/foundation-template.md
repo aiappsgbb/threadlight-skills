@@ -7,17 +7,39 @@ instead of silent defaults back-filled during generation.
 > **Single source of truth for the pilot's technical foundations.**
 > `threadlight-design` **Step 3 (Generate SpecKit)** reads this file and
 > pre-populates SPEC **§ 7b** (model), **§ 11c** (tech stack), **§ 11e**
-> (workflow model), **§ 11f** (deployment posture), and **§ 12** (runtime /
-> observability) from it — it does not re-decide. When this file is **absent**
+> (workflow model, i.e. `runtime_shape`), **§ 11f** (deployment posture), and
+> **§ 12** (runtime / observability) from it — it does not re-decide.
+> **`framework`, `protocol`, and `policy_route` are never pre-populated into a
+> SPEC section** — `specs/foundation.md` stays their sole selector authority;
+> SPEC only supplies `workflow_model` / capability signals used to confirm the
+> resolved `policy_route` still matches. When this file is **absent**
 > (older runs, or an operator who skipped Step 0), Step 3 behaves exactly as
 > before: it applies documented defaults inline. **Kratos-export projects skip
 > Step 0 entirely** — the bundle is already designed.
+
+> **Runtime-policy authority.**
+> [`runtime-policy.json`](runtime-policy.json) (sibling of this template) is
+> the canonical selector contract for `framework`, `runtime_shape`,
+> `protocol`, and `policy_route`. **Record the resolved `schema` +
+> `policy_route` in `specs/foundation.md`** (see § 1 below) — do not emit a
+> filesystem link back to this skill's `references/` folder into a customer
+> project's `specs/foundation.md`; that path does not exist relative to the
+> customer project and would be a broken link. This template records the
+> chosen route; it does not invent a competing default table.
+> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 > **Fast-PoC mode.** Do not interview the operator. Fill every row with the
 > **house default** below, set `source: defaulted-after-skip`, and have Step 3
 > surface a one-line callout in SPEC § 12 (_"Foundation not collected; using
 > house defaults — override in specs/foundation.md"_). Silent defaults stay
-> auditable.
+> auditable. **`capability_signals` is the one row that is not a blind
+> default**: Fast-PoC may only collapse it straight to all four booleans
+> `false` + `unresolved_signals: []` + `source: defaulted-after-skip` **after**
+> its basic-scenario complexity triage positively confirms none of the four is
+> needed. If that triage cannot confirm absence for even one signal, **escalate
+> to Full mode** for that decision instead of silently defaulting it —
+> Fast-PoC never guesses a capability signal false merely because it wasn't
+> asked about.
 
 > **Authority order** (drift mitigation): `specs/foundation.md` → the SPEC
 > sections it pre-populates → `azd env` vars. On rerun, a decision changed in
@@ -30,41 +52,86 @@ instead of silent defaults back-filled during generation.
 
 | # | Decision | Choice | `source` | Pre-populates | Refined by |
 |---|----------|--------|----------|---------------|-----------|
-| 1 | Framework | `microsoft-agent-framework` | provided \| defaulted | § 11c, § 11e | — |
-| 1 | Runtime shape | `agent` | inferred | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
-| 2 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
-| 3 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
-| 4 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
-| 5 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
-| 6 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
-| 7 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
+| 1 | Framework | `github-copilot-sdk` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
+| 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
+| 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
+| 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
+| 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) + `unresolved_signals` (per-signal unknown marker) | inferred \| defaulted-after-skip \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` / `requires_resolved_signals` |
+| 6 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
+| 7 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
+| 8 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
+| 9 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
+| 10 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
+| 11 | Data residency | region-pinned · retention | provided \| open-question | § 11f | Step 1.5 posture |
 
 `source` taxonomy (same as SPEC § 13): `provided` (operator stated it) ·
 `inferred` (from the brief / trait matrix) · `defaulted` (house default, not
 raised) · `defaulted-after-skip` (Fast-PoC) · `open-question` (acknowledged,
-unresolved).
+unresolved) · `migrated-from-legacy-foundation` (`threadlight-deploy`
+backfilled a pre-existing foundation record that predated this contract) ·
+`hand-crafted-deploy-inferred` (`threadlight-deploy` inferred and wrote a
+minimal foundation record from `specs/SPEC.md § 11e` because none existed).
 
 ---
 
 ## 1. Framework & runtime shape
 
+> Resolve the tuple from [`runtime-policy.json`](runtime-policy.json) (the
+> sibling contract file in this same `references/` folder) and record the
+> **schema id + resolved `policy_route`** below — do not paste a filesystem
+> path to this skill's `references/` folder into the customer project; that
+> path won't exist there and the link would be broken.
+
 ```yaml
-framework: microsoft-agent-framework    # house default (MAF)
-  # alternatives + when to deviate:
-  #   copilot-agent-sdk  — the surface is M365 / Teams-native and the agent
-  #                        lives inside a Copilot experience
-  #   foundry-native     — SDK-lite hosted agent, no custom orchestration layer
-  # MAF is the threadlight default; deviating is a deliberate, recorded choice.
+schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
+framework: github-copilot-sdk           # resolved via the design skill's runtime-policy route (schema above)
 runtime_shape: agent                    # agent (default) | workflow
+protocol: invocations                   # invocations (default) | responses
+policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
+  # Canonical default tuple: github-copilot-sdk + agent + invocations (policy_route: default-agent).
+  # Explicit operator overrides must match a compatible_combinations tuple AND
+  # be free of that route's blocked_when capability signals AND have every
+  # capability signal resolved (unresolved_signals empty — runtime-policy.json's
+  # requires_resolved_signals gate on this route).
+  # MAF exceptions: deterministic-workflow →
+  # microsoft-agent-framework + workflow + responses;
+  # maf-agent-capabilities → microsoft-agent-framework + agent + responses.
   # Source of truth for the agent-vs-workflow shape is the runtime probe /
   # SPEC § 11e. The Step 2 trait matrix auto-suggests `workflow` for
   # deterministic multi-phase processes with persona gates; the operator
   # confirms or overrides at the Step 4 checkpoint. Do NOT re-litigate here —
   # record the current choice and let discovery refine it.
+capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
+  requires_toolbox: false               # curated multi-tool Foundry Toolbox (web_search, code_interpreter, ...)
+  requires_custom_python_tools: false   # bespoke @tool Python functions beyond MCP passthroughs
+  requires_file_generation: false       # agent must produce/return files (XLSX/PDF/CSV), not just text/JSON
+  latency_sensitive_data_queries: false # sub-second/fast data lookups where MAF agent tooling outperforms
+  unresolved_signals:                   # per-signal unknown marker — a listed name means its boolean above is a placeholder, not a decision
+    - requires_toolbox
+    - requires_custom_python_tools
+    - requires_file_generation
+    - latency_sensitive_data_queries
+  source: open-question                 # provided | inferred | defaulted-after-skip | open-question | migrated-from-legacy-foundation | hand-crafted-deploy-inferred
 ```
 
-→ **Pre-populates** SPEC § 11e (`workflow_model`) and § 12. `framework` is
-net-new here — the runtime probe records the *shape* but not the SDK.
+→ **Pre-populates** SPEC § 11e (`workflow_model` from `runtime_shape`, and the
+`capability_signals` block verbatim) only. `framework`, `protocol`, and
+`policy_route` stay in `specs/foundation.md` — they are **not** emitted into
+SPEC § 12 or any other section; SPEC's `workflow_model` / `capability_signals`
+are read back only to confirm the resolved `policy_route` still matches, not
+to duplicate the selector.
+
+> **Deriving `capability_signals`.** Set each boolean from what Step 0–2
+> discovery actually found: `false` only when the requirement or tooling is
+> **confirmed absent**, never merely unknown. If discovery cannot determine a
+> signal yet, leave its name in `unresolved_signals` (`source: open-question`)
+> instead of guessing `false`. As each signal resolves, **remove** its name
+> from `unresolved_signals` and set its boolean accurately — an **empty**
+> `unresolved_signals` list means all four are resolved. **Refuse** to honor an
+> explicit `explicit-supported-choice` GHCP override while `unresolved_signals`
+> is non-empty (`runtime-policy.json`'s `requires_resolved_signals` gate on
+> that route) — an unresolved signal could still turn out to be the one a
+> `blocked_when` route owns.
 
 ---
 

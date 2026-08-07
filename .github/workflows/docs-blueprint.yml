@@ -1,21 +1,40 @@
 name: docs-blueprint
 
 # Runs the Blueprint composer guards: the static data asset shape + the
-# skill-derivation logic. Pure node:test, no browser, no Azure.
+# skill-derivation logic, plus a generated-data drift/idempotence check.
+# Pure node:test + a stdlib-only python regen step. No browser, no Azure.
 on:
   pull_request:
     branches: [main]
     paths:
       - "docs/assets/process-library.json"
       - "docs/assets/blueprint-logic.js"
+      - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
+      - "THREADLIGHT.md"
+      - "skills/threadlight-auto/SKILL.md"
+      - "skills/threadlight-deploy/SKILL.md"
+      - "skills/threadlight-design/SKILL.md"
+      - "skills/threadlight-design/references/foundation-template.md"
+      - "skills/threadlight-design/references/speckit-template.md"
+      - "skills/threadlight-design/references/runtime-policy.json"
+      - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
   push:
     branches: [main]
     paths:
       - "docs/assets/process-library.json"
       - "docs/assets/blueprint-logic.js"
+      - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
+      - "THREADLIGHT.md"
+      - "skills/threadlight-auto/SKILL.md"
+      - "skills/threadlight-deploy/SKILL.md"
+      - "skills/threadlight-design/SKILL.md"
+      - "skills/threadlight-design/references/foundation-template.md"
+      - "skills/threadlight-design/references/speckit-template.md"
+      - "skills/threadlight-design/references/runtime-policy.json"
+      - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
   workflow_dispatch: {}
 
@@ -27,5 +46,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Run blueprint data + logic tests
         run: node --test tests/blueprint/*.test.js
+      - name: Regenerate process-library.json and check for drift
+        # Idempotence/drift gate: feeding the committed asset back through
+        # its own producer as --source must reproduce it byte-for-byte. This
+        # catches level/artifacts/prerequisites/etc drift that only touches
+        # docs/assets/process-library.json, not scripts/build_process_library.py
+        # or blueprint-logic.js (the other guards above already cover those).
+        run: |
+          python3 scripts/build_process_library.py --source docs/assets/process-library.json --out docs/assets/process-library.json
+          git diff --exit-code -- docs/assets/process-library.json
