@@ -169,6 +169,26 @@ field.
 
 ### Fixed
 
+- **Three stale test assertions that made the suite fail on a clean checkout**
+  (test-only; no product behaviour, schema, or exit code changed).
+  1. `threadlight-auto/tests/test_e2e_control_plane.py` asserted the govern
+     verdict was `wired` or `partial`. The govern vocabulary was renamed
+     `wired` → `governed` when governance was realigned to the real Agent
+     Governance Toolkit model, and this assertion was missed; the authoritative
+     set emitted by `govern_check.py` is `ungoverned` / `partial` / `governed`.
+  2. `threadlight-production-ready/tests/test_end_to_end.py` copied a fixture
+     `postdeploy-manifest.json` carrying a hard-coded `checked_at`, so the run
+     began failing roughly 24 h after the fixture was committed — the
+     safe-check freshness pre-flight (`SystemExit(2)` past `--freshness-hours`,
+     default 24) was doing exactly its job. The fixture, not the gate, was
+     wrong: the test now rewrites `checked_at` to *now* in its temp workdir, so
+     it stays time-independent **and** still exercises the real default CLI
+     path rather than escaping via `--accept-stale-safe-check`.
+  3. The same e2e pinned `manifest["version"] == "0.4.0"`, five releases behind
+     the script's `VERSION`. It was masked by the freshness exit above and
+     surfaced once (2) was fixed. The assertion now reads `VERSION` from
+     `production_ready.py` so a routine version bump can no longer break it.
+
 - **Hardened the `threadlight-production-ready` readiness scorecard against
   modern ARM shapes** (0.8.0 → 0.8.1). The compiled-ARM walker (`BicepGraph`)
   assumed the top-level `resources` was always a list, so it crashed on

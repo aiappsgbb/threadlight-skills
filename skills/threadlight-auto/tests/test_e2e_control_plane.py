@@ -115,7 +115,9 @@ def test_legs_emit_passing_manifests(tmp_path):
     evals = json.loads((root / "specs" / "evals-manifest.json").read_text())
     redteam = json.loads((root / "specs" / "redteam-manifest.json").read_text())
 
-    assert govern["verdict"] in ("wired", "partial")
+    # govern's verdict vocabulary is ungoverned / partial / governed
+    # (renamed from "wired" in #95 — AGT realignment).
+    assert govern["verdict"] in ("governed", "partial")
     assert govern["must_fix"] == []
     assert evals["verdict"] in ("comprehensive", "partial")
     # the evals leg surfaces the latest run's pass-rate so the scorecard can
