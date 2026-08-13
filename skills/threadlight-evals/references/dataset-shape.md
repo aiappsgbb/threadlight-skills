@@ -29,10 +29,16 @@ Recommended fields:
 | `id` | Stable scenario identifier. |
 | `scenario` | Human-readable SPEC § 9 scenario name. |
 | `input` | User turn or task to run. |
-| `expected` | Expected behavior or answer constraints. |
+| `expected` | Reference answer or answer constraints. Load-bearing whenever a model grades the row — see `judge-calibration.md`. |
 | `tool_calls` | Tools expected or observed during the run. |
 | `tool_outputs` | Grounding evidence returned by tools. |
 | `threshold` / `min_score` | Per-scenario pass/fail threshold. |
 
 Store datasets under `evals/` or `specs/evals/`. Store run outputs under
 `evals/runs/*.json` or `docs/eval-runs/`.
+
+> **`expected` is not enforced by the validator.** `dataset_shape_ok`
+> (`EVAL-003`) only requires `tool_calls` and `tool_outputs`, so a dataset with
+> zero reference answers can still report `pass`. When rows are graded by a
+> model, omitting `expected` makes the judge score plausibility instead of
+> correctness. See `judge-calibration.md`.
