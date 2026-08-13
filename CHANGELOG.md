@@ -169,6 +169,41 @@ field.
 
 ### Fixed
 
+- **Nine stdlib-only test suites were never executed in CI.** They are named
+  `test_*.py` but expose `t_*` functions and a `main()` instead of the `test_*`
+  functions pytest collects, so pytest imported them, collected zero, and the
+  run stayed green — 56 assertions in `threadlight-production-ready` never ran.
+  Three of those suites were red and a fourth was passing for the wrong reason:
+  `test_gate_preview.py` asserted "exit 2 means the must-fix hard gate fired",
+  but the CLI was exiting 2 earlier from the stale-safe-check pre-flight, so the
+  gate itself was untested and the committed exemplar had silently drifted out
+  of sync with the current finding text. A new `scripts/ci/run-standalone-tests.py`
+  now **discovers** every `skills/*/tests/test_*.py` that pytest cannot collect
+  and runs it directly, so the next stdlib-only suite someone adds is picked up
+  automatically rather than going quietly unwatched. It replaces the single
+  hard-coded orchestrator invocation in the workflow.
+- **CI no longer masks failures in two suites.** The `threadlight-production-ready`
+  and `threadlight-auto` steps carried `continue-on-error: true` to tolerate the
+  known stale-fixture e2e failures. Those failures are fixed, so both steps
+  hard-gate again.
+- **Tests no longer mutate committed fixtures.** Four suites pointed `--root` at
+  `references/fixtures/<name>/`, so each run rewrote that fixture's
+  `production-readiness-manifest.json` / `-report.md` and appended a row to
+  `production-readiness-trend.csv` — a clean checkout went dirty just by running
+  the suite, and the exemplars drifted outside of any deliberate refresh. A
+  shared `tests/fixture_workdir.py` helper copies the fixture to a temp dir and
+  restamps the safe-check `checked_at`, so runs are hermetic and
+  time-independent. Freshness coverage is unaffected: the gate is still asserted
+  directly in `test_evidence_freshness.py` and still exercised on the default CLI
+  path by `test_end_to_end.py`.
+- **Retired govern verdict in a `threadlight-router-bench` fixture.**
+  `references/fixtures/legs/govern-manifest.json` carried `"verdict": "not-wired"`,
+  which left the vocabulary when governance was realigned to the real Agent
+  Governance Toolkit model. The fixture has three `must-fix` capabilities, so the
+  value `govern_check.manifest()` actually emits is `ungoverned`. Router-bench
+  treats the verdict as an opaque passthrough string, so no scoring or harvest
+  behaviour changes.
+
 - **Three stale test assertions that made the suite fail on a clean checkout**
   (test-only; no product behaviour, schema, or exit code changed).
   1. `threadlight-auto/tests/test_e2e_control_plane.py` asserted the govern

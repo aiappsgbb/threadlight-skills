@@ -20,6 +20,9 @@ SKILL_DIR = TEST_DIR.parent
 SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 SAMPLE_PILOT = SKILL_DIR / "references" / "fixtures" / "sample-pilot"
 
+sys.path.insert(0, str(TEST_DIR))
+from fixture_workdir import fixture_workdir  # noqa: E402
+
 sys.path.insert(0, str(SCRIPT.parent))
 import production_ready as pr  # noqa: E402
 
@@ -41,10 +44,16 @@ def _experimental_ids() -> set[str]:
             if meta.get("experimental")}
 
 
-def _run(*, include: bool) -> int:
+def _run(*, include: bool) -> tuple[int, Path]:
+    """Assess a throwaway copy of the fixture; return (exit code, workdir).
+
+    The copy keeps the committed exemplar under references/fixtures/ pristine
+    and restamps the safe-check manifest so the run is time-independent.
+    """
+    root = fixture_workdir("sample-pilot")
     args = [
         sys.executable, str(SCRIPT),
-        "--root", str(SAMPLE_PILOT),
+        "--root", str(root),
         "--static",
         "--in-postdeploy", "tests/postdeploy-manifest.json",
         "--out", "tests/production-readiness-manifest.json",
@@ -55,7 +64,9 @@ def _run(*, include: bool) -> int:
         args.append("--include-experimental")
     proc = subprocess.run(args, capture_output=True, text=True,
                           check=False, timeout=180)
-    return proc.returncode
+    if proc.returncode != 0:
+        print(f"  [debug] stderr: {proc.stderr[:300]}")
+    return proc.returncode, root
 
 
 def t_experimental_count_in_catalog() -> None:
@@ -76,10 +87,10 @@ def t_excluded_by_default_in_manifest() -> None:
     if not SAMPLE_PILOT.exists():
         expect(False, "fixture: sample-pilot present")
         return
-    out = SAMPLE_PILOT / "tests" / "production-readiness-manifest.json"
-    rc = _run(include=False)
+    rc, root = _run(include=False)
     expect(rc == 0, f"default-run: exit 0 (got {rc})")
-    m = json.loads(out.read_text(encoding="utf-8"))
+    m = json.loads(
+        (root / "tests" / "production-readiness-manifest.json").read_text(encoding="utf-8"))
     exp = _experimental_ids()
     finding_ids = {f["id"]
                    for p in m.get("pillars", [])
@@ -98,10 +109,10 @@ def t_included_when_flag_set() -> None:
     if not SAMPLE_PILOT.exists():
         expect(False, "fixture: sample-pilot present")
         return
-    out = SAMPLE_PILOT / "tests" / "production-readiness-manifest.json"
-    rc = _run(include=True)
+    rc, root = _run(include=True)
     expect(rc == 0, f"include-run: exit 0 (got {rc})")
-    m = json.loads(out.read_text(encoding="utf-8"))
+    m = json.loads(
+        (root / "tests" / "production-readiness-manifest.json").read_text(encoding="utf-8"))
     finding_ids = {f["id"]
                    for p in m.get("pillars", [])
                    for f in p.get("findings", [])}

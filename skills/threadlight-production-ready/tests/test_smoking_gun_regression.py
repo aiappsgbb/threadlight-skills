@@ -35,6 +35,14 @@ SKILL_DIR = TEST_DIR.parent
 SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 FIXTURE = SKILL_DIR / "references" / "fixtures" / "sample-pilot-broken"
 
+sys.path.insert(0, str(TEST_DIR))
+from fixture_workdir import fixture_workdir  # noqa: E402
+
+# Populated by t_runs_and_returns_zero; every later test reads the manifest
+# produced there. Assessing a throwaway copy keeps the committed exemplar
+# under references/fixtures/ pristine.
+WORKDIR: Path | None = None
+
 FAILURES: list[str] = []
 
 # Critical IDs the kickoff handoff doc says MUST not pass on a broken
@@ -62,14 +70,16 @@ def expect(cond: bool, name: str, msg: str = "") -> None:
 
 
 def t_runs_and_returns_zero() -> None:
+    global WORKDIR
     print("\nt_runs_and_returns_zero")
     if not FIXTURE.exists():
         expect(False, "fixture: sample-pilot-broken present")
         return
-    out_manifest = FIXTURE / "tests" / "production-readiness-manifest.json"
+    WORKDIR = fixture_workdir("sample-pilot-broken")
+    out_manifest = WORKDIR / "tests" / "production-readiness-manifest.json"
     proc = subprocess.run(
         [sys.executable, str(SCRIPT),
-         "--root", str(FIXTURE),
+         "--root", str(WORKDIR),
          "--static",
          "--in-postdeploy", "tests/postdeploy-manifest.json",
          "--out", "tests/production-readiness-manifest.json",
@@ -83,7 +93,8 @@ def t_runs_and_returns_zero() -> None:
 
 
 def _load_manifest() -> dict:
-    out_manifest = FIXTURE / "tests" / "production-readiness-manifest.json"
+    assert WORKDIR is not None, "t_runs_and_returns_zero must run first"
+    out_manifest = WORKDIR / "tests" / "production-readiness-manifest.json"
     return json.loads(out_manifest.read_text(encoding="utf-8"))
 
 
