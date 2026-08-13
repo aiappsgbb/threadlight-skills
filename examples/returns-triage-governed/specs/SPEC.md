@@ -314,6 +314,11 @@ agent runs the assistant; a returns supervisor handles escalations.
 - **Options**: approve refund, deny refund, request more info, uphold escalation.
 - **Timeout/SLA**: manual review < 24h.
 - **Action gate**: `escalate` → then `edit-and-approve` on the supervisor's side.
+- **Resume trigger**: the supervisor's decision posts to the approval webhook
+  receiver; the run does not stay open waiting for it.
+- **Rehydrated state**: the pending case is reloaded from Cosmos by `rma_id` —
+  consolidated case, risk rationale, policy citations and refund amount — so the
+  resumed invocation needs nothing from the process that escalated.
 - **Linked business rules**: BR-003, BR-005.
 
 ### Info request to customer

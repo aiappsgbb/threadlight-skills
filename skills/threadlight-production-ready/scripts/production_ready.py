@@ -485,7 +485,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -795,6 +795,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "HITL-003": {"title": "Audit trail destination configured", "pillar": "hitl-audit", "severity": "must-fix", "tier": 0},
     "HITL-004": {"title": "Escalation channel reachable (Teams/email/webhook)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
     "HITL-005": {"title": "HITL decision SLA documented", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
+    "HITL-006": {"title": "Skill contracts declare a substantive idempotency statement", "pillar": "hitl-audit", "severity": "must-fix", "tier": 0},
+    "HITL-007": {"title": "SPEC sec 8 declares the resume trigger and rehydrated state", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
     "HITL-101": {"title": "Audit storage account / table exists", "pillar": "hitl-audit", "severity": "must-fix", "tier": 1},
     "HITL-102": {"title": "Audit storage has immutability policy", "pillar": "hitl-audit", "severity": "should-fix", "tier": 1},
     "HITL-103": {"title": "HITL audit rows in last 7d (if expected)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -3346,6 +3348,56 @@ def _check_rai_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
 
 # ---- pillar 8: hitl-audit -------------------------------------------------
 
+# Run-durability (deep dive 2026-08-13, Q2/Q3). Both checks below are
+# declared-and-attested, never runtime probes: the deep dive states outright
+# that a regex for `if-none-match` proves very little, so neither check is
+# allowed to report `pass` on the strength of a keyword alone — HITL-006 reads
+# the contract the pilot publishes about itself, and HITL-007 reads SPEC sec 8.
+
+_IDEMPOTENCY_LINE = re.compile(r"^\s*[-*]\s*\*\*Idempotency\*\*\s*:?\s*(.*)$", re.M | re.I)
+
+# A statement is substantive when it either disclaims a side effect or names
+# how replay is made safe. Anything else restates the label.
+_IDEMPOTENCY_SUBSTANTIVE = re.compile(
+    r"read[- ]only|pure function|no side[- ]?effect|safe to re-?run|"
+    r"no-?op|upsert|if-not-exists|if-none-match|etag|conditional write|"
+    r"dedupl|idempotency key|keyed on|same .*\bid\b",
+    re.I)
+
+_RESUME_TRIGGER = re.compile(
+    r"resume trigger|webhook|queue|service bus|event grid|callback|"
+    r"inbound (?:trigger|event|message)|timer trigger", re.I)
+
+_REHYDRATED_STATE = re.compile(
+    r"rehydrat|resume[sd]? from|reconstruct|correlation[_ ]?id|state store|"
+    r"persisted state|checkpoint|reload(?:ed)? from|cosmos", re.I)
+
+
+def _skill_contracts(root: Path) -> list[tuple[str, str]]:
+    """Every `src/agent/skills/<name>/SKILL.md`, as (skill name, text)."""
+    out: list[tuple[str, str]] = []
+    base = root / "src" / "agent" / "skills"
+    if not base.is_dir():
+        return out
+    for path in sorted(base.glob("*/SKILL.md")):
+        out.append((path.parent.name, _read_text(path) or ""))
+    return out
+
+
+def _spec_section_8(spec: str) -> str:
+    """SPEC section 8 only.
+
+    Scoped deliberately: a pilot that mentions Cosmos in section 9 must not
+    satisfy a section 8 requirement by accident.
+    """
+    m = re.search(r"^##+\s*8\b.*$", spec, re.M)
+    if not m:
+        return ""
+    rest = spec[m.end():]
+    nxt = re.search(r"^##+\s*(?:9|10)\b", rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
 def _check_hitl_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
@@ -3375,7 +3427,72 @@ def _check_hitl_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("HITL-005",
         status="pass" if has_sla else "should-fix",
         detail="HITL decision SLA documented" if has_sla else "No HITL decision SLA documented"))
+    out.append(_check_hitl_idempotency(ctx, sec8_present))
+    out.append(_check_hitl_resume_path(spec, sec8_present))
     return out
+
+
+def _check_hitl_idempotency(ctx: RepoContext, sec8_present: bool) -> Finding:
+    """HITL-006 — the terminal write is safe to replay, as attested by the
+    skill contracts.
+
+    A pilot with no `src/agent/skills/` is reported `not-verified` rather than
+    `must-fix`: the check judges what a pilot declares about itself, so a pilot
+    that publishes no contracts is outside its reach and must not be failed for
+    a shape it never adopted.
+    """
+    if not sec8_present:
+        return _mk_finding("HITL-006", status="not-applicable",
+            detail="No HITL declared in SPEC — no gated terminal write to replay")
+    contracts = _skill_contracts(ctx.root)
+    if not contracts:
+        return _not_verified("HITL-006",
+            "no skill contracts under src/agent/skills/ to inspect")
+    missing: list[str] = []
+    vacuous: list[str] = []
+    for name, text in contracts:
+        m = _IDEMPOTENCY_LINE.search(text)
+        if not m:
+            missing.append(name)
+        elif not _IDEMPOTENCY_SUBSTANTIVE.search(m.group(1)):
+            vacuous.append(name)
+    if missing:
+        return _mk_finding("HITL-006", status="must-fix",
+            detail=f"skill contract declares no idempotency: {', '.join(sorted(missing))}")
+    if vacuous:
+        return _mk_finding("HITL-006", status="should-fix",
+            detail=("idempotency declared but not substantive (names no key and "
+                    f"disclaims no side effect): {', '.join(sorted(vacuous))}"))
+    return _mk_finding("HITL-006", status="pass",
+        detail=f"{len(contracts)} skill contract(s) declare a substantive idempotency statement")
+
+
+def _check_hitl_resume_path(spec: str, sec8_present: bool) -> Finding:
+    """HITL-007 — a gate that a human may take days to answer needs a declared
+    resume path: no agent session survives three days and none should try.
+
+    should-fix by design. This is a new declaration requirement, and a must-fix
+    would retroactively flip the hard gate for every pilot that already declares
+    section 8 gates, on a documentation gap alone.
+    """
+    if not sec8_present:
+        return _mk_finding("HITL-007", status="not-applicable",
+            detail="No HITL declared in SPEC — no gate to resume")
+    sec8 = _spec_section_8(spec)
+    has_trigger = bool(_RESUME_TRIGGER.search(sec8))
+    has_state = bool(_REHYDRATED_STATE.search(sec8))
+    if has_trigger and has_state:
+        return _mk_finding("HITL-007", status="pass",
+            detail="SPEC sec 8 names a resume trigger and the state it rehydrates")
+    if has_trigger:
+        return _mk_finding("HITL-007", status="should-fix",
+            detail="SPEC sec 8 names a resume trigger but not the state it rehydrates")
+    if has_state:
+        return _mk_finding("HITL-007", status="should-fix",
+            detail="SPEC sec 8 names rehydrated state but no resume trigger")
+    return _mk_finding("HITL-007", status="should-fix",
+        detail="SPEC sec 8 names no resume trigger and no rehydrated state — the gate cannot outlive the session")
+
 
 
 def _check_hitl_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:

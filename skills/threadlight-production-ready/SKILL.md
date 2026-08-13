@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -89,7 +89,7 @@ flowchart LR
 The skill drives **production onboarding** in three phases:
 
 1. **Assess.** A Python script (`scripts/production_ready.py`) inventories your
-   target Azure subscription/resource group, scores it against 151 findings
+   target Azure subscription/resource group, scores it against 173 findings
    spanning 13 production-readiness pillars, and emits an `apply-plan.json`
    that names every must-fix gap and the remediation recipe that closes it.
 
