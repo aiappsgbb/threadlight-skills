@@ -9,6 +9,38 @@ field.
 
 ### Added
 
+- **Skill-contract linter in `threadlight-design`** (1.10.0 → 1.11.0). A pilot is
+  a *super-agent with skills* — one agent, one context, several contracts the
+  model routes between — which makes the skill contract the load-bearing artefact
+  and the place where silent failures concentrate. New stdlib-only
+  `scripts/skill_contract_check.py` statically set-diffs a generated pilot's
+  `src/agent/skills/*/SKILL.md` against `AGENTS.md` and `specs/SPEC.md` across 12
+  checks (`SKC-001`…`SKC-012`): skills present, frontmatter parseable, `name` ==
+  directory, description within the 1024-char loader cap, both `USE FOR` /
+  `DO NOT USE FOR` clauses present, parenthesised handoff pointers resolve to a
+  sibling skill, no two `USE FOR` clauses collide (Jaccard ≥ 0.5 over content
+  tokens), all five operational-contract fields declared, `**Deps**` tool names
+  present in the AGENTS.md tool table, every SPEC § 3 business rule implemented,
+  every cited `BR-XXX` defined, and the AGENTS.md skills table matching the
+  directories on disk. These are exactly the defects that are invisible when
+  reading one file at a time — an over-cap description that drops the skill from
+  the registry with nothing logged, a handoff pointer orphaned by a half-finished
+  rename, a fabricated tool name, a dangling rule citation — and therefore the
+  ones that reach a customer demo. Emits `specs/skill-contract-manifest.json` +
+  `docs/skill-contract-report.md` under `--emit`, verdict `sound` / `partial` /
+  `unsound`, and exits 2 under `--gate` on any must-fix. Degrades to
+  `not-verified` rather than crashing when `AGENTS.md` or `specs/SPEC.md` is
+  absent. Wired as the first mechanical item of the Step 8 auto-review checklist,
+  and the two checklist lines it subsumes are now marked as machine-checked
+  instead of asking a human to re-derive them by hand. Step 6 gains an explicit
+  eight-rule table stating the contract the linter enforces, so generation writes
+  to the same rules the check reads — including the parse convention that tool
+  names are read from `**Deps**` only up to the first parenthesis, which is what
+  keeps qualifiers like `` (idempotent on `rma_id`) `` from being mistaken for
+  tools. New `skills/threadlight-design/tests/` (38 tests, hermetic `tmp_path`
+  pilots) is wired into `.github/workflows/python-pytest.yml`; one of them asserts
+  the shipped `examples/returns-triage-governed` pilot stays contract-clean, so
+  the reference implementation cannot drift away from the rules the skill teaches.
 - **Judge calibration guidance in `threadlight-evals`** (0.1.1 → 0.2.0). A new
   reference, `references/judge-calibration.md`, makes `metrics.pass_rate`
   defensible when a model grades the run. It states the failure mode
