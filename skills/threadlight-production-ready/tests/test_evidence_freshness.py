@@ -42,6 +42,9 @@ SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 SAMPLE_PILOT = SKILL_DIR / "references" / "fixtures" / "sample-pilot"
 REPO = SKILL_DIR.parent.parent
 
+sys.path.insert(0, str(TEST_DIR))
+from fixture_workdir import fixture_workdir  # noqa: E402
+
 # Import the module under test as a sibling, not via the package path.
 sys.path.insert(0, str(SCRIPT.parent))
 import production_ready as pr  # noqa: E402
@@ -372,11 +375,16 @@ def t_cli_static_mode_shape() -> None:
     with tempfile.TemporaryDirectory() as td:
         out_json = Path(td) / "manifest.json"
         out_md = Path(td) / "report.md"
+        # --out/--report go to temp, but the trend CSV path is derived from
+        # --root, so pointing --root at the fixture appended a row to the
+        # committed production-readiness-trend.csv on every run. Assess a copy.
+        # freshen=False keeps --accept-stale-safe-check meaningful here.
+        root = fixture_workdir("sample-pilot", freshen=False)
         proc = subprocess.run(
             [sys.executable, str(SCRIPT),
-             "--root", str(SAMPLE_PILOT),
-             "--in-manifest", str(SAMPLE_PILOT / "specs" / "manifest.json"),
-             "--in-postdeploy", str(SAMPLE_PILOT / "tests" / "postdeploy-manifest.json"),
+             "--root", str(root),
+             "--in-manifest", str(root / "specs" / "manifest.json"),
+             "--in-postdeploy", str(root / "tests" / "postdeploy-manifest.json"),
              "--static",
              "--accept-stale-safe-check",
              "--out", str(out_json),

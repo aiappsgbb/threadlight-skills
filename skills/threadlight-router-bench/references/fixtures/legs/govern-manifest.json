@@ -4,7 +4,7 @@
   "captured_at": "2026-06-30T11:01:49+00:00",
   "agt_profile": "auto",
   "freshness_window_days": 90,
-  "verdict": "not-wired",
+  "verdict": "ungoverned",
   "must_fix": [
     "policy_artefact_present",
     "policy_versioned",

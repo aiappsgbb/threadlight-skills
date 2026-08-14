@@ -25,6 +25,9 @@ SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 SAMPLE_PILOT = SKILL_DIR / "references" / "fixtures" / "sample-pilot"
 SAMPLE_BROKEN = SKILL_DIR / "references" / "fixtures" / "sample-pilot-broken"
 
+sys.path.insert(0, str(TEST_DIR))
+from fixture_workdir import fixture_workdir  # noqa: E402
+
 FAILURES: list[str] = []
 
 
@@ -38,7 +41,16 @@ def expect(cond: bool, name: str, msg: str = "") -> None:
         FAILURES.append(name)
 
 
-def _run(root: Path, *, gate_preview: bool) -> subprocess.CompletedProcess:
+def _run(name: str, *, gate_preview: bool) -> tuple[subprocess.CompletedProcess, Path]:
+    """Assess a throwaway copy of fixture `name`; return (proc, workdir).
+
+    Copying keeps the committed exemplar pristine, and the restamped
+    safe-check manifest keeps the run on the default CLI path — pointing
+    --root at the fixture made the freshness pre-flight exit 2 before the
+    gate was ever evaluated, which silently turned the exit-2 assertion below
+    into a false pass.
+    """
+    root = fixture_workdir(name)
     args = [
         sys.executable, str(SCRIPT),
         "--root", str(root),
@@ -50,8 +62,9 @@ def _run(root: Path, *, gate_preview: bool) -> subprocess.CompletedProcess:
     ]
     if gate_preview:
         args.append("--gate-preview")
-    return subprocess.run(args, capture_output=True, text=True,
+    proc = subprocess.run(args, capture_output=True, text=True,
                           check=False, timeout=180)
+    return proc, root
 
 
 def t_broken_fixture_gate_preview_exits_2() -> None:
@@ -60,7 +73,7 @@ def t_broken_fixture_gate_preview_exits_2() -> None:
     if not SAMPLE_BROKEN.exists():
         expect(False, "fixture: sample-pilot-broken present")
         return
-    proc = _run(SAMPLE_BROKEN, gate_preview=True)
+    proc, _ = _run("sample-pilot-broken", gate_preview=True)
     expect(proc.returncode == 2,
            f"broken+gate: exit 2 (got {proc.returncode}; "
            f"stderr: {proc.stderr[:200]})")
@@ -74,7 +87,7 @@ def t_broken_fixture_no_gate_exits_0() -> None:
     if not SAMPLE_BROKEN.exists():
         expect(False, "fixture: sample-pilot-broken present")
         return
-    proc = _run(SAMPLE_BROKEN, gate_preview=False)
+    proc, _ = _run("sample-pilot-broken", gate_preview=False)
     expect(proc.returncode == 0,
            f"broken-no-gate: exit 0 (got {proc.returncode}; "
            f"stderr: {proc.stderr[:200]})")
@@ -86,7 +99,11 @@ def t_manifest_would_fail_hard_gate_field() -> None:
     if not SAMPLE_BROKEN.exists():
         expect(False, "fixture: sample-pilot-broken present")
         return
-    out = SAMPLE_BROKEN / "tests" / "production-readiness-manifest.json"
+    proc, root = _run("sample-pilot-broken", gate_preview=False)
+    if proc.returncode != 0:
+        expect(False, f"manifest: assess run succeeded (exit {proc.returncode})")
+        return
+    out = root / "tests" / "production-readiness-manifest.json"
     m = json.loads(out.read_text(encoding="utf-8"))
     expect("would_fail_hard_gate" in m,
            "manifest: would_fail_hard_gate key present")
@@ -96,7 +113,7 @@ def t_manifest_would_fail_hard_gate_field() -> None:
 
 def main() -> int:
     tests = [
-        t_broken_fixture_no_gate_exits_0,  # run first; populates manifest
+        t_broken_fixture_no_gate_exits_0,
         t_broken_fixture_gate_preview_exits_2,
         t_manifest_would_fail_hard_gate_field,
     ]

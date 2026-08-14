@@ -69,19 +69,17 @@ jobs:
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
       - name: Run threadlight-production-ready tests
-        # `|| true` keeps the job green when only the 2 known stale-fixture
-        # e2e failures are present; the consumption-iq + COST-005/006 tests
-        # still hard-fail because they run first.
         run: python -m pytest skills/threadlight-production-ready/tests/ -v
-        continue-on-error: true
       - name: Run threadlight-auto tests
         run: python -m pytest skills/threadlight-auto/tests/ -v
-        continue-on-error: true
-      - name: Run threadlight-auto orchestrator state-machine test (standalone)
-        # The orchestrator suite drives main() rather than pytest test_ funcs,
-        # so pytest collects 0 above. Run it directly to hard-gate the
-        # evals/redteam/govern stage ordering + skip/run probes.
-        run: python skills/threadlight-auto/tests/test_threadlight_auto_orchestrator.py
+      - name: Run standalone (non-pytest) test suites
+        # Several suites are stdlib-only scripts exposing `t_*` functions and a
+        # main() instead of pytest-collectable `test_*` functions. pytest
+        # imports them, collects 0, and stays green — so their assertions never
+        # ran in CI. This runner discovers every such file under skills/ and
+        # executes it directly, so a newly added stdlib-only suite is picked up
+        # automatically instead of silently going unwatched.
+        run: python scripts/ci/run-standalone-tests.py
       - name: Run threadlight-evals tests
         run: python -m pytest skills/threadlight-evals/tests/ -v
       - name: Run threadlight-redteam tests

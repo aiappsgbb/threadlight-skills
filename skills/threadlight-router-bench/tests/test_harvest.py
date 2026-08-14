@@ -39,7 +39,9 @@ def test_failed_phase_marks_downstream_skipped():
 def test_load_leg_manifests_real():
     legs = harvest.load_leg_manifests(FIXTURES / "legs")
     assert legs["evals"]["schema"] == "threadlight-evals-manifest/v1"
-    assert legs["govern"]["verdict"] == "not-wired"
+    # "ungoverned" (not the retired "not-wired") is what govern_check.manifest()
+    # emits when any capability is must-fix — this fixture has three.
+    assert legs["govern"]["verdict"] == "ungoverned"
     assert legs["redteam"]["verdict"] == "vulnerable"
 
 
