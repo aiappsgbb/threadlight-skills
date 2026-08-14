@@ -14,11 +14,34 @@ read-only / suggestion-only agents it is `not-applicable`.
 
 | ID | Check | Default status |
 |---|---|---|
-| `HITL-001` | SPEC § 8 lists action gates and identifies channel (Teams, Slack, custom) | `not-applicable` if § 8 empty |
-| `HITL-002` | Adaptive Card / channel template present (`src/bot/cards/`, `src/agent/cards/`, or referenced from `threadlight-hitl-patterns` template) | `must-fix` if HITL declared |
-| `HITL-003` | Audit-trail storage declared (Cosmos collection / table / KV / dedicated AppIn custom event) | `must-fix` if HITL declared |
-| `HITL-004` | Idempotency key pattern visible in the gate handler (correlation ID / request ID stored before action) | `should-fix` if absent |
-| `HITL-005` | Escalation contact declared (fallback if approver unavailable) | `should-fix` if absent |
+| `HITL-001` | SPEC § 8 lists action gates and identifies channel (Teams, Slack, custom) | `should-fix` if § 8 absent |
+| `HITL-002` | HITL gate implementation referenced in `src/` | `must-fix` if § 8 declares gates |
+| `HITL-003` | Audit-trail storage declared in infra (Storage / SQL / Cosmos) | `must-fix` if absent |
+| `HITL-004` | Escalation channel referenced (Teams, webhook, email) | `should-fix` if absent |
+| `HITL-005` | HITL decision SLA documented | `should-fix` if absent |
+| `HITL-006` | Every skill contract declares a **substantive** idempotency statement | `must-fix` if a contract declares none |
+| `HITL-007` | SPEC § 8 names the resume trigger and the state it rehydrates | `should-fix` if absent |
+
+### Run durability (HITL-006 / HITL-007)
+
+Both are **declared-and-attested** checks, never runtime probes. A regex for
+`if-none-match` proves very little, so neither is allowed to report `pass` on the
+strength of a keyword alone.
+
+`HITL-006` reads the `- **Idempotency**:` line of every
+`src/agent/skills/<name>/SKILL.md` operational contract. It accepts a statement
+that names how replay is made safe (`writing the same decision for the same
+`rma_id` is a no-op`) or that disclaims the side effect (`read-only; safe to
+re-run`, `pure function of inputs`). It rejects `Yes`, `Idempotent` and `N/A`,
+which restate the label and attest nothing. A pilot that publishes no contracts
+is `not-verified`, never `must-fix` — the check judges what a pilot declares
+about itself, so it must not fail a pilot for a shape it never adopted.
+
+`HITL-007` reads **§ 8 only**, so a pilot that mentions Cosmos in § 9 cannot
+satisfy it by accident. A supervisor may take three days; no agent session
+survives three days and none should try. The correct shape is persist, exit, and
+resume on an inbound trigger — so § 8 has to name that trigger and the state the
+fresh invocation rehydrates.
 
 ### Live (tier 1)
 
@@ -38,6 +61,12 @@ read-only / suggestion-only agents it is `not-applicable`.
 - Approver clicks Approve, network blips, retry, action fires twice.
   No idempotency key.
 - The named approver is on holiday; no escalation route declared.
+- Every skill contract says "Idempotency: yes" and none says what makes
+  the replay safe. The vocabulary is everywhere, the verification is
+  nowhere.
+- § 8 describes the gate but not what resumes it, so the design implies
+  holding an open session for a decision that takes three days. The
+  first host recycle loses the unit of work.
 
 ## Remediation
 
@@ -46,6 +75,7 @@ read-only / suggestion-only agents it is `not-applicable`.
 | Wire Teams approval gate | `threadlight-hitl-patterns`, `foundry-teams-bot` |
 | Author audit-trail schema | `threadlight-hitl-patterns` |
 | Add idempotency keys | `threadlight-hitl-patterns` |
+| Declare the resume trigger | `threadlight-event-triggers` |
 
 ## Why this pillar matters
 

@@ -9,6 +9,58 @@ field.
 
 ### Added
 
+- **Run-durability checks inside pillar 8 `hitl-audit`** (`threadlight-production-ready`
+  0.9.0 → 0.10.0). Lands Q2 and Q3 of the run-durability deep dive
+  (`docs/superpowers/specs/2026-08-13-run-durability-deep-dive-design.md`), which
+  recommended strengthening pillar 8 rather than adding a pillar 15 — every pillar
+  added dilutes the score and lengthens the report, so the bar for a new one stays
+  high. The unit of failure here is not "is the service up" (pillar 11 already asks
+  that) but **one unit of work, halfway through a skill chain, when the process
+  hosting it stops existing**.
+  - `HITL-006` (must-fix) — every `src/agent/skills/<name>/SKILL.md` operational
+    contract declares a *substantive* idempotency statement. The vocabulary was
+    already everywhere — `threadlight-design` mandates the field, pillar 8 listed
+    "idempotent" in its definition of good, `threadlight-event-triggers` wires
+    idempotency keys — and the verification was nowhere. The failure this permits is
+    a double side effect on a real customer, not a degraded score. The check accepts
+    a statement that names how replay is made safe (`writing the same decision for
+    the same `rma_id` is a no-op`) or that disclaims the side effect (`read-only;
+    safe to re-run`, `pure function of inputs`), and rejects `Yes` / `Idempotent` /
+    `N/A`, which restate the label and attest nothing.
+  - `HITL-007` (should-fix) — SPEC § 8 names the trigger that resumes a gated unit of
+    work and the state it rehydrates. A supervisor may take three days; no agent
+    session survives three days and none should try, so the correct shape is persist,
+    exit, and resume on an inbound trigger. Every component already existed
+    (`threadlight-hitl-patterns` for the gate, `threadlight-event-triggers` for the
+    receiver, the declared store for state) — what was missing was the statement that
+    they compose into a resume path, which is why this was cheap to close.
+  - Both are **declared-and-attested checks, never runtime probes**. The deep dive's
+    open question 2 states outright that a regex for `if-none-match` proves very
+    little, so neither is allowed to report `pass` on a keyword alone: `HITL-006`
+    reads the contract the pilot publishes about itself, and `HITL-007` reads § 8
+    *only*, so a pilot mentioning Cosmos in § 9 cannot satisfy it by accident.
+  - Chosen severities deliberately avoid a retroactive gate flip. A pilot with no
+    `src/agent/skills/` reports `HITL-006` as `not-verified`, never `must-fix` — the
+    check judges what a pilot declares about itself and must not fail a pilot for a
+    shape it never adopted. `HITL-007` is `should-fix` rather than the deep dive's
+    proposed `must-fix` because it is a brand-new *declaration* requirement, and a
+    must-fix would flip the hard gate for every pilot that already declares § 8
+    gates, on a documentation gap alone. Verified against every committed fixture and
+    the shipped example: **no new must-fix anywhere, no gate changes**.
+  - Remediation recipes `HITL-006.md` and `HITL-007.md`; `examples/returns-triage-governed`
+    § 8 now declares its resume trigger and rehydrated state, so the reference pilot
+    models the shape the check asks for (both checks `pass`).
+
+### Fixed
+
+- **`threadlight-production-ready` SKILL.md advertised 151 findings against a catalog
+  of 171** — the headline number understating the assessor by twenty checks. Corrected
+  to 173 and gated: `test_script_strings.py` now asserts the advertised count equals
+  `len(FINDING_CATALOG)`, so any finding added from here on has to update the sentence.
+  `test_version.py` was rewritten to read a single `EXPECTED` constant instead of
+  hard-coding the version in two assertions plus the test names, which is what let the
+  name `test_version_is_090` outlive the version it pinned.
+
 - **Skill-contract linter in `threadlight-design`** (1.10.0 → 1.11.0). A pilot is
   a *super-agent with skills* — one agent, one context, several contracts the
   model routes between — which makes the skill contract the load-bearing artefact
