@@ -7,14 +7,18 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "awesome-gbb contributors" }]
 dependencies = [
-    "agent-framework~=1.9.0",
+    "agent-framework~=1.13.0",
     "azure-identity~=1.21.0",
     "streamlit~=1.40.0",
 ]
 
 [project.optional-dependencies]
-foundry = ["agent-framework[foundry]~=1.9.0"]
-aoai = ["agent-framework[openai]~=1.9.0"]
+# `agent-framework` ships no extras of its own — it already depends on
+# `agent-framework-core[all]`, so every backend is pulled by the base dep.
+# These extras are kept as intent-declaring aliases so `pip install .[aoai]`
+# (used by the E2E workflow and the workshop) keeps working.
+foundry = ["agent-framework~=1.13.0"]
+aoai = ["agent-framework~=1.13.0"]
 test = ["pytest~=8.3.0"]
 
 [project.scripts]

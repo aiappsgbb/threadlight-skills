@@ -15,7 +15,7 @@ upstream:
 packages:
   - name: agent-framework
     source: pypi
-    version: "1.4.0"
+    version: "1.13.0"
     upstream_changelog: https://pypi.org/project/agent-framework/#history
     notes: |
       MAF surface used by Pattern 0 wiring: Agent, SkillsProvider.from_paths,
@@ -44,7 +44,17 @@ docs_to_revalidate:
   - https://pypi.org/project/streamlit/
   - https://pypi.org/project/azure-identity/
 
-known_issues: []
+known_issues:
+  - |
+    agent-framework 1.9.0 became uninstallable from PyPI without any change on
+    our side. The meta-package depends on `agent-framework-core[all]`, whose
+    `all` extra pulls `agent-framework-ag-ui`; the oldest published ag-ui
+    (1.0.0) requires `agent-framework-core>=1.11.0`, which contradicts the
+    `==1.9.0` pin that `agent-framework 1.9.0` forces. pip therefore fails with
+    ResolutionImpossible. This surfaced in the E2E run only — no repo commit
+    caused it. Bumped to ~=1.13.0, which resolves against ag-ui 1.0.1.
+    Lesson: this rot class is time-delayed and silent, so the pin needs a
+    scheduled resolution check rather than only on-demand E2E dispatch.
 
 validation:
   requires: [pypi]
@@ -71,7 +81,7 @@ validation:
     . .venv/bin/activate
     pip install --quiet --upgrade pip
     pip install --quiet \
-      "agent-framework~=1.9.0" \
+      "agent-framework~=1.13.0" \
       "streamlit~=1.40.0" \
       "azure-identity~=1.21.0"
 
@@ -103,9 +113,9 @@ validation:
     - "ok agent-framework surface"
     - "ok streamlit chat surface"
 
-last_validated: 2026-06-30
+last_validated: 2026-08-14
 validated_by: ricchi
-known_issues_count: 0
+known_issues_count: 1
 ---
 
 # Upstream pin — `threadlight-local-test` skill
@@ -117,7 +127,7 @@ Quickstart reference package under `references/quickstart/` targets.
 
 | Package | Source | Pinned version | Notes |
 |---------|--------|----------------|-------|
-| `agent-framework` | PyPI | **1.9.0** | MAF `Agent` + `SkillsProvider.from_paths` + `@tool` surface used by Pattern 0 |
+| `agent-framework` | PyPI | **1.13.0** | MAF `Agent` + `SkillsProvider.from_paths` + `@tool` surface used by Pattern 0 |
 | `streamlit` | PyPI | **1.40.0** | Pattern 0 chat UI; pinned to a minor that has stable `st.chat_message` / `st.chat_input` |
 | `azure-identity` | PyPI | **1.21.0** | `DefaultAzureCredential` for both Foundry and AOAI backends |
 
@@ -131,7 +141,7 @@ end-to-end against `fixture-poc`.
 
 ## Why these caps
 
-- **`agent-framework ~=1.9.0`** — Pattern 0 uses the same wiring shape
+- **`agent-framework ~=1.13.0`** — Pattern 0 uses the same wiring shape
   (`Agent + SkillsProvider`) documented in `foundry-hosted-agents` for prod
   deploy. Keeping the cap consistent across skills means the
   design → quickstart → deploy ergonomic story doesn't bifurcate.
@@ -143,4 +153,20 @@ end-to-end against `fixture-poc`.
 
 ## Known issues
 
-None at this pin.
+**`agent-framework 1.9.0` is no longer installable from PyPI.** The break needs
+no commit on our side, which is what makes it worth writing down.
+
+`agent-framework` depends on `agent-framework-core[all]`, and that `all` extra
+pulls in `agent-framework-ag-ui`. The *oldest* published ag-ui (1.0.0) already
+requires `agent-framework-core>=1.11.0` — so ag-ui has never had a release
+compatible with the `core==1.9.0` that `agent-framework 1.9.0` forces. The
+moment ag-ui first shipped, the 1.9.0 pin became unresolvable for everyone, and
+pip started failing with `ResolutionImpossible`.
+
+This was caught by the E2E workflow failing at the `pip install` step — before
+it reached a single agent phase. Nothing in the pytest suite could have caught
+it, because no test installs this package.
+
+Bumped to `~=1.13.0`, which resolves against ag-ui 1.0.1. The same class of rot
+can recur at any time, so the durable fix is a scheduled resolution check, not
+a manual E2E dispatch.

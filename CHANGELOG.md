@@ -53,7 +53,27 @@ field.
 
 ### Fixed
 
-- **`threadlight-production-ready` SKILL.md advertised 151 findings against a catalog
+- **`agent-framework 1.9.0` had become uninstallable, breaking the Pattern 0 quickstart
+  and every E2E run — with no commit on our side causing it.** The meta-package pulls
+  `agent-framework-core[all]`, whose `all` extra includes `agent-framework-ag-ui`; the
+  oldest published ag-ui (1.0.0) requires `agent-framework-core>=1.11.0`, contradicting
+  the `==1.9.0` that `agent-framework 1.9.0` forces. pip therefore failed with
+  `ResolutionImpossible`. Because the quickstart `pyproject.toml` is the template copied
+  into every pilot, this broke the documented workshop path, not just CI.
+  - Bumped `agent-framework` to `~=1.13.0` (verified: resolves against ag-ui 1.0.1;
+    `--check` against `fixture-poc` emits all three contract markers).
+  - Dropped the `[foundry]` / `[openai]` sub-extras, which never existed —
+    `agent-framework` publishes no extras at all, so pip was silently warning and
+    ignoring them. The `foundry` / `aoai` extra *names* are kept, since the E2E workflow
+    and the workshop both install `quickstart[aoai]`.
+  - Reconciled `upstream-pin.md`, whose front-matter claimed `1.4.0` while its table and
+    validation script said `1.9.0` — the structured pin had drifted from the prose.
+  - Recorded the rot in `known_issues`: this class of break is time-delayed and silent,
+    so the durable fix is a scheduled resolution check rather than on-demand E2E
+    dispatch. Caught only because the E2E failed at `pip install`; no pytest could have
+    caught it, because no test installs this package.
+
+
   of 171** — the headline number understating the assessor by twenty checks. Corrected
   to 173 and gated: `test_script_strings.py` now asserts the advertised count equals
   `len(FINDING_CATALOG)`, so any finding added from here on has to update the sentence.
