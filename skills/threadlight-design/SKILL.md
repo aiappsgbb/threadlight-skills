@@ -11,11 +11,12 @@ description: >
   USE FOR: design a process, spec out a use case, create agent architecture, automate
   a regulated workflow, threadlight design, skill factory, business process
   specification, speckit, define a customer scenario, mock backend systems,
-  seller prep guide, demo script, demo prompts, lock the stack/model/hosting foundation.
+  seller prep guide, demo script, demo prompts, lint skill contracts,
+  lock the stack/model/hosting foundation.
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.10.0"
+  version: "1.11.0"
 ---
 
 # Threadlight Design
@@ -838,6 +839,28 @@ Use the template from `references/skill-template.md`. Each skill MUST have:
 > **Convention:** Process skills go directly into `src/agent/skills/`. Do NOT put them
 > in `.github/skills/` — that location is reserved for coding/development skills
 > (skills that help develop the repo itself, not the agent's runtime skills).
+
+##### The skill contract is machine-checked
+
+A pilot is a **super-agent with skills**, not a multi-agent system: one agent, one
+context, several contracts the model routes between. The contract is therefore the
+load-bearing artefact, and the eight rules below are enforced mechanically by
+`scripts/skill_contract_check.py` (Step 8). Write to them and the linter is silent;
+drift from them and it names the exact skill and token.
+
+| # | Rule | Why it is not cosmetic |
+|---|------|------------------------|
+| 1 | `name:` in frontmatter is **byte-identical** to the directory name | The loader keys on the frontmatter name; a mismatch orphans the folder |
+| 2 | `description` stays **≤ 1024 characters** | Over the cap the skill is *silently dropped* from the registry — it never fires and nothing logs why |
+| 3 | Every description carries **both** `USE FOR …` and `DO NOT USE FOR …` | These two clauses are the entire routing signal; without them the boundary is guessed at inference time |
+| 4 | Handoff pointers name the sibling skill **verbatim, inside parentheses** — `DO NOT USE FOR the refund decision (disposition-decision)` | A pointer left behind by a rename routes the model to a skill that no longer exists |
+| 5 | No two `USE FOR` clauses describe the **same trigger** | Overlapping clauses make routing a coin flip — the demo fails intermittently, which is the worst way to fail |
+| 6 | `## Operational contract` declares all five of **Inputs · Outputs · Deps · Idempotency · Failure behavior** | An undeclared idempotency or failure path is a contract the runtime invents on its own under load |
+| 7 | Tool names in `**Deps**` are **backticked before any parenthetical** — `` tools `returns_get_case` (idempotent on `rma_id`) `` | Everything before the `(` is read as a tool and set-diffed against the AGENTS.md table; this is what catches fabricated tool names |
+| 8 | Every `BR-XXX` a skill cites **exists in SPEC § 3**, and every rule in § 3 is cited by ≥ 1 skill | A dangling citation cannot be reviewed by the customer SME; an uncited rule is a promise the agent does not keep |
+
+Rules 1–4, 7 and the "dangling citation" half of 8 are **must-fix** (they break the
+agent). Rules 5, 6 and the coverage half of 8 are **should-fix** (they degrade it).
 
 #### 2. `AGENTS.md`
 
@@ -1988,12 +2011,26 @@ must catch its own mistakes.
 
 **Review checklist:**
 
+- [ ] **Skill contract lint (MANDATORY — run it, do not eyeball it).** Run
+      `python skills/threadlight-design/scripts/skill_contract_check.py --target . --emit --gate`
+      from the pilot root (or point `--target` at the generated repo). This is the
+      only check in this list that is fully mechanical: it set-diffs the generated
+      `src/agent/skills/*/SKILL.md` contracts against `AGENTS.md` and `specs/SPEC.md`
+      and reports 12 checks (SKC-001…SKC-012) covering the eight rules in Step 6
+      § "The skill contract is machine-checked".
+      **Exit 2 = a must-fix contract defect; fix it and re-run before showing the
+      user anything.** It writes `specs/skill-contract-manifest.json` +
+      `docs/skill-contract-report.md`. Drop `--gate` for an advisory run, or add
+      `--json` to pipe the manifest. The findings it catches — a description over
+      the 1024-char cap, a handoff pointer orphaned by a rename, a fabricated tool
+      name, a dangling `BR-XXX` — are all invisible when reading one file at a time,
+      which is exactly how they reach a customer demo.
 - [ ] **Visual validation (MANDATORY — not replaceable by code checks).** Open `specs/demo-deck.html` in a browser at 1440×900. Advance through all 11 slides with Space. Verify: no text overflow or card overlap, every slide readable at arm's length, big numbers visible as anchors, no cramped multi-column layouts with dense text. If Playwright is available (see `runtime.playwright_available` in SPEC § 13, set by the **Runtime capability probe** earlier in this skill), take a screenshot of slides 1 and 3 and inspect; otherwise this gate is **manual** and the contributor MUST do it before declaring done. **Battle-scar:** code-level validation (HTML parsing, class counting, grep patterns) is necessary but NOT sufficient — a recent PoC passed every automated gate but was visually broken (overlapping grids, walls of text, no breathing room). The browser is the final gate.
-- [ ] Every BR-XXX in `specs/SPEC.md` § 3 is referenced by at least one skill's procedure
+- [ ] Every BR-XXX in `specs/SPEC.md` § 3 is referenced by at least one skill's procedure *(mechanically checked — SKC-010/SKC-011)*
 - [ ] Every tool contract in spec § 6 has a matching tool in AGENTS.md
 - [ ] Every mocked system in spec § 5 has sample data in `specs/sample-data/`
 - [ ] Every eval scenario (S-XXX) in spec § 9 references valid BR-XXX rules
-- [ ] AGENTS.md skills table matches the actual `src/agent/skills/` directories
+- [ ] AGENTS.md skills table matches the actual `src/agent/skills/` directories *(mechanically checked — SKC-012)*
 - [ ] `specs/manifest.json` matches the generated skills list and BR counts
 - [ ] **`specs/demo-deck.html` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`): HTMLParser passes, 10–13 `<section class="slide">` elements, speaker notes count == slide count (1:1 `data-for` mapping), all 4 keyboard chords wired (Space / F / S / B), `bg-{brand}-flood` panels ≥ 4 (friction + follow-up + close are the 3 mandatory; hero may be dark-cinematic), brandmark substitute present on slide 1 AND final slide (bookend), MS co-brand bar present on hero AND close, 18-symbol icon library present and all referenced via `<use href="#ico-XXX">`. See § 7 generation block + `references/demo-deck-template.md` for the full pattern.
 - [ ] **`specs/overview.html` is either absent OR a redirect-only stub.** If a legacy `specs/overview.html` exists from an older generation, it MUST contain the literal markers `<meta http-equiv="refresh"` AND `location.replace('demo-deck.html')` and be ≤ 3 KB (the canonical migration stub). Divergent narrative content in overview.html FAILS — collapse it to the meta-refresh redirect per `references/demo-deck-template.md` § "Migration".
@@ -2041,6 +2078,7 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 
 | File | Purpose | Status |
 |------|---------|--------|
+| `scripts/skill_contract_check.py` | Static contract linter for the generated `src/agent/skills/` (12 checks, SKC-001…SKC-012) — run by Step 8 auto-review | ✅ Included |
 | `references/speckit-template.md` | Template for SpecKit specification documents (12 sections + abstract-vs-pure-coding contracts) | ✅ Included |
 | `references/process-traits.md` | Composable trait catalog for process pattern detection | ✅ Included |
 | `references/experience-template.md` | Bespoke cinematic `experience.html` design discipline + paradigm catalog | ✅ Included |
@@ -2082,6 +2120,7 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | `specs/manifest.json` | `threadlight-deploy` | Machine-readable deployment contract |
 | `specs/prep-guide.html` § "Demo Script" | `threadlight-deploy` Phase 6.7 | Runnable seller demo script (acts contain literal prompts + concrete expected data points + seller narration); deploy back-fills a separate "Live MVP Walkthrough" appendix with workspace URL / Teams sideload / reset / eval / smoke commands |
 | `AGENTS.md` + `src/agent/skills/` | `threadlight-deploy` | Skill catalog + behavioral guidelines |
+| `specs/skill-contract-manifest.json` + `docs/skill-contract-report.md` | `threadlight-production-ready`, reviewers | Skill contract lint verdict (`sound` / `partial` / `unsound`) + the 12 SKC checks with evidence |
 
 > If a section is missing or under-specified, the corresponding downstream skill
 > will either fail or fall back to defaults. **Always populate every input contract

@@ -12,6 +12,10 @@ name: python-pytest
 #   - skills/threadlight-consumption-iq/tests/  (125 tests, including a
 #     deterministic golden-file e2e against the sample-pilot-consumption
 #     fixture — uses a mock pricing client, no network)
+#   - skills/threadlight-design/tests/           (skill-contract linter: the 12
+#     SKC checks over a generated pilot's src/agent/skills/, plus a smoke test
+#     asserting the shipped examples/returns-triage-governed pilot stays
+#     contract-clean; hermetic tmp_path fixtures, no network)
 #   - skills/threadlight-production-ready/tests/ (covers COST-005/006 +
 #     existing pillar tests)
 #   - skills/threadlight-auto/tests/             (orchestrator state
@@ -39,10 +43,10 @@ name: python-pytest
 #     Imports the receiver cores with NO azure SDKs installed — all azure.*
 #     imports are lazy — so it runs stdlib-only, no network)
 #
-# 2 e2e tests in threadlight-production-ready/tests/test_end_to_end.py
-# are pre-existing failures caused by stale safe-check fixtures and are
-# tracked separately — they are NOT skipped here so we keep visibility
-# on the wider regression surface.
+# Every step is a hard gate — no `continue-on-error`. Stdlib-only suites that
+# expose `t_*` functions plus a main() instead of pytest-collectable `test_*`
+# functions are executed by scripts/ci/run-standalone-tests.py, which discovers
+# them rather than hard-coding a list.
 on:
   pull_request:
     branches: [main]
@@ -68,6 +72,12 @@ jobs:
         run: python scripts/ci/check-skill-description-length.py
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
+      - name: Run threadlight-design tests
+        # Contract linter for a generated pilot's src/agent/skills/. The suite
+        # also asserts the shipped examples/returns-triage-governed pilot stays
+        # contract-clean, so the reference implementation cannot drift away from
+        # the rules the skill tells the model to generate against.
+        run: python -m pytest skills/threadlight-design/tests/ -v
       - name: Run threadlight-production-ready tests
         run: python -m pytest skills/threadlight-production-ready/tests/ -v
       - name: Run threadlight-auto tests
