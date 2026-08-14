@@ -31,7 +31,7 @@ import os
 import re
 import sys
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 MANIFEST_SCHEMA = "threadlight-evals-manifest/v1"
 
 CAPABILITY_IDS = {

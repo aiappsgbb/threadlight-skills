@@ -9,6 +9,37 @@ field.
 
 ### Added
 
+- **Judge calibration guidance in `threadlight-evals`** (0.1.1 → 0.2.0). A new
+  reference, `references/judge-calibration.md`, makes `metrics.pass_rate`
+  defensible when a model grades the run. It states the failure mode
+  (reference-free judging scores plausibility rather than correctness, so
+  confident wrong answers pass), and gives five review criteria: anchor every
+  judged row to `expected` **and interpolate it in the grader prompt**; prefer
+  binary or few-level anchored rubrics over bare 1–5 scales; measure
+  judge–human agreement once on a hand-labelled seed set; pin the judge model
+  and version, treating a judge swap as an F3 champion–challenger event; and
+  keep the producing component out of the grading step. It also defines the
+  explicit binarize-at-a-declared-cut mapping for upstream evaluators that emit
+  1–5 floats, so an external mean is never gated on directly. Guidance only —
+  `evals_check.py` behaviour, the manifest schema, capability keys, and gate
+  exit codes are unchanged; the reference states plainly which of these
+  criteria are *not* machine-checked, including that `dataset_shape_ok` can
+  report `pass` on a dataset with zero reference answers. `references/dataset-shape.md`
+  now flags `expected` as load-bearing for graded rows.
+- **Run-durability deep dive** —
+  `docs/superpowers/specs/2026-08-13-run-durability-deep-dive-design.md`.
+  Analysis-only design note asking whether a pillar 15 `run-durability` is
+  justified for the super-agent-with-skills shape, where one unit of work can be
+  lost, duplicated, or wrongly marked complete mid-chain while the service stays
+  perfectly available. It separates that failure class from pillar 11
+  `reliability` (infrastructure), maps five failure questions — invisible
+  compounding error across skill steps, idempotency that is declared everywhere
+  but verified nowhere, HITL gates that outlive any session, "declared done"
+  without independent read-back, and the platform/application boundary — and
+  recommends landing idempotency verification and resume-path declaration inside
+  the existing pillar 8 `hitl-audit` **before** considering a new pillar. No
+  behaviour change.
+
 - **Threadlight Lifecycle Canvas** (plugin 1.10.0 → 1.11.0). The optional,
   experimental GitHub Copilot App cockpit organizes all 17 skills into six
   outcome phases, derives status from canonical allowlisted artifacts, refreshes

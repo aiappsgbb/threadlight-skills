@@ -8,15 +8,16 @@ description: >-
   USE FOR: continuous evals, offline eval gate, eval schedule, Foundry
   Continuous Evaluation, create_agent_evaluation, Application Insights eval
   results, eval threshold alert, eval run freshness, eval dataset shape,
-  tool_calls tool_outputs, champion challenger, A/B eval gate, model swap
-  gate, prompt swap gate, foundry-evals pipeline leg, continuous-evals pillar,
+  tool_calls tool_outputs, champion challenger, A/B eval gate,
+  model/prompt swap gate, judge calibration, LLM-as-judge,
+  foundry-evals pipeline leg, continuous-evals pillar,
   EVAL-001..006, EVAL-101..105, evals-manifest. DO NOT USE FOR: token-level
   content filtering at the model edge — use the model guardrail / Azure AI
   Content Safety; adversarial scanning — use threadlight-redteam;
   agent-runtime action governance — use threadlight-govern; deep evaluator or
   dataset authoring — use foundry-evals.
 metadata:
-  version: "0.1.1"
+  version: "0.2.0"
 ---
 
 # Threadlight Evals — run continuous evals, then prove they ran
@@ -213,6 +214,28 @@ Before changing a model, prompt, tool contract, or retrieval configuration:
 Place config under `evals/ab/` or include `champion`, `challenger`, and
 `baseline_vs` markers in an eval script/config. See `references/ab-comparison.md`.
 
+## Judge calibration — before `pass_rate` becomes evidence
+
+`metrics.pass_rate` does not stop here. Pillar 6 promotes it into the scorecard's
+outcome-KPI column, and the EU AI Act evidence pack cites it under Art 15
+(accuracy). So the number has to survive the question *"how was it produced?"*
+
+When a model grades the run — which is the common case — four review criteria
+apply. None of them is machine-checked; they are reviewer's judgement:
+
+| Criterion | Why |
+|---|---|
+| Rows carry `expected`, **and the judge prompt receives it** | A reference-free judge grades plausibility, not correctness, and over-credits confident wrong answers. |
+| Rubric is binary or few-level with written anchors | A bare 1–5 scale clusters on 3–4, so the threshold becomes arbitrary. |
+| Judge–human agreement measured once on a seed set | The only honest answer to "why believe this score?". |
+| Judge model + version pinned | Swapping the judge changes the meaning of the whole run history. Treat it as an F3 swap. |
+
+Also: the skill that produces an output must not be the skill that grades it.
+
+Upstream evaluators that emit 1–5 floats are binarized at a declared cut before
+aggregation — never gate on the mean. Full recipe, including the mapping table:
+`references/judge-calibration.md`.
+
 ## How `production-ready` consumes this
 
 `threadlight-production-ready` pillar 6 reads `specs/evals-manifest.json`.
@@ -248,6 +271,7 @@ Use both together:
 scripts/evals_check.py                 # stdlib validator → evals-manifest.json
 references/foundry-ce-wiring.md        # Plan A keyless CE wiring snippet
 references/ab-comparison.md            # champion-challenger recipe + gates
+references/judge-calibration.md        # LLM-as-judge review criteria + 1-5 mapping
 references/dataset-shape.md            # held-out dataset row shape
 references/evals-manifest.schema.json  # manifest contract
 references/fixtures/sample-scheduled/  # passing scheduled/continuous pilot
@@ -278,6 +302,8 @@ Expected coverage:
 | No alert | Failures sit unnoticed in telemetry. | Add Azure Monitor alert or workflow notification for threshold breach. |
 | No run history | Reviewers cannot prove evals ran. | Commit latest run JSON under `evals/runs/`. |
 | No A/B gate | Model/prompt swaps can regress protected scenarios. | Add `evals/ab/` champion-challenger config. |
+| Judge grades without a reference | Scores plausibility rather than correctness; confident wrong answers pass. | Add `expected` to rows *and* interpolate it in the grader prompt; see `references/judge-calibration.md`. |
+| Gate reads the mean of a 1–5 scale | A 4.2 mean hides a failing tail. | Binarize per row at a declared cut, then aggregate. |
 
 ## Validator behavior
 
