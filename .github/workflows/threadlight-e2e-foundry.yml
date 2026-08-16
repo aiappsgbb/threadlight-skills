@@ -171,8 +171,14 @@ env:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    # Budget: design 10min + deploy 15min + invoke 5min + teardown 15min + headroom
-    timeout-minutes: 60
+    # Budget: design 10min + deploy 15min + invoke 5min + teardown 15min + headroom.
+    # Raised 60 -> 90 because the Phase 3 step budget went 30 -> 45 (see that step
+    # for why). The job cap — not the sum of step caps — is the binding constraint:
+    # step caps already over-subscribe it, so the job must stay ahead of the
+    # longest realistic path or GitHub cancels mid-flight and the always() teardown
+    # gets squeezed. Teardown leans on a fast `az group delete --no-wait` fallback,
+    # but do not rely on that: keep this above (setup + phases + teardown).
+    timeout-minutes: 90
     # Environment-scoped OIDC — see "FEATURE-BRANCH AUTH" in the header comment.
     # The shared UAMI's federated credential is registered for subject
     # `repo:aiappsgbb/threadlight-skills:environment:e2e-ci`, so every run
@@ -244,12 +250,34 @@ jobs:
       - name: Install azd + Bicep + azd ai agent extension
         run: |
           set -euo pipefail
-          curl -fsSL https://aka.ms/install-azd.sh | bash
+          # Pin: `azd ai agent init` generates the `infra/` that threadlight-deploy
+          # marks "vendored from the starter, do not modify". That makes the azd CLI
+          # and the extension a first-class dependency of the design->deploy path,
+          # not incidental tooling — an upstream release can change the generated
+          # infra with no commit of ours. `azure.ai.agents` is a beta extension with
+          # 50+ published versions, so "latest" is a moving target between runs.
+          #
+          # This is the same failure class as the agent-framework pin rot: an
+          # unpinned upstream that breaks us silently and is invisible to pytest.
+          # Bump both deliberately, re-run `mode=full`, and update
+          # skills/threadlight-deploy/references/upstream-pin.md in the same PR.
+          curl -fsSL https://aka.ms/install-azd.sh | bash -s -- --version 1.31.1
           azd version
           az version
           az bicep install
-          azd ext install azure.ai.agents || true
-          azd ext list 2>&1 | grep -i "azure.ai.agents" || true
+
+          # NOT `|| true`. Swallowing a failed extension install just defers the
+          # error to `azd ai agent init` in Phase 3, where it surfaces as an opaque
+          # agent-side failure ~20min later instead of here in ~5s.
+          # --force keeps this idempotent across reinstalls/downgrades.
+          azd extension install azure.ai.agents --version 1.0.0-beta.10 --force
+
+          # azure.ai.agents pulls azure.ai.inspector + azure.ai.projects as
+          # transitive extension dependencies, resolved at install time. Print the
+          # full resolved set so a drift in the transitive layer is visible in the
+          # log even though only the top-level version is pinned.
+          echo "----- resolved azd extension set -----"
+          azd extension list --installed
 
       # ── Python + Pattern 0 install ────────────────────────────────────
       # Workshop §4.3 needs python 3.13 (per §2 prereqs) and the
@@ -688,7 +716,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 /tmp/pack-prompt.py deploy | /tmp/run-copilot-phase.sh deploy /tmp/phase-deploy.log
-        timeout-minutes: 30
+        # 30 -> 45. Phase 3 is the only step that both provisions real Azure infra
+        # and leaves the agent room to remediate RBAC propagation races (F-05/F-06
+        # in the deploy skill: image pull inside ~60s of an AcrPull grant fails
+        # until the assignment propagates, and the documented wait is 60-300s).
+        # At 30min a run that hits that race has no budget left to recover, so the
+        # step reports a timeout that looks like a hang rather than the retryable
+        # race it is. Raising the job cap alongside this is mandatory.
+        timeout-minutes: 45
 
       - name: "[Phase 3/4 assert] Deployment-posture file recorded by Phase 1.5"
         if: inputs.mode != 'smoke-only'
