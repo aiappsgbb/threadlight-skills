@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "data-contract.schema.json",
+  "title": "threadlight-connect data contract",
+  "description": "Emitted by threadlight-connect (scripts/connect.py::extract_contract). Records ONLY the fields a tool source actually reads (subscript access = required, `.get()` access = optional) — never sample keys that are merely present but unread. Customer-specific field mapping is out of scope; this is a conformance contract, not a transform.",
+  "type": "object",
+  "required": ["schema", "tool_name", "generated_at", "fields"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight-connect-data-contract/v1"},
+    "tool_name": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "required", "type", "cardinality"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The field name as read from the source object (row['id'] -> 'id')."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "true when read via subscript (obj['field']); false when only ever read via .get()."
+          },
+          "type": {
+            "type": ["string", "null"],
+            "enum": ["string", "integer", "number", "boolean", "array", "object", null],
+            "description": "Inferred from the sample when the field is present there; null when no evidence exists."
+          },
+          "cardinality": {
+            "type": ["string", "null"],
+            "enum": ["single", "array", null],
+            "description": "Inferred from the sample; null when no evidence exists."
+          }
+        }
+      }
+    }
+  }
+}

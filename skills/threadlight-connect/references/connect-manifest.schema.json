@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "connect-manifest.schema.json",
+  "title": "threadlight-connect manifest",
+  "description": "Emitted by threadlight-connect (scripts/connect.py) after an evidence-based mock-to-real integration-swap assessment. Extends the shared envelope from skills/_shared/manifest.py (schema, tool_version, generated_at, freshness, status, findings) with connect-specific payload fields. Contains no credentials, tokens, or customer payloads — evidence is summarized to booleans and role names only.",
+  "type": "object",
+  "required": [
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings",
+    "tool_name", "integration_state", "target_state", "contract", "conformance",
+    "evidence_summary", "apply_plan", "changed_paths", "apply"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight-connect-manifest/v1"},
+    "tool_version": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "freshness": {
+      "type": "object",
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1},
+        "source_oldest_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+          "detail": {}
+        }
+      }
+    },
+    "tool_name": {"type": "string", "minLength": 1},
+    "integration_state": {
+      "enum": ["mock", "real-unverified", "real-verified", "real-drift"],
+      "description": "Persisted current state — the state as of the last SUCCESSFUL apply. Never edited on a failed or unverified transition."
+    },
+    "target_state": {
+      "enum": ["mock", "real-unverified", "real-verified", "real-drift"],
+      "description": "The state computed purely from this run's conformance + evidence, independent of whether --apply was passed."
+    },
+    "contract": {"$ref": "data-contract.schema.json"},
+    "conformance": {
+      "type": "object",
+      "required": ["passed", "differences"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "differences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "expected", "actual", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "field": {"type": "string"},
+              "expected": {"type": "string", "description": "e.g. 'string|required'"},
+              "actual": {"type": "string", "description": "e.g. 'missing' or an observed type name"},
+              "path": {"type": "string", "description": "e.g. '$.items[0].status'"}
+            }
+          }
+        }
+      }
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": ["obo_present", "obo_user_scoped", "roles_revalidated", "required_roles"],
+      "additionalProperties": false,
+      "description": "Booleans + role names only — never the raw OBO/role evidence payload (which may carry tokens).",
+      "properties": {
+        "obo_present": {"type": "boolean"},
+        "obo_user_scoped": {"type": "boolean"},
+        "roles_revalidated": {"type": "boolean"},
+        "required_roles": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "apply_plan": {
+      "type": "array",
+      "description": "File-by-file plan. Always populated, even when apply=false (dry run).",
+      "items": {
+        "type": "object",
+        "required": ["path", "action", "description"],
+        "properties": {
+          "path": {"type": "string"},
+          "action": {"enum": ["create", "update"]},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "changed_paths": {
+      "type": "array",
+      "description": "Every path actually written this run. Empty unless apply=true AND target_state == real-verified.",
+      "items": {"type": "string"}
+    },
+    "apply": {"type": "boolean"}
+  }
+}
