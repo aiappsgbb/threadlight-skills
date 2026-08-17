@@ -9,6 +9,36 @@ field.
 
 ### Added
 
+- **A cheap middle tier for the E2E gate: `mode: design-only`.** The E2E
+  workflow was all-or-nothing — either a `smoke-only` run that proves nothing
+  beyond skill discovery, or a full run that spends ~$1 and 45-60 minutes
+  provisioning real Azure resources. So in practice it got fired rarely, and
+  design→deploy contract drift sat undetected between runs.
+
+  `design-only` drives the same design and Pattern 0 phases against the same
+  real model, then runs the design→deploy contract check and stops before
+  `azd up`. **No resource group is ever created**, so there is nothing to tear
+  down and the cost is model tokens only: roughly $0.20 and 10 minutes. Most
+  contract breaks are visible in the generated artifacts long before
+  provisioning starts, which is exactly what this tier catches.
+
+  The change is purely additive: every step `full` and `smoke-only` ran before
+  still runs, with byte-identical bodies. New steps are gated on
+  `inputs.mode == 'design-only'`; existing gates only gained an
+  `&& inputs.mode != 'design-only'` clause, which is always true for the other
+  two tiers.
+
+  The contract check gates `design-only` but deliberately **not** `full`. The
+  same rules are already enforced inline there, and the checker is stricter in
+  two places (sample-data JSON is parsed, not size-checked; `.env.local` is
+  scanned for unresolved placeholders). Letting the cheap tier be the one that
+  discovers any disagreement costs $0.20 instead of reddening the paid path.
+
+  `scripts/ci/tests/test_e2e_modes.py` keeps the tiers honest, and the guard
+  that earns its keep is fail-safe: any step added after the design-only gate
+  must either be excluded from the tier or explicitly declared cheap. Copying
+  an `if:` from the wrong neighbour fails the suite instead of the invoice.
+
 - **A weekly watchdog for dependency rot.** Twice the design→deploy path broke
   because a pinned dependency stopped resolving upstream while every test in
   the repo stayed green — nothing here installs those packages, so the only

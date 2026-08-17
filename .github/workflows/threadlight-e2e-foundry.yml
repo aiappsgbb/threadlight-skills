@@ -34,10 +34,25 @@
 #
 # COST + TRIGGER MODEL
 # ====================
-# - workflow_dispatch only — no cron, no PR trigger. Each run spends
-#   ~$0.50-1 in Azure resources + ~$0.50 in model tokens. Fire deliberately.
+# - workflow_dispatch only — no cron, no PR trigger. Fire deliberately.
+# - Three tiers, pick the cheapest one that can answer your question:
+#
+#     mode: smoke-only   ~$0      ~30s     registry/skill discovery only
+#     mode: design-only  ~$0.20   ~10min   + design + Pattern 0 + contract
+#                                          check. NO Azure resources are
+#                                          provisioned, so there is nothing
+#                                          to tear down. Cost is model
+#                                          tokens only.
+#     mode: full         ~$1      ~45-60m  everything, incl. azd up, invoke,
+#                                          govern/evals/red-team, teardown.
+#
+#   design-only exists because most design→deploy contract breaks are
+#   visible in the generated artifacts, long before `azd up` spends a
+#   dollar. Reach for `full` when the question is genuinely about
+#   provisioning, the hosted agent, or the Phase 5 legs.
 # - Always-teardown via `azd down --force --purge` in `if: always()` step;
-#   per-run RG name includes `github.run_id` to avoid collisions.
+#   per-run RG name includes `github.run_id` to avoid collisions. Teardown
+#   is skipped in design-only/smoke-only — no RG was ever created.
 #
 # FEATURE-BRANCH AUTH (when this workflow needs to run from a non-main ref)
 # =========================================================================
@@ -134,12 +149,13 @@ on:
           - "true"
           - "false"
       mode:
-        description: "full = smoke + design + local-test + deploy + invoke + teardown (~$1/run); smoke-only = registry discovery gate only (~$0/run, ~30s, no Foundry/Azure resource cost)"
+        description: "full = smoke + design + local-test + deploy + invoke + govern/evals/red-team + teardown (~$1/run, ~45-60min); design-only = smoke + design + Pattern 0 gate + design→deploy contract check, stops before azd up (~$0.20/run in model tokens, ~10min, ZERO Azure resource cost); smoke-only = registry discovery gate only (~$0/run, ~30s)"
         required: false
         default: "full"
         type: choice
         options:
           - full
+          - design-only
           - smoke-only
       wire_api:
         description: "Copilot BYO provider wire API. 'responses' for GPT-5-series direct deployments (e.g. gpt-5.4-mini); 'completions' for model-router (its Responses v1 route returns 400 'operation unsupported', but chat-completions works)."
@@ -650,8 +666,57 @@ jobs:
           }
           echo "✅ Pattern 0 gate passed — proceeding to deploy"
 
+      # ── design-only contract gate ────────────────────────────────────
+      # Runs ONLY in design-only mode, deliberately. The same rules are
+      # already enforced inline by the Phase 1 and Phase 2 asserts above,
+      # so this step is not load-bearing for `full` runs — and adding it
+      # there would risk reddening the ~$1 paid path over a checker
+      # disagreement rather than a real product break.
+      #
+      # design-only is a new mode, so gating it here cannot regress
+      # anything: worst case the cheap tier goes red for $0.20 and tells
+      # us the checker and the shipped bash disagree on real generated
+      # output — which is exactly the evidence needed before promoting
+      # the checker into `full` and deleting the duplicated bash.
+      #
+      # The checker is stricter than the bash in two places on purpose:
+      # sample-data JSON is actually parsed (not just size-checked), and
+      # .env.local is scanned for unresolved <placeholder> tokens.
+      - name: "[design-only gate] design→deploy contract check"
+        if: inputs.mode == 'design-only'
+        run: |
+          set -euo pipefail
+          PILOT_DIR="${E2E_WORKSPACE}/${PILOT_SUBDIR}"
+          python3 "${GITHUB_WORKSPACE}/scripts/ci/check_pilot_contract.py" \
+            "$PILOT_DIR" \
+            --stage design \
+            --stage pattern0 \
+            --profile fast-poc
+
+      - name: "[design-only] Run summary"
+        if: always() && inputs.mode == 'design-only'
+        run: |
+          set -euo pipefail
+          {
+            echo "## design-only run"
+            echo ""
+            echo "Exercised the design→Pattern 0 path without provisioning any"
+            echo "Azure resources. No resource group was created, so there is"
+            echo "nothing to tear down."
+            echo ""
+            echo "| Phase | Ran |"
+            echo "| --- | --- |"
+            echo "| Skill-tool discovery smoke | ✅ |"
+            echo "| Phase 1 — threadlight-design (Fast-PoC) | ✅ |"
+            echo "| Phase 2 — Pattern 0 \`--info\` + \`--check\` | ✅ |"
+            echo "| design→deploy contract check | ✅ |"
+            echo "| Phase 3+ — azd up, invoke, govern/evals/red-team | skipped |"
+            echo ""
+            echo "Run \`mode: full\` for the paid end-to-end gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: "[Phase 3/4 pre] Pre-seed deployment-posture.md for non-interactive Phase 1.5"
-        if: inputs.mode != 'smoke-only'
+        if: inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set -euo pipefail
           # CI runs non-interactively — threadlight-deploy Phase 1.5 (v1.5.0+)
@@ -688,7 +753,7 @@ jobs:
           head -20 "$POSTURE"
 
       - name: "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up"
-        if: inputs.mode != 'smoke-only'
+        if: inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         env:
           COPILOT_PROVIDER_TYPE: azure
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -726,7 +791,7 @@ jobs:
         timeout-minutes: 45
 
       - name: "[Phase 3/4 assert] Deployment-posture file recorded by Phase 1.5"
-        if: inputs.mode != 'smoke-only'
+        if: inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set -euo pipefail
           POSTURE="${E2E_WORKSPACE}/${PILOT_SUBDIR}/specs/deployment-posture.md"
@@ -745,7 +810,7 @@ jobs:
           head -40 "$POSTURE"
 
       - name: "[Phase 4/4] Drive §6.4 — invoke killer prompts"
-        if: inputs.mode != 'smoke-only'
+        if: inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         env:
           COPILOT_PROVIDER_TYPE: azure
           COPILOT_PROVIDER_BASE_URL: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -763,7 +828,7 @@ jobs:
         timeout-minutes: 15
 
       - name: "[Phase 4/4 assert] Invoke results + transcripts captured"
-        if: inputs.mode != 'smoke-only'
+        if: inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set -euo pipefail
           RESULTS="${E2E_WORKSPACE}/${PILOT_SUBDIR}/docs/invoke-results.md"
@@ -807,7 +872,7 @@ jobs:
       # `find ... | head -1` would pick non-deterministically. Fall back to
       # find only if the expected path is absent (future scenario).
       - name: Assert agent deployed + responding
-        if: success() && inputs.mode != 'smoke-only'
+        if: success() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         # Bumped 3 -> 5 to leave room for the azd auth refresh added below.
         timeout-minutes: 5
         env:
@@ -906,7 +971,7 @@ jobs:
       # rather than pass — the deterministic gate is that each executable
       # runs and writes a manifest (see the assert step).
       - name: "[Phase 5/5] Run govern + evals + red-team legs against the deployed pilot"
-        if: success() && inputs.mode != 'smoke-only'
+        if: success() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         timeout-minutes: 8
         run: |
           set -uo pipefail
@@ -936,7 +1001,7 @@ jobs:
             2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
 
       - name: "[Phase 5/5 assert] Leg manifests emitted + scorecard joins KPIs"
-        if: success() && inputs.mode != 'smoke-only'
+        if: success() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set -euo pipefail
           PILOT_DIR="$E2E_WORKSPACE/${PILOT_SUBDIR}"
@@ -973,7 +1038,7 @@ jobs:
           fi
 
       - name: Snapshot deployed resources
-        if: always() && inputs.mode != 'smoke-only'
+        if: always() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set +e
           echo "----- resources in ${E2E_RG_NAME} -----"
@@ -985,7 +1050,7 @@ jobs:
 
       # ── Always-teardown ───────────────────────────────────────────────
       - name: Teardown — sentinel (refuse to delete outside per-run scope)
-        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set -euo pipefail
           # Belt-and-braces guard. Every teardown command in this workflow
@@ -1020,7 +1085,7 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Teardown — azd down --force --purge
-        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         timeout-minutes: 20
         run: |
           set +e
@@ -1047,7 +1112,7 @@ jobs:
           fi
 
       - name: Fallback teardown — async RG delete
-        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set +e
           EXISTS=$(az group exists --name "${E2E_RG_NAME}" -o tsv)
@@ -1059,7 +1124,7 @@ jobs:
           fi
 
       - name: Teardown — purge soft-deleted Cog Svcs accounts (per-run only)
-        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only'
+        if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         run: |
           set +e
           # azd down --purge usually clears the soft-delete reservation, but
