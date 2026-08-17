@@ -49,8 +49,9 @@ operator decision that requires operator-supplied evidence.
 - **Does:** extract a data contract, generate conformance tests, check
   conformance, gate the mock → real state transition on conformance + OBO +
   role evidence, and — only with `--apply` and only once fully verified —
-  atomically update `specs/SPEC.md` and the effective MCP config
-  (`infra/mcp-config.json` or the caller's actual equivalent).
+  transactionally update `specs/SPEC.md` and the effective MCP config
+  (`infra/mcp-config.json` or the caller's actual equivalent) together, rolling
+  back a partially-applied write so the two never diverge.
 - **Does NOT** map or rename customer-specific fields. Field **mapping**
   (e.g. `cust_id` → `customer_id`) is explicitly out of scope — this leg
   proves *conformance* between a mock contract and a real response; it does
@@ -74,9 +75,14 @@ Exactly four states — `mock`, `real-unverified`, `real-verified`,
 
 | `target_state` | When |
 |---|---|
-| `real-drift` | Field-level conformance failed (missing required field, or a type mismatch) against the captured real sample. |
-| `real-unverified` | Conformance passed, but OBO evidence is missing/not user-scoped, or required roles are not revalidated (including revalidation recorded against a stale agent identity). |
-| `real-verified` | Conformance passed **and** OBO evidence is present and user-scoped **and** required roles are revalidated against the **current** agent identity. |
+| `real-drift` | Field-level conformance failed (missing required field, or a type mismatch) against a captured real sample that **had records to check**. |
+| `real-unverified` | Conformance could not be verified — either the real response had **no items** (empty/missing `items`: insufficient evidence, never a vacuous pass), or conformance passed but OBO evidence is missing/not user-scoped, or required roles are not revalidated against the **current** agent identity. The latter includes the cases where **no `--current-agent-identity` was supplied at all** and where the revalidation names a **stale/mismatched** identity. |
+| `real-verified` | Conformance passed against a **non-empty** real sample **and** OBO evidence is present and user-scoped **and** required roles are revalidated against a **supplied** current agent identity that the evidence names exactly. |
+
+Required-role revalidation is **never opt-in**: a real apply requires
+`--current-agent-identity`, and the role evidence must record exactly that
+identity. Omitting the current identity, or supplying one the evidence does
+not match, holds the swap at `real-unverified` and edits nothing.
 
 `integration_state` is the **persisted** current state (read from a prior
 `connect-manifest.json`; defaults to `mock`). It only ever advances on a
@@ -95,12 +101,14 @@ contract         extract_contract(): fields the source actually READS —
 generate-tests   write an executable, dependency-free conformance test
                  module into the generated project (written every run)
 verify           check_conformance(): field-level diff against a captured
-                 real sample — {field, expected, actual, path} per diff
+                 real sample — {field, expected, actual, path} per diff;
+                 an empty/missing real response is unevaluated, not a pass
 plan             build_apply_plan(): file-by-file plan, always computed,
                  read-only, no writes — even in a dry run
 apply            only with --apply AND target_state == real-verified:
-                 atomically updates specs/SPEC.md + the MCP config and
-                 records every changed path
+                 transactionally updates specs/SPEC.md + the MCP config
+                 together (an in-process failure after the first write rolls
+                 it back to its prior bytes) and records every changed path
 emit             write specs/connect-manifest.json — shared envelope,
                  schema-validated, atomic, no credentials/tokens/customer
                  payloads
@@ -152,7 +160,17 @@ Evidence file shapes:
 Evidence that is honestly absent or `false` is a normal `real-unverified`
 finding. Evidence that is the **wrong shape** (e.g. `user_scoped: "true"` as
 a string) raises before anything is written, so a malformed-evidence run
-never disturbs whatever valid manifest/SPEC/mcp-config already existed.
+never disturbs whatever valid manifest/SPEC/mcp-config already existed. Note
+`agent_identity` must equal the `--current-agent-identity` you pass, or the
+swap stays `real-unverified`.
+
+`apply` is transactional across `SPEC.md` and the MCP config: a temp file is
+staged for both before either is replaced, and if an in-process write fails
+after the first replace has already landed, that file is rolled back to its
+captured prior bytes — the pair never diverges. The single case this can't
+defend against is a hard crash / power loss *between* the two individually
+atomic replaces; if the compensating rollback itself fails, the run raises an
+error naming the unreconciled path(s) instead of reporting success.
 
 ## Contract extraction — exactly what is read, nothing that merely exists
 

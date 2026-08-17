@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from skills._shared.manifest import ManifestValidationError  # noqa: E402
 
 PINNED = "2026-08-17T10:00:00+00:00"
+CURRENT_IDENTITY = "agent-123"
 
 TOOL_SOURCE = "return {'id': row['id'], 'status': row.get('status')}"
 SAMPLE = {"id": "R-1001", "status": "open", "internal": "do-not-leak"}
@@ -130,7 +131,16 @@ def test_check_conformance_type_mismatch_reports_observed_type():
 def test_check_conformance_passes_when_fields_match():
     contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
     result = check_conformance(contract, passing_real_response())
-    assert result == {"passed": True, "differences": []}
+    assert result == {"passed": True, "evaluated": True, "item_count": 1, "differences": []}
+
+
+def test_check_conformance_empty_items_is_unevaluated_not_a_pass():
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    empty = check_conformance(contract, {"items": []})
+    assert empty == {"passed": False, "evaluated": False, "item_count": 0, "differences": []}
+
+    missing = check_conformance(contract, {})  # no items key at all
+    assert missing == {"passed": False, "evaluated": False, "item_count": 0, "differences": []}
 
 
 def test_generated_conformance_tests_are_executable(tmp_path):
@@ -180,7 +190,10 @@ def test_failed_conformance_yields_real_drift_target_with_no_edits(tmp_path):
 # ---------------------------------------------------------------------------
 def test_apply_false_with_full_evidence_plans_without_writing(tmp_path):
     obo, role = full_evidence()
-    result = _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=False)
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=False,
+    )
 
     assert result["integration_state"] == "mock"
     assert result["target_state"] == "real-verified"
@@ -263,12 +276,46 @@ def test_role_revalidation_against_matching_current_identity_yields_real_verifie
     assert result["target_state"] == "real-verified"
 
 
+def test_apply_with_missing_current_identity_stays_real_unverified_and_makes_no_edits(tmp_path):
+    # Evidence names an agent identity and claims revalidated roles, but the
+    # caller supplied NO current_agent_identity — revalidation cannot be
+    # opt-in, so even with apply=True nothing may be written.
+    obo, role = full_evidence()
+    assert role["agent_identity"] == "agent-123"  # evidence DOES name an identity
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True)
+
+    assert result["integration_state"] == "mock"
+    assert result["target_state"] == "real-unverified"
+    assert result["changed_paths"] == []
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+
+
+def test_apply_with_stale_current_identity_stays_real_unverified_and_makes_no_edits(tmp_path):
+    # current identity is supplied but the evidence names a DIFFERENT (stale)
+    # identity -> unverified; apply=True must still make no edits.
+    obo, role = full_evidence()
+    role["agent_identity"] = "agent-OLD"
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity="agent-123", apply=True,
+    )
+
+    assert result["target_state"] == "real-unverified"
+    assert result["changed_paths"] == []
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+
+
 # ---------------------------------------------------------------------------
 # Requirement 8, bullet 5 — apply=True + full evidence: verified + recorded
 # ---------------------------------------------------------------------------
 def test_apply_true_with_full_evidence_updates_state_and_records_changed_paths(tmp_path):
     obo, role = full_evidence()
-    result = _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True)
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
 
     assert result["integration_state"] == "real-verified"
     assert result["target_state"] == "real-verified"
@@ -293,7 +340,8 @@ def test_apply_preserves_prior_unrelated_mcp_config_content(tmp_path):
     mcp_full.write_text(json.dumps({"servers": {"other-tool": {"type": "http"}}}), encoding="utf-8")
 
     obo, role = full_evidence()
-    _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True)
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True)
 
     mcp_config = json.loads(mcp_full.read_text(encoding="utf-8"))
     assert mcp_config["servers"] == {"other-tool": {"type": "http"}}
@@ -302,7 +350,8 @@ def test_apply_preserves_prior_unrelated_mcp_config_content(tmp_path):
 
 def test_second_apply_persists_integration_state_across_runs(tmp_path):
     obo, role = full_evidence()
-    first = _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True, generated_at=PINNED)
+    first = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                 current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
     assert first["integration_state"] == "real-verified"
 
     # A later run (e.g. re-checking conformance) reads the PERSISTED state
@@ -318,7 +367,8 @@ def test_second_apply_persists_integration_state_across_runs(tmp_path):
 # ---------------------------------------------------------------------------
 def test_malformed_obo_evidence_raises_and_preserves_prior_manifest(tmp_path):
     obo, role = full_evidence()
-    _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True, generated_at=PINNED)
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
     prior_manifest_bytes = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
     prior_mcp_bytes = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
     prior_spec_bytes = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
@@ -350,9 +400,10 @@ def test_malformed_role_evidence_type_raises_and_writes_nothing(tmp_path):
     assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
 
 
-def test_write_failure_during_apply_preserves_prior_manifest_and_config(tmp_path, monkeypatch):
+def test_write_failure_on_first_destination_preserves_prior_manifest_and_config(tmp_path, monkeypatch):
     obo, role = full_evidence()
-    _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True, generated_at=PINNED)
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
     prior_manifest_bytes = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
     prior_mcp_bytes = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
     prior_spec_bytes = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
@@ -360,9 +411,10 @@ def test_write_failure_during_apply_preserves_prior_manifest_and_config(tmp_path
     real_os_replace = connect.os.replace
 
     def _boom(source, destination):
-        # Only fail the SPEC.md / mcp-config.json replace calls made inside
-        # apply_changes() — leave the always-written conformance-test file
-        # (an unrelated scaffolding artifact) unaffected.
+        # Fail BOTH SPEC.md / mcp-config.json replaces — SPEC is committed
+        # first, so this fails on the FIRST destination (nothing replaced yet,
+        # so no rollback is needed). Leave the unrelated conformance-test file
+        # write untouched.
         if Path(destination).name in (Path(connect.DEFAULT_SPEC_PATH).name, Path(connect.DEFAULT_MCP_CONFIG_PATH).name):
             raise OSError("simulated disk failure")
         return real_os_replace(source, destination)
@@ -374,6 +426,7 @@ def test_write_failure_during_apply_preserves_prior_manifest_and_config(tmp_path
             tmp_path,
             obo_evidence=obo,
             role_evidence=role,
+            current_agent_identity=CURRENT_IDENTITY,
             apply=True,
             generated_at="2026-08-19T10:00:00+00:00",
             real_response={"items": [{"id": "R-1002", "status": "closed"}]},
@@ -385,6 +438,95 @@ def test_write_failure_during_apply_preserves_prior_manifest_and_config(tmp_path
     # no leaked temp files from the aborted attempt
     assert list((tmp_path / "infra").glob(".*.tmp")) == []
     assert list((tmp_path / "specs").glob(".*.tmp")) == []
+
+
+def test_write_failure_on_second_destination_rolls_back_first_byte_identical(tmp_path, monkeypatch):
+    # Prior verified apply establishes both destinations + a manifest on disk.
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+    prior_manifest_bytes = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+    prior_mcp_bytes = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
+    prior_spec_bytes = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
+
+    real_os_replace = connect.os.replace
+    mcp_name = Path(connect.DEFAULT_MCP_CONFIG_PATH).name
+
+    def _boom(source, destination):
+        # Let the FIRST destination (SPEC.md) commit, then fail ONLY the second
+        # (mcp-config.json) replace — forcing the SPEC write to be rolled back.
+        if Path(destination).name == mcp_name:
+            raise OSError("simulated disk failure on second destination")
+        return real_os_replace(source, destination)
+
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    with pytest.raises(ConnectApplyError) as excinfo:
+        _run(
+            tmp_path,
+            obo_evidence=obo,
+            role_evidence=role,
+            current_agent_identity=CURRENT_IDENTITY,
+            apply=True,
+            generated_at="2026-08-19T10:00:00+00:00",
+            real_response={"items": [{"id": "R-1002", "status": "closed"}]},
+        )
+    # A recoverable failure (rollback succeeded) is a plain ConnectApplyError,
+    # NOT the inconsistent-state escalation.
+    assert not isinstance(excinfo.value, connect.ConnectInconsistentStateError)
+
+    # SPEC.md was committed then rolled back to its exact prior bytes; the MCP
+    # config was never replaced. Neither diverges; the manifest is untouched.
+    assert (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes() == prior_spec_bytes
+    assert (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes() == prior_mcp_bytes
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest_bytes
+    # the prior MCP config remains valid JSON with its prior integration entry
+    prior_mcp = json.loads(prior_mcp_bytes)
+    assert json.loads((tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()) == prior_mcp
+    # no leaked temp files from either the failed commit or the rollback
+    assert list((tmp_path / "infra").glob(".*.tmp")) == []
+    assert list((tmp_path / "specs").glob(".*.tmp")) == []
+
+
+def test_rollback_failure_raises_inconsistent_state_naming_paths(tmp_path, monkeypatch):
+    # Prior verified apply establishes both destinations on disk.
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+
+    real_os_replace = connect.os.replace
+    spec_name = Path(connect.DEFAULT_SPEC_PATH).name
+    mcp_name = Path(connect.DEFAULT_MCP_CONFIG_PATH).name
+
+    def _boom(source, destination):
+        name = Path(destination).name
+        # Let the first SPEC commit land, fail the mcp commit, then ALSO fail
+        # the SPEC rollback replace — leaving SPEC.md unreconciled.
+        if name == mcp_name:
+            raise OSError("simulated disk failure on second destination")
+        if name == spec_name and Path(source).name.startswith("." + spec_name):
+            # SPEC replaces (both the forward commit and the rollback) use a
+            # dot-prefixed temp in specs/. Fail the SECOND such call (rollback).
+            _boom.spec_calls += 1
+            if _boom.spec_calls >= 2:
+                raise OSError("simulated rollback failure")
+        return real_os_replace(source, destination)
+
+    _boom.spec_calls = 0
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    with pytest.raises(connect.ConnectInconsistentStateError) as excinfo:
+        _run(
+            tmp_path,
+            obo_evidence=obo,
+            role_evidence=role,
+            current_agent_identity=CURRENT_IDENTITY,
+            apply=True,
+            generated_at="2026-08-19T10:00:00+00:00",
+            real_response={"items": [{"id": "R-1002", "status": "closed"}]},
+        )
+    # The error must name the unreconciled destination, and must NOT claim success.
+    assert connect.DEFAULT_SPEC_PATH.split("/")[-1] in str(excinfo.value)
 
 
 def test_write_failure_before_any_prior_manifest_leaves_nothing_on_disk(tmp_path, monkeypatch):
@@ -400,7 +542,8 @@ def test_write_failure_before_any_prior_manifest_leaves_nothing_on_disk(tmp_path
     monkeypatch.setattr(connect.os, "replace", _boom)
 
     with pytest.raises(ConnectApplyError):
-        _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True)
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True)
 
     assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
     assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
@@ -411,23 +554,44 @@ def test_write_failure_before_any_prior_manifest_leaves_nothing_on_disk(tmp_path
 # transition_integration() as a pure function (no I/O)
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    ("conformance", "obo", "role", "expected"),
+    ("conformance", "obo", "role", "current_identity", "expected"),
     [
-        ({"passed": False, "differences": [{"field": "x"}]}, {"present": True, "user_scoped": True},
-         {"revalidated": True}, "real-drift"),
-        ({"passed": True, "differences": []}, None, {"revalidated": True}, "real-unverified"),
-        ({"passed": True, "differences": []}, {"present": True, "user_scoped": True}, None, "real-unverified"),
-        ({"passed": True, "differences": []}, {"present": True, "user_scoped": True},
-         {"revalidated": True}, "real-verified"),
+        # field-level drift (records checked, diverge) — short-circuits regardless of identity
+        ({"passed": False, "evaluated": True, "differences": [{"field": "x"}]},
+         {"present": True, "user_scoped": True}, {"revalidated": True}, "agent-123", "real-drift"),
+        # unevaluated conformance (no real items) can never be a pass -> unverified
+        ({"passed": False, "evaluated": False, "differences": []},
+         {"present": True, "user_scoped": True},
+         {"revalidated": True, "agent_identity": "agent-123"}, "agent-123", "real-unverified"),
+        # OBO evidence missing -> unverified
+        ({"passed": True, "evaluated": True, "differences": []}, None,
+         {"revalidated": True, "agent_identity": "agent-123"}, "agent-123", "real-unverified"),
+        # role evidence missing -> unverified
+        ({"passed": True, "evaluated": True, "differences": []},
+         {"present": True, "user_scoped": True}, None, "agent-123", "real-unverified"),
+        # current identity NOT supplied (revalidation cannot be opt-in) -> unverified
+        ({"passed": True, "evaluated": True, "differences": []},
+         {"present": True, "user_scoped": True},
+         {"revalidated": True, "agent_identity": "agent-123"}, None, "real-unverified"),
+        # current identity supplied but evidence names a STALE identity -> unverified
+        ({"passed": True, "evaluated": True, "differences": []},
+         {"present": True, "user_scoped": True},
+         {"revalidated": True, "agent_identity": "agent-OLD"}, "agent-123", "real-unverified"),
+        # everything aligned incl. exact current identity -> verified
+        ({"passed": True, "evaluated": True, "differences": []},
+         {"present": True, "user_scoped": True},
+         {"revalidated": True, "agent_identity": "agent-123"}, "agent-123", "real-verified"),
     ],
 )
-def test_transition_integration_matrix(conformance, obo, role, expected):
-    assert transition_integration(conformance, obo, role) == expected
+def test_transition_integration_matrix(conformance, obo, role, current_identity, expected):
+    assert transition_integration(
+        conformance, obo, role, current_agent_identity=current_identity
+    ) == expected
 
 
 def test_transition_integration_raises_on_malformed_evidence_shape():
     with pytest.raises(ConnectEvidenceError):
-        transition_integration({"passed": True, "differences": []}, 42, {"revalidated": True})
+        transition_integration({"passed": True, "evaluated": True, "differences": []}, 42, {"revalidated": True})
 
 
 # ---------------------------------------------------------------------------
@@ -510,12 +674,14 @@ def test_manifest_contains_no_sample_field_values():
 # ---------------------------------------------------------------------------
 def test_run_connect_emits_shared_envelope_compliant_manifest(tmp_path):
     obo, role = full_evidence()
-    result = _run(tmp_path, obo_evidence=obo, role_evidence=role, apply=True)
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=True)
     manifest = result["manifest"]
 
     assert manifest["schema"] == "threadlight-connect-manifest/v1"
     assert manifest["status"] in ("complete", "partial", "aborted")
     assert manifest["tool_version"] == connect.TOOL_VERSION
+    assert manifest["integration_state"] == "real-verified"
     connect.validate_connect_manifest(manifest)  # must not raise
 
 
@@ -536,6 +702,49 @@ def test_manifest_status_is_partial_when_no_real_items_to_verify(tmp_path):
     obo, role = full_evidence()
     result = _run(tmp_path, obo_evidence=obo, role_evidence=role, real_response={"items": []})
     assert result["manifest"]["status"] == "partial"
+
+
+@pytest.mark.parametrize(
+    ("real_response", "label"),
+    [({"items": []}, "empty-list"), ({}, "missing-items")],
+)
+def test_empty_or_missing_real_response_is_unverified_and_makes_no_edits(tmp_path, real_response, label):
+    # Even with full OBO + role evidence, the exact current identity AND
+    # apply=True, an empty/missing real response must NOT vacuously verify or
+    # apply — conformance is unevaluated, so the target is held at
+    # real-unverified and nothing is written.
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path,
+        obo_evidence=obo,
+        role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+        real_response=real_response,
+        apply=True,
+    )
+
+    assert result["target_state"] == "real-unverified"
+    assert result["integration_state"] == "mock"
+    assert result["changed_paths"] == []
+
+    # conformance is recorded as non-vacuous: unevaluated, not a pass
+    conformance = result["conformance"]
+    assert conformance["evaluated"] is False
+    assert conformance["passed"] is False
+    assert conformance["item_count"] == 0
+
+    # apply=True made NO edits to either destination
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+
+    # the persisted manifest is partial / not-verified rather than a success
+    manifest = result["manifest"]
+    assert manifest["status"] == "partial"
+    assert manifest["integration_state"] == "mock"
+    assert manifest["target_state"] == "real-unverified"
+    finding_ids = {f["id"]: f["status"] for f in manifest["findings"]}
+    assert finding_ids.get("CONNECT-EVIDENCE-EMPTY") == "not-verified"
+    connect.validate_connect_manifest(manifest)  # non-vacuous conformance still schema-valid
 
 
 # ---------------------------------------------------------------------------
@@ -568,6 +777,7 @@ def test_cli_main_dry_run_prints_plan_and_writes_manifest(tmp_path, capsys):
             "--real-response-file", str(tmp_path / "real.json"),
             "--obo-evidence-file", str(tmp_path / "obo.json"),
             "--role-evidence-file", str(tmp_path / "role.json"),
+            "--current-agent-identity", CURRENT_IDENTITY,
         ]
     )
 

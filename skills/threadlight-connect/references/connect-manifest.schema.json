@@ -47,9 +47,19 @@
     "contract": {"$ref": "data-contract.schema.json"},
     "conformance": {
       "type": "object",
-      "required": ["passed", "differences"],
+      "required": ["passed", "evaluated", "item_count", "differences"],
+      "additionalProperties": false,
       "properties": {
         "passed": {"type": "boolean"},
+        "evaluated": {
+          "type": "boolean",
+          "description": "False when the captured real response had no items to check. An unevaluated result is insufficient evidence — never a vacuous pass — and targets real-unverified, distinct from real-drift."
+        },
+        "item_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of real records actually checked. 0 means unevaluated (insufficient evidence)."
+        },
         "differences": {
           "type": "array",
           "items": {
