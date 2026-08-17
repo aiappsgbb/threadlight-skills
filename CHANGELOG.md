@@ -9,6 +9,31 @@ field.
 
 ### Added
 
+- **A weekly watchdog for dependency rot.** Twice the design→deploy path broke
+  because a pinned dependency stopped resolving upstream while every test in
+  the repo stayed green — nothing here installs those packages, so the only
+  sensor was a ~$1 manually-dispatched E2E run. Six weeks passed before anyone
+  noticed. `.github/workflows/dependency-rot-watchdog.yml` is that missing
+  sensor: weekly, free, no Azure resources.
+
+  It runs two checks that cannot see each other's failures. `pip install
+  --dry-run '.[aoai]'` is the real resolver and the only thing that catches a
+  broken extra or a conflicting transitive dependency — precisely the shape of
+  the break that actually happened. `scripts/ci/check_dependency_rot.py`
+  compares each specifier against PyPI and catches what the resolver is
+  perfectly happy with: a pin that still resolves but has **no headroom left**,
+  or one that has fallen far behind upstream.
+
+  Run against the current pins it already reports four real findings:
+  `agent-framework~=1.13.0` and `azure-identity~=1.21.0` each match exactly one
+  published version (a single yank from a broken build), `streamlit~=1.40.0` is
+  21 minor releases behind, and `pytest~=8.3.0` is a major release behind. None
+  of that is broken today, which is the point — it is visible before it breaks.
+
+  Soft rot does not fail the run by default. A watchdog that fails on
+  information gets muted, and then it protects nothing; `--fail-on-drift` opts
+  in when you want the stricter behaviour.
+
 - **The design→deploy artifact contract is now checked for free on every PR.**
   Until now that contract existed only as ~130 lines of inline bash inside the
   manually-dispatched `threadlight-e2e-foundry` workflow — so it cost ~$1 and
@@ -35,6 +60,10 @@ field.
   guard is proven able to fail rather than being another green check that lies.
 
 ### Changed
+
+- `python-pytest.yml` now installs `packaging` explicitly instead of relying on
+  it arriving as a transitive dependency of pytest — the same implicit-pin
+  pattern this release is otherwise busy closing.
 
 - `scripts/ci/check-test-dirs-wired.py` now also covers pytest suites outside
   `skills/*/tests`, starting with `scripts/ci/tests`. Cross-cutting CI scripts
