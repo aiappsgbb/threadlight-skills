@@ -168,12 +168,12 @@ _FORBIDDEN_KEY_WORDS = frozenset({
 })
 _FORBIDDEN_KEY_SUBSTRINGS = ("api_key", "apikey", "access_key", "connection_string")
 
-# Secret-shaped VALUE patterns. Even though `detail` is an allowlisted schema
-# of IDs/counts/enums, an ID field is an inherently free string, so a hostile
-# operator could try to smuggle a credential through e.g. a `document_id`
-# value. These patterns are a defense-in-depth value scan applied recursively
-# to the whole manifest; they are deliberately specific so ordinary short IDs
-# ("doc-1", "policy-library") and RFC3339 timestamps never match.
+# Explicit credential VALUE patterns. Even though `detail` and payload fields
+# are strict allowlists, an ID field is an inherently free string, so a hostile
+# operator could try to smuggle a recognizable credential through e.g. a
+# `document_id` value. These signatures are deliberately specific: opaque
+# hashes, UUID-like IDs, and base64/base64url document keys are valid evidence
+# identifiers and must not be rejected merely for being long or high-entropy.
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
     re.compile(r"\bAKIA[0-9A-Z]{12,}\b"),               # AWS access key id
@@ -183,15 +183,16 @@ _SECRET_VALUE_PATTERNS = (
     re.compile(r"\bsk-[0-9A-Za-z]{20,}\b"),             # OpenAI-style key
     re.compile(r"\beyJ[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]+"),  # JWT
     re.compile(r"://[^/\s:@]+:[^/\s:@]+@"),             # credentials embedded in a URL
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"),  # Authorization value
+    re.compile(
+        r"(?i)(?:^|;)\s*(?:accountkey|sharedaccesskey|"
+        r"sharedaccesssignature)\s*=\s*[^;\s]+"
+    ),                                                   # Azure connection string
     re.compile(
         r"(?i)\b(?:pass(?:word)?|secret|api[_-]?key|access[_-]?key|"
         r"client[_-]?secret|bearer)\b\s*[:=]\s*\S+"
     ),
 )
-# A single unbroken high-entropy token (>=40 chars of pure token charset with
-# BOTH letters and digits) is overwhelmingly a credential, never a legitimate
-# short ID or a repo-relative path (which contains "." and "/").
-_HIGH_ENTROPY_TOKEN = re.compile(r"^[A-Za-z0-9+/=_-]{40,}$")
 
 # Strict RFC 3339 `date-time` with a mandatory timezone — mirrors the shared
 # envelope's timestamp contract so a `captured_at` that would be REJECTED by
@@ -249,22 +250,16 @@ def _is_forbidden_key(key: str) -> bool:
 
 
 def _looks_like_secret(value: str) -> bool:
-    """True when *value* resembles a credential/secret. Conservative on
-    purpose: ordinary short IDs and RFC3339 timestamps never match.
+    """True when *value* carries a specific credential/secret signature.
+
+    Structural allowlists and forbidden key names protect the manifest shape;
+    this scan intentionally does not guess from entropy because opaque evidence
+    IDs and baseline refs commonly use the same alphabets as credentials.
     """
     text = value.strip()
     if not text:
         return False
-    if any(pattern.search(text) for pattern in _SECRET_VALUE_PATTERNS):
-        return True
-    for token in text.split():
-        if (
-            _HIGH_ENTROPY_TOKEN.match(token)
-            and any(character.isalpha() for character in token)
-            and any(character.isdigit() for character in token)
-        ):
-            return True
-    return False
+    return any(pattern.search(text) for pattern in _SECRET_VALUE_PATTERNS)
 
 
 def _finding(finding_id: str, status: str, reason: str, **extras: Any) -> dict:

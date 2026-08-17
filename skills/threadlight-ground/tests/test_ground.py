@@ -48,6 +48,9 @@ PINNED = "2026-08-17T10:00:00+00:00"
 FRESH = "2026-08-17T09:00:00+00:00"
 STALE = "2026-08-01T00:00:00+00:00"
 BASELINE = "specs/baselines/retrieval-quality.json"
+SHA1_DOCUMENT_ID = "0123456789abcdef0123456789abcdef01234567"
+SHA256_DOCUMENT_ID = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+BASE64URL_DOCUMENT_ID = "QXp1cmVfU2VhcmNoLWRvY3VtZW50LWtleS0wMTIzNDU2Nzg5YWJjZGVm"
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +703,12 @@ def test_secret_shaped_baseline_reference_is_rejected():
         ground_manifest(retrieval_quality_baseline="AKIAIOSFODNN7EXAMPLE0000")
 
 
+def test_dotless_long_baseline_reference_is_accepted():
+    baseline_ref = "retrievalqualitybaseline20260817abcdef0123456789abcdef0123456789"
+    manifest = covered(retrieval_quality_baseline=baseline_ref)
+    assert manifest["retrieval_quality_baseline"] == baseline_ref
+
+
 # ---------------------------------------------------------------------------
 # Requirement 6 — persistence: allowlisted detail, forbidden keys/values
 # ---------------------------------------------------------------------------
@@ -733,28 +742,85 @@ def test_forbidden_keys_are_rejected_wherever_they_appear(forbidden_key):
         validate_ground_manifest(manifest)
 
 
+@pytest.mark.parametrize("forbidden_key", ["access_token", "password", "client_secret"])
+def test_forbidden_secret_key_names_are_rejected_recursively(forbidden_key):
+    manifest = covered()
+    manifest["findings"][0]["detail"]["by_source"] = {forbidden_key: "pass"}
+    with pytest.raises(GroundEvidenceError, match="credential/content/prompt-shaped"):
+        validate_ground_manifest(manifest)
+
+
 @pytest.mark.parametrize(
-    "mutate",
+    "secret_value",
     [
-        lambda m: m["findings"][0]["detail"].update(worst_source="AKIAIOSFODNN7EXAMPLE"),
-        lambda m: m["findings"][0]["detail"].update(
-            leaked_document_ids=["-----BEGIN RSA PRIVATE KEY-----"]
-        ),
-        lambda m: m["acl_evidence"].append(
-            {"principal": "p", "document_ids": ["ghp_0123456789abcdefghijABCDEFGHIJ012345"],
-             "source_id": "policy-library"}
+        "api_key=sk-abcdefghijklmnopqrstuvwxyz012345",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.signature012345",
+        "Bearer opaque-access-token-value",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        (
+            "DefaultEndpointsProtocol=https;AccountName=storageacct;"
+            "AccountKey=QWxwaGFCZXRhMTIzNDU2Nzg5MA==;"
+            "EndpointSuffix=core.windows.net"
         ),
     ],
 )
-def test_secret_shaped_values_are_rejected_even_under_innocuous_keys(mutate):
-    # Requirement 6: a malicious operator cannot smuggle a credential through
-    # an allowlisted ID field — the recursive VALUE scan makes it unpersistable.
+def test_explicit_secret_values_are_rejected_under_allowlisted_id_fields(secret_value):
     manifest = covered(
         acl_runs=[entitled("e", ["doc-1"]), unentitled("u", [])],
     )
-    mutate(manifest)
+    manifest["acl_evidence"][0]["document_ids"][0] = secret_value
     with pytest.raises(GroundEvidenceError, match="secret-shaped"):
         validate_ground_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "document_id",
+    [
+        SHA1_DOCUMENT_ID,
+        SHA256_DOCUMENT_ID,
+        BASE64URL_DOCUMENT_ID,
+        "550e8400-e29b-41d4-a716-446655440000-550e8400-e29b-41d4-a716-446655440000",
+    ],
+)
+def test_long_opaque_document_ids_are_accepted(document_id):
+    manifest = covered(
+        acl_runs=[entitled("e", [document_id]), unentitled("u", [])],
+        citation_runs=[cite_run(citations=[document_id], retrieved_ids=[document_id])],
+    )
+    validate_ground_manifest(manifest)
+    assert manifest["acl_evidence"][0]["document_ids"] == [document_id]
+
+
+@pytest.mark.parametrize(
+    "document_id",
+    [
+        "QXp1cmUvU2VhcmNoK2RvY3VtZW50S2V5MDEyMzQ1Njc4OWFiY2RlZg==",
+        BASE64URL_DOCUMENT_ID,
+    ],
+)
+def test_base64_and_base64url_azure_search_document_keys_are_accepted(document_id):
+    manifest = covered(
+        acl_runs=[entitled("e", [document_id]), unentitled("u", [])],
+    )
+    assert manifest["acl_evidence"][0]["document_ids"] == [document_id]
+
+
+def test_acl_leak_with_long_hash_id_is_must_fix_and_emits_manifest(tmp_path):
+    manifest = covered(
+        acl_runs=[
+            entitled("e", [SHA256_DOCUMENT_ID]),
+            unentitled("u", [SHA256_DOCUMENT_ID]),
+        ],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["leaked_document_ids"] == [SHA256_DOCUMENT_ID]
+
+    path = tmp_path / "specs" / "ground-manifest.json"
+    write_ground_manifest(path, manifest)
+    emitted = json.loads(path.read_text(encoding="utf-8"))
+    assert by_id(emitted)["GRD-001"]["status"] == "must-fix"
+    assert emitted["status"] == "complete"
 
 
 def test_finding_detail_rejects_free_form_keys():
