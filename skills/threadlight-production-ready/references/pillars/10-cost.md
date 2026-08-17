@@ -16,6 +16,7 @@
 | `COST-004` | Anomaly alert declared (Azure Cost Management anomaly alert OR daily-spike alert rule) | `should-fix` if absent |
 | `COST-005` | Cost-projection artefact present **and fresh**: `docs/cost-projection.md` exists AND `specs/cost-manifest.json` has `schema_version >= "1.0"` AND `generated_at` within 30 days of last deploy | `should-fix` if any condition missing |
 | `COST-006` | No unaddressed cost recommendations in `specs/cost-manifest.json`: walks `recommendations[]`; `>$100/mo` savings → `must-fix`, `>$25/mo` → `should-fix`. `not-verified` when manifest absent | `not-verified` if manifest missing |
+| `COST-007` | vNext cost-manifest **meter coverage** — every detected resource/meter line in `specs/cost-manifest.json` is priced or explicitly flagged. Reads `meter_coverage.status` + per-line `pricing_status` (produced by `threadlight-consumption-iq`'s `cost_api.project_profile`). State semantics: any line `pricing_status: not-priceable` → `must-fix`; else `meter_coverage.status: not-verified` (or a v1 manifest with no `meter_coverage` key) → `not-verified`; `meter_coverage.status: complete` and every line priced → `pass`. Never changes COST-005/006 outcomes. Remediation recipe: `references/remediation-recipes/COST-007.md` | `not-verified` if no vNext `meter_coverage` |
 
 ### Live (tier 3 — `Cost Management Reader` on subscription)
 
@@ -56,6 +57,7 @@ projection" section.
 | Budget / alert wiring | `azd-patterns` |
 | Idle resource cleanup | (manual) |
 | COST-005 tightened + COST-006 | `threadlight-consumption-iq` |
+| COST-007 meter coverage (not-priceable / not-verified lines) | `threadlight-consumption-iq` (recipe `references/remediation-recipes/COST-007.md`) |
 
 ## Why this pillar matters
 

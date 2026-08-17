@@ -10,6 +10,8 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import consumption_iq  # noqa: E402
+from cost_api import project_profile  # noqa: E402
+from pricing_client import PricingClient  # noqa: E402
 
 
 def _profile_file(tmp_path: Path) -> Path:
@@ -99,3 +101,59 @@ def test_estimate_requires_rollout_or_profile(tmp_path, capsys):
         ]
     )
     assert rc == 2
+
+
+def test_report_never_renders_dollar_none_when_volume_absent(tmp_path):
+    """Backward-compatible manifest with no monthly_transactions must not print
+    ``$None/<unit>`` — the per-transaction cost is stated as unavailable + why."""
+    client = PricingClient(cache_path=tmp_path / "cache.json")
+    manifest = project_profile(
+        load_profile={
+            "workload_class": "batch",
+            "business_hours_only": False,
+            "pages_per_month": 10000,
+            "embedding_tokens_per_month": 5_000_000,
+        },
+        resources=[],
+        selectors={
+            "content_understanding": {"enabled": True, "tier": "standard"},
+            "embeddings": {"enabled": True, "model": "text-embedding-3-small"},
+        },
+        pricing=client,
+        transaction_unit="document",
+        monthly_transactions=None,  # absent volume (backward-compatible manifest)
+        generated_at="2026-06-12T12:00:00+00:00",
+    )
+    # A complete bill, but no denominator → cost_per_transaction stays None.
+    assert manifest["totals"]["complete"] is True
+    assert manifest["totals"]["cost_per_transaction_usd"] is None
+
+    report = consumption_iq._render_from_profile_report(manifest)
+    assert "$None" not in report
+    assert "None/document" not in report
+    assert "unavailable" in report.lower()
+    assert "monthly_transactions" in report
+
+
+def test_report_prices_per_transaction_when_volume_present(tmp_path):
+    client = PricingClient(cache_path=tmp_path / "cache.json")
+    manifest = project_profile(
+        load_profile={
+            "workload_class": "batch",
+            "business_hours_only": False,
+            "pages_per_month": 10000,
+            "embedding_tokens_per_month": 5_000_000,
+        },
+        resources=[],
+        selectors={
+            "content_understanding": {"enabled": True, "tier": "standard"},
+            "embeddings": {"enabled": True, "model": "text-embedding-3-small"},
+        },
+        pricing=client,
+        transaction_unit="document",
+        monthly_transactions=10000,
+        generated_at="2026-06-12T12:00:00+00:00",
+    )
+    report = consumption_iq._render_from_profile_report(manifest)
+    assert "$None" not in report
+    assert "/document" in report

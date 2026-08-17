@@ -586,11 +586,12 @@ def _render_roi_md(profile: dict[str, Any], manifest: dict[str, Any]) -> str:
         "(both derived assumptions — tune with the customer).",
         "",
         f"- Current annual cost (user-supplied): {_fmt_usd(current_annual)}",
-        f"- Handling time removed: {labor_hours_saved:,.0f} hours/yr "
-        f"→ labor savings {_fmt_usd(labor_savings_usd)}/yr",
     ]
     if projected_annual is None:
         lines += [
+            f"- Efficiency context (not part of net benefit): handling time removed "
+            f"≈ {labor_hours_saved:,.0f} hours/yr → labor savings "
+            f"{_fmt_usd(labor_savings_usd)}/yr",
             "",
             "**Projected solution cost is incomplete** (a detected line is "
             "not-priceable or not-verified), so a net ROI is not asserted. "
@@ -599,14 +600,23 @@ def _render_roi_md(profile: dict[str, Any], manifest: dict[str, Any]) -> str:
         ]
         return "\n".join(lines)
 
-    net = (current_annual + labor_savings_usd) - projected_annual
+    # Conservative net: compare what the customer spends today against what the
+    # solution is projected to cost. Labor savings are reported separately as an
+    # efficiency signal and are deliberately NOT added into the net benefit, so
+    # the same dollar of avoided work is never counted twice.
+    net = current_annual - projected_annual
     verdict = "positive" if net > 0 else "negative"
     lines += [
         f"- Projected annual solution cost: {_fmt_usd(projected_annual)}",
         "",
         f"**Net annual benefit: {_fmt_usd(net)} → ROI is {verdict}.**",
         "",
-        "Net = (current annual cost + labor savings) − projected annual solution cost.",
+        "Net = current annual cost − projected annual solution cost.",
+        "",
+        "- Efficiency context (NOT included in net benefit): handling time "
+        f"removed ≈ {labor_hours_saved:,.0f} hours/yr → labor savings "
+        f"{_fmt_usd(labor_savings_usd)}/yr. Reported separately to avoid "
+        "double-counting savings the customer's current cost already reflects.",
         "",
     ]
     return "\n".join(lines)

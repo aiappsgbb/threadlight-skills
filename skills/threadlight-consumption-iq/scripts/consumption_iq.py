@@ -232,15 +232,33 @@ def _render_from_profile_report(manifest: dict[str, Any]) -> str:
         f"`{(manifest.get('meter_coverage') or {}).get('status')}`.\n",
     ]
     if complete:
-        lines.append(
-            f"Estimated monthly cost: **${totals.get('monthly_cost_current_usd'):,.2f}** "
-            f"(≈ ${totals.get('cost_per_transaction_usd')}/{unit}).\n"
+        monthly = totals.get("monthly_cost_current_usd")
+        cpt = totals.get("cost_per_transaction_usd")
+        monthly_str = (
+            f"${monthly:,.2f}" if isinstance(monthly, (int, float)) else "unavailable"
         )
+        if isinstance(cpt, (int, float)):
+            lines.append(
+                f"Estimated monthly cost: **{monthly_str}** "
+                f"(≈ ${cpt:,.6f}/{unit}).\n"
+            )
+        else:
+            # Complete bill, but no positive `monthly_transactions` was declared,
+            # so a per-unit figure can't be derived. Never render "$None/<unit>".
+            lines.append(
+                f"Estimated monthly cost: **{monthly_str}**. "
+                f"Per-{unit} cost is unavailable because the profile declared no "
+                "positive `monthly_transactions` volume to divide by.\n"
+            )
     else:
+        known = totals.get("monthly_cost_known_usd")
+        known_str = (
+            f"${known:,.2f}" if isinstance(known, (int, float)) else "unavailable"
+        )
         lines.append(
             "**Incomplete total** — at least one detected line is not-priceable or "
             "not-verified, so no complete bill or per-transaction cost is presented. "
-            f"Known-line subtotal: ${totals.get('monthly_cost_known_usd'):,.2f}.\n"
+            f"Known-line subtotal: {known_str}.\n"
         )
     return "\n".join(lines)
 
@@ -475,6 +493,11 @@ def main(argv: list[str] | None = None) -> int:
     except PricingUnavailableError as exc:
         print(f"pricing unavailable: {exc}", file=sys.stderr)
         return 3
+    except ValueError as exc:
+        # Invalid declared cost input (e.g. non-positive monthly_transactions or
+        # ptu_units rejected by cost_api). Surface cleanly instead of a traceback.
+        print(f"invalid cost input: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

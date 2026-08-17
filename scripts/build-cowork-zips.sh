@@ -115,6 +115,20 @@ build_qualify_zip() {
      "${cq_scripts}/discount.py" \
      "${rt}/"
   cp -R "${cq_scripts}/projectors" "${rt}/projectors"
+
+  # Stage a zip-importable ``pricing_fixtures`` package so PricingClient can
+  # resolve the dated offline rates via importlib.resources when it runs from
+  # inside cost-runtime.zip (Path(__file__) can't reach the repo tree there).
+  # Single source of truth: references/pricing-fixtures/*.json is copied in a
+  # deterministic (sorted) order; no rate is duplicated or re-typed by hand.
+  local pf_src="${cq_refs}/pricing-fixtures"
+  mkdir -p "${rt}/pricing_fixtures"
+  printf '"""Packaged dated offline pricing fixtures (staged by build-cowork-zips.sh).\n\nThis package only exists inside cost-runtime.zip; the in-repo run reads the\nfilesystem references/pricing-fixtures/ tree instead.\n"""\n' \
+    > "${rt}/pricing_fixtures/__init__.py"
+  while IFS= read -r pf_json; do
+    cp "${pf_json}" "${rt}/pricing_fixtures/$(basename "${pf_json}")"
+  done < <(find "${pf_src}" -maxdepth 1 -type f -name '*.json' | LC_ALL=C sort)
+
   find "${rt}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${rt}" -name '*.pyc' -delete 2>/dev/null || true
   ( cd "${rt}" && zip -r --quiet "${stage}/vendor/cost-runtime.zip" . \

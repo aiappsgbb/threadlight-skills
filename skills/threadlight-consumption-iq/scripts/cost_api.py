@@ -27,6 +27,7 @@ Stdlib only, no network, deterministic given a pinned ``generated_at``.
 """
 from __future__ import annotations
 
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,29 @@ from projectors import project_meter_demand, project_resource  # noqa: E402
 
 COST_MANIFEST_SCHEMA_VERSION = "2.0"
 COST_MANIFEST_SCHEMA_ID = "threadlight.cost-manifest/v2"
+
+
+def _require_positive_number(name: str, value: Any) -> float:
+    """Return ``value`` as a float, or raise ``ValueError`` if it is not a
+    finite, strictly-positive real number.
+
+    Guards a cost/PTU denominator before any division: booleans (``True`` is an
+    ``int`` in Python), strings and other non-numerics, non-finite floats
+    (``nan``/``inf``) and non-positive values are all rejected up front so a
+    later projection never divides by a bogus quantity or presents a nonsensical
+    per-transaction figure.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a positive number, not a bool (got {value!r})")
+    if not isinstance(value, (int, float)):
+        raise ValueError(
+            f"{name} must be a positive number, got {type(value).__name__} ({value!r})"
+        )
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite positive number, got {value!r}")
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than 0, got {value!r}")
+    return float(value)
 
 
 def project_profile(
@@ -64,6 +88,13 @@ def project_profile(
     """
     resources = resources or []
     selectors = selectors or {}
+
+    # Reject a bogus denominator BEFORE any projection/total is computed. An
+    # absent (None) volume stays allowed for backward-compatible manifests — the
+    # per-transaction cost is then simply reported as unavailable downstream —
+    # but a bool / non-numeric / non-positive value is a hard error.
+    if monthly_transactions is not None:
+        _require_positive_number("monthly_transactions", monthly_transactions)
 
     if model_catalog_path is not None:
         from model_catalog import load_model_catalog
@@ -228,7 +259,16 @@ def build_ptu_scenarios(
         return None
     model = load_profile.get("ptu_model") or "gpt-4o"
     region = load_profile.get("pinned_region") or load_profile.get("region") or "eastus2"
-    units = int(load_profile.get("ptu_units") or 1)
+    # Validate an EXPLICIT ptu_units up front (non-positive / bool / non-numeric
+    # => ValueError); an absent value defaults to a single provisioned unit.
+    raw_units = load_profile.get("ptu_units")
+    if raw_units is None:
+        units: float | int = 1
+    else:
+        validated = _require_positive_number("ptu_units", raw_units)
+        # PTU capacity is provisioned in whole units; keep an int when the caller
+        # gave a whole number, otherwise preserve the validated fractional value.
+        units = int(validated) if validated.is_integer() else validated
 
     try:
         env = pricing.get_price(

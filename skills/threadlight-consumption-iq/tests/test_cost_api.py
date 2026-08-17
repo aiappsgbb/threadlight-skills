@@ -4,10 +4,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from cost_api import project_profile, build_cost_manifest  # noqa: E402
+from cost_api import project_profile, build_cost_manifest, build_ptu_scenarios  # noqa: E402
 from pricing_client import PricingClient  # noqa: E402
 
 PINNED = "2026-06-12T12:00:00+00:00"
@@ -174,3 +176,106 @@ def test_deterministic_given_pinned_generated_at(tmp_path):
     a = project_profile(**kwargs)
     b = project_profile(**kwargs)
     assert a == b
+
+
+# ---------------------------------------------------------------------------
+# Denominator validation — monthly_transactions (Task 2 item 4)
+# ---------------------------------------------------------------------------
+
+def _project(client, monthly_transactions):
+    return project_profile(
+        load_profile=_profile(),
+        resources=[],
+        selectors={
+            "content_understanding": {"enabled": True, "tier": "standard"},
+            "embeddings": {"enabled": True, "model": "text-embedding-3-small"},
+        },
+        pricing=client,
+        transaction_unit="document",
+        monthly_transactions=monthly_transactions,
+        generated_at=PINNED,
+    )
+
+
+@pytest.mark.parametrize("bad", [-5, -0.01, 0, 0.0])
+def test_non_positive_monthly_transactions_rejected(tmp_path, bad):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="monthly_transactions"):
+        _project(client, bad)
+
+
+@pytest.mark.parametrize("bad", [True, False])
+def test_bool_monthly_transactions_rejected(tmp_path, bad):
+    # bool is an int subclass — must be rejected explicitly, not treated as 1/0.
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="bool"):
+        _project(client, bad)
+
+
+@pytest.mark.parametrize("bad", ["10000", [1], {"n": 1}, float("nan"), float("inf")])
+def test_non_numeric_monthly_transactions_rejected(tmp_path, bad):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="monthly_transactions"):
+        _project(client, bad)
+
+
+def test_absent_monthly_transactions_allowed_but_no_cpt(tmp_path):
+    # None (absent) stays allowed for backward-compatible manifests: the bill can
+    # still be complete, but no per-transaction cost is derived.
+    client = _client(tmp_path)
+    manifest = _project(client, None)
+    assert manifest["totals"]["complete"] is True
+    assert manifest["totals"]["monthly_cost_current_usd"] is not None
+    assert manifest["totals"]["cost_per_transaction_usd"] is None
+
+
+# ---------------------------------------------------------------------------
+# Denominator validation — ptu_units (Task 2 item 4)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad", [-3, -0.5, 0, 0.0])
+def test_ptu_units_non_positive_rejected(tmp_path, bad):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="ptu_units"):
+        build_ptu_scenarios(
+            {"ptu_model": "gpt-4o", "pinned_region": "eastus2", "ptu_units": bad}, client
+        )
+
+
+@pytest.mark.parametrize("bad", [True, False])
+def test_ptu_units_bool_rejected(tmp_path, bad):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="bool"):
+        build_ptu_scenarios(
+            {"ptu_model": "gpt-4o", "pinned_region": "eastus2", "ptu_units": bad}, client
+        )
+
+
+@pytest.mark.parametrize("bad", ["25", [25], {"units": 25}, float("inf")])
+def test_ptu_units_non_numeric_rejected(tmp_path, bad):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="ptu_units"):
+        build_ptu_scenarios(
+            {"ptu_model": "gpt-4o", "pinned_region": "eastus2", "ptu_units": bad}, client
+        )
+
+
+def test_ptu_units_absent_defaults_to_one(tmp_path):
+    client = _client(tmp_path)
+    ptu = build_ptu_scenarios({"ptu_model": "gpt-4o", "pinned_region": "eastus2"}, client)
+    assert ptu is not None
+    assert ptu["ptu_units"] == 1
+
+
+def test_ptu_units_invalid_propagates_through_project_profile(tmp_path):
+    client = _client(tmp_path)
+    with pytest.raises(ValueError, match="ptu_units"):
+        project_profile(
+            load_profile={"ptu_model": "gpt-4o", "pinned_region": "eastus2", "ptu_units": -1},
+            resources=[],
+            selectors={},
+            pricing=client,
+            transaction_unit="x",
+            monthly_transactions=100,
+            generated_at=PINNED,
+        )

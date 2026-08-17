@@ -167,6 +167,58 @@ def test_roi_absent_without_handling_minutes(tmp_path):
     assert not (tmp_path / "qualification" / "roi.md").exists()
 
 
+def test_roi_net_excludes_labor_savings_no_double_count(tmp_path):
+    """Net benefit is current − projected only; large labor savings must NOT be
+    added into it (that would double-count savings the current cost reflects)."""
+    profile = _profile_with_roi()
+    # current < projected, but labor savings are enormous. If labor savings were
+    # (wrongly) folded into net, ROI would read positive; conservatively it must
+    # read negative because net = current − projected alone.
+    profile["current_annual_cost_usd"] = 100000
+    profile["current_handling_minutes_per_transaction"] = 30
+    manifest = {
+        "sizings": [
+            {
+                "kind": "threadlight-application",
+                "stage": "production",
+                "cost_manifest": {"totals": {"monthly_cost_current_usd": 20000.0}},
+            }
+        ]
+    }
+    text = qualify._render_roi_md(profile, manifest)
+    low = text.lower()
+
+    # projected annual = 20000 * 12 = 240000; net = 100000 − 240000 = −140000.
+    # The exact net magnitude proves labor savings ($12.6M here) were NOT added.
+    assert "ROI is negative" in text
+    assert "$-140,000.00" in text  # net = current − projected (labor excluded)
+    # Net formula is explicit and defined as current − projected only.
+    assert "net = current annual cost" in low
+    assert "projected annual solution cost" in low
+    # Labor savings surface separately, flagged as excluded from net.
+    assert "not included in net" in low
+    assert "labor savings" in low
+
+
+def test_roi_positive_net_is_current_minus_projected(tmp_path):
+    profile = _profile_with_roi()
+    profile["current_annual_cost_usd"] = 5000000
+    profile["current_handling_minutes_per_transaction"] = 9
+    manifest = {
+        "sizings": [
+            {
+                "kind": "threadlight-application",
+                "stage": "production",
+                "cost_manifest": {"totals": {"monthly_cost_current_usd": 100000.0}},
+            }
+        ]
+    }
+    text = qualify._render_roi_md(profile, manifest)
+    # net = 5,000,000 − (100000*12 = 1,200,000) = 3,800,000
+    assert "ROI is positive" in text
+    assert "$3,800,000.00" in text
+
+
 # ---------------------------------------------------------------------------
 # No discovery — qualify must not import azd/bicep/discover
 # ---------------------------------------------------------------------------
