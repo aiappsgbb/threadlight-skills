@@ -793,6 +793,25 @@ def _restore_prior(path: Path, prior: dict) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+def _load_existing_mcp_config(mcp_full: Path, mcp_config_path) -> dict:
+    if not mcp_full.exists():
+        return {}
+    raw_mcp = mcp_full.read_text(encoding="utf-8")
+    try:
+        existing_mcp = json.loads(raw_mcp)
+    except json.JSONDecodeError as exc:
+        raise ConnectEvidenceError(
+            f"existing mcp-config at {mcp_config_path} is not valid JSON "
+            f"({exc}); refusing to overwrite — repair or remove it first"
+        ) from exc
+    if not isinstance(existing_mcp, dict):
+        raise ConnectEvidenceError(
+            f"existing mcp-config at {mcp_config_path} must be a JSON object; "
+            f"got {type(existing_mcp).__name__} — refusing to overwrite"
+        )
+    return existing_mcp
+
+
 def apply_changes(project_root, spec_path, mcp_config_path, tool_name: str, contract: dict, generated_at: str) -> list:
     """Apply the SPEC.md + mcp-config.json swap as one transactional unit.
 
@@ -818,24 +837,7 @@ def apply_changes(project_root, spec_path, mcp_config_path, tool_name: str, cont
     mcp_full = root / mcp_config_path
 
     existing_spec = spec_full.read_text(encoding="utf-8") if spec_full.exists() else ""
-    existing_mcp: dict = {}
-    if mcp_full.exists():
-        raw_mcp = mcp_full.read_text(encoding="utf-8")
-        try:
-            existing_mcp = json.loads(raw_mcp)
-        except json.JSONDecodeError as exc:
-            # Refuse to silently overwrite a malformed prior config with `{}`;
-            # that would discard whatever the operator had on disk. Abort
-            # before any write so the corrupt bytes survive untouched.
-            raise ConnectEvidenceError(
-                f"existing mcp-config at {mcp_config_path} is not valid JSON "
-                f"({exc}); refusing to overwrite — repair or remove it first"
-            ) from exc
-        if not isinstance(existing_mcp, dict):
-            raise ConnectEvidenceError(
-                f"existing mcp-config at {mcp_config_path} must be a JSON object; "
-                f"got {type(existing_mcp).__name__} — refusing to overwrite"
-            )
+    existing_mcp = _load_existing_mcp_config(mcp_full, mcp_config_path)
 
     new_spec_text = _update_spec_text(existing_spec, tool_name, contract, generated_at)
     new_mcp_data = _update_mcp_config(existing_mcp, tool_name, contract, generated_at)
@@ -1058,6 +1060,19 @@ _DIFFERENCE_KEYS = {"field", "expected", "actual", "path"}
 _EVIDENCE_SUMMARY_KEYS = {"obo_present", "obo_user_scoped", "roles_revalidated", "required_roles"}
 _CONTRACT_KEYS = {"schema", "tool_name", "generated_at", "fields"}
 _CONTRACT_FIELD_KEYS = {"name", "required", "type", "cardinality"}
+_FINDING_REQUIRED_KEYS = {"id", "status"}
+_APPLY_PLAN_ITEM_REQUIRED_KEYS = {"path", "action", "description"}
+
+
+def _require_object_keys(value, required: set, label: str) -> dict:
+    if not isinstance(value, dict):
+        raise ManifestValidationError(f"{label} must be an object")
+    missing = required.difference(value)
+    if missing:
+        raise ManifestValidationError(
+            f"{label} missing required key(s): " + ", ".join(sorted(missing))
+        )
+    return value
 
 
 def validate_connect_manifest(manifest: dict) -> None:
@@ -1066,7 +1081,8 @@ def validate_connect_manifest(manifest: dict) -> None:
     `jsonschema` dependency, consistent with the rest of the repo. Unknown keys
     are rejected (the schema's ``additionalProperties: false``) at the top level
     and in every controlled nested object: `conformance`, each `differences`
-    item, `evidence_summary`, and the `contract` (+ its field items).
+    item, `evidence_summary`, and the `contract` (+ its field items). Required
+    keys and object shapes are enforced for findings and apply-plan items too.
     """
     validate_envelope(manifest)
 
@@ -1086,31 +1102,36 @@ def validate_connect_manifest(manifest: dict) -> None:
         if manifest[key] not in VALID_STATES:
             raise ManifestValidationError(f"unknown {key}: {manifest[key]!r}")
 
-    contract = manifest["contract"]
-    if isinstance(contract, dict):
-        _reject_unknown_keys(contract, _CONTRACT_KEYS, "contract")
-        contract_fields = contract.get("fields")
-        if isinstance(contract_fields, list):
-            for field in contract_fields:
-                _reject_unknown_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
+    contract = _require_object_keys(manifest["contract"], _CONTRACT_KEYS, "contract")
+    _reject_unknown_keys(contract, _CONTRACT_KEYS, "contract")
+    contract_fields = contract["fields"]
+    if not isinstance(contract_fields, list):
+        raise ManifestValidationError("contract.fields must be a list")
+    for field in contract_fields:
+        field = _require_object_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
+        _reject_unknown_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
+
+    for finding in manifest["findings"]:
+        _require_object_keys(finding, _FINDING_REQUIRED_KEYS, "finding")
 
     conformance = manifest["conformance"]
-    if not isinstance(conformance, dict) or not _CONFORMANCE_KEYS.issubset(conformance):
-        raise ManifestValidationError(
-            "conformance must include passed, evaluated, item_count and differences"
-        )
+    conformance = _require_object_keys(conformance, _CONFORMANCE_KEYS, "conformance")
     _reject_unknown_keys(conformance, _CONFORMANCE_KEYS, "conformance")
+    if not isinstance(conformance["differences"], list):
+        raise ManifestValidationError("conformance.differences must be a list")
     for diff in conformance["differences"]:
-        if not _DIFFERENCE_KEYS.issubset(diff):
-            raise ManifestValidationError(
-                "conformance difference missing field/expected/actual/path"
-            )
+        diff = _require_object_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
         _reject_unknown_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
 
-    _reject_unknown_keys(manifest["evidence_summary"], _EVIDENCE_SUMMARY_KEYS, "evidence_summary")
+    evidence_summary = _require_object_keys(
+        manifest["evidence_summary"], _EVIDENCE_SUMMARY_KEYS, "evidence_summary"
+    )
+    _reject_unknown_keys(evidence_summary, _EVIDENCE_SUMMARY_KEYS, "evidence_summary")
 
     if not isinstance(manifest["apply_plan"], list):
         raise ManifestValidationError("apply_plan must be a list")
+    for item in manifest["apply_plan"]:
+        _require_object_keys(item, _APPLY_PLAN_ITEM_REQUIRED_KEYS, "apply_plan item")
     if not isinstance(manifest["changed_paths"], list):
         raise ManifestValidationError("changed_paths must be a list")
     if not isinstance(manifest["apply"], bool):
@@ -1186,6 +1207,12 @@ def run_connect(
 
     manifest_full_path = root / manifest_path
     integration_state = load_current_state(manifest_full_path)
+
+    if apply and target_state == "real-verified":
+        # Validate the apply destination before generating any artifact. This
+        # keeps the CLI's "(nothing written)" guarantee literal when an
+        # existing MCP config is corrupt or is not a JSON object.
+        _load_existing_mcp_config(root / mcp_config_path, mcp_config_path)
 
     test_rel_path = write_conformance_tests(root, tool_name, contract)
     apply_plan = build_apply_plan(root, spec_path, mcp_config_path, tool_name)

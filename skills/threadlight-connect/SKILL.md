@@ -200,10 +200,12 @@ rule, so the pytest scaffold and the in-process check agree.
 A prior `connect-manifest.json` or `mcp-config.json` that exists but is
 malformed (or is valid JSON that isn't an object) is **never** silently reset
 to a starting `mock`/`{}`; the run raises a clean error and leaves the bytes
-on disk untouched for repair. On the CLI, unparseable input — malformed JSON
-in a `--*-file` argument or a tool source that isn't valid Python — prints a
-single-line error (no traceback), returns a stable nonzero exit code, and
-writes nothing.
+on disk untouched for repair. On an apply path, MCP config validation happens
+before the generated conformance test is scaffolded, so the CLI's
+`(nothing written)` report is literal. On the CLI, unparseable input —
+malformed JSON in a `--*-file` argument or a tool source that isn't valid
+Python — prints a single-line error (no traceback), returns a stable nonzero
+exit code, and writes nothing.
 
 ## Contract extraction — exactly what is read, nothing that merely exists
 

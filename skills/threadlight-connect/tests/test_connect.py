@@ -1128,6 +1128,24 @@ def test_corrupt_prior_manifest_aborts_and_preserves_bytes(tmp_path):
 
 
 def test_corrupt_mcp_config_aborts_apply_and_preserves_bytes(tmp_path):
+    generated_test = (
+        tmp_path
+        / "tests"
+        / "threadlight_connect"
+        / "test_returns_get_case_conformance.py"
+    )
+    generated_test.unlink(missing_ok=True)
+
+    spec_full = tmp_path / connect.DEFAULT_SPEC_PATH
+    spec_full.parent.mkdir(parents=True, exist_ok=True)
+    original_spec = b"# Existing specification\n"
+    spec_full.write_bytes(original_spec)
+
+    manifest_full = tmp_path / connect.DEFAULT_MANIFEST_PATH
+    manifest_full.parent.mkdir(parents=True, exist_ok=True)
+    original_manifest = json.dumps(_valid_manifest(), sort_keys=True).encode()
+    manifest_full.write_bytes(original_manifest)
+
     mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
     mcp_full.parent.mkdir(parents=True, exist_ok=True)
     corrupt = b"{ broken mcp config"
@@ -1136,7 +1154,10 @@ def test_corrupt_mcp_config_aborts_apply_and_preserves_bytes(tmp_path):
     with pytest.raises(ConnectEvidenceError):
         _apply_run(tmp_path)
 
-    assert mcp_full.read_bytes() == corrupt  # not silently overwritten with {}
+    assert not generated_test.exists()
+    assert spec_full.read_bytes() == original_spec
+    assert manifest_full.read_bytes() == original_manifest
+    assert mcp_full.read_bytes() == corrupt
 
 
 def test_non_dict_mcp_config_aborts_apply_and_preserves_bytes(tmp_path):
@@ -1200,4 +1221,74 @@ def test_validate_rejects_unknown_contract_field_key():
     manifest = _valid_manifest()
     manifest["contract"]["fields"][0]["extra"] = 1
     with pytest.raises(ManifestValidationError, match="contract field"):
+        connect.validate_connect_manifest(manifest)
+
+
+def _manifest_with_all_nested_items():
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    conformance = check_conformance(contract, drifting_real_response())
+    manifest = _valid_manifest(conformance=conformance)
+    manifest["findings"] = [{"id": "CONNECT-DRIFT", "status": "must-fix"}]
+    manifest["apply_plan"] = [
+        {"path": "SPEC.md", "action": "create", "description": "Update the specification"}
+    ]
+    return manifest
+
+
+@pytest.mark.parametrize(
+    ("object_path", "required_key"),
+    [
+        (("evidence_summary",), "obo_present"),
+        (("evidence_summary",), "obo_user_scoped"),
+        (("evidence_summary",), "roles_revalidated"),
+        (("evidence_summary",), "required_roles"),
+        (("contract",), "schema"),
+        (("contract",), "tool_name"),
+        (("contract",), "generated_at"),
+        (("contract",), "fields"),
+        (("contract", "fields", 0), "name"),
+        (("contract", "fields", 0), "required"),
+        (("contract", "fields", 0), "type"),
+        (("contract", "fields", 0), "cardinality"),
+        (("findings", 0), "id"),
+        (("findings", 0), "status"),
+        (("conformance", "differences", 0), "field"),
+        (("conformance", "differences", 0), "expected"),
+        (("conformance", "differences", 0), "actual"),
+        (("conformance", "differences", 0), "path"),
+        (("apply_plan", 0), "path"),
+        (("apply_plan", 0), "action"),
+        (("apply_plan", 0), "description"),
+    ],
+)
+def test_validate_rejects_missing_nested_required_key(object_path, required_key):
+    manifest = _manifest_with_all_nested_items()
+    nested = manifest
+    for segment in object_path:
+        nested = nested[segment]
+    del nested[required_key]
+
+    with pytest.raises(ManifestValidationError, match="missing required"):
+        connect.validate_connect_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "object_path",
+    [
+        ("evidence_summary",),
+        ("contract",),
+        ("contract", "fields", 0),
+        ("findings", 0),
+        ("conformance", "differences", 0),
+        ("apply_plan", 0),
+    ],
+)
+def test_validate_rejects_non_object_nested_item(object_path):
+    manifest = _manifest_with_all_nested_items()
+    parent = manifest
+    for segment in object_path[:-1]:
+        parent = parent[segment]
+    parent[object_path[-1]] = []
+
+    with pytest.raises(ManifestValidationError, match="must be an object"):
         connect.validate_connect_manifest(manifest)
