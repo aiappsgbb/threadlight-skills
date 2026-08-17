@@ -86,7 +86,7 @@ def atomic_write_json(path, envelope):
             temporary.flush()
             os.fsync(temporary.fileno())
         os.replace(temporary_path, destination)
-    except Exception:
+    except BaseException:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         raise

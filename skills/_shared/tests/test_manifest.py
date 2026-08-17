@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+import skills._shared.manifest as manifest_module
 from skills._shared.manifest import (
     ManifestValidationError,
     atomic_write_json,
@@ -99,3 +100,23 @@ def test_atomic_write_json_preserves_valid_file_when_validation_fails(tmp_path):
 
     assert path.read_bytes() == original_bytes
     assert json.loads(path.read_text()) == original
+
+
+def test_atomic_write_json_cleans_temp_file_when_replacement_is_interrupted(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "nested" / "manifest.json"
+    original = valid_envelope()
+    atomic_write_json(path, original)
+    original_bytes = path.read_bytes()
+
+    def interrupt_replace(source, destination):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(manifest_module.os, "replace", interrupt_replace)
+
+    with pytest.raises(KeyboardInterrupt):
+        atomic_write_json(path, valid_envelope(status="partial"))
+
+    assert path.read_bytes() == original_bytes
+    assert list(path.parent.glob(f".{path.name}.*.tmp")) == []
