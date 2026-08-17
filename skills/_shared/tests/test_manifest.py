@@ -140,7 +140,21 @@ def test_validate_envelope_rejects_invalid_required_scalar_types(field, value):
 
 @pytest.mark.parametrize(
     "generated_at",
-    ["not-a-timestamp", "2026-08-17", "2026-13-40T10:00:00Z"],
+    [
+        "not-a-timestamp",
+        "2026-08-17",
+        "2026-13-40T10:00:00Z",
+        # Timezone-less date-time: rejected — RFC 3339 requires an offset.
+        "2026-08-17T10:00:00",
+        # Invalid clock/calendar values that are still well-shaped.
+        "2026-08-17T24:00:00Z",
+        "2026-02-30T10:00:00Z",
+        # Whitespace is never part of an RFC 3339 date-time: a space separator,
+        # and leading/trailing whitespace, are all rejected.
+        "2026-08-17 10:00:00Z",
+        " 2026-08-17T10:00:00Z",
+        "2026-08-17T10:00:00Z\n",
+    ],
 )
 def test_validate_envelope_rejects_invalid_generated_at(generated_at):
     with pytest.raises(
@@ -151,8 +165,35 @@ def test_validate_envelope_rejects_invalid_generated_at(generated_at):
 
 
 @pytest.mark.parametrize(
+    "generated_at",
+    [
+        "2026-08-17T10:00:00Z",
+        "2026-08-17T10:00:00+00:00",
+        "2026-08-17T10:00:00-05:00",
+        "2026-08-17t10:00:00z",
+        "2026-08-17T10:00:00.500Z",
+        "2026-08-17T10:00:00+23:59",
+    ],
+)
+def test_validate_envelope_accepts_timezone_aware_generated_at(generated_at):
+    assert validate_envelope(valid_envelope(generated_at=generated_at)) is None
+
+
+@pytest.mark.parametrize(
     "source_oldest_at",
-    ["", "not-a-timestamp", "2026-08-17", 42],
+    [
+        "",
+        "not-a-timestamp",
+        "2026-08-17",
+        42,
+        # Timezone-less, invalid clock, and whitespace/space-separated values are
+        # rejected exactly like generated_at (a non-null source_oldest_at is a
+        # full RFC 3339 date-time).
+        "2026-08-17T10:00:00",
+        "2026-08-17T24:00:00Z",
+        "2026-08-17 10:00:00Z",
+        " 2026-08-17T10:00:00Z",
+    ],
 )
 def test_validate_envelope_rejects_invalid_source_oldest_at(source_oldest_at):
     envelope = valid_envelope()
@@ -165,6 +206,22 @@ def test_validate_envelope_rejects_invalid_source_oldest_at(source_oldest_at):
         ),
     ):
         validate_envelope(envelope)
+
+
+@pytest.mark.parametrize(
+    "source_oldest_at",
+    [
+        "2026-08-17T09:00:00Z",
+        "2026-08-17T09:00:00+00:00",
+        "2026-08-17T09:00:00-05:00",
+        "2026-08-17t09:00:00z",
+    ],
+)
+def test_validate_envelope_accepts_timezone_aware_source_oldest_at(source_oldest_at):
+    envelope = valid_envelope()
+    envelope["freshness"]["source_oldest_at"] = source_oldest_at
+
+    assert validate_envelope(envelope) is None
 
 
 def test_validate_envelope_accepts_none_source_oldest_at():
@@ -188,6 +245,36 @@ def test_validate_envelope_requires_complete_freshness_metadata(missing_key):
 
 @pytest.mark.parametrize("valid_for_hours", [0, -1, True, 1.5, "24"])
 def test_validate_envelope_rejects_non_positive_integer_validity(valid_for_hours):
+    envelope = valid_envelope()
+    envelope["freshness"]["valid_for_hours"] = valid_for_hours
+
+    with pytest.raises(
+        ManifestValidationError,
+        match="freshness.valid_for_hours must be a positive integer",
+    ):
+        validate_envelope(envelope)
+
+
+@pytest.mark.parametrize("valid_for_hours", [1.0, 24.0, 720.0])
+def test_validate_envelope_accepts_integral_float_validity(valid_for_hours):
+    # Draft-07 integer semantics: a zero-fraction float (1.0) is the same JSON
+    # value as the integer 1, so it satisfies {"type": "integer", "minimum": 1}.
+    envelope = valid_envelope()
+    envelope["freshness"]["valid_for_hours"] = valid_for_hours
+
+    assert validate_envelope(envelope) is None
+    # The original numeric value is preserved as-is (not normalized to int).
+    assert envelope["freshness"]["valid_for_hours"] == valid_for_hours
+
+
+@pytest.mark.parametrize(
+    "valid_for_hours",
+    [1.5, 0.5, -1.0, 0.0, float("nan"), float("inf"), float("-inf"), True, False],
+)
+def test_validate_envelope_rejects_non_integral_or_nonfinite_validity(valid_for_hours):
+    # A non-integral float (1.5), a non-finite float (nan/inf), a bool, and any
+    # non-positive integral value are all rejected — matching Draft-07's integer
+    # type plus the schema's minimum of 1.
     envelope = valid_envelope()
     envelope["freshness"]["valid_for_hours"] = valid_for_hours
 

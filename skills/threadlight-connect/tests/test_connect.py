@@ -32,10 +32,7 @@ from connect import (  # noqa: E402
 
 REPO_ROOT = SKILL_ROOT.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-from skills._shared.manifest import (  # noqa: E402
-    ManifestValidationError,
-    _validate_iso8601_timestamp,
-)
+from skills._shared.manifest import ManifestValidationError  # noqa: E402
 
 PINNED = "2026-08-17T10:00:00+00:00"
 CURRENT_IDENTITY = "agent-123"
@@ -1315,15 +1312,18 @@ _REFERENCES_DIR = SKILL_ROOT / "references"
 @pytest.fixture(scope="module")
 def jsonschema_validator():
     """A Draft-07 validator over the on-disk manifest schema, with the
-    ``$ref``-ed data-contract schema resolvable from an in-memory registry and a
-    ``date-time`` format checker.
+    ``$ref``-ed data-contract schema resolvable from an in-memory registry and
+    jsonschema's *standard* ``date-time`` format checker.
 
-    jsonschema's default ``FormatChecker`` treats ``date-time`` as a no-op unless
-    an RFC-3339 backend (e.g. ``rfc3339-validator``) is installed, which would let
-    it silently ACCEPT the malformed timestamps the shared envelope rejects. We
-    register a ``date-time`` checker backed by the *same* shared helper the hand
-    validator uses, so timestamp accept/reject is identical across both validators
-    by construction — the whole point of the parity suite below."""
+    The manifest schemas declare ``format: date-time`` on ``generated_at``,
+    ``freshness.source_oldest_at``, and the contract's ``generated_at``.
+    jsonschema only enforces ``date-time`` when an RFC-3339 backend (e.g.
+    ``rfc3339-validator``) is installed; without it the check is a silent no-op
+    that would ACCEPT the malformed timestamps the shared envelope rejects,
+    defeating the parity suite. We deliberately use the stock ``FormatChecker``
+    — NOT one wired to the shared helper — so every timestamp accept/reject
+    below is proven against a real, independent RFC-3339 implementation, and we
+    skip when no backend is present rather than assert a false parity."""
     jsonschema = pytest.importorskip("jsonschema")
     referencing = pytest.importorskip("referencing")
 
@@ -1341,16 +1341,12 @@ def jsonschema_validator():
     )
 
     format_checker = jsonschema.FormatChecker()
-
-    @format_checker.checks("date-time", raises=(ManifestValidationError,))
-    def _is_iso8601_date_time(value):
-        # jsonschema applies a format check to every instance; only strings carry
-        # the date-time format (a null source_oldest_at is not this format's
-        # concern and must pass through untouched).
-        if not isinstance(value, str):
-            return True
-        _validate_iso8601_timestamp(value, "date-time")
-        return True
+    if "date-time" not in format_checker.checkers:
+        pytest.skip(
+            "jsonschema's standard 'date-time' format check requires an RFC-3339 "
+            "backend (e.g. rfc3339-validator); without it the parity suite cannot "
+            "prove timestamp accept/reject against an independent validator"
+        )
 
     return jsonschema.Draft7Validator(
         manifest_schema, registry=registry, format_checker=format_checker
@@ -1529,9 +1525,20 @@ _MALFORMED_MANIFEST_CASES = [
     ("generated_at empty violates minLength", ("generated_at",), ""),
     ("generated_at not a timestamp", ("generated_at",), "not-a-timestamp"),
     ("generated_at date without time", ("generated_at",), "2026-08-17"),
+    ("generated_at timezone-less date-time", ("generated_at",), "2026-08-17T10:00:00"),
     ("source_oldest_at not a timestamp", ("freshness", "source_oldest_at"), "nope"),
     ("source_oldest_at empty string", ("freshness", "source_oldest_at"), ""),
+    (
+        "source_oldest_at timezone-less date-time",
+        ("freshness", "source_oldest_at"),
+        "2026-08-17T10:00:00",
+    ),
     ("contract.generated_at not a timestamp", ("contract", "generated_at"), "bad-ts"),
+    (
+        "contract.generated_at timezone-less date-time",
+        ("contract", "generated_at"),
+        "2026-08-17T10:00:00",
+    ),
     ("valid_for_hours 1.5 is not integral", ("freshness", "valid_for_hours"), 1.5),
     ("item_count 1.5 is not integral", ("conformance", "item_count"), 1.5),
 ]

@@ -1,5 +1,7 @@
 import json
+import math
 import os
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -10,25 +12,87 @@ REQUIRED_KEYS = frozenset(
     {"schema", "tool_version", "generated_at", "freshness", "status", "findings"}
 )
 
+# RFC 3339 ``date-time`` shape with a MANDATORY timezone offset. The separator
+# is ``T`` (or lowercase ``t`` per RFC 3339's case-insensitive note) — never a
+# space or any other whitespace — and the offset is ``Z``/``z`` or an explicit
+# ``±HH:MM``. The clock and offset digit ranges are constrained to RFC 3339's
+# (hour 00-23, minute/second 00-59) so an out-of-range time such as ``24:00:00``
+# is refused here rather than slipping through ``datetime.fromisoformat`` (which
+# accepts hour 24 on some CPython versions). Calendar validity that the date
+# digit classes still allow (e.g. month 13 or ``2026-02-30``) is rejected by the
+# subsequent parse. Mirrors the ``format: date-time`` semantics the manifest
+# schemas declare and the RFC-3339 backend jsonschema's ``FormatChecker`` uses,
+# but stays stdlib-only.
+_RFC3339_DATETIME_RE = re.compile(
+    r"""
+    ^
+    \d{4}-\d{2}-\d{2}                        # full-date (YYYY-MM-DD)
+    [Tt]                                     # date-time separator (T/t only)
+    (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d        # partial-time hh:mm:ss (00-23:00-59)
+    (?:\.\d+)?                               # optional time-secfrac
+    (?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)   # time-offset: Z/z or ±HH:MM (required)
+    $
+    """,
+    re.VERBOSE,
+)
+
 
 class ManifestValidationError(ValueError):
     pass
 
 
+def _is_draft7_integer(value):
+    """Return True when *value* is a JSON-Schema Draft-07 integer.
+
+    Draft-07 treats an integer as any number with a zero fractional part, so a
+    float like ``1.0`` IS an integer (``1`` and ``1.0`` are the same JSON value)
+    while ``1.5`` is not. A bool is never an integer, and non-finite floats
+    (``nan``/``inf``) are excluded. Mirrors what jsonschema's Draft7Validator
+    accepts for ``{"type": "integer"}``.
+    """
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    return (
+        isinstance(value, float)
+        and math.isfinite(value)
+        and value.is_integer()
+    )
+
+
 def _validate_iso8601_timestamp(value, field, *, nullable=False):
+    """Validate an RFC 3339 ``date-time`` string with a mandatory timezone.
+
+    Enforces the JSON-Schema ``format: date-time`` contract the manifest schemas
+    declare: a full ``YYYY-MM-DDThh:mm:ss`` date-time whose offset is ``Z`` or an
+    explicit ``±HH:MM``. This is intentionally stricter than
+    :func:`datetime.fromisoformat`, which also accepts naive (timezone-less)
+    datetimes, a space separator, and bare dates. Rejected: timezone-less
+    datetimes, date-only values, a space (or any other whitespace) separator,
+    surrounding whitespace, and impossible calendar/clock values (e.g. month 13
+    or ``2026-02-30``). ``Z``/``z`` and lowercase ``t`` are accepted per RFC
+    3339's case-insensitive note. Stdlib-only — no rfc3339 dependency.
+    """
     expectation = (
         "None or an ISO-8601 timestamp"
         if nullable
         else "an ISO-8601 timestamp"
     )
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    if not isinstance(value, str) or not _RFC3339_DATETIME_RE.match(value):
+        raise ManifestValidationError(f"{field} must be {expectation}")
+
+    # The regex fixes the full shape — separator, clock/offset ranges, and the
+    # mandatory timezone. Parsing then rejects the only thing the date digit
+    # classes still allow: an impossible calendar day (month 13, 2026-02-30).
+    # Normalize a trailing Z/z to +00:00 so fromisoformat accepts it everywhere.
+    normalized = value[:-1] + "+00:00" if value[-1] in "Zz" else value
     try:
         datetime.fromisoformat(normalized)
     except ValueError as error:
-        raise ManifestValidationError(f"{field} must be {expectation}") from error
-
-    if not any(separator in value for separator in ("T", "t", " ")):
-        raise ManifestValidationError(f"{field} must be {expectation}")
+        raise ManifestValidationError(
+            f"{field} must be {expectation}"
+        ) from error
 
 
 def validate_envelope(envelope):
@@ -81,11 +145,11 @@ def validate_envelope(envelope):
         )
 
     valid_for_hours = freshness["valid_for_hours"]
-    if (
-        isinstance(valid_for_hours, bool)
-        or not isinstance(valid_for_hours, int)
-        or valid_for_hours <= 0
-    ):
+    # Draft-07 integer semantics (see _is_draft7_integer): an integral float
+    # such as 1.0 is a valid integer, a bool/1.5/nan/inf is not. The original
+    # numeric value is preserved as-is (not normalized to int) — validation only
+    # asserts it satisfies the schema's {"type": "integer", "minimum": 1}.
+    if not _is_draft7_integer(valid_for_hours) or valid_for_hours <= 0:
         raise ManifestValidationError(
             "freshness.valid_for_hours must be a positive integer"
         )
