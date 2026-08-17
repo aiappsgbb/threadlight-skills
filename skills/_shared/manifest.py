@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 
@@ -14,12 +15,37 @@ class ManifestValidationError(ValueError):
     pass
 
 
+def _validate_iso8601_timestamp(value, field, *, nullable=False):
+    expectation = (
+        "None or an ISO-8601 timestamp"
+        if nullable
+        else "an ISO-8601 timestamp"
+    )
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise ManifestValidationError(f"{field} must be {expectation}") from error
+
+    if not any(separator in value for separator in ("T", "t", " ")):
+        raise ManifestValidationError(f"{field} must be {expectation}")
+
+
 def validate_envelope(envelope):
     missing = REQUIRED_KEYS.difference(envelope)
     if missing:
         raise ManifestValidationError(
             f"missing required keys: {', '.join(sorted(missing))}"
         )
+
+    for field in ("schema", "tool_version", "generated_at"):
+        value = envelope[field]
+        if not isinstance(value, str) or not value:
+            raise ManifestValidationError(
+                f"{field} must be a non-empty string"
+            )
+
+    _validate_iso8601_timestamp(envelope["generated_at"], "generated_at")
 
     if envelope["status"] not in VALID_STATUSES:
         raise ManifestValidationError(f"unknown status: {envelope['status']!r}")
@@ -28,12 +54,29 @@ def validate_envelope(envelope):
         raise ManifestValidationError("findings must be a list")
 
     freshness = envelope["freshness"]
-    valid_for_hours = (
-        freshness.get("valid_for_hours") if isinstance(freshness, dict) else None
-    )
-    if isinstance(valid_for_hours, bool) or not isinstance(valid_for_hours, int):
+    if not isinstance(freshness, dict):
+        raise ManifestValidationError("freshness must be an object")
+
+    source_oldest_at = freshness.get("source_oldest_at")
+    if source_oldest_at is not None:
+        if not isinstance(source_oldest_at, str) or not source_oldest_at:
+            raise ManifestValidationError(
+                "freshness.source_oldest_at must be None or an ISO-8601 timestamp"
+            )
+        _validate_iso8601_timestamp(
+            source_oldest_at,
+            "freshness.source_oldest_at",
+            nullable=True,
+        )
+
+    valid_for_hours = freshness.get("valid_for_hours")
+    if (
+        isinstance(valid_for_hours, bool)
+        or not isinstance(valid_for_hours, int)
+        or valid_for_hours <= 0
+    ):
         raise ManifestValidationError(
-            "freshness.valid_for_hours must be an integer"
+            "freshness.valid_for_hours must be a positive integer"
         )
 
 
@@ -60,6 +103,12 @@ def build_envelope(
         "findings": findings,
     }
     if payload is not None:
+        reserved_keys = REQUIRED_KEYS.intersection(payload)
+        if reserved_keys:
+            raise ManifestValidationError(
+                "payload must not override reserved keys: "
+                + ", ".join(sorted(reserved_keys))
+            )
         envelope.update(payload)
     validate_envelope(envelope)
     return envelope
@@ -81,7 +130,13 @@ def atomic_write_json(path, envelope):
             delete=False,
         ) as temporary:
             temporary_path = Path(temporary.name)
-            json.dump(envelope, temporary, indent=2, sort_keys=True)
+            json.dump(
+                envelope,
+                temporary,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
             temporary.write("\n")
             temporary.flush()
             os.fsync(temporary.fileno())

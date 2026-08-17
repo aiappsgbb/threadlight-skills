@@ -89,6 +89,89 @@ def test_build_envelope_merges_payload():
     assert envelope["summary"] == {"checked": 3}
 
 
+def test_build_envelope_rejects_payload_reserved_keys_without_overriding_status():
+    with pytest.raises(
+        ManifestValidationError,
+        match=r"payload must not override reserved keys: schema, status",
+    ):
+        build_envelope(
+            schema="threadlight.test/v1",
+            tool_version="0.1.0",
+            status="aborted",
+            generated_at="2026-08-17T10:00:00Z",
+            valid_for_hours=24,
+            source_oldest_at=None,
+            findings=[],
+            payload={"schema": "other/v1", "status": "complete"},
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema", ""),
+        ("schema", None),
+        ("tool_version", ""),
+        ("tool_version", 1),
+        ("generated_at", ""),
+        ("generated_at", None),
+    ],
+)
+def test_validate_envelope_rejects_invalid_required_scalar_types(field, value):
+    with pytest.raises(
+        ManifestValidationError, match=rf"{field} must be a non-empty string"
+    ):
+        validate_envelope(valid_envelope(**{field: value}))
+
+
+@pytest.mark.parametrize(
+    "generated_at",
+    ["not-a-timestamp", "2026-08-17", "2026-13-40T10:00:00Z"],
+)
+def test_validate_envelope_rejects_invalid_generated_at(generated_at):
+    with pytest.raises(
+        ManifestValidationError,
+        match="generated_at must be an ISO-8601 timestamp",
+    ):
+        validate_envelope(valid_envelope(generated_at=generated_at))
+
+
+@pytest.mark.parametrize(
+    "source_oldest_at",
+    ["", "not-a-timestamp", "2026-08-17", 42],
+)
+def test_validate_envelope_rejects_invalid_source_oldest_at(source_oldest_at):
+    envelope = valid_envelope()
+    envelope["freshness"]["source_oldest_at"] = source_oldest_at
+
+    with pytest.raises(
+        ManifestValidationError,
+        match=(
+            "freshness.source_oldest_at must be None or an ISO-8601 timestamp"
+        ),
+    ):
+        validate_envelope(envelope)
+
+
+def test_validate_envelope_accepts_none_source_oldest_at():
+    envelope = valid_envelope()
+    envelope["freshness"]["source_oldest_at"] = None
+
+    assert validate_envelope(envelope) is None
+
+
+@pytest.mark.parametrize("valid_for_hours", [0, -1, True, 1.5, "24"])
+def test_validate_envelope_rejects_non_positive_integer_validity(valid_for_hours):
+    envelope = valid_envelope()
+    envelope["freshness"]["valid_for_hours"] = valid_for_hours
+
+    with pytest.raises(
+        ManifestValidationError,
+        match="freshness.valid_for_hours must be a positive integer",
+    ):
+        validate_envelope(envelope)
+
+
 def test_atomic_write_json_preserves_valid_file_when_validation_fails(tmp_path):
     path = tmp_path / "nested" / "manifest.json"
     original = valid_envelope()
@@ -100,6 +183,23 @@ def test_atomic_write_json_preserves_valid_file_when_validation_fails(tmp_path):
 
     assert path.read_bytes() == original_bytes
     assert json.loads(path.read_text()) == original
+
+
+def test_atomic_write_json_preserves_valid_file_when_payload_contains_nan(
+    tmp_path,
+):
+    path = tmp_path / "nested" / "manifest.json"
+    original = valid_envelope()
+    atomic_write_json(path, original)
+    original_bytes = path.read_bytes()
+    invalid = valid_envelope(findings=[{"value": float("nan")}])
+
+    with pytest.raises(ValueError):
+        atomic_write_json(path, invalid)
+
+    assert path.read_bytes() == original_bytes
+    assert json.loads(path.read_text()) == original
+    assert list(path.parent.glob(f".{path.name}.*.tmp")) == []
 
 
 def test_atomic_write_json_cleans_temp_file_when_replacement_is_interrupted(
