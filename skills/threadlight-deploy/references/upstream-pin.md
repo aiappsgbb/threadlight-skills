@@ -120,7 +120,7 @@ validation:
       --subscription "$AZURE_SUBSCRIPTION_ID" \
       --location "$AZURE_LOCATION"
     azd up --no-prompt
-    azd ai agent validate
+    azd ai agent doctor          # NOT `validate` — no such subcommand (beta.10)
     azd ai agent show
     azd ai agent invoke "Reply with the token THREADLIGHT_DEPLOY_SMOKE_OK only."
 
@@ -225,7 +225,7 @@ azd env select "$AZURE_ENV_NAME" || azd env new "$AZURE_ENV_NAME" \
   --subscription "$AZURE_SUBSCRIPTION_ID" \
   --location "$AZURE_LOCATION"
 azd up --no-prompt
-azd ai agent validate
+azd ai agent doctor          # NOT `validate` — no such subcommand (beta.10)
 azd ai agent show
 azd ai agent invoke "Reply with the token THREADLIGHT_DEPLOY_SMOKE_OK only."
 

@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.3"
+  version: "1.6.4"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -2934,9 +2934,20 @@ az bicep build --file infra/main.bicep
 # 2. Preview the deployment plan against your azd env
 azd provision --preview
 
-# 3. Validate agent.yaml against the Foundry hosted-agent schema
-azd ai agent validate
+# 3. Diagnose the project against the Foundry hosted-agent schema.
+#    NOT `azd ai agent validate` — that subcommand does not exist and fails
+#    with `unknown command`. See references/azd-cli-contract.md § 1.
+#    Exit codes: 0 = a check passed and none failed, 1 = a check failed,
+#    2 = everything was skipped (which is NOT success).
+azd ai agent doctor
 ```
+
+> **Running any `azd ai agent` command non-interactively?** Read
+> [`references/azd-cli-contract.md`](references/azd-cli-contract.md) first. It
+> pins the exact flags `--no-prompt` requires (`--runtime`, `--entry-point`,
+> `--deploy-mode`), captured from the pinned toolchain rather than fetched from
+> the internet at deploy time. Guessing `--runtime` is the most common first
+> failure of an automated deploy.
 
 > **The full Bicep module catalog** lives in `azd-patterns/SKILL.md` →
 > "Composable Bicep Module Library". This skill orchestrates inclusion;
