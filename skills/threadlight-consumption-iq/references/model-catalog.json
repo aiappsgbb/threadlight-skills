@@ -1,0 +1,84 @@
+{
+  "schema": "threadlight.model-catalog/v1",
+  "checked_at": "2026-06-12",
+  "source": "Manual snapshot from azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/ and platform.openai.com/docs/pricing",
+  "models": [
+    {
+      "id": "gpt-4o",
+      "family": "gpt-4o",
+      "comparison_group": "openai-chat-general",
+      "input_per_1k_usd": 0.0025,
+      "output_per_1k_usd": 0.01,
+      "cached_input_per_1k_usd": 0.00125,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 30000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "gpt-4o-mini",
+      "family": "gpt-4o",
+      "comparison_group": "openai-chat-general",
+      "input_per_1k_usd": 0.00015,
+      "output_per_1k_usd": 0.0006,
+      "cached_input_per_1k_usd": 0.000075,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 30000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "gpt-4.1",
+      "family": "gpt-4.1",
+      "comparison_group": "openai-chat-general",
+      "input_per_1k_usd": 0.002,
+      "output_per_1k_usd": 0.008,
+      "cached_input_per_1k_usd": 0.0005,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 30000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "family": "gpt-4.1",
+      "comparison_group": "openai-chat-general",
+      "input_per_1k_usd": 0.0004,
+      "output_per_1k_usd": 0.0016,
+      "cached_input_per_1k_usd": 0.0001,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 30000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "o3-mini",
+      "family": "o-series",
+      "comparison_group": "openai-reasoning",
+      "input_per_1k_usd": 0.0011,
+      "output_per_1k_usd": 0.0044,
+      "cached_input_per_1k_usd": 0.00055,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 30000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "text-embedding-3-small",
+      "family": "text-embedding-3",
+      "comparison_group": "openai-embeddings",
+      "input_per_1k_usd": 0.00002,
+      "output_per_1k_usd": null,
+      "cached_input_per_1k_usd": null,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 350000,
+      "price_source": "fixture"
+    },
+    {
+      "id": "text-embedding-3-large",
+      "family": "text-embedding-3",
+      "comparison_group": "openai-embeddings",
+      "input_per_1k_usd": 0.00013,
+      "output_per_1k_usd": null,
+      "cached_input_per_1k_usd": null,
+      "batch_discount": 0.5,
+      "throughput_tokens_per_min": 350000,
+      "price_source": "fixture"
+    }
+  ]
+}

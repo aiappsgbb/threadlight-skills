@@ -23,19 +23,48 @@ Contract decisions:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+try:  # package-relative (normal import path)
+    from ..model_catalog import load_model_catalog, ModelCatalogError
+except Exception:  # pragma: no cover - fallback when scripts/ is on sys.path
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from model_catalog import load_model_catalog, ModelCatalogError  # type: ignore
 
 
 PTU_UNIT_LADDER = (1, 4, 10, 25, 50, 100)
 ALTERNATIVE_REGIONS = ("eastus2", "swedencentral", "northcentralus")
-MODEL_SWAPS = {
-    "gpt-4o": "gpt-4o-mini",
-    "gpt-4o-mini": "gpt-4o",
-}
 
 _AOAI_KIND = "Microsoft.CognitiveServices/accounts/deployments"
 # Rank used to bubble up the worst source (fallback > fixture > live).
 _SOURCE_RANK: dict[str, int] = {"live": 0, "fixture": 1, "fallback": 2}
+
+# Lazily-loaded, cached repo catalog (Cowork overrides via pricing_client).
+_CATALOG_CACHE: Any = None
+_CATALOG_LOADED = False
+
+
+def _get_model_catalog(pricing_client: Any) -> Any:
+    """Return a ModelCatalog: a pricing-client override wins, else the repo catalog.
+
+    Model-swap alternatives come ONLY from the dated catalog. When no catalog is
+    available (or it can't be parsed), we return ``None`` and emit no swap — an
+    absent comparison must never fabricate a recommendation.
+    """
+    override = getattr(pricing_client, "model_catalog", None)
+    if override is not None:
+        return override
+    global _CATALOG_CACHE, _CATALOG_LOADED
+    if not _CATALOG_LOADED:
+        _CATALOG_LOADED = True
+        try:
+            _CATALOG_CACHE = load_model_catalog()
+        except ModelCatalogError:
+            _CATALOG_CACHE = None
+    return _CATALOG_CACHE
 
 
 def _worst_source(*sources: str) -> str:
@@ -196,10 +225,13 @@ def project(
             ],
         })
 
-    # 3. Model swap — gpt-4o ↔ gpt-4o-mini (PAYG, same region)
-    # satisfies_constraints=True: recommender surfaces these; caveat warns on quality.
-    swap_model = MODEL_SWAPS.get(model_name)
-    if swap_model:
+    # 3. Model swap — alternatives sourced ONLY from the dated model catalog's
+    # comparison_group (no hard-coded swaps). Absent catalog / comparison ⇒ no
+    # swap recommendation.
+    catalog = _get_model_catalog(pricing_client)
+    peers = catalog.comparisons(model_name) if catalog is not None else []
+    for peer in peers:
+        swap_model = peer.id
         sw_in_env = pricing_client.get_price(
             _AOAI_KIND,
             {"name": swap_model, "region": region, "tier": "PAYG", "meter_substring": "Input"},
@@ -210,25 +242,26 @@ def project(
         )
         swip = sw_in_env.get("unit_price_usd")
         swop = sw_out_env.get("unit_price_usd")
-        if swip is not None and swop is not None:
-            swap_cost = (monthly_input_tokens / 1000) * swip + (monthly_output_tokens / 1000) * swop
-            delta = swap_cost - current_cost
-            delta_pct = delta / current_cost if current_cost else 0.0
-            alternatives.append({
-                "sku": {
-                    "name": swap_model, "tier": "PAYG", "region": region,
-                    "capacity": None, "extra": {},
-                },
-                "monthly_cost_usd": round(swap_cost, 4),
-                "delta_usd": round(delta, 4),
-                "delta_pct": round(delta_pct, 6),
-                "satisfies_constraints": True,
-                "rationale": f"Model swap to {swap_model} may reduce cost; validate quality.",
-                "caveats": [
-                    f"Swapping from {model_name} to {swap_model} may affect response quality.",
-                    "Benchmark both models against your workload before switching.",
-                ],
-            })
+        if swip is None or swop is None:
+            continue
+        swap_cost = (monthly_input_tokens / 1000) * swip + (monthly_output_tokens / 1000) * swop
+        delta = swap_cost - current_cost
+        delta_pct = delta / current_cost if current_cost else 0.0
+        alternatives.append({
+            "sku": {
+                "name": swap_model, "tier": "PAYG", "region": region,
+                "capacity": None, "extra": {"comparison_group": peer.comparison_group},
+            },
+            "monthly_cost_usd": round(swap_cost, 4),
+            "delta_usd": round(delta, 4),
+            "delta_pct": round(delta_pct, 6),
+            "satisfies_constraints": True,
+            "rationale": f"Model swap to {swap_model} (same comparison group) may reduce cost; validate quality.",
+            "caveats": [
+                f"Swapping from {model_name} to {swap_model} may affect response quality.",
+                "Benchmark both models against your workload before switching.",
+            ],
+        })
 
     return {
         "current_sku": current_sku,

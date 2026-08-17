@@ -20,20 +20,13 @@ from __future__ import annotations
 
 from typing import Any
 
-# Hardcoded fallback price matrix keyed on (redundancy, access_tier).
-# pricing_client is available for live prices but v1 falls through to these.
-STORAGE_PRICE_PER_GB_MONTH: dict[tuple[str, str], float] = {
-    ("LRS", "hot"): 0.0184,
-    ("ZRS", "hot"): 0.023,
-    ("GRS", "hot"): 0.0368,
-    ("LRS", "cool"): 0.01,
-    ("ZRS", "cool"): 0.0125,
-    ("GRS", "cool"): 0.02,
-    ("LRS", "cold"): 0.0036,
-    ("LRS", "archive"): 0.00099,
-}
-STORAGE_TXN_PRICE_PER_10K = 0.004
-STORAGE_EGRESS_PRICE_PER_GB = 0.0  # first 100 GB free; v2 tiered
+from ._fallback import section as _section, storage_price_matrix as _storage_matrix
+
+# Fallback price matrix keyed on (redundancy, access_tier), sourced from the
+# dated projectors/fallback-rates.json (rebuilt into tuple keys here).
+STORAGE_PRICE_PER_GB_MONTH: dict[tuple[str, str], float] = _storage_matrix()
+STORAGE_TXN_PRICE_PER_10K = _section("storage")["txn_price_per_10k"]
+STORAGE_EGRESS_PRICE_PER_GB = _section("storage")["egress_price_per_gb"]  # first 100 GB free; v2 tiered
 
 _REDUNDANCIES = ("LRS", "ZRS", "GRS")
 _ACCESS_TIERS = ("hot", "cool", "cold", "archive")

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._fallback import section as _section
 
 _FHA_KIND = "Microsoft.MachineLearningServices/workspaces"
 
@@ -25,8 +26,8 @@ _FHA_KIND = "Microsoft.MachineLearningServices/workspaces"
 # Source: https://learn.microsoft.com/en-us/azure/ai-foundry/
 # The base fee is always hardcoded (not returned by the retail prices API meter dimension).
 # Verified 2026-06-12; update if Microsoft changes these tiers.
-TIER_BASE_PER_MONTH: dict[str, float] = {"Free": 0.0, "Standard": 0.0, "Premium": 200.0}
-TIER_PER_MESSAGE: dict[str, float] = {"Free": 0.0, "Standard": 0.0012, "Premium": 0.001}
+TIER_BASE_PER_MONTH: dict[str, float] = _section("foundry_hosted_agent")["tier_base_per_month"]
+TIER_PER_MESSAGE: dict[str, float] = _section("foundry_hosted_agent")["tier_per_message"]
 
 TIERS = ("Free", "Standard", "Premium")
 

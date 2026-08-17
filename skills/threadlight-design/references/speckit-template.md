@@ -619,8 +619,15 @@ conflict and asks which wins.
 
 ### `load_profile{}` (consumed by `threadlight-consumption-iq`)
 
-> The `threadlight-consumption-iq` wizard fills this in on first run.
-> Until then, recommendations and projections are not produced.
+> **Seed from qualification when available.** If a
+> `qualification/sizing-manifest.json` exists (produced by `threadlight-qualify`),
+> seed this block directly from its normalized `load_profile` instead of
+> repeating the interview — copy `workload_class`, `peak_requests_per_second`,
+> `business_hours_only`, `pages_per_month`/`storage_gb_year_one`, and the pinned
+> region across, and record the sizing manifest as the provenance. Only fall
+> back to the `threadlight-consumption-iq` wizard when no sizing manifest exists.
+>
+> Until either is run, recommendations and projections are not produced.
 
 ```yaml
 load_profile:

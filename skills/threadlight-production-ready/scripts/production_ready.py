@@ -826,6 +826,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "COST-004": {"title": "Idle scale-down configured for ACA / Functions", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-005": {"title": "Cost-projection artefact present and fresh (docs/cost-projection.md + specs/cost-manifest.json)", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-006": {"title": "Unaddressed cost recommendations in specs/cost-manifest.json", "pillar": "cost", "severity": "should-fix", "tier": 0},
+    "COST-007": {"title": "Cost manifest meter coverage — every detected meter priced or flagged", "pillar": "cost", "severity": "must-fix", "tier": 0},
     "COST-101": {"title": "Live budget alert wired on target RG", "pillar": "cost", "severity": "must-fix", "tier": 3},
     "COST-102": {"title": "Live actuals vs forecast within 20%", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-103": {"title": "PAYG vs PTU recommendation matches observed usage", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
@@ -3898,7 +3899,47 @@ def _check_cost_static(ctx: RepoContext) -> list[Finding]:
                 out.append(_mk_finding("COST-006", status="pass",
                     detail=(f"{len(info_items)} low-savings recommendation(s) (<$25/mo) — advisory only; "
                             "review docs/cost-projection.md for details")))
+
+    # COST-007 — vNext meter coverage. Reads the cost manifest's meter_coverage +
+    # per-line pricing_status (added by threadlight-consumption-iq's cost_api).
+    #   * any certain detected resource/meter line pricing_status=not-priceable → must-fix
+    #   * meter_coverage.status=not-verified (and nothing not-priceable)        → not-verified
+    #   * coverage complete AND every line priced                               → pass
+    # A v1 manifest with no meter_coverage key is treated as not-verified (the
+    # vNext projection has not been run), so COST-005/006 outcomes are untouched.
+    out.append(_check_cost_007(manifest_data))
     return out
+
+
+def _check_cost_007(manifest_data: dict | None) -> "Finding":
+    if not isinstance(manifest_data, dict) or "meter_coverage" not in manifest_data:
+        return _mk_finding("COST-007", status="not-verified",
+            detail="No vNext meter_coverage in specs/cost-manifest.json — run "
+                   "threadlight-consumption-iq (cost_api) to project meter coverage.")
+
+    coverage = manifest_data.get("meter_coverage") or {}
+    not_priceable: list[str] = []
+    for line in (manifest_data.get("resources") or []):
+        if isinstance(line, dict) and line.get("pricing_status") == "not-priceable":
+            not_priceable.append(str(line.get("logical_name") or line.get("resource_kind") or "resource"))
+    for line in (manifest_data.get("meters") or []):
+        if isinstance(line, dict) and line.get("pricing_status") == "not-priceable":
+            not_priceable.append(str(line.get("meter_kind") or "meter"))
+
+    if not_priceable:
+        return _mk_finding("COST-007", status="must-fix",
+            detail=(f"{len(not_priceable)} detected cost line(s) are not-priceable "
+                    f"(no retail rate): {', '.join(not_priceable[:5])}"
+                    + (" …" if len(not_priceable) > 5 else "")
+                    + ". Add a dated fixture rate or a meter projector."))
+
+    if coverage.get("status") == "not-verified":
+        return _mk_finding("COST-007", status="not-verified",
+            detail="Meter coverage is not-verified — at least one selected meter "
+                   "has no declared monthly volume. Complete SPEC § 12 volumes.")
+
+    return _mk_finding("COST-007", status="pass",
+        detail="Meter coverage complete — every detected resource/meter line is priced.")
 
 
 def _check_cost_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:

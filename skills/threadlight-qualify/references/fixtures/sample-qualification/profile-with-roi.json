@@ -1,0 +1,17 @@
+{
+  "customer_brief": "Contoso Retail returns-triage assistant — cut return handling time and enforce policy citations.",
+  "workload_class": "chat-agent",
+  "annual_transaction_volume": 1200000,
+  "transaction_unit": "return",
+  "pages_per_transaction": 3,
+  "document_origin": "scanned-pdf",
+  "turns_per_conversation": 6,
+  "tokens_per_turn_estimate": 1500,
+  "peak_concurrency": 40,
+  "business_hours_only": true,
+  "sites_or_entities": 12,
+  "data_residency": "EU",
+  "pinned_region": "swedencentral",
+  "current_annual_cost_usd": 4200000,
+  "current_handling_minutes_per_transaction": 9
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight.cost-manifest/v2",
+  "title": "Threadlight cost manifest (vNext 2.0)",
+  "description": "Backward-readable superset of the v1 cost manifest. v1 consumers read schema_version, generated_at, resources[], recommendations[] and totals.monthly_cost_current_usd; vNext adds meters[], meter_coverage, per-line pricing_status, transaction-unit cost, and PTU commitment scenarios. A not-priceable or unverified line forces status=partial, totals.complete=false and totals.cost_per_transaction_usd=null — an incomplete bill is never presented as complete and unknown lines are never summed as zero.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "status",
+    "resources",
+    "meters",
+    "recommendations",
+    "meter_coverage",
+    "totals"
+  ],
+  "properties": {
+    "schema": {"const": "threadlight.cost-manifest/v2"},
+    "schema_version": {"type": "string", "description": ">= '1.0' so v1 consumers accept it; '2.0' for vNext."},
+    "generated_at": {"type": "string", "description": "ISO-8601 UTC timestamp."},
+    "currency": {"type": "string", "default": "USD"},
+    "price_basis": {"type": "string", "enum": ["retail", "ea", "mca"]},
+    "status": {"type": "string", "enum": ["complete", "partial"]},
+    "transaction_unit": {"type": "string", "description": "Named business unit for the per-transaction cost (e.g. 'return', 'claim')."},
+    "monthly_transactions": {"type": ["number", "null"]},
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["resource_kind", "monthly_cost_usd", "pricing_status"],
+        "properties": {
+          "resource_kind": {"type": "string"},
+          "monthly_cost_usd": {"type": ["number", "null"]},
+          "pricing_status": {"type": "string", "enum": ["priced", "not-priceable"]},
+          "verified": {"type": "boolean"}
+        }
+      }
+    },
+    "meters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["meter_kind", "pricing_status", "monthly_cost_usd", "driver"],
+        "properties": {
+          "meter_kind": {"type": "string"},
+          "source": {"type": "string"},
+          "driver": {
+            "type": "object",
+            "properties": {
+              "unit": {"type": ["string", "null"]},
+              "monthly_quantity": {"type": ["number", "null"]}
+            }
+          },
+          "unit_price_usd": {"type": ["number", "null"]},
+          "monthly_cost_usd": {"type": ["number", "null"]},
+          "pricing_status": {"type": "string", "enum": ["priced", "not-priceable"]},
+          "verified": {"type": "boolean"},
+          "reason": {"type": "string"},
+          "alternatives": {"type": "array"}
+        }
+      }
+    },
+    "recommendations": {"type": "array"},
+    "meter_coverage": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "enum": ["complete", "not-verified"]},
+        "total": {"type": "integer"},
+        "priced": {"type": "integer"},
+        "not_priceable": {"type": "integer"},
+        "not_verified": {"type": "integer"}
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["monthly_cost_current_usd", "complete", "cost_per_transaction_usd"],
+      "properties": {
+        "monthly_cost_current_usd": {"type": ["number", "null"], "description": "null when totals.complete is false."},
+        "monthly_cost_known_usd": {"type": "number", "description": "Subtotal of priced+verified lines only; never a complete bill when complete=false."},
+        "complete": {"type": "boolean"},
+        "cost_per_transaction_usd": {"type": ["number", "null"], "description": "null unless complete and monthly_transactions > 0."}
+      }
+    },
+    "ptu_scenarios": {
+      "type": "object",
+      "properties": {
+        "model": {"type": "string"},
+        "region": {"type": "string"},
+        "ptu_units": {"type": "integer"},
+        "scenarios": {
+          "type": "array",
+          "description": "hourly, one-month, one-year commitments, each priced separately."
+        },
+        "break_even": {"type": "string", "description": "Explicit break-even inequality string."}
+      }
+    }
+  }
+}

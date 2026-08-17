@@ -51,6 +51,7 @@ sys.path.insert(0, str(HERE))
 
 from discover import discover_resources  # noqa: E402
 from discount import DiscountError  # noqa: E402
+from cost_api import project_profile  # noqa: E402
 from emitter import emit_artefacts  # noqa: E402
 from estimate import emit_presales  # noqa: E402
 from load_profile_wizard import load_or_prompt_profile, ProfileIncompleteError  # noqa: E402
@@ -150,6 +151,12 @@ def _rollout_with_cli_overrides(rollout: dict[str, Any], args: argparse.Namespac
 
 
 def _phase_estimate(args: argparse.Namespace) -> dict[str, Any]:
+    # --from-profile is the stable, no-discovery path: it reads a fully-declared
+    # profile (load_profile + resources + selectors) and projects it through the
+    # shared cost_api. It NEVER touches Bicep / azd / Azure discovery.
+    if getattr(args, "from_profile", None):
+        return _phase_estimate_from_profile(args)
+
     rollout = load_rollout_profile(args.rollout)
     rollout = _rollout_with_cli_overrides(rollout, args)
     # Pre-sales is repo-optional: if the rollout declares its own topology we
@@ -171,6 +178,71 @@ def _phase_estimate(args: argparse.Namespace) -> dict[str, Any]:
         pdf=getattr(args, "pdf", False),
         deploy_ref=_resolve_deploy_ref(args.pre_deploy),
     )
+
+
+def _phase_estimate_from_profile(args: argparse.Namespace) -> dict[str, Any]:
+    """Project a fully-declared profile file into a vNext cost manifest.
+
+    The profile file is JSON with keys: ``load_profile``, ``resources``,
+    ``selectors``, ``transaction_unit``, ``monthly_transactions`` and an optional
+    ``generated_at``. Discovery (``discover_resources``) is never invoked.
+    """
+    profile_path = Path(args.from_profile)
+    data = json.loads(profile_path.read_text(encoding="utf-8"))
+    load_profile = data.get("load_profile") or {}
+    resources = data.get("resources") or []
+    selectors = data.get("selectors") or {}
+    transaction_unit = data.get("transaction_unit") or "transaction"
+    monthly_transactions = data.get("monthly_transactions")
+    generated_at = data.get("generated_at")
+
+    pricing = PricingClient(cache_path=args.cache)
+    manifest = project_profile(
+        load_profile=load_profile,
+        resources=resources,
+        selectors=selectors,
+        pricing=pricing,
+        transaction_unit=transaction_unit,
+        monthly_transactions=monthly_transactions,
+        generated_at=generated_at,
+    )
+    manifest_path = Path(args.manifest)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+    report_path = Path(args.report)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(_render_from_profile_report(manifest))
+    return {
+        "manifest": manifest,
+        "manifest_path": str(manifest_path),
+        "report_path": str(report_path),
+        "onepager": None,
+    }
+
+
+def _render_from_profile_report(manifest: dict[str, Any]) -> str:
+    totals = manifest.get("totals") or {}
+    complete = totals.get("complete")
+    unit = manifest.get("transaction_unit") or "transaction"
+    lines = [
+        "# Cost estimate — from declared profile (no discovery)\n",
+        f"> Generated `{manifest.get('generated_at')}`. Status: "
+        f"`{manifest.get('status')}`. Meter coverage: "
+        f"`{(manifest.get('meter_coverage') or {}).get('status')}`.\n",
+    ]
+    if complete:
+        lines.append(
+            f"Estimated monthly cost: **${totals.get('monthly_cost_current_usd'):,.2f}** "
+            f"(≈ ${totals.get('cost_per_transaction_usd')}/{unit}).\n"
+        )
+    else:
+        lines.append(
+            "**Incomplete total** — at least one detected line is not-priceable or "
+            "not-verified, so no complete bill or per-transaction cost is presented. "
+            f"Known-line subtotal: ${totals.get('monthly_cost_known_usd'):,.2f}.\n"
+        )
+    return "\n".join(lines)
 
 
 # ---------- argument parsing -------------------------------------------------
@@ -245,7 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
         report=DEFAULT_ESTIMATE_REPORT,
         manifest=DEFAULT_ESTIMATE_MANIFEST,
     )
-    _estimate_args(estimate_p, required_rollout=True)
+    _estimate_args(estimate_p, required_rollout=False)
 
     return parser
 
@@ -256,6 +328,13 @@ def _estimate_args(p: argparse.ArgumentParser, required_rollout: bool = False) -
         type=Path,
         required=required_rollout,
         help="Path to a rollout profile (.json or .yaml) describing the adoption phases.",
+    )
+    p.add_argument(
+        "--from-profile",
+        type=Path,
+        dest="from_profile",
+        help="Project a fully-declared profile file (load_profile + resources + selectors) "
+        "through the stable cost_api. No Bicep/azd/Azure discovery is performed.",
     )
     p.add_argument(
         "--discount",
@@ -337,6 +416,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.phase == "estimate":
+            if not getattr(args, "from_profile", None) and not getattr(args, "rollout", None):
+                print("estimate requires --rollout or --from-profile", file=sys.stderr)
+                return 2
             result = _phase_estimate(args)
             if args.verbose:
                 print(

@@ -38,6 +38,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ._fallback import section as _section
+
 
 _ACA_KIND = "Microsoft.App/containerApps"
 
@@ -45,19 +47,13 @@ FREE_VCPU_SECONDS = 180_000
 FREE_MEM_SECONDS = 360_000
 FREE_REQUESTS = 2_000_000
 
-# NOTE: Hardcoded Consumption tier pricing as fallback.
+# Fallback prices sourced from the dated projectors/fallback-rates.json.
 # Source: https://azure.microsoft.com/en-us/pricing/details/container-apps/
-# Verified 2026-06-12; update if Azure changes these rates.
-CONSUMPTION_PRICES = {
-    "vcpu_per_sec": 0.000024,
-    "mem_per_gib_sec": 0.000003,
-    "req_per_million": 0.40,
-}
+CONSUMPTION_PRICES = _section("aca")["consumption_prices"]
 
-# NOTE: Dedicated workload profile prices (USD/hour, always-on).
+# Dedicated workload profile prices (USD/hour, always-on).
 # Source: https://learn.microsoft.com/en-us/azure/container-apps/workload-profiles-overview
-# Verified 2026-06-12.
-DEDICATED_PER_HOUR: dict[str, float] = {"D4": 0.20, "D8": 0.40, "E4": 0.24, "E8": 0.48}
+DEDICATED_PER_HOUR: dict[str, float] = _section("aca")["dedicated_per_hour"]
 DEDICATED_PROFILES = tuple(DEDICATED_PER_HOUR.keys())
 
 _SOURCE_RANK: dict[str, int] = {"live": 0, "fixture": 1, "fallback": 2}

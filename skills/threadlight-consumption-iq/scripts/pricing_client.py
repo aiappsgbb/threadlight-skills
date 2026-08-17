@@ -34,6 +34,7 @@ from typing import Any
 CACHE_TTL = timedelta(hours=24)
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "references" / "pricing-fixtures"
 _RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices"
+_METERS_FIXTURE = FIXTURES_DIR / "meters.json"
 
 
 class PricingUnavailableError(RuntimeError):
@@ -85,9 +86,23 @@ _ODATA_FILTERS: dict[str, Any] = {
 
 
 class PricingClient:
-    def __init__(self, cache_path: Path):
+    def __init__(
+        self,
+        cache_path: Path,
+        meters_fixture: Path | None = None,
+        offline: bool | None = None,
+    ):
         self.cache_path = cache_path
+        self.meters_fixture = Path(meters_fixture) if meters_fixture else _METERS_FIXTURE
+        # Offline mode skips the live Retail Prices API entirely and resolves
+        # straight from dated fixtures. Defaults to True when
+        # THREADLIGHT_PRICING_OFFLINE is set (used by the test-suite to
+        # guarantee no network calls); otherwise online as before.
+        if offline is None:
+            offline = bool(os.environ.get("THREADLIGHT_PRICING_OFFLINE"))
+        self.offline = offline
         self._cache: dict[str, Any] = self._load_cache()
+        self._meters_cache: dict[str, Any] | None = None
 
     def get_price(
         self,
@@ -100,7 +115,7 @@ class PricingClient:
         if cached and not self._is_stale(cached):
             return cached
 
-        live = self._fetch_live(resource_kind, sku)
+        live = None if self.offline else self._fetch_live(resource_kind, sku)
         if live is not None:
             self._cache[key] = live
             self._save_cache()
@@ -133,6 +148,78 @@ class PricingClient:
                 file=sys.stderr,
             )
         self.get_price(resource_kind, sku)
+
+    # ---------- consumption meters -----------------------------------------
+
+    def get_meter_price(
+        self,
+        meter_kind: str,
+        selector: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a price envelope for a consumption meter.
+
+        Selector-aware: the first fixture entry whose ``match`` is satisfied by
+        ``selector`` (CU tier, DocIntel model, embeddings model, …) wins. When no
+        entry matches — or the fixture is absent — returns ``unit_price_usd=None``
+        with ``price_source='fallback'`` and an ``error``; callers MUST treat this
+        as ``not-priceable`` and never invent a rate.
+        """
+        selector = selector or {}
+        meters = self._load_meters()
+        entries = meters.get(meter_kind)
+        if not entries:
+            return {
+                "unit_price_usd": None,
+                "unit": None,
+                "quantity_divisor": 1,
+                "price_source": "fallback",
+                "fetched_at": self._meters_fetched_at(),
+                "meter_kind": meter_kind,
+                "error": f"no retail rate available for meter {meter_kind!r}",
+            }
+        for entry in entries:
+            if _match_sku(entry.get("match", {}), selector):
+                unit_price = entry.get("unit_price_usd")
+                return {
+                    "unit_price_usd": unit_price,
+                    "unit": entry.get("unit"),
+                    "quantity_divisor": entry.get("quantity_divisor", 1),
+                    "price_source": "fixture" if unit_price is not None else "fallback",
+                    "fetched_at": self._meters_fetched_at(),
+                    "meter_kind": meter_kind,
+                    "raw": entry,
+                    "error": None if unit_price is not None else f"null rate for meter {meter_kind!r}",
+                }
+        return {
+            "unit_price_usd": None,
+            "unit": None,
+            "quantity_divisor": 1,
+            "price_source": "fallback",
+            "fetched_at": self._meters_fetched_at(),
+            "meter_kind": meter_kind,
+            "error": f"no matching retail rate for meter {meter_kind!r} selector={selector}",
+        }
+
+    def _load_meters(self) -> dict[str, Any]:
+        if self._meters_cache is not None:
+            return self._meters_cache
+        if not self.meters_fixture.exists():
+            self._meters_cache = {}
+            return self._meters_cache
+        try:
+            data = json.loads(self.meters_fixture.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            self._meters_cache = {}
+            return self._meters_cache
+        self._meters_cache = data.get("meters") or {}
+        return self._meters_cache
+
+    def _meters_fetched_at(self) -> str | None:
+        if not self.meters_fixture.exists():
+            return None
+        return datetime.fromtimestamp(
+            self.meters_fixture.stat().st_mtime, tz=timezone.utc
+        ).isoformat()
 
     # ---------- internals ---------------------------------------------------
 

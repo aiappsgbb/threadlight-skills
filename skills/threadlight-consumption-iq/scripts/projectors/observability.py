@@ -27,10 +27,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._fallback import section as _section
+
 RESOURCE_KIND = "Microsoft.OperationalInsights/workspaces"
 
 # Fallback price: Azure Monitor "Analytics Logs" pay-as-you-go ingestion.
-ANALYTICS_PER_GB = 2.76
+ANALYTICS_PER_GB = _section("observability")["analytics_per_gb"]
 
 # Default GenAI span sizes (bytes). Conservative public estimates; override via
 # extra.bytes_per_trace / extra.content_bytes_per_trace.
