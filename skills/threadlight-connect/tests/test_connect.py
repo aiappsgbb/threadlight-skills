@@ -5,6 +5,8 @@ state machine, apply-plan/apply, and manifest emission.
 from __future__ import annotations
 
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -809,3 +811,393 @@ def test_cli_main_reports_malformed_evidence_without_writing(tmp_path, capsys):
     assert exit_code == 2
     assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
     assert "nothing written" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Helpers for the hardening tests below
+# ---------------------------------------------------------------------------
+def _current_umask() -> int:
+    value = os.umask(0)
+    os.umask(value)
+    return value
+
+
+def _apply_run(tmp_path, **kwargs):
+    obo, role = full_evidence()
+    return _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True, **kwargs,
+    )
+
+
+def _typed_contract(field_type):
+    return {
+        "schema": connect.DATA_CONTRACT_SCHEMA,
+        "tool_name": "typed_tool",
+        "generated_at": PINNED,
+        "fields": [
+            {"name": "amount", "required": True, "type": field_type, "cardinality": "single"},
+        ],
+    }
+
+
+def _valid_manifest(conformance=None):
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    if conformance is None:
+        conformance = check_conformance(contract, passing_real_response())
+    return connect.build_connect_manifest(
+        tool_name="returns_get_case",
+        integration_state="mock",
+        target_state="real-verified",
+        contract=contract,
+        conformance=conformance,
+        evidence_summary={
+            "obo_present": True, "obo_user_scoped": True,
+            "roles_revalidated": True, "required_roles": ["Case.Read"],
+        },
+        apply_plan=[],
+        changed_paths=[],
+        apply=False,
+        status="complete",
+        findings=[],
+        generated_at=PINNED,
+    )
+
+
+def _write_cli_inputs(tmp_path, *, tool_source=TOOL_SOURCE, sample=SAMPLE, real=None):
+    (tmp_path / "tool_source.py").write_text(tool_source, encoding="utf-8")
+    (tmp_path / "sample.json").write_text(json.dumps(sample), encoding="utf-8")
+    real = passing_real_response() if real is None else real
+    (tmp_path / "real.json").write_text(json.dumps(real), encoding="utf-8")
+
+
+def _base_cli_args(tmp_path):
+    return [
+        "--project-root", str(tmp_path),
+        "--tool-name", "returns_get_case",
+        "--tool-source-file", str(tmp_path / "tool_source.py"),
+        "--sample-file", str(tmp_path / "sample.json"),
+        "--real-response-file", str(tmp_path / "real.json"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Finding 1 — generated conformance module must be injection-proof
+# ---------------------------------------------------------------------------
+def test_generated_conformance_source_neutralizes_hostile_tool_name(tmp_path):
+    # A tool_name that tries to break out of the generated docstring ("""),
+    # start a newline, and run code. The generated module must still COMPILE
+    # and EXEC without executing the injected payload.
+    marker = "CONNECT_INJECTION_MARKER"
+    hostile = (
+        'evil"""\n'
+        f'import os; os.environ["{marker}"] = "pwned"\n'
+        'x = """tool'
+    )
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    source = generate_conformance_test_source(
+        hostile, contract, default_sample_path=str(tmp_path / "real.json")
+    )
+
+    compile(source, "<hostile-generated>", "exec")  # must be valid Python
+
+    os.environ.pop(marker, None)
+    namespace: dict = {}
+    exec(compile(source, "<hostile-generated>", "exec"), namespace)  # noqa: S102
+    assert marker not in os.environ, "injected code must NOT execute at import"
+
+    # Intended behavior preserved: a conforming sample passes, a drift fails.
+    test_fns = [v for k, v in namespace.items() if k.startswith("test_") and callable(v)]
+    assert len(test_fns) == 1
+    conformance_test = test_fns[0]
+
+    (tmp_path / "real.json").write_text(json.dumps(passing_real_response()), encoding="utf-8")
+    conformance_test()  # conforms -> no raise
+
+    (tmp_path / "real.json").write_text(
+        json.dumps({"items": [{"id": "R-1", "status": 42}]}), encoding="utf-8"
+    )
+    with pytest.raises(AssertionError):
+        conformance_test()
+    assert marker not in os.environ
+
+
+# ---------------------------------------------------------------------------
+# Finding 2 — apply must preserve/select sane file permission modes
+# ---------------------------------------------------------------------------
+def test_apply_new_files_get_0644_under_standard_umask(tmp_path):
+    previous = os.umask(0o022)
+    try:
+        _apply_run(tmp_path)
+    finally:
+        os.umask(previous)
+
+    for rel in (connect.DEFAULT_SPEC_PATH, connect.DEFAULT_MCP_CONFIG_PATH):
+        mode = stat.S_IMODE((tmp_path / rel).stat().st_mode)
+        assert mode == 0o644, f"{rel} expected 0644, got {oct(mode)}"
+        assert not (mode & 0o111), "generated config must not be executable"
+
+
+def test_apply_honors_process_umask_for_new_files(tmp_path):
+    previous = os.umask(0o027)
+    try:
+        _apply_run(tmp_path)
+    finally:
+        os.umask(previous)
+
+    expected = 0o666 & ~0o027  # 0o640
+    for rel in (connect.DEFAULT_SPEC_PATH, connect.DEFAULT_MCP_CONFIG_PATH):
+        mode = stat.S_IMODE((tmp_path / rel).stat().st_mode)
+        assert mode == expected, f"{rel} expected {oct(expected)}, got {oct(mode)}"
+
+
+def test_apply_preserves_restrictive_prior_mode(tmp_path):
+    spec_full = tmp_path / connect.DEFAULT_SPEC_PATH
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    spec_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    spec_full.write_text("# Prior SPEC\n", encoding="utf-8")
+    mcp_full.write_text(json.dumps({"servers": {}}), encoding="utf-8")
+    os.chmod(spec_full, 0o600)
+    os.chmod(mcp_full, 0o600)
+
+    _apply_run(tmp_path)
+
+    assert stat.S_IMODE(spec_full.stat().st_mode) == 0o600
+    assert stat.S_IMODE(mcp_full.stat().st_mode) == 0o600
+
+
+def test_rollback_preserves_prior_mode(tmp_path, monkeypatch):
+    spec_full = tmp_path / connect.DEFAULT_SPEC_PATH
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    spec_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    spec_full.write_text("# Prior SPEC\n", encoding="utf-8")
+    mcp_full.write_text(json.dumps({"servers": {"keep": {"type": "http"}}}), encoding="utf-8")
+    os.chmod(spec_full, 0o640)
+    os.chmod(mcp_full, 0o640)
+    prior_mcp_bytes = mcp_full.read_bytes()
+
+    real_replace = os.replace
+    mcp_name = Path(connect.DEFAULT_MCP_CONFIG_PATH).name
+
+    def failing_replace(src, dst, *args, **kwargs):
+        # Let the first (SPEC) replace commit, then fail the mcp-config replace
+        # so the transaction rolls SPEC back to its prior bytes + mode.
+        if Path(dst).name == mcp_name:
+            raise OSError("injected replace failure")
+        return real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(connect.os, "replace", failing_replace)
+
+    with pytest.raises(ConnectApplyError):
+        _apply_run(tmp_path)
+
+    # SPEC rolled back byte-for-byte AND mode preserved; mcp-config untouched.
+    assert spec_full.read_text(encoding="utf-8") == "# Prior SPEC\n"
+    assert stat.S_IMODE(spec_full.stat().st_mode) == 0o640
+    assert mcp_full.read_bytes() == prior_mcp_bytes
+    assert stat.S_IMODE(mcp_full.stat().st_mode) == 0o640
+
+
+# ---------------------------------------------------------------------------
+# Finding 3 — CLI must fail cleanly on unparseable input (no traceback)
+# ---------------------------------------------------------------------------
+def test_cli_reports_malformed_json_argument_without_writing(tmp_path, capsys):
+    _write_cli_inputs(tmp_path)
+    (tmp_path / "sample.json").write_text("{ this is not valid json", encoding="utf-8")
+
+    exit_code = connect.main(_base_cli_args(tmp_path))
+
+    assert exit_code == 5
+    err = capsys.readouterr().err
+    assert "could not parse input" in err
+    assert "nothing written" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+
+
+def test_cli_reports_unparseable_tool_source_without_writing(tmp_path, capsys):
+    _write_cli_inputs(tmp_path, tool_source="return (((")  # invalid Python
+
+    exit_code = connect.main(_base_cli_args(tmp_path))
+
+    assert exit_code == 5
+    err = capsys.readouterr().err
+    assert "could not parse input" in err
+    assert "nothing written" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+
+
+# ---------------------------------------------------------------------------
+# Finding 4 — lossless numeric widening (int->number, integral float->integer)
+# ---------------------------------------------------------------------------
+def test_integer_actual_satisfies_expected_number():
+    result = check_conformance(_typed_contract("number"), {"items": [{"amount": 5}]})
+    assert result["passed"] is True
+    assert result["differences"] == []
+
+
+def test_integral_float_satisfies_expected_integer():
+    result = check_conformance(_typed_contract("integer"), {"items": [{"amount": 3.0}]})
+    assert result["passed"] is True
+    assert result["differences"] == []
+
+
+def test_non_integral_float_still_drifts_from_integer():
+    result = check_conformance(_typed_contract("integer"), {"items": [{"amount": 3.5}]})
+    assert result["passed"] is False
+    assert result["differences"][0]["actual"] == "number"
+    assert result["differences"][0]["field"] == "amount"
+
+
+def test_bool_never_widens_into_integer():
+    result = check_conformance(_typed_contract("integer"), {"items": [{"amount": True}]})
+    assert result["passed"] is False
+    assert result["differences"][0]["actual"] == "boolean"
+
+
+def test_float_actual_does_not_widen_into_string():
+    result = check_conformance(_typed_contract("string"), {"items": [{"amount": 1.0}]})
+    assert result["passed"] is False
+    assert result["differences"][0]["actual"] == "number"
+
+
+def test_generated_module_applies_the_same_numeric_widening(tmp_path):
+    contract = _typed_contract("number")
+    source = generate_conformance_test_source(
+        "typed_tool", contract, default_sample_path=str(tmp_path / "real.json")
+    )
+    namespace: dict = {}
+    exec(compile(source, "<gen-widening>", "exec"), namespace)  # noqa: S102
+    (tmp_path / "real.json").write_text(json.dumps({"items": [{"amount": 7}]}), encoding="utf-8")
+    namespace["test_typed_tool_conformance"]()  # int satisfies expected number -> no raise
+
+
+# ---------------------------------------------------------------------------
+# Finding 5 — freshness: thread evidence_captured_at into source_oldest_at
+# ---------------------------------------------------------------------------
+def test_source_oldest_at_is_none_when_capture_time_unknown(tmp_path):
+    result = _run(tmp_path)
+    assert result["manifest"]["freshness"]["source_oldest_at"] is None
+
+
+def test_source_oldest_at_threads_evidence_captured_at(tmp_path):
+    captured = "2026-08-10T09:00:00+00:00"
+    result = _run(tmp_path, evidence_captured_at=captured)
+    freshness = result["manifest"]["freshness"]
+    assert freshness["source_oldest_at"] == captured
+    # Must NOT be silently borrowed from the run's own generated_at.
+    assert freshness["source_oldest_at"] != result["manifest"]["generated_at"]
+    connect.validate_connect_manifest(result["manifest"])  # still schema-valid
+
+
+def test_malformed_evidence_captured_at_aborts_before_any_write(tmp_path):
+    with pytest.raises(ConnectEvidenceError):
+        _run(tmp_path, evidence_captured_at="not-a-timestamp")
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    # Fails fast: not even the always-written conformance test is produced.
+    assert not (tmp_path / "tests" / "threadlight_connect").exists()
+
+
+def test_cli_threads_evidence_captured_at(tmp_path):
+    _write_cli_inputs(tmp_path)
+    captured = "2026-08-09T08:30:00+00:00"
+
+    exit_code = connect.main(_base_cli_args(tmp_path) + ["--evidence-captured-at", captured])
+
+    assert exit_code == 0
+    manifest = json.loads((tmp_path / connect.DEFAULT_MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert manifest["freshness"]["source_oldest_at"] == captured
+
+
+# ---------------------------------------------------------------------------
+# Finding 6 — never silently reset corrupt prior state/config
+# ---------------------------------------------------------------------------
+def test_corrupt_prior_manifest_aborts_and_preserves_bytes(tmp_path):
+    manifest_full = tmp_path / connect.DEFAULT_MANIFEST_PATH
+    manifest_full.parent.mkdir(parents=True, exist_ok=True)
+    corrupt = b"{ this is not valid json at all"
+    manifest_full.write_bytes(corrupt)
+
+    with pytest.raises(ConnectEvidenceError):
+        _run(tmp_path)
+
+    assert manifest_full.read_bytes() == corrupt  # preserved, not reset to mock
+
+
+def test_corrupt_mcp_config_aborts_apply_and_preserves_bytes(tmp_path):
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    corrupt = b"{ broken mcp config"
+    mcp_full.write_bytes(corrupt)
+
+    with pytest.raises(ConnectEvidenceError):
+        _apply_run(tmp_path)
+
+    assert mcp_full.read_bytes() == corrupt  # not silently overwritten with {}
+
+
+def test_non_dict_mcp_config_aborts_apply_and_preserves_bytes(tmp_path):
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps([1, 2, 3])  # valid JSON, but not an object
+    mcp_full.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ConnectEvidenceError):
+        _apply_run(tmp_path)
+
+    assert json.loads(mcp_full.read_text(encoding="utf-8")) == [1, 2, 3]
+
+
+# ---------------------------------------------------------------------------
+# Finding 7 — validate_connect_manifest enforces additionalProperties: false
+# ---------------------------------------------------------------------------
+def test_representative_valid_manifest_passes_validation():
+    connect.validate_connect_manifest(_valid_manifest())  # must not raise
+
+
+def test_validate_rejects_unknown_top_level_key():
+    manifest = _valid_manifest()
+    manifest["surprise"] = "nope"
+    with pytest.raises(ManifestValidationError, match="unknown key"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_validate_rejects_unknown_conformance_key():
+    manifest = _valid_manifest()
+    manifest["conformance"]["sneaky"] = True
+    with pytest.raises(ManifestValidationError, match="conformance"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_validate_rejects_unknown_difference_key():
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    conformance = check_conformance(contract, drifting_real_response())
+    assert conformance["differences"], "precondition: a drift difference exists"
+    manifest = _valid_manifest(conformance=conformance)
+    manifest["conformance"]["differences"][0]["unexpected"] = "x"
+    with pytest.raises(ManifestValidationError, match="difference"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_validate_rejects_unknown_evidence_summary_key():
+    manifest = _valid_manifest()
+    manifest["evidence_summary"]["leak"] = "token"
+    with pytest.raises(ManifestValidationError, match="evidence_summary"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_validate_rejects_unknown_contract_key():
+    manifest = _valid_manifest()
+    manifest["contract"]["extra"] = 1
+    with pytest.raises(ManifestValidationError, match="contract"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_validate_rejects_unknown_contract_field_key():
+    manifest = _valid_manifest()
+    manifest["contract"]["fields"][0]["extra"] = 1
+    with pytest.raises(ManifestValidationError, match="contract field"):
+        connect.validate_connect_manifest(manifest)

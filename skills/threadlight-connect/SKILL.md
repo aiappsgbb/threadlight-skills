@@ -118,7 +118,9 @@ emit             write specs/connect-manifest.json — shared envelope,
 
 ```bash
 # Dry run: always safe. Computes target_state + a nonempty apply plan;
-# never touches SPEC.md / mcp-config.json.
+# never touches SPEC.md / mcp-config.json. --evidence-captured-at is optional:
+# it records WHEN the real evidence was captured as freshness.source_oldest_at
+# (omit it when unknown — it is then recorded as null, never faked).
 python3 scripts/connect.py \
   --project-root ../my-pilot \
   --tool-name returns_get_case \
@@ -126,7 +128,8 @@ python3 scripts/connect.py \
   --sample-file mock_sample.json \
   --real-response-file real_response.json \
   --obo-evidence-file obo_evidence.json \
-  --role-evidence-file role_evidence.json
+  --role-evidence-file role_evidence.json \
+  --evidence-captured-at 2026-08-10T09:00:00+00:00
 
 # Publish: config changes require --apply, and only take effect once fully
 # verified (conformance + OBO + role revalidation all pass).
@@ -170,7 +173,37 @@ after the first replace has already landed, that file is rolled back to its
 captured prior bytes — the pair never diverges. The single case this can't
 defend against is a hard crash / power loss *between* the two individually
 atomic replaces; if the compensating rollback itself fails, the run raises an
-error naming the unreconciled path(s) instead of reporting success.
+error naming the unreconciled path(s) instead of reporting success. Forward
+writes and rollbacks preserve permissions: an existing destination keeps its
+exact prior mode, and a brand-new file gets a predictable non-executable mode
+that honors the process umask (`0o644` under the usual `022`).
+
+## Freshness — `source_oldest_at` reflects the evidence, not the run
+
+`freshness.source_oldest_at` records when the **real evidence** was captured,
+threaded in via `--evidence-captured-at` (an ISO-8601 timestamp). It is never
+back-filled from the run's own `generated_at`: if the capture time is unknown,
+the field is `null` rather than a misleadingly fresh value. A malformed
+`--evidence-captured-at` is rejected up front, before any file is written.
+
+## Conformance — lossless numeric widening only
+
+A captured integer satisfies an expected `number`, and an integral float such
+as `1.0` satisfies an expected `integer` (widening that loses no information).
+A non-integral float such as `1.5` still drifts against an expected `integer`,
+and booleans never count as numeric — so `true` never widens into
+`integer`/`number`. The generated conformance test module applies the same
+rule, so the pytest scaffold and the in-process check agree.
+
+## Robust inputs — corrupt state and unparseable arguments
+
+A prior `connect-manifest.json` or `mcp-config.json` that exists but is
+malformed (or is valid JSON that isn't an object) is **never** silently reset
+to a starting `mock`/`{}`; the run raises a clean error and leaves the bytes
+on disk untouched for repair. On the CLI, unparseable input — malformed JSON
+in a `--*-file` argument or a tool source that isn't valid Python — prints a
+single-line error (no traceback), returns a stable nonzero exit code, and
+writes nothing.
 
 ## Contract extraction — exactly what is read, nothing that merely exists
 
