@@ -598,6 +598,35 @@ def test_valid_citation_run_passes_at_manifest_level():
     assert by_id(manifest)["GRD-002"]["status"] == "pass"
 
 
+@pytest.mark.parametrize(
+    ("citations", "retrieved_ids"),
+    [
+        ([], []),
+        ([], ["doc-1"]),
+    ],
+)
+def test_citation_required_source_rejects_vacuous_evidence(
+    citations, retrieved_ids
+):
+    manifest = covered(
+        citation_runs=[cite_run(citations=citations, retrieved_ids=retrieved_ids)],
+    )
+    finding = by_id(manifest)["GRD-002"]
+    assert finding["status"] == "not-verified"
+    assert finding["detail"]["reason"] == "citation-source-uncovered"
+    assert finding["detail"]["uncovered_sources"] == ["policy-library"]
+    assert manifest["status"] == "partial"
+
+
+def test_citation_outside_empty_retrieval_remains_must_fix():
+    manifest = covered(
+        citation_runs=[cite_run(citations=["doc-9"], retrieved_ids=[])],
+    )
+    finding = by_id(manifest)["GRD-002"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["missing_from_retrieval"] == ["doc-9"]
+
+
 def test_citation_run_missing_fields_raises():
     with pytest.raises(GroundEvidenceError, match="retrieved_ids"):
         assess_citations([source()], [{"source_id": "policy-library", "citations": ["doc-1"]}])
@@ -1366,6 +1395,38 @@ def test_cli_rejects_symlinked_manifest_parent_escape_without_outside_write(
     assert "escapes the project root" in capsys.readouterr().out
     assert sentinel.read_text(encoding="utf-8") == "unchanged"
     assert not (outside / "ground-manifest.json").exists()
+
+
+def test_resolve_rejects_traversal_through_missing_parent(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with pytest.raises(GroundEvidenceError, match="escapes the project root"):
+        ground._resolve_within_root(
+            str(project), "missing/../../../escape.json"
+        )
+
+
+def test_resolve_rejects_mixed_symlink_and_parent_traversal(tmp_path):
+    project = tmp_path / "project"
+    inside = project / "inside"
+    inside.mkdir(parents=True)
+    (project / "link").symlink_to(inside, target_is_directory=True)
+
+    with pytest.raises(GroundEvidenceError, match="escapes the project root"):
+        ground._resolve_within_root(
+            str(project), "link/missing/../../../escape.json"
+        )
+
+
+def test_resolve_accepts_normalized_nonexistent_nested_path(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    expected = project / "missing" / "nested" / "manifest.json"
+
+    assert ground._resolve_within_root(
+        str(project), "missing/nested/manifest.json"
+    ) == str(expected.resolve(strict=False))
 
 
 def test_cli_reports_unreadable_evidence_cleanly(tmp_path, capsys):

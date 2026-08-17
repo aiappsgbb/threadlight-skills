@@ -747,11 +747,11 @@ def validate_citations(citations: list, retrieved_ids: list) -> dict:
 
 def assess_citations(sources: list, citation_runs: list) -> dict:
     """GRD-002 — citation grounding, scoped to every `citation_required`
-    source. Each such source must be covered by citation runs carrying its
-    `source_id`; an uncovered required source is `not-verified`. Any run whose
-    citations fall outside its retrieved set is `must-fix` (surfacing the
-    proven failure), and any coverage gap is still recorded so the manifest
-    stays `partial`.
+    source. Each such source needs at least one citation and one retrieved ID
+    in runs carrying its `source_id`; vacuous evidence is `not-verified`. Any
+    run whose citations fall outside its retrieved set is `must-fix`
+    (surfacing the proven failure), and any coverage gap is still recorded so
+    the manifest stays `partial`.
     """
     finding_id = "GRD-002"
     declared_ids = {source["id"] for source in sources}
@@ -763,7 +763,13 @@ def assess_citations(sources: list, citation_runs: list) -> dict:
     cite_sources = [source for source in sources if source["citation_required"]]
     cite_source_ids = {source["id"] for source in cite_sources}
     applicable = [run for run in normalized if run["source_id"] in cite_source_ids]
-    covered = {run["source_id"] for run in applicable}
+    sources_with_citations = {
+        run["source_id"] for run in applicable if run["citations"]
+    }
+    sources_with_retrieval = {
+        run["source_id"] for run in applicable if run["retrieved_ids"]
+    }
+    covered = sources_with_citations & sources_with_retrieval
     uncovered = sorted(
         source["id"] for source in cite_sources if source["id"] not in covered
     )
@@ -1403,25 +1409,14 @@ def _resolve_within_root(root: str, relative_path: str) -> str:
     if not candidate.is_absolute():
         candidate = root_path / candidate
 
-    # Resolve the nearest existing ancestor strictly, then append any missing
-    # parent segments. This follows existing parent symlinks before containment
-    # is checked without requiring the destination directory to exist yet.
-    parent = candidate.parent
-    missing_parts: list[str] = []
-    while not parent.exists() and not parent.is_symlink():
-        missing_parts.append(parent.name)
-        parent = parent.parent
-    resolved_parent = parent.resolve(strict=True)
-    for part in reversed(missing_parts):
-        resolved_parent /= part
-
+    resolved_candidate = candidate.resolve(strict=False)
     try:
-        resolved_parent.relative_to(root_path)
+        resolved_candidate.relative_to(root_path)
     except ValueError:
         raise GroundEvidenceError(
             f"output path {relative_path!r} escapes the project root"
         )
-    return str(resolved_parent / candidate.name)
+    return str(resolved_candidate)
 
 
 def main(argv=None) -> int:

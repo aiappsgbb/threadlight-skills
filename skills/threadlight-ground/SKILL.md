@@ -67,7 +67,7 @@ refusal probe run) and turns them into four findings.
 | ID | Checks | `not-verified` when | `must-fix` when |
 |---|---|---|---|
 | `GRD-001` | ACL enforcement | no `permission_model: acl` source declared → trivial `pass`; an ACL source has **no runs carrying its `source_id`** (uncovered); fewer than two distinct principals; no explicit `expected_entitled` on a run (ambiguous); no entitled *and* unentitled probe for a source; a source's declared `acl_probe_principals` are not all probed | an **explicit** unentitled principal received **any** document outside its explicit `allowed_document_ids` — a subset is enough, and no allowlist means nothing is allowed. **A proven leak takes precedence over a coexisting coverage gap:** the finding is `must-fix` even when another run is ambiguous or a declared principal is unprobed, and a sibling source's `not-verified` never erases it |
-| `GRD-002` | Citation grounding | a `citation_required` source has no citation runs carrying its `source_id` (uncovered) | any citation falls outside its run's retrieved set (`missing_from_retrieval`, sorted, de-duplicated) |
+| `GRD-002` | Citation grounding | a `citation_required` source has no non-vacuous citation evidence carrying its `source_id` — it needs at least one citation and at least one retrieved ID | any citation falls outside its run's retrieved set (`missing_from_retrieval`, sorted, de-duplicated) |
 | `GRD-003` | Refusal behavior | a `refuse_when_unsupported` source has no refusal runs carrying its `source_id` (uncovered) | an executed probe for an unsupported query was **answered** instead of refused |
 | `GRD-004` | Source freshness / coverage / baseline | no sources declared → trivial `pass`; a declared source has no covering run; a covered source's runs carry no valid RFC3339 `captured_at` (freshness unverifiable); no `retrieval_quality_baseline` was supplied | never `must-fix` — caps at `should-fix` (a covered source's oldest evidence is stale relative to its own `refresh_cadence`) |
 
@@ -201,7 +201,7 @@ The `--evidence-file` is the SPEC-derived evidence bundle (`sources`,
 optional `generated_at`) — the **`sources` inventory comes from that object,
 not from `--project-root`**. `--project-root` is only the output/project
 boundary: a `--manifest-path` that escapes it (an absolute path outside it, a
-`..` traversal, or a parent symlink resolving outside it) is rejected before
+`..` traversal (including through missing parents), or a parent symlink resolving outside it) is rejected before
 any temporary or destination file is written. `GroundEvidenceError`,
 `ManifestValidationError`, and read/write `OSError`/JSON errors are all caught
 cleanly (exit 1) so a failed run never corrupts a prior valid manifest.
