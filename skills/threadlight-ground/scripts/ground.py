@@ -10,35 +10,51 @@ evaluator, and never issues a retrieval query itself — it only ingests probe
 *results* the caller already captured (an ACL probe run, a citation
 validation run, a refusal probe run) and turns them into four findings:
 
-    GRD-001  ACL enforcement       — did incompatible principals get
-                                      identical protected results?
+    GRD-001  ACL enforcement       — did unentitled principals receive
+                                      documents they were not allowed to?
     GRD-002  citation grounding    — does every citation trace back to the
                                       retrieved set?
     GRD-003  refusal behavior      — are unsupported queries actually
                                       refused, not answered?
     GRD-004  freshness / coverage  — does every declared knowledge source
-                                      have fresh, covering evidence?
+                                      have fresh, covering evidence, and is a
+                                      retrieval-quality baseline referenced?
+
+The **`sources` argument is the authoritative inventory** — it is the
+SPEC-derived `knowledge_sources[]` input contract (see
+`threadlight-design/references/speckit-template.md`), NOT anything the CLI's
+`--project-root` supplies. Every declared source's *enabled* controls must be
+covered by evidence that carries that source's `source_id`: ACL evidence when
+`permission_model == "acl"`, citation evidence when `citation_required`,
+refusal evidence when `refuse_when_unsupported`. Coverage is never inferred
+from another source. Missing source/control evidence yields the relevant
+finding `not-verified` (never a guessed `pass`) and the manifest `status`
+`partial`.
 
 This is a **manual, live handoff** — `threadlight-auto` does not run live
 ACL/citation/refusal probes against a real agent for you. Running those
 probes against production or pilot data is an operator decision; this script
 only assesses evidence the operator already captured and supplies.
 
-Evidence-quality contract: missing principals, missing permission signals, or
-no runs at all are reported as `not-verified` — never guessed into a false
-`pass`. A *proven* leak (incompatible entitled/unentitled principals
-receiving the identical protected document set) is `must-fix`, never
-downgraded. An **executed** must-fix finding is still complete evidence — the
-manifest `status` is only `partial` when required evidence is genuinely
-missing or `not-verified`, never merely because a finding failed.
+Evidence-quality contract: missing principals, missing permission signals, an
+uncovered required source, or no runs at all are reported as `not-verified` —
+never guessed into a false `pass`. A *proven* leak (an unentitled principal
+receiving a document outside its explicit allowlist — including a subset) is
+`must-fix`, never downgraded. An **executed** must-fix finding is still
+complete evidence — the manifest `status` is only `partial` when required
+evidence is genuinely missing or `not-verified`, never merely because a
+finding failed.
 
 Persistence contract: the manifest persists only source metadata, principal
-identifiers, document IDs, findings, metrics, and aggregate
+identifiers, document IDs, findings (whose `detail` is an allowlisted schema
+of IDs/counts/status/reason-enums only — never free-form notes), metrics, a
+retrieval-quality baseline *reference* (never its content), and aggregate
 retrieval-count/subqueries/tokens/fan-out. It never persists retrieved
 content, prompts, completions, access tokens, credentials, or customer
 payloads — every write is schema-validated and scanned for forbidden
-credential/content-shaped keys before anything touches disk, so malformed or
-oversharing evidence never corrupts (or even touches) a prior valid manifest.
+credential/content-shaped keys AND secret-shaped values before anything
+touches disk, so malformed or oversharing evidence never corrupts (or even
+touches) a prior valid manifest.
 
 stdlib-only. No network calls, no Foundry IQ SDK, no evaluator invocation.
 """
@@ -77,10 +93,64 @@ DEFAULT_MANIFEST_PATH = "specs/ground-manifest.json"
 
 FINDING_STATUS_ENUM = frozenset({"pass", "must-fix", "should-fix", "not-verified"})
 
-# Statuses that make the manifest `status` "partial" — required evidence is
-# genuinely missing/unverifiable. An *executed* must-fix/should-fix is still
-# complete evidence, so it never appears here.
-_PARTIAL_STATUSES = frozenset({"not-verified"})
+# Permission models that make ACL enforcement a *required* control for a
+# source. The input contract (speckit-template `knowledge_sources[]`) uses the
+# literal string "acl" to declare that access control must be *proven*, not
+# merely intended — so that is the trigger for a required GRD-001 ACL probe.
+_ACL_PERMISSION_MODELS = frozenset({"acl"})
+
+# Every reason a finding can carry. `detail.reason` is a controlled
+# vocabulary (never a free-form note), enumerated here and mirrored verbatim
+# in references/ground-manifest.schema.json — the parity suite pins them.
+_FINDING_REASON_ENUM = frozenset({
+    # GRD-001 ACL enforcement
+    "no-acl-protected-sources",
+    "acl-source-uncovered",
+    "ambiguous-entitlement",
+    "insufficient-principals",
+    "missing-entitled-or-unentitled-probe",
+    "declared-principal-uncovered",
+    "unauthorized-documents",
+    "acl-enforced",
+    # GRD-002 citation grounding
+    "no-citation-required",
+    "citation-source-uncovered",
+    "citations-outside-retrieval",
+    "citations-grounded",
+    # GRD-003 refusal behavior
+    "no-refusal-required",
+    "refusal-source-uncovered",
+    "unsupported-query-answered",
+    "all-unsupported-refused",
+    # GRD-004 freshness / coverage
+    "no-knowledge-sources",
+    "sources-uncovered",
+    "freshness-unverifiable",
+    "retrieval-quality-baseline-missing",
+    "stale-evidence",
+    "fresh-and-covered",
+})
+
+# Allowlisted finding `detail` fields. Only IDs (lists / single strings),
+# counts, status enums (`by_source`), and the `reason` enum may appear — never
+# a free-form note or any content. Mirrored in the schema for parity.
+_DETAIL_LIST_KEYS = (
+    "uncovered_sources",
+    "stale_sources",
+    "unverifiable_freshness_sources",
+    "missing_from_retrieval",
+    "unsupported_queries_answered",
+    "leaked_document_ids",
+    "missing_principals",
+)
+_DETAIL_STRING_KEYS = ("worst_source",)
+_DETAIL_EXTRA_KEYS = frozenset(_DETAIL_LIST_KEYS + _DETAIL_STRING_KEYS + ("by_source",))
+_DETAIL_KEYS = frozenset({"reason"}) | _DETAIL_EXTRA_KEYS
+
+# Statuses that let a finding downgrade the manifest to `partial`: an
+# *executed* must-fix/should-fix is still complete evidence, so partial is
+# reserved for genuinely missing/unverifiable evidence.
+_ACL_STATUS_ORDER = {"must-fix": 0, "should-fix": 1, "not-verified": 2, "pass": 3}
 
 # Forbidden key names scanned for RECURSIVELY, everywhere in the final
 # manifest, right before it is written. Covers both credential-shaped keys
@@ -89,21 +159,58 @@ _PARTIAL_STATUSES = frozenset({"not-verified"})
 #
 # `_FORBIDDEN_KEY_WORDS` are matched as WHOLE snake/kebab-case segments (not
 # substrings) so a legitimate metric field like `tokens` (a token COUNT) is
-# never confused with a credential-shaped `access_token`; `_FORBIDDEN_KEY_SUBSTRINGS`
-# are compound markers distinctive enough that a plain substring match is safe.
+# never confused with a credential-shaped `access_token`;
+# `_FORBIDDEN_KEY_SUBSTRINGS` are compound markers distinctive enough that a
+# plain substring match is safe.
 _FORBIDDEN_KEY_WORDS = frozenset({
     "token", "secret", "password", "credential", "credentials",
     "authorization", "content", "prompt", "completion", "completions", "payload",
 })
 _FORBIDDEN_KEY_SUBSTRINGS = ("api_key", "apikey", "access_key", "connection_string")
 
+# Secret-shaped VALUE patterns. Even though `detail` is an allowlisted schema
+# of IDs/counts/enums, an ID field is an inherently free string, so a hostile
+# operator could try to smuggle a credential through e.g. a `document_id`
+# value. These patterns are a defense-in-depth value scan applied recursively
+# to the whole manifest; they are deliberately specific so ordinary short IDs
+# ("doc-1", "policy-library") and RFC3339 timestamps never match.
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
+    re.compile(r"\bAKIA[0-9A-Z]{12,}\b"),               # AWS access key id
+    re.compile(r"\bASIA[0-9A-Z]{12,}\b"),               # AWS temporary key id
+    re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b"),    # Slack token
+    re.compile(r"\bgh[pousr]_[0-9A-Za-z]{20,}\b"),      # GitHub token
+    re.compile(r"\bsk-[0-9A-Za-z]{20,}\b"),             # OpenAI-style key
+    re.compile(r"\beyJ[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]+"),  # JWT
+    re.compile(r"://[^/\s:@]+:[^/\s:@]+@"),             # credentials embedded in a URL
+    re.compile(
+        r"(?i)\b(?:pass(?:word)?|secret|api[_-]?key|access[_-]?key|"
+        r"client[_-]?secret|bearer)\b\s*[:=]\s*\S+"
+    ),
+)
+# A single unbroken high-entropy token (>=40 chars of pure token charset with
+# BOTH letters and digits) is overwhelmingly a credential, never a legitimate
+# short ID or a repo-relative path (which contains "." and "/").
+_HIGH_ENTROPY_TOKEN = re.compile(r"^[A-Za-z0-9+/=_-]{40,}$")
 
-def _is_forbidden_key(key: str) -> bool:
-    lowered = key.lower()
-    if any(marker in lowered for marker in _FORBIDDEN_KEY_SUBSTRINGS):
-        return True
-    words = re.split(r"[^a-z0-9]+", lowered)
-    return any(word in _FORBIDDEN_KEY_WORDS for word in words)
+# Strict RFC 3339 `date-time` with a mandatory timezone — mirrors the shared
+# envelope's timestamp contract so a `captured_at` that would be REJECTED by
+# the manifest schema (space separator, naive, out-of-range clock) is treated
+# as un-parseable here rather than silently accepted and then rejected by the
+# envelope when it becomes `source_oldest_at`.
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d"
+    r"(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
+)
+
+# A retrieval-quality baseline reference is a repo-relative path or id ONLY —
+# never content, never a URL, never an absolute path or a `..` traversal, and
+# no whitespace. Mirrored verbatim as the schema `pattern` so the runtime and
+# schema validators accept/reject identical strings.
+_BASELINE_REF_PATTERN = (
+    r"^(?!.*\.\.)(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+)
+_BASELINE_REF_RE = re.compile(_BASELINE_REF_PATTERN)
 
 _SOURCE_STRING_KEYS = ("id", "type", "permission_model", "refresh_cadence")
 _SOURCE_BOOL_KEYS = ("citation_required", "refuse_when_unsupported")
@@ -119,39 +226,77 @@ _CADENCE_GRACE_HOURS = {
     "monthly": 24 * 35,
 }
 
-_ACL_STATUS_ORDER = {"must-fix": 0, "not-verified": 1, "pass": 2}
 
-
-class GroundValidationError(ValueError):
+class GroundEvidenceError(ValueError):
     """Raised when SPEC config, evidence, or a built manifest is the wrong
-    shape. Always raised before any file write — a run that fails here never
-    disturbs whatever valid `ground-manifest.json` already existed.
+    shape (a malformed run, a credential/content-shaped key, a secret-shaped
+    value, or an unsafe baseline reference). Always raised BEFORE any file
+    write and before any manifest is returned to a caller — a run that fails
+    here never disturbs whatever valid `ground-manifest.json` already existed
+    and never emits invalid data on `--json`.
     """
 
 
 # ---------------------------------------------------------------------------
 # Small shared helpers
 # ---------------------------------------------------------------------------
-def _finding(finding_id: str, status: str, detail: Any = None) -> dict:
-    finding = {"id": finding_id, "status": status}
-    if detail is not None:
-        finding["detail"] = detail
-    return finding
+def _is_forbidden_key(key: str) -> bool:
+    lowered = key.lower()
+    if any(marker in lowered for marker in _FORBIDDEN_KEY_SUBSTRINGS):
+        return True
+    words = re.split(r"[^a-z0-9]+", lowered)
+    return any(word in _FORBIDDEN_KEY_WORDS for word in words)
+
+
+def _looks_like_secret(value: str) -> bool:
+    """True when *value* resembles a credential/secret. Conservative on
+    purpose: ordinary short IDs and RFC3339 timestamps never match.
+    """
+    text = value.strip()
+    if not text:
+        return False
+    if any(pattern.search(text) for pattern in _SECRET_VALUE_PATTERNS):
+        return True
+    for token in text.split():
+        if (
+            _HIGH_ENTROPY_TOKEN.match(token)
+            and any(character.isalpha() for character in token)
+            and any(character.isdigit() for character in token)
+        ):
+            return True
+    return False
+
+
+def _finding(finding_id: str, status: str, reason: str, **extras: Any) -> dict:
+    """Build a finding with an allowlisted, structured `detail`. `reason` is a
+    controlled enum; `extras` may only be the allowlisted detail fields
+    (IDs/counts/status maps). A programming error that passes an unknown key
+    or reason fails loud here rather than silently persisting free-form data.
+    """
+    if reason not in _FINDING_REASON_ENUM:
+        raise GroundEvidenceError(f"unknown finding reason {reason!r}")
+    unknown = set(extras) - _DETAIL_EXTRA_KEYS
+    if unknown:
+        raise GroundEvidenceError(
+            "finding detail may not contain free-form key(s): "
+            + ", ".join(sorted(unknown))
+        )
+    detail: dict[str, Any] = {"reason": reason}
+    detail.update(extras)
+    return {"id": finding_id, "status": status, "detail": detail}
 
 
 def _parse_rfc3339(value: Any):
-    """Best-effort RFC3339 parse. Returns None (never raises) for anything
-    that is not a parseable timestamp — malformed/missing `captured_at`
-    values are simply excluded from freshness computations, they never abort
-    the whole assessment.
+    """Strict RFC3339 parse. Returns None (never raises) for anything that is
+    not a well-formed RFC3339 `date-time` with a mandatory timezone —
+    malformed/missing `captured_at` values are simply excluded from freshness
+    computations (and can therefore never make a source pass freshness).
     """
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not _RFC3339_RE.match(value):
         return None
-    text = value.strip()
-    if text[-1] in "Zz":
-        text = text[:-1] + "+00:00"
+    normalized = value[:-1] + "+00:00" if value[-1] in "Zz" else value
     try:
-        parsed = datetime.fromisoformat(text)
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
     if parsed.tzinfo is None:
@@ -160,17 +305,19 @@ def _parse_rfc3339(value: Any):
 
 
 def oldest_timestamp(runs: list) -> str | None:
-    """Oldest `captured_at` across a flat list of evidence runs, as the
+    """Oldest valid `captured_at` across a flat list of evidence runs, as the
     ORIGINAL string (never reformatted). Returns None when no run carries a
-    parseable `captured_at` — never back-filled from `generated_at`.
+    parseable RFC3339 `captured_at` — never back-filled from `generated_at`.
+    Used for the envelope's global `source_oldest_at`.
     """
     parsed = []
     for run in runs:
         if not isinstance(run, dict):
             continue
-        dt = _parse_rfc3339(run.get("captured_at"))
-        if dt is not None:
-            parsed.append((dt, run["captured_at"]))
+        captured_at = run.get("captured_at")
+        moment = _parse_rfc3339(captured_at)
+        if moment is not None:
+            parsed.append((moment, captured_at))
     if not parsed:
         return None
     parsed.sort(key=lambda item: item[0])
@@ -180,31 +327,35 @@ def oldest_timestamp(runs: list) -> str | None:
 def _as_numeric(value: Any, label: str):
     """Strict numeric coercion for telemetry fields: absent -> 0 (a run that
     simply didn't report the metric); present-but-non-numeric (a string, a
-    bool, NaN/inf) -> a clear GroundValidationError. Never silently coerced.
+    bool, NaN/inf) or negative -> a clear GroundEvidenceError. Never silently
+    coerced.
     """
     if value is None:
         return 0
     if isinstance(value, bool):
-        raise GroundValidationError(f"{label} must be numeric, got a boolean")
+        raise GroundEvidenceError(f"{label} must be a number, got a boolean")
     if isinstance(value, (int, float)):
         if isinstance(value, float) and not math.isfinite(value):
-            raise GroundValidationError(f"{label} must be a finite number")
+            raise GroundEvidenceError(f"{label} must be a finite number")
+        if value < 0:
+            raise GroundEvidenceError(f"{label} must be non-negative")
         return value
-    raise GroundValidationError(
-        f"{label} must be numeric, got {type(value).__name__}"
+    raise GroundEvidenceError(
+        f"{label} must be a number, got {type(value).__name__}"
     )
 
 
 def aggregate_telemetry(runs: list) -> dict:
-    """Sum only numeric `subqueries`/`tokens` across *runs* and record
-    `retrieval_count` (the number of runs). Malformed (non-numeric) values
-    raise a `GroundValidationError` rather than being coerced/ignored.
+    """Sum only finite, non-negative numeric `subqueries`/`tokens` across
+    *runs* and record `retrieval_count` (the number of runs). A boolean,
+    string, negative, or non-finite value raises a `GroundEvidenceError`
+    rather than being coerced/ignored.
     """
     subqueries_total: float = 0
     tokens_total: float = 0
     for index, run in enumerate(runs):
         if not isinstance(run, dict):
-            raise GroundValidationError(f"telemetry run[{index}] must be an object")
+            raise GroundEvidenceError(f"telemetry run[{index}] must be an object")
         subqueries_total += _as_numeric(
             run.get("subqueries"), f"telemetry run[{index}].subqueries"
         )
@@ -217,19 +368,121 @@ def aggregate_telemetry(runs: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Strict evidence-shape helpers — raise GroundEvidenceError on any malformed
+# field. Absence of an OPTIONAL classification signal (e.g. expected_entitled)
+# is handled by the assessors as `not-verified`; a present-but-wrong-shape
+# value always raises here, before any output.
+# ---------------------------------------------------------------------------
+def _require_evidence_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise GroundEvidenceError(f"{label} must be a non-empty string")
+    return value
+
+
+def _require_evidence_id_list(value: Any, label: str) -> list:
+    if not isinstance(value, list):
+        raise GroundEvidenceError(f"{label} must be a list of non-empty strings")
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item:
+            raise GroundEvidenceError(f"{label}[{index}] must be a non-empty string")
+    return value
+
+
+def _resolve_expected_entitled(run: dict, label: str):
+    """Return the run's EXPLICIT expected-entitlement boolean, or None when no
+    explicit signal is present. A present-but-non-boolean signal (e.g. ``1``,
+    ``"true"``) raises — entitlement is never inferred from a naive name
+    heuristic, so ambiguous expectations stay `not-verified`.
+    """
+    for key in ("expected_entitled", "entitled"):
+        if key in run:
+            value = run[key]
+            if not isinstance(value, bool):
+                raise GroundEvidenceError(f"{label}.{key} must be a boolean")
+            return value
+    return None
+
+
+def _normalize_acl_run(run: Any, index: int, declared_ids: set) -> dict:
+    label = f"acl_runs[{index}]"
+    if not isinstance(run, dict):
+        raise GroundEvidenceError(f"{label} must be an object")
+    source_id = _require_evidence_string(run.get("source_id"), f"{label}.source_id")
+    if source_id not in declared_ids:
+        raise GroundEvidenceError(
+            f"{label}.source_id {source_id!r} is not a declared knowledge source"
+        )
+    principal = _require_evidence_string(run.get("principal"), f"{label}.principal")
+    document_ids = _require_evidence_id_list(
+        run.get("document_ids"), f"{label}.document_ids"
+    )
+    raw_allowed = run.get("allowed_document_ids")
+    allowed_ids = (
+        None
+        if raw_allowed is None
+        else frozenset(
+            _require_evidence_id_list(raw_allowed, f"{label}.allowed_document_ids")
+        )
+    )
+    return {
+        "source_id": source_id,
+        "principal": principal,
+        "document_ids": frozenset(document_ids),
+        "allowed_ids": allowed_ids,
+        "expected": _resolve_expected_entitled(run, label),
+    }
+
+
+def _normalize_citation_run(run: Any, index: int, declared_ids: set) -> dict:
+    label = f"citation_runs[{index}]"
+    if not isinstance(run, dict):
+        raise GroundEvidenceError(f"{label} must be an object")
+    source_id = _require_evidence_string(run.get("source_id"), f"{label}.source_id")
+    if source_id not in declared_ids:
+        raise GroundEvidenceError(
+            f"{label}.source_id {source_id!r} is not a declared knowledge source"
+        )
+    citations = _require_evidence_id_list(run.get("citations"), f"{label}.citations")
+    retrieved_ids = _require_evidence_id_list(
+        run.get("retrieved_ids"), f"{label}.retrieved_ids"
+    )
+    return {
+        "source_id": source_id,
+        "citations": citations,
+        "retrieved_ids": retrieved_ids,
+    }
+
+
+def _normalize_refusal_run(run: Any, index: int, declared_ids: set) -> dict:
+    label = f"refusal_runs[{index}]"
+    if not isinstance(run, dict):
+        raise GroundEvidenceError(f"{label} must be an object")
+    source_id = _require_evidence_string(run.get("source_id"), f"{label}.source_id")
+    if source_id not in declared_ids:
+        raise GroundEvidenceError(
+            f"{label}.source_id {source_id!r} is not a declared knowledge source"
+        )
+    query_id = _require_evidence_string(run.get("query_id"), f"{label}.query_id")
+    refused = run.get("refused")
+    if not isinstance(refused, bool):
+        raise GroundEvidenceError(f"{label}.refused must be a boolean")
+    return {"source_id": source_id, "query_id": query_id, "refused": refused}
+
+
+# ---------------------------------------------------------------------------
 # SPEC knowledge-source sanitization — whitelist-only, never verbatim
 # ---------------------------------------------------------------------------
 def _sanitize_source(source: Any, index: int) -> dict:
     label = f"sources[{index}]"
     if not isinstance(source, dict):
-        raise GroundValidationError(f"{label} must be an object")
+        raise GroundEvidenceError(f"{label} must be an object")
 
     # Fail loud on any forbidden-shaped key BEFORE whitelisting — an operator
     # passing e.g. an `access_token` alongside a source config gets a clear
     # error, rather than having it silently (if safely) dropped.
     forbidden = [key for key in source if isinstance(key, str) and _is_forbidden_key(key)]
     if forbidden:
-        raise GroundValidationError(
+        raise GroundEvidenceError(
             f"{label} must not contain credential/content/prompt-shaped key(s): "
             + ", ".join(sorted(forbidden))
         )
@@ -238,21 +491,21 @@ def _sanitize_source(source: Any, index: int) -> dict:
     for key in _SOURCE_STRING_KEYS:
         value = source.get(key)
         if not isinstance(value, str) or not value:
-            raise GroundValidationError(f"{label}.{key} must be a non-empty string")
+            raise GroundEvidenceError(f"{label}.{key} must be a non-empty string")
         sanitized[key] = value
 
     for key in _SOURCE_BOOL_KEYS:
         value = source.get(key)
         if not isinstance(value, bool):
-            raise GroundValidationError(f"{label}.{key} must be a boolean")
+            raise GroundEvidenceError(f"{label}.{key} must be a boolean")
         sanitized[key] = value
 
     principals = source.get("acl_probe_principals")
     if principals is not None:
         if not isinstance(principals, list) or not all(
-            isinstance(p, str) and p for p in principals
+            isinstance(principal, str) and principal for principal in principals
         ):
-            raise GroundValidationError(
+            raise GroundEvidenceError(
                 f"{label}.acl_probe_principals must be a list of non-empty strings"
             )
         sanitized["acl_probe_principals"] = list(principals)
@@ -260,145 +513,125 @@ def _sanitize_source(source: Any, index: int) -> dict:
     return sanitized
 
 
+def _source_requires_acl(source: dict) -> bool:
+    return source.get("permission_model") in _ACL_PERMISSION_MODELS
+
+
 # ---------------------------------------------------------------------------
-# GRD-001 — ACL enforcement
+# GRD-001 — ACL enforcement (source-scoped, allowlist-aware)
 # ---------------------------------------------------------------------------
-def _acl_permission_required(sources: list) -> bool:
-    return any(
-        isinstance(s, dict) and s.get("permission_model") not in (None, "public", "none")
-        for s in sources
-    )
-
-
-def _infer_entitlement(run: dict):
-    """Resolve whether *run*'s principal was EXPECTED to be entitled.
-
-    Resolution order: (1) an explicit `expected_entitled` (or `entitled`)
-    boolean on the run — this is the authoritative signal callers should
-    supply from real permission checks, never inferred; (2) a best-effort
-    fallback that looks at the principal's name for common demo/test
-    conventions. The fallback exists only so obviously-named fixtures (e.g.
-    `entitled` / `unentitled`) work without extra ceremony — it deliberately
-    returns None (unknown) for anything it cannot confidently classify, so an
-    ambiguous name never produces a naive false positive/negative; the caller
-    should supply `expected_entitled` explicitly for real evidence.
+def _assess_acl_group(source: dict, runs: list) -> dict:
+    """Assess one source's ACL runs. Returns a small dict
+    ``{"status", "reason", "extras"}``. A proven leak — an unentitled
+    principal receiving ANY document outside its explicit `allowed_document_ids`
+    (a subset is enough; no allowlist means nothing is allowed) — is
+    `must-fix`. Missing/ambiguous entitlement or too few principals is
+    `not-verified`, never a guessed pass.
     """
-    for key in ("expected_entitled", "entitled"):
-        value = run.get(key)
-        if isinstance(value, bool):
-            return value
-
-    principal = str(run.get("principal") or "").strip().lower()
-    if not principal:
-        return None
-    if any(
-        marker in principal
-        for marker in ("unentitled", "denied", "unauthorized", "no-access", "no_access", "guest")
-    ):
-        return False
-    if any(marker in principal for marker in ("entitled", "authorized", "admin", "owner")):
-        return True
-    return None
-
-
-def _assess_acl_group(runs: list) -> dict:
-    classified = []
     for run in runs:
-        principal = run.get("principal")
-        document_ids = run.get("document_ids")
-        if not isinstance(principal, str) or not principal.strip():
-            return {"status": "not-verified", "detail": "an ACL run is missing its principal"}
-        if not isinstance(document_ids, list):
-            return {
-                "status": "not-verified",
-                "detail": f"ACL run for principal {principal!r} is missing document_ids",
-            }
-        entitled = _infer_entitlement(run)
-        if entitled is None:
-            return {
-                "status": "not-verified",
-                "detail": (
-                    f"ACL run for principal {principal!r} has no determinable "
-                    "entitlement/permissions (supply expected_entitled explicitly)"
-                ),
-            }
-        classified.append((principal, entitled, frozenset(document_ids)))
+        if run["expected"] is None:
+            return {"status": "not-verified", "reason": "ambiguous-entitlement", "extras": {}}
 
-    principals = {p for p, _, _ in classified}
+    principals = {run["principal"] for run in runs}
     if len(principals) < 2:
+        return {"status": "not-verified", "reason": "insufficient-principals", "extras": {}}
+
+    entitled = [run for run in runs if run["expected"] is True]
+    unentitled = [run for run in runs if run["expected"] is False]
+    if not entitled or not unentitled:
         return {
             "status": "not-verified",
-            "detail": "at least two distinct principals are required to probe ACL enforcement",
+            "reason": "missing-entitled-or-unentitled-probe",
+            "extras": {},
         }
 
-    entitled_sets = [docs for _, entitled, docs in classified if entitled is True]
-    unentitled_sets = [docs for _, entitled, docs in classified if entitled is False]
-    if not entitled_sets or not unentitled_sets:
+    # Declared principal coverage (safe metadata): if the source declares the
+    # principals to probe, every one of them must appear in the evidence.
+    declared_principals = source.get("acl_probe_principals")
+    if declared_principals:
+        missing = sorted(set(declared_principals) - principals)
+        if missing:
+            return {
+                "status": "not-verified",
+                "reason": "declared-principal-uncovered",
+                "extras": {"missing_principals": missing},
+            }
+
+    # Proven leak: any unentitled principal received a document outside its
+    # explicit allowlist. `allowed_ids is None` (no allowlist) means NOTHING
+    # is allowed, so any received document is unauthorized. Subsets count.
+    leaked: set = set()
+    for run in unentitled:
+        allowed = run["allowed_ids"] if run["allowed_ids"] is not None else frozenset()
+        leaked |= run["document_ids"] - allowed
+    if leaked:
         return {
-            "status": "not-verified",
-            "detail": "both an entitled and an unentitled principal probe are required",
+            "status": "must-fix",
+            "reason": "unauthorized-documents",
+            "extras": {"leaked_document_ids": sorted(leaked)},
         }
 
-    for entitled_docs in entitled_sets:
-        for unentitled_docs in unentitled_sets:
-            if entitled_docs and entitled_docs == unentitled_docs:
-                return {
-                    "status": "must-fix",
-                    "detail": (
-                        "an unentitled principal received the identical protected "
-                        f"document set as an entitled principal: {sorted(entitled_docs)}"
-                    ),
-                }
-
-    return {
-        "status": "pass",
-        "detail": "entitled and unentitled principals received distinct results",
-    }
+    return {"status": "pass", "reason": "acl-enforced", "extras": {}}
 
 
 def assess_acl(sources: list, acl_runs: list) -> dict:
-    """GRD-001 — ACL enforcement.
-
-    Missing principals, missing ACL runs, or a run whose permission/entitlement
-    cannot be determined all yield `not-verified` (never a false pass). A
-    PROVEN leak — incompatible (entitled vs. unentitled) principals receiving
-    the identical protected document set — yields `must-fix`. When multiple
-    ACL-protected sources are probed (grouped by `source_id`), the worst
-    per-source result wins.
+    """GRD-001 — ACL enforcement, scoped to every `permission_model == "acl"`
+    source. Each such source must be covered by ACL runs carrying its
+    `source_id`; an uncovered source is `not-verified`. Within a source, a
+    proven allowlist leak is `must-fix`. When several ACL sources are probed
+    the worst per-source result wins, and every per-source status is recorded
+    in `by_source` so a coverage gap still forces the manifest `partial`.
     """
     finding_id = "GRD-001"
-    if not _acl_permission_required(sources):
-        return _finding(finding_id, "pass", "no ACL-protected sources declared")
-    if not acl_runs:
-        return _finding(finding_id, "not-verified", "no ACL probe runs supplied")
+    acl_sources = [source for source in sources if _source_requires_acl(source)]
+    if not acl_sources:
+        return _finding(finding_id, "pass", "no-acl-protected-sources")
 
-    groups: dict[Any, list] = {}
-    for run in acl_runs:
-        if not isinstance(run, dict):
-            return _finding(finding_id, "not-verified", "an ACL run is not an object")
-        groups.setdefault(run.get("source_id"), []).append(run)
+    declared_ids = {source["id"] for source in sources}
+    normalized = [
+        _normalize_acl_run(run, index, declared_ids)
+        for index, run in enumerate(acl_runs)
+    ]
+    groups: dict[str, list] = {}
+    for run in normalized:
+        groups.setdefault(run["source_id"], []).append(run)
 
-    results = {key: _assess_acl_group(runs) for key, runs in groups.items()}
+    per_source: dict[str, dict] = {}
+    uncovered: list[str] = []
+    for source in acl_sources:
+        source_id = source["id"]
+        runs = groups.get(source_id, [])
+        if not runs:
+            uncovered.append(source_id)
+            per_source[source_id] = {
+                "status": "not-verified",
+                "reason": "acl-source-uncovered",
+                "extras": {},
+            }
+            continue
+        per_source[source_id] = _assess_acl_group(source, runs)
 
-    if len(results) == 1:
-        (only,) = results.values()
-        return _finding(finding_id, only["status"], only["detail"])
+    if len(per_source) == 1:
+        (source_id, result), = per_source.items()
+        extras = dict(result["extras"])
+        if source_id in set(uncovered):
+            extras["uncovered_sources"] = [source_id]
+        return _finding(finding_id, result["status"], result["reason"], **extras)
 
-    worst_key = min(results, key=lambda key: _ACL_STATUS_ORDER[results[key]["status"]])
-    worst = results[worst_key]
-    return _finding(
-        finding_id,
-        worst["status"],
-        {
-            "worst_source": worst_key,
-            "reason": worst["detail"],
-            "by_source": {str(key): value["status"] for key, value in results.items()},
-        },
-    )
+    worst_id = min(per_source, key=lambda key: _ACL_STATUS_ORDER[per_source[key]["status"]])
+    worst = per_source[worst_id]
+    extras = dict(worst["extras"])
+    extras["worst_source"] = worst_id
+    extras["by_source"] = {
+        source_id: result["status"] for source_id, result in per_source.items()
+    }
+    if uncovered:
+        extras["uncovered_sources"] = sorted(uncovered)
+    return _finding(finding_id, worst["status"], worst["reason"], **extras)
 
 
 # ---------------------------------------------------------------------------
-# GRD-002 — citation grounding
+# GRD-002 — citation grounding (source-scoped)
 # ---------------------------------------------------------------------------
 def validate_citations(citations: list, retrieved_ids: list) -> dict:
     """A citation is valid only when it is a member of the retrieved set.
@@ -406,127 +639,166 @@ def validate_citations(citations: list, retrieved_ids: list) -> dict:
     fall outside the retrieved set, or `pass` when every citation is covered.
     """
     retrieved = set(retrieved_ids or [])
-    missing = sorted({c for c in (citations or []) if c not in retrieved})
+    missing = sorted({citation for citation in (citations or []) if citation not in retrieved})
     if missing:
         return {"status": "must-fix", "missing_from_retrieval": missing}
     return {"status": "pass", "missing_from_retrieval": []}
 
 
-def assess_citations(citation_runs: list) -> dict:
-    """GRD-002 — citation grounding. No runs at all -> `not-verified`
-    (absent execution is never a pass). Any run whose citations fall outside
-    its retrieved set -> `must-fix`. Otherwise `pass`.
+def assess_citations(sources: list, citation_runs: list) -> dict:
+    """GRD-002 — citation grounding, scoped to every `citation_required`
+    source. Each such source must be covered by citation runs carrying its
+    `source_id`; an uncovered required source is `not-verified`. Any run whose
+    citations fall outside its retrieved set is `must-fix` (surfacing the
+    proven failure), and any coverage gap is still recorded so the manifest
+    stays `partial`.
     """
     finding_id = "GRD-002"
-    if not citation_runs:
-        return _finding(finding_id, "not-verified", "no citation validation runs supplied")
+    declared_ids = {source["id"] for source in sources}
+    normalized = [
+        _normalize_citation_run(run, index, declared_ids)
+        for index, run in enumerate(citation_runs)
+    ]
+
+    cite_sources = [source for source in sources if source["citation_required"]]
+    covered = {run["source_id"] for run in normalized}
+    uncovered = sorted(
+        source["id"] for source in cite_sources if source["id"] not in covered
+    )
 
     missing_all: list[str] = []
-    for index, run in enumerate(citation_runs):
-        if not isinstance(run, dict):
-            return _finding(finding_id, "not-verified", f"citation run[{index}] is not an object")
-        citations = run.get("citations")
-        retrieved_ids = run.get("retrieved_ids")
-        if citations is None or retrieved_ids is None:
-            return _finding(
-                finding_id,
-                "not-verified",
-                f"citation run[{index}] is missing citations/retrieved_ids",
-            )
-        result = validate_citations(citations, retrieved_ids)
-        if result["status"] == "must-fix":
-            missing_all.extend(result["missing_from_retrieval"])
+    for run in normalized:
+        result = validate_citations(run["citations"], run["retrieved_ids"])
+        missing_all.extend(result["missing_from_retrieval"])
 
+    extras: dict[str, Any] = {}
+    if uncovered:
+        extras["uncovered_sources"] = uncovered
     if missing_all:
-        return _finding(
-            finding_id,
-            "must-fix",
-            {"missing_from_retrieval": sorted(set(missing_all))},
-        )
-    return _finding(finding_id, "pass", "every citation was present in its retrieved set")
+        extras["missing_from_retrieval"] = sorted(set(missing_all))
+        return _finding(finding_id, "must-fix", "citations-outside-retrieval", **extras)
+    if not cite_sources:
+        return _finding(finding_id, "pass", "no-citation-required")
+    if uncovered:
+        return _finding(finding_id, "not-verified", "citation-source-uncovered", **extras)
+    return _finding(finding_id, "pass", "citations-grounded")
 
 
 # ---------------------------------------------------------------------------
-# GRD-003 — refusal behavior
+# GRD-003 — refusal behavior (source-scoped)
 # ---------------------------------------------------------------------------
-def assess_refusal(refusal_runs: list) -> dict:
-    """GRD-003 — refusal behavior for unsupported queries. No runs -> `not-verified`.
-    An EXECUTED probe where an unsupported query was answered instead of
-    refused -> `must-fix`. Otherwise `pass`.
+def assess_refusal(sources: list, refusal_runs: list) -> dict:
+    """GRD-003 — refusal behavior, scoped to every `refuse_when_unsupported`
+    source. Each such source must be covered by refusal runs carrying its
+    `source_id`; an uncovered required source is `not-verified`. An EXECUTED
+    probe where an unsupported query was answered instead of refused is
+    `must-fix`.
     """
     finding_id = "GRD-003"
-    if not refusal_runs:
-        return _finding(finding_id, "not-verified", "no refusal probe runs supplied")
+    declared_ids = {source["id"] for source in sources}
+    normalized = [
+        _normalize_refusal_run(run, index, declared_ids)
+        for index, run in enumerate(refusal_runs)
+    ]
 
-    failed_ids: list[str] = []
-    for index, run in enumerate(refusal_runs):
-        if not isinstance(run, dict) or not isinstance(run.get("refused"), bool):
-            return _finding(
-                finding_id,
-                "not-verified",
-                f"refusal run[{index}] is missing a boolean 'refused' result",
-            )
-        if not run["refused"]:
-            failed_ids.append(str(run.get("query_id", index)))
+    refuse_sources = [source for source in sources if source["refuse_when_unsupported"]]
+    covered = {run["source_id"] for run in normalized}
+    uncovered = sorted(
+        source["id"] for source in refuse_sources if source["id"] not in covered
+    )
+    answered = sorted({run["query_id"] for run in normalized if not run["refused"]})
 
-    if failed_ids:
-        return _finding(
-            finding_id,
-            "must-fix",
-            {"unsupported_queries_answered": sorted(failed_ids)},
-        )
-    return _finding(finding_id, "pass", "every unsupported-query probe was refused")
+    extras: dict[str, Any] = {}
+    if uncovered:
+        extras["uncovered_sources"] = uncovered
+    if answered:
+        extras["unsupported_queries_answered"] = answered
+        return _finding(finding_id, "must-fix", "unsupported-query-answered", **extras)
+    if not refuse_sources:
+        return _finding(finding_id, "pass", "no-refusal-required")
+    if uncovered:
+        return _finding(finding_id, "not-verified", "refusal-source-uncovered", **extras)
+    return _finding(finding_id, "pass", "all-unsupported-refused")
 
 
 # ---------------------------------------------------------------------------
-# GRD-004 — source freshness / coverage
+# GRD-004 — source freshness / coverage (per-source, baseline-gated)
 # ---------------------------------------------------------------------------
 def assess_freshness_coverage(
-    sources: list, all_runs: list, *, generated_at: str
+    sources: list,
+    all_runs: list,
+    *,
+    generated_at: str,
+    retrieval_quality_baseline: str | None = None,
 ) -> dict:
-    """GRD-004 — every declared source should have evidence that (a) exists at
-    all (coverage) and (b) is fresh relative to its declared `refresh_cadence`
-    (freshness). No sources declared -> `pass` (nothing to ground). Sources
-    declared but zero evidence at all -> `not-verified`. Partial coverage or
-    stale evidence (relative to cadence) -> `should-fix`. Otherwise `pass`.
+    """GRD-004 — every declared source must have covering evidence carrying
+    its `source_id`, that evidence must carry a fresh, valid RFC3339
+    `captured_at`, and the assessment must reference a retrieval-quality
+    baseline.
+
+    Freshness is computed INDEPENDENTLY per source from only that source's own
+    runs, so one source's stale run can never stale another. A covered source
+    whose runs carry no valid `captured_at` cannot pass freshness — its
+    timestamp is unverifiable, which is `not-verified` (documented choice: a
+    missing/malformed timestamp is an evidence gap, never a silent pass). A
+    missing baseline is likewise `not-verified`, never guessed. Stale-but-
+    covered evidence caps at `should-fix`.
     """
     finding_id = "GRD-004"
     if not sources:
-        return _finding(finding_id, "pass", "no knowledge sources declared")
-    if not all_runs:
+        return _finding(finding_id, "pass", "no-knowledge-sources")
+
+    runs_by_source: dict[str, list] = {}
+    for run in all_runs:
+        if not isinstance(run, dict):
+            continue
+        source_id = run.get("source_id")
+        if isinstance(source_id, str) and source_id:
+            runs_by_source.setdefault(source_id, []).append(run)
+
+    now = _parse_rfc3339(generated_at)
+    uncovered: list[str] = []
+    unverifiable: list[str] = []
+    stale: list[str] = []
+    for source in sources:
+        source_id = source["id"]
+        runs = runs_by_source.get(source_id, [])
+        if not runs:
+            uncovered.append(source_id)
+            continue
+        oldest = oldest_timestamp(runs)
+        if oldest is None:
+            unverifiable.append(source_id)
+            continue
+        limit = _CADENCE_GRACE_HOURS.get(source["refresh_cadence"])
+        oldest_moment = _parse_rfc3339(oldest)
+        if limit is not None and now is not None and oldest_moment is not None:
+            age_hours = (now - oldest_moment).total_seconds() / 3600.0
+            if age_hours > limit:
+                stale.append(source_id)
+
+    baseline_missing = retrieval_quality_baseline is None
+
+    if baseline_missing or uncovered or unverifiable:
+        extras: dict[str, Any] = {}
+        if uncovered:
+            extras["uncovered_sources"] = sorted(uncovered)
+        if unverifiable:
+            extras["unverifiable_freshness_sources"] = sorted(unverifiable)
+        if baseline_missing:
+            reason = "retrieval-quality-baseline-missing"
+        elif uncovered:
+            reason = "sources-uncovered"
+        else:
+            reason = "freshness-unverifiable"
+        return _finding(finding_id, "not-verified", reason, **extras)
+
+    if stale:
         return _finding(
-            finding_id, "not-verified", "no grounding evidence supplied for any declared source"
+            finding_id, "should-fix", "stale-evidence", stale_sources=sorted(stale)
         )
 
-    covered_ids = {
-        run.get("source_id")
-        for run in all_runs
-        if isinstance(run, dict) and run.get("source_id")
-    }
-    declared_ids = {s["id"] for s in sources}
-    uncovered = sorted(declared_ids - covered_ids)
-
-    oldest = oldest_timestamp(all_runs)
-    stale_sources: list[str] = []
-    if oldest is not None:
-        now = _parse_rfc3339(generated_at)
-        oldest_dt = _parse_rfc3339(oldest)
-        if now is not None and oldest_dt is not None:
-            age_hours = (now - oldest_dt).total_seconds() / 3600.0
-            for source in sources:
-                limit = _CADENCE_GRACE_HOURS.get(source["refresh_cadence"])
-                if limit is not None and age_hours > limit:
-                    stale_sources.append(source["id"])
-
-    if uncovered or stale_sources:
-        detail: dict[str, Any] = {}
-        if uncovered:
-            detail["uncovered_sources"] = uncovered
-        if stale_sources:
-            detail["stale_sources"] = sorted(stale_sources)
-        return _finding(finding_id, "should-fix", detail)
-
-    return _finding(finding_id, "pass", "all declared sources have fresh, covering evidence")
+    return _finding(finding_id, "pass", "fresh-and-covered")
 
 
 # ---------------------------------------------------------------------------
@@ -569,15 +841,14 @@ def _summarize_citation_runs(citation_runs: list) -> list:
 
 def _summarize_refusal_runs(refusal_runs: list) -> list:
     summary = []
-    for index, run in enumerate(refusal_runs):
+    for run in refusal_runs:
         if not isinstance(run, dict):
             continue
-        raw_query_id = run.get("query_id")
-        query_id = str(raw_query_id) if raw_query_id not in (None, "") else str(index)
+        query_id = run.get("query_id")
         summary.append(
             {
                 "source_id": run.get("source_id"),
-                "query_id": query_id,
+                "query_id": query_id if isinstance(query_id, str) and query_id else None,
                 "refused": run.get("refused") if isinstance(run.get("refused"), bool) else None,
             }
         )
@@ -585,8 +856,51 @@ def _summarize_refusal_runs(refusal_runs: list) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Retrieval-quality baseline reference — a repo-relative path/id, no content
+# ---------------------------------------------------------------------------
+def _validate_baseline_input(value: Any) -> str | None:
+    """Validate the caller-supplied `retrieval_quality_baseline`. None (a
+    genuinely absent baseline) is allowed and surfaces as GRD-004
+    `not-verified`. A present value must be a safe repo-relative path/id — no
+    absolute path, no `..` traversal, no URL, no whitespace, no content.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _BASELINE_REF_RE.match(value):
+        raise GroundEvidenceError(
+            "retrieval_quality_baseline must be a repo-relative path/id "
+            "(no absolute path, no '..' traversal, no URL, no whitespace)"
+        )
+    if _looks_like_secret(value):
+        raise GroundEvidenceError(
+            "retrieval_quality_baseline must not contain a secret-shaped value"
+        )
+    return value
+
+
+# ---------------------------------------------------------------------------
 # Coordinator — assess_grounding()
 # ---------------------------------------------------------------------------
+def _finding_forces_partial(finding: dict) -> bool:
+    """A finding downgrades the manifest to `partial` when required evidence
+    is genuinely missing/unverifiable: a `not-verified` status, an uncovered
+    or freshness-unverifiable source recorded in `detail`, or a per-source
+    `not-verified` hidden behind an aggregated worst-case status. An executed
+    must-fix/should-fix with COMPLETE coverage never forces partial.
+    """
+    if finding["status"] == "not-verified":
+        return True
+    detail = finding.get("detail")
+    if isinstance(detail, dict):
+        for key in ("uncovered_sources", "unverifiable_freshness_sources", "missing_principals"):
+            if detail.get(key):
+                return True
+        by_source = detail.get("by_source")
+        if isinstance(by_source, dict) and "not-verified" in by_source.values():
+            return True
+    return False
+
+
 def assess_grounding(
     *,
     sources: list,
@@ -594,14 +908,19 @@ def assess_grounding(
     citation_runs: list,
     refusal_runs: list,
     generated_at: str,
+    retrieval_quality_baseline: Any = None,
 ) -> dict:
     """Build the `threadlight.ground/v1` manifest from already-produced
     retrieval/evaluation evidence. Never ingests Foundry IQ itself, never
-    calls an evaluator — every run here is a caller-supplied result.
+    calls an evaluator — every run here is a caller-supplied result, and
+    `sources` is the authoritative SPEC-derived inventory.
 
-    `status` is `partial` exactly when a required piece of evidence is
-    missing/`not-verified`; an EXECUTED `must-fix`/`should-fix` finding is
-    still complete evidence and never downgrades `status` on its own.
+    The built manifest is fully schema-validated (and scanned for forbidden
+    keys / secret values) BEFORE it is returned, so `--json` can never emit
+    invalid or oversharing data. `status` is `partial` exactly when a required
+    piece of evidence is missing/`not-verified`; an EXECUTED
+    `must-fix`/`should-fix` finding with complete coverage never downgrades
+    `status` on its own.
     """
     for name, value in (
         ("sources", sources),
@@ -610,25 +929,30 @@ def assess_grounding(
         ("refusal_runs", refusal_runs),
     ):
         if not isinstance(value, list):
-            raise GroundValidationError(f"{name} must be a list")
+            raise GroundEvidenceError(f"{name} must be a list")
+
+    baseline = _validate_baseline_input(retrieval_quality_baseline)
 
     sanitized_sources = [
         _sanitize_source(source, index) for index, source in enumerate(sources)
     ]
 
     acl_finding = assess_acl(sanitized_sources, acl_runs)
-    citation_finding = assess_citations(citation_runs)
-    refusal_finding = assess_refusal(refusal_runs)
+    citation_finding = assess_citations(sanitized_sources, citation_runs)
+    refusal_finding = assess_refusal(sanitized_sources, refusal_runs)
 
     all_runs = [*acl_runs, *citation_runs, *refusal_runs]
     freshness_finding = assess_freshness_coverage(
-        sanitized_sources, all_runs, generated_at=generated_at
+        sanitized_sources,
+        all_runs,
+        generated_at=generated_at,
+        retrieval_quality_baseline=baseline,
     )
 
     findings = [acl_finding, citation_finding, refusal_finding, freshness_finding]
     status = (
         "partial"
-        if any(f["status"] in _PARTIAL_STATUSES for f in findings)
+        if any(_finding_forces_partial(finding) for finding in findings)
         else "complete"
     )
 
@@ -638,6 +962,7 @@ def assess_grounding(
         "citation_evidence": _summarize_citation_runs(citation_runs),
         "refusal_evidence": _summarize_refusal_runs(refusal_runs),
         "telemetry": aggregate_telemetry(all_runs),
+        "retrieval_quality_baseline": baseline,
     }
 
     manifest = build_envelope(
@@ -650,33 +975,48 @@ def assess_grounding(
         findings=findings,
         payload=payload,
     )
-    _reject_forbidden_keys(manifest)
+    # Validate the whole manifest (schema shape + forbidden keys + secret
+    # values) before returning, so no invalid/oversharing manifest ever
+    # reaches `--json`, a caller, or disk.
+    validate_ground_manifest(manifest)
     return manifest
+
+
+# ---------------------------------------------------------------------------
+# Recursive forbidden-key / secret-value defense
+# ---------------------------------------------------------------------------
+def _assert_no_unsafe_content(obj: Any) -> None:
+    """Recursively reject any credential/content-shaped KEY and any
+    secret-shaped VALUE anywhere in the manifest. `detail` is already an
+    allowlisted schema, but ID fields are inherently free strings, so this is
+    the defense-in-depth that makes a smuggled secret unpersistable.
+    """
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(key, str):
+                if _is_forbidden_key(key):
+                    raise GroundEvidenceError(
+                        "ground manifest must not contain "
+                        "credential/content/prompt-shaped keys"
+                    )
+                if _looks_like_secret(key):
+                    raise GroundEvidenceError(
+                        "ground manifest must not contain secret-shaped values"
+                    )
+            _assert_no_unsafe_content(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            _assert_no_unsafe_content(item)
+    elif isinstance(obj, str):
+        if _looks_like_secret(obj):
+            raise GroundEvidenceError(
+                "ground manifest must not contain secret-shaped values"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Schema validation — hand-rolled mirror of ground-manifest.schema.json
 # ---------------------------------------------------------------------------
-def _contains_forbidden_keys(obj: Any) -> bool:
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(key, str) and _is_forbidden_key(key):
-                return True
-            if _contains_forbidden_keys(value):
-                return True
-        return False
-    if isinstance(obj, list):
-        return any(_contains_forbidden_keys(item) for item in obj)
-    return False
-
-
-def _reject_forbidden_keys(manifest: dict) -> None:
-    if _contains_forbidden_keys(manifest):
-        raise GroundValidationError(
-            "ground manifest must not contain credential/content/prompt-shaped keys"
-        )
-
-
 def _require_object(value, label: str) -> dict:
     if not isinstance(value, dict):
         raise ManifestValidationError(f"{label} must be an object")
@@ -726,9 +1066,9 @@ def _require_array(value, label: str) -> list:
     return value
 
 
-def _require_string_array(value, label: str) -> None:
+def _require_string_array(value, label: str, *, min_length: int = 0) -> None:
     for index, item in enumerate(_require_array(value, label)):
-        _require_string(item, f"{label}[{index}]")
+        _require_string(item, f"{label}[{index}]", min_length=min_length)
 
 
 def _require_number(value, label: str, *, minimum=None) -> None:
@@ -754,7 +1094,34 @@ _FINDING_KEYS = {"id", "status", "detail"}
 _MANIFEST_TOP_LEVEL_KEYS = {
     "schema", "tool_version", "generated_at", "freshness", "status", "findings",
     "sources", "acl_evidence", "citation_evidence", "refusal_evidence", "telemetry",
+    "retrieval_quality_baseline",
 }
+
+
+def _validate_detail(detail: Any, label: str) -> None:
+    """Validate a finding's `detail` against the allowlisted schema: a
+    required `reason` enum plus only ID lists, a `worst_source` id, and a
+    `by_source` status map. No free-form key or value is representable.
+    """
+    detail = _require_object(detail, label)
+    _require_keys(detail, {"reason"}, label)
+    _reject_unknown_keys(detail, _DETAIL_KEYS, label)
+    if detail["reason"] not in _FINDING_REASON_ENUM:
+        raise ManifestValidationError(f"{label}.reason must be a known reason code")
+    for key in _DETAIL_LIST_KEYS:
+        if key in detail:
+            _require_string_array(detail[key], f"{label}.{key}", min_length=1)
+    for key in _DETAIL_STRING_KEYS:
+        if key in detail:
+            _require_string(detail[key], f"{label}.{key}", min_length=1)
+    if "by_source" in detail:
+        by_source = _require_object(detail["by_source"], f"{label}.by_source")
+        for source_id, source_status in by_source.items():
+            _require_string(source_id, f"{label}.by_source key", min_length=1)
+            if source_status not in FINDING_STATUS_ENUM:
+                raise ManifestValidationError(
+                    f"{label}.by_source[{source_id!r}] must be a finding status"
+                )
 
 
 def validate_ground_manifest(manifest: dict) -> None:
@@ -762,14 +1129,17 @@ def validate_ground_manifest(manifest: dict) -> None:
     `references/ground-manifest.schema.json`, layered on the shared
     envelope's own validation. stdlib-only — no `jsonschema` runtime
     dependency; a test-only jsonschema parity suite pins this to the schema.
+    The recursive forbidden-key / secret-value scan runs FIRST so unsafe
+    content fails with a clear `GroundEvidenceError` before shape checks.
     """
     validate_envelope(manifest)
     manifest = _require_object(manifest, "ground manifest")
+    _assert_no_unsafe_content(manifest)
     _require_keys(
         manifest,
         {
             "sources", "acl_evidence", "citation_evidence", "refusal_evidence",
-            "telemetry",
+            "telemetry", "retrieval_quality_baseline",
         },
         "ground manifest",
     )
@@ -788,6 +1158,8 @@ def validate_ground_manifest(manifest: dict) -> None:
             raise ManifestValidationError(
                 f"{label}.status must be one of {sorted(FINDING_STATUS_ENUM)}"
             )
+        if "detail" in finding:
+            _validate_detail(finding["detail"], f"{label}.detail")
 
     for index, source in enumerate(_require_array(manifest["sources"], "sources")):
         label = f"sources[{index}]"
@@ -807,7 +1179,9 @@ def validate_ground_manifest(manifest: dict) -> None:
             _require_boolean(source[key], f"{label}.{key}")
         if "acl_probe_principals" in source:
             _require_string_array(
-                source["acl_probe_principals"], f"{label}.acl_probe_principals"
+                source["acl_probe_principals"],
+                f"{label}.acl_probe_principals",
+                min_length=1,
             )
 
     for index, item in enumerate(_require_array(manifest["acl_evidence"], "acl_evidence")):
@@ -816,7 +1190,7 @@ def validate_ground_manifest(manifest: dict) -> None:
         _require_keys(item, _ACL_EVIDENCE_KEYS, label)
         _reject_unknown_keys(item, _ACL_EVIDENCE_KEYS, label)
         _require_nullable_string(item["principal"], f"{label}.principal")
-        _require_string_array(item["document_ids"], f"{label}.document_ids")
+        _require_string_array(item["document_ids"], f"{label}.document_ids", min_length=1)
         _require_nullable_string(item["source_id"], f"{label}.source_id")
 
     for index, item in enumerate(
@@ -830,7 +1204,7 @@ def validate_ground_manifest(manifest: dict) -> None:
         _require_number(item["citation_count"], f"{label}.citation_count", minimum=0)
         _require_number(item["retrieved_count"], f"{label}.retrieved_count", minimum=0)
         _require_string_array(
-            item["missing_from_retrieval"], f"{label}.missing_from_retrieval"
+            item["missing_from_retrieval"], f"{label}.missing_from_retrieval", min_length=1
         )
 
     for index, item in enumerate(
@@ -851,13 +1225,21 @@ def validate_ground_manifest(manifest: dict) -> None:
     _require_number(telemetry["subqueries"], "telemetry.subqueries", minimum=0)
     _require_number(telemetry["tokens"], "telemetry.tokens", minimum=0)
 
-    _reject_forbidden_keys(manifest)
+    baseline = manifest["retrieval_quality_baseline"]
+    if baseline is not None:
+        _require_string(baseline, "retrieval_quality_baseline", min_length=1)
+        if not _BASELINE_REF_RE.match(baseline):
+            raise ManifestValidationError(
+                "retrieval_quality_baseline must be a repo-relative path/id "
+                "(no absolute path, no '..' traversal, no URL, no whitespace)"
+            )
 
 
 def write_ground_manifest(path, manifest: dict) -> None:
-    """Schema-validate + forbidden-key-scan, THEN atomically write. A prior
-    valid manifest at *path* is untouched unless every check above passes —
-    `atomic_write_json` also never leaves a partial file behind on failure.
+    """Schema-validate + forbidden-key/secret scan, THEN atomically write. A
+    prior valid manifest at *path* is untouched unless every check above
+    passes — `atomic_write_json` also never leaves a partial file behind on
+    failure.
     """
     validate_ground_manifest(manifest)
     atomic_write_json(path, manifest)
@@ -872,23 +1254,52 @@ def _now_iso() -> str:
 
 def run_ground(root: str, evidence: dict, generated_at: str | None = None) -> dict:
     """Load an evidence bundle (already-produced probe results, e.g. from a
-    manual live handoff) and build the manifest. Never touches disk itself —
-    callers decide whether/where to `write_ground_manifest`.
+    manual live handoff) and build the manifest. The knowledge-source
+    inventory comes from the SPEC-derived `evidence["sources"]` object — NOT
+    from *root*, which is only the CLI's output/project boundary. Never
+    touches disk itself.
     """
     return assess_grounding(
         sources=evidence.get("sources", []),
         acl_runs=evidence.get("acl_runs", []),
         citation_runs=evidence.get("citation_runs", []),
         refusal_runs=evidence.get("refusal_runs", []),
+        retrieval_quality_baseline=evidence.get("retrieval_quality_baseline"),
         generated_at=generated_at or evidence.get("generated_at") or _now_iso(),
     )
+
+
+def _resolve_within_root(root: str, relative_path: str) -> str:
+    """Resolve *relative_path* under *root* and reject anything that escapes
+    the project root (an absolute path outside it, or a `..` traversal). Root
+    is the output/project boundary — a manifest may only ever be written
+    inside it.
+    """
+    root_abs = os.path.abspath(root)
+    combined = (
+        relative_path
+        if os.path.isabs(relative_path)
+        else os.path.join(root_abs, relative_path)
+    )
+    combined_abs = os.path.abspath(combined)
+    try:
+        within = os.path.commonpath([root_abs, combined_abs]) == root_abs
+    except ValueError:
+        within = False  # different drives / mixed absolute+relative on Windows
+    if not within:
+        raise GroundEvidenceError(
+            f"output path {relative_path!r} escapes the project root"
+        )
+    return combined_abs
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "threadlight-ground — assess already-produced ACL/citation/refusal "
-            "evidence and emit specs/ground-manifest.json"
+            "evidence and emit specs/ground-manifest.json. The knowledge-source "
+            "inventory comes from the SPEC-derived evidence object; --project-root "
+            "is only the output/project boundary."
         )
     )
     parser.add_argument("--project-root", default=".", help="pilot repo root (default cwd)")
@@ -897,13 +1308,14 @@ def main(argv=None) -> int:
         required=True,
         help=(
             "JSON file with keys sources, acl_runs, citation_runs, refusal_runs "
-            "(all already-produced probe results) and optional generated_at"
+            "(all already-produced probe results), retrieval_quality_baseline, "
+            "and optional generated_at"
         ),
     )
     parser.add_argument(
         "--manifest-path",
         default=DEFAULT_MANIFEST_PATH,
-        help="where to write the manifest, relative to --project-root",
+        help="where to write the manifest, relative to --project-root (must stay inside it)",
     )
     parser.add_argument("--emit", action="store_true", help="write the manifest to disk")
     parser.add_argument("--json", action="store_true", help="print manifest JSON to stdout")
@@ -930,13 +1342,17 @@ def main(argv=None) -> int:
 
     try:
         manifest = run_ground(root, evidence)
-    except (GroundValidationError, ManifestValidationError) as exc:
+    except (GroundEvidenceError, ManifestValidationError) as exc:
         print(f"error: {exc}")
         return 1
 
     if args.emit:
-        manifest_full_path = os.path.join(root, args.manifest_path)
-        write_ground_manifest(manifest_full_path, manifest)
+        try:
+            manifest_full_path = _resolve_within_root(root, args.manifest_path)
+            write_ground_manifest(manifest_full_path, manifest)
+        except (GroundEvidenceError, ManifestValidationError, OSError) as exc:
+            print(f"error: could not write manifest: {exc}")
+            return 1
 
     if args.json:
         print(json.dumps(manifest, indent=2, sort_keys=True))
