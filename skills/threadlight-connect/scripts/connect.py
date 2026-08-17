@@ -60,6 +60,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import os
 import re
 import sys
@@ -1104,9 +1105,19 @@ def _require_boolean(value, label: str):
 
 
 def _require_integer(value, label: str, *, minimum=None):
-    if isinstance(value, bool) or not isinstance(value, int):
+    # Draft-07 integer semantics: an integer is any number with a zero
+    # fractional part, so a float like 1.0 IS a valid integer (1 and 1.0 are the
+    # same JSON value) while 1.5 is not. A bool is never an integer. This mirrors
+    # what jsonschema's Draft7Validator accepts for {"type": "integer"}.
+    if isinstance(value, bool):
         raise ManifestValidationError(f"{label} must be an integer")
-    if minimum is not None and value < minimum:
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        number = value
+    else:
+        raise ManifestValidationError(f"{label} must be an integer")
+    if minimum is not None and number < minimum:
         raise ManifestValidationError(f"{label} must be >= {minimum}")
     return value
 
@@ -1151,8 +1162,12 @@ def validate_connect_manifest(manifest: dict) -> None:
     item, `evidence_summary`, the `contract` and its `fields` items). Array item
     types are checked for `findings`, `differences`, `required_roles`,
     `apply_plan`, `changed_paths`, and `contract.fields`. Timestamp/string
-    fields reuse the shared envelope helpers. Every message names the offending
-    path. A test-only jsonschema parity suite pins this to the schemas.
+    fields reuse the shared envelope helpers. An ``integer`` leaf follows Draft-07
+    semantics — an integral float such as ``1.0`` is accepted, ``1.5`` is not.
+    Every message names the offending path, and array elements carry their index
+    (e.g. ``findings[1].status``, ``contract.fields[0].type``) so a malformed row
+    points straight at itself. A test-only jsonschema parity suite pins this to
+    the schemas.
     """
     validate_envelope(manifest)
 
@@ -1188,20 +1203,22 @@ def validate_connect_manifest(manifest: dict) -> None:
     _require_string(contract["generated_at"], "contract.generated_at", min_length=1)
     _validate_iso8601_timestamp(contract["generated_at"], "contract.generated_at")
     contract_fields = _require_array(contract["fields"], "contract.fields")
-    for field in contract_fields:
-        field = _require_object_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
-        _reject_unknown_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
-        _require_string(field["name"], "contract field name", min_length=1)
-        _require_boolean(field["required"], "contract field required")
-        _require_nullable_enum(field["type"], _CONTRACT_TYPE_ENUM, "contract field type")
+    for index, field in enumerate(contract_fields):
+        label = f"contract.fields[{index}]"
+        field = _require_object_keys(field, _CONTRACT_FIELD_KEYS, label)
+        _reject_unknown_keys(field, _CONTRACT_FIELD_KEYS, label)
+        _require_string(field["name"], f"{label}.name", min_length=1)
+        _require_boolean(field["required"], f"{label}.required")
+        _require_nullable_enum(field["type"], _CONTRACT_TYPE_ENUM, f"{label}.type")
         _require_nullable_enum(
-            field["cardinality"], _CONTRACT_CARDINALITY_ENUM, "contract field cardinality"
+            field["cardinality"], _CONTRACT_CARDINALITY_ENUM, f"{label}.cardinality"
         )
 
-    for finding in manifest["findings"]:
-        finding = _require_object_keys(finding, _FINDING_REQUIRED_KEYS, "finding")
-        _require_string(finding["id"], "finding id")
-        _require_enum(finding["status"], _FINDING_STATUS_ENUM, "finding status")
+    for index, finding in enumerate(manifest["findings"]):
+        label = f"findings[{index}]"
+        finding = _require_object_keys(finding, _FINDING_REQUIRED_KEYS, label)
+        _require_string(finding["id"], f"{label}.id")
+        _require_enum(finding["status"], _FINDING_STATUS_ENUM, f"{label}.status")
 
     conformance = manifest["conformance"]
     conformance = _require_object_keys(conformance, _CONFORMANCE_KEYS, "conformance")
@@ -1210,13 +1227,14 @@ def validate_connect_manifest(manifest: dict) -> None:
     _require_boolean(conformance["evaluated"], "conformance.evaluated")
     _require_integer(conformance["item_count"], "conformance.item_count", minimum=0)
     differences = _require_array(conformance["differences"], "conformance.differences")
-    for diff in differences:
-        diff = _require_object_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
-        _reject_unknown_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
-        _require_string(diff["field"], "conformance difference field")
-        _require_string(diff["expected"], "conformance difference expected")
-        _require_string(diff["actual"], "conformance difference actual")
-        _require_string(diff["path"], "conformance difference path")
+    for index, diff in enumerate(differences):
+        label = f"conformance.differences[{index}]"
+        diff = _require_object_keys(diff, _DIFFERENCE_KEYS, label)
+        _reject_unknown_keys(diff, _DIFFERENCE_KEYS, label)
+        _require_string(diff["field"], f"{label}.field")
+        _require_string(diff["expected"], f"{label}.expected")
+        _require_string(diff["actual"], f"{label}.actual")
+        _require_string(diff["path"], f"{label}.path")
 
     evidence_summary = _require_object_keys(
         manifest["evidence_summary"], _EVIDENCE_SUMMARY_KEYS, "evidence_summary"
@@ -1234,11 +1252,12 @@ def validate_connect_manifest(manifest: dict) -> None:
         _require_string(role, f"evidence_summary.required_roles[{index}]")
 
     apply_plan = _require_array(manifest["apply_plan"], "apply_plan")
-    for item in apply_plan:
-        item = _require_object_keys(item, _APPLY_PLAN_ITEM_REQUIRED_KEYS, "apply_plan item")
-        _require_string(item["path"], "apply_plan item path")
-        _require_enum(item["action"], _APPLY_ACTION_ENUM, "apply_plan item action")
-        _require_string(item["description"], "apply_plan item description")
+    for index, item in enumerate(apply_plan):
+        label = f"apply_plan[{index}]"
+        item = _require_object_keys(item, _APPLY_PLAN_ITEM_REQUIRED_KEYS, label)
+        _require_string(item["path"], f"{label}.path")
+        _require_enum(item["action"], _APPLY_ACTION_ENUM, f"{label}.action")
+        _require_string(item["description"], f"{label}.description")
 
     changed_paths = _require_array(manifest["changed_paths"], "changed_paths")
     for index, path_value in enumerate(changed_paths):

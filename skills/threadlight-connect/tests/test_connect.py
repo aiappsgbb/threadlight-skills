@@ -32,7 +32,10 @@ from connect import (  # noqa: E402
 
 REPO_ROOT = SKILL_ROOT.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-from skills._shared.manifest import ManifestValidationError  # noqa: E402
+from skills._shared.manifest import (  # noqa: E402
+    ManifestValidationError,
+    _validate_iso8601_timestamp,
+)
 
 PINNED = "2026-08-17T10:00:00+00:00"
 CURRENT_IDENTITY = "agent-123"
@@ -1222,7 +1225,7 @@ def test_validate_rejects_unknown_contract_key():
 def test_validate_rejects_unknown_contract_field_key():
     manifest = _valid_manifest()
     manifest["contract"]["fields"][0]["extra"] = 1
-    with pytest.raises(ManifestValidationError, match="contract field"):
+    with pytest.raises(ManifestValidationError, match=re.escape("contract.fields[0]")):
         connect.validate_connect_manifest(manifest)
 
 
@@ -1312,7 +1315,15 @@ _REFERENCES_DIR = SKILL_ROOT / "references"
 @pytest.fixture(scope="module")
 def jsonschema_validator():
     """A Draft-07 validator over the on-disk manifest schema, with the
-    ``$ref``-ed data-contract schema resolvable from an in-memory registry."""
+    ``$ref``-ed data-contract schema resolvable from an in-memory registry and a
+    ``date-time`` format checker.
+
+    jsonschema's default ``FormatChecker`` treats ``date-time`` as a no-op unless
+    an RFC-3339 backend (e.g. ``rfc3339-validator``) is installed, which would let
+    it silently ACCEPT the malformed timestamps the shared envelope rejects. We
+    register a ``date-time`` checker backed by the *same* shared helper the hand
+    validator uses, so timestamp accept/reject is identical across both validators
+    by construction — the whole point of the parity suite below."""
     jsonschema = pytest.importorskip("jsonschema")
     referencing = pytest.importorskip("referencing")
 
@@ -1328,7 +1339,22 @@ def jsonschema_validator():
             (contract_schema["$id"], referencing.Resource.from_contents(contract_schema)),
         ]
     )
-    return jsonschema.Draft7Validator(manifest_schema, registry=registry)
+
+    format_checker = jsonschema.FormatChecker()
+
+    @format_checker.checks("date-time", raises=(ManifestValidationError,))
+    def _is_iso8601_date_time(value):
+        # jsonschema applies a format check to every instance; only strings carry
+        # the date-time format (a null source_oldest_at is not this format's
+        # concern and must pass through untouched).
+        if not isinstance(value, str):
+            return True
+        _validate_iso8601_timestamp(value, "date-time")
+        return True
+
+    return jsonschema.Draft7Validator(
+        manifest_schema, registry=registry, format_checker=format_checker
+    )
 
 
 def _rich_connect_manifest(**overrides):
@@ -1403,6 +1429,65 @@ def _set_path(manifest, path, value):
     return manifest
 
 
+# --- Schema-valid boundary manifests: every one must be accepted by BOTH the
+# hand validator and Draft7Validator + FormatChecker. These pin the tricky
+# edges — an integral float for an integer field, empty arrays, and null
+# nullable fields — where a naive mirror could drift from Draft-07 semantics.
+def _manifest_integral_float_item_count():
+    """item_count as 1.0: Draft-07 treats a zero-fraction float as an integer
+    (1 and 1.0 are the same JSON value), so both validators must accept it."""
+    manifest = copy.deepcopy(_rich_connect_manifest())
+    manifest["conformance"]["item_count"] = 1.0
+    return manifest
+
+
+def _manifest_all_empty_arrays():
+    """Every schema array emptied at once — no array declares a minItems, so an
+    empty findings/differences/required_roles/apply_plan/changed_paths/fields is
+    valid under both validators."""
+    manifest = copy.deepcopy(_valid_manifest())
+    manifest["findings"] = []
+    manifest["conformance"]["differences"] = []
+    manifest["evidence_summary"]["required_roles"] = []
+    manifest["apply_plan"] = []
+    manifest["changed_paths"] = []
+    manifest["contract"]["fields"] = []
+    return manifest
+
+
+def _manifest_null_nullable_fields():
+    """Every nullable leaf set to null: freshness.source_oldest_at plus each
+    contract field's type/cardinality (declared ``["string", "null"]``)."""
+    manifest = copy.deepcopy(_rich_connect_manifest())
+    manifest["freshness"]["source_oldest_at"] = None
+    for field in manifest["contract"]["fields"]:
+        field["type"] = None
+        field["cardinality"] = None
+    return manifest
+
+
+def _manifest_with_two_element_arrays():
+    """A schema-valid manifest whose every constrained array carries two valid
+    elements, so a single mutation of the SECOND element (index 1) exercises the
+    validator's array-index path reporting."""
+    manifest = copy.deepcopy(_rich_connect_manifest())
+    manifest["findings"].append(
+        {"id": "CONNECT-SECOND", "status": "pass", "detail": {}}
+    )
+    manifest["conformance"]["differences"].append(
+        {"field": "f2", "expected": "string|required", "actual": "missing", "path": "$.items[1].f2"}
+    )
+    manifest["evidence_summary"]["required_roles"].append("Case.Write")
+    manifest["contract"]["fields"].append(
+        {"name": "second", "required": False, "type": "string", "cardinality": "single"}
+    )
+    manifest["apply_plan"].append(
+        {"path": "specs/OTHER.md", "action": "update", "description": "second file"}
+    )
+    manifest["changed_paths"].append("specs/OTHER.md")
+    return manifest
+
+
 # (label, path-into-manifest, replacement-value) — each mutates exactly one leaf
 # of an otherwise-valid manifest into a schema violation.
 _MALFORMED_MANIFEST_CASES = [
@@ -1437,6 +1522,18 @@ _MALFORMED_MANIFEST_CASES = [
     ("unknown difference key", ("conformance", "differences", 0, "unexpected"), "x"),
     ("manifest schema wrong const", ("schema",), "wrong-manifest/v1"),
     ("contract schema wrong const", ("contract", "schema"), "wrong-contract/v1"),
+    # Shared-envelope scalar parity — the manifest schema must be as strict as the
+    # shared envelope: non-empty strings and RFC-3339 timestamps, enforced by
+    # jsonschema's minLength + the date-time FormatChecker registered above.
+    ("tool_version empty violates minLength", ("tool_version",), ""),
+    ("generated_at empty violates minLength", ("generated_at",), ""),
+    ("generated_at not a timestamp", ("generated_at",), "not-a-timestamp"),
+    ("generated_at date without time", ("generated_at",), "2026-08-17"),
+    ("source_oldest_at not a timestamp", ("freshness", "source_oldest_at"), "nope"),
+    ("source_oldest_at empty string", ("freshness", "source_oldest_at"), ""),
+    ("contract.generated_at not a timestamp", ("contract", "generated_at"), "bad-ts"),
+    ("valid_for_hours 1.5 is not integral", ("freshness", "valid_for_hours"), 1.5),
+    ("item_count 1.5 is not integral", ("conformance", "item_count"), 1.5),
 ]
 
 
@@ -1463,6 +1560,10 @@ def test_malformed_manifest_rejected_by_both_validators(path, value, jsonschema_
         ("complete-verified", _valid_manifest),
         ("complete-drift", _rich_connect_manifest),
         ("partial-unevaluated", _partial_connect_manifest),
+        ("integral-float-item-count", _manifest_integral_float_item_count),
+        ("all-empty-arrays", _manifest_all_empty_arrays),
+        ("null-nullable-fields", _manifest_null_nullable_fields),
+        ("two-element-arrays", _manifest_with_two_element_arrays),
     ],
 )
 def test_valid_manifest_accepted_by_both_validators(label, builder, jsonschema_validator):
@@ -1484,10 +1585,10 @@ def test_valid_manifest_accepted_by_both_validators(label, builder, jsonschema_v
         (("conformance", "item_count"), -1, "conformance.item_count"),
         (("evidence_summary", "obo_present"), "yes", "evidence_summary.obo_present"),
         (("evidence_summary", "required_roles"), [1], "evidence_summary.required_roles[0]"),
-        (("apply_plan", 0, "action"), "delete", "apply_plan item action"),
+        (("apply_plan", 0, "action"), "delete", "apply_plan[0].action"),
         (("changed_paths",), [42], "changed_paths[0]"),
-        (("contract", "fields", 0, "required"), "yes", "contract field required"),
-        (("contract", "fields", 0, "type"), "weird", "contract field type"),
+        (("contract", "fields", 0, "required"), "yes", "contract.fields[0].required"),
+        (("contract", "fields", 0, "type"), "weird", "contract.fields[0].type"),
     ],
 )
 def test_validation_error_names_offending_path(path, value, expected_fragment):
@@ -1495,4 +1596,75 @@ def test_validation_error_names_offending_path(path, value, expected_fragment):
 
     with pytest.raises(ManifestValidationError, match=re.escape(expected_fragment)):
         connect.validate_connect_manifest(manifest)
+
+
+# Every array leaf must report the offending INDEX, not just the array name — a
+# malformed second element (index 1) must surface a ``[1]`` path so a large
+# manifest points straight at the bad row instead of the whole collection.
+_SECOND_ELEMENT_CASES = [
+    ("findings[1].status", ("findings", 1, "status"), "broken", "findings[1]"),
+    (
+        "conformance.differences[1].field",
+        ("conformance", "differences", 1, "field"),
+        42,
+        "conformance.differences[1]",
+    ),
+    (
+        "evidence_summary.required_roles[1]",
+        ("evidence_summary", "required_roles", 1),
+        99,
+        "evidence_summary.required_roles[1]",
+    ),
+    (
+        "contract.fields[1].type",
+        ("contract", "fields", 1, "type"),
+        "weird",
+        "contract.fields[1]",
+    ),
+    ("apply_plan[1].action", ("apply_plan", 1, "action"), "delete", "apply_plan[1]"),
+    ("changed_paths[1]", ("changed_paths", 1), 42, "changed_paths[1]"),
+]
+
+
+def test_second_element_manifest_is_itself_valid():
+    # Precondition: the fixture manifest (before mutation) must validate, so each
+    # case below fails ONLY because of its deliberate second-element mutation.
+    connect.validate_connect_manifest(_manifest_with_two_element_arrays())
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_fragment"),
+    [(case[1], case[2], case[3]) for case in _SECOND_ELEMENT_CASES],
+    ids=[case[0] for case in _SECOND_ELEMENT_CASES],
+)
+def test_invalid_second_array_element_names_indexed_path(path, value, expected_fragment):
+    manifest = _set_path(_manifest_with_two_element_arrays(), path, value)
+
+    with pytest.raises(ManifestValidationError) as excinfo:
+        connect.validate_connect_manifest(manifest)
+
+    message = str(excinfo.value)
+    assert "[1]" in message, f"error should name the second element's index: {message!r}"
+    assert expected_fragment in message, (
+        f"error should name the full indexed path {expected_fragment!r}: {message!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_fragment"),
+    [(case[1], case[2], case[3]) for case in _SECOND_ELEMENT_CASES],
+    ids=[case[0] for case in _SECOND_ELEMENT_CASES],
+)
+def test_invalid_second_array_element_rejected_by_both_validators(
+    path, value, expected_fragment, jsonschema_validator
+):
+    manifest = _set_path(_manifest_with_two_element_arrays(), path, value)
+
+    with pytest.raises(ManifestValidationError):
+        connect.validate_connect_manifest(manifest)
+
+    assert not jsonschema_validator.is_valid(manifest), (
+        "jsonschema unexpectedly ACCEPTED a manifest the hand validator rejected "
+        f"(second-element mutation at {path} -> {value!r})"
+    )
 

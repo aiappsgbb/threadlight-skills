@@ -12,8 +12,8 @@
   "additionalProperties": false,
   "properties": {
     "schema": {"const": "threadlight-connect-manifest/v1"},
-    "tool_version": {"type": "string"},
-    "generated_at": {"type": "string", "format": "date-time"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "minLength": 1, "format": "date-time"},
     "freshness": {
       "type": "object",
       "required": ["valid_for_hours", "source_oldest_at"],
