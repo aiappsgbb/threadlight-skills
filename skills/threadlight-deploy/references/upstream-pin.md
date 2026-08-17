@@ -79,6 +79,19 @@ known_issues:
       Not yet addressed. Deliberately left open: choosing between the code and
       container paths is a behavioural change on the critical design->deploy path
       and needs its own reviewed change, not a drive-by edit.
+  - id: hosted-agent-dependency-unresolvable
+    summary: |
+      In E2E run 32035758619 the deploying agent had to hand-patch the generated
+      pilot's hosted-agent dependency line, pinning `agent-framework-foundry-hosting`
+      to a buildable prerelease set before the container build would resolve. The
+      skill therefore tells the model to write a dependency specification that does
+      not install as-is. Same rot class as the `agent-framework` extras breakage
+      fixed on 2026-08-14: an upstream that silently invalidates a documented path.
+    status: open
+    mitigation: |
+      Not yet addressed. Recorded from log evidence rather than fixed, because the
+      correct spec cannot be verified without a live container build; guessing it
+      would trade a known-bad pin for an unverified one.
 
 validation:
   requires:
@@ -129,9 +142,9 @@ validation:
     - "THREADLIGHT_DEPLOY_VALIDATION_PASS"
   failure_signatures: []
 
-last_validated: 2026-08-14
+last_validated: 2026-08-17
 validated_by: ricchi
-known_issues_count: 2
+known_issues_count: 3
 ---
 
 # Upstream pin — `threadlight-deploy` skill

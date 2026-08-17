@@ -9,6 +9,27 @@ field.
 
 ### Fixed
 
+- **The E2E post-deploy assert failed on a healthy deployment.** Run
+  `32035758619` deployed the pilot successfully — Phase 3 and Phase 4 both green,
+  the agent answered two live killer prompts through a full tool loop — and then
+  the assert step reported *"Agent did not reach status=active"* and failed the
+  run. Cause: the single `azd auth login` at job start is ~90 minutes stale by
+  the time that step runs, so `azd ai agent show` died on expired auth in 0.45s.
+  The deploying agent had hand-refreshed the OIDC token twice mid-run to get its
+  own work done; a plain bash step cannot, so it just failed. The step now
+  refreshes azd auth before asserting. The pre-existing `timeout` guards handled
+  the *symptom* (azd blocking on an interactive prompt) and were left in place;
+  this addresses the cause.
+- **The same assert discarded its own diagnosis.** Two traps, both hit by that
+  run: `azd` writes `ERROR: …` to **stdout**, not stderr, so the `2>/dev/null`
+  suppressed nothing and instead fed the error text into `jq`, which failed to
+  parse it and collapsed everything into an unexplained `no-agent`; and
+  `jq -r '.status'` on *empty* input exits `0`, so a silent `azd` failure would
+  have set an empty status and never triggered the `||` fallback at all. The step
+  now tests azd's own exit code and prints the raw output on failure. Verified
+  against four stubbed scenarios (healthy, expired auth, non-active status,
+  silent-empty) — the expired-auth case now surfaces the real error text.
+
 - **`azd ai agent validate` does not exist — the deploy skill's Step 6 gate was
   broken.** SKILL.md presented it as check 3 of 3 that *"all must pass before
   Phase 7"*, so following the skill literally hit `unknown command` on a

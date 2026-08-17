@@ -808,7 +808,11 @@ jobs:
       # find only if the expected path is absent (future scenario).
       - name: Assert agent deployed + responding
         if: success() && inputs.mode != 'smoke-only'
-        timeout-minutes: 3
+        # Bumped 3 -> 5 to leave room for the azd auth refresh added below.
+        timeout-minutes: 5
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
           PILOT_DIR="$E2E_WORKSPACE/${PILOT_SUBDIR}"
@@ -832,6 +836,28 @@ jobs:
             echo "❌ azd env AZURE_RESOURCE_GROUP=$ENV_RG does not match workflow E2E_RG_NAME=$E2E_RG_NAME — teardown would miss resources"
             exit 1
           fi
+          # ── Refresh azd auth before asserting ──────────────────────────
+          # The single `azd auth login` at job start is ~90 min stale by the
+          # time we get here, and azd's federated token does not outlive that.
+          # Run 32035758619 proved the cost: the deploy was healthy (Phase 3
+          # and Phase 4 both green, the agent answered two live killer prompts)
+          # yet this step reported "Agent did not reach status=active" because
+          # `azd ai agent show` failed on expired auth in 0.45s. The agent
+          # itself had to hand-refresh the OIDC token twice mid-run to get its
+          # own work done — a plain bash step cannot, so it just fails.
+          #
+          # The pre-existing `timeout` guards below handle the *symptom* of
+          # stale auth (azd blocking on an interactive prompt); this handles
+          # the cause. Cheap, deterministic, and it does not weaken the assert.
+          echo "----- refreshing azd auth -----"
+          if ! azd auth login \
+                 --client-id "$AZURE_CLIENT_ID" \
+                 --federated-credential-provider github \
+                 --tenant-id "$AZURE_TENANT_ID"; then
+            echo "❌ azd auth refresh failed — cannot trust anything below"
+            exit 1
+          fi
+          azd auth login --check-status
           # Hard timeouts on every azd call because azd WILL block on interactive
           # auth prompts when its own token cache has expired (run #26766613882:
           # 'azd ai agent show' hung for 54 min waiting for input until the
@@ -839,12 +865,32 @@ jobs:
           echo "----- azd env get-values -----"
           timeout 30 azd env get-values 2>/dev/null | grep -E "(AGENT|FOUNDRY)_" || true
           echo "----- azd ai agent show -----"
-          AGENT_STATUS=$(timeout 60 azd ai agent show -o json --no-prompt 2>/dev/null | jq -r '.status' 2>/dev/null \
-                       || timeout 60 azd ai agent show "$(basename "$PILOT_DIR")" -o json --no-prompt 2>/dev/null | jq -r '.status' 2>/dev/null \
-                       || echo "no-agent")
+          # Capture combined output and test azd's OWN exit code. Two traps here,
+          # both hit by run 32035758619:
+          #   1. azd writes its `ERROR: ...` to STDOUT, not stderr — so the old
+          #      `2>/dev/null` suppressed nothing and simply fed the error text
+          #      into jq, which then failed to parse it. The real diagnosis was
+          #      discarded, leaving only "no-agent".
+          #   2. `jq -r '.status'` on EMPTY input exits 0, so a silent azd
+          #      failure would have set an empty status and never triggered the
+          #      `||` fallback at all.
+          # Testing azd's exit code and keeping the raw output makes the next
+          # failure readable instead of a mystery.
+          SHOW_OUT=""
+          if SHOW_OUT=$(timeout 60 azd ai agent show -o json --no-prompt 2>&1); then
+            :
+          elif SHOW_OUT=$(timeout 60 azd ai agent show "$(basename "$PILOT_DIR")" -o json --no-prompt 2>&1); then
+            :
+          else
+            echo "❌ 'azd ai agent show' failed. Raw output:"
+            echo "$SHOW_OUT"
+            exit 1
+          fi
+          AGENT_STATUS=$(printf '%s' "$SHOW_OUT" | jq -r '.status' 2>/dev/null || echo "unparseable")
           echo "Agent status: $AGENT_STATUS"
           [ "$AGENT_STATUS" = "active" ] || {
-            echo "❌ Agent did not reach status=active"
+            echo "❌ Agent did not reach status=active. Raw 'azd ai agent show' output:"
+            echo "$SHOW_OUT"
             exit 1
           }
           echo "✅ Agent active"
