@@ -62,7 +62,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip pytest pyyaml
+      - run: python -m pip install --upgrade pip pytest pyyaml packaging
       - name: Guard - SKILL.md description length (<=1024 chars)
         # Deterministic per-PR guard for the silent loader-drop regression:
         # any skills/*/SKILL.md whose parsed `description` exceeds 1024 chars

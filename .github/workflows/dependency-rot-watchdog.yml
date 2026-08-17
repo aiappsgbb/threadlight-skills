@@ -1,0 +1,81 @@
+name: dependency-rot-watchdog
+
+# Nothing in the repo installs the Pattern 0 quickstart's dependencies, and no
+# test exercises them. The only sensor was a ~$1 manually-dispatched E2E run,
+# which is why an unresolvable pin sat broken for six weeks — with 777 green
+# tests the whole time.
+#
+# This is that missing sensor. It runs weekly, costs nothing, and touches no
+# Azure resources.
+#
+# Two independent checks, because neither can see what the other sees:
+#
+#   1. `pip install --dry-run` — the real resolver. This is the only thing that
+#      catches a broken extra or a conflicting transitive dependency, which is
+#      exactly the shape of the break that actually happened.
+#   2. check_dependency_rot.py — specifier-vs-PyPI analysis. This is the only
+#      thing that catches a pin that still resolves but has no headroom left,
+#      or has fallen far behind upstream. The resolver is perfectly happy in
+#      both cases.
+
+on:
+  schedule:
+    # Mondays 07:00 UTC — a fresh finding lands at the start of the week rather
+    # than being discovered mid-demo on a Friday.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      fail_on_drift:
+        description: "Also fail the run on soft rot (drift / low headroom)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-rot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: python -m pip install --upgrade pip packaging
+
+      - name: Resolver check — can the quickstart still be installed?
+        id: resolve
+        # `[aoai]` is the extra the E2E workflow and the workshop both install,
+        # so it is the combination that must keep working. --dry-run resolves
+        # the full graph without installing anything, so this stays fast and
+        # leaves no state behind.
+        run: |
+          set -o pipefail
+          cd skills/threadlight-local-test/references/quickstart
+          if pip install --dry-run --ignore-installed '.[aoai]' 2>&1 | tee /tmp/resolve.log; then
+            echo "Resolver is happy — quickstart[aoai] installs cleanly."
+          else
+            echo "::error::pip could not resolve quickstart[aoai] — the Pattern 0 path is broken for every user right now."
+            echo "resolver_failed=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Specifier check — headroom and drift against PyPI
+        # Deliberately runs even when the resolver step failed: if the build is
+        # broken, the per-package breakdown is exactly what you want in front
+        # of you, not something to go and fetch by hand.
+        if: always()
+        run: |
+          python scripts/ci/check_dependency_rot.py \
+            ${{ inputs.fail_on_drift && '--fail-on-drift' || '' }}
+
+      - name: Upload resolver log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-rot-resolver-log
+          path: /tmp/resolve.log
+          if-no-files-found: ignore
