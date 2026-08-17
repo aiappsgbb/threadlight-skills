@@ -206,12 +206,11 @@ _SECRET_VALUE_PATTERNS = (
 
 # Azure Shared Access Signature (SAS) detection — structural, never entropy.
 # An Azure SAS is an http(s) URL (or a bare query string) whose query carries
-# the `sig` signature together with the signed-token markers. Detecting it by
-# the CO-OCCURRENCE of `sig` and a SAS marker (rather than by generic entropy)
+# the `sig` signature, `sv` version, and another signed-token marker. Detecting
+# that co-occurrence (rather than relying on generic entropy)
 # means an ordinary URL or opaque document id is never mistaken for a
 # credential, while a real SAS token smuggled through an ID/baseline field is.
-_SAS_SIGNATURE_KEYS = frozenset({"sig"})
-_SAS_MARKER_KEYS = frozenset({"sv", "se", "sp", "sr", "st", "spr"})
+_SAS_ADDITIONAL_MARKER_KEYS = frozenset({"se", "sp", "sr", "st", "spr"})
 
 # Strict RFC 3339 `date-time` with a mandatory timezone — mirrors the shared
 # envelope's timestamp contract so a `captured_at` that would be REJECTED by
@@ -271,13 +270,10 @@ def _is_forbidden_key(key: str) -> bool:
 def _looks_like_sas(value: str) -> bool:
     """True when *value* is (or embeds) an Azure Shared Access Signature.
 
-    Detected structurally, never by entropy: the value must be an ``http(s)``
-    URL or a leading ``?`` query string whose query carries the ``sig``
-    signature key together with at least one SAS marker
-    (``sv``/``se``/``sp``/``sr``/``st``/``spr``). An ordinary URL (no query, or
-    a non-SAS query), a bare opaque id, or a repo-relative path is never
-    flagged — only the co-occurrence of a signature and a signed-token marker
-    is a SAS.
+    Detected structurally, never by entropy: an ``http(s)`` URL, leading-``?``
+    query, or unprefixed query must carry ``sig`` + ``sv`` + at least one of
+    ``se``/``sp``/``sr``/``st``/``spr``. Requiring all three roles keeps
+    ordinary URLs, opaque ids, and repo-relative paths from being flagged.
     """
     text = value.strip()
     if not text:
@@ -291,7 +287,7 @@ def _looks_like_sas(value: str) -> bool:
     elif text.startswith("?"):
         query = text[1:]
     else:
-        return False
+        query = text
     if not query:
         return False
     try:
@@ -299,7 +295,11 @@ def _looks_like_sas(value: str) -> bool:
     except ValueError:
         return False
     keys = {key.lower() for key in parsed}
-    return bool(keys & _SAS_SIGNATURE_KEYS) and bool(keys & _SAS_MARKER_KEYS)
+    return (
+        "sig" in keys
+        and "sv" in keys
+        and bool(keys & _SAS_ADDITIONAL_MARKER_KEYS)
+    )
 
 
 def _looks_like_secret(value: str) -> bool:
@@ -308,8 +308,8 @@ def _looks_like_secret(value: str) -> bool:
     Structural allowlists and forbidden key names protect the manifest shape;
     this scan intentionally does not guess from entropy because opaque evidence
     IDs and baseline refs commonly use the same alphabets as credentials. It
-    does, however, reject a value that is structurally an Azure SAS (a `sig`
-    signature alongside SAS markers) — an ordinary URL/opaque id is untouched.
+    does, however, reject a value that is structurally an Azure SAS (``sig`` +
+    ``sv`` + another SAS marker) — an ordinary URL/opaque id is untouched.
     """
     text = value.strip()
     if not text:
@@ -671,15 +671,15 @@ def assess_acl(sources: list, acl_runs: list) -> dict:
     false` so the manifest stays `partial` even when the finding is `must-fix`.
     """
     finding_id = "GRD-001"
-    acl_sources = [source for source in sources if _source_requires_acl(source)]
-    if not acl_sources:
-        return _finding(finding_id, "pass", "no-acl-protected-sources")
-
     declared_ids = {source["id"] for source in sources}
     normalized = [
         _normalize_acl_run(run, index, declared_ids)
         for index, run in enumerate(acl_runs)
     ]
+    acl_sources = [source for source in sources if _source_requires_acl(source)]
+    if not acl_sources:
+        return _finding(finding_id, "pass", "no-acl-protected-sources")
+
     groups: dict[str, list] = {}
     for run in normalized:
         groups.setdefault(run["source_id"], []).append(run)
@@ -761,13 +761,15 @@ def assess_citations(sources: list, citation_runs: list) -> dict:
     ]
 
     cite_sources = [source for source in sources if source["citation_required"]]
-    covered = {run["source_id"] for run in normalized}
+    cite_source_ids = {source["id"] for source in cite_sources}
+    applicable = [run for run in normalized if run["source_id"] in cite_source_ids]
+    covered = {run["source_id"] for run in applicable}
     uncovered = sorted(
         source["id"] for source in cite_sources if source["id"] not in covered
     )
 
     missing_all: list[str] = []
-    for run in normalized:
+    for run in applicable:
         result = validate_citations(run["citations"], run["retrieved_ids"])
         missing_all.extend(result["missing_from_retrieval"])
 
@@ -802,11 +804,13 @@ def assess_refusal(sources: list, refusal_runs: list) -> dict:
     ]
 
     refuse_sources = [source for source in sources if source["refuse_when_unsupported"]]
-    covered = {run["source_id"] for run in normalized}
+    refuse_source_ids = {source["id"] for source in refuse_sources}
+    applicable = [run for run in normalized if run["source_id"] in refuse_source_ids]
+    covered = {run["source_id"] for run in applicable}
     uncovered = sorted(
         source["id"] for source in refuse_sources if source["id"] not in covered
     )
-    answered = sorted({run["query_id"] for run in normalized if not run["refused"]})
+    answered = sorted({run["query_id"] for run in applicable if not run["refused"]})
 
     extras: dict[str, Any] = {}
     if uncovered:
@@ -1394,22 +1398,30 @@ def _resolve_within_root(root: str, relative_path: str) -> str:
     is the output/project boundary — a manifest may only ever be written
     inside it.
     """
-    root_abs = os.path.abspath(root)
-    combined = (
-        relative_path
-        if os.path.isabs(relative_path)
-        else os.path.join(root_abs, relative_path)
-    )
-    combined_abs = os.path.abspath(combined)
+    root_path = Path(root).resolve(strict=True)
+    candidate = Path(relative_path)
+    if not candidate.is_absolute():
+        candidate = root_path / candidate
+
+    # Resolve the nearest existing ancestor strictly, then append any missing
+    # parent segments. This follows existing parent symlinks before containment
+    # is checked without requiring the destination directory to exist yet.
+    parent = candidate.parent
+    missing_parts: list[str] = []
+    while not parent.exists() and not parent.is_symlink():
+        missing_parts.append(parent.name)
+        parent = parent.parent
+    resolved_parent = parent.resolve(strict=True)
+    for part in reversed(missing_parts):
+        resolved_parent /= part
+
     try:
-        within = os.path.commonpath([root_abs, combined_abs]) == root_abs
+        resolved_parent.relative_to(root_path)
     except ValueError:
-        within = False  # different drives / mixed absolute+relative on Windows
-    if not within:
         raise GroundEvidenceError(
             f"output path {relative_path!r} escapes the project root"
         )
-    return combined_abs
+    return str(resolved_parent / candidate.name)
 
 
 def main(argv=None) -> int:
@@ -1443,7 +1455,14 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
 
-    root = os.path.abspath(args.project_root)
+    try:
+        root_path = Path(args.project_root).resolve(strict=True)
+        if not root_path.is_dir():
+            raise NotADirectoryError(f"{root_path} is not a directory")
+        root = str(root_path)
+    except OSError as exc:
+        print(f"error: invalid project root {args.project_root}: {exc}")
+        return 1
     evidence_path = (
         args.evidence_file
         if os.path.isabs(args.evidence_file)

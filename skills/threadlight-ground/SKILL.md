@@ -182,9 +182,9 @@ smuggled key/token in any ID field) before anything touches disk. Value
 scanning is **structural, never entropy-based**: opaque hashes, UUIDs, and
 base64/base64url document keys are legitimate IDs and are never rejected for
 looking random, while a value that parses as an Azure Shared Access Signature
-— an `http(s)` URL or bare `?`-query carrying the `sig` signature alongside
-SAS markers (`sv`/`se`/`sp`/`sr`/`st`/`spr`) — is rejected even though an
-ordinary URL or opaque id is not.
+— an `http(s)` URL, bare `?`-query, or unprefixed query carrying `sig`, `sv`,
+and at least one additional SAS marker (`se`/`sp`/`sr`/`st`/`spr`) — is
+rejected even though an ordinary URL or opaque id is not.
 `aggregate_telemetry` sums only genuinely numeric, non-negative, finite
 `subqueries`/`tokens` — a boolean, string, negative, or non-finite value
 raises rather than being coerced.
@@ -200,8 +200,9 @@ The `--evidence-file` is the SPEC-derived evidence bundle (`sources`,
 `acl_runs`, `citation_runs`, `refusal_runs`, `retrieval_quality_baseline`,
 optional `generated_at`) — the **`sources` inventory comes from that object,
 not from `--project-root`**. `--project-root` is only the output/project
-boundary: a `--manifest-path` that escapes it (an absolute path outside it or
-a `..` traversal) is rejected and nothing is written. `GroundEvidenceError`,
+boundary: a `--manifest-path` that escapes it (an absolute path outside it, a
+`..` traversal, or a parent symlink resolving outside it) is rejected before
+any temporary or destination file is written. `GroundEvidenceError`,
 `ManifestValidationError`, and read/write `OSError`/JSON errors are all caught
 cleanly (exit 1) so a failed run never corrupts a prior valid manifest.
 

@@ -63,6 +63,10 @@ AZURE_SAS_BLOB_URL = (
 AZURE_SAS_QUERY = (
     "?sv=2021-08-06&sp=r&se=2030-01-01T00:00:00Z&sr=b&sig=Abc123%2Fjkl%3D"
 )
+# The same token with no URL or leading question mark.
+AZURE_SAS_UNPREFIXED_QUERY = (
+    "sv=2021-08-06&sp=r&sr=b&sig=Abc123%2Fjkl%3D"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +181,22 @@ def test_no_acl_protected_sources_is_pass_without_runs():
     manifest = ground_manifest(sources=[source(permission_model="public")], acl_runs=[])
     assert by_id(manifest)["GRD-001"]["status"] == "pass"
     assert by_id(manifest)["GRD-001"]["detail"]["reason"] == "no-acl-protected-sources"
+
+
+def test_no_acl_protected_sources_still_rejects_ghost_evidence():
+    with pytest.raises(GroundEvidenceError, match="not a declared"):
+        ground_manifest(
+            sources=[source(permission_model="public")],
+            acl_runs=[entitled(source_id="ghost")],
+        )
+
+
+def test_no_acl_protected_sources_still_rejects_malformed_evidence():
+    with pytest.raises(GroundEvidenceError, match=r"acl_runs\[0\] must be an object"):
+        ground_manifest(
+            sources=[source(permission_model="public")],
+            acl_runs=[None],
+        )
 
 
 def test_acl_source_with_no_runs_is_not_verified_and_partial():
@@ -375,6 +395,24 @@ def test_acl_runs_grouped_by_source_id_worst_case_wins():
     }
 
 
+def test_acl_failure_from_public_source_does_not_fail_enabled_source():
+    sources_list = [
+        source(id="protected"),
+        source(id="public", permission_model="public"),
+    ]
+    result = assess_acl(
+        sources_list,
+        [
+            entitled(source_id="protected"),
+            unentitled(source_id="protected"),
+            entitled(source_id="public"),
+            unentitled(document_ids=["doc-1"], source_id="public"),
+        ],
+    )
+    assert result["status"] == "pass"
+    assert result["detail"]["reason"] == "acl-enforced"
+
+
 def test_acl_cross_source_hole_forces_partial_even_with_a_leak_elsewhere():
     # policy-library proves a leak (must-fix); hr-handbook has NO runs at all.
     # The must-fix surfaces, but the uncovered source still forces `partial`.
@@ -570,6 +608,22 @@ def test_citation_run_unknown_source_id_raises():
         assess_citations([source()], [cite_run(source_id="ghost")])
 
 
+def test_citation_failure_from_disabled_source_does_not_fail_enabled_source():
+    sources_list = [
+        source(id="required"),
+        source(id="optional", citation_required=False),
+    ]
+    result = assess_citations(
+        sources_list,
+        [
+            cite_run(source_id="required"),
+            cite_run(citations=["ghost-doc"], retrieved_ids=[], source_id="optional"),
+        ],
+    )
+    assert result["status"] == "pass"
+    assert result["detail"]["reason"] == "citations-grounded"
+
+
 def test_no_citation_required_source_is_trivial_pass():
     manifest = ground_manifest(
         sources=[source(permission_model="public", citation_required=False,
@@ -629,6 +683,22 @@ def test_refusal_run_missing_boolean_raises():
 def test_refusal_run_missing_query_id_raises():
     with pytest.raises(GroundEvidenceError, match="query_id"):
         assess_refusal([source()], [{"source_id": "policy-library", "refused": True}])
+
+
+def test_refusal_failure_from_disabled_source_does_not_fail_enabled_source():
+    sources_list = [
+        source(id="required"),
+        source(id="optional", refuse_when_unsupported=False),
+    ]
+    result = assess_refusal(
+        sources_list,
+        [
+            refuse_run(source_id="required"),
+            refuse_run(query_id="optional-q", refused=False, source_id="optional"),
+        ],
+    )
+    assert result["status"] == "pass"
+    assert result["detail"]["reason"] == "all-unsupported-refused"
 
 
 def test_refusal_never_persists_raw_query_text():
@@ -934,9 +1004,10 @@ def test_base64_and_base64url_azure_search_document_keys_are_accepted(document_i
 # ---------------------------------------------------------------------------
 # Azure SAS detection — structural (URL parsing), never generic entropy (Task 4)
 # ---------------------------------------------------------------------------
-def test_looks_like_sas_flags_blob_url_and_bare_query():
+def test_looks_like_sas_flags_url_prefixed_and_unprefixed_queries():
     assert ground._looks_like_sas(AZURE_SAS_BLOB_URL) is True
     assert ground._looks_like_sas(AZURE_SAS_QUERY) is True
+    assert ground._looks_like_sas(AZURE_SAS_UNPREFIXED_QUERY) is True
     assert ground._looks_like_secret(AZURE_SAS_BLOB_URL) is True
 
 
@@ -951,6 +1022,9 @@ def test_looks_like_sas_flags_blob_url_and_bare_query():
         # is not the co-occurrence that defines a SAS.
         "https://example.com/doc?sig=abc",
         "https://acct.blob.core.windows.net/c/b.pdf?sv=2021-08-06&sp=r",
+        "https://example.com/doc?sig=abc&sv=2021-08-06",
+        "sig=abc&sp=r&sr=b",
+        "sig=abc&sv=2021-08-06",
         # Opaque / path-like ids never parse as an http(s) or `?` query.
         SHA256_DOCUMENT_ID,
         BASE64URL_DOCUMENT_ID,
@@ -972,6 +1046,16 @@ def test_azure_sas_blob_url_as_document_id_is_rejected():
 def test_azure_sas_bare_query_as_document_id_is_rejected():
     with pytest.raises(GroundEvidenceError, match="secret-shaped"):
         covered(acl_runs=[entitled("e", [AZURE_SAS_QUERY]), unentitled("u", [])])
+
+
+def test_azure_sas_unprefixed_query_as_document_id_is_rejected():
+    with pytest.raises(GroundEvidenceError, match="secret-shaped"):
+        covered(
+            acl_runs=[
+                entitled("e", [AZURE_SAS_UNPREFIXED_QUERY]),
+                unentitled("u", []),
+            ]
+        )
 
 
 def test_azure_sas_baseline_reference_is_rejected():
@@ -1258,6 +1342,30 @@ def test_cli_rejects_absolute_manifest_path_outside_root(tmp_path):
     ])
     assert code == 1
     assert not outside.exists()
+
+
+def test_cli_rejects_symlinked_manifest_parent_escape_without_outside_write(
+    tmp_path, capsys
+):
+    project = tmp_path / "project"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("unchanged", encoding="utf-8")
+    (project / "specs").symlink_to(outside, target_is_directory=True)
+    _write_evidence(project, **_covered_evidence())
+
+    code = ground.main([
+        "--project-root", str(project),
+        "--evidence-file", "evidence.json",
+        "--emit",
+    ])
+
+    assert code == 1
+    assert "escapes the project root" in capsys.readouterr().out
+    assert sentinel.read_text(encoding="utf-8") == "unchanged"
+    assert not (outside / "ground-manifest.json").exists()
 
 
 def test_cli_reports_unreadable_evidence_cleanly(tmp_path, capsys):
