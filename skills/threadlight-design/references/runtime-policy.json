@@ -1,6 +1,20 @@
 {
   "schema": "threadlight.runtime-policy/v1",
-  "version": 1,
+  "version": 2,
+  "contract_version": "2.0.0",
+  "last_reviewed": "2026-08-17",
+  "authority": {
+    "repository": "aiappsgbb/threadlight-skills",
+    "path": "skills/threadlight-design/references/runtime-policy.json",
+    "cross_repository_consumers": false
+  },
+  "region_policy": {
+    "default": "eastus2",
+    "eu_residency": [
+      "swedencentral"
+    ],
+    "selection_rule": "Use an EU region only when the complete required resource set is available there."
+  },
   "selectors": {
     "frameworks": [
       "github-copilot-sdk",
@@ -42,6 +56,8 @@
     {
       "id": "explicit-supported-choice",
       "priority": 1,
+      "decision_date": "2026-08-17",
+      "permanent": true,
       "selection": "operator",
       "allowed_combinations_ref": "compatible_combinations",
       "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
@@ -58,6 +74,8 @@
     {
       "id": "deterministic-workflow",
       "priority": 2,
+      "decision_date": "2026-08-17",
+      "permanent": true,
       "when": "workflow_model=workflow",
       "framework": "microsoft-agent-framework",
       "runtime_shape": "workflow",
@@ -67,6 +85,8 @@
     {
       "id": "maf-agent-capabilities",
       "priority": 3,
+      "decision_date": "2026-08-17",
+      "permanent": true,
       "when": "requires_toolbox || requires_custom_python_tools || requires_file_generation || latency_sensitive_data_queries",
       "framework": "microsoft-agent-framework",
       "runtime_shape": "agent",
@@ -76,6 +96,8 @@
     {
       "id": "default-agent",
       "priority": 4,
+      "decision_date": "2026-08-05",
+      "expiry_condition": "Responses works end to end for the generated hosted runtime and every documented channel.",
       "when": "no higher-priority route matches",
       "framework": "github-copilot-sdk",
       "runtime_shape": "agent",
