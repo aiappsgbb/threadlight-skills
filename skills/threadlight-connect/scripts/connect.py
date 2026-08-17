@@ -25,9 +25,12 @@ Phases (also the CLI's conceptual pipeline, run in one invocation):
     generate-tests   -> write_conformance_tests(): executable pytest module
     verify           -> check_conformance(): field-level diff against a real sample
     plan             -> build_apply_plan(): file-by-file plan (always built, no I/O)
-    apply            -> apply_changes(): atomic SPEC.md + mcp-config.json write
+    apply            -> _commit_verified_apply(): one rollback-aware transaction
+                         over SPEC.md + mcp-config.json + connect-manifest.json
                          (only when --apply AND target_state == real-verified)
     emit             -> write_connect_manifest(): schema-validated, atomic
+                         (only on the non-apply / unverified path; on a verified
+                         apply the manifest is committed inside the transaction)
 
 State machine — exactly four states: `mock`, `real-unverified`,
 `real-verified`, `real-drift`. `integration_state` is the *persisted* current
@@ -46,14 +49,15 @@ stdlib-only. No network calls; no endpoint is ever invoked by this script —
 callers supply the "real" sample/response evidence themselves (e.g. captured
 via `entra-agent-id` + a manual test call). Malformed evidence never writes
 anything, so a prior valid `connect-manifest.json` / SPEC.md / mcp-config.json
-is preserved untouched. A write failure *during* apply is transactional: SPEC
-and the MCP config move together — an in-process failure after the first of
-the two `os.replace` calls rolls the already-applied file back to its captured
-prior bytes, so the pair never diverges. The one thing this cannot defend
-against is a hard crash / power loss between the two individually-atomic
-replaces (see `apply_changes`); if the compensating rollback itself fails, a
-`ConnectInconsistentStateError` names the unreconciled path(s) rather than
-claiming success.
+is preserved untouched. On a verified `--apply` the FINAL manifest is built and
+fully schema-validated *before* any file is mutated, then SPEC.md, the MCP
+config, and the manifest are committed as one transaction: an in-process
+failure after any of the three `os.replace` calls rolls every already-applied
+file back to its captured prior bytes/mode/existence, so the trio never
+diverges. The one thing this cannot defend against is a hard crash / power loss
+between two individually-atomic replaces (see `_commit_transaction`); if the
+compensating rollback itself fails, a `ConnectInconsistentStateError` names the
+unreconciled path(s) rather than claiming success.
 """
 from __future__ import annotations
 
@@ -115,21 +119,22 @@ class ConnectEvidenceError(ValueError):
 
 
 class ConnectApplyError(RuntimeError):
-    """Raised when applying the SPEC.md + mcp-config.json swap fails.
+    """Raised when committing the SPEC.md + mcp-config.json + connect-manifest.json
+    swap fails.
 
-    `apply_changes()` stages a temp file for both destinations before
-    replacing either, and captures each destination's prior existence, bytes,
-    and mode up front. If a replace fails *after* an earlier one already
-    succeeded, every already-replaced destination is rolled back to its
-    captured prior bytes (or removed if it did not previously exist) before
-    this is raised — so a recoverable failure leaves the prior SPEC.md /
-    mcp-config.json on disk byte-for-byte, never a half-applied swap.
+    `_commit_transaction()` stages a temp file for every destination before
+    replacing any, and captures each destination's prior existence, bytes, and
+    mode up front. If a replace fails *after* an earlier one already succeeded,
+    every already-replaced destination is rolled back to its captured prior bytes
+    (or removed if it did not previously exist) before this is raised — so a
+    recoverable failure leaves the prior SPEC.md / mcp-config.json / manifest on
+    disk byte-for-byte, never a half-applied swap.
 
-    Honest limitation: each `os.replace` is individually atomic, but the two
-    replaces are not a single filesystem transaction. This defends against
+    Honest limitation: each `os.replace` is individually atomic, but the set of
+    replaces is not a single filesystem transaction. This defends against
     in-process failures (an `os.replace` error, an injected fault); it cannot
     defend against a hard crash / power loss / SIGKILL in the narrow window
-    *between* the two replaces. If the compensating rollback itself fails, the
+    *between* two replaces. If the compensating rollback itself fails, the
     stronger `ConnectInconsistentStateError` is raised instead and success is
     never reported.
     """
@@ -137,7 +142,8 @@ class ConnectApplyError(RuntimeError):
 
 class ConnectInconsistentStateError(ConnectApplyError):
     """Raised when an apply failed AND the compensating rollback also failed,
-    leaving SPEC.md / mcp-config.json possibly divergent on disk.
+    leaving SPEC.md / mcp-config.json / connect-manifest.json possibly divergent
+    on disk.
 
     The message names the exact destination path(s) that could not be
     restored. It subclasses `ConnectApplyError` so existing handlers still
@@ -403,11 +409,33 @@ def _type_compatible(expected_type, actual_value):
     return False
 
 
+def _extract_items(real_response):
+    # Mirror the runtime extractor exactly: accept the wrapped
+    # {{"items": [...]}} response OR a bare list of records; anything else has
+    # no records to check.
+    if isinstance(real_response, dict):
+        items = real_response.get("items", [])
+    elif isinstance(real_response, list):
+        items = real_response
+    else:
+        items = []
+    if not isinstance(items, list):
+        items = []
+    return items
+
+
 def check_conformance(real_response):
-    items = real_response.get("items", []) if isinstance(real_response, dict) else []
+    items = _extract_items(real_response)
     differences = []
     for index, item in enumerate(items):
-        item = item if isinstance(item, dict) else {{}}
+        if not isinstance(item, dict):
+            # A non-object record cannot satisfy any field contract — not even
+            # an optional-only one. One item-level difference, then move on.
+            actual_type = _infer_type(item) or "unknown"
+            differences.append(
+                {{"field": "$", "expected": "object", "actual": actual_type, "path": "$.items[{{}}]".format(index)}}
+            )
+            continue
         for field in CONTRACT_FIELDS:
             name = field["name"]
             required = field["required"]
@@ -431,7 +459,7 @@ def check_conformance(real_response):
 def test_{ident}_conformance():
     with open(REAL_SAMPLE_PATH, "r", encoding="utf-8") as fh:
         real_response = json.load(fh)
-    items = real_response.get("items", []) if isinstance(real_response, dict) else []
+    items = _extract_items(real_response)
     assert items, (
         "no real items captured in " + str(REAL_SAMPLE_PATH) + " — conformance "
         "cannot be verified against an empty sample (insufficient evidence)"
@@ -546,6 +574,11 @@ def check_conformance(contract: dict, real_response) -> dict:
     `real-unverified` — never a vacuous `real-verified`, and distinct from
     `real-drift` (which means records WERE checked and found to diverge).
     `item_count` reports how many records were actually checked.
+
+    A record that is not a JSON object is itself a conformance failure: it emits
+    a single `{field: "$", expected: "object", actual: <type>, path:
+    "$.items[i]"}` difference and forces `passed` False. A non-object row can
+    therefore never vacuously pass, even for an optional-only contract.
     """
     if isinstance(real_response, dict):
         items = real_response.get("items", [])
@@ -558,7 +591,21 @@ def check_conformance(contract: dict, real_response) -> dict:
 
     differences = []
     for index, item in enumerate(items):
-        record = item if isinstance(item, dict) else {}
+        if not isinstance(item, dict):
+            # A record that is not an object cannot satisfy any field contract —
+            # not even an optional-only one. Emit a single structured difference
+            # at the item path and move on, so a scalar/array/null row can never
+            # vacuously pass by "having no required fields to miss".
+            differences.append(
+                {
+                    "field": "$",
+                    "expected": "object",
+                    "actual": _infer_type(item) or "unknown",
+                    "path": f"$.items[{index}]",
+                }
+            )
+            continue
+        record = item
         for field in contract.get("fields", []):
             name = field["name"]
             required = field["required"]
@@ -593,20 +640,75 @@ def check_conformance(contract: dict, real_response) -> dict:
 # Malformed shapes raise (abort before any write); an honestly-absent/false
 # evidence value is a normal `real-unverified` finding, not an error.
 # ---------------------------------------------------------------------------
+def _require_bool_flag(evidence: dict, key: str, label: str, *, default: bool = False) -> bool:
+    """Read a boolean flag, distinguishing an ABSENT key from a supplied value.
+
+    An absent key takes ``default`` (a normal ``real-unverified`` finding, not an
+    error). A *supplied* value must be an actual ``bool`` — a string, number,
+    ``None``, or any other shape is malformed and raises. There is no truthy/
+    falsy or ``None``->``False`` coercion: the flag is only ever the boolean the
+    caller actually recorded.
+    """
+    if key not in evidence:
+        return default
+    value = evidence[key]
+    if not isinstance(value, bool):
+        raise ConnectEvidenceError(f"{label} must be a boolean")
+    return value
+
+
+def _require_role_list(evidence: dict, key: str, label: str) -> list:
+    """Read a role-name list, distinguishing an ABSENT key from a supplied value.
+
+    An absent key yields ``[]`` (honestly no roles claimed). A *supplied* value
+    must be a genuine list of non-empty, unique strings — never coerced with
+    ``or []``, so a falsey non-list (``''``, ``0``, ``{}``, ``False``, ``None``)
+    is malformed and raises rather than silently becoming empty. Every item must
+    be a non-empty ``str`` (a ``bool`` is not a ``str`` and is rejected; scalars,
+    objects, and empty strings are rejected), and duplicate names are rejected so
+    the recorded evidence is canonical.
+    """
+    if key not in evidence:
+        return []
+    value = evidence[key]
+    if not isinstance(value, list):
+        raise ConnectEvidenceError(f"{label} must be a list of non-empty strings")
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or isinstance(item, bool) or not item:
+            raise ConnectEvidenceError(f"{label} must be a list of non-empty strings")
+        if item in seen:
+            raise ConnectEvidenceError(f"{label} must not contain duplicate role names")
+        seen.add(item)
+    return value
+
+
+def _validate_agent_identity(evidence: dict) -> str | None:
+    """Read ``agent_identity``: absent or a supplied ``null`` -> ``None`` (a
+    normal unverified finding). A supplied value must be a NON-EMPTY string —
+    an empty string or any non-string shape is malformed and raises.
+    """
+    if "agent_identity" not in evidence:
+        return None
+    value = evidence["agent_identity"]
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ConnectEvidenceError(
+            "role_evidence.agent_identity must be a non-empty string or null"
+        )
+    return value
+
+
 def _validate_obo_evidence(evidence) -> dict:
     if evidence is None:
         return {"present": False, "user_scoped": False}
     if not isinstance(evidence, dict):
         raise ConnectEvidenceError("obo_evidence must be an object (dict) or null")
-    present = evidence.get("present", False)
-    if not isinstance(present, bool):
-        raise ConnectEvidenceError("obo_evidence.present must be a boolean")
-    user_scoped = evidence.get("user_scoped", False)
-    if user_scoped is None:
-        user_scoped = False
-    if not isinstance(user_scoped, bool):
-        raise ConnectEvidenceError("obo_evidence.user_scoped must be a boolean or null")
-    return {"present": present, "user_scoped": user_scoped}
+    return {
+        "present": _require_bool_flag(evidence, "present", "obo_evidence.present"),
+        "user_scoped": _require_bool_flag(evidence, "user_scoped", "obo_evidence.user_scoped"),
+    }
 
 
 def _validate_role_evidence(evidence) -> dict:
@@ -619,19 +721,18 @@ def _validate_role_evidence(evidence) -> dict:
         }
     if not isinstance(evidence, dict):
         raise ConnectEvidenceError("role_evidence must be an object (dict) or null")
-    revalidated = evidence.get("revalidated", False)
-    if not isinstance(revalidated, bool):
-        raise ConnectEvidenceError("role_evidence.revalidated must be a boolean")
 
-    required_roles = evidence.get("required_roles") or []
-    validated_roles = evidence.get("validated_roles", evidence.get("granted_roles")) or []
-    for label, roles in (("required_roles", required_roles), ("validated_roles", validated_roles)):
-        if not isinstance(roles, list) or not all(isinstance(r, str) for r in roles):
-            raise ConnectEvidenceError(f"role_evidence.{label} must be a list of strings")
-
-    agent_identity = evidence.get("agent_identity")
-    if agent_identity is not None and not isinstance(agent_identity, str):
-        raise ConnectEvidenceError("role_evidence.agent_identity must be a string or null")
+    revalidated = _require_bool_flag(evidence, "revalidated", "role_evidence.revalidated")
+    required_roles = _require_role_list(evidence, "required_roles", "role_evidence.required_roles")
+    # `granted_roles` is an accepted alias for `validated_roles`; a supplied
+    # `validated_roles` wins. Both absent -> [] (distinct from a malformed value).
+    if "validated_roles" in evidence:
+        validated_roles = _require_role_list(evidence, "validated_roles", "role_evidence.validated_roles")
+    elif "granted_roles" in evidence:
+        validated_roles = _require_role_list(evidence, "granted_roles", "role_evidence.granted_roles")
+    else:
+        validated_roles = []
+    agent_identity = _validate_agent_identity(evidence)
 
     return {
         "revalidated": revalidated,
@@ -813,54 +914,41 @@ def _load_existing_mcp_config(mcp_full: Path, mcp_config_path) -> dict:
     return existing_mcp
 
 
-def apply_changes(project_root, spec_path, mcp_config_path, tool_name: str, contract: dict, generated_at: str) -> list:
-    """Apply the SPEC.md + mcp-config.json swap as one transactional unit.
+def _serialize_manifest(manifest: dict) -> str:
+    """Serialize a manifest to the exact bytes the shared `atomic_write_json`
+    would emit (sorted keys, 2-space indent, no NaN/Infinity, trailing newline),
+    so a manifest committed inside the apply transaction is byte-identical to one
+    emitted on the non-apply path.
+    """
+    return json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
-    Guarantee (within a single process): either BOTH destinations are updated
-    or NEITHER is left changed. A temp file is staged for both destinations
-    before either is replaced, and each destination's prior existence, bytes,
-    and mode are captured up front. If a replace fails after an earlier one
-    already succeeded, every already-replaced destination is rolled back to
-    its captured prior bytes (or removed if it did not previously exist) via a
-    same-directory atomic temp + `os.replace`, and a `ConnectApplyError` is
-    raised — the prior files survive byte-for-byte.
 
-    Honest limitation: each `os.replace` is individually atomic, but the two
-    replaces are not a single filesystem transaction, so this cannot defend
-    against a hard crash / power loss / SIGKILL in the window *between* the two
-    replaces — that (and only that) can leave SPEC.md and mcp-config.json
-    divergent on disk. If the compensating rollback itself fails, a
-    `ConnectInconsistentStateError` naming the unreconciled path(s) is raised
+def _commit_transaction(targets: list) -> None:
+    """Commit a set of file writes as one rollback-aware transaction.
+
+    `targets` is an ordered list of `(destination: Path, new_text: str)`. A temp
+    file is staged for EVERY destination (stamped with the mode the destination
+    should end up with — an existing file keeps its exact prior mode; a brand-new
+    one gets the umask-honoring non-executable default) before ANY destination is
+    replaced, and each destination's prior existence/bytes/mode is captured up
+    front. If a replace fails after an earlier one already landed, every
+    already-committed destination is rolled back to its captured prior bytes/mode
+    (or removed if it did not previously exist) and `ConnectApplyError` is raised
+    — every destination survives at its prior bytes/mode/existence.
+
+    Honest limitation: each `os.replace` is individually atomic, but the set of
+    replaces is not a single filesystem transaction, so this cannot defend
+    against a hard crash / power loss / SIGKILL in the window *between* two
+    replaces. If a compensating rollback itself fails, the stronger
+    `ConnectInconsistentStateError` — naming the unreconciled path(s) — is raised
     and success is never reported.
     """
-    root = Path(project_root)
-    spec_full = root / spec_path
-    mcp_full = root / mcp_config_path
+    priors = {dest: _capture_prior(dest) for dest, _ in targets}
 
-    existing_spec = spec_full.read_text(encoding="utf-8") if spec_full.exists() else ""
-    existing_mcp = _load_existing_mcp_config(mcp_full, mcp_config_path)
-
-    new_spec_text = _update_spec_text(existing_spec, tool_name, contract, generated_at)
-    new_mcp_data = _update_mcp_config(existing_mcp, tool_name, contract, generated_at)
-    new_mcp_text = json.dumps(new_mcp_data, indent=2, sort_keys=True) + "\n"
-
-    # Fixed order; each entry is (destination, relative-path, new-text).
-    targets = [
-        (spec_full, spec_path, new_spec_text),
-        (mcp_full, mcp_config_path, new_mcp_text),
-    ]
-
-    # Snapshot prior state for EVERY destination before touching anything, so
-    # a mid-apply failure can be fully compensated.
-    priors = {dest: _capture_prior(dest) for dest, _, _ in targets}
-
-    # Stage a temp file for every destination before replacing ANY of them.
-    # Each staged temp is stamped with the mode the destination should end up
-    # with: an existing destination keeps its exact prior mode; a brand-new
-    # destination gets the umask-honoring non-executable default.
+    # Stage a temp for every destination before replacing ANY of them.
     staged: list = []  # (destination, temp_path)
     try:
-        for dest, _, text in targets:
+        for dest, text in targets:
             prior = priors[dest]
             desired_mode = (
                 (prior["mode"] & 0o7777) if prior["existed"] else _default_new_file_mode()
@@ -869,10 +957,10 @@ def apply_changes(project_root, spec_path, mcp_config_path, tool_name: str, cont
     except BaseException as exc:
         for _, temp_path in staged:
             temp_path.unlink(missing_ok=True)
-        raise ConnectApplyError(f"failed to stage mock-to-real swap: {exc}") from exc
+        raise ConnectApplyError(f"failed to stage transactional write: {exc}") from exc
 
-    # Commit one destination at a time, tracking which have been replaced so a
-    # later failure can roll the earlier ones back.
+    # Commit one destination at a time, tracking which landed so a later failure
+    # can roll the earlier ones back.
     replaced: list = []
     pending = dict(staged)  # destination -> temp_path not yet replaced
     try:
@@ -895,12 +983,50 @@ def apply_changes(project_root, spec_path, mcp_config_path, tool_name: str, cont
             names = ", ".join(str(p) for p in unreconciled)
             raise ConnectInconsistentStateError(
                 "apply failed and rollback could not restore "
-                f"{names}: SPEC.md / mcp-config.json may be divergent on disk "
-                "and must be reconciled by hand"
+                f"{names}: SPEC.md / mcp-config.json / connect-manifest.json may be "
+                "divergent on disk and must be reconciled by hand"
             ) from exc
-        raise ConnectApplyError(f"failed to apply mock-to-real swap: {exc}") from exc
+        raise ConnectApplyError(f"failed to apply transactional write: {exc}") from exc
 
-    return [str(spec_path), str(mcp_config_path)]
+
+def _commit_verified_apply(
+    root: Path,
+    spec_path,
+    mcp_config_path,
+    manifest_full: Path,
+    tool_name: str,
+    contract: dict,
+    generated_at: str,
+    existing_mcp: dict,
+    manifest: dict,
+) -> None:
+    """Commit the mock-to-real swap — SPEC.md, mcp-config.json, AND the connect
+    manifest — as one rollback-aware transaction.
+
+    The manifest passed here is the FINAL, already-validated manifest (built and
+    schema-checked by the caller *before* any file is mutated). The three new
+    file contents are assembled up front, then handed to `_commit_transaction`,
+    so a staging/replace failure on any of the three leaves all three at their
+    prior bytes/modes/existence. `atomic_write_json` is deliberately NOT used for
+    the manifest here — emitting it after the config commit would put it outside
+    the transaction and could leave SPEC/mcp updated while the manifest lagged.
+    """
+    spec_full = root / spec_path
+    mcp_full = root / mcp_config_path
+
+    existing_spec = spec_full.read_text(encoding="utf-8") if spec_full.exists() else ""
+    new_spec_text = _update_spec_text(existing_spec, tool_name, contract, generated_at)
+    new_mcp_data = _update_mcp_config(existing_mcp, tool_name, contract, generated_at)
+    new_mcp_text = json.dumps(new_mcp_data, indent=2, sort_keys=True) + "\n"
+    new_manifest_text = _serialize_manifest(manifest)
+
+    _commit_transaction(
+        [
+            (spec_full, new_spec_text),
+            (mcp_full, new_mcp_text),
+            (manifest_full, new_manifest_text),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -928,6 +1054,12 @@ def load_current_state(manifest_full_path) -> str:
     `real-verified` back to `mock`) and mask on-disk corruption. Raise a clean
     `ConnectEvidenceError` before any write so the bytes on disk survive
     untouched for the operator to repair.
+
+    A prior manifest that IS a JSON object but is *missing* `integration_state`,
+    or carries a value outside the four valid states, is likewise never quietly
+    treated as `mock` — that would fabricate a starting state from a corrupt or
+    tampered record. Both raise `ConnectEvidenceError` (before any write) rather
+    than guessing.
     """
     path = Path(manifest_full_path)
     if not path.exists():
@@ -951,8 +1083,19 @@ def load_current_state(manifest_full_path) -> str:
             f"prior connect manifest at {path} must be a JSON object; got "
             f"{type(data).__name__} — refusing to reset integration state"
         )
-    state = data.get("integration_state")
-    return state if state in VALID_STATES else "mock"
+    if "integration_state" not in data:
+        raise ConnectEvidenceError(
+            f"prior connect manifest at {path} is missing 'integration_state'; "
+            "refusing to fabricate a starting state — repair or remove it first"
+        )
+    state = data["integration_state"]
+    if state not in VALID_STATES:
+        raise ConnectEvidenceError(
+            f"prior connect manifest at {path} has invalid integration_state "
+            f"{state!r} (expected one of {', '.join(VALID_STATES)}); refusing to "
+            "reset it — repair or remove it first"
+        )
+    return state
 
 
 def _build_findings(conformance: dict, target_state: str) -> list:
@@ -1320,7 +1463,7 @@ def run_connect(
     generated_at = generated_at or _now_iso()
     # Fail fast on a malformed capture timestamp, before any artifact is
     # written (the manifest — where source_oldest_at lands — is emitted only
-    # after write_conformance_tests / apply_changes).
+    # after write_conformance_tests / the apply transaction).
     evidence_captured_at = _validate_evidence_captured_at(evidence_captured_at)
     root = Path(project_root)
 
@@ -1334,26 +1477,33 @@ def run_connect(
     )
 
     manifest_full_path = root / manifest_path
+    # Reads the persisted state and raises (before any write) on a corrupt prior
+    # manifest, or one missing/with an invalid integration_state.
     integration_state = load_current_state(manifest_full_path)
 
-    if apply and target_state == "real-verified":
-        # Validate the apply destination before generating any artifact. This
-        # keeps the CLI's "(nothing written)" guarantee literal when an
-        # existing MCP config is corrupt or is not a JSON object.
-        _load_existing_mcp_config(root / mcp_config_path, mcp_config_path)
+    apply_verified = apply and target_state == "real-verified"
 
-    test_rel_path = write_conformance_tests(root, tool_name, contract)
+    existing_mcp = None
+    if apply_verified:
+        # Validate the apply destination before generating any artifact. This
+        # keeps the CLI's "(nothing written)" guarantee literal when an existing
+        # MCP config is corrupt or is not a JSON object, and the parsed value is
+        # reused when the transaction builds the new config.
+        existing_mcp = _load_existing_mcp_config(root / mcp_config_path, mcp_config_path)
+
     apply_plan = build_apply_plan(root, spec_path, mcp_config_path, tool_name)
 
-    changed_paths: list = []
-    if apply and target_state == "real-verified":
-        # apply_changes() is transactional across SPEC.md + mcp-config.json: on
-        # an in-process failure it rolls any already-applied file back to its
-        # prior bytes and raises ConnectApplyError (or, if rollback itself
-        # fails, ConnectInconsistentStateError). Either propagates here before
-        # the manifest is written, so the prior manifest on disk is preserved.
-        changed_paths = apply_changes(root, spec_path, mcp_config_path, tool_name, contract, generated_at)
-        integration_state = "real-verified"
+    # Deterministic PLANNED changed_paths: a verified apply rewrites exactly the
+    # two production config files (never the manifest or the conformance test),
+    # computed up front so the final manifest can record them BEFORE any write.
+    changed_paths: list = (
+        [str(spec_path), str(mcp_config_path)] if apply_verified else []
+    )
+    # On a successful verified apply the persisted state advances to
+    # real-verified; the manifest is built with that planned post-state, and the
+    # all-or-nothing transaction below guarantees it is only ever persisted if
+    # all three files land together.
+    manifest_integration_state = "real-verified" if apply_verified else integration_state
 
     normalized_obo = _validate_obo_evidence(obo_evidence)
     normalized_role = _validate_role_evidence(role_evidence)
@@ -1366,7 +1516,7 @@ def run_connect(
 
     manifest = build_connect_manifest(
         tool_name=tool_name,
-        integration_state=integration_state,
+        integration_state=manifest_integration_state,
         target_state=target_state,
         contract=contract,
         conformance=conformance,
@@ -1380,7 +1530,33 @@ def run_connect(
         evidence_captured_at=evidence_captured_at,
         valid_for_hours=valid_for_hours,
     )
-    write_connect_manifest(manifest_full_path, manifest)
+
+    if apply_verified:
+        # Fully validate the FINAL manifest BEFORE mutating any file — the
+        # conformance-test scaffold below or the transactional three. A
+        # validation failure here aborts with nothing written.
+        validate_connect_manifest(manifest)
+
+    # The conformance-test scaffold is a regenerated artifact, written on every
+    # run regardless of --apply.
+    test_rel_path = write_conformance_tests(root, tool_name, contract)
+
+    if apply_verified:
+        # SPEC.md + mcp-config.json + the connect manifest are committed as ONE
+        # rollback-aware transaction. An in-process failure rolls every
+        # already-applied file back to its prior bytes/mode/existence and raises
+        # ConnectApplyError (or, if a rollback also fails,
+        # ConnectInconsistentStateError) — so the three never diverge and the
+        # prior manifest survives. No atomic_write_json runs after the commit.
+        _commit_verified_apply(
+            root, spec_path, mcp_config_path, manifest_full_path,
+            tool_name, contract, generated_at, existing_mcp, manifest,
+        )
+        integration_state = "real-verified"
+    else:
+        # apply=False / failed / unverified: the evidence manifest is validated
+        # and emitted atomically on its own (nothing else is mutated).
+        write_connect_manifest(manifest_full_path, manifest)
 
     return {
         "manifest": manifest,
@@ -1474,7 +1650,17 @@ def main(argv=None) -> int:
         print(f"error: could not parse input — {exc} (nothing written)", file=sys.stderr)
         return 5
     except (ConnectApplyError, ManifestValidationError, OSError) as exc:
-        print(f"error: {exc} (no files were changed)", file=sys.stderr)
+        # A recoverable apply failure rolls the transaction back, a manifest
+        # validation failure aborts before mutating the three integration files,
+        # and any bare OSError here comes from outside the transaction — so
+        # SPEC.md / mcp-config.json / the connect manifest are all at their prior
+        # bytes. Claim ONLY that (a regenerated conformance-test scaffold may
+        # have been rewritten); never the inaccurate blanket "no files changed".
+        print(
+            f"error: {exc} (SPEC.md, mcp-config.json, and the connect manifest "
+            "were left unchanged)",
+            file=sys.stderr,
+        )
         return 3
 
     if args.json:

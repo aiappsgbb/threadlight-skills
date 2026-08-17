@@ -1710,3 +1710,490 @@ def test_invalid_second_array_element_rejected_by_both_validators(
         "jsonschema unexpectedly ACCEPTED a manifest the hand validator rejected "
         f"(second-element mutation at {path} -> {value!r})"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 3.1 — role/OBO evidence: no `or []` coercion; absent vs supplied;
+# non-empty unique string lists; non-empty-string-or-null identity; real bools.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("key", ["required_roles", "validated_roles", "granted_roles"])
+@pytest.mark.parametrize("bad", ["", 0, {}, False, None])
+def test_role_list_falsey_non_list_value_raises_not_coerced(key, bad):
+    # The old `evidence.get(key) or []` silently turned each of these falsey
+    # non-lists into an accepted empty list. They must now raise instead.
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence({"revalidated": True, key: bad})
+
+
+@pytest.mark.parametrize(
+    "bad_list",
+    [["Case.Read", 5], [True], [{}], [["nested"]], ["Case.Read", None], [1, 2]],
+)
+def test_role_list_mixed_or_nonstring_items_raise(bad_list):
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence({"revalidated": True, "required_roles": bad_list})
+
+
+@pytest.mark.parametrize("bad_list", [[""], ["Case.Read", ""]])
+def test_role_list_empty_role_name_raises(bad_list):
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence({"revalidated": True, "required_roles": bad_list})
+
+
+@pytest.mark.parametrize("key", ["required_roles", "validated_roles", "granted_roles"])
+def test_role_list_duplicate_role_names_raise(key):
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence(
+            {"revalidated": True, key: ["Case.Read", "Case.Read"]}
+        )
+
+
+def test_role_lists_absent_default_to_empty_without_coercion():
+    # ABSENT keys default to [] (a normal unverified finding). A SUPPLIED empty
+    # list is also valid — a list of zero non-empty strings.
+    absent = connect._validate_role_evidence({"revalidated": True})
+    assert absent["required_roles"] == []
+    assert absent["validated_roles"] == []
+    assert absent["agent_identity"] is None
+
+    supplied_empty = connect._validate_role_evidence(
+        {"revalidated": True, "required_roles": [], "validated_roles": []}
+    )
+    assert supplied_empty["required_roles"] == []
+    assert supplied_empty["validated_roles"] == []
+
+
+def test_granted_roles_alias_is_honored_for_verification(tmp_path):
+    obo = {"present": True, "user_scoped": True}
+    role = {
+        "revalidated": True,
+        "required_roles": ["Case.Read"],
+        "granted_roles": ["Case.Read", "Case.Write"],  # alias for validated_roles
+        "agent_identity": "agent-123",
+    }
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+    )
+    assert result["target_state"] == "real-verified"
+
+
+def test_granted_roles_alias_missing_required_yields_unverified(tmp_path):
+    obo = {"present": True, "user_scoped": True}
+    role = {
+        "revalidated": True,
+        "required_roles": ["Case.Read", "Case.Escalate"],
+        "granted_roles": ["Case.Read"],  # not a superset of required
+        "agent_identity": "agent-123",
+    }
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+    )
+    assert result["target_state"] == "real-unverified"
+
+
+@pytest.mark.parametrize("bad_identity", ["", 5, [], {}, True])
+def test_agent_identity_must_be_nonempty_string_or_null(bad_identity):
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence(
+            {"revalidated": True, "agent_identity": bad_identity}
+        )
+
+
+def test_agent_identity_null_or_absent_is_allowed():
+    assert connect._validate_role_evidence(
+        {"revalidated": True, "agent_identity": None}
+    )["agent_identity"] is None
+    assert connect._validate_role_evidence({"revalidated": True})["agent_identity"] is None
+
+
+@pytest.mark.parametrize("key", ["present", "user_scoped"])
+@pytest.mark.parametrize("bad", ["true", 1, 0, None, [], {}])
+def test_obo_flags_must_be_actual_bool(key, bad):
+    evidence = {"present": True, "user_scoped": True}
+    evidence[key] = bad
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_obo_evidence(evidence)
+
+
+def test_obo_absent_flags_default_to_false():
+    assert connect._validate_obo_evidence({}) == {"present": False, "user_scoped": False}
+    assert connect._validate_obo_evidence({"present": True}) == {
+        "present": True, "user_scoped": False,
+    }
+
+
+def test_revalidated_flag_must_be_actual_bool():
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence({"revalidated": "yes"})
+    with pytest.raises(ConnectEvidenceError):
+        connect._validate_role_evidence({"revalidated": None})  # supplied null, not a bool
+    # absent -> False (a normal unverified finding, not an error)
+    assert connect._validate_role_evidence({})["revalidated"] is False
+
+
+def test_malformed_role_list_raises_before_any_write(tmp_path):
+    # `required_roles: ''` used to be coerced to [] and pass; now it is malformed
+    # and must abort before ANY artifact is produced.
+    obo, _ = full_evidence()
+    with pytest.raises(ConnectEvidenceError):
+        _run(
+            tmp_path, obo_evidence=obo,
+            role_evidence={"revalidated": True, "required_roles": ""},
+            current_agent_identity=CURRENT_IDENTITY, apply=True,
+        )
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    assert not (tmp_path / "tests" / "threadlight_connect").exists()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.2 — conformance: every item must be an object; a non-object row is a
+# structured difference at $.items[i] and never a vacuous pass.
+# ---------------------------------------------------------------------------
+def test_non_object_item_optional_only_contract_does_not_pass():
+    # An optional-only contract has no required field to "miss" — a scalar row
+    # would previously coerce to {} and pass vacuously. It must now fail.
+    contract = {"fields": [{"name": "status", "required": False, "type": "string", "cardinality": "single"}]}
+    result = check_conformance(contract, {"items": [42]})
+    assert result["passed"] is False
+    assert result["evaluated"] is True
+    assert result["item_count"] == 1
+    assert result["differences"] == [
+        {"field": "$", "expected": "object", "actual": "integer", "path": "$.items[0]"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("bad_item", "actual"),
+    [(None, "unknown"), ([1, 2], "array"), ("scalar", "string"), (5, "integer"), (True, "boolean"), (1.5, "number")],
+)
+def test_non_object_items_report_their_type(bad_item, actual):
+    contract = {"fields": [{"name": "status", "required": False, "type": "string", "cardinality": "single"}]}
+    result = check_conformance(contract, {"items": [bad_item]})
+    assert result["passed"] is False
+    assert result["differences"] == [
+        {"field": "$", "expected": "object", "actual": actual, "path": "$.items[0]"}
+    ]
+
+
+def test_non_object_item_in_bare_list_is_flagged():
+    contract = {"fields": [{"name": "id", "required": True, "type": "string", "cardinality": "single"}]}
+    result = check_conformance(contract, [42, {"id": "R-1"}])  # bare list, first row scalar
+    assert result["passed"] is False
+    assert {d["path"] for d in result["differences"]} == {"$.items[0]"}
+    assert result["differences"][0]["field"] == "$"
+
+
+def test_bare_list_of_objects_still_conforms():
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    result = check_conformance(contract, [{"id": "R-1001", "status": "open"}])
+    assert result == {"passed": True, "evaluated": True, "item_count": 1, "differences": []}
+
+
+def test_run_with_non_object_row_targets_real_drift_and_manifest_is_valid(tmp_path):
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path,
+        real_response={"items": [{"id": "R-1", "status": "open"}, 42]},
+        obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    assert result["target_state"] == "real-drift"
+    assert result["integration_state"] == "mock"
+    assert result["changed_paths"] == []
+    connect.validate_connect_manifest(result["manifest"])  # $-field difference is schema-valid
+    ids = {f["id"] for f in result["manifest"]["findings"]}
+    assert "CONNECT-DRIFT-$" in ids
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3 — persisted state: absent manifest => mock; a JSON object missing
+# integration_state or carrying an invalid one => ConnectEvidenceError, no write.
+# ---------------------------------------------------------------------------
+def test_load_current_state_absent_manifest_defaults_to_mock(tmp_path):
+    assert connect.load_current_state(tmp_path / "nope" / "connect-manifest.json") == "mock"
+
+
+def test_load_current_state_valid_object_returns_state(tmp_path):
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps({"integration_state": "real-verified"}), encoding="utf-8")
+    assert connect.load_current_state(path) == "real-verified"
+
+
+def test_prior_manifest_missing_integration_state_aborts_and_preserves_bytes(tmp_path):
+    manifest_full = tmp_path / connect.DEFAULT_MANIFEST_PATH
+    manifest_full.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({"schema": "threadlight-connect-manifest/v1", "target_state": "mock"}).encode()
+    manifest_full.write_bytes(payload)
+
+    with pytest.raises(ConnectEvidenceError, match="integration_state"):
+        _run(tmp_path)
+
+    assert manifest_full.read_bytes() == payload  # preserved, not reset to mock
+    assert not (tmp_path / "tests" / "threadlight_connect").exists()  # nothing written
+
+
+@pytest.mark.parametrize("bogus", ["totally-bogus", "mocked", 42, None, "real-verifie"])
+def test_prior_manifest_invalid_integration_state_aborts_and_preserves_bytes(tmp_path, bogus):
+    manifest_full = tmp_path / connect.DEFAULT_MANIFEST_PATH
+    manifest_full.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({"integration_state": bogus}).encode()
+    manifest_full.write_bytes(payload)
+
+    with pytest.raises(ConnectEvidenceError, match="integration_state"):
+        _run(tmp_path)
+
+    assert manifest_full.read_bytes() == payload
+
+
+# ---------------------------------------------------------------------------
+# Task 3.4 — apply is transactional across SPEC + mcp-config + connect-manifest.
+# The manifest is committed inside the transaction (not atomic_write_json after
+# the config commit); every failure leaves all three at prior bytes/existence.
+# ---------------------------------------------------------------------------
+def test_apply_commits_manifest_in_transaction_records_only_production_paths(tmp_path):
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    # changed_paths are EXACTLY the two production files — never the manifest or
+    # the regenerated conformance-test scaffold.
+    assert result["changed_paths"] == [connect.DEFAULT_SPEC_PATH, connect.DEFAULT_MCP_CONFIG_PATH]
+    assert connect.DEFAULT_MANIFEST_PATH not in result["changed_paths"]
+
+    manifest_full = tmp_path / connect.DEFAULT_MANIFEST_PATH
+    on_disk = json.loads(manifest_full.read_text(encoding="utf-8"))
+    assert on_disk["integration_state"] == "real-verified"
+    assert on_disk["changed_paths"] == [connect.DEFAULT_SPEC_PATH, connect.DEFAULT_MCP_CONFIG_PATH]
+    connect.validate_connect_manifest(on_disk)
+
+
+def test_manifest_destination_replace_failure_rolls_back_all_three(tmp_path, monkeypatch):
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+    prior_spec = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
+    prior_mcp = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    real_replace = connect.os.replace
+    manifest_name = Path(connect.DEFAULT_MANIFEST_PATH).name
+
+    def _boom(source, destination):
+        # SPEC + mcp commit, then fail the THIRD (manifest) replace, forcing both
+        # committed config files to roll back.
+        if Path(destination).name == manifest_name:
+            raise OSError("simulated manifest replace failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    with pytest.raises(ConnectApplyError) as excinfo:
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-20T10:00:00+00:00",
+             real_response={"items": [{"id": "R-9", "status": "closed"}]})
+    # Recoverable (rollback succeeded): plain ConnectApplyError, NOT inconsistent.
+    assert not isinstance(excinfo.value, connect.ConnectInconsistentStateError)
+
+    assert (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes() == prior_mcp
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+    assert list((tmp_path / "specs").glob(".*.tmp")) == []
+    assert list((tmp_path / "infra").glob(".*.tmp")) == []
+
+
+def test_manifest_rollback_failure_raises_inconsistent_state_naming_path(tmp_path, monkeypatch):
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+
+    real_replace = connect.os.replace
+    manifest_name = Path(connect.DEFAULT_MANIFEST_PATH).name
+    mcp_name = Path(connect.DEFAULT_MCP_CONFIG_PATH).name
+
+    def _boom(source, destination):
+        name = Path(destination).name
+        # Fail the manifest commit, then ALSO fail the mcp-config rollback —
+        # leaving mcp-config unreconciled.
+        if name == manifest_name:
+            raise OSError("simulated manifest replace failure")
+        if name == mcp_name:
+            _boom.mcp_calls += 1
+            if _boom.mcp_calls >= 2:  # forward commit ok; rollback replace fails
+                raise OSError("simulated mcp rollback failure")
+        return real_replace(source, destination)
+
+    _boom.mcp_calls = 0
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    with pytest.raises(connect.ConnectInconsistentStateError) as excinfo:
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-20T10:00:00+00:00",
+             real_response={"items": [{"id": "R-9", "status": "closed"}]})
+    # Names the unreconciled destination and never claims success.
+    assert str(tmp_path / connect.DEFAULT_MCP_CONFIG_PATH) in str(excinfo.value)
+
+
+def test_manifest_staging_failure_leaves_all_three_unchanged(tmp_path, monkeypatch):
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+    prior_spec = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
+    prior_mcp = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    real_write_temp = connect._write_temp_file
+    manifest_name = Path(connect.DEFAULT_MANIFEST_PATH).name
+
+    def _boom_stage(path, content, mode=None):
+        # Fail while STAGING the manifest temp — before any destination is
+        # replaced. All three must be left untouched.
+        if Path(path).name == manifest_name:
+            raise OSError("simulated staging failure")
+        return real_write_temp(path, content, mode)
+
+    monkeypatch.setattr(connect, "_write_temp_file", _boom_stage)
+
+    with pytest.raises(ConnectApplyError):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-20T10:00:00+00:00",
+             real_response={"items": [{"id": "R-9", "status": "closed"}]})
+
+    assert (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes() == prior_mcp
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+    assert list((tmp_path / "specs").glob(".*.tmp")) == []
+    assert list((tmp_path / "infra").glob(".*.tmp")) == []
+
+
+def test_manifest_validation_failure_aborts_before_mutating_the_three(tmp_path, monkeypatch):
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED)
+    prior_spec = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
+    prior_mcp = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    def _boom_validate(manifest):
+        raise ManifestValidationError("injected final-manifest validation failure")
+
+    monkeypatch.setattr(connect, "validate_connect_manifest", _boom_validate)
+
+    with pytest.raises(ManifestValidationError):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-20T10:00:00+00:00",
+             real_response={"items": [{"id": "R-9", "status": "closed"}]})
+
+    assert (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes() == prior_mcp
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+
+
+def test_cli_apply_failure_reports_three_unchanged_not_blanket_claim(tmp_path, capsys, monkeypatch):
+    obo, role = full_evidence()
+    _write_cli_inputs(tmp_path)
+    (tmp_path / "obo.json").write_text(json.dumps(obo), encoding="utf-8")
+    (tmp_path / "role.json").write_text(json.dumps(role), encoding="utf-8")
+    apply_args = _base_cli_args(tmp_path) + [
+        "--obo-evidence-file", str(tmp_path / "obo.json"),
+        "--role-evidence-file", str(tmp_path / "role.json"),
+        "--current-agent-identity", CURRENT_IDENTITY,
+        "--apply",
+    ]
+    assert connect.main(apply_args) == 0  # establish a prior applied state
+
+    prior_spec = (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes()
+    prior_mcp = (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    real_replace = connect.os.replace
+    fail_names = {
+        Path(connect.DEFAULT_SPEC_PATH).name,
+        Path(connect.DEFAULT_MCP_CONFIG_PATH).name,
+        Path(connect.DEFAULT_MANIFEST_PATH).name,
+    }
+
+    def _boom(source, destination):
+        if Path(destination).name in fail_names:
+            raise OSError("simulated disk failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    exit_code = connect.main(apply_args)
+
+    assert exit_code == 3
+    err = capsys.readouterr().err
+    assert "unchanged" in err
+    assert "no files were changed" not in err  # must NOT over-claim
+    assert (tmp_path / connect.DEFAULT_SPEC_PATH).read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_bytes() == prior_mcp
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+
+
+# ---------------------------------------------------------------------------
+# Task 3.5 — the GENERATED conformance module normalizes dict.items and a bare
+# list, and flags non-object rows, exactly like the runtime check.
+# ---------------------------------------------------------------------------
+def _exec_generated(tool_name, contract, sample_path):
+    source = generate_conformance_test_source(tool_name, contract, default_sample_path=str(sample_path))
+    namespace: dict = {}
+    exec(compile(source, "<gen-parity>", "exec"), namespace)  # noqa: S102 - our own generated code
+    return namespace
+
+
+def test_generated_module_handles_bare_list_conforming_and_drifting(tmp_path):
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    sample_path = tmp_path / "real.json"
+    namespace = _exec_generated("returns_get_case", contract, sample_path)
+    conformance_test = namespace["test_returns_get_case_conformance"]
+
+    sample_path.write_text(json.dumps([{"id": "R-1", "status": "open"}]), encoding="utf-8")
+    conformance_test()  # bare list of conforming objects -> no raise
+
+    sample_path.write_text(json.dumps([{"id": "R-1", "status": 42}]), encoding="utf-8")
+    with pytest.raises(AssertionError, match=r"status.*integer"):
+        conformance_test()  # bare list, drifting type
+
+
+def test_generated_module_flags_non_object_rows(tmp_path):
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    sample_path = tmp_path / "real.json"
+    namespace = _exec_generated("returns_get_case", contract, sample_path)
+    conformance_test = namespace["test_returns_get_case_conformance"]
+
+    sample_path.write_text(json.dumps({"items": [42]}), encoding="utf-8")
+    with pytest.raises(AssertionError, match=r"\$\.items\[0\]"):
+        conformance_test()  # wrapped scalar row
+
+    sample_path.write_text(
+        json.dumps([{"id": "R-1", "status": "open"}, "scalar"]), encoding="utf-8"
+    )
+    with pytest.raises(AssertionError, match=r"\$\.items\[1\]"):
+        conformance_test()  # bare list, second row is a scalar
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        [{"id": "R-1", "status": "open"}],          # bare list, conforming
+        {"items": [{"id": "R-1", "status": 42}]},   # wrapped, drifting
+        {"items": [42]},                            # wrapped, non-object row
+        [None],                                     # bare list, null row
+        [{"id": "R-1"}, "scalar"],                  # mixed object + scalar rows
+        5,                                          # not a dict or list -> no items
+    ],
+)
+def test_generated_check_conformance_matches_runtime(tmp_path, response):
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    namespace = _exec_generated("returns_get_case", contract, tmp_path / "real.json")
+    generated_check = namespace["check_conformance"]
+    runtime = check_conformance(contract, response)["differences"]
+    assert generated_check(response) == runtime

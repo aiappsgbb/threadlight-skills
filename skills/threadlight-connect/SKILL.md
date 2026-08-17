@@ -49,9 +49,10 @@ operator decision that requires operator-supplied evidence.
 - **Does:** extract a data contract, generate conformance tests, check
   conformance, gate the mock → real state transition on conformance + OBO +
   role evidence, and — only with `--apply` and only once fully verified —
-  transactionally update `specs/SPEC.md` and the effective MCP config
-  (`infra/mcp-config.json` or the caller's actual equivalent) together, rolling
-  back a partially-applied write so the two never diverge.
+  transactionally update `specs/SPEC.md`, the effective MCP config
+  (`infra/mcp-config.json` or the caller's actual equivalent), and the
+  `connect-manifest.json` together, rolling back a partially-applied write so
+  the three never diverge.
 - **Does NOT** map or rename customer-specific fields. Field **mapping**
   (e.g. `cust_id` → `customer_id`) is explicitly out of scope — this leg
   proves *conformance* between a mock contract and a real response; it does
@@ -102,16 +103,21 @@ generate-tests   write an executable, dependency-free conformance test
                  module into the generated project (written every run)
 verify           check_conformance(): field-level diff against a captured
                  real sample — {field, expected, actual, path} per diff;
-                 an empty/missing real response is unevaluated, not a pass
+                 an empty/missing real response is unevaluated, not a pass;
+                 a non-object row is itself a difference at $.items[i]
 plan             build_apply_plan(): file-by-file plan, always computed,
                  read-only, no writes — even in a dry run
 apply            only with --apply AND target_state == real-verified:
-                 transactionally updates specs/SPEC.md + the MCP config
-                 together (an in-process failure after the first write rolls
-                 it back to its prior bytes) and records every changed path
-emit             write specs/connect-manifest.json — shared envelope,
+                 builds and fully validates the final manifest FIRST, then
+                 transactionally updates specs/SPEC.md + the MCP config +
+                 connect-manifest.json together (an in-process failure after
+                 any write rolls every applied file back to its prior
+                 bytes/mode) and records only the production changed paths
+emit             on the non-apply / unverified path, write
+                 specs/connect-manifest.json — shared envelope,
                  schema-validated, atomic, no credentials/tokens/customer
-                 payloads
+                 payloads (on a verified apply the manifest is committed
+                 inside the transaction above instead)
 ```
 
 ## Usage
@@ -161,22 +167,31 @@ Evidence file shapes:
 ```
 
 Evidence that is honestly absent or `false` is a normal `real-unverified`
-finding. Evidence that is the **wrong shape** (e.g. `user_scoped: "true"` as
-a string) raises before anything is written, so a malformed-evidence run
-never disturbs whatever valid manifest/SPEC/mcp-config already existed. Note
+finding. Evidence that is the **wrong shape** raises before anything is
+written, so a malformed-evidence run never disturbs whatever valid
+manifest/SPEC/mcp-config already existed. This is strict, with no silent
+coercion: `required_roles` / `validated_roles` (alias `granted_roles`) must
+each be a list of **non-empty, unique strings** (never `or []`-coerced from a
+falsey scalar such as `""`, `0`, `{}`, or `false`); `agent_identity` must be a
+non-empty string or null; and `present` / `user_scoped` / `revalidated` must be
+actual booleans (`user_scoped: "true"` as a string is rejected). Note
 `agent_identity` must equal the `--current-agent-identity` you pass, or the
 swap stays `real-unverified`.
 
-`apply` is transactional across `SPEC.md` and the MCP config: a temp file is
-staged for both before either is replaced, and if an in-process write fails
-after the first replace has already landed, that file is rolled back to its
-captured prior bytes — the pair never diverges. The single case this can't
-defend against is a hard crash / power loss *between* the two individually
-atomic replaces; if the compensating rollback itself fails, the run raises an
-error naming the unreconciled path(s) instead of reporting success. Forward
-writes and rollbacks preserve permissions: an existing destination keeps its
-exact prior mode, and a brand-new file gets a predictable non-executable mode
-that honors the process umask (`0o644` under the usual `022`).
+`apply` is transactional across `SPEC.md`, the MCP config, **and**
+`connect-manifest.json`. The final manifest is built and fully schema-validated
+*before* any file is mutated; then a temp file is staged for all three before
+any is replaced, and if an in-process write fails after an earlier replace has
+already landed, every applied file is rolled back to its captured prior
+bytes/mode — the trio never diverges. The manifest is committed inside this
+transaction (not written separately afterward), and only the two production
+config paths are recorded in `changed_paths`. The single case this can't defend
+against is a hard crash / power loss *between* two individually atomic replaces;
+if the compensating rollback itself fails, the run raises an error naming the
+unreconciled path(s) instead of reporting success. Forward writes and rollbacks
+preserve permissions: an existing destination keeps its exact prior mode, and a
+brand-new file gets a predictable non-executable mode that honors the process
+umask (`0o644` under the usual `022`).
 
 ## Freshness — `source_oldest_at` reflects the evidence, not the run
 
@@ -192,20 +207,30 @@ A captured integer satisfies an expected `number`, and an integral float such
 as `1.0` satisfies an expected `integer` (widening that loses no information).
 A non-integral float such as `1.5` still drifts against an expected `integer`,
 and booleans never count as numeric — so `true` never widens into
-`integer`/`number`. The generated conformance test module applies the same
-rule, so the pytest scaffold and the in-process check agree.
+`integer`/`number`. A row that is not a JSON object (a scalar, array, or null)
+is itself a conformance difference at `$.items[i]` (`expected: object`) and can
+never vacuously pass, not even against an optional-only contract. The generated
+conformance test module normalizes the `{"items": [...]}` wrapper and a bare
+list, and flags non-object rows, exactly like the in-process check — so the
+pytest scaffold and the runtime check always agree.
 
 ## Robust inputs — corrupt state and unparseable arguments
 
 A prior `connect-manifest.json` or `mcp-config.json` that exists but is
 malformed (or is valid JSON that isn't an object) is **never** silently reset
 to a starting `mock`/`{}`; the run raises a clean error and leaves the bytes
-on disk untouched for repair. On an apply path, MCP config validation happens
-before the generated conformance test is scaffolded, so the CLI's
-`(nothing written)` report is literal. On the CLI, unparseable input —
-malformed JSON in a `--*-file` argument or a tool source that isn't valid
-Python — prints a single-line error (no traceback), returns a stable nonzero
-exit code, and writes nothing.
+on disk untouched for repair. A prior manifest that *is* a JSON object but is
+**missing** `integration_state`, or carries a value outside the four valid
+states, is likewise refused rather than quietly treated as `mock` — a corrupt
+or tampered record must not fabricate a starting state. On an apply path, MCP
+config validation happens before the generated conformance test is scaffolded,
+so the CLI's `(nothing written)` report is literal. On the CLI, unparseable
+input — malformed JSON in a `--*-file` argument or a tool source that isn't
+valid Python — prints a single-line error (no traceback), returns a stable
+nonzero exit code, and writes nothing. When a verified apply fails, the CLI
+reports precisely that `SPEC.md`, `mcp-config.json`, and the connect manifest
+were left unchanged — it never over-claims that *no* files changed, since the
+regenerated conformance-test scaffold may have been rewritten.
 
 ## Contract extraction — exactly what is read, nothing that merely exists
 
