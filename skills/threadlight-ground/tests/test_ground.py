@@ -51,6 +51,18 @@ BASELINE = "specs/baselines/retrieval-quality.json"
 SHA1_DOCUMENT_ID = "0123456789abcdef0123456789abcdef01234567"
 SHA256_DOCUMENT_ID = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 BASE64URL_DOCUMENT_ID = "QXp1cmVfU2VhcmNoLWRvY3VtZW50LWtleS0wMTIzNDU2Nzg5YWJjZGVm"
+# An Azure Blob SAS URL: an http(s) URL whose query carries the `sig`
+# signature alongside SAS markers (sv/se/sp/sr/st/spr). Smuggling one through
+# a document-id/baseline field must be rejected structurally, never accepted.
+AZURE_SAS_BLOB_URL = (
+    "https://acct.blob.core.windows.net/container/secret.pdf"
+    "?sv=2021-08-06&ss=b&srt=co&sp=rwdlac&se=2030-01-01T00:00:00Z"
+    "&st=2020-01-01T00:00:00Z&spr=https&sig=Abc123%2Fjkl%3D"
+)
+# The same signed token expressed as a bare leading-`?` query string.
+AZURE_SAS_QUERY = (
+    "?sv=2021-08-06&sp=r&se=2030-01-01T00:00:00Z&sr=b&sig=Abc123%2Fjkl%3D"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +396,121 @@ def test_acl_cross_source_hole_forces_partial_even_with_a_leak_elsewhere():
 
 
 # ---------------------------------------------------------------------------
-# GRD-002 — citation grounding (source-scoped)
+# GRD-001 — negative evidence precedence: a proven leak survives a coexisting
+# coverage gap (Task 4) — must-fix wins, but the gap still forces `partial`.
+# ---------------------------------------------------------------------------
+def test_leak_with_ambiguous_other_run_is_must_fix_and_partial():
+    # One EXPLICIT unentitled run proves a leak; a second run is ambiguous
+    # (no `expected_entitled`). The ambiguity must NOT hide the proven leak,
+    # but it does leave coverage incomplete → manifest `partial`.
+    manifest = covered(
+        acl_runs=[
+            acl_run("svc-guest", ["secret-doc"], expected_entitled=False),
+            acl_run("svc-unknown", ["other-doc"]),
+        ],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["reason"] == "unauthorized-documents"
+    assert finding["detail"]["leaked_document_ids"] == ["secret-doc"]
+    assert finding["detail"]["coverage_complete"] is False
+    assert manifest["status"] == "partial"
+
+
+def test_leak_with_missing_declared_principal_is_must_fix_and_partial():
+    # A declared principal (`svc-audit`) is never probed — a genuine coverage
+    # gap — yet the unentitled probe still proves a leak. The finding is
+    # must-fix, the missing principal is preserved, and the manifest is partial.
+    manifest = covered(
+        sources=[source(acl_probe_principals=[
+            "entitled-analyst", "unentitled-guest", "svc-audit",
+        ])],
+        acl_runs=[
+            entitled("entitled-analyst", ["doc-1"]),
+            unentitled("unentitled-guest", ["secret-doc"]),
+        ],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["reason"] == "unauthorized-documents"
+    assert finding["detail"]["leaked_document_ids"] == ["secret-doc"]
+    assert finding["detail"]["missing_principals"] == ["svc-audit"]
+    assert finding["detail"]["coverage_complete"] is False
+    assert manifest["status"] == "partial"
+
+
+def test_leak_in_one_source_survives_not_verified_other_source():
+    # policy-library proves a leak (must-fix); hr-handbook is ambiguous
+    # (not-verified). The cross-source worst-case must stay must-fix — a
+    # sibling source's not-verified can never erase the proven leak — while
+    # the ambiguous source still forces `partial`.
+    sources_list = [source(id="policy-library"), source(id="hr-handbook")]
+    manifest = ground_manifest(
+        sources=sources_list,
+        acl_runs=[
+            entitled("e", ["p1"], source_id="policy-library"),
+            unentitled("u", ["p1"], source_id="policy-library"),
+            acl_run("a", ["h1"], source_id="hr-handbook"),
+            acl_run("b", ["h2"], source_id="hr-handbook"),
+        ],
+        citation_runs=[cite_run(source_id="policy-library"), cite_run(source_id="hr-handbook")],
+        refusal_runs=[refuse_run(source_id="policy-library"), refuse_run(source_id="hr-handbook")],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["worst_source"] == "policy-library"
+    assert finding["detail"]["by_source"] == {
+        "policy-library": "must-fix",
+        "hr-handbook": "not-verified",
+    }
+    assert finding["detail"]["coverage_complete"] is False
+    assert manifest["status"] == "partial"
+
+
+def test_multi_source_leak_with_full_coverage_stays_complete():
+    # Both ACL sources have COMPLETE coverage; one proves a leak. The finding
+    # is must-fix but, absent any coverage gap, no `coverage_complete` flag is
+    # emitted and the manifest stays `complete`.
+    sources_list = [source(id="policy-library"), source(id="hr-handbook")]
+    manifest = ground_manifest(
+        sources=sources_list,
+        acl_runs=[
+            entitled("e", ["p1"], source_id="policy-library"),
+            unentitled("u", ["p1"], source_id="policy-library"),
+            entitled("e", ["h1"], source_id="hr-handbook"),
+            unentitled("u", [], source_id="hr-handbook"),
+        ],
+        citation_runs=[cite_run(source_id="policy-library"), cite_run(source_id="hr-handbook")],
+        refusal_runs=[refuse_run(source_id="policy-library"), refuse_run(source_id="hr-handbook")],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert "coverage_complete" not in finding["detail"]
+    assert manifest["status"] == "complete"
+
+
+# ---------------------------------------------------------------------------
+# Authoritative sources — duplicate source ids are rejected (Task 4)
+# ---------------------------------------------------------------------------
+def test_duplicate_source_ids_are_rejected_before_assessment():
+    # Two entries claim the same id with a CONFLICTING permission_model — a
+    # public twin could otherwise mask the ACL-protected source. Reject before
+    # grouping/assessment produces any output.
+    with pytest.raises(GroundEvidenceError, match="duplicate"):
+        ground_manifest(
+            sources=[
+                source(id="policy-library", permission_model="acl"),
+                source(id="policy-library", permission_model="public"),
+            ],
+            acl_runs=[entitled(), unentitled()],
+        )
+
+
+def test_duplicate_source_ids_rejected_even_when_identical():
+    with pytest.raises(GroundEvidenceError, match="duplicate knowledge source id"):
+        ground_manifest(
+            sources=[source(id="hr-handbook"), source(id="hr-handbook")],
+        )
 # ---------------------------------------------------------------------------
 def test_citation_must_exist_in_retrieved_set():
     assert validate_citations(["doc-9"], ["doc-1", "doc-2"]) == {
@@ -805,6 +931,81 @@ def test_base64_and_base64url_azure_search_document_keys_are_accepted(document_i
     assert manifest["acl_evidence"][0]["document_ids"] == [document_id]
 
 
+# ---------------------------------------------------------------------------
+# Azure SAS detection — structural (URL parsing), never generic entropy (Task 4)
+# ---------------------------------------------------------------------------
+def test_looks_like_sas_flags_blob_url_and_bare_query():
+    assert ground._looks_like_sas(AZURE_SAS_BLOB_URL) is True
+    assert ground._looks_like_sas(AZURE_SAS_QUERY) is True
+    assert ground._looks_like_secret(AZURE_SAS_BLOB_URL) is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        # Ordinary URLs — no query, or a non-SAS query — are NOT SAS.
+        "https://example.com/policy/doc-123",
+        "https://example.com/doc?id=1&v=2",
+        "http://internal/library/handbook.pdf",
+        # A signature without any SAS marker, or a marker without a signature,
+        # is not the co-occurrence that defines a SAS.
+        "https://example.com/doc?sig=abc",
+        "https://acct.blob.core.windows.net/c/b.pdf?sv=2021-08-06&sp=r",
+        # Opaque / path-like ids never parse as an http(s) or `?` query.
+        SHA256_DOCUMENT_ID,
+        BASE64URL_DOCUMENT_ID,
+        "policy/library/doc-1",
+        "?",
+    ],
+)
+def test_looks_like_sas_does_not_flag_ordinary_values(value):
+    assert ground._looks_like_sas(value) is False
+
+
+def test_azure_sas_blob_url_as_document_id_is_rejected():
+    # A full SAS URL smuggled through a document-id must be rejected as a
+    # secret-shaped value before the manifest is ever emitted.
+    with pytest.raises(GroundEvidenceError, match="secret-shaped"):
+        covered(acl_runs=[entitled("e", [AZURE_SAS_BLOB_URL]), unentitled("u", [])])
+
+
+def test_azure_sas_bare_query_as_document_id_is_rejected():
+    with pytest.raises(GroundEvidenceError, match="secret-shaped"):
+        covered(acl_runs=[entitled("e", [AZURE_SAS_QUERY]), unentitled("u", [])])
+
+
+def test_azure_sas_baseline_reference_is_rejected():
+    # A SAS URL is not even a valid repo-relative baseline ref, so it fails at
+    # the baseline gate with the retrieval_quality_baseline error.
+    with pytest.raises(GroundEvidenceError, match="retrieval_quality_baseline"):
+        ground_manifest(retrieval_quality_baseline=AZURE_SAS_BLOB_URL)
+
+
+def test_ordinary_url_document_id_without_sas_is_accepted():
+    ordinary = "https://example.com/policy/doc-123"
+    manifest = covered(
+        acl_runs=[entitled("e", [ordinary]), unentitled("u", [])],
+    )
+    assert manifest["acl_evidence"][0]["document_ids"] == [ordinary]
+
+
+def test_url_document_id_with_non_sas_query_is_accepted():
+    ordinary = "https://example.com/doc?id=1&v=2"
+    manifest = covered(
+        acl_runs=[entitled("e", [ordinary]), unentitled("u", [])],
+    )
+    validate_ground_manifest(manifest)
+    assert manifest["acl_evidence"][0]["document_ids"] == [ordinary]
+
+
+def test_path_like_document_id_is_accepted():
+    path_id = "policy/library/handbook-2026"
+    manifest = covered(
+        acl_runs=[entitled("e", [path_id]), unentitled("u", [])],
+    )
+    assert manifest["acl_evidence"][0]["document_ids"] == [path_id]
+
+
 def test_acl_leak_with_long_hash_id_is_must_fix_and_emits_manifest(tmp_path):
     manifest = covered(
         acl_runs=[
@@ -1132,6 +1333,38 @@ def test_cli_emit_preserves_prior_manifest_when_new_evidence_is_malformed(tmp_pa
     assert manifest_path.read_bytes() == original_bytes
 
 
+def test_cli_emit_preserves_prior_manifest_when_source_ids_conflict(tmp_path):
+    manifest_path = tmp_path / "specs" / "ground-manifest.json"
+    # First: a valid emit establishes a prior manifest.
+    _write_evidence(tmp_path, **_covered_evidence())
+    assert ground.main([
+        "--project-root", str(tmp_path),
+        "--evidence-file", "evidence.json",
+        "--emit",
+    ]) == 0
+    original_bytes = manifest_path.read_bytes()
+
+    # Then: conflicting duplicate source ids must fail closed, leaving the
+    # prior manifest untouched.
+    _write_evidence(
+        tmp_path,
+        sources=[
+            source(id="policy-library", permission_model="acl"),
+            source(id="policy-library", permission_model="public"),
+        ],
+        acl_runs=[entitled(), unentitled()],
+        citation_runs=[cite_run()],
+        refusal_runs=[refuse_run()],
+        generated_at=PINNED,
+    )
+    assert ground.main([
+        "--project-root", str(tmp_path),
+        "--evidence-file", "evidence.json",
+        "--emit",
+    ]) == 1
+    assert manifest_path.read_bytes() == original_bytes
+
+
 def test_cli_json_only_emits_valid_data(tmp_path, capsys):
     _write_evidence(tmp_path, **_covered_evidence())
     code = ground.main([
@@ -1223,6 +1456,22 @@ def test_multi_source_manifest_with_by_source_detail_accepted_by_both(jsonschema
     assert jsonschema_validator.is_valid(manifest)
 
 
+def test_manifest_with_coverage_complete_flag_accepted_by_both(jsonschema_validator):
+    # A leak proven against incomplete coverage emits `coverage_complete:
+    # false`; both validators must accept the real field.
+    manifest = covered(
+        acl_runs=[
+            acl_run("svc-guest", ["secret-doc"], expected_entitled=False),
+            acl_run("svc-unknown", ["other-doc"]),
+        ],
+    )
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["detail"]["coverage_complete"] is False
+    validate_ground_manifest(manifest)
+    errors = list(jsonschema_validator.iter_errors(manifest))
+    assert errors == [], [e.message for e in errors]
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -1231,6 +1480,7 @@ def test_multi_source_manifest_with_by_source_detail_accepted_by_both(jsonschema
         lambda m: m["findings"][0]["detail"].update(reason="made-up-reason"),
         lambda m: m["findings"][0]["detail"].update(free_form_note="nope"),
         lambda m: m["findings"][0]["detail"].update(by_source={"s": "weird-status"}),
+        lambda m: m["findings"][0]["detail"].update(coverage_complete="nope"),
         lambda m: m["findings"][0]["detail"]["leaked_document_ids"].append(""),
         lambda m: m["sources"][0].pop("permission_model"),
         lambda m: m["sources"][0].update(extra_field="nope"),

@@ -69,6 +69,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 # ---------------------------------------------------------------------------
 # Shared envelope (skills/_shared/manifest.py) — insert repo root on sys.path
@@ -132,8 +133,9 @@ _FINDING_REASON_ENUM = frozenset({
 })
 
 # Allowlisted finding `detail` fields. Only IDs (lists / single strings),
-# counts, status enums (`by_source`), and the `reason` enum may appear — never
-# a free-form note or any content. Mirrored in the schema for parity.
+# counts, status enums (`by_source`), a `coverage_complete` boolean, and the
+# `reason` enum may appear — never a free-form note or any content. Mirrored in
+# the schema for parity.
 _DETAIL_LIST_KEYS = (
     "uncovered_sources",
     "stale_sources",
@@ -144,7 +146,15 @@ _DETAIL_LIST_KEYS = (
     "missing_principals",
 )
 _DETAIL_STRING_KEYS = ("worst_source",)
-_DETAIL_EXTRA_KEYS = frozenset(_DETAIL_LIST_KEYS + _DETAIL_STRING_KEYS + ("by_source",))
+# `coverage_complete` is a schema-safe boolean that preserves whether the ACL
+# evidence backing a finding is COMPLETE. It exists so a proven leak
+# (`must-fix`) that coexists with a genuine coverage gap (an ambiguous run, too
+# few principals, an unprobed declared principal) still forces the manifest
+# `status` to `partial` without erasing the must-fix.
+_DETAIL_BOOL_KEYS = ("coverage_complete",)
+_DETAIL_EXTRA_KEYS = frozenset(
+    _DETAIL_LIST_KEYS + _DETAIL_STRING_KEYS + _DETAIL_BOOL_KEYS + ("by_source",)
+)
 _DETAIL_KEYS = frozenset({"reason"}) | _DETAIL_EXTRA_KEYS
 
 # Statuses that let a finding downgrade the manifest to `partial`: an
@@ -193,6 +203,15 @@ _SECRET_VALUE_PATTERNS = (
         r"client[_-]?secret|bearer)\b\s*[:=]\s*\S+"
     ),
 )
+
+# Azure Shared Access Signature (SAS) detection — structural, never entropy.
+# An Azure SAS is an http(s) URL (or a bare query string) whose query carries
+# the `sig` signature together with the signed-token markers. Detecting it by
+# the CO-OCCURRENCE of `sig` and a SAS marker (rather than by generic entropy)
+# means an ordinary URL or opaque document id is never mistaken for a
+# credential, while a real SAS token smuggled through an ID/baseline field is.
+_SAS_SIGNATURE_KEYS = frozenset({"sig"})
+_SAS_MARKER_KEYS = frozenset({"sv", "se", "sp", "sr", "st", "spr"})
 
 # Strict RFC 3339 `date-time` with a mandatory timezone — mirrors the shared
 # envelope's timestamp contract so a `captured_at` that would be REJECTED by
@@ -249,16 +268,54 @@ def _is_forbidden_key(key: str) -> bool:
     return any(word in _FORBIDDEN_KEY_WORDS for word in words)
 
 
+def _looks_like_sas(value: str) -> bool:
+    """True when *value* is (or embeds) an Azure Shared Access Signature.
+
+    Detected structurally, never by entropy: the value must be an ``http(s)``
+    URL or a leading ``?`` query string whose query carries the ``sig``
+    signature key together with at least one SAS marker
+    (``sv``/``se``/``sp``/``sr``/``st``/``spr``). An ordinary URL (no query, or
+    a non-SAS query), a bare opaque id, or a repo-relative path is never
+    flagged — only the co-occurrence of a signature and a signed-token marker
+    is a SAS.
+    """
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered.startswith(("http://", "https://")):
+        try:
+            query = urlsplit(text).query
+        except ValueError:
+            return False
+    elif text.startswith("?"):
+        query = text[1:]
+    else:
+        return False
+    if not query:
+        return False
+    try:
+        parsed = parse_qs(query, keep_blank_values=True)
+    except ValueError:
+        return False
+    keys = {key.lower() for key in parsed}
+    return bool(keys & _SAS_SIGNATURE_KEYS) and bool(keys & _SAS_MARKER_KEYS)
+
+
 def _looks_like_secret(value: str) -> bool:
     """True when *value* carries a specific credential/secret signature.
 
     Structural allowlists and forbidden key names protect the manifest shape;
     this scan intentionally does not guess from entropy because opaque evidence
-    IDs and baseline refs commonly use the same alphabets as credentials.
+    IDs and baseline refs commonly use the same alphabets as credentials. It
+    does, however, reject a value that is structurally an Azure SAS (a `sig`
+    signature alongside SAS markers) — an ordinary URL/opaque id is untouched.
     """
     text = value.strip()
     if not text:
         return False
+    if _looks_like_sas(text):
+        return True
     return any(pattern.search(text) for pattern in _SECRET_VALUE_PATTERNS)
 
 
@@ -515,67 +572,103 @@ def _source_requires_acl(source: dict) -> bool:
 # ---------------------------------------------------------------------------
 # GRD-001 — ACL enforcement (source-scoped, allowlist-aware)
 # ---------------------------------------------------------------------------
-def _assess_acl_group(source: dict, runs: list) -> dict:
-    """Assess one source's ACL runs. Returns a small dict
-    ``{"status", "reason", "extras"}``. A proven leak — an unentitled
-    principal receiving ANY document outside its explicit `allowed_document_ids`
-    (a subset is enough; no allowlist means nothing is allowed) — is
-    `must-fix`. Missing/ambiguous entitlement or too few principals is
-    `not-verified`, never a guessed pass.
+def _acl_coverage_gap(source: dict, runs: list):
+    """Return ``(reason, extras)`` for the FIRST coverage gap that makes a
+    source's ACL evidence incomplete, or ``None`` when coverage is complete.
+
+    Coverage is complete only when every run carries an explicit
+    `expected_entitled`, at least two distinct principals were probed, both an
+    entitled and an unentitled probe are present, and every declared
+    `acl_probe_principals` appears. This is evaluated INDEPENDENTLY of whether a
+    proven leak exists, so a leak and a coverage gap can be reported together.
     """
-    for run in runs:
-        if run["expected"] is None:
-            return {"status": "not-verified", "reason": "ambiguous-entitlement", "extras": {}}
+    if any(run["expected"] is None for run in runs):
+        return ("ambiguous-entitlement", {})
 
     principals = {run["principal"] for run in runs}
     if len(principals) < 2:
-        return {"status": "not-verified", "reason": "insufficient-principals", "extras": {}}
+        return ("insufficient-principals", {})
 
     entitled = [run for run in runs if run["expected"] is True]
     unentitled = [run for run in runs if run["expected"] is False]
     if not entitled or not unentitled:
-        return {
-            "status": "not-verified",
-            "reason": "missing-entitled-or-unentitled-probe",
-            "extras": {},
-        }
+        return ("missing-entitled-or-unentitled-probe", {})
 
-    # Declared principal coverage (safe metadata): if the source declares the
-    # principals to probe, every one of them must appear in the evidence.
     declared_principals = source.get("acl_probe_principals")
     if declared_principals:
         missing = sorted(set(declared_principals) - principals)
         if missing:
-            return {
-                "status": "not-verified",
-                "reason": "declared-principal-uncovered",
-                "extras": {"missing_principals": missing},
-            }
+            return ("declared-principal-uncovered", {"missing_principals": missing})
 
-    # Proven leak: any unentitled principal received a document outside its
-    # explicit allowlist. `allowed_ids is None` (no allowlist) means NOTHING
-    # is allowed, so any received document is unauthorized. Subsets count.
+    return None
+
+
+def _assess_acl_group(source: dict, runs: list) -> dict:
+    """Assess one source's ACL runs. Returns a small dict
+    ``{"status", "reason", "extras", "coverage_complete"}``.
+
+    **Negative evidence takes precedence.** A proven leak — an EXPLICIT
+    unentitled principal (``expected_entitled == false``) receiving ANY document
+    outside its explicit `allowed_document_ids` (a subset is enough; no
+    allowlist means nothing is allowed) — is `must-fix` even when OTHER runs are
+    ambiguous or a declared principal is unprobed. The coexisting coverage gap
+    is not discarded: it is preserved in `coverage_complete` (and, when
+    available, `missing_principals`) so the envelope can still be `partial`.
+    With no leak, an incomplete coverage gap is `not-verified` (never a guessed
+    pass), and complete-and-clean evidence is `pass`.
+    """
+    # Proven leak, computed from EXPLICIT unentitled runs only — an ambiguous
+    # run (`expected is None`) is not proof of anything and never contributes a
+    # leak, but it also cannot suppress a leak proven elsewhere in the group.
     leaked: set = set()
-    for run in unentitled:
-        allowed = run["allowed_ids"] if run["allowed_ids"] is not None else frozenset()
-        leaked |= run["document_ids"] - allowed
+    for run in runs:
+        if run["expected"] is False:
+            allowed = run["allowed_ids"] if run["allowed_ids"] is not None else frozenset()
+            leaked |= run["document_ids"] - allowed
+
+    coverage_gap = _acl_coverage_gap(source, runs)
+
     if leaked:
+        extras: dict[str, Any] = {"leaked_document_ids": sorted(leaked)}
+        # Preserve the coexisting coverage gap so a leak + ambiguity/missing
+        # principal still forces `partial` without erasing the must-fix.
+        if coverage_gap is not None:
+            _, gap_extras = coverage_gap
+            extras.update(gap_extras)
         return {
             "status": "must-fix",
             "reason": "unauthorized-documents",
-            "extras": {"leaked_document_ids": sorted(leaked)},
+            "extras": extras,
+            "coverage_complete": coverage_gap is None,
         }
 
-    return {"status": "pass", "reason": "acl-enforced", "extras": {}}
+    if coverage_gap is not None:
+        reason, gap_extras = coverage_gap
+        return {
+            "status": "not-verified",
+            "reason": reason,
+            "extras": gap_extras,
+            "coverage_complete": False,
+        }
+
+    return {
+        "status": "pass",
+        "reason": "acl-enforced",
+        "extras": {},
+        "coverage_complete": True,
+    }
 
 
 def assess_acl(sources: list, acl_runs: list) -> dict:
     """GRD-001 — ACL enforcement, scoped to every `permission_model == "acl"`
     source. Each such source must be covered by ACL runs carrying its
     `source_id`; an uncovered source is `not-verified`. Within a source, a
-    proven allowlist leak is `must-fix`. When several ACL sources are probed
-    the worst per-source result wins, and every per-source status is recorded
-    in `by_source` so a coverage gap still forces the manifest `partial`.
+    proven allowlist leak is `must-fix`. When several ACL sources are probed the
+    worst per-source result wins — a must-fix in one source is never erased by
+    another source's not-verified — and every per-source status is recorded in
+    `by_source`. Any coverage gap (an uncovered source, an ambiguous/insufficient
+    group, an unprobed declared principal) is surfaced as `coverage_complete:
+    false` so the manifest stays `partial` even when the finding is `must-fix`.
     """
     finding_id = "GRD-001"
     acl_sources = [source for source in sources if _source_requires_acl(source)]
@@ -602,15 +695,25 @@ def assess_acl(sources: list, acl_runs: list) -> dict:
                 "status": "not-verified",
                 "reason": "acl-source-uncovered",
                 "extras": {},
+                "coverage_complete": False,
             }
             continue
         per_source[source_id] = _assess_acl_group(source, runs)
+
+    # A `must-fix` finding is normally COMPLETE evidence, so it would not force
+    # `partial` on its own. When it coexists with any coverage gap we record
+    # `coverage_complete: false` so the envelope is still `partial`.
+    coverage_incomplete = any(
+        not result["coverage_complete"] for result in per_source.values()
+    )
 
     if len(per_source) == 1:
         (source_id, result), = per_source.items()
         extras = dict(result["extras"])
         if source_id in set(uncovered):
             extras["uncovered_sources"] = [source_id]
+        if result["status"] == "must-fix" and coverage_incomplete:
+            extras["coverage_complete"] = False
         return _finding(finding_id, result["status"], result["reason"], **extras)
 
     worst_id = min(per_source, key=lambda key: _ACL_STATUS_ORDER[per_source[key]["status"]])
@@ -622,6 +725,8 @@ def assess_acl(sources: list, acl_runs: list) -> dict:
     }
     if uncovered:
         extras["uncovered_sources"] = sorted(uncovered)
+    if worst["status"] == "must-fix" and coverage_incomplete:
+        extras["coverage_complete"] = False
     return _finding(finding_id, worst["status"], worst["reason"], **extras)
 
 
@@ -878,15 +983,18 @@ def _validate_baseline_input(value: Any) -> str | None:
 # ---------------------------------------------------------------------------
 def _finding_forces_partial(finding: dict) -> bool:
     """A finding downgrades the manifest to `partial` when required evidence
-    is genuinely missing/unverifiable: a `not-verified` status, an uncovered
-    or freshness-unverifiable source recorded in `detail`, or a per-source
-    `not-verified` hidden behind an aggregated worst-case status. An executed
-    must-fix/should-fix with COMPLETE coverage never forces partial.
+    is genuinely missing/unverifiable: a `not-verified` status, a `must-fix`
+    proven against INCOMPLETE ACL coverage (`coverage_complete: false`), an
+    uncovered or freshness-unverifiable source recorded in `detail`, or a
+    per-source `not-verified` hidden behind an aggregated worst-case status. An
+    executed must-fix/should-fix with COMPLETE coverage never forces partial.
     """
     if finding["status"] == "not-verified":
         return True
     detail = finding.get("detail")
     if isinstance(detail, dict):
+        if detail.get("coverage_complete") is False:
+            return True
         for key in ("uncovered_sources", "unverifiable_freshness_sources", "missing_principals"):
             if detail.get(key):
                 return True
@@ -931,6 +1039,18 @@ def assess_grounding(
     sanitized_sources = [
         _sanitize_source(source, index) for index, source in enumerate(sources)
     ]
+
+    # Reject duplicate authoritative source ids BEFORE grouping or assessment:
+    # grouping keys on `source_id` and the declared-id sets would silently
+    # collapse a conflicting duplicate (e.g. two entries claiming the same id
+    # with different `permission_model`s), so an ACL-protected source could be
+    # masked by a public twin. Fail closed before any output is produced.
+    seen_ids: set[str] = set()
+    for source in sanitized_sources:
+        source_id = source["id"]
+        if source_id in seen_ids:
+            raise GroundEvidenceError(f"duplicate knowledge source id {source_id!r}")
+        seen_ids.add(source_id)
 
     acl_finding = assess_acl(sanitized_sources, acl_runs)
     citation_finding = assess_citations(sanitized_sources, citation_runs)
@@ -1095,8 +1215,9 @@ _MANIFEST_TOP_LEVEL_KEYS = {
 
 def _validate_detail(detail: Any, label: str) -> None:
     """Validate a finding's `detail` against the allowlisted schema: a
-    required `reason` enum plus only ID lists, a `worst_source` id, and a
-    `by_source` status map. No free-form key or value is representable.
+    required `reason` enum plus only ID lists, a `worst_source` id, a
+    `coverage_complete` boolean, and a `by_source` status map. No free-form key
+    or value is representable.
     """
     detail = _require_object(detail, label)
     _require_keys(detail, {"reason"}, label)
@@ -1109,6 +1230,9 @@ def _validate_detail(detail: Any, label: str) -> None:
     for key in _DETAIL_STRING_KEYS:
         if key in detail:
             _require_string(detail[key], f"{label}.{key}", min_length=1)
+    for key in _DETAIL_BOOL_KEYS:
+        if key in detail:
+            _require_boolean(detail[key], f"{label}.{key}")
     if "by_source" in detail:
         by_source = _require_object(detail["by_source"], f"{label}.by_source")
         for source_id, source_status in by_source.items():

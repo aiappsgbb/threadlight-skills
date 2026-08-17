@@ -82,6 +82,7 @@
               "leaked_document_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
               "missing_principals": {"type": "array", "items": {"type": "string", "minLength": 1}},
               "worst_source": {"type": "string", "minLength": 1},
+              "coverage_complete": {"type": "boolean"},
               "by_source": {
                 "type": "object",
                 "additionalProperties": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]}
