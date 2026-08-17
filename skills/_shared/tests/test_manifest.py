@@ -57,12 +57,26 @@ def test_validate_envelope_rejects_success_shaped_unknown_status():
         validate_envelope(valid_envelope(status="passed"))
 
 
+@pytest.mark.parametrize("status", [[], {}])
+def test_validate_envelope_rejects_non_string_status(status):
+    with pytest.raises(ManifestValidationError, match="status"):
+        validate_envelope(valid_envelope(status=status))
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
         ({"schema": None}, "missing required keys"),
         ({"findings": {}}, "findings"),
-        ({"freshness": {"valid_for_hours": 1.5}}, "valid_for_hours"),
+        (
+            {
+                "freshness": {
+                    "valid_for_hours": 1.5,
+                    "source_oldest_at": None,
+                }
+            },
+            "valid_for_hours",
+        ),
     ],
 )
 def test_validate_envelope_rejects_invalid_contract_fields(change, message):
@@ -158,6 +172,18 @@ def test_validate_envelope_accepts_none_source_oldest_at():
     envelope["freshness"]["source_oldest_at"] = None
 
     assert validate_envelope(envelope) is None
+
+
+@pytest.mark.parametrize("missing_key", ["valid_for_hours", "source_oldest_at"])
+def test_validate_envelope_requires_complete_freshness_metadata(missing_key):
+    envelope = valid_envelope()
+    del envelope["freshness"][missing_key]
+
+    with pytest.raises(
+        ManifestValidationError,
+        match=rf"freshness missing required keys: {missing_key}",
+    ):
+        validate_envelope(envelope)
 
 
 @pytest.mark.parametrize("valid_for_hours", [0, -1, True, 1.5, "24"])

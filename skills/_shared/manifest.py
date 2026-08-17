@@ -47,7 +47,10 @@ def validate_envelope(envelope):
 
     _validate_iso8601_timestamp(envelope["generated_at"], "generated_at")
 
-    if envelope["status"] not in VALID_STATUSES:
+    if (
+        not isinstance(envelope["status"], str)
+        or envelope["status"] not in VALID_STATUSES
+    ):
         raise ManifestValidationError(f"unknown status: {envelope['status']!r}")
 
     if not isinstance(envelope["findings"], list):
@@ -57,7 +60,15 @@ def validate_envelope(envelope):
     if not isinstance(freshness, dict):
         raise ManifestValidationError("freshness must be an object")
 
-    source_oldest_at = freshness.get("source_oldest_at")
+    required_freshness_keys = {"valid_for_hours", "source_oldest_at"}
+    missing_freshness_keys = required_freshness_keys.difference(freshness)
+    if missing_freshness_keys:
+        raise ManifestValidationError(
+            "freshness missing required keys: "
+            + ", ".join(sorted(missing_freshness_keys))
+        )
+
+    source_oldest_at = freshness["source_oldest_at"]
     if source_oldest_at is not None:
         if not isinstance(source_oldest_at, str) or not source_oldest_at:
             raise ManifestValidationError(
@@ -69,7 +80,7 @@ def validate_envelope(envelope):
             nullable=True,
         )
 
-    valid_for_hours = freshness.get("valid_for_hours")
+    valid_for_hours = freshness["valid_for_hours"]
     if (
         isinstance(valid_for_hours, bool)
         or not isinstance(valid_for_hours, int)
