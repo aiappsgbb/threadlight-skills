@@ -9,7 +9,11 @@
   "properties": {
     "schema": {"const": "threadlight-connect-data-contract/v1"},
     "tool_name": {"type": "string", "minLength": 1},
-    "generated_at": {"type": "string", "format": "date-time"},
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
     "fields": {
       "type": "array",
       "items": {

@@ -1486,6 +1486,22 @@ def _manifest_with_two_element_arrays():
 
 # (label, path-into-manifest, replacement-value) — each mutates exactly one leaf
 # of an otherwise-valid manifest into a schema violation.
+_TIMESTAMP_WHITESPACE_CASES = [
+    (f"{location} {whitespace}", path, value)
+    for location, path in [
+        ("generated_at", ("generated_at",)),
+        ("source_oldest_at", ("freshness", "source_oldest_at")),
+        ("contract.generated_at", ("contract", "generated_at")),
+    ]
+    for whitespace, value in [
+        ("trailing newline", "2026-08-17T10:00:00Z\n"),
+        ("trailing CRLF", "2026-08-17T10:00:00Z\r\n"),
+        ("leading space", " 2026-08-17T10:00:00Z"),
+        ("internal tab", "2026-08-17T10:00:00\tZ"),
+    ]
+]
+
+
 _MALFORMED_MANIFEST_CASES = [
     ("required='yes' (boolean is a string)", ("contract", "fields", 0, "required"), "yes"),
     ("passed='yes' (boolean is a string)", ("conformance", "passed"), "yes"),
@@ -1541,7 +1557,7 @@ _MALFORMED_MANIFEST_CASES = [
     ),
     ("valid_for_hours 1.5 is not integral", ("freshness", "valid_for_hours"), 1.5),
     ("item_count 1.5 is not integral", ("conformance", "item_count"), 1.5),
-]
+] + _TIMESTAMP_WHITESPACE_CASES
 
 
 @pytest.mark.parametrize(
@@ -1583,6 +1599,26 @@ def test_valid_manifest_accepted_by_both_validators(label, builder, jsonschema_v
         f"jsonschema REJECTED the {label} manifest the hand validator accepted: "
         + "; ".join(f"{list(e.path)}: {e.message}" for e in errors)
     )
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-08-17T10:00:00Z",
+        "2026-08-17T10:00:00+05:30",
+        "2026-08-17T10:00:00-07:00",
+    ],
+)
+def test_rfc3339_z_and_offsets_accepted_at_all_timestamp_locations(
+    timestamp, jsonschema_validator
+):
+    manifest = copy.deepcopy(_rich_connect_manifest())
+    manifest["generated_at"] = timestamp
+    manifest["freshness"]["source_oldest_at"] = timestamp
+    manifest["contract"]["generated_at"] = timestamp
+
+    connect.validate_connect_manifest(manifest)
+    assert jsonschema_validator.is_valid(manifest)
 
 
 @pytest.mark.parametrize(
@@ -1674,4 +1710,3 @@ def test_invalid_second_array_element_rejected_by_both_validators(
         "jsonschema unexpectedly ACCEPTED a manifest the hand validator rejected "
         f"(second-element mutation at {path} -> {value!r})"
     )
-

@@ -13,13 +13,22 @@
   "properties": {
     "schema": {"const": "threadlight-connect-manifest/v1"},
     "tool_version": {"type": "string", "minLength": 1},
-    "generated_at": {"type": "string", "minLength": 1, "format": "date-time"},
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
     "freshness": {
       "type": "object",
       "required": ["valid_for_hours", "source_oldest_at"],
       "properties": {
         "valid_for_hours": {"type": "integer", "minimum": 1},
-        "source_oldest_at": {"type": ["string", "null"], "format": "date-time"}
+        "source_oldest_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+        }
       }
     },
     "status": {"enum": ["complete", "partial", "aborted"]},
