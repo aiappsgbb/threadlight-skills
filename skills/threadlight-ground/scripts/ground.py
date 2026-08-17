@@ -442,17 +442,25 @@ def _require_evidence_id_list(value: Any, label: str) -> list:
 
 def _resolve_expected_entitled(run: dict, label: str):
     """Return the run's EXPLICIT expected-entitlement boolean, or None when no
-    explicit signal is present. A present-but-non-boolean signal (e.g. ``1``,
-    ``"true"``) raises — entitlement is never inferred from a naive name
-    heuristic, so ambiguous expectations stay `not-verified`.
+    explicit signal is present. Every supplied alias must be a boolean, and
+    supplying both aliases with different values raises. Entitlement is never
+    inferred from a naive name heuristic, so ambiguous expectations stay
+    `not-verified`.
     """
+    supplied = {}
     for key in ("expected_entitled", "entitled"):
         if key in run:
             value = run[key]
             if not isinstance(value, bool):
                 raise GroundEvidenceError(f"{label}.{key} must be a boolean")
-            return value
-    return None
+            supplied[key] = value
+
+    if len(supplied) == 2 and supplied["expected_entitled"] != supplied["entitled"]:
+        raise GroundEvidenceError(
+            f"{label} has conflicting entitlement evidence: "
+            "expected_entitled and entitled must be equal"
+        )
+    return next(iter(supplied.values()), None)
 
 
 def _normalize_acl_run(run: Any, index: int, declared_ids: set) -> dict:

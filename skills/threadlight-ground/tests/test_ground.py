@@ -270,6 +270,66 @@ def test_acl_expected_entitled_must_be_bool_not_numeric():
         assess_acl([source()], [acl_run("e", ["A"], expected_entitled=1)])
 
 
+@pytest.mark.parametrize(
+    ("expected_entitled", "entitled_alias"),
+    [(True, False), (False, True)],
+)
+def test_acl_conflicting_entitlement_aliases_raise(
+    expected_entitled, entitled_alias
+):
+    with pytest.raises(GroundEvidenceError, match="conflicting entitlement"):
+        assess_acl(
+            [source()],
+            [
+                acl_run(
+                    "e",
+                    ["A"],
+                    expected_entitled=expected_entitled,
+                    entitled=entitled_alias,
+                )
+            ],
+        )
+
+
+@pytest.mark.parametrize("expected", [True, False])
+def test_acl_equal_entitlement_aliases_are_accepted(expected):
+    result = assess_acl(
+        [source()],
+        [
+            acl_run(
+                "first",
+                ["A"],
+                expected_entitled=expected,
+                entitled=expected,
+            ),
+            acl_run(
+                "second",
+                ["B"],
+                expected_entitled=not expected,
+                entitled=not expected,
+            ),
+        ],
+    )
+
+    assert result["status"] in {"pass", "must-fix"}
+
+
+@pytest.mark.parametrize("invalid_alias", [1, "true", None])
+def test_acl_both_entitlement_aliases_must_be_actual_booleans(invalid_alias):
+    with pytest.raises(GroundEvidenceError, match="entitled must be a boolean"):
+        assess_acl(
+            [source()],
+            [
+                acl_run(
+                    "e",
+                    ["A"],
+                    expected_entitled=True,
+                    entitled=invalid_alias,
+                )
+            ],
+        )
+
+
 def test_acl_run_principal_must_be_nonempty_string():
     with pytest.raises(GroundEvidenceError, match="principal"):
         assess_acl(
