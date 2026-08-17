@@ -70,6 +70,12 @@ jobs:
         # skill-discovery-smoke.sh confirms this end-to-end but only runs on
         # manual dispatch, so this cheap static check gates every PR.
         run: python scripts/ci/check-skill-description-length.py
+      - name: Guard - every pytest suite is wired into this workflow
+        # This workflow hardcodes one step per test directory, so a newly added
+        # suite runs locally, goes green on the PR, and never actually executes
+        # in CI — a green check that lies about coverage. Same failure class the
+        # repo already closed for stdlib-only suites via run-standalone-tests.py.
+        run: python scripts/ci/check-test-dirs-wired.py
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
       - name: Run threadlight-design tests
@@ -112,3 +118,10 @@ jobs:
         # set. All azure.* imports are lazy, so the cores import under this
         # stdlib-only runner (pytest + pyyaml). Deterministic, no network.
         run: python -m pytest skills/threadlight-event-triggers/tests/ -v
+      - name: Run threadlight-deploy tests
+        # Guards the `azd ai agent` command surface the deploy path drives. The
+        # extension is beta and ships often; when a subcommand disappears the
+        # failure otherwise surfaces at deploy time as `unknown command` (which
+        # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
+        # markdown, runs no azd, no network.
+        run: python -m pytest skills/threadlight-deploy/tests/ -v

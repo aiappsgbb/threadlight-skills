@@ -32,6 +32,16 @@ field.
 
 ### Added
 
+- **CI could silently drop a whole test suite.** `python-pytest.yml` hardcodes
+  one step per test directory, so adding `skills/*/tests/` gets you a green PR
+  and a suite that **never runs in CI** — a passing check that lies about
+  coverage, which is worse than having no tests at all. Caught while adding the
+  suite below: it would not have run. `scripts/ci/check-test-dirs-wired.py` now
+  gates every PR by asserting each pytest suite is referenced in the workflow,
+  and prints the exact step to paste when one isn't. This is the same failure
+  class the repo already closed for stdlib-only suites via
+  `run-standalone-tests.py`; it is now closed for pytest suites too. All 12
+  current suites verified wired.
 - **The azd command surface is now machine-checked**
   (`skills/threadlight-deploy/tests/test_azd_cli_contract.py`, 8 tests). The
   contract file's command table is the single source of truth, and every
