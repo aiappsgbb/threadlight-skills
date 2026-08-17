@@ -1063,6 +1063,13 @@ _CONTRACT_FIELD_KEYS = {"name", "required", "type", "cardinality"}
 _FINDING_REQUIRED_KEYS = {"id", "status"}
 _APPLY_PLAN_ITEM_REQUIRED_KEYS = {"path", "action", "description"}
 
+# Value-domain enums mirrored 1:1 from the schemas so the hand validator
+# rejects exactly what jsonschema would (see tests/test_connect.py parity).
+_FINDING_STATUS_ENUM = {"pass", "must-fix", "should-fix", "not-verified"}
+_APPLY_ACTION_ENUM = {"create", "update"}
+_CONTRACT_TYPE_ENUM = {"string", "integer", "number", "boolean", "array", "object"}
+_CONTRACT_CARDINALITY_ENUM = {"single", "array"}
+
 
 def _require_object_keys(value, required: set, label: str) -> dict:
     if not isinstance(value, dict):
@@ -1075,14 +1082,77 @@ def _require_object_keys(value, required: set, label: str) -> dict:
     return value
 
 
+# ---------------------------------------------------------------------------
+# Typed leaf validators — stdlib-only mirrors of the JSON-Schema primitive
+# constraints (type / enum / minimum / minLength / nullable). Each names the
+# offending path so a malformed manifest points straight at the bad field, and
+# each rejects exactly what jsonschema's Draft-07 validator rejects: booleans
+# never satisfy integer/number, unknown enum members and out-of-range minimums
+# are refused, and `["string", "null"]` unions accept only a string or null.
+# ---------------------------------------------------------------------------
+def _require_string(value, label: str, *, min_length: int = 0):
+    if not isinstance(value, str) or len(value) < min_length:
+        suffix = "a non-empty string" if min_length else "a string"
+        raise ManifestValidationError(f"{label} must be {suffix}")
+    return value
+
+
+def _require_boolean(value, label: str):
+    if not isinstance(value, bool):
+        raise ManifestValidationError(f"{label} must be a boolean")
+    return value
+
+
+def _require_integer(value, label: str, *, minimum=None):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ManifestValidationError(f"{label} must be an integer")
+    if minimum is not None and value < minimum:
+        raise ManifestValidationError(f"{label} must be >= {minimum}")
+    return value
+
+
+def _require_array(value, label: str) -> list:
+    if not isinstance(value, list):
+        raise ManifestValidationError(f"{label} must be an array")
+    return value
+
+
+def _require_enum(value, allowed: set, label: str):
+    try:
+        member = value in allowed
+    except TypeError:  # unhashable (e.g. a list/dict) is never an enum member
+        member = False
+    if not member:
+        raise ManifestValidationError(
+            f"{label} must be one of {', '.join(sorted(allowed))}; got {value!r}"
+        )
+    return value
+
+
+def _require_nullable_enum(value, allowed: set, label: str):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ManifestValidationError(f"{label} must be a string or null")
+    return _require_enum(value, allowed, label)
+
+
 def validate_connect_manifest(manifest: dict) -> None:
-    """Hand-rolled schema check (mirrors references/connect-manifest.schema.json)
-    layered on top of the shared envelope's own validation — stdlib-only, no
-    `jsonschema` dependency, consistent with the rest of the repo. Unknown keys
-    are rejected (the schema's ``additionalProperties: false``) at the top level
-    and in every controlled nested object: `conformance`, each `differences`
-    item, `evidence_summary`, and the `contract` (+ its field items). Required
-    keys and object shapes are enforced for findings and apply-plan items too.
+    """Hand-rolled schema check (mirrors references/connect-manifest.schema.json
+    and the referenced data-contract.schema.json) layered on top of the shared
+    envelope's own validation — stdlib-only, no `jsonschema` runtime dependency,
+    consistent with the rest of the repo. It enforces the schemas' full value
+    domain, not just object shapes: every leaf's declared JSON type
+    (object/array/string/boolean/integer/number — a bool is never an
+    integer/number), every ``const`` and ``enum``, every ``minimum`` /
+    ``minLength``, nullable ``["string", "null"]`` unions, required keys, and
+    ``additionalProperties: false`` for the top level and each controlled nested
+    object (`freshness` via the envelope, `conformance`, every `differences`
+    item, `evidence_summary`, the `contract` and its `fields` items). Array item
+    types are checked for `findings`, `differences`, `required_roles`,
+    `apply_plan`, `changed_paths`, and `contract.fields`. Timestamp/string
+    fields reuse the shared envelope helpers. Every message names the offending
+    path. A test-only jsonschema parity suite pins this to the schemas.
     """
     validate_envelope(manifest)
 
@@ -1098,44 +1168,83 @@ def validate_connect_manifest(manifest: dict) -> None:
 
     _reject_unknown_keys(manifest, _MANIFEST_TOP_LEVEL_KEYS, "connect manifest")
 
+    if manifest["schema"] != CONNECT_MANIFEST_SCHEMA:
+        raise ManifestValidationError(
+            f"schema must be {CONNECT_MANIFEST_SCHEMA!r}"
+        )
+    _require_string(manifest["tool_name"], "tool_name", min_length=1)
+
     for key in ("integration_state", "target_state"):
         if manifest[key] not in VALID_STATES:
             raise ManifestValidationError(f"unknown {key}: {manifest[key]!r}")
 
     contract = _require_object_keys(manifest["contract"], _CONTRACT_KEYS, "contract")
     _reject_unknown_keys(contract, _CONTRACT_KEYS, "contract")
-    contract_fields = contract["fields"]
-    if not isinstance(contract_fields, list):
-        raise ManifestValidationError("contract.fields must be a list")
+    if contract["schema"] != DATA_CONTRACT_SCHEMA:
+        raise ManifestValidationError(
+            f"contract.schema must be {DATA_CONTRACT_SCHEMA!r}"
+        )
+    _require_string(contract["tool_name"], "contract.tool_name", min_length=1)
+    _require_string(contract["generated_at"], "contract.generated_at", min_length=1)
+    _validate_iso8601_timestamp(contract["generated_at"], "contract.generated_at")
+    contract_fields = _require_array(contract["fields"], "contract.fields")
     for field in contract_fields:
         field = _require_object_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
         _reject_unknown_keys(field, _CONTRACT_FIELD_KEYS, "contract field")
+        _require_string(field["name"], "contract field name", min_length=1)
+        _require_boolean(field["required"], "contract field required")
+        _require_nullable_enum(field["type"], _CONTRACT_TYPE_ENUM, "contract field type")
+        _require_nullable_enum(
+            field["cardinality"], _CONTRACT_CARDINALITY_ENUM, "contract field cardinality"
+        )
 
     for finding in manifest["findings"]:
-        _require_object_keys(finding, _FINDING_REQUIRED_KEYS, "finding")
+        finding = _require_object_keys(finding, _FINDING_REQUIRED_KEYS, "finding")
+        _require_string(finding["id"], "finding id")
+        _require_enum(finding["status"], _FINDING_STATUS_ENUM, "finding status")
 
     conformance = manifest["conformance"]
     conformance = _require_object_keys(conformance, _CONFORMANCE_KEYS, "conformance")
     _reject_unknown_keys(conformance, _CONFORMANCE_KEYS, "conformance")
-    if not isinstance(conformance["differences"], list):
-        raise ManifestValidationError("conformance.differences must be a list")
-    for diff in conformance["differences"]:
+    _require_boolean(conformance["passed"], "conformance.passed")
+    _require_boolean(conformance["evaluated"], "conformance.evaluated")
+    _require_integer(conformance["item_count"], "conformance.item_count", minimum=0)
+    differences = _require_array(conformance["differences"], "conformance.differences")
+    for diff in differences:
         diff = _require_object_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
         _reject_unknown_keys(diff, _DIFFERENCE_KEYS, "conformance difference")
+        _require_string(diff["field"], "conformance difference field")
+        _require_string(diff["expected"], "conformance difference expected")
+        _require_string(diff["actual"], "conformance difference actual")
+        _require_string(diff["path"], "conformance difference path")
 
     evidence_summary = _require_object_keys(
         manifest["evidence_summary"], _EVIDENCE_SUMMARY_KEYS, "evidence_summary"
     )
     _reject_unknown_keys(evidence_summary, _EVIDENCE_SUMMARY_KEYS, "evidence_summary")
+    _require_boolean(evidence_summary["obo_present"], "evidence_summary.obo_present")
+    _require_boolean(evidence_summary["obo_user_scoped"], "evidence_summary.obo_user_scoped")
+    _require_boolean(
+        evidence_summary["roles_revalidated"], "evidence_summary.roles_revalidated"
+    )
+    required_roles = _require_array(
+        evidence_summary["required_roles"], "evidence_summary.required_roles"
+    )
+    for index, role in enumerate(required_roles):
+        _require_string(role, f"evidence_summary.required_roles[{index}]")
 
-    if not isinstance(manifest["apply_plan"], list):
-        raise ManifestValidationError("apply_plan must be a list")
-    for item in manifest["apply_plan"]:
-        _require_object_keys(item, _APPLY_PLAN_ITEM_REQUIRED_KEYS, "apply_plan item")
-    if not isinstance(manifest["changed_paths"], list):
-        raise ManifestValidationError("changed_paths must be a list")
-    if not isinstance(manifest["apply"], bool):
-        raise ManifestValidationError("apply must be a boolean")
+    apply_plan = _require_array(manifest["apply_plan"], "apply_plan")
+    for item in apply_plan:
+        item = _require_object_keys(item, _APPLY_PLAN_ITEM_REQUIRED_KEYS, "apply_plan item")
+        _require_string(item["path"], "apply_plan item path")
+        _require_enum(item["action"], _APPLY_ACTION_ENUM, "apply_plan item action")
+        _require_string(item["description"], "apply_plan item description")
+
+    changed_paths = _require_array(manifest["changed_paths"], "changed_paths")
+    for index, path_value in enumerate(changed_paths):
+        _require_string(path_value, f"changed_paths[{index}]")
+
+    _require_boolean(manifest["apply"], "apply")
 
     if _contains_forbidden_keys(manifest):
         raise ManifestValidationError(

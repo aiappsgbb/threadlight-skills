@@ -4,8 +4,10 @@ state machine, apply-plan/apply, and manifest emission.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
+import re
 import stat
 import sys
 from pathlib import Path
@@ -1292,3 +1294,205 @@ def test_validate_rejects_non_object_nested_item(object_path):
 
     with pytest.raises(ManifestValidationError, match="must be an object"):
         connect.validate_connect_manifest(manifest)
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — hand-validator / jsonschema parity for every nested value constraint
+#
+# validate_connect_manifest() is a stdlib-only mirror of
+# references/connect-manifest.schema.json (+ the referenced
+# data-contract.schema.json). These tests pin that mirror to the real schemas:
+# every malformed instance below must be rejected by BOTH the hand validator
+# and jsonschema, and every representative valid manifest accepted by BOTH.
+# jsonschema is a test-only dependency — the shipping skill never imports it.
+# ---------------------------------------------------------------------------
+_REFERENCES_DIR = SKILL_ROOT / "references"
+
+
+@pytest.fixture(scope="module")
+def jsonschema_validator():
+    """A Draft-07 validator over the on-disk manifest schema, with the
+    ``$ref``-ed data-contract schema resolvable from an in-memory registry."""
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+
+    manifest_schema = json.loads(
+        (_REFERENCES_DIR / "connect-manifest.schema.json").read_text(encoding="utf-8")
+    )
+    contract_schema = json.loads(
+        (_REFERENCES_DIR / "data-contract.schema.json").read_text(encoding="utf-8")
+    )
+    registry = referencing.Registry().with_resources(
+        [
+            (manifest_schema["$id"], referencing.Resource.from_contents(manifest_schema)),
+            (contract_schema["$id"], referencing.Resource.from_contents(contract_schema)),
+        ]
+    )
+    return jsonschema.Draft7Validator(manifest_schema, registry=registry)
+
+
+def _rich_connect_manifest(**overrides):
+    """A schema-complete connect manifest built through the real emitter, with
+    every nested array populated (a drift difference, a finding, an apply-plan
+    item, a changed path, a required role) so a single mutation can exercise any
+    leaf the schema constrains."""
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    conformance = check_conformance(contract, drifting_real_response())
+    params = dict(
+        tool_name="returns_get_case",
+        integration_state="real-unverified",
+        target_state="real-drift",
+        contract=contract,
+        conformance=conformance,
+        evidence_summary={
+            "obo_present": True,
+            "obo_user_scoped": True,
+            "roles_revalidated": True,
+            "required_roles": ["Case.Read"],
+        },
+        apply_plan=[
+            {"path": "specs/SPEC.md", "action": "create", "description": "scaffold spec"},
+        ],
+        changed_paths=["specs/SPEC.md"],
+        apply=True,
+        status="complete",
+        findings=[
+            {"id": "CONNECT-DRIFT-status", "status": "must-fix", "detail": {"field": "status"}},
+        ],
+        generated_at=PINNED,
+    )
+    params.update(overrides)
+    return connect.build_connect_manifest(**params)
+
+
+def _partial_connect_manifest():
+    """A representative *partial* manifest: real response had no items to check,
+    so conformance is unevaluated (not a vacuous pass) and evidence is absent."""
+    contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
+    conformance = check_conformance(contract, {"items": []})
+    return connect.build_connect_manifest(
+        tool_name="returns_get_case",
+        integration_state="mock",
+        target_state="real-unverified",
+        contract=contract,
+        conformance=conformance,
+        evidence_summary={
+            "obo_present": True,
+            "obo_user_scoped": False,
+            "roles_revalidated": False,
+            "required_roles": [],
+        },
+        apply_plan=[
+            {"path": "specs/SPEC.md", "action": "create", "description": "scaffold spec"},
+        ],
+        changed_paths=[],
+        apply=False,
+        status="partial",
+        findings=[
+            {"id": "CONNECT-EVIDENCE-EMPTY", "status": "not-verified", "detail": "no items"},
+        ],
+        generated_at=PINNED,
+    )
+
+
+def _set_path(manifest, path, value):
+    target = manifest
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    return manifest
+
+
+# (label, path-into-manifest, replacement-value) — each mutates exactly one leaf
+# of an otherwise-valid manifest into a schema violation.
+_MALFORMED_MANIFEST_CASES = [
+    ("required='yes' (boolean is a string)", ("contract", "fields", 0, "required"), "yes"),
+    ("passed='yes' (boolean is a string)", ("conformance", "passed"), "yes"),
+    ("obo_present='yes' (boolean is a string)", ("evidence_summary", "obo_present"), "yes"),
+    ("apply action 'delete' outside enum", ("apply_plan", 0, "action"), "delete"),
+    ("changed_paths [42] (int item)", ("changed_paths",), [42]),
+    ("difference.field wrong item type", ("conformance", "differences", 0, "field"), 42),
+    ("required_roles wrong item type", ("evidence_summary", "required_roles"), [1]),
+    ("apply_plan.path wrong item type", ("apply_plan", 0, "path"), 5),
+    ("apply_plan.description wrong type", ("apply_plan", 0, "description"), 9),
+    ("item_count below minimum (-1)", ("conformance", "item_count"), -1),
+    ("valid_for_hours below minimum (0)", ("freshness", "valid_for_hours"), 0),
+    ("status invalid enum", ("status",), "passed"),
+    ("integration_state invalid enum", ("integration_state",), "bogus-state"),
+    ("target_state invalid enum", ("target_state",), "sideways"),
+    ("finding status invalid enum", ("findings", 0, "status"), "broken"),
+    ("contract field type invalid enum", ("contract", "fields", 0, "type"), "weird"),
+    ("contract field cardinality invalid enum", ("contract", "fields", 0, "cardinality"), "many"),
+    ("apply not a boolean", ("apply",), "yes"),
+    ("evaluated is int 1 not a boolean", ("conformance", "evaluated"), 1),
+    ("item_count is a boolean not an int", ("conformance", "item_count"), True),
+    ("changed_paths not an array", ("changed_paths",), "specs/SPEC.md"),
+    ("apply_plan not an array", ("apply_plan",), {}),
+    ("tool_name empty violates minLength", ("tool_name",), ""),
+    ("contract.tool_name empty violates minLength", ("contract", "tool_name"), ""),
+    ("contract field name empty violates minLength", ("contract", "fields", 0, "name"), ""),
+    ("unknown top-level key", ("surprise",), "nope"),
+    ("unknown conformance key", ("conformance", "extra"), 1),
+    ("unknown evidence_summary key", ("evidence_summary", "leak"), "x"),
+    ("unknown difference key", ("conformance", "differences", 0, "unexpected"), "x"),
+    ("manifest schema wrong const", ("schema",), "wrong-manifest/v1"),
+    ("contract schema wrong const", ("contract", "schema"), "wrong-contract/v1"),
+]
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [(case[1], case[2]) for case in _MALFORMED_MANIFEST_CASES],
+    ids=[case[0] for case in _MALFORMED_MANIFEST_CASES],
+)
+def test_malformed_manifest_rejected_by_both_validators(path, value, jsonschema_validator):
+    manifest = _set_path(copy.deepcopy(_rich_connect_manifest()), path, value)
+
+    with pytest.raises(ManifestValidationError):
+        connect.validate_connect_manifest(manifest)
+
+    assert not jsonschema_validator.is_valid(manifest), (
+        "jsonschema unexpectedly ACCEPTED a manifest the hand validator rejected "
+        f"(mutation at {path} -> {value!r})"
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "builder"),
+    [
+        ("complete-verified", _valid_manifest),
+        ("complete-drift", _rich_connect_manifest),
+        ("partial-unevaluated", _partial_connect_manifest),
+    ],
+)
+def test_valid_manifest_accepted_by_both_validators(label, builder, jsonschema_validator):
+    manifest = builder()
+
+    connect.validate_connect_manifest(manifest)  # must not raise
+
+    errors = list(jsonschema_validator.iter_errors(manifest))
+    assert not errors, (
+        f"jsonschema REJECTED the {label} manifest the hand validator accepted: "
+        + "; ".join(f"{list(e.path)}: {e.message}" for e in errors)
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_fragment"),
+    [
+        (("conformance", "passed"), "yes", "conformance.passed"),
+        (("conformance", "item_count"), -1, "conformance.item_count"),
+        (("evidence_summary", "obo_present"), "yes", "evidence_summary.obo_present"),
+        (("evidence_summary", "required_roles"), [1], "evidence_summary.required_roles[0]"),
+        (("apply_plan", 0, "action"), "delete", "apply_plan item action"),
+        (("changed_paths",), [42], "changed_paths[0]"),
+        (("contract", "fields", 0, "required"), "yes", "contract field required"),
+        (("contract", "fields", 0, "type"), "weird", "contract field type"),
+    ],
+)
+def test_validation_error_names_offending_path(path, value, expected_fragment):
+    manifest = _set_path(copy.deepcopy(_rich_connect_manifest()), path, value)
+
+    with pytest.raises(ManifestValidationError, match=re.escape(expected_fragment)):
+        connect.validate_connect_manifest(manifest)
+
