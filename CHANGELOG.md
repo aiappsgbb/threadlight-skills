@@ -7,6 +7,41 @@ field.
 
 ## [Unreleased]
 
+### Added
+
+- **The design→deploy artifact contract is now checked for free on every PR.**
+  Until now that contract existed only as ~130 lines of inline bash inside the
+  manually-dispatched `threadlight-e2e-foundry` workflow — so it cost ~$1 and
+  ~90 minutes to evaluate, could not be run locally before pushing, and only
+  ever saw a freshly generated pilot. New `scripts/ci/check_pilot_contract.py`
+  expresses the same contract as a deterministic, millisecond, offline check
+  with greppable rule ids, and `scripts/ci/tests/` runs it against
+  `examples/returns-triage-governed` on every PR.
+
+  The checker is parameterised by `--stage` and `--profile` rather than
+  hardcoding the workflow's expectations, because the workflow drives a
+  *Fast-PoC demo-sandbox* pilot while the shipped example is a *governed
+  customer-pilot*: the former must carry a SPEC § 13 silent-defaults callout
+  and the latter must not, their `deployment_target` values differ, and
+  `.env.local` is gitignored so it exists in one and never in the other. A
+  naive extraction would have failed immediately on the shipped example.
+
+  Two checks are stricter than the bash they mirror: sample-data JSON is now
+  actually parsed (the original only checked `-size +10c`, so a 200-byte file
+  of broken JSON passed and failed later at run time), and SPEC § 13 extraction
+  keeps lettered subsections like `## 13b.` while still stopping at § 14.
+
+  All 31 tests inject a violation and assert the specific rule fires, so the
+  guard is proven able to fail rather than being another green check that lies.
+
+### Changed
+
+- `scripts/ci/check-test-dirs-wired.py` now also covers pytest suites outside
+  `skills/*/tests`, starting with `scripts/ci/tests`. Cross-cutting CI scripts
+  are not owned by any single skill, so their tests cannot live under a skill —
+  but without this they would have become exactly the silent-blind-spot the
+  guard exists to prevent.
+
 ### Fixed
 
 - **The E2E post-deploy assert failed on a healthy deployment.** Run

@@ -23,6 +23,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "python-pytest.yml"
 SKILLS_DIR = REPO_ROOT / "skills"
 
+# Pytest suites that live outside skills/. Cross-cutting CI scripts are not
+# owned by any one skill, so their tests cannot live under skills/*/tests --
+# but they must still be wired, or they become the exact blind spot this
+# script exists to prevent.
+EXTRA_TEST_DIRS = (REPO_ROOT / "scripts" / "ci" / "tests",)
+
 
 def main() -> int:
     if not WORKFLOW.is_file():
@@ -31,7 +37,9 @@ def main() -> int:
 
     workflow_text = WORKFLOW.read_text(encoding="utf-8")
     test_dirs = sorted(
-        p for p in SKILLS_DIR.glob("*/tests") if p.is_dir() and any(p.glob("test_*.py"))
+        p
+        for p in (*SKILLS_DIR.glob("*/tests"), *EXTRA_TEST_DIRS)
+        if p.is_dir() and any(p.glob("test_*.py"))
     )
 
     if not test_dirs:

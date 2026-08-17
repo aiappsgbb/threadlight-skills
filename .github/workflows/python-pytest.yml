@@ -76,6 +76,14 @@ jobs:
         # in CI — a green check that lies about coverage. Same failure class the
         # repo already closed for stdlib-only suites via run-standalone-tests.py.
         run: python scripts/ci/check-test-dirs-wired.py
+      - name: Run design→deploy pilot contract tests
+        # The design→deploy artifact contract used to live only as inline bash
+        # inside the ~$1 manually-dispatched E2E workflow, so in practice it was
+        # verified once every few weeks. check_pilot_contract.py expresses the
+        # same contract as a free, deterministic, local-runnable check and this
+        # suite runs it against examples/returns-triage-governed on every PR —
+        # plus proves every rule can actually fail.
+        run: python -m pytest scripts/ci/tests/ -v
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
       - name: Run threadlight-design tests
