@@ -8,7 +8,8 @@ per successful interaction.
 
 **Architecture:** Keep `specs/cost-manifest.json` strict-v1 and unchanged.
 `threadlight-consumption-iq` emits separate actuals and reconciliation
-manifests from Cost Management, Azure Monitor, traces, and SPEC section 14
+manifests from Cost Management, Azure Monitor metrics, Log Analytics workspace
+interaction logs, and SPEC section 14
 policy. `threadlight-production-ready` assesses those artifacts instead of
 reimplementing live cost math. Every new path is opt-in and fail-closed.
 
@@ -17,6 +18,40 @@ reimplementing live cost math. Every new path is opt-in and fail-closed.
 Query REST API `2025-03-01`, Markdown/JSON contracts.
 
 **Approved design:** `docs/superpowers/specs/2026-08-18-cost-actuals-reconciliation-design.md`
+
+---
+
+## Contents
+
+- [Delivery model](#delivery-model)
+- [File map](#file-map)
+- [PR 1: Land the approved RFC and plan](#pr-1-land-the-approved-rfc-and-plan)
+- [PR 2: Add SPEC section 14 `value_model`](#pr-2-add-spec-section-14-value_model)
+- [PR 3: Add pure actuals and reconciliation core](#pr-3-add-pure-actuals-and-reconciliation-core)
+- [PR 4: Wire the read-only live CLI](#pr-4-wire-the-read-only-live-cli)
+- [PR 5: Consume reconciliation in production-ready and auto](#pr-5-consume-reconciliation-in-production-ready-and-auto)
+- [Final acceptance checklist](#final-acceptance-checklist)
+
+### Task index
+
+| Task | PR | Subject |
+|---:|---:|---|
+| 1 | 1 | Validate and publish the design-only change |
+| 2 | 2 | Make section 14 a generated artifact contract (opt-in enforcement) |
+| 3 | 2 | Add the canonical value-model schema without defaults |
+| 4 | 2 | Final validation, changelog, and design-only E2E |
+| 5 | 3 | Parse section 14 into a policy/errors result |
+| 6 | 3 | Parse Cost Management evidence and validate the daily window |
+| 7 | 3 | Add safe workspace-interaction and token evidence parsers |
+| 8 | 3 | Implement fail-closed reconciliation |
+| 9 | 4 | Build read-only Azure source adapters with injected runners |
+| 10 | 4 | Emit latest and immutable history atomically |
+| 11 | 4 | Add CLI commands without changing `run --all` |
+| 12 | 4 | Perform the read-only live shape probe |
+| 13 | 5 | Make `COST-102` and `COST-103` real artifact checks |
+| 14 | 5 | Read actual cost per interaction in the KPI scorecard |
+| 15 | 5 | Keep auto advisory and non-blocking |
+| 16 | 5 | Run regression gates and close PR 5 |
 
 ---
 
@@ -47,7 +82,7 @@ next. Do not open PR N+1 until PR N is merged.
   semantics and restricted identifier grammar.
 - Modify `skills/threadlight-design/SKILL.md` - generation and review rules.
 - Modify `scripts/ci/check_pilot_contract.py` - require section 14 shape, not
-  threshold values.
+  threshold values, behind an opt-in `--require-value-model` flag.
 - Modify `scripts/ci/tests/test_pilot_contract.py` - fail-first contract tests.
 - Modify `examples/returns-triage-governed/specs/SPEC.md` - explicit
   workload-owned policy for the golden example.
@@ -182,7 +217,7 @@ Expected: squash-merged PR and no open PR for this branch.
 
 ## PR 2: Add SPEC section 14 `value_model`
 
-### Task 2: Make section 14 a generated artifact contract
+### Task 2: Make section 14 a generated artifact contract (opt-in enforcement)
 
 This task lands the checker, retrofits every existing test that rewrites
 `SPEC.md`, and updates the shipped golden example — all in one commit — so no
@@ -221,7 +256,7 @@ VALUE_MODEL_BLOCK = (
     "      min_successful_interactions:\n"
     "      min_cost_settlement_age_hours:\n"
     "      max_window_end_age_days:\n"
-    "      min_attribution_coverage_pct:\n"
+    "      min_projection_attribution_coverage_pct:\n"
     "    success_event:\n"
     "      name:\n"
     "      trace_attribute:\n"
@@ -229,8 +264,10 @@ VALUE_MODEL_BLOCK = (
     "    baseline:\n"
     "      target_cost_per_successful_interaction_usd:\n"
     "      max_forecast_variance_pct:\n"
+    "      max_token_volume_variance_pct:\n"
     "    accounting:\n"
     "      actual_cost_basis:\n"
+    "      actual_billing_price_basis:\n"
     "      forecast_price_basis:\n"
     "      allow_basis_mismatch_for_verdict:\n"
     "      scope_policy:\n"
@@ -238,7 +275,9 @@ VALUE_MODEL_BLOCK = (
 )
 
 
-def test_missing_spec_section_14_is_rejected(pilot: Path) -> None:
+def test_missing_spec_section_14_is_rejected_only_when_required(
+    pilot: Path,
+) -> None:
     # The `pilot` fixture (updated below) already carries exactly one
     # `VALUE_MODEL_BLOCK`. Do NOT append another copy here: with two `## 14.`
     # headings present, the corrected extractor in Step 3 stops only at a
@@ -250,7 +289,22 @@ def test_missing_spec_section_14_is_rejected(pilot: Path) -> None:
     text = spec.read_text(encoding="utf-8")
     assert text.count("## 14. Value Model") == 1
     spec.write_text(text.split("## 14.")[0], encoding="utf-8")
-    assert "design.spec.no-section-14" in rules(check(pilot))
+    assert "design.spec.no-section-14" in rules(
+        check(pilot, require_value_model=True)
+    )
+
+
+def test_legacy_pilot_without_section_14_still_passes_by_default(
+    pilot: Path,
+) -> None:
+    """Enforcement is opt-in: a pilot authored before this design must keep
+    passing unchanged unless the caller explicitly asks for the new contract.
+    """
+    spec = pilot / "specs" / "SPEC.md"
+    text = spec.read_text(encoding="utf-8")
+    assert text.count("## 14. Value Model") == 1
+    spec.write_text(text.split("## 14.")[0], encoding="utf-8")
+    assert "design.spec.no-section-14" not in rules(check(pilot))
 
 
 @pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
@@ -267,14 +321,34 @@ def test_section_14_requires_value_model_shape(pilot: Path, marker: str) -> None
     assert "design.spec.value-model-shape" in rules(check(pilot))
 
 
+@pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
+def test_present_but_malformed_section_14_fails_without_the_flag(
+    pilot: Path, marker: str
+) -> None:
+    """Opt-in applies to *absence* only. A pilot that ships a half-written
+    section 14 is asserting the new contract and is validated by default."""
+    spec = pilot / "specs" / "SPEC.md"
+    text = spec.read_text(encoding="utf-8")
+    assert text.count("## 14. Value Model") == 1
+    spec.write_text(text.replace(marker, f"# removed {marker}", 1), encoding="utf-8")
+    assert "design.spec.value-model-shape" in rules(
+        check(pilot, require_value_model=False)
+    )
+
+
 def test_section_14_does_not_require_numeric_defaults(pilot: Path) -> None:
     spec = pilot / "specs" / "SPEC.md"
     assert spec.read_text(encoding="utf-8").count("## 14. Value Model") == 1
-    failures = check(pilot)
+    failures = check(pilot, require_value_model=True)
     assert "design.spec.value-model-shape" not in rules(failures)
 ```
 
-None of the three tests above append a second `VALUE_MODEL_BLOCK`: the
+`check(pilot, ...)` above is the existing test helper; give it a
+`require_value_model: bool = False` keyword that it forwards to
+`check_design`, matching the checker default. Every existing call site keeps
+working untouched, which is the point of the opt-in.
+
+None of the tests above append a second `VALUE_MODEL_BLOCK`: the
 shared `pilot` fixture (updated next) already carries exactly one copy, and
 every retrofit below that appends its own copy does so only after slicing
 away everything from `"## 13."` onward — which also discards the fixture's
@@ -341,7 +415,18 @@ truthiness check, because an extracted section whose body happens to be
 empty (blank line only) is a different, valid case from a genuinely absent
 heading:
 
-A digit-count shortcut is not an exact algorithm: matching `(?:{number + 1}|[1-9]\d+)` stops at *any* two-or-more-digit heading — including one *lower* than `number`, such as a stray out-of-order `## 12.` inside section 13's body — while also failing to stop at a genuinely later single-digit heading in the rare case `number >= 9`. The exact rule is "stop at the first later heading whose integer is strictly greater than `number`," evaluated by parsing every later heading's number, not by pattern-matching digit counts:
+The existing implementation already applies an integer rule — it stops at a
+later heading whose number is greater than 13 — but that rule is expressed
+inline and hard-coded to section 13. The refactor **generalizes the existing
+`> number` comparison to an arbitrary section number**; it is not repairing a
+digit-count shortcut, because there is no digit-count shortcut to repair. The
+generalized rule is stated once, precisely: "stop at the first later top-level
+heading whose leading integer is strictly greater than `number`," evaluated by
+parsing each later heading's number. Two consequences are worth pinning in
+tests because they are easy to get wrong when generalizing: a lower-numbered
+stray heading (`## 12.` inside section 13's body) is not a boundary, and a
+lettered subsection (`## 13b.`) shares section 13's integer and is not a
+boundary either.
 
 ```python
 _TOP_LEVEL_HEADING = re.compile(r"^##[ \t]+(\d+)[.\w]*\.", re.MULTILINE)
@@ -418,7 +503,12 @@ def test_extract_section_stops_at_the_next_strictly_greater_heading() -> None:
 Add the section 14 check to `check_design` **before** the existing
 `if profile != "fast-poc": return` early return, so governed profiles are
 checked for section 14 too — only the Fast-PoC callout text check further
-below is profile-gated, not the section 14 shape check:
+below is profile-gated, not the section 14 shape check. `check_design` gains a
+`require_value_model: bool = False` keyword, threaded from a new
+`--require-value-model` argparse flag on `check_pilot_contract.py`. The default
+is `False` on purpose: an absent section 14 must stay valid for pilots
+authored before this design (RFC §14.1). A **present** section 14 is always
+shape-checked, flag or not:
 
 ```python
 section13 = extract_section_13(spec_text)  # unchanged existing check, shown for ordering
@@ -428,7 +518,11 @@ if section13 is None:
 
 section14 = extract_section(spec_text, 14)
 if section14 is None:
-    fail.add("design.spec.no-section-14", "SPEC.md section 14 Value Model is missing")
+    if require_value_model:
+        fail.add(
+            "design.spec.no-section-14",
+            "SPEC.md section 14 Value Model is missing",
+        )
 else:
     required = (
         "value_model:",
@@ -448,6 +542,12 @@ if profile != "fast-poc":
     return
 ```
 
+Document the flag in the script's `--help` text as the migration switch: it is
+opt-in now, becomes the default in a later release once downstream pilots have
+adopted section 14, and is deprecated after that. Do not change any existing
+call site's behavior in this PR — the repository's own contract gate and the
+design-only E2E are the two callers that opt in (Step 5, Task 4).
+
 `NO_SECTION_13_MESSAGE` is the existing, unchanged message text already in
 `check_pilot_contract.py` — do not alter it; it is quoted here only to mark
 where the new section 14 block is inserted, immediately after the existing
@@ -459,11 +559,11 @@ are a valid design state and become `not-verified` in Consumption IQ.
 
 - [ ] **Step 4: Add section 14 to the shipped golden example**
 
-Once Step 3 lands, the checker requires section 14 on every pilot it checks,
-including `examples/returns-triage-governed` via
-`test_shipped_example_satisfies_the_contract()`. Update that example's
-`SPEC.md` now, in this same task, with values labeled as decisions for this
-example, not defaults:
+Once Step 3 lands, `test_shipped_example_satisfies_the_contract()` runs the
+checker with `require_value_model=True` against
+`examples/returns-triage-governed`, so the shipped example must carry a real
+section 14. Update that example's `SPEC.md` now, in this same task, with
+values labeled as decisions for this example, not defaults:
 
 ```yaml
 value_model:
@@ -473,7 +573,7 @@ value_model:
       min_successful_interactions: 100
       min_cost_settlement_age_hours: 48
       max_window_end_age_days: 14
-      min_attribution_coverage_pct: 0.95
+      min_projection_attribution_coverage_pct: 0.95
     success_event:
       name: return_decision_completed
       trace_attribute: decision.outcome
@@ -481,12 +581,20 @@ value_model:
     baseline:
       target_cost_per_successful_interaction_usd: 0.18
       max_forecast_variance_pct: 0.20
+      max_token_volume_variance_pct: 0.25
     accounting:
       actual_cost_basis: usage-pretax
+      actual_billing_price_basis: retail
       forecast_price_basis: retail
       allow_basis_mismatch_for_verdict: false
       scope_policy: dedicated_resource_group
 ```
+
+`actual_billing_price_basis: retail` is an explicit decision for this example
+and is what makes its variance verdict `pass`-eligible: it equals
+`forecast_price_basis`, so RFC §9.5's mismatch rule does not fire. A real EA or
+MCA workload declares `ea`/`mca` here and accepts `not-verified` unless it also
+sets `allow_basis_mismatch_for_verdict: true`.
 
 - [ ] **Step 5: Run contract tests**
 
@@ -498,12 +606,14 @@ python scripts/ci/check_pilot_contract.py \
   examples/returns-triage-governed \
   --stage design --stage deploy \
   --profile governed \
+  --require-value-model \
   --expect-deployment-target customer-pilot
 ```
 
 Expected: all tests pass — including the existing section 13 boundary tests,
-`test_shipped_example_satisfies_the_contract()`, and the new section 14
-tests — and the static contract check against the shipped example passes.
+`test_shipped_example_satisfies_the_contract()`, the legacy-default-pass test,
+and the new section 14 tests — and the static contract check against the
+shipped example passes with enforcement on.
 
 - [ ] **Step 6: Commit the checker, tests, and golden example together**
 
@@ -570,16 +680,18 @@ value_model:
       min_successful_interactions:       # int >= 1; no default
       min_cost_settlement_age_hours:     # int >= 0; no default
       max_window_end_age_days:           # int >= 1; no default
-      min_attribution_coverage_pct:      # float in (0, 1]; no default
+      min_projection_attribution_coverage_pct:  # float in (0, 1]; no default
     success_event:
       name:                              # restricted identifier
       trace_attribute:                   # restricted identifier
       success_values: []                 # >= 1 restricted identifier
     baseline:
       target_cost_per_successful_interaction_usd:  # float > 0
-      max_forecast_variance_pct:         # float >= 0
+      max_forecast_variance_pct:         # float >= 0; cost variance only
+      max_token_volume_variance_pct:     # float >= 0; token volume only
     accounting:
-      actual_cost_basis: usage-pretax    # v1 literal
+      actual_cost_basis: usage-pretax    # v1 literal; metric/source, not a price basis
+      actual_billing_price_basis:        # retail | ea | mca | unknown
       forecast_price_basis: retail       # retail | ea | mca
       allow_basis_mismatch_for_verdict: false
       scope_policy: dedicated_resource_group  # or tagged_allocation
@@ -590,9 +702,23 @@ State explicitly:
 - comments are not values;
 - generation must not invent numeric values;
 - identifier grammar is `^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`;
-- incomplete policy is allowed but produces `not-verified`;
+- incomplete policy is allowed but produces `not-verified` **with artifacts
+  still written** — an incomplete policy never suppresses evidence;
+- `min_projection_attribution_coverage_pct` gates the *reconciliation* measure
+  (actual cost mapped onto projected resources / total actual cost), not the
+  actuals manifest's `cost.resource_id_coverage_pct` (actual rows carrying a
+  nonblank resource ID / total cost). The two are different numbers and only
+  the first is ever policy-gated;
+- `max_forecast_variance_pct` bounds the **cost** variance verdict and
+  `max_token_volume_variance_pct` bounds the **token volume** driver check;
+  the token driver must never reuse the cost threshold;
 - `usage-pretax` names the Cost Management Query API's
-  `Usage`/`PreTaxCost` contract and must not be described as an invoice.
+  `Usage`/`PreTaxCost` contract — it is the *metric and source* and must not be
+  described as an invoice, and it is **not** a price basis;
+- `actual_billing_price_basis` is the price basis of the actual charges and is
+  the only field compared against `forecast_price_basis` (RFC §9.5). It is not
+  derivable from the Query API response, so the operator declares it;
+  `unknown` is permitted and is treated as a mismatch.
 
 - [ ] **Step 4: Append section 14 to the speckit template**
 
@@ -635,7 +761,7 @@ git add \
 git commit -m "feat(design): add the SPEC value-model contract"
 ```
 
-### Task 4: Final validation, changelog, and design-only E2E for PR 2
+### Task 4: Final validation, changelog, and design-only E2E
 
 The golden example already gained its section 14 value policy in Task 2 (folded
 in there so the checker and the example land in the same commit and the suite
@@ -653,14 +779,15 @@ python scripts/ci/check_pilot_contract.py \
   examples/returns-triage-governed \
   --stage design --stage deploy \
   --profile governed \
+  --require-value-model \
   --expect-deployment-target customer-pilot
 python -m pytest scripts/ci/tests -q
 python -m pytest skills/threadlight-design/tests -q
 ```
 
-Expected: contract OK; all CI-script and threadlight-design tests pass,
-confirming Task 2's checker/example commit and Task 3's schema/template
-commit are consistent with each other.
+Expected: contract OK with enforcement on; all CI-script and
+threadlight-design tests pass, confirming Task 2's checker/example commit and
+Task 3's schema/template commit are consistent with each other.
 
 - [ ] **Step 2: Update changelog and commit**
 
@@ -682,10 +809,15 @@ gh workflow run threadlight-e2e-foundry.yml \
   -f workload=returns-triage
 ```
 
+The design-only E2E passes `--require-value-model` in its contract-check step
+(update the workflow's checker invocation in this task), so the shipped
+example proves the new contract end to end while third-party legacy pilots
+stay unaffected.
+
 Expected:
 
 - Phase 1 and Phase 2 pass;
-- contract checker passes section 14;
+- contract checker passes section 14 with enforcement on;
 - Phase 3+ skip;
 - no Azure resource group is created.
 
@@ -695,7 +827,7 @@ Only after this run and PR CI are green, squash-merge PR 2.
 
 ## PR 3: Add pure actuals and reconciliation core
 
-### Task 5: Parse and validate section 14
+### Task 5: Parse section 14 into a policy/errors result
 
 **Files:**
 - Create: `skills/threadlight-consumption-iq/scripts/value_model.py`
@@ -703,12 +835,34 @@ Only after this run and PR CI are green, squash-merge PR 2.
 
 - [ ] **Step 1: Write failing parser tests**
 
+The parser **does not raise on bad policy content**. RFC §12 requires that an
+incomplete or invalid policy still produce evidence: raw actuals must be
+collected and written, and the reconciliation manifest must be emitted as
+`not-verified`. A parser that raises makes that impossible, because the caller
+never reaches the emit step. So the contract is a result object carrying both
+whatever parsed cleanly and every validation error found:
+
+```python
+@dataclasses.dataclass(frozen=True)
+class ValueModelResult:
+    policy: dict[str, object]   # possibly partial; never None
+    errors: list[str]           # empty means complete and valid
+```
+
+`errors` entries are human-readable strings that begin with the exact dotted
+path, e.g. `"cost.maturity_policy.max_window_end_age_days is missing"`. The
+only exception that escapes is a genuine file I/O failure in
+`load_value_model` (unreadable/absent SPEC file), which is an environment
+fault rather than a policy statement.
+
 Use this complete fixture and test matrix:
 
 ````python
+from pathlib import Path
+
 import pytest
 
-from value_model import ValueModelError, parse_value_model
+from value_model import ValueModelResult, load_value_model, parse_value_model
 
 
 COMPLETE = """\
@@ -721,7 +875,7 @@ value_model:
       min_successful_interactions: 100
       min_cost_settlement_age_hours: 48
       max_window_end_age_days: 14
-      min_attribution_coverage_pct: 0.95
+      min_projection_attribution_coverage_pct: 0.95
     success_event:
       name: return_decision_completed
       trace_attribute: decision.outcome
@@ -729,8 +883,10 @@ value_model:
     baseline:
       target_cost_per_successful_interaction_usd: 0.18
       max_forecast_variance_pct: 0.20
+      max_token_volume_variance_pct: 0.25
     accounting:
       actual_cost_basis: usage-pretax
+      actual_billing_price_basis: retail
       forecast_price_basis: retail
       allow_basis_mismatch_for_verdict: false
       scope_policy: dedicated_resource_group
@@ -738,21 +894,32 @@ value_model:
 """
 
 
-def test_complete_policy_parses() -> None:
-    model = parse_value_model(COMPLETE)
-    assert model["cost"]["maturity_policy"]["min_complete_days"] == 7
-    assert model["cost"]["success_event"]["success_values"] == [
+def errors_for(text: str) -> list[str]:
+    return parse_value_model(text).errors
+
+
+def test_complete_policy_parses_with_no_errors() -> None:
+    result = parse_value_model(COMPLETE)
+    assert isinstance(result, ValueModelResult)
+    assert result.errors == []
+    assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
+    assert result.policy["cost"]["success_event"]["success_values"] == [
         "approved", "denied", "escalated"
     ]
+    assert result.policy["cost"]["baseline"]["max_token_volume_variance_pct"] == 0.25
+    assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == "retail"
 
 
-def test_missing_field_reports_exact_dotted_path() -> None:
+def test_missing_field_reports_exact_dotted_path_without_raising() -> None:
     partial = COMPLETE.replace("      max_window_end_age_days: 14\n", "")
-    with pytest.raises(
-        ValueModelError,
-        match=r"cost\.maturity_policy\.max_window_end_age_days",
-    ):
-        parse_value_model(partial)
+    result = parse_value_model(partial)
+    assert any(
+        e.startswith("cost.maturity_policy.max_window_end_age_days")
+        for e in result.errors
+    )
+    # Everything that *did* parse is still returned, so the caller can emit a
+    # partially-populated policy snapshot alongside the not-verified verdict.
+    assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
 
 def test_numeric_comment_is_not_a_value() -> None:
@@ -760,27 +927,57 @@ def test_numeric_comment_is_not_a_value() -> None:
         "      min_complete_days: 7",
         "      min_complete_days:  # int >= 1",
     )
-    with pytest.raises(
-        ValueModelError,
-        match=r"cost\.maturity_policy\.min_complete_days",
-    ):
-        parse_value_model(template)
+    assert any(
+        e.startswith("cost.maturity_policy.min_complete_days")
+        for e in errors_for(template)
+    )
 
 
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_zero_or_negative_threshold_is_rejected(value: str) -> None:
     invalid = COMPLETE.replace("min_complete_days: 7", f"min_complete_days: {value}")
-    with pytest.raises(ValueModelError, match="min_complete_days"):
-        parse_value_model(invalid)
+    assert any("min_complete_days" in e for e in errors_for(invalid))
 
 
 def test_coverage_must_be_at_most_one() -> None:
     invalid = COMPLETE.replace(
-        "min_attribution_coverage_pct: 0.95",
-        "min_attribution_coverage_pct: 1.01",
+        "min_projection_attribution_coverage_pct: 0.95",
+        "min_projection_attribution_coverage_pct: 1.01",
     )
-    with pytest.raises(ValueModelError, match="min_attribution_coverage_pct"):
-        parse_value_model(invalid)
+    assert any(
+        "min_projection_attribution_coverage_pct" in e for e in errors_for(invalid)
+    )
+
+
+def test_token_volume_variance_is_its_own_field() -> None:
+    invalid = COMPLETE.replace("      max_token_volume_variance_pct: 0.25\n", "")
+    result = parse_value_model(invalid)
+    assert any(
+        e.startswith("cost.baseline.max_token_volume_variance_pct")
+        for e in result.errors
+    )
+    # The cost threshold must never be silently substituted for the token one.
+    assert "max_token_volume_variance_pct" not in result.policy["cost"]["baseline"]
+
+
+@pytest.mark.parametrize("basis", ["retail", "ea", "mca", "unknown"])
+def test_actual_billing_price_basis_accepts_the_declared_enum(basis: str) -> None:
+    text = COMPLETE.replace(
+        "actual_billing_price_basis: retail",
+        f"actual_billing_price_basis: {basis}",
+    )
+    assert errors_for(text) == []
+
+
+def test_actual_billing_price_basis_rejects_a_metric_name() -> None:
+    # `usage-pretax` is the metric/source (`actual_cost_basis`), never a price
+    # basis. Accepting it here would silently make every EA/MCA workload look
+    # like it matched a retail forecast.
+    invalid = COMPLETE.replace(
+        "actual_billing_price_basis: retail",
+        "actual_billing_price_basis: usage-pretax",
+    )
+    assert any("actual_billing_price_basis" in e for e in errors_for(invalid))
 
 
 def test_identifier_rejects_kql_fragment() -> None:
@@ -789,8 +986,8 @@ def test_identifier_rejects_kql_fragment() -> None:
         "success_values: [approved, denied, escalated]",
         f"success_values: [{attack}]",
     )
-    with pytest.raises(ValueModelError, match=r"success_values\[0\] invalid"):
-        parse_value_model(invalid)
+    errors = errors_for(invalid)
+    assert any("success_event.success_values[0] invalid" in e for e in errors)
 
 
 def test_success_values_must_be_nonempty() -> None:
@@ -798,15 +995,34 @@ def test_success_values_must_be_nonempty() -> None:
         "success_values: [approved, denied, escalated]",
         "success_values: []",
     )
-    with pytest.raises(ValueModelError, match="success_values"):
-        parse_value_model(invalid)
+    assert any("success_values" in e for e in errors_for(invalid))
 
 
 def test_section_14_boundary_stops_at_section_15() -> None:
     invalid = COMPLETE.replace("      scope_policy: dedicated_resource_group\n", "")
     invalid += "\n## 15. Appendix\nscope_policy: dedicated_resource_group\n"
-    with pytest.raises(ValueModelError, match="scope_policy"):
-        parse_value_model(invalid)
+    assert any("scope_policy" in e for e in errors_for(invalid))
+
+
+def test_absent_section_14_is_an_error_not_an_exception() -> None:
+    result = parse_value_model("## 13. Something else\n\nno policy here\n")
+    assert result.policy == {}
+    assert any("section 14" in e for e in result.errors)
+
+
+def test_malformed_fence_is_an_error_not_an_exception() -> None:
+    """A truncated/unterminated code fence is malformed *content*, so it
+    behaves like any other invalid policy: errors, artifacts still emitted."""
+    broken = COMPLETE.replace("```yaml", "```yam l").rstrip("\n").removesuffix("```")
+    result = parse_value_model(broken)
+    assert result.errors
+    assert isinstance(result.policy, dict)
+
+
+def test_load_value_model_propagates_io_failure(tmp_path: Path) -> None:
+    """File I/O is the one failure that is *not* a policy statement."""
+    with pytest.raises(OSError):
+        load_value_model(tmp_path / "does-not-exist" / "SPEC.md")
 ````
 
 The malicious identifier fixture must include:
@@ -815,7 +1031,10 @@ The malicious identifier fixture must include:
 approved") | union AppRequests | where ("x" == "x
 ```
 
-and expect `ValueModelError("success_event.success_values[0] invalid")`.
+and expect an error string containing
+`success_event.success_values[0] invalid`. Downstream, an unsafe identifier is
+a validation error that causes the workspace interaction query to be **skipped**
+(RFC §8.2) — never interpolated, and never a hard abort of collection.
 
 - [ ] **Step 2: Run and verify import failure**
 
@@ -831,8 +1050,14 @@ Expected: FAIL because `value_model.py` does not exist.
 Public interface:
 
 ```python
-class ValueModelError(ValueError):
-    pass
+@dataclasses.dataclass(frozen=True)
+class ValueModelResult:
+    policy: dict[str, object]
+    errors: list[str]
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.errors
 
 
 REQUIRED_PATHS = (
@@ -840,26 +1065,45 @@ REQUIRED_PATHS = (
     "cost.maturity_policy.min_successful_interactions",
     "cost.maturity_policy.min_cost_settlement_age_hours",
     "cost.maturity_policy.max_window_end_age_days",
-    "cost.maturity_policy.min_attribution_coverage_pct",
+    "cost.maturity_policy.min_projection_attribution_coverage_pct",
     "cost.success_event.name",
     "cost.success_event.trace_attribute",
     "cost.success_event.success_values",
     "cost.baseline.target_cost_per_successful_interaction_usd",
     "cost.baseline.max_forecast_variance_pct",
+    "cost.baseline.max_token_volume_variance_pct",
     "cost.accounting.actual_cost_basis",
+    "cost.accounting.actual_billing_price_basis",
     "cost.accounting.forecast_price_basis",
     "cost.accounting.allow_basis_mismatch_for_verdict",
     "cost.accounting.scope_policy",
 )
 
-
-def parse_value_model(spec_text: str) -> dict[str, object]:
-    """Return validated `value_model`, or raise ValueModelError."""
+PRICE_BASES = ("retail", "ea", "mca", "unknown")
 
 
-def load_value_model(spec_path: Path) -> dict[str, object]:
+def parse_value_model(spec_text: str) -> ValueModelResult:
+    """Return every value that parsed plus every validation error found.
+
+    Never raises for missing, malformed, or unsafe policy content. Collects
+    all errors rather than stopping at the first, so one run reports the whole
+    policy gap instead of one field at a time.
+    """
+
+
+def load_value_model(spec_path: Path) -> ValueModelResult:
+    # Only the read may raise; parsing never does.
     return parse_value_model(spec_path.read_text(encoding="utf-8"))
 ```
+
+Validation rules that produce errors rather than exceptions: absent section
+14; unterminated or unparsable fenced block; missing required path; comment
+used where a value is required; non-positive integers and floats where
+positive is required; `min_projection_attribution_coverage_pct` outside
+`(0, 1]`; empty `success_values`; any identifier failing
+`^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`; `actual_billing_price_basis` or
+`forecast_price_basis` outside their enums (note `usage-pretax` is a metric
+name and is rejected as a price basis).
 
 Follow the existing stdlib-only indentation parser pattern in
 `load_profile_wizard.py`. Do not add PyYAML. Parse only the fixed four-level
@@ -883,23 +1127,29 @@ git add \
 git commit -m "feat(consumption-iq): parse SPEC value policy"
 ```
 
-### Task 6: Parse Cost Management evidence without assuming column order
+### Task 6: Parse Cost Management evidence and validate the daily window
 
 **Files:**
 - Create: `skills/threadlight-consumption-iq/scripts/cost_actuals.py`
 - Create: `skills/threadlight-consumption-iq/tests/test_cost_actuals.py`
 - Create: `skills/threadlight-consumption-iq/references/fixtures/sample-cost-actuals/cost-query-page-1.json`
 - Create: `skills/threadlight-consumption-iq/references/fixtures/sample-cost-actuals/cost-query-page-2.json`
+- Create: `skills/threadlight-consumption-iq/references/fixtures/sample-cost-actuals/cost-query-costusd-alias.json`
+- Create: `skills/threadlight-consumption-iq/references/fixtures/sample-cost-actuals/cost-query-aoai-account.json`
 - Create: `skills/threadlight-consumption-iq/references/cost-actuals-manifest-schema.md`
 
 - [ ] **Step 1: Write failing response parser tests**
 
-Use sanitized Query API responses shaped as:
+The query is issued with `granularity: "Daily"` and groups by `UsageDate`
+(Task 9), so every page carries a `UsageDate` column and the parser is the
+component that proves the returned rows actually lie inside the requested
+window. Use sanitized Query API responses shaped as:
 
 ```json
 {
   "properties": {
     "columns": [
+      {"name": "UsageDate", "type": "Number"},
       {"name": "ResourceType", "type": "String"},
       {"name": "PreTaxCost", "type": "Number"},
       {"name": "Currency", "type": "String"},
@@ -907,7 +1157,7 @@ Use sanitized Query API responses shaped as:
       {"name": "ServiceName", "type": "String"}
     ],
     "rows": [
-      ["microsoft.app/containerapps", 12.5, "USD",
+      [20260801, "microsoft.app/containerapps", 12.5, "USD",
        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.App/containerApps/agent",
        "Azure Container Apps"]
     ],
@@ -920,7 +1170,7 @@ Use:
 
 ```python
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -933,6 +1183,7 @@ from cost_actuals import (
 
 
 COLUMNS = [
+    {"name": "UsageDate", "type": "Number"},
     {"name": "ResourceType", "type": "String"},
     {"name": "PreTaxCost", "type": "Number"},
     {"name": "Currency", "type": "String"},
@@ -942,6 +1193,10 @@ COLUMNS = [
 RID = (
     "/subscriptions/00000000-0000-0000-0000-000000000000/"
     "resourceGroups/rg-pilot/providers/Microsoft.App/containerApps/agent"
+)
+WINDOW = dict(
+    start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+    end=datetime(2026, 8, 8, tzinfo=timezone.utc),
 )
 
 
@@ -955,87 +1210,171 @@ def page(rows, columns=None):
     }
 
 
+def aggregate(rows, columns=None, **overrides):
+    kwargs = {**WINDOW, **overrides}
+    return aggregate_cost_rows([page(rows, columns)], **kwargs)
+
+
 def test_columns_are_mapped_by_name_not_position() -> None:
     rows = rows_from_query_page(
-        page([["microsoft.app/containerapps", 12.5, "USD", RID, "ACA"]])
+        page([[20260801, "microsoft.app/containerapps", 12.5, "USD", RID, "ACA"]])
     )
     assert rows[0]["pretaxcost"] == 12.5
     assert rows[0]["resourceid"] == RID
+    assert rows[0]["usagedate"] == 20260801
 
 
 def test_rows_for_same_resource_are_summed() -> None:
-    resources, total, currency, unattributed = aggregate_cost_rows([
-        page([
-            ["microsoft.app/containerapps", 12.5, "USD", RID, "ACA"],
-            ["microsoft.app/containerapps", 2.5, "USD", RID, "ACA"],
-        ])
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 12.5, "USD", RID, "ACA"],
+        [20260802, "microsoft.app/containerapps", 2.5, "USD", RID, "ACA"],
     ])
-    assert resources == [{
+    assert result.resources == [{
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
         "period_cost_usd": 15.0,
     }]
-    assert (total, currency, unattributed) == (15.0, "USD", 0.0)
+    assert (result.total_usd, result.currency, result.unattributed_usd) == (
+        15.0, "USD", 0.0
+    )
+    assert result.cost_column == "PreTaxCost"
 
 
 def test_blank_resource_id_remains_in_total_and_is_unattributed() -> None:
-    resources, total, _, unattributed = aggregate_cost_rows([
-        page([
-            ["microsoft.app/containerapps", 12.5, "USD", RID, "ACA"],
-            ["", 3.0, "USD", "", "Bandwidth"],
-        ])
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 12.5, "USD", RID, "ACA"],
+        [20260801, "", 3.0, "USD", "", "Bandwidth"],
     ])
-    assert sum(r["period_cost_usd"] for r in resources) == 12.5
-    assert total == 15.5
-    assert unattributed == 3.0
+    assert sum(r["period_cost_usd"] for r in result.resources) == 12.5
+    assert result.total_usd == 15.5
+    assert result.unattributed_usd == 3.0
 
 
 def test_mixed_currency_is_rejected() -> None:
     with pytest.raises(ActualsEvidenceError, match="multiple currencies"):
-        aggregate_cost_rows([
-            page([
-                ["x", 1.0, "USD", RID, "A"],
-                ["x", 1.0, "EUR", RID, "A"],
-            ])
+        aggregate([
+            [20260801, "x", 1.0, "USD", RID, "A"],
+            [20260801, "x", 1.0, "EUR", RID, "A"],
         ])
 
 
-def test_missing_pretax_cost_column_is_rejected() -> None:
+def test_missing_cost_column_is_rejected() -> None:
     columns = [c for c in COLUMNS if c["name"] != "PreTaxCost"]
-    with pytest.raises(ActualsEvidenceError, match="PreTaxCost column missing"):
-        rows_from_query_page(page([["x", "USD", RID, "A"]], columns))
+    with pytest.raises(ActualsEvidenceError, match="no cost column"):
+        rows_from_query_page(page([[20260801, "x", "USD", RID, "A"]], columns))
+
+
+@pytest.mark.parametrize("alias", ["CostUSD", "Cost", "cost", "costusd"])
+def test_cost_column_aliases_are_accepted(alias: str) -> None:
+    columns = [
+        dict(c, name=alias) if c["name"] == "PreTaxCost" else c for c in COLUMNS
+    ]
+    result = aggregate(
+        [[20260801, "x", 4.0, "USD", RID, "A"]], columns
+    )
+    assert result.total_usd == 4.0
+    assert result.cost_column == alias
+
+
+def test_primary_cost_column_wins_when_several_are_present() -> None:
+    columns = COLUMNS + [{"name": "CostUSD", "type": "Number"}]
+    result = aggregate(
+        [[20260801, "x", 4.0, "USD", RID, "A", 999.0]], columns
+    )
+    assert result.cost_column == "PreTaxCost"
+    assert result.total_usd == 4.0
 
 
 def test_non_numeric_cost_is_rejected() -> None:
-    with pytest.raises(ActualsEvidenceError, match="PreTaxCost is not numeric"):
-        aggregate_cost_rows([page([["x", "free", "USD", RID, "A"]])])
+    with pytest.raises(ActualsEvidenceError, match="cost value is not numeric"):
+        aggregate([[20260801, "x", "free", "USD", RID, "A"]])
 
 
 def test_malformed_row_is_rejected_not_dropped() -> None:
     with pytest.raises(ActualsEvidenceError, match="row does not match columns"):
-        rows_from_query_page(page([["x", 1.0]]))
+        rows_from_query_page(page([[20260801, 1.0]]))
 
 
 def test_negative_refund_is_retained() -> None:
-    resources, total, _, _ = aggregate_cost_rows([
-        page([
-            ["x", 10.0, "USD", RID, "A"],
-            ["x", -2.0, "USD", RID, "A"],
-        ])
+    result = aggregate([
+        [20260801, "x", 10.0, "USD", RID, "A"],
+        [20260802, "x", -2.0, "USD", RID, "A"],
     ])
-    assert total == 8.0
-    assert resources[0]["period_cost_usd"] == 8.0
+    assert result.total_usd == 8.0
+    assert result.resources[0]["period_cost_usd"] == 8.0
 
 
 def test_total_equals_resources_plus_unattributed() -> None:
-    resources, total, _, unattributed = aggregate_cost_rows([
-        page([
-            ["x", 10.0, "USD", RID, "A"],
-            ["", 4.0, "USD", "", "Tax"],
-        ])
+    result = aggregate([
+        [20260801, "x", 10.0, "USD", RID, "A"],
+        [20260801, "", 4.0, "USD", "", "Tax"],
     ])
-    assert total == sum(r["period_cost_usd"] for r in resources) + unattributed
+    assert result.total_usd == sum(
+        r["period_cost_usd"] for r in result.resources
+    ) + result.unattributed_usd
+
+
+def test_resource_id_coverage_is_a_source_quality_measure() -> None:
+    result = aggregate([
+        [20260801, "x", 9.0, "USD", RID, "A"],
+        [20260801, "", 1.0, "USD", "", "Tax"],
+    ])
+    # 9 of 10 USD carry a resource ID. This measures the *source*, and is not
+    # the reconciliation's projection-attribution coverage (Task 8).
+    assert result.resource_id_coverage_pct == pytest.approx(0.9)
+
+
+def test_missing_usage_date_column_is_rejected() -> None:
+    columns = [c for c in COLUMNS if c["name"] != "UsageDate"]
+    with pytest.raises(ActualsEvidenceError, match="UsageDate column missing"):
+        aggregate([["x", 1.0, "USD", RID, "A"]], columns)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (20260801, date(2026, 8, 1)),
+        ("20260801", date(2026, 8, 1)),
+        ("2026-08-01", date(2026, 8, 1)),
+        ("2026-08-01T00:00:00Z", date(2026, 8, 1)),
+    ],
+)
+def test_usage_date_is_normalized_from_every_observed_shape(raw, expected) -> None:
+    result = aggregate([[raw, "x", 1.0, "USD", RID, "A"]])
+    assert result.usage_dates == {expected}
+
+
+def test_unparseable_usage_date_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="UsageDate is not a date"):
+        aggregate([["last tuesday", "x", 1.0, "USD", RID, "A"]])
+
+
+def test_row_before_window_start_is_rejected_not_dropped() -> None:
+    with pytest.raises(ActualsEvidenceError, match="outside the requested window"):
+        aggregate([[20260731, "x", 1.0, "USD", RID, "A"]])
+
+
+def test_row_on_window_end_is_rejected_because_end_is_exclusive() -> None:
+    # The request body sends `end` at UTC midnight; the Query API's own
+    # inclusivity is not relied upon. The parser enforces
+    # `start <= usage_date < end` itself, so a row dated 2026-08-08 in a
+    # window ending 2026-08-08T00:00:00Z is a contract violation.
+    with pytest.raises(ActualsEvidenceError, match="outside the requested window"):
+        aggregate([[20260808, "x", 1.0, "USD", RID, "A"]])
+
+
+def test_last_in_window_day_is_accepted() -> None:
+    result = aggregate([[20260807, "x", 1.0, "USD", RID, "A"]])
+    assert result.usage_dates == {date(2026, 8, 7)}
+
+
+def test_non_positive_window_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="end must be after start"):
+        aggregate(
+            [[20260801, "x", 1.0, "USD", RID, "A"]],
+            end=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
 
 
 def _manifest_kwargs(*, start, end, generated_at):
@@ -1044,7 +1383,7 @@ def _manifest_kwargs(*, start, end, generated_at):
         start=start,
         end=end,
         generated_at=generated_at,
-        cost_pages=[page([["x", 10.0, "USD", RID, "A"]])],
+        cost_pages=[page([[20260801, "x", 10.0, "USD", RID, "A"]])],
         token_series=None,
         interaction_counts=None,
         provenance={"query_api_version": "2025-03-01"},
@@ -1062,6 +1401,7 @@ def test_settlement_age_hours_is_generated_at_minus_window_end() -> None:
     )
     assert manifest["window"]["settlement_age_hours"] == 48
     assert manifest["window"]["window_end_age_days"] == 2
+    assert manifest["window"]["complete_days"] == 7
 
 
 def test_generated_at_before_window_end_is_rejected() -> None:
@@ -1073,7 +1413,26 @@ def test_generated_at_before_window_end_is_rejected() -> None:
                 generated_at=datetime(2026, 8, 7, tzinfo=timezone.utc),
             )
         )
+
+
+def test_top_level_status_is_pass_without_optional_evidence() -> None:
+    """RFC §7.2: top-level status is produced by Cost Management source,
+    scope, and window alone. Absent token metrics and absent interaction
+    counts are recorded as `not-verified` sub-statuses and never demote it."""
+    manifest = build_actuals_manifest(
+        **_manifest_kwargs(
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+        )
+    )
+    assert manifest["status"] == "pass"
+    assert manifest["usage"]["interaction_status"] == "not-verified"
+    assert manifest["usage"]["model_attribution_status"] == "not-verified"
+    assert manifest["usage"]["total_interactions"] is None
+    assert manifest["usage"]["successful_interactions"] is None
 ```
+
 
 `build_actuals_manifest` is the only place `settlement_age_hours` and
 `window_end_age_days` are computed; these two tests pin that computation
@@ -1100,6 +1459,34 @@ class ActualsEvidenceError(RuntimeError):
     pass
 
 
+# Official v1 primary. `CostUSD` and `Cost` are accepted only as defensive
+# compatibility with responses observed in the field; this is not a claim that
+# any particular account type returns them.
+COST_COLUMN_PRIORITY = ("pretaxcost", "costusd", "cost")
+
+
+def select_cost_column(names: list[str]) -> str:
+    """Return the casefolded name of the single cost column to use.
+
+    Exactly one column is used. If several of the accepted names are present,
+    the highest-priority one wins and the chosen name is recorded in the
+    manifest as `cost.cost_column` so a reader can tell which contract the
+    numbers came from. If none is present this is an error, never a zero.
+    """
+    for candidate in COST_COLUMN_PRIORITY:
+        if candidate in names:
+            return candidate
+    raise ActualsEvidenceError(
+        "Cost Management response has no cost column "
+        f"(expected one of {', '.join(COST_COLUMN_PRIORITY)})"
+    )
+
+
+def normalize_usage_date(value: object) -> date:
+    """Accept 20260801, "20260801", "2026-08-01", "2026-08-01T00:00:00Z"."""
+    # Anything else raises ActualsEvidenceError("UsageDate is not a date: ...").
+
+
 def rows_from_query_page(page: dict[str, object]) -> list[dict[str, object]]:
     props = page.get("properties")
     if not isinstance(props, dict):
@@ -1114,8 +1501,9 @@ def rows_from_query_page(page: dict[str, object]) -> list[dict[str, object]]:
     ):
         raise ActualsEvidenceError("Cost Management columns are malformed")
     names = [str(col["name"]).casefold() for col in columns]
-    if "pretaxcost" not in names:
-        raise ActualsEvidenceError("PreTaxCost column missing")
+    select_cost_column(names)  # raises when no accepted cost column is present
+    if "usagedate" not in names:
+        raise ActualsEvidenceError("UsageDate column missing")
     parsed = []
     for row in rows:
         if not isinstance(row, list) or len(row) != len(names):
@@ -1126,10 +1514,30 @@ def rows_from_query_page(page: dict[str, object]) -> list[dict[str, object]]:
     return parsed
 
 
+class CostAggregate(NamedTuple):
+    resources: list[dict[str, object]]
+    total_usd: float
+    currency: str
+    unattributed_usd: float
+    cost_column: str            # original-cased name actually used
+    usage_dates: set[date]      # distinct in-window days observed
+    resource_id_coverage_pct: float
+
+
 def aggregate_cost_rows(
     pages: list[dict[str, object]],
-) -> tuple[list[dict[str, object]], float, str, float]:
-    """Return resources, total_usd, currency, unattributed_usd."""
+    *,
+    start: datetime,
+    end: datetime,
+) -> CostAggregate:
+    """Aggregate paged Query API rows and validate the daily window.
+
+    Raises ActualsEvidenceError when `end <= start`, when any row's UsageDate
+    is unparseable, or when any row falls outside `start <= usage_date < end`.
+    Out-of-window rows are never silently dropped: a response that disagrees
+    with the request is a contract violation, and dropping rows would quietly
+    understate the period total.
+    """
 
 
 def build_actuals_manifest(
@@ -1149,23 +1557,58 @@ def build_actuals_manifest(
 
 Normalize resource IDs with `.casefold().rstrip("/")`, but retain the original
 ID for reporting. Sum with `decimal.Decimal` internally and round only at
-manifest serialization. Compute `settlement_age_hours` and
-`window_end_age_days` from `generated_at - end`; the source does not claim an
-unobservable Cost Management refresh timestamp. Reject with
-`ActualsEvidenceError` when `generated_at` is before `end`: a negative
-settlement age is evidence of a caller bug (a stale or misordered
-`generated_at`), not a value to silently clamp to zero.
+manifest serialization.
+
+Window rules (RFC §8.1):
+
+- `complete_days = (end - start).days`, computed from the *requested* window,
+  not from the number of days that happened to return rows — a day with no
+  charges is still a complete day;
+- `end <= start` is rejected;
+- every row must satisfy `start.date() <= usage_date < end.date()`;
+- the request body sends `end` at UTC midnight, and the parser enforces
+  end-exclusivity itself rather than trusting the Query API's own boundary
+  semantics. Document that assumption next to the check: the API is
+  *documented* as inclusive of the period it returns, so the guard exists
+  precisely so a boundary-semantics change surfaces as a loud failure instead
+  of a silently inflated total.
+
+Compute `settlement_age_hours` and `window_end_age_days` from
+`generated_at - end`; the source does not claim an unobservable Cost
+Management refresh timestamp. Reject with `ActualsEvidenceError` when
+`generated_at` is before `end`: a negative settlement age is evidence of a
+caller bug (a stale or misordered `generated_at`), not a value to silently
+clamp to zero.
+
+Status rules (RFC §7.2):
+
+- top-level `status` is `pass` when the Cost Management source parsed, the
+  scope is present, and the window validated. Nothing else can demote it;
+- `usage.interaction_status` and `usage.model_attribution_status` are
+  `pass` only when their evidence was actually collected; otherwise
+  `not-verified` with `null` counts. Never write `0` for a count that was not
+  observed — a real zero and an unobserved value must not be confusable;
+- `cost.resource_id_coverage_pct` is source quality only and never gates
+  anything.
 
 - [ ] **Step 4: Write the actuals schema**
 
 Pin:
 
 - schema name `threadlight-cost-actuals/v1`;
-- `status: pass | not-verified`;
-- `basis: usage-pretax`;
-- start-inclusive/end-exclusive UTC window;
-- `period_total_usd`, resources, unattributed, attribution coverage;
-- optional model usage and interaction counts;
+- `status: pass | not-verified`, produced by Cost Management source, scope,
+  and window only;
+- `usage.interaction_status` and `usage.model_attribution_status`, each
+  `pass | not-verified`;
+- `basis: usage-pretax`, described as the metric and source, not a price basis
+  and not an invoice;
+- `cost.cost_column`, the column name actually used;
+- start-inclusive/end-exclusive UTC window with `complete_days`;
+- `period_total_usd`, resources, unattributed, and
+  `cost.resource_id_coverage_pct` (actual rows carrying a nonblank resource ID
+  divided by total cost) — explicitly *not* the reconciliation's
+  `projection_attribution_coverage_pct`;
+- optional model usage and interaction counts, `null` when not verified;
 - source timestamps and exact API version;
 - no unknown top-level keys.
 
@@ -1185,10 +1628,13 @@ git add \
 git commit -m "feat(consumption-iq): parse observed Azure spend"
 ```
 
-### Task 7: Add safe trace and token evidence parsers
+### Task 7: Add safe workspace-interaction and token evidence parsers
 
 **Files:**
 - Create: `skills/threadlight-consumption-iq/scripts/token_evidence.py`
+- Modify: `skills/threadlight-consumption-iq/scripts/cost_actuals.py` — owns
+  `build_success_kql` and `parse_interaction_counts`; the KQL text and the
+  count parsing live here, next to the rest of the evidence parsing.
 - Modify: `skills/threadlight-router-bench/scripts/metrics.py`
 - Modify: `skills/threadlight-router-bench/tests/test_cost.py`
 - Modify: `skills/threadlight-consumption-iq/tests/test_cost_actuals.py`
@@ -1230,14 +1676,29 @@ def parse_token_metrics(
     """Backward-compatible router-bench collapse by model."""
 ```
 
-Keep `fetch_metrics` in router-bench. In `metrics.py`, import the sibling skill
-module by resolving the repository-relative path once:
+Keep `fetch_metrics` in router-bench. `token_evidence.py` lives in
+`threadlight-consumption-iq` and is imported by `threadlight-router-bench`
+because **this repository is the deployment unit**: the two skills are always
+installed together from the same plugin, never independently versioned, so a
+repository-relative import is a real dependency and not an assumption about
+the user's environment. Keeping one source of truth matters more here than
+skill-level isolation, since a divergent copy of the token parser would make
+router-bench and consumption-iq disagree about the same Azure Monitor payload.
+
+In `metrics.py`, import the sibling skill module by resolving the
+repository-relative path once, and fail loudly and by name when it is absent:
 
 ```python
 CONSUMPTION_SCRIPTS = (
     Path(__file__).resolve().parents[2] /
     "threadlight-consumption-iq" / "scripts"
 )
+if not (CONSUMPTION_SCRIPTS / "token_evidence.py").is_file():
+    raise ImportError(
+        "threadlight-router-bench requires the sibling skill "
+        "threadlight-consumption-iq from the same plugin install; "
+        f"token_evidence.py not found under {CONSUMPTION_SCRIPTS}"
+    )
 sys.path.insert(0, str(CONSUMPTION_SCRIPTS))
 from token_evidence import parse_token_metrics  # noqa: E402
 
@@ -1246,16 +1707,41 @@ def parse_metrics(doc):
     return parse_token_metrics(doc)
 ```
 
-Add a clear runtime error if the shared module is absent; do not silently fall
-back to duplicate code. Missing cached-token metrics must remain `None` in
-`parse_token_series`; never turn absence into a zero-percent cache rate.
+Add a test in `skills/threadlight-router-bench/tests/test_cost.py` that proves
+the failure is explicit rather than a confusing `ModuleNotFoundError` or a
+silent fallback:
+
+```python
+def test_missing_sibling_skill_raises_a_named_error(monkeypatch, tmp_path) -> None:
+    import importlib
+    import sys
+
+    import metrics
+
+    monkeypatch.setattr(metrics, "CONSUMPTION_SCRIPTS", tmp_path / "absent")
+    monkeypatch.delitem(sys.modules, "token_evidence", raising=False)
+    with pytest.raises(ImportError, match="threadlight-consumption-iq"):
+        importlib.reload(metrics)
+```
+
+Do not silently fall back to duplicate code. Missing cached-token metrics must
+remain `None` in `parse_token_series`; never turn absence into a zero-percent
+cache rate.
 
 - [ ] **Step 3: Add safe KQL construction tests**
+
+The transport is `az monitor log-analytics query --workspace <customerId>`
+(Task 9), so the query runs against the **Log Analytics workspace schema**:
+`AppTraces`, `TimeGenerated`, `Message`, `Properties`. The App Insights
+resource-centric surface (`traces`, `timestamp`, `message`,
+`customDimensions`) is a *different* query surface reached through the
+Application Insights API, and must not be used here — those names simply do
+not resolve in the workspace and the query fails.
 
 In `test_cost_actuals.py`:
 
 ```python
-def test_success_kql_has_fixed_shape() -> None:
+def test_success_kql_targets_the_workspace_table_not_app_insights() -> None:
     query = build_success_kql(
         "2026-08-01T00:00:00Z",
         "2026-08-08T00:00:00Z",
@@ -1263,11 +1749,16 @@ def test_success_kql_has_fixed_shape() -> None:
         "decision.outcome",
         ["approved", "denied", "escalated"],
     )
-    assert query.startswith("traces\n")
-    assert 'message == "return_decision_completed"' in query
-    assert 'customDimensions["decision.outcome"]' in query
+    assert query.startswith("AppTraces\n")
+    assert "TimeGenerated >= datetime(2026-08-01T00:00:00Z)" in query
+    assert "TimeGenerated < datetime(2026-08-08T00:00:00Z)" in query
+    assert 'Message == "return_decision_completed"' in query
+    assert 'Properties["decision.outcome"]' in query
     assert '"approved", "denied", "escalated"' in query
     assert "union" not in query.casefold()
+    # The App Insights surface must never leak into a workspace query.
+    for forbidden in ("traces\n", "timestamp", "customDimensions"):
+        assert forbidden not in query
 
 
 def test_success_kql_rejects_arbitrary_fragment() -> None:
@@ -1281,16 +1772,58 @@ def test_success_kql_rejects_arbitrary_fragment() -> None:
         )
 
 
-def test_trace_result_counts_total_and_successful_interactions() -> None:
-    rows = [{"total_interactions": "120", "successful_interactions": 113}]
-    assert parse_interaction_counts(rows) == (120, 113)
+LOG_ANALYTICS_RESPONSE = {
+    "tables": [
+        {
+            "name": "PrimaryResult",
+            "columns": [
+                {"name": "total_interactions", "type": "long"},
+                {"name": "successful_interactions", "type": "long"},
+            ],
+            "rows": [[120, 113]],
+        }
+    ]
+}
 
 
-def test_empty_trace_result_returns_zero_counts_not_a_pass() -> None:
-    assert parse_interaction_counts([]) == (0, 0)
+def test_interaction_counts_parse_the_apptraces_response_shape() -> None:
+    """`az monitor log-analytics query` returns tables/columns/rows, not a
+    list of dicts. Pin the real shape so the parser is not written against an
+    imagined one."""
+    assert parse_interaction_counts(LOG_ANALYTICS_RESPONSE) == (120, 113)
+
+
+def test_interaction_counts_map_columns_by_name_not_position() -> None:
+    swapped = deepcopy(LOG_ANALYTICS_RESPONSE)
+    swapped["tables"][0]["columns"].reverse()
+    swapped["tables"][0]["rows"] = [[113, 120]]
+    assert parse_interaction_counts(swapped) == (120, 113)
+
+
+def test_interaction_counts_accept_stringified_longs() -> None:
+    stringy = deepcopy(LOG_ANALYTICS_RESPONSE)
+    stringy["tables"][0]["rows"] = [["120", "113"]]
+    assert parse_interaction_counts(stringy) == (120, 113)
+
+
+def test_empty_result_set_is_zero_interactions_not_unverified() -> None:
+    """An empty `summarize` result is a real observation of zero, distinct
+    from never having run the query (which yields `None` counts and
+    `interaction_status: not-verified` upstream)."""
+    empty = deepcopy(LOG_ANALYTICS_RESPONSE)
+    empty["tables"][0]["rows"] = []
+    assert parse_interaction_counts(empty) == (0, 0)
+
+
+def test_missing_expected_column_is_rejected() -> None:
+    broken = deepcopy(LOG_ANALYTICS_RESPONSE)
+    broken["tables"][0]["columns"] = [{"name": "total_interactions", "type": "long"}]
+    broken["tables"][0]["rows"] = [[120]]
+    with pytest.raises(ActualsEvidenceError, match="successful_interactions"):
+        parse_interaction_counts(broken)
 ```
 
-Implement:
+Implement in `cost_actuals.py`:
 
 ```python
 IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
@@ -1303,21 +1836,26 @@ def build_success_kql(
     trace_attribute: str,
     success_values: list[str],
 ) -> str:
-    """Build a fixed traces query; reject every non-identifier input."""
+    """Build the fixed AppTraces query; reject every non-identifier input."""
 
 
-def parse_interaction_counts(rows: object) -> tuple[int, int]:
-    """Return total and successful counts from `az monitor ... query` JSON."""
+def parse_interaction_counts(doc: object) -> tuple[int, int]:
+    """Return total and successful counts from the workspace query response.
+
+    Reads `tables[0].columns`/`rows`, mapping by column name. Raises
+    ActualsEvidenceError when the response shape or expected columns are
+    missing; returns (0, 0) only for a well-formed empty result set.
+    """
 ```
 
 The KQL shape is fixed:
 
 ```kusto
-traces
-| where timestamp >= datetime(2026-08-01T00:00:00Z)
-    and timestamp < datetime(2026-08-08T00:00:00Z)
-| where message == "return_decision_completed"
-| extend outcome = tostring(customDimensions["decision.outcome"])
+AppTraces
+| where TimeGenerated >= datetime(2026-08-01T00:00:00Z)
+    and TimeGenerated < datetime(2026-08-08T00:00:00Z)
+| where Message == "return_decision_completed"
+| extend outcome = tostring(Properties["decision.outcome"])
 | summarize total_interactions=count(),
             successful_interactions=countif(
                 outcome in ("approved", "denied", "escalated")
@@ -1325,7 +1863,11 @@ traces
 ```
 
 Only validated identifiers are interpolated. Dates come from parsed
-`datetime` values and are reserialized as ISO UTC.
+`datetime` values and are reserialized as ISO UTC. If the value model reported
+a validation error for `success_event.name`, `success_event.trace_attribute`,
+or any `success_values` entry, the caller **skips this query entirely** and
+records `usage.interaction_status: not-verified` — the unsafe value is never
+interpolated, and skipping the query never blocks cost collection.
 
 - [ ] **Step 4: Run both skill suites**
 
@@ -1362,10 +1904,17 @@ Tests must cover:
 ```python
 from copy import deepcopy
 
+import pytest
+
 from reconcile import reconcile_costs, sha256_json
 
 
 RID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.App/containerApps/a"
+AOAI_ACCOUNT = (
+    "/subscriptions/s/resourceGroups/rg/providers/"
+    "Microsoft.CognitiveServices/accounts/aoai1"
+)
+AOAI_DEPLOYMENT = AOAI_ACCOUNT + "/deployments/chat"
 GENERATED = "2026-08-10T00:00:00Z"
 
 
@@ -1396,6 +1945,7 @@ def actuals(total=70.0, successes=100):
         },
         "cost": {
             "basis": "usage-pretax",
+            "cost_column": "PreTaxCost",
             "currency": "USD",
             "period_total_usd": total,
             "resources": [{
@@ -1405,9 +1955,11 @@ def actuals(total=70.0, successes=100):
                 "period_cost_usd": total,
             }],
             "unattributed_usd": 0.0,
-            "attribution_coverage_pct": 1.0,
+            "resource_id_coverage_pct": 1.0,
         },
         "usage": {
+            "interaction_status": "pass",
+            "model_attribution_status": "not-verified",
             "total_interactions": successes + 5,
             "successful_interactions": successes,
             "models": [],
@@ -1423,7 +1975,7 @@ def policy():
                 "min_successful_interactions": 100,
                 "min_cost_settlement_age_hours": 48,
                 "max_window_end_age_days": 14,
-                "min_attribution_coverage_pct": 0.95,
+                "min_projection_attribution_coverage_pct": 0.95,
             },
             "success_event": {
                 "name": "return_decision_completed",
@@ -1433,9 +1985,11 @@ def policy():
             "baseline": {
                 "target_cost_per_successful_interaction_usd": 1.0,
                 "max_forecast_variance_pct": 0.20,
+                "max_token_volume_variance_pct": 0.25,
             },
             "accounting": {
                 "actual_cost_basis": "usage-pretax",
+                "actual_billing_price_basis": "retail",
                 "forecast_price_basis": "retail",
                 "allow_basis_mismatch_for_verdict": False,
                 "scope_policy": "dedicated_resource_group",
@@ -1444,11 +1998,12 @@ def policy():
     }
 
 
-def run(f=None, a=None, p=None):
+def run(f=None, a=None, p=None, errors=None):
     return reconcile_costs(
         f or forecast(),
         a or actuals(),
         p or policy(),
+        policy_errors=errors or [],
         generated_at=GENERATED,
         policy_spec_sha256="spec-hash",
     )
@@ -1465,21 +2020,139 @@ def test_token_reprice_is_never_added_to_actual_total() -> None:
     assert run(a=a)["totals"]["actual_window_usd"] == 70.0
 
 
-def test_unmodeled_resource_remains_in_actual_total() -> None:
+def test_unmodeled_resource_of_a_different_type_remains_in_actual_total() -> None:
+    """The unmatched actual resource must be a genuinely *different* ARM type,
+    or the type fallback below would legitimately pair it with the forecast
+    resource and this would stop testing unmodeled cost at all."""
     a = actuals()
-    a["cost"]["resources"][0]["resource_id"] = RID + "-other"
+    a["cost"]["resources"][0]["resource_id"] = (
+        "/subscriptions/s/resourceGroups/rg/providers/"
+        "Microsoft.Storage/storageAccounts/unmodeled"
+    )
+    a["cost"]["resources"][0]["resource_type"] = "Microsoft.Storage/storageAccounts"
     result = run(a=a)
     assert result["totals"]["actual_window_usd"] == 70.0
     assert result["coverage"]["unmodeled_actual_usd"] == 70.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 0.0
 
 
-def test_unattributed_cost_reduces_coverage_not_total() -> None:
+def test_unique_type_fallback_attributes_a_renamed_resource() -> None:
+    """Exactly one unmatched forecast resource and exactly one unmatched
+    actual resource share the normalized type, so the pairing is unambiguous
+    and the fallback applies."""
     a = actuals()
-    a["cost"]["unattributed_usd"] = 7.0
-    a["cost"]["attribution_coverage_pct"] = 0.9
+    a["cost"]["resources"][0]["resource_id"] = RID + "-renamed"
+    result = run(a=a)
+    assert result["coverage"]["unmodeled_actual_usd"] == 0.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 1.0
+
+
+def test_ambiguous_same_type_actuals_are_not_attributed() -> None:
+    """Two unmatched actual resources share the forecast resource's type, so
+    there is no unique pairing. Guessing one would silently attribute the
+    wrong spend, so neither is attributed."""
+    a = actuals()
+    a["cost"]["resources"] = [
+        {
+            "resource_id": RID + "-one",
+            "resource_type": "Microsoft.App/containerApps",
+            "service_name": "Azure Container Apps",
+            "period_cost_usd": 40.0,
+        },
+        {
+            "resource_id": RID + "-two",
+            "resource_type": "Microsoft.App/containerApps",
+            "service_name": "Azure Container Apps",
+            "period_cost_usd": 30.0,
+        },
+    ]
     result = run(a=a)
     assert result["totals"]["actual_window_usd"] == 70.0
-    assert result["coverage"]["attribution_coverage_pct"] == 0.9
+    assert result["coverage"]["unmodeled_actual_usd"] == 70.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 0.0
+
+
+def test_aoai_deployment_forecast_rolls_up_to_the_account_level_actual() -> None:
+    """Cost Management bills AOAI at the account, while the forecast models
+    per-deployment. Normalize the forecast ID to its parent account so the
+    two meet (RFC §9.4)."""
+    f = forecast()
+    f["resources"] = [{
+        "resource_id": AOAI_DEPLOYMENT,
+        "resource_kind": "Microsoft.CognitiveServices/accounts/deployments",
+        "monthly_cost_usd": 300.0,
+    }]
+    a = actuals()
+    a["cost"]["resources"] = [{
+        "resource_id": AOAI_ACCOUNT,
+        "resource_type": "Microsoft.CognitiveServices/accounts",
+        "service_name": "Azure OpenAI",
+        "period_cost_usd": 70.0,
+    }]
+    result = run(f=f, a=a)
+    assert result["coverage"]["unmodeled_actual_usd"] == 0.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 1.0
+    matched = result["coverage"]["matched_resources"][0]
+    assert matched["actual_resource_id"] == AOAI_ACCOUNT
+    # Deployment detail is preserved for token diagnostics, not discarded.
+    assert matched["forecast_deployment_ids"] == [AOAI_DEPLOYMENT]
+
+
+def test_aoai_rollup_does_not_match_a_different_account() -> None:
+    """Roll-up is scoped by account name. A deployment under `aoai1` must not
+    absorb the bill for a second account `aoai2`."""
+    f = forecast()
+    f["resources"] = [{
+        "resource_id": AOAI_DEPLOYMENT,
+        "resource_kind": "Microsoft.CognitiveServices/accounts/deployments",
+        "monthly_cost_usd": 300.0,
+    }]
+    a = actuals()
+    a["cost"]["resources"] = [{
+        "resource_id": AOAI_ACCOUNT.replace("aoai1", "aoai2"),
+        "resource_type": "Microsoft.CognitiveServices/accounts",
+        "service_name": "Azure OpenAI",
+        "period_cost_usd": 70.0,
+    }]
+    result = run(f=f, a=a)
+    assert result["coverage"]["unmodeled_actual_usd"] == 70.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 0.0
+
+
+def test_unattributed_cost_reduces_projection_coverage_not_total() -> None:
+    a = actuals()
+    a["cost"]["unattributed_usd"] = 7.0
+    a["cost"]["period_total_usd"] = 77.0
+    a["cost"]["resource_id_coverage_pct"] = 70.0 / 77.0
+    result = run(a=a)
+    assert result["totals"]["actual_window_usd"] == 77.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == pytest.approx(
+        70.0 / 77.0
+    )
+    # The source measure is carried through unchanged, for diagnosis only.
+    assert result["coverage"]["source_resource_id_coverage_pct"] == pytest.approx(
+        70.0 / 77.0
+    )
+
+
+def test_full_resource_id_coverage_can_still_be_low_projection_coverage() -> None:
+    """Every actual row carries a resource ID (source coverage 1.0), but half
+    the spend is on a resource the forecast never projected. The two coverage
+    measures are different numbers and only the projection one is gated."""
+    a = actuals()
+    a["cost"]["period_total_usd"] = 140.0
+    a["cost"]["resources"].append({
+        "resource_id": "/subscriptions/s/resourceGroups/rg/providers/"
+                       "Microsoft.Storage/storageAccounts/unmodeled",
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "service_name": "Storage",
+        "period_cost_usd": 70.0,
+    })
+    result = run(a=a)
+    assert result["coverage"]["source_resource_id_coverage_pct"] == 1.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 0.5
+    # And the maturity gate reads the projection measure, not the source one.
+    assert result["maturity"]["status"] == "not-verified"
 
 
 def test_window_and_monthly_normalization() -> None:
@@ -1541,6 +2214,35 @@ def test_incomplete_policy_yields_not_verified() -> None:
     assert result["unit_economics"]["status"] == "not-verified"
 
 
+def test_policy_errors_still_emit_a_full_manifest() -> None:
+    """RFC §12: an incomplete or invalid policy never suppresses evidence.
+    `reconcile_costs` accepts the parser's error list and emits a
+    `not-verified` manifest rather than refusing to produce one."""
+    result = run(p={}, errors=["cost.maturity_policy.min_complete_days is missing"])
+    assert result["schema"] == "threadlight-cost-reconciliation/v1"
+    assert result["maturity"]["status"] == "not-verified"
+    assert result["unit_economics"]["status"] == "not-verified"
+    assert result["policy_errors"] == [
+        "cost.maturity_policy.min_complete_days is missing"
+    ]
+    # Observed evidence is still reported, because it was still observed.
+    assert result["totals"]["actual_window_usd"] == 70.0
+
+
+def test_unverified_interactions_block_unit_economics_but_not_cost_totals() -> None:
+    """RFC §7.2/§9.3: a failed workspace query leaves the cost artifact fully
+    valid, and only unit economics goes `not-verified`."""
+    a = actuals()
+    a["usage"]["interaction_status"] = "not-verified"
+    a["usage"]["total_interactions"] = None
+    a["usage"]["successful_interactions"] = None
+    result = run(a=a)
+    assert result["totals"]["actual_window_usd"] == 70.0
+    assert result["variance_status"] == "pass"
+    assert result["unit_economics"]["status"] == "not-verified"
+    assert result["unit_economics"]["cost_per_successful_interaction_usd"] is None
+
+
 def test_window_too_recent_to_settle_yields_not_verified() -> None:
     a = actuals()
     a["window"]["settlement_age_hours"] = 12
@@ -1553,18 +2255,40 @@ def test_window_too_old_for_policy_yields_not_verified() -> None:
     assert run(a=a)["maturity"]["status"] == "not-verified"
 
 
-def test_low_attribution_coverage_yields_not_verified() -> None:
+def test_low_projection_attribution_coverage_yields_not_verified() -> None:
     a = actuals()
-    a["cost"]["attribution_coverage_pct"] = 0.80
+    a["cost"]["period_total_usd"] = 100.0
+    a["cost"]["unattributed_usd"] = 30.0
     assert run(a=a)["maturity"]["status"] == "not-verified"
 
 
 def test_price_basis_mismatch_reports_delta_without_verdict() -> None:
-    f = forecast()
-    f["price_basis"] = "ea"
-    result = run(f=f)
+    """The comparison is `accounting.actual_billing_price_basis` against
+    `forecast_price_basis`. `actual_cost_basis: usage-pretax` is the metric
+    and source, and is never one side of this comparison."""
+    p = policy()
+    p["cost"]["accounting"]["actual_billing_price_basis"] = "ea"
+    result = run(p=p)
     assert result["totals"]["variance_pct"] == 0.0
     assert result["variance_status"] == "not-verified"
+    assert result["policy_snapshot"]["actual_billing_price_basis"] == "ea"
+
+
+def test_unknown_actual_price_basis_is_treated_as_a_mismatch() -> None:
+    p = policy()
+    p["cost"]["accounting"]["actual_billing_price_basis"] = "unknown"
+    assert run(p=p)["variance_status"] == "not-verified"
+
+
+def test_matching_price_basis_permits_a_verdict() -> None:
+    assert run()["variance_status"] == "pass"
+
+
+def test_allow_basis_mismatch_restores_the_verdict() -> None:
+    p = policy()
+    p["cost"]["accounting"]["actual_billing_price_basis"] = "ea"
+    p["cost"]["accounting"]["allow_basis_mismatch_for_verdict"] = True
+    assert run(p=p)["variance_status"] == "pass"
 
 
 def test_forecast_and_actual_hashes_are_recorded() -> None:
@@ -1574,12 +2298,31 @@ def test_forecast_and_actual_hashes_are_recorded() -> None:
     assert result["actuals_ref"]["sha256"] == sha256_json(a)
     assert result["policy_ref"]["spec_sha256"] == "spec-hash"
     assert result["policy_snapshot"]["max_forecast_variance_pct"] == 0.20
+    assert result["policy_snapshot"]["max_token_volume_variance_pct"] == 0.25
+    assert result["policy_snapshot"]["min_projection_attribution_coverage_pct"] == 0.95
+
+
+def test_reprojection_invalidates_the_reconciliation_by_design() -> None:
+    """A re-projected forecast changes `forecast_ref.sha256`, so the previous
+    reconciliation no longer describes the current forecast and must be
+    treated as invalid. This is intentional: the fix is a cheap `reconcile`
+    rerun over the *already collected* raw actuals, with no Azure calls and no
+    re-collection, because the window and scope did not change."""
+    a = actuals()
+    first = run(f=forecast(), a=a)
+    reprojected = forecast(360.0)
+    second = run(f=reprojected, a=a)
+    assert second["forecast_ref"]["sha256"] != first["forecast_ref"]["sha256"]
+    # Same raw actuals: the actuals hash is unchanged, which is exactly what
+    # lets the rerun skip collection.
+    assert second["actuals_ref"]["sha256"] == first["actuals_ref"]["sha256"]
+    assert second["totals"]["actual_window_usd"] == first["totals"]["actual_window_usd"]
 
 
 def test_payg_ptu_driver_compares_observed_and_forecast_token_volume() -> None:
     f, a = forecast(), actuals()
     f["resources"] = [{
-        "resource_id": RID,
+        "resource_id": AOAI_DEPLOYMENT,
         "resource_kind": "Microsoft.CognitiveServices/accounts/deployments",
         "monthly_units_consumed": {
             "input_tokens": 80000,
@@ -1587,10 +2330,11 @@ def test_payg_ptu_driver_compares_observed_and_forecast_token_volume() -> None:
         },
     }]
     f["recommendations"] = [{
-        "resource_id": RID,
+        "resource_id": AOAI_DEPLOYMENT,
         "current_sku": {"tier": "PAYG"},
         "recommended_sku": {"tier": "PTU"},
     }]
+    a["usage"]["model_attribution_status"] = "pass"
     a["usage"]["models"] = [{
         "deployment": "chat",
         "model": "gpt-5.4",
@@ -1598,6 +2342,39 @@ def test_payg_ptu_driver_compares_observed_and_forecast_token_volume() -> None:
         "output_tokens": 2000,
     }]
     assert run(f=f, a=a)["drivers"]["payg_ptu"]["status"] == "pass"
+
+
+def test_payg_ptu_driver_uses_the_token_threshold_not_the_cost_threshold() -> None:
+    """Observed volume lands 22% above forecast: outside the 20% *cost*
+    tolerance but inside the declared 25% *token volume* tolerance. Reusing
+    `max_forecast_variance_pct` here would wrongly report `should-fix`."""
+    f, a = forecast(), actuals()
+    f["resources"] = [{
+        "resource_id": AOAI_DEPLOYMENT,
+        "resource_kind": "Microsoft.CognitiveServices/accounts/deployments",
+        "monthly_units_consumed": {"input_tokens": 90000, "output_tokens": 10000},
+    }]
+    f["recommendations"] = [{
+        "resource_id": AOAI_DEPLOYMENT,
+        "current_sku": {"tier": "PAYG"},
+        "recommended_sku": {"tier": "PTU"},
+    }]
+    a["usage"]["model_attribution_status"] = "pass"
+    a["usage"]["models"] = [{
+        "deployment": "chat",
+        "model": "gpt-5.4",
+        "input_tokens": 25200,
+        "output_tokens": 3266,
+    }]
+    driver = run(f=f, a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["threshold_field"] == "max_token_volume_variance_pct"
+
+
+def test_payg_ptu_driver_is_not_verified_without_a_token_threshold() -> None:
+    p = policy()
+    del p["cost"]["baseline"]["max_token_volume_variance_pct"]
+    assert run(p=p)["drivers"]["payg_ptu"]["status"] == "not-verified"
 
 
 def test_payg_ptu_driver_is_not_verified_without_recommendation() -> None:
@@ -1637,10 +2414,17 @@ def reconcile_costs(
     actuals: dict[str, object],
     policy: dict[str, object],
     *,
+    policy_errors: list[str],
     generated_at: str,
     policy_spec_sha256: str,
 ) -> dict[str, object]:
-    """Return `threadlight-cost-reconciliation/v1`."""
+    """Return `threadlight-cost-reconciliation/v1`.
+
+    `policy` may be partial and `policy_errors` non-empty; this function never
+    refuses to produce a manifest. Errors are copied to `policy_errors` in the
+    output and force `maturity.status` and `unit_economics.status` to
+    `not-verified`, but every observed number is still reported.
+    """
 ```
 
 Use `Decimal` for money. Do not accept a token-cost argument in
@@ -1651,20 +2435,25 @@ both must be present in every emitted manifest:
 
 - `status` (`pass | not-verified`) is an evidence/maturity signal: whether
   `cost_per_successful_interaction_usd` could be computed at all. It is
-  `pass` only when **all three** hold:
+  `pass` only when **all four** hold:
   1. `actuals["status"] == "pass"` — a verified Cost Management total, not a
      `not-verified` collection;
   2. the SPEC-declared `maturity_policy` is complete — every field the
      policy schema requires (§8 of the RFC; the same completeness check
-     `evaluate_maturity` already performs for `maturity.status`) is present,
-     independent of whether its thresholds are actually met;
-  3. `successful_interactions > 0` — a divide-by-zero guard, not a
+     `evaluate_maturity` already performs for `maturity.status`) is present
+     and `policy_errors` is empty, independent of whether its thresholds are
+     actually met;
+  3. `actuals["usage"]["interaction_status"] == "pass"` — the denominator was
+     actually observed, rather than absent because the workspace query was
+     skipped or failed;
+  4. `successful_interactions > 0` — a divide-by-zero guard, not a
      threshold comparison; division is never attempted at zero.
 
-  It is `not-verified` if any of the three fails. Token metrics
-  (`usage.models`) are optional evidence for model-level attribution only
-  (see RFC §7.3/§9.3) and are never part of this gate: missing or
-  incomplete token metrics must never flip `status` away from `pass`.
+  It is `not-verified` if any of the four fails. Token metrics
+  (`usage.models`, summarized by `usage.model_attribution_status`) are optional
+  evidence for model-level attribution only (see RFC §7.3/§9.3) and are never
+  part of this gate: missing or incomplete token metrics must never flip
+  `status` away from `pass`.
 - `target_status` (`pass | should-fix | not-verified`) is evaluated only when
   `status` is `pass`, and separately compares the computed cost against
   `policy.cost.baseline.target_cost_per_successful_interaction_usd`.
@@ -1673,9 +2462,51 @@ both must be present in every emitted manifest:
 
 Resource matching order:
 
-1. case-insensitive normalized resource ID;
-2. normalized ARM resource type;
-3. otherwise unmodeled/unattributed.
+1. **Exact ID.** Case-insensitive normalized resource ID, after AOAI
+   normalization (below).
+2. **AOAI parent roll-up.** A forecast resource whose ID is
+   `.../Microsoft.CognitiveServices/accounts/<name>/deployments/<deployment>`
+   normalizes to its parent `.../Microsoft.CognitiveServices/accounts/<name>`
+   for matching, because Cost Management bills Azure OpenAI at the account
+   level and reports the account-level ID and the
+   `Microsoft.CognitiveServices/accounts` type. Roll-up is scoped by account
+   name, so a deployment under one account can never match a different
+   account. Multiple forecast deployments under the same account collapse into
+   one matched account entry whose `forecast_window_usd` is their sum, and the
+   original deployment IDs are preserved in
+   `matched_resources[].forecast_deployment_ids` so token diagnostics and the
+   PAYG/PTU driver keep per-deployment detail.
+3. **Unique type fallback.** Normalized ARM resource type may pair a forecast
+   resource with an actual resource **only when exactly one unmatched forecast
+   resource and exactly one unmatched actual resource share that normalized
+   type.** With two or more candidates on either side the pairing is
+   ambiguous, and guessing would silently attribute spend to the wrong
+   projected resource — so nothing is paired and the cost stays unmodeled.
+4. Otherwise unmodeled/unattributed.
+
+Coverage is two distinct measures and they must not be conflated (RFC §9.4):
+
+- `coverage.source_resource_id_coverage_pct` is copied through from the
+  actuals manifest's `cost.resource_id_coverage_pct`. It answers "did Cost
+  Management tell us which resource each charge belongs to?" and is diagnostic
+  only.
+- `coverage.projection_attribution_coverage_pct` is computed here as *actual
+  cost successfully mapped onto a projected forecast resource / total actual
+  cost*. It answers "how much of the bill does our projection explain?" and is
+  the **only** coverage number the maturity gate reads, against
+  `min_projection_attribution_coverage_pct`.
+
+A workload can have `source_resource_id_coverage_pct == 1.0` and a low
+projection coverage at the same time — every charge is labeled, but the
+forecast never modeled those resources.
+
+Price basis (RFC §9.5): compare
+`policy.cost.accounting.actual_billing_price_basis` with
+`policy.cost.accounting.forecast_price_basis`. `actual_cost_basis`
+(`usage-pretax`) is the metric and source and is never one side of this
+comparison. When the two bases differ, or `actual_billing_price_basis` is
+`unknown`, and `allow_basis_mismatch_for_verdict` is `false`, set
+`variance_status: not-verified` while still reporting `variance_pct`.
 
 For the experimental PAYG/PTU driver, do not invent new pricing:
 
@@ -1693,23 +2524,38 @@ observed_volume_variance_pct =
 
 Emit `drivers.payg_ptu.status = pass` only when the forecast contains an
 explicit PAYG-to-PTU or PTU-to-PAYG recommendation and observed token volume is
-inside SPEC's declared `max_forecast_variance_pct`. Outside the band, emit
+inside SPEC's declared `max_token_volume_variance_pct` — a token-volume
+tolerance, deliberately separate from the cost tolerance
+`max_forecast_variance_pct`, since a workload can absorb far more volume drift
+than cost drift before its sizing recommendation stops holding. Record the
+field used as `drivers.payg_ptu.threshold_field`. Outside the band, emit
 `should-fix` with "rerun PAYG/PTU analysis at observed volume". Missing
-recommendation, zero forecast tokens, or missing token metrics is
-`not-verified`. This checks whether the recommendation's load assumption still
-matches reality; it does not call the token reprice billed actual.
+recommendation, missing `max_token_volume_variance_pct`, zero forecast tokens,
+or missing token metrics is `not-verified`. This checks whether the
+recommendation's load assumption still matches reality; it does not call the
+token reprice billed actual.
+
+Forecast re-projection invalidation is intentional. `forecast_ref.sha256`
+pins the exact forecast that was reconciled, so re-running the projection
+invalidates the reconciliation by design rather than by accident. The remedy
+is deliberately cheap: rerun `reconcile` only. Because the raw actuals are
+canonical and window-scoped, the previously collected actuals are reused
+verbatim, no Azure call is issued, and only the forecast side is recomputed.
 
 - [ ] **Step 4: Write the reconciliation schema**
 
 Pin the shape approved in the RFC, including:
 
 - references and SHA-256 hashes;
+- `policy_errors`, the parser's error list, empty when the policy is complete;
 - maturity checks;
 - forecast monthly/window totals;
 - actual window/monthly run-rate totals;
-- variance;
+- variance and `variance_status`;
 - cost per successful interaction;
-- coverage and drivers;
+- both coverage measures under their distinct names
+  (`projection_attribution_coverage_pct` and
+  `source_resource_id_coverage_pct`) and drivers;
 - immutable history semantics.
 
 - [ ] **Step 5: Prove existing forecast output is unchanged**
@@ -1754,6 +2600,7 @@ Tests must assert:
 import json
 import subprocess
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -1763,7 +2610,14 @@ from actuals_sources import (
     collect_sources,
     cost_query_body,
     fetch_cost_pages,
-    fetch_trace_rows,
+    fetch_interaction_result,
+    resolve_workspace_customer_id,
+)
+
+
+WORKSPACE_RESOURCE_ID = (
+    "/subscriptions/sub-1/resourceGroups/rg-pilot/providers/"
+    "Microsoft.OperationalInsights/workspaces/law-pilot"
 )
 
 
@@ -1781,19 +2635,31 @@ def result(stdout="", stderr="", code=0):
     return subprocess.CompletedProcess([], code, stdout, stderr)
 
 
-def test_cost_query_uses_custom_window_and_grouping() -> None:
+@pytest.fixture
+def az_config_dir(monkeypatch, tmp_path: Path) -> str:
+    """Isolated az state inside the test's own temp dir — never a shared,
+    hardcoded path that could collide between concurrent runs or leak state
+    across tests."""
+    isolated = str(tmp_path / "isolated-az")
+    monkeypatch.setenv("AZURE_CONFIG_DIR", isolated)
+    return isolated
+
+
+def test_cost_query_uses_custom_window_and_daily_grouping() -> None:
     body = cost_query_body(date(2026, 8, 1), date(2026, 8, 8))
     assert body["timePeriod"] == {
         "from": "2026-08-01T00:00:00Z",
         "to": "2026-08-08T00:00:00Z",
     }
+    # Daily granularity is what makes the window verifiable downstream: the
+    # parser can only check `start <= usage_date < end` if rows carry a date.
+    assert body["dataset"]["granularity"] == "Daily"
     assert [g["name"] for g in body["dataset"]["grouping"]] == [
         "ResourceId", "ResourceType", "ServiceName"
     ]
 
 
-def test_cost_query_uses_rg_scope_and_explicit_subscription(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_cost_query_uses_rg_scope_and_explicit_subscription(az_config_dir) -> None:
     runner = FakeRunner([
         result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
         result(json.dumps({"properties": {"columns": [], "rows": [], "nextLink": None}})),
@@ -1807,8 +2673,7 @@ def test_cost_query_uses_rg_scope_and_explicit_subscription(monkeypatch) -> None
     assert "/subscriptions/sub-1/resourceGroups/rg-pilot/" in url
 
 
-def test_cost_query_follows_next_link(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_cost_query_follows_next_link(az_config_dir) -> None:
     first = {"properties": {
         "columns": [], "rows": [], "nextLink": "https://next.example/page-2"
     }}
@@ -1826,12 +2691,15 @@ def test_cost_query_follows_next_link(monkeypatch) -> None:
     assert "https://next.example/page-2" in runner.calls[2]
 
 
-def test_429_uses_retry_after_and_bounded_retry(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_429_uses_bounded_exponential_retry(az_config_dir) -> None:
+    """`az rest` does not reliably surface response headers, so `Retry-After`
+    is not consumed. Backoff is a fixed bounded schedule driven only by the
+    observed 429 in stderr / non-zero return."""
     sleeps = []
     runner = FakeRunner([
         result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
-        result(stderr="HTTP 429\nRetry-After: 7", code=1),
+        result(stderr="(429) Too Many Requests", code=1),
+        result(stderr="(429) Too Many Requests", code=1),
         result(json.dumps({"properties": {
             "columns": [], "rows": [], "nextLink": None
         }})),
@@ -1840,11 +2708,24 @@ def test_429_uses_retry_after_and_bounded_retry(monkeypatch) -> None:
         "sub-1", "rg-pilot", date(2026, 8, 1), date(2026, 8, 8),
         runner=runner, sleep=sleeps.append,
     )
-    assert sleeps == [7]
+    assert sleeps == [2, 4]
 
 
-def test_other_az_failure_surfaces_stderr(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_retry_is_bounded_and_then_fails(az_config_dir) -> None:
+    sleeps = []
+    runner = FakeRunner([
+        result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
+        *[result(stderr="(429) Too Many Requests", code=1) for _ in range(4)],
+    ])
+    with pytest.raises(ActualsSourceError, match="429"):
+        fetch_cost_pages(
+            "sub-1", "rg-pilot", date(2026, 8, 1), date(2026, 8, 8),
+            runner=runner, sleep=sleeps.append,
+        )
+    assert sleeps == [2, 4, 8]
+
+
+def test_other_az_failure_surfaces_stderr(az_config_dir) -> None:
     runner = FakeRunner([
         result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
         result(stderr="Forbidden", code=1),
@@ -1864,8 +2745,7 @@ def test_missing_azure_config_dir_fails_before_az(monkeypatch) -> None:
     assert runner.calls == []
 
 
-def test_active_subscription_must_match_requested_subscription(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_active_subscription_must_match_requested_subscription(az_config_dir) -> None:
     runner = FakeRunner([
         result(json.dumps({"id": "sub-other", "tenantId": "tenant-1"}))
     ])
@@ -1873,22 +2753,80 @@ def test_active_subscription_must_match_requested_subscription(monkeypatch) -> N
         assert_azure_context("sub-1", runner=runner)
 
 
-def test_trace_query_uses_workspace_customer_id() -> None:
-    runner = FakeRunner([result('[{"n": 1}]')])
-    assert fetch_trace_rows("workspace-customer-id", "traces | count", runner) == [
-        {"n": 1}
+def test_workspace_customer_id_is_resolved_from_the_arm_resource_id() -> None:
+    """Callers supply the ARM resource ID they already know from deployment
+    outputs; the GUID `customerId` the query API needs is resolved here, once,
+    instead of being demanded from the operator."""
+    runner = FakeRunner([result("11111111-2222-3333-4444-555555555555\n")])
+    customer_id = resolve_workspace_customer_id(WORKSPACE_RESOURCE_ID, runner)
+    assert customer_id == "11111111-2222-3333-4444-555555555555"
+    assert runner.calls[0] == [
+        "az", "monitor", "log-analytics", "workspace", "show",
+        "--ids", WORKSPACE_RESOURCE_ID,
+        "--query", "customerId",
+        "-o", "tsv",
     ]
+
+
+@pytest.mark.parametrize("stdout", ["", "   \n", "None\n", "not-a-guid\n"])
+def test_blank_or_malformed_customer_id_degrades_to_none(stdout: str) -> None:
+    runner = FakeRunner([result(stdout)])
+    assert resolve_workspace_customer_id(WORKSPACE_RESOURCE_ID, runner) is None
+
+
+def test_workspace_resolution_failure_degrades_to_none() -> None:
+    runner = FakeRunner([result(stderr="ResourceNotFound", code=1)])
+    assert resolve_workspace_customer_id(WORKSPACE_RESOURCE_ID, runner) is None
+
+
+def test_interaction_query_uses_the_resolved_workspace_customer_id() -> None:
+    response = {"tables": [{
+        "name": "PrimaryResult",
+        "columns": [{"name": "total_interactions", "type": "long"}],
+        "rows": [[1]],
+    }]}
+    runner = FakeRunner([result(json.dumps(response))])
+    assert fetch_interaction_result(
+        "workspace-customer-id", "AppTraces | count", runner
+    ) == response
     assert "workspace-customer-id" in runner.calls[0]
 
 
-def test_monitoring_failure_does_not_erase_valid_cost_evidence(monkeypatch) -> None:
-    monkeypatch.setenv("AZURE_CONFIG_DIR", "/tmp/isolated-az")
+def test_unresolvable_workspace_degrades_interactions_not_cost(az_config_dir) -> None:
+    """A workspace that cannot be resolved is a warning on the interaction
+    evidence only. Cost collection must complete and stay verified."""
+    runner = FakeRunner([
+        result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
+        result(json.dumps({"properties": {
+            "columns": [], "rows": [], "nextLink": None
+        }})),
+        result(json.dumps({"value": []})),
+        result(stderr="ResourceNotFound", code=1),
+    ])
+    bundle = collect_sources(
+        subscription_id="sub-1",
+        resource_group="rg-pilot",
+        start=date(2026, 8, 1),
+        end=date(2026, 8, 8),
+        monitor_resource_id="/resource/model",
+        workspace_resource_id=WORKSPACE_RESOURCE_ID,
+        kql="AppTraces | count",
+        runner=runner,
+        sleep=lambda _: None,
+    )
+    assert len(bundle["cost_pages"]) == 1
+    assert bundle["interaction_result"] is None
+    assert any("workspace" in w for w in bundle["warnings"])
+
+
+def test_monitoring_failure_does_not_erase_valid_cost_evidence(az_config_dir) -> None:
     runner = FakeRunner([
         result(json.dumps({"id": "sub-1", "tenantId": "tenant-1"})),
         result(json.dumps({"properties": {
             "columns": [], "rows": [], "nextLink": None
         }})),
         result(stderr="metrics forbidden", code=1),
+        result("11111111-2222-3333-4444-555555555555\n"),
         result(stderr="logs forbidden", code=1),
     ])
     bundle = collect_sources(
@@ -1897,14 +2835,14 @@ def test_monitoring_failure_does_not_erase_valid_cost_evidence(monkeypatch) -> N
         start=date(2026, 8, 1),
         end=date(2026, 8, 8),
         monitor_resource_id="/resource/model",
-        workspace_customer_id="workspace-customer-id",
-        kql="traces | count",
+        workspace_resource_id=WORKSPACE_RESOURCE_ID,
+        kql="AppTraces | count",
         runner=runner,
         sleep=lambda _: None,
     )
     assert len(bundle["cost_pages"]) == 1
     assert bundle["token_doc"] is None
-    assert bundle["trace_rows"] is None
+    assert bundle["interaction_result"] is None
     assert len(bundle["warnings"]) == 2
 ```
 
@@ -1933,7 +2871,7 @@ def cost_query_body(start: date, end: date) -> dict[str, object]:
             "to": f"{end.isoformat()}T00:00:00Z",
         },
         "dataset": {
-            "granularity": "None",
+            "granularity": "Daily",
             "aggregation": {
                 "totalCost": {
                     "name": "PreTaxCost",
@@ -1948,6 +2886,19 @@ def cost_query_body(start: date, end: date) -> dict[str, object]:
         },
     }
 ```
+
+`granularity: "Daily"` is what makes the window verifiable. The response then
+carries a `UsageDate` column per row, and `cost_actuals.py` validates that
+every returned day lies inside the requested half-open window and computes
+`complete_days` (Task 6, RFC §8.1). With `"None"` the response is a single
+undated aggregate and nothing downstream can prove the window was honored.
+
+Document the assumption alongside the body: the Query API's `timePeriod` is
+documented as covering the requested period, and the `to` bound is sent at UTC
+midnight of the exclusive end day. Rather than depending on that boundary
+semantic, the daily rows are validated locally as `start <= usage_date < end`,
+so any change in API behavior surfaces as a loud parse failure instead of a
+silently wrong total.
 
 Query URL:
 
@@ -1980,9 +2931,21 @@ This collector is read-only, but tenant isolation remains mandatory.
 
 - [ ] **Step 3: Implement bounded retry and pagination**
 
-Retry only transient return codes/messages (429/5xx). Honor Retry-After when
-available; otherwise use bounded exponential delays `2, 4, 8` seconds. Inject
-both `runner` and `sleep` so tests never wait.
+Retry only transient return codes/messages (429/5xx), detected from the
+runner's non-zero return code and its stderr text, using bounded exponential
+delays `2, 4, 8` seconds and then failing with `ActualsSourceError`.
+
+Do **not** attempt to read `Retry-After`. The service does return that header,
+but `az rest` and `az monitor ...` do not reliably surface response headers to
+the caller — stdout carries the parsed body and stderr carries a rendered
+error string, neither of which is a dependable header channel. Parsing a
+header out of stderr text would be inventing a contract the CLI does not
+offer, so the schedule is fixed and self-contained. If honoring the service's
+own backoff hint becomes necessary, the correct change is to move this
+collector to the Azure SDK, where the response headers are actually available;
+that is a deliberate future option, not a gap to paper over here.
+
+Inject both `runner` and `sleep` so tests never wait.
 
 Follow `properties.nextLink` with the same POST body until null. Detect repeated
 nextLink and stop with `ActualsSourceError`.
@@ -2010,6 +2973,19 @@ def fetch_cost_pages(
     """Fetch every Cost Management Query page or raise."""
 
 
+def resolve_workspace_customer_id(
+    resource_id: str,
+    runner: Runner,
+) -> str | None:
+    """Resolve an ARM workspace resource ID to its query `customerId` GUID.
+
+    Returns None — never raises — when the lookup fails or returns a blank,
+    literal "None", or non-GUID value. A workspace that cannot be resolved
+    degrades interaction evidence to a warning and `not-verified`; it never
+    affects Cost Management collection.
+    """
+
+
 def collect_sources(
     *,
     subscription_id: str,
@@ -2017,18 +2993,35 @@ def collect_sources(
     start: date,
     end: date,
     monitor_resource_id: str | None,
-    workspace_customer_id: str | None,
+    workspace_resource_id: str | None,
     kql: str | None,
     runner: Runner,
     sleep: Callable[[float], None],
 ) -> dict[str, object]:
-    """Require cost pages; degrade token/traces to warnings."""
+    """Require cost pages; degrade token/interaction evidence to warnings."""
 ```
 
-- [ ] **Step 4: Implement Monitor and trace adapters**
+`collect_sources` takes the **ARM workspace resource ID** and calls
+`resolve_workspace_customer_id` internally. No caller — CLI, tests, or
+downstream skill — ever supplies a `customerId` directly: the GUID is an
+implementation detail of the Log Analytics query API, while the resource ID is
+what deployment outputs and `az` already expose.
+
+- [ ] **Step 4: Implement Monitor and interaction adapters**
 
 Keep the existing `az monitor metrics list` dimensions and call the shared
-parser. For traces:
+parser. Resolve the workspace first:
+
+```python
+[
+    "az", "monitor", "log-analytics", "workspace", "show",
+    "--ids", workspace_resource_id,
+    "--query", "customerId",
+    "-o", "tsv",
+]
+```
+
+then query it:
 
 ```python
 [
@@ -2039,8 +3032,12 @@ parser. For traces:
 ]
 ```
 
-Cost Management failure prevents a verified actual total. Monitor or trace
-failure preserves valid cost evidence and adds warnings.
+Because this is the workspace query surface, `safe_kql` is the `AppTraces`
+query built in Task 7 — never an App Insights `traces` query.
+
+Cost Management failure prevents a verified actual total. Monitor, workspace
+resolution, or interaction-query failure preserves valid cost evidence and adds
+warnings.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -2238,6 +3235,16 @@ Markdown order:
 
 Then show maturity checks, variance, resource mapping, unmodeled cost,
 unattributed cost, model usage, warnings, and provenance.
+
+Label the two coverage numbers distinctly and never merge them into one
+"coverage" line: `coverage.projection_attribution_coverage_pct` is the gated
+measure ("actual cost mapped to projected resources"), while
+`coverage.source_resource_id_coverage_pct` is the ungated source-quality
+measure ("actual cost rows carrying a resource ID"). Render
+`usage.interaction_status` and `usage.model_attribution_status` alongside the
+counts so a `null` count reads as "not verified" rather than as zero, and
+render any `policy_errors` verbatim — an incomplete policy still produces this
+report.
 
 - [ ] **Step 4: Run and commit**
 
@@ -2456,11 +3463,20 @@ def test_cost_source_failure_returns_exit_3(monkeypatch) -> None:
     ]) == 3
 
 
-def test_trace_failure_returns_exit_5_not_exit_3(monkeypatch) -> None:
+def test_interaction_query_failure_still_returns_exit_0_for_actuals(monkeypatch) -> None:
+    """A failed workspace interaction query does not invalidate the cost
+    artifact (RFC §7.2/§11): the `actuals` command emitted a valid
+    `status: pass` manifest with `usage.interaction_status: not-verified`, so
+    it returns 0. Only `reconcile` returns 5, because unit economics could not
+    be verified there."""
     monkeypatch.setattr(
         consumption_iq,
         "_phase_actuals",
-        lambda args: {"status": "not-verified", "warnings": ["logs forbidden"]},
+        lambda args: {
+            "status": "pass",
+            "usage": {"interaction_status": "not-verified"},
+            "warnings": ["logs forbidden"],
+        },
     )
     # The `actuals` command dispatch itself writes the actuals manifest via
     # `_emit_actuals` before returning; without this stub the real writer
@@ -2471,7 +3487,104 @@ def test_trace_failure_returns_exit_5_not_exit_3(monkeypatch) -> None:
         "actuals",
         "--start", "2026-08-01", "--end", "2026-08-08",
         "--subscription", "sub-1", "--resource-group", "rg-pilot",
+    ]) == 0
+
+
+def test_interaction_query_failure_returns_exit_5_for_reconcile(monkeypatch) -> None:
+    emitted = []
+    monkeypatch.setattr(
+        consumption_iq,
+        "_phase_reconcile",
+        lambda args: {
+            "status": "not-verified",
+            "unit_economics": {"status": "not-verified"},
+        },
+    )
+    monkeypatch.setattr(
+        consumption_iq,
+        "_emit_reconciliation",
+        lambda args, result: emitted.append(result),
+    )
+    assert consumption_iq.main(["reconcile"]) == 5
+    # Emit happens first; the non-zero exit only reports the verdict.
+    assert emitted and emitted[0]["status"] == "not-verified"
+
+
+def test_unverified_actuals_status_returns_exit_5_after_emit(monkeypatch) -> None:
+    emitted = []
+    monkeypatch.setattr(
+        consumption_iq,
+        "_phase_actuals",
+        lambda args: {"status": "not-verified", "warnings": ["cost parse failed"]},
+    )
+    monkeypatch.setattr(
+        consumption_iq, "_emit_actuals", lambda args, result: emitted.append(result)
+    )
+    assert consumption_iq.main([
+        "actuals",
+        "--start", "2026-08-01", "--end", "2026-08-08",
+        "--subscription", "sub-1", "--resource-group", "rg-pilot",
     ]) == 5
+    assert emitted
+
+
+def test_incomplete_policy_emits_before_exiting_5(monkeypatch) -> None:
+    """RFC §12 / Task 5: an incomplete or invalid section 14 is no longer an
+    early exit. The policy errors flow into `reconcile_costs`, a
+    `not-verified` manifest is written, and only then is 5 returned."""
+    emitted = []
+    monkeypatch.setattr(
+        consumption_iq,
+        "_load_policy",
+        lambda args: ValueModelResult(policy={}, errors=["cost.baseline is missing"]),
+    )
+    monkeypatch.setattr(
+        consumption_iq,
+        "_phase_reconcile",
+        lambda args: {
+            "status": "not-verified",
+            "policy_errors": ["cost.baseline is missing"],
+        },
+    )
+    monkeypatch.setattr(
+        consumption_iq,
+        "_emit_reconciliation",
+        lambda args, result: emitted.append(result),
+    )
+    assert consumption_iq.main(["reconcile"]) == 5
+    assert emitted[0]["policy_errors"] == ["cost.baseline is missing"]
+
+
+def test_unsafe_success_identifier_skips_the_query_without_aborting(monkeypatch) -> None:
+    """An unsafe identifier is a policy validation error, so the interaction
+    query is skipped — but raw actuals are still collected and emitted."""
+    emitted = []
+    monkeypatch.setattr(
+        consumption_iq,
+        "_load_policy",
+        lambda args: ValueModelResult(
+            policy={},
+            errors=['cost.success_event.success_values[0] invalid'],
+        ),
+    )
+    monkeypatch.setattr(
+        consumption_iq,
+        "_phase_actuals",
+        lambda args: {
+            "status": "pass",
+            "usage": {"interaction_status": "not-verified"},
+            "warnings": ["success event identifier rejected; query skipped"],
+        },
+    )
+    monkeypatch.setattr(
+        consumption_iq, "_emit_actuals", lambda args, result: emitted.append(result)
+    )
+    assert consumption_iq.main([
+        "actuals",
+        "--start", "2026-08-01", "--end", "2026-08-08",
+        "--subscription", "sub-1", "--resource-group", "rg-pilot",
+    ]) == 0
+    assert emitted[0]["status"] == "pass"
 ```
 
 - [ ] **Step 2: Add constants and parser surface**
@@ -2590,9 +3703,30 @@ paths every other command uses (`DEFAULT_SPEC_PATH`,
 fail fast if the SPEC path doesn't exist; `actuals` itself still never
 evaluates section 14 policy or writes a `policy_ref` — only `reconcile`
 reads and hashes SPEC's `value_model` (RFC §7.3/§9). `--workspace-resource-id`
-has no environment fallback and stays optional everywhere: an omitted
-workspace only degrades Azure Monitor token attribution, never the Cost
-Management total itself, so there is nothing to fail closed on.
+takes the **ARM resource ID** of the Log Analytics workspace; the CLI resolves
+its query `customerId` internally via `resolve_workspace_customer_id` (Task 9)
+and never asks a caller for the GUID. It has no environment fallback and stays
+optional everywhere: an omitted or unresolvable workspace only degrades token
+attribution and interaction evidence — recorded as
+`usage.model_attribution_status` / `usage.interaction_status: not-verified` —
+never the Cost Management total itself, so there is nothing to fail closed on.
+
+`reconcile` issues **no Azure calls at all**. It reads the already-collected
+canonical actuals manifest at `--actuals-manifest`, the forecast at
+`--forecast`, and the policy at `--spec`. Raw actuals are reused verbatim, with
+no re-collection, when all of the following hold:
+
+1. the manifest's `schema` is `threadlight-cost-actuals/v1`;
+2. its `status` is `pass`;
+3. its `window.start`/`window.end` equal the window being reconciled;
+4. its scope (subscription and resource group) equals the scope being
+   reconciled.
+
+If any of the four does not hold, `reconcile` does not silently fall back to
+collecting: it fails closed and tells the operator to rerun `actuals` for the
+window it needs. This is what makes re-projection cheap — a changed forecast
+hash invalidates the reconciliation but not the collected evidence, so the fix
+is a single `reconcile` rerun with zero Azure traffic and zero rate-limit cost.
 
 `--with-actuals` is false by default. `--pre-deploy --with-actuals` is rejected
 with exit 2, same as an unresolved `--subscription`/`--resource-group`.
@@ -2634,20 +3768,32 @@ to the real working directory's `specs/` paths.
 - [ ] **Step 3: Add narrow exception mapping**
 
 ```python
-except ValueModelError as exc:
-    print(f"value model incomplete: {exc}", file=sys.stderr)
-    return 5
 except ActualsSourceError as exc:
     print(f"actuals source unavailable: {exc}", file=sys.stderr)
     return 3
 ```
 
+There is deliberately **no** `ValueModelError` branch: the parser no longer
+raises for policy content (Task 5). An incomplete or invalid section 14 is
+carried as `ValueModelResult.errors` into `reconcile_costs`, which emits a
+`not-verified` manifest; the CLI prints the errors to stderr and returns 5
+*after* that emit. An early exit here would destroy exactly the evidence the
+operator needs to fix the policy.
+
 Do not add a broad `except Exception`. Reconciliation itself returns a manifest
 with `status`. Emit that evidence first, then return:
 
 ```python
+_emit_reconciliation(args, reconciliation)
 return 0 if reconciliation.get("status") == "pass" else 5
 ```
+
+The same ordering applies to `actuals`: `_emit_actuals` runs before any
+non-zero return. And the two commands answer different questions, so their
+exit codes differ for the same failure — a failed workspace interaction query
+leaves `actuals` at 0 (its Cost Management artifact is complete and
+`status: pass`, with `usage.interaction_status: not-verified` recorded inside),
+while `reconcile` returns 5 because unit economics could not be verified.
 
 - [ ] **Step 4: Update SKILL.md**
 
@@ -2658,8 +3804,11 @@ Document:
 - required RBAC: Cost Management Reader, Monitoring Reader, Log Analytics
   Reader at the narrowest practical scope;
 - daily maximum query cadence and four-hour refresh guidance;
-- `usage-pretax` terminology;
-- exit 5 is advisory;
+- `usage-pretax` terminology, as the metric and source rather than a price
+  basis or an invoice;
+- `--workspace-resource-id` takes the ARM resource ID; the query `customerId`
+  is resolved internally and never asked for;
+- exit 5 is advisory and always follows a successful artifact write;
 - no polling for billing ingestion;
 - tenant-isolation preflight.
 
@@ -2770,11 +3919,19 @@ manifests are synthetic or already-sanitized fixtures.
 Replace subscription IDs, tenant IDs, resource group names, resource names,
 and prices with deterministic synthetic values while preserving:
 
-- column names/order;
-- number/string/null types;
+- column names/order, including the selected cost column name (`PreTaxCost` or
+  whichever alias the live account actually returned) and `UsageDate`;
+- number/string/null types, including `UsageDate`'s live representation
+  (integer `YYYYMMDD` vs. ISO string) — that is exactly what
+  `normalize_usage_date` must handle;
+- daily granularity: one row per resource per day across the whole window, so
+  the end-exclusive window validation is exercised against real data;
 - pagination shape;
 - blank ResourceId behavior;
-- dimensions.
+- dimensions;
+- the Log Analytics response envelope (`tables[].name`, `columns[].name`,
+  `rows`) if an interaction result was captured, since the parser maps rows by
+  column name rather than by position.
 
 Run the parser test against the sanitized fixture. Never commit raw customer
 or internal billing data.
@@ -2824,6 +3981,7 @@ def make_ctx(
     variance_status="pass",
     variance_pct=0.10,
     payg_ptu="pass",
+    unit_economics="pass",
 ):
     specs = tmp_path / "specs"
     specs.mkdir(parents=True)
@@ -2843,9 +4001,20 @@ def make_ctx(
             "policy_ref": {
                 "spec_sha256": hashlib.sha256(spec_text.encode()).hexdigest()
             },
-            "policy_snapshot": {"max_forecast_variance_pct": 0.20},
+            "policy_snapshot": {
+                "max_forecast_variance_pct": 0.20,
+                "max_token_volume_variance_pct": 0.25,
+                "min_projection_attribution_coverage_pct": 0.95,
+                "actual_billing_price_basis": "retail",
+                "forecast_price_basis": "retail",
+            },
             "totals": {"variance_pct": variance_pct},
             "variance_status": variance_status,
+            "coverage": {
+                "projection_attribution_coverage_pct": 1.0,
+                "source_resource_id_coverage_pct": 1.0,
+            },
+            "unit_economics": {"status": unit_economics},
             "drivers": {"payg_ptu": {"status": payg_ptu}},
         }
         (specs / "cost-reconciliation-manifest.json").write_text(
@@ -2929,6 +4098,46 @@ def test_cost103_passes_when_observed_usage_supports_recommendation(
     tmp_path,
 ) -> None:
     assert findings(make_ctx(tmp_path, payg_ptu="pass"))["COST-103"].status == "pass"
+
+
+def test_cost103_uses_the_token_volume_threshold_not_the_cost_threshold(
+    tmp_path,
+) -> None:
+    """The PAYG/PTU driver compares *token volume*, so its tolerance is
+    `max_token_volume_variance_pct` (RFC §9.3). Reusing
+    `max_forecast_variance_pct` — a cost-variance tolerance — would silently
+    apply the wrong number to a different unit."""
+    ctx = make_ctx(tmp_path)
+    path = tmp_path / "specs" / "cost-reconciliation-manifest.json"
+    data = json.loads(path.read_text())
+    assert data["policy_snapshot"]["max_token_volume_variance_pct"] == 0.25
+    for finding in findings(ctx).values():
+        assert "max_forecast_variance_pct" not in finding.detail or (
+            finding.id == "COST-102"
+        )
+
+
+def test_cost103_not_verified_when_unit_economics_is_not_verified(tmp_path) -> None:
+    """Unit economics is gated on four conditions (RFC §9.3); when the
+    reconciliation reports it as `not-verified` — for example because
+    interaction evidence was unavailable — `COST-103` must not pass on the
+    driver status alone."""
+    ctx = make_ctx(tmp_path, unit_economics="not-verified")
+    assert findings(ctx)["COST-103"].status == "not-verified"
+
+
+def test_cost102_not_verified_below_projection_attribution_coverage(tmp_path) -> None:
+    """Only the reconciliation coverage measure gates the verdict; a healthy
+    `source_resource_id_coverage_pct` must not rescue it."""
+    ctx = make_ctx(tmp_path)
+    path = tmp_path / "specs" / "cost-reconciliation-manifest.json"
+    data = json.loads(path.read_text())
+    data["coverage"]["projection_attribution_coverage_pct"] = 0.40
+    data["coverage"]["source_resource_id_coverage_pct"] = 1.0
+    data["maturity"]["status"] = "not-verified"
+    data["status"] = "not-verified"
+    path.write_text(json.dumps(data))
+    assert findings(ctx)["COST-102"].status == "not-verified"
 
 
 def test_garbage_manifest_never_raises_or_passes(tmp_path) -> None:
@@ -3089,12 +4298,23 @@ removed, not just one:
   than introducing a second threshold;
 - `not-verified` for any unknown status or malformed value.
 
+Note that `maturity.status` already folds in
+`coverage.projection_attribution_coverage_pct` versus
+`min_projection_attribution_coverage_pct`, so this checker never recomputes
+coverage. It also never reads `source_resource_id_coverage_pct`: that number
+describes Cost Management source quality and is deliberately not a gate.
+
 `COST-103`:
 
 - read `drivers.payg_ptu` from reconciliation;
 - `not-verified` when that driver is absent or not verified;
+- `not-verified` when `unit_economics.status` is not `pass` — the four-condition
+  gate in RFC §9.3 is the reconciler's job, and this checker must not pass on
+  the driver status alone;
 - `pass` when observed monthly token volume remains inside the SPEC-declared
-  variance band used by the forecast recommendation;
+  `max_token_volume_variance_pct` band used by the forecast recommendation —
+  a *token volume* tolerance, never the cost tolerance
+  `max_forecast_variance_pct`;
 - `should-fix` when volume is outside the band, instructing the operator to
   rerun PAYG/PTU analysis at observed volume.
 
@@ -3201,6 +4421,23 @@ def test_immature_reconciliation_does_not_pass_kpi003() -> None:
     )
     assert pr._kpi_signals(ctx)["cost_per_interaction_usd"] is None
     assert _by_id(pr._check_kpi_static(ctx))["KPI-003"].status != "pass"
+
+
+def test_unverified_unit_economics_does_not_pass_kpi003() -> None:
+    """A top-level `pass` reconciliation can still carry
+    `unit_economics.status: not-verified` — for example when interaction
+    evidence was unavailable, so `successful_interactions` is `null`. The KPI
+    reader must gate on the unit-economics status, not just the envelope."""
+    bundle = _cost_bundle(0.012)
+    reconciliation = json.loads(bundle["cost-reconciliation-manifest.json"])
+    reconciliation["unit_economics"]["status"] = "not-verified"
+    bundle["cost-reconciliation-manifest.json"] = json.dumps(reconciliation)
+    ctx = _make_ctx(
+        src_text=_OBS_SRC,
+        manifests={"evals-manifest.json": _evals_manifest(0.97), **bundle},
+    )
+    assert pr._kpi_signals(ctx)["cost_per_interaction_usd"] is None
+    assert _by_id(pr._check_kpi_static(ctx))["KPI-003"].status != "pass"
 ```
 
 - [ ] **Step 2: Run and verify failures**
@@ -3223,11 +4460,13 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     if not isinstance(maturity, dict) or maturity.get("status") != "pass":
         return None
     unit = data.get("unit_economics")
-    value = (
-        unit.get("cost_per_successful_interaction_usd")
-        if isinstance(unit, dict)
-        else None
-    )
+    if not isinstance(unit, dict) or unit.get("status") != "pass":
+        # RFC §9.3: the four-condition gate lives in the reconciler. A number
+        # may still be present alongside a `not-verified` status (for example
+        # when interaction counts were unavailable and successes are `null`);
+        # reading it anyway would republish an unverified figure as a KPI.
+        return None
+    value = unit.get("cost_per_successful_interaction_usd")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return None
@@ -3318,7 +4557,10 @@ State:
 
 - projection is always preserved;
 - actuals are opt-in until mature-pilot validation is proven;
-- exit 5 is advisory;
+- SPEC section 14 enforcement is itself opt-in via `--require-value-model`, so
+  legacy pilots keep passing until they migrate;
+- exit 5 is advisory and always follows a written artifact, so the evidence
+  needed to fix the run is on disk even when the verdict is `not-verified`;
 - `COST-102/103` assess artifacts;
 - `COST-101` remains a live budget check.
 
@@ -3410,12 +4652,35 @@ Expected: PR state `MERGED`; no leftover implementation PR.
 
 - [ ] `specs/cost-manifest.json` golden output did not change.
 - [ ] Total projected Azure monthly cost remains in every relevant report.
-- [ ] Cost Management `Usage`/`PreTaxCost` is the sole observed total.
+- [ ] Cost Management `Usage` with the selected cost column (`PreTaxCost`
+      primary) is the sole observed total.
 - [ ] Token repricing is never added to observed cost.
 - [ ] Cost per successful interaction includes full workload Azure cost.
-- [ ] Missing policy, permission, freshness, traces, or coverage never passes.
+- [ ] Missing policy, permission, freshness, interaction evidence, or
+      projection-attribution coverage never passes.
 - [ ] SPEC section 14 contains no Threadlight-owned numeric defaults.
+- [ ] Section 14 enforcement is opt-in: legacy pilots without the section still
+      pass by default; a present-but-malformed section always fails.
 - [ ] History snapshots are immutable; canonical files point to latest.
 - [ ] `COST-101` remains live; `COST-102/103` consume evidence artifacts.
 - [ ] Default Consumption IQ and auto behavior is unchanged.
 - [ ] Full design-to-deploy E2E remains green.
+- [ ] Interaction evidence is queried only against the Log Analytics workspace
+      surface (`AppTraces`/`TimeGenerated`/`Message`/`Properties`); no
+      `traces`/`customDimensions` App Insights identifier appears in any query.
+- [ ] The workspace `customerId` is resolved from the ARM resource ID inside
+      the skill; no interface accepts a raw GUID.
+- [ ] The two coverage measures stay distinct: `cost.resource_id_coverage_pct`
+      describes source quality and never gates; only
+      `coverage.projection_attribution_coverage_pct` is compared to
+      `min_projection_attribution_coverage_pct`.
+- [ ] Optional evidence never lowers the top-level actuals `status`; it is
+      reported through `usage.interaction_status` /
+      `usage.model_attribution_status` instead.
+- [ ] Every non-zero exit happens **after** the corresponding artifact is
+      written; no incomplete-policy early exit remains.
+- [ ] No code path parses `Retry-After`; retry is a bounded 2/4/8 backoff.
+- [ ] Price basis is compared using `actual_billing_price_basis`, never the
+      `usage-pretax` metric name.
+- [ ] The daily window is validated end-exclusive and out-of-window rows are
+      errors, not silent drops.
