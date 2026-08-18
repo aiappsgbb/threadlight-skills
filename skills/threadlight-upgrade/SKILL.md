@@ -9,8 +9,10 @@ description: >-
   No network calls; source verification is fixture-driven. Unavailable source ->
   exact "Official source unavailable; no latest version was inferred.", never
   fabricates latest_version. Version compare is stdlib-only, numeric, never
-  lexical/guessed. NEVER edits the project; no --apply exists. Read-only,
-  confined to --project-root. Persists only IDs/versions/dates/safe source
+  lexical/guessed. NEVER edits the project; no --apply exists. Read-only;
+  project-inspection inputs and the manifest output stay within --project-root,
+  while --matrix-path/--source-results-path are explicit operator-supplied
+  read-only fixtures. Persists only IDs/versions/dates/safe source
   strings, never secrets. Handoff to an edit is manual. USE FOR: drift scanning,
   preview-to-GA planning, deprecation tripwires, upgrade-manifest. DO NOT USE
   FOR: applying edits, live lookups, ACL/citation grounding, cross-leg gating.
@@ -74,7 +76,9 @@ current checks (the schema allows it for parity with sibling skills), and no
 > a duplicate `target` all raise `UpgradeMatrixError` **before** any scan is
 > attempted. A malformed `project` (wrong types for `dependencies`,
 > `runtime_policy`, `governance_profile`, `model_families`,
-> `triggered_expiry_conditions`, `artifact_paths`) raises
+> `triggered_expiry_conditions`, `artifact_paths`, `dependency_paths` — down to
+> each individual `model_families`/`triggered_expiry_conditions` item and each
+> `runtime_policy` value having to be a non-empty string) raises
 > `UpgradeProjectError`. `not-verified` is reserved for genuinely *ambiguous*
 > evidence (an unparseable version, an unavailable source), never a
 > *malformed* input.
@@ -149,6 +153,16 @@ credential/content-key and secret-value scan mirrored from
 call — it is either omitted (the honest "unavailable" case) or supplied as a
 fixture by the caller/CLI.
 
+Each plan item's `path` records **where the change is actually made**, with a
+deterministic, source-aware precedence: an explicit `project["artifact_paths"]`
+override for the surface wins first; otherwise a dependency uses its
+parsed-from provenance (`project["dependency_paths"][name]` — e.g. a pin read
+from `package.json` maps to `package.json`, never the `pyproject.toml` surface
+default); otherwise the surface's default artifact. The CLI populates
+`dependency_paths` automatically from whichever fixture each pin was parsed
+from, and **rejects** a dependency declared in both `pyproject.toml` and
+`package.json` rather than silently mis-attributing its plan item.
+
 ## Persistence contract — never the raw evidence
 
 The manifest persists **only**: surface/target identifiers, version
@@ -179,7 +193,11 @@ outside it, a `..` traversal including through a missing parent, or a
 symlink resolving outside it) is rejected before any file is opened. There is
 **no `--apply` flag** — it is not defined at all, so passing it is an
 ordinary argparse usage error (exit 2). `--matrix-path` defaults to the
-skill's own shipped `references/compatibility-matrix.json`.
+skill's own shipped `references/compatibility-matrix.json`. `--matrix-path`
+and `--source-results-path` are explicit operator-supplied, read-only
+fixture inputs resolved relative to the current working directory — they are
+deliberately **not** confined to `--project-root` (they routinely live
+outside the scanned project) and are only ever read, never written.
 `UpgradeMatrixError`, `UpgradeProjectError`, `ManifestValidationError`, and
 read/write `OSError`/JSON errors are all caught cleanly (exit 1) so a failed
 run never corrupts a prior valid manifest.

@@ -413,6 +413,47 @@ def test_expired_decision_is_should_fix_with_expiry_recorded():
     assert any("expired on 2026-09-01" in reason for reason in plan_reasons)
 
 
+def test_expired_preview_decision_uses_preview_wording_not_deprecated():
+    # A preview surface past its expiry must be reported using its actual
+    # state ("preview decision expired"), never the deprecated wording.
+    expired_preview = entry(
+        surface="model-family", target="gpt-4o-preview", state="preview",
+        replacement="gpt-5", expiry="2026-09-01",
+    )
+    project = {"model_families": ["gpt-4o-preview"]}
+    manifest = scan_project(project, matrix([expired_preview]), "2026-09-02")
+    upg002 = by_id(manifest)["UPG-002"]
+    assert upg002["status"] == "should-fix"
+    assert upg002["detail"]["expired_decisions"] == [{
+        "label": "gpt-4o-preview", "target": "gpt-4o-preview",
+        "state": "preview", "expiry": "2026-09-01",
+    }]
+    plan_reasons = [item["reason"] for item in manifest["plan"]]
+    assert any(
+        "whose preview decision expired on 2026-09-01" in reason
+        for reason in plan_reasons
+    )
+    assert not any("was deprecated and expired" in reason for reason in plan_reasons)
+
+
+def test_expired_preview_and_deprecated_wordings_are_deterministically_distinct():
+    expired_preview = entry(
+        surface="model-family", target="preview-fam", state="preview",
+        replacement="ga-fam", expiry="2026-09-01",
+    )
+    expired_deprecated = entry(
+        surface="model-family", target="deprecated-fam", state="deprecated",
+        replacement="ga-fam", expiry="2026-09-01",
+    )
+    project = {"model_families": ["preview-fam", "deprecated-fam"]}
+    manifest = scan_project(
+        project, matrix([expired_preview, expired_deprecated]), "2026-09-02"
+    )
+    reasons = {item["reason"] for item in manifest["plan"]}
+    assert any("preview-fam, whose preview decision expired on 2026-09-01" in r for r in reasons)
+    assert any("deprecated-fam, which was deprecated and expired on 2026-09-01" in r for r in reasons)
+
+
 def test_usage_target_not_in_matrix_is_not_verified():
     project = {"runtime_policy": {"default-agent": "some-unknown-mode"}}
     manifest = scan_project(project, matrix([RESPONSES_ENTRY]), "2026-06-15")
@@ -421,6 +462,55 @@ def test_usage_target_not_in_matrix_is_not_verified():
     assert upg002["detail"]["reason"] == "usage-target-not-in-matrix"
     assert upg002["detail"]["not_in_matrix"] == ["default-agent:some-unknown-mode"]
     assert manifest["status"] == "partial"
+
+
+# ---------------------------------------------------------------------------
+# Malformed usage/model-family/trigger inputs -> controlled UpgradeProjectError
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("model_families", [["gpt-4", 1], ["gpt-4", ""], ["gpt-4", None], ["gpt-4", ["nested"]]])
+def test_non_string_or_empty_model_family_raises_controlled_error(model_families):
+    project = {"model_families": model_families}
+    with pytest.raises(UpgradeProjectError, match=r"model_families\[1\] must be a non-empty string"):
+        scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+
+
+def test_model_families_not_a_list_raises_controlled_error():
+    project = {"model_families": {"gpt-4": True}}
+    with pytest.raises(UpgradeProjectError, match="model_families must be an array"):
+        scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+
+
+@pytest.mark.parametrize("policy_value", [123, "", None, ["responses"]])
+def test_non_string_or_empty_runtime_policy_value_raises_controlled_error(policy_value):
+    project = {"runtime_policy": {"default-agent": policy_value}}
+    with pytest.raises(UpgradeProjectError, match="runtime_policy"):
+        scan_project(project, matrix([RESPONSES_ENTRY]), "2026-06-15")
+
+
+@pytest.mark.parametrize("triggers", [["ok", 2], ["ok", ""], ["ok", None]])
+def test_non_string_or_empty_trigger_raises_controlled_error(triggers):
+    project = {
+        "runtime_policy": {"default-agent": "invocations"},
+        "triggered_expiry_conditions": triggers,
+    }
+    with pytest.raises(
+        UpgradeProjectError,
+        match=r"triggered_expiry_conditions\[1\] must be a non-empty string",
+    ):
+        scan_project(
+            project, matrix([INVOCATIONS_ENTRY, RESPONSES_ENTRY]), "2026-06-15"
+        )
+
+
+def test_triggered_expiry_conditions_not_a_list_raises_controlled_error():
+    project = {
+        "runtime_policy": {"default-agent": "invocations"},
+        "triggered_expiry_conditions": "responses-end-to-end",
+    }
+    with pytest.raises(UpgradeProjectError, match="triggered_expiry_conditions must be an array"):
+        scan_project(
+            project, matrix([INVOCATIONS_ENTRY, RESPONSES_ENTRY]), "2026-06-15"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +739,48 @@ def test_artifact_path_override_is_honored_in_plan():
     }
     manifest = scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
     assert manifest["plan"][0]["path"] == "requirements/base.txt"
+
+
+def test_dependency_paths_provenance_maps_plan_item_to_actual_artifact():
+    # A dependency parsed from package.json must map its plan item to that
+    # package.json, never the pyproject.toml surface default.
+    project = {
+        "dependencies": {"agent-framework": "1.9.0"},
+        "dependency_paths": {"agent-framework": "package.json"},
+    }
+    manifest = scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+    assert manifest["plan"][0]["path"] == "package.json"
+
+
+def test_explicit_artifact_path_override_beats_dependency_provenance():
+    # Explicit operator override wins over parsed-from provenance.
+    project = {
+        "dependencies": {"agent-framework": "1.9.0"},
+        "dependency_paths": {"agent-framework": "package.json"},
+        "artifact_paths": {"agent-framework": "requirements/base.txt"},
+    }
+    manifest = scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+    assert manifest["plan"][0]["path"] == "requirements/base.txt"
+
+
+def test_dependency_provenance_beats_surface_default_but_not_override_order():
+    # With no override, provenance beats the pyproject.toml default.
+    project = {
+        "dependencies": {"agent-framework": "2.0.0b1"},
+        "dependency_paths": {"agent-framework": "package.json"},
+    }
+    manifest = scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+    assert manifest["plan"][0]["path"] == "package.json"
+    assert manifest["plan"][0]["reason"].startswith("agent-framework is pinned to prerelease")
+
+
+def test_scan_project_rejects_bad_dependency_path():
+    project = {
+        "dependencies": {"agent-framework": "1.9.0"},
+        "dependency_paths": {"agent-framework": "../escape.json"},
+    }
+    with pytest.raises(UpgradeProjectError):
+        scan_project(project, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
 
 
 # ---------------------------------------------------------------------------
@@ -982,18 +1114,118 @@ def test_parse_pyproject_dependencies_extracts_exact_pins():
         'dependencies = ["agent-framework==2.0.0b1", "requests>=2.0", "toolbox-pkg==1.0.0"]\n'
     )
     deps = parse_pyproject_dependencies(text)
-    assert deps == {"agent-framework": "2.0.0b1", "toolbox-pkg": "1.0.0"}
+    # Exact `==` pins (including an exact prerelease) reduce to a bare,
+    # comparable version; a `>=` range is represented verbatim so it surfaces
+    # as not-verified downstream rather than being silently omitted or guessed.
+    assert deps == {
+        "agent-framework": "2.0.0b1",
+        "requests": ">=2.0",
+        "toolbox-pkg": "1.0.0",
+    }
 
 
-def test_parse_package_json_dependencies_strips_range_operators():
+@pytest.mark.parametrize(
+    "requirement, name, expected",
+    [
+        # Exact pins reduce to a bare comparable version.
+        ("pkg==1.2.3", "pkg", "1.2.3"),
+        ("pkg===1.2.3", "pkg", "1.2.3"),
+        ("pkg==2.0.0b1", "pkg", "2.0.0b1"),
+        ("pkg==1.2.3-beta.1", "pkg", "1.2.3-beta.1"),
+        # Every non-exact constraint is represented verbatim (not-verified).
+        ("pkg>=1.2", "pkg", ">=1.2"),
+        ("pkg>=1.2,<2", "pkg", ">=1.2,<2"),
+        ("pkg<=1.2", "pkg", "<=1.2"),
+        ("pkg>1.2", "pkg", ">1.2"),
+        ("pkg<1.2", "pkg", "<1.2"),
+        ("pkg~=1.2", "pkg", "~=1.2"),
+        ("pkg==1.2.*", "pkg", "==1.2.*"),
+    ],
+)
+def test_parse_pyproject_dependencies_only_exact_is_reduced(requirement, name, expected):
+    text = "[project]\ndependencies = [" + json.dumps(requirement) + "]\n"
+    assert parse_pyproject_dependencies(text) == {name: expected}
+
+
+def test_parse_pyproject_dependencies_skips_bare_name_and_reduces_after_marker():
+    text = (
+        "[project]\n"
+        'dependencies = ["barepkg", "markerpkg==1.0.0 ; python_version < \\"3.12\\""]\n'
+    )
+    # A bare name has no constraint at all (skipped); an env marker is stripped
+    # before the exact pin is reduced.
+    assert parse_pyproject_dependencies(text) == {"markerpkg": "1.0.0"}
+
+
+@pytest.mark.parametrize(
+    "spec, expected",
+    [
+        # Exact literals (optionally a single leading `=`) reduce.
+        ("1.2.3", "1.2.3"),
+        ("=1.2.3", "1.2.3"),
+        ("v1.2.3", "v1.2.3"),
+        ("2.0.0b1", "2.0.0b1"),
+        ("1.2.3-beta.1", "1.2.3-beta.1"),
+        # Ranges / compound / OR / hyphen / caret / tilde / wildcard.
+        ("^2.0.0", "^2.0.0"),
+        ("~1.0.0", "~1.0.0"),
+        (">=1.0.0", ">=1.0.0"),
+        (">=1.2", ">=1.2"),
+        (">=1.2 <2", ">=1.2 <2"),
+        ("<=1.2", "<=1.2"),
+        (">1.2", ">1.2"),
+        ("<1.2", "<1.2"),
+        ("1.2.3 - 2.3.4", "1.2.3 - 2.3.4"),
+        ("^1 || ^2", "^1 || ^2"),
+        ("*", "*"),
+        ("1.x", "1.x"),
+        ("latest", "latest"),
+        # Protocol / git / url / file specs.
+        ("workspace:*", "workspace:*"),
+        ("workspace:^1.0.0", "workspace:^1.0.0"),
+        ("file:../local-pkg", "file:../local-pkg"),
+        ("link:../local-pkg", "link:../local-pkg"),
+        ("git+https://example.com/x.git", "git+https://example.com/x.git"),
+        ("https://example.com/x.tgz", "https://example.com/x.tgz"),
+        ("npm:other@1.2.3", "npm:other@1.2.3"),
+    ],
+)
+def test_parse_package_json_dependencies_only_exact_is_reduced(spec, expected):
+    text = json.dumps({"dependencies": {"pkg": spec}})
+    # Only a confidently exact literal reduces to a bare version; every range,
+    # compound, OR, hyphen, wildcard, dist-tag, and protocol/url/git spec is
+    # represented verbatim so it surfaces as not-verified downstream.
+    assert parse_package_json_dependencies(text) == {"pkg": expected}
+
+
+def test_parse_package_json_dependencies_ranges_are_represented_not_stripped():
     text = json.dumps({
         "dependencies": {"agent-framework": "^2.0.0", "left-pad": "~1.0.0"},
         "devDependencies": {"toolbox-pkg": ">=1.0.0"},
     })
     deps = parse_package_json_dependencies(text)
+    # Range operators are NOT stripped to a fake exact pin; they are kept
+    # verbatim so `parse_version` later yields not-verified rather than a guess.
     assert deps == {
-        "agent-framework": "2.0.0", "left-pad": "1.0.0", "toolbox-pkg": "1.0.0",
+        "agent-framework": "^2.0.0",
+        "left-pad": "~1.0.0",
+        "toolbox-pkg": ">=1.0.0",
     }
+
+
+@pytest.mark.parametrize("spec", [">=", "<=", "^", "~", ">", "<", ">= <", "||", "-", "*"])
+def test_parse_package_json_dependencies_all_operator_specs_never_raise(spec):
+    text = json.dumps({"dependencies": {"pkg": spec}})
+    # An all-operator / malformed spec must be represented verbatim (surfaces
+    # as not-verified) rather than raising IndexError on an empty split.
+    assert parse_package_json_dependencies(text) == {"pkg": spec}
+
+
+def test_parse_package_json_dependencies_empty_spec_is_skipped():
+    text = json.dumps({"dependencies": {"pkg": "", "real": "1.2.3"}})
+    # An empty spec carries no constraint at all and is skipped, not emitted
+    # as a bogus empty pin.
+    assert parse_package_json_dependencies(text) == {"real": "1.2.3"}
 
 
 def test_parse_runtime_policy_file_returns_plain_mapping():
@@ -1025,6 +1257,124 @@ def test_cli_merges_pyproject_and_runtime_policy_fixtures(tmp_path):
         "--json",
     ])
     assert code == 0
+
+
+TOOLBOX_ENTRY = entry(
+    surface="toolbox", target="toolbox", state="stable", stable="3.0.0",
+)
+
+
+def test_cli_pure_js_dependency_plan_item_points_at_package_json(tmp_path, capsys):
+    # A dependency parsed only from package.json must have its plan item
+    # attributed to package.json, never the pyproject.toml surface default.
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"agent-framework": "1.9.0"}}), encoding="utf-8"
+    )
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--package-json-path", "package.json",
+        "--today", "2026-06-15",
+        "--json",
+    ])
+    assert code == 0
+    manifest = json.loads(capsys.readouterr().out)
+    behind = [item for item in manifest["plan"] if "behind the matrix" in item["reason"]]
+    assert behind and all(item["path"] == "package.json" for item in behind)
+    assert not any(item["path"] == "pyproject.toml" for item in manifest["plan"])
+
+
+def test_cli_mixed_sources_attribute_each_dependency_to_its_own_artifact(tmp_path, capsys):
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY, TOOLBOX_ENTRY]))
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["agent-framework==1.9.0"]\n', encoding="utf-8"
+    )
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"toolbox": "1.0.0"}}), encoding="utf-8"
+    )
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--pyproject-path", "pyproject.toml",
+        "--package-json-path", "package.json",
+        "--today", "2026-06-15",
+        "--json",
+    ])
+    assert code == 0
+    manifest = json.loads(capsys.readouterr().out)
+    paths = {
+        item["reason"].split(" ")[0]: item["path"]
+        for item in manifest["plan"]
+    }
+    assert paths["agent-framework"] == "pyproject.toml"
+    assert paths["toolbox"] == "package.json"
+
+
+def test_cli_conflicting_dependency_in_both_artifacts_is_rejected(tmp_path, capsys):
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["agent-framework==1.9.0"]\n', encoding="utf-8"
+    )
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"agent-framework": "1.8.0"}}), encoding="utf-8"
+    )
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--pyproject-path", "pyproject.toml",
+        "--package-json-path", "package.json",
+        "--today", "2026-06-15",
+        "--json",
+    ])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "declared in both" in out and "agent-framework" in out
+
+
+@pytest.mark.parametrize("spec", [">=", "^", "~", ">= <", "||", "*", "latest", "workspace:*"])
+def test_cli_all_operator_or_ambiguous_spec_is_not_verified_no_traceback(tmp_path, capsys, spec):
+    # An all-operator / ambiguous package.json spec surfaces as a controlled
+    # not-verified UPG-001 (never an IndexError / traceback).
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"agent-framework": spec}}), encoding="utf-8"
+    )
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--package-json-path", "package.json",
+        "--today", "2026-06-15",
+        "--json",
+    ])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Traceback" not in out
+    manifest = json.loads(out)
+    upg001 = by_id(manifest)["UPG-001"]
+    assert upg001["status"] == "not-verified"
+    assert upg001["detail"]["dependencies_not_verified"] == ["agent-framework"]
+
+
+def test_cli_malformed_all_operator_pyproject_spec_is_not_verified(tmp_path, capsys):
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["agent-framework>=1.2 <2"]\n', encoding="utf-8"
+    )
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--pyproject-path", "pyproject.toml",
+        "--today", "2026-06-15",
+        "--json",
+    ])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Traceback" not in out
+    manifest = json.loads(out)
+    upg001 = by_id(manifest)["UPG-001"]
+    assert upg001["status"] == "not-verified"
+    assert upg001["detail"]["dependencies_not_verified"] == ["agent-framework"]
 
 
 # ---------------------------------------------------------------------------

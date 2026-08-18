@@ -43,12 +43,18 @@ tuples, never as strings). A version this parser cannot confidently place
 at — it surfaces as `not-verified`.
 
 stdlib-only. No third-party dependencies, no network I/O anywhere in this
-module. Project inspection (an optional `--project-file` / `--pyproject-path`
-/ `--package-json-path` / `--runtime-policy-path`) is strictly read-only, and
-every path taken from the CLI is resolved and confined inside
-`--project-root` before it is ever opened — an escape (an absolute path
-outside root, a `..` traversal, or a symlink resolving outside root) is
-rejected before any file is touched.
+module. Only the project-inspection inputs (an optional `--project-file` /
+`--pyproject-path` / `--package-json-path` / `--runtime-policy-path`) and the
+`--manifest-path` output are resolved and confined inside `--project-root`
+before they are ever opened or written — an escape (an absolute path outside
+root, a `..` traversal, or a symlink resolving outside root) is rejected
+before any such file is touched, and every project-inspection read is
+strictly read-only. The compatibility matrix (`--matrix-path`) and the
+fixture-driven source-check results (`--source-results-path`) are, by
+contrast, explicit operator-supplied read-only fixture inputs resolved
+relative to the current working directory: they are deliberately **not**
+confined to `--project-root` (an operator may keep a shared matrix outside
+the pilot repo), are opened read-only, and are never written.
 """
 from __future__ import annotations
 
@@ -501,10 +507,17 @@ def _coerce_date(today: Any) -> date:
     raise UpgradeProjectError("today must be a date, datetime, or YYYY-MM-DD string")
 
 
-def _normalize_artifact_paths(raw: Any) -> dict:
+def _normalize_artifact_paths(raw: Any) -> tuple:
+    """Return (paths, explicit_surfaces): the merged surface->path map (matrix
+    defaults overlaid with any caller override) plus the set of surfaces the
+    caller *explicitly* overrode. The explicit set lets dependency-provenance
+    (which artifact a pin was actually parsed from) win over a mere default
+    while still yielding to a deliberate operator override.
+    """
     paths = dict(DEFAULT_ARTIFACT_PATHS)
+    explicit: set = set()
     if not raw:
-        return paths
+        return paths, explicit
     if not isinstance(raw, dict):
         raise UpgradeProjectError("project.artifact_paths must be an object")
     for surface, path in raw.items():
@@ -513,7 +526,48 @@ def _normalize_artifact_paths(raw: Any) -> dict:
                 f"project.artifact_paths has unknown surface {surface!r}"
             )
         paths[surface] = _require_safe_path(path, f"artifact_paths[{surface}]")
-    return paths
+        explicit.add(surface)
+    return paths, explicit
+
+
+def _normalize_dependency_paths(raw: Any) -> dict:
+    """Return `{dependency-name: repo-relative-path}` recording which artifact
+    each dependency pin was actually parsed from (a package.json pin -> the
+    package.json path, a pyproject pin -> the pyproject path). Never guessed;
+    only ever populated from a real, supplied artifact.
+    """
+    if not raw:
+        return {}
+    if not isinstance(raw, dict):
+        raise UpgradeProjectError("project.dependency_paths must be an object")
+    result: dict = {}
+    for name, path in raw.items():
+        if not isinstance(name, str) or not name:
+            raise UpgradeProjectError(
+                "project.dependency_paths keys must be non-empty strings"
+            )
+        result[name] = _require_safe_path(path, f"dependency_paths[{name}]")
+    return result
+
+
+def _artifact_path_for(
+    surface: str,
+    name: Optional[str],
+    artifact_paths: dict,
+    explicit_surfaces: set,
+    dependency_paths: dict,
+) -> str:
+    """Resolve the plan-item artifact path for a surface/dependency with a
+    deterministic, source-recorded precedence: an explicit `artifact_paths`
+    override wins first, then the dependency's actual parsed-from provenance,
+    then the matrix default for the surface. A JS dependency is therefore
+    never silently attributed to `pyproject.toml`.
+    """
+    if surface in explicit_surfaces:
+        return artifact_paths[surface]
+    if name is not None and name in dependency_paths:
+        return dependency_paths[name]
+    return artifact_paths.get(surface, DEFAULT_ARTIFACT_PATHS[surface])
 
 
 def _plan_item(path: str, reason: str, from_value, to_value) -> dict:
@@ -550,6 +604,8 @@ def check_matrix_and_dependency_staleness(
     entries_by_target: dict,
     today: date,
     artifact_paths: dict,
+    explicit_surfaces: set,
+    dependency_paths: dict,
 ) -> tuple:
     stale_entries = []
     for entry in entries:
@@ -584,7 +640,9 @@ def check_matrix_and_dependency_staleness(
         classification, current, stable = _classify_dependency(
             version_text, entry.get("stable")
         )
-        path = artifact_paths.get(entry["surface"], DEFAULT_ARTIFACT_PATHS[entry["surface"]])
+        path = _artifact_path_for(
+            entry["surface"], name, artifact_paths, explicit_surfaces, dependency_paths
+        )
         if classification == "not-verified":
             not_verified_deps.append(name)
         elif classification == "prerelease-pinned":
@@ -650,7 +708,12 @@ def _collect_usages(project: dict) -> list:
     if not isinstance(runtime_policy, dict):
         raise UpgradeProjectError("project.runtime_policy must be an object")
     for agent_name in sorted(runtime_policy):
-        usages.append(("hosted-agent-protocol", agent_name, runtime_policy[agent_name]))
+        target = runtime_policy[agent_name]
+        if not isinstance(target, str) or not target:
+            raise UpgradeProjectError(
+                f"project.runtime_policy[{agent_name!r}] must be a non-empty string"
+            )
+        usages.append(("hosted-agent-protocol", agent_name, target))
 
     governance_profile = project.get("governance_profile")
     if governance_profile:
@@ -661,6 +724,11 @@ def _collect_usages(project: dict) -> list:
     model_families = project.get("model_families") or []
     if not isinstance(model_families, list):
         raise UpgradeProjectError("project.model_families must be an array")
+    for index, family in enumerate(model_families):
+        if not isinstance(family, str) or not family:
+            raise UpgradeProjectError(
+                f"project.model_families[{index}] must be a non-empty string"
+            )
     for family in sorted(model_families):
         usages.append(("model-family", family, family))
 
@@ -677,12 +745,16 @@ def check_usage_drift(
     plan_items = []
 
     raw_triggered = project.get("triggered_expiry_conditions") or []
-    if not isinstance(raw_triggered, list) or not all(
-        isinstance(item, str) for item in raw_triggered
-    ):
+    if not isinstance(raw_triggered, list):
         raise UpgradeProjectError(
             "project.triggered_expiry_conditions must be an array of strings"
         )
+    for index, item in enumerate(raw_triggered):
+        if not isinstance(item, str) or not item:
+            raise UpgradeProjectError(
+                f"project.triggered_expiry_conditions[{index}] must be a "
+                f"non-empty string"
+            )
     triggered = set(raw_triggered)
 
     for surface, label, target in _collect_usages(project):
@@ -710,10 +782,16 @@ def check_usage_drift(
             if expired:
                 record["expiry"] = expiry_text
                 expired_decisions.append(record)
-                reason_text = (
-                    f"{label} targets {target}, which was deprecated and "
-                    f"expired on {expiry_text}"
-                )
+                if state == "preview":
+                    reason_text = (
+                        f"{label} targets {target}, whose preview decision "
+                        f"expired on {expiry_text}"
+                    )
+                else:
+                    reason_text = (
+                        f"{label} targets {target}, which was deprecated and "
+                        f"expired on {expiry_text}"
+                    )
             else:
                 deprecated_usages.append(record)
                 reason_text = f"{label} targets deprecated surface {target}"
@@ -763,12 +841,18 @@ def check_usage_drift(
 # UPG-003 — official source verification (fixture-driven, no network)
 # ---------------------------------------------------------------------------
 def _referenced_target_paths(
-    project: dict, artifact_paths: dict, entries_by_target: dict
+    project: dict,
+    artifact_paths: dict,
+    entries_by_target: dict,
+    explicit_surfaces: set,
+    dependency_paths: dict,
 ) -> dict:
     """Map "surface:target" -> artifact path for every surface/target the
     project actually references (dependencies + usages), so a confirmed
     preview-to-GA transition only produces a plan item when it is actually
-    actionable for this project.
+    actionable for this project. Dependency targets carry the same
+    parsed-from provenance as UPG-001, so a JS dependency's transition plan
+    item points at the real package.json, never a defaulted pyproject.toml.
     """
     mapping: dict = {}
 
@@ -776,13 +860,17 @@ def _referenced_target_paths(
     for name in dependencies:
         entry = entries_by_target.get(name)
         if entry and entry["surface"] in DEPENDENCY_SURFACES:
-            path = artifact_paths.get(entry["surface"], DEFAULT_ARTIFACT_PATHS[entry["surface"]])
+            path = _artifact_path_for(
+                entry["surface"], name, artifact_paths, explicit_surfaces, dependency_paths
+            )
             mapping[f"{entry['surface']}:{name}"] = path
 
     for surface, _label, target in _collect_usages(project):
         entry = entries_by_target.get(target)
         if entry and entry["surface"] == surface:
-            path = artifact_paths.get(surface, DEFAULT_ARTIFACT_PATHS[surface])
+            path = _artifact_path_for(
+                surface, None, artifact_paths, explicit_surfaces, dependency_paths
+            )
             mapping[f"{surface}:{target}"] = path
 
     return mapping
@@ -1137,7 +1225,12 @@ def scan_project(
     `governance_profile` (a single target string), `model_families` (a list
     of target strings), `triggered_expiry_conditions` (a list of official
     trigger names already confirmed to have fired — never inferred here),
-    and `artifact_paths` (surface -> repo-relative path override).
+    `artifact_paths` (surface -> repo-relative path override), and
+    `dependency_paths` (dependency name -> the repo-relative artifact the pin
+    was actually parsed from, e.g. a package.json pin -> that package.json).
+    A `dependency_paths` entry supplies deterministic plan-item provenance
+    (below an explicit `artifact_paths` override, above the surface default),
+    so a JS pin is never silently attributed to `pyproject.toml`.
     """
     if not isinstance(project, dict):
         raise UpgradeProjectError("project must be an object")
@@ -1146,15 +1239,21 @@ def scan_project(
     today_date = _coerce_date(today)
     entries = matrix["entries"]
     entries_by_target = _index_matrix_entries(entries)
-    artifact_paths = _normalize_artifact_paths(project.get("artifact_paths"))
+    artifact_paths, explicit_surfaces = _normalize_artifact_paths(
+        project.get("artifact_paths")
+    )
+    dependency_paths = _normalize_dependency_paths(project.get("dependency_paths"))
 
     upg001, upg001_plan = check_matrix_and_dependency_staleness(
-        project, entries, entries_by_target, today_date, artifact_paths
+        project, entries, entries_by_target, today_date,
+        artifact_paths, explicit_surfaces, dependency_paths,
     )
     upg002, upg002_plan = check_usage_drift(
         project, entries_by_target, today_date, artifact_paths
     )
-    usage_paths = _referenced_target_paths(project, artifact_paths, entries_by_target)
+    usage_paths = _referenced_target_paths(
+        project, artifact_paths, entries_by_target, explicit_surfaces, dependency_paths
+    )
     upg003, upg003_plan = check_source_verification(entries, source_results, usage_paths)
 
     findings = [upg001, upg002, upg003]
@@ -1194,30 +1293,50 @@ def write_upgrade_manifest(path, manifest: dict) -> None:
 # ---------------------------------------------------------------------------
 # Read-only project-fixture parsers (best-effort convenience — the CLI never
 # writes to any of these files, and `scan_project` never requires them).
+#
+# Both parsers share one exactness contract: a dependency spec is only ever
+# reduced to a bare, comparable version when the WHOLE spec (after an optional
+# single exact-equality operator) is a version `parse_version` can confidently
+# place. Every range (`^`/`~`/`>=`/`<=`/`>`/`<`), compound (`>=1.2 <2`), OR
+# (`||`), hyphen (`1 - 2`), wildcard (`*`/`1.x`/`==1.2.*`), dist-tag
+# (`latest`), and `workspace:`/`file:`/`link:`/`git`/URL spec is "ambiguous":
+# represented verbatim so it surfaces as `not-verified` downstream — never
+# stripped to a guessable core (a should-fix guess), never silently dropped,
+# and never an `IndexError` on an all-operator spec.
 # ---------------------------------------------------------------------------
 _DEP_SPLIT_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*(.*)$")
-_VERSION_TOKEN_RE = re.compile(r"[0-9][0-9A-Za-z.+_-]*")
+# An exact npm spec: an optional single leading `=` (never `>=`/`<=`/`^`/`~`/
+# `>`/`<`) then a bare version literal, and nothing else.
+_NPM_EXACT_RE = re.compile(r"^=?\s*(v?\d[0-9A-Za-z.+-]*)$", re.IGNORECASE)
+# An exact PEP 508 constraint: a single `==`/`===` clause with a literal
+# version and nothing else (no `,` compound, no `.*` wildcard, no `~=`).
+_PEP_EXACT_RE = re.compile(r"^===?\s*(v?\d[0-9A-Za-z.+-]*)$", re.IGNORECASE)
 
 
-def _extract_pinned_version(requirement_tail: str) -> Optional[str]:
-    """Best-effort extraction of a single pinned version out of a PEP 508
-    -ish requirement tail (e.g. '==2.0.0b1', '>=2.0.0,<3'). Only a bare
-    '==' / '=' exact pin is treated as a comparable version — a range is
-    left unparsed (`None`), which correctly surfaces as not-verified rather
-    than a guess.
+def _classify_spec(spec: str, exact_pattern) -> tuple:
+    """Classify one dependency spec as ('exact', bare-version),
+    ('ambiguous', spec) — represented so it yields not-verified — or
+    ('empty', None) when there is no constraint at all. Only a spec whose
+    entire body is a confidently exact version is 'exact'; a range/compound/
+    wildcard/protocol/tag spec is 'ambiguous', never guessed.
     """
-    tail = requirement_tail.split(";", 1)[0].strip()
-    match = re.match(r"^(?:==|=)\s*(" + _VERSION_TOKEN_RE.pattern + r")", tail)
-    if match:
-        return match.group(1)
-    return None
+    text = spec.strip()
+    if not text:
+        return "empty", None
+    match = exact_pattern.match(text)
+    if match and parse_version(match.group(1)) is not None:
+        return "exact", match.group(1)
+    return "ambiguous", text
 
 
 def parse_pyproject_dependencies(text: str) -> dict:
-    """Extract `{name: version}` from a PEP 621 `[project] dependencies`
-    array using `tomllib` (stdlib, Python >= 3.11). Only exact (`==`) pins
-    are extracted; anything else (a range, an unpinned name) is left out
-    entirely — never guessed at.
+    """Extract `{name: spec}` from a PEP 621 `[project] dependencies` array
+    using `tomllib` (stdlib, Python >= 3.11). A confidently exact `==`/`===`
+    literal pin is reduced to a bare, comparable version; every other
+    constraint (a range, a `~=` compatible release, a `.*` wildcard, a
+    `,`-joined compound) is represented verbatim so it surfaces as
+    not-verified downstream — never guessed. An unpinned bare name (no
+    version constraint at all) is skipped.
     """
     try:
         import tomllib
@@ -1236,18 +1355,23 @@ def parse_pyproject_dependencies(text: str) -> dict:
         match = _DEP_SPLIT_RE.match(requirement)
         if not match:
             continue
-        name, tail = match.group(1), match.group(2)
-        version = _extract_pinned_version(tail)
-        if version:
-            dependencies[name] = version
+        name = match.group(1)
+        constraint = match.group(2).split(";", 1)[0].strip()
+        kind, value = _classify_spec(constraint, _PEP_EXACT_RE)
+        if kind == "empty":
+            continue
+        dependencies[name] = value
     return dependencies
 
 
 def parse_package_json_dependencies(text: str) -> dict:
-    """Extract `{name: version}` from a package.json's `dependencies` +
-    `devDependencies`. Leading range operators (`^`, `~`, `>=`, ...) are
-    stripped down to a bare version token; anything left unparsable by
-    `parse_version` later surfaces as not-verified, never a guess.
+    """Extract `{name: spec}` from a package.json's `dependencies` +
+    `devDependencies`. Only a confidently exact literal version (optionally a
+    single leading `=`) is reduced to a bare, comparable version; every range,
+    compound, OR, hyphen, wildcard, dist-tag, and
+    `workspace:`/`file:`/`link:`/`git`/URL spec is represented verbatim so it
+    surfaces as not-verified downstream — never stripped to a guessable core,
+    never silently dropped, and never an IndexError on an all-operator spec.
     """
     try:
         data = json.loads(text)
@@ -1264,9 +1388,10 @@ def parse_package_json_dependencies(text: str) -> dict:
         for name, spec in section.items():
             if not isinstance(spec, str):
                 continue
-            stripped = spec.lstrip("^~=<> ").split()[0] if spec.strip() else ""
-            if stripped:
-                dependencies[name] = stripped
+            kind, value = _classify_spec(spec, _NPM_EXACT_RE)
+            if kind == "empty":
+                continue
+            dependencies[name] = value
     return dependencies
 
 
@@ -1319,6 +1444,41 @@ def _read_project_text(root: str, relative_path: str) -> str:
         return handle.read()
 
 
+def _project_relative_path(root: str, relative_path: str) -> str:
+    """The repo-relative, plan-safe form of a confined project artifact path,
+    used to record where each dependency pin was actually parsed from. The
+    path is resolved/confined first (rejecting any escape), then expressed
+    relative to *root* so a plan item cites e.g. `package.json`, never an
+    absolute path.
+    """
+    full_path = _resolve_within_root(root, relative_path)
+    rel = os.path.relpath(full_path, root)
+    return _require_safe_path(rel, f"project artifact path {relative_path!r}")
+
+
+def _merge_parsed_dependencies(
+    project: dict, dependency_paths: dict, parsed: dict, source_path: str
+) -> None:
+    """Merge a parser's `{name: spec}` into the project's `dependencies` and
+    record each name's parsed-from provenance. If a name was already parsed
+    from a *different* artifact (e.g. it appears in both pyproject.toml and
+    package.json), reject the conflict deterministically rather than silently
+    picking a winner and mis-attributing the plan item.
+    """
+    merged = dict(project.get("dependencies") or {})
+    for name, spec in parsed.items():
+        existing_source = dependency_paths.get(name)
+        if existing_source is not None and existing_source != source_path:
+            raise UpgradeProjectError(
+                f"dependency {name!r} is declared in both {existing_source!r} "
+                f"and {source_path!r}; resolve the conflict so its upgrade plan "
+                f"item is attributed to exactly one artifact"
+            )
+        merged[name] = spec
+        dependency_paths[name] = source_path
+    project["dependencies"] = merged
+
+
 def build_normalized_project(args, root: str) -> dict:
     project: dict = {}
     if args.project_file:
@@ -1327,19 +1487,20 @@ def build_normalized_project(args, root: str) -> dict:
             raise UpgradeProjectError("--project-file must contain a JSON object")
         project = loaded
 
+    # Seed provenance from any dependency_paths the project-file itself
+    # declared, then let each parsed artifact record (and conflict-check) its
+    # own pins on top.
+    dependency_paths = _normalize_dependency_paths(project.get("dependency_paths"))
+
     if args.pyproject_path:
-        text = _read_project_text(root, args.pyproject_path)
-        parsed = parse_pyproject_dependencies(text)
-        merged = dict(project.get("dependencies") or {})
-        merged.update(parsed)
-        project["dependencies"] = merged
+        source_path = _project_relative_path(root, args.pyproject_path)
+        parsed = parse_pyproject_dependencies(_read_project_text(root, args.pyproject_path))
+        _merge_parsed_dependencies(project, dependency_paths, parsed, source_path)
 
     if args.package_json_path:
-        text = _read_project_text(root, args.package_json_path)
-        parsed = parse_package_json_dependencies(text)
-        merged = dict(project.get("dependencies") or {})
-        merged.update(parsed)
-        project["dependencies"] = merged
+        source_path = _project_relative_path(root, args.package_json_path)
+        parsed = parse_package_json_dependencies(_read_project_text(root, args.package_json_path))
+        _merge_parsed_dependencies(project, dependency_paths, parsed, source_path)
 
     if args.runtime_policy_path:
         text = _read_project_text(root, args.runtime_policy_path)
@@ -1347,6 +1508,9 @@ def build_normalized_project(args, root: str) -> dict:
         merged = dict(project.get("runtime_policy") or {})
         merged.update(parsed)
         project["runtime_policy"] = merged
+
+    if dependency_paths:
+        project["dependency_paths"] = dependency_paths
 
     return project
 
