@@ -11,16 +11,23 @@ This file is RED on creation and turns green when Phase B completes
 """
 import importlib.util
 import pathlib
+import shlex
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "production_ready.py"
 RDIR = ROOT / "references" / "remediation-recipes"
+CONNECT_SCRIPT = ROOT.parent / "threadlight-connect" / "scripts" / "connect.py"
 
 _spec = importlib.util.spec_from_file_location("production_ready", SCRIPT)
 mod = importlib.util.module_from_spec(_spec)
 sys.modules["production_ready"] = mod  # Python 3.14 dataclass+importlib workaround
 _spec.loader.exec_module(mod)
+
+_connect_spec = importlib.util.spec_from_file_location("threadlight_connect", CONNECT_SCRIPT)
+connect = importlib.util.module_from_spec(_connect_spec)
+sys.modules["threadlight_connect"] = connect
+_connect_spec.loader.exec_module(connect)
 
 REQUIRED_SECTIONS = (
     "## Target file",
@@ -60,6 +67,24 @@ def test_every_recipe_has_required_sections():
 
 def test_loader_accepts_every_recipe():
     mod.load_recipe_catalog(RDIR)
+
+
+def test_int_002_command_matches_connect_parser_contract():
+    text = (RDIR / "INT-002.md").read_text(encoding="utf-8")
+    command = text.split("```bash", 1)[1].split("```", 1)[0].replace("\\\n", " ")
+    argv = shlex.split(command)
+
+    assert argv[:2] == ["python3", "skills/threadlight-connect/scripts/connect.py"]
+    args = connect.build_arg_parser().parse_args(argv[2:])
+    assert args.project_root == "${PROJECT_ROOT}"
+    assert args.tool_name == "${TOOL_NAME}"
+    assert args.tool_source_file == "${TOOL_SOURCE_FILE}"
+    assert args.sample_file == "${MOCK_SAMPLE_FILE}"
+    assert args.real_response_file == "${REAL_RESPONSE_FILE}"
+    assert args.obo_evidence_file == "${OBO_EVIDENCE_FILE}"
+    assert args.role_evidence_file == "${ROLE_EVIDENCE_FILE}"
+    assert args.current_agent_identity == "${CURRENT_AGENT_IDENTITY}"
+    assert args.apply is True
 
 
 if __name__ == "__main__":
