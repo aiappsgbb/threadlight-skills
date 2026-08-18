@@ -558,6 +558,14 @@ def _normalize_project(project: Any) -> dict:
         _validate_string_array(values, f"project.{field}")
         normalized[field] = list(values)
 
+    governance_profile = project.get("governance_profile")
+    if governance_profile is not None:
+        if not isinstance(governance_profile, str) or not governance_profile.strip():
+            raise UpgradeProjectError(
+                "project.governance_profile must be a non-empty string"
+            )
+    normalized["governance_profile"] = governance_profile
+
     artifact_paths = _project_object_field(project, "artifact_paths")
     for surface, path in artifact_paths.items():
         if not isinstance(surface, str) or not surface.strip():
@@ -782,10 +790,8 @@ def _collect_usages(project: dict) -> list:
         target = runtime_policy[agent_name]
         usages.append(("hosted-agent-protocol", agent_name, target))
 
-    governance_profile = project.get("governance_profile")
-    if governance_profile:
-        if not isinstance(governance_profile, str):
-            raise UpgradeProjectError("project.governance_profile must be a string")
+    governance_profile = project["governance_profile"]
+    if governance_profile is not None:
         usages.append(("governance-profile", "governance_profile", governance_profile))
 
     model_families = project["model_families"]

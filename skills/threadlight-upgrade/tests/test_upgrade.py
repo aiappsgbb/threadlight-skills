@@ -487,6 +487,33 @@ def test_non_string_or_empty_runtime_policy_value_raises_controlled_error(policy
         scan_project(project, matrix([RESPONSES_ENTRY]), "2026-06-15")
 
 
+@pytest.mark.parametrize("governance_profile", ["", " \t\n", 0, False, True, [], {}])
+def test_non_string_or_blank_governance_profile_raises_controlled_error(
+    governance_profile,
+):
+    with pytest.raises(
+        UpgradeProjectError,
+        match="project.governance_profile must be a non-empty string",
+    ):
+        scan_project(
+            {"governance_profile": governance_profile},
+            matrix([AGENT_FRAMEWORK_ENTRY]),
+            "2026-06-15",
+        )
+
+
+def test_absent_and_none_governance_profile_are_equivalent():
+    baseline = scan_project({}, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+    explicit_none = scan_project(
+        {"governance_profile": None},
+        matrix([AGENT_FRAMEWORK_ENTRY]),
+        "2026-06-15",
+    )
+    baseline.pop("generated_at")
+    explicit_none.pop("generated_at")
+    assert baseline == explicit_none
+
+
 @pytest.mark.parametrize("triggers", [["ok", 2], ["ok", ""], ["ok", None]])
 def test_non_string_or_empty_trigger_raises_controlled_error(triggers):
     project = {
@@ -1185,6 +1212,34 @@ def test_cli_rejects_project_file_escaping_root(tmp_path):
         "--today", "2026-06-15",
     ])
     assert code == 1
+
+
+@pytest.mark.parametrize("governance_profile", ["", " \t\n", 0, False, True, [], {}])
+def test_cli_rejects_invalid_governance_profile_before_manifest_output(
+    tmp_path, capsys, governance_profile
+):
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / "project.json").write_text(
+        json.dumps({"governance_profile": governance_profile}),
+        encoding="utf-8",
+    )
+
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        "--project-file", "project.json",
+        "--today", "2026-06-15",
+        "--emit",
+        "--json",
+    ])
+
+    assert code == 1
+    output = capsys.readouterr()
+    assert output.out == (
+        "error: project.governance_profile must be a non-empty string\n"
+    )
+    assert output.err == ""
+    assert not (tmp_path / "specs" / "upgrade-manifest.json").exists()
 
 
 # ---------------------------------------------------------------------------
