@@ -343,10 +343,6 @@ def _validate_sample(sample: Any, index: int) -> None:
             )
     if "observed_at" in sample and sample["observed_at"] is not None:
         value = sample["observed_at"]
-        if not isinstance(value, str) or not value:
-            raise LoadTestValidationError(
-                f"samples[{index}].observed_at must be null or a non-empty string"
-            )
         _validate_iso8601_timestamp(value, f"samples[{index}].observed_at")
 
 
@@ -375,8 +371,11 @@ def summarize_samples(samples: Any, *, duration_s: Optional[float] = None) -> di
     """
     if not isinstance(samples, list):
         raise LoadTestValidationError("samples must be a list")
-    for index, sample in enumerate(samples):
-        _validate_sample(sample, index)
+    try:
+        for index, sample in enumerate(samples):
+            _validate_sample(sample, index)
+    except ManifestValidationError as exc:
+        raise LoadTestValidationError(str(exc)) from exc
 
     n = len(samples)
     if n == 0:
@@ -574,7 +573,10 @@ def run_loadtest(
         )
     if not isinstance(allow_production, bool):
         raise LoadTestValidationError("allow_production must be a boolean")
-    _validate_iso8601_timestamp(generated_at, "generated_at")
+    try:
+        _validate_iso8601_timestamp(generated_at, "generated_at")
+    except ManifestValidationError as exc:
+        raise LoadTestValidationError(str(exc)) from exc
 
     projected_cost, projection_source = project_token_cost(profile)
     within_ceiling: Optional[bool] = (
@@ -750,7 +752,7 @@ def run_loadtest(
             else summarize_samples([])
         )
         source_oldest_at = _extract_source_oldest_at(samples) if samples else None
-    except LoadTestValidationError as exc:
+    except (LoadTestValidationError, ManifestValidationError) as exc:
         # Injected/parsed samples were structurally a list but semantically
         # invalid. Do not propagate — emit a safe partial with zeroed
         # diagnostics and a scrubbed diagnostic string, and no spec plan.
@@ -1091,7 +1093,7 @@ def main(argv: Optional[list] = None) -> int:
             adapter=adapter,
             generated_at=generated_at,
         )
-    except (LoadTestValidationError, LoadTestPrivacyError) as exc:
+    except (LoadTestValidationError, ManifestValidationError, LoadTestPrivacyError) as exc:
         print(scrub_text(f"error: load test aborted: {exc}"), file=sys.stderr)
         return 2
 

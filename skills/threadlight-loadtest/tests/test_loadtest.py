@@ -1239,6 +1239,33 @@ def test_parse_ndjson_counts_mixed_valid_and_invalid():
     assert "1 of 2" in error
 
 
+def test_parse_ndjson_rejects_non_rfc3339_observed_at_as_malformed():
+    samples, error = ad.parse_ndjson_samples(json.dumps({
+        "latency_ms": 10,
+        "success": True,
+        "tokens": 5,
+        "observed_at": "2026/08/17 10:00",
+    }))
+    assert samples == []
+    assert error == "no valid NDJSON sample lines in command output (1 of 1 rejected)"
+
+
+@pytest.mark.parametrize("observed_at", [
+    "2026-08-17T10:00:00Z",
+    "2026-08-17T12:00:00+02:00",
+])
+def test_parse_ndjson_accepts_rfc3339_z_and_offset_observed_at(observed_at):
+    sample = {
+        "latency_ms": 10,
+        "success": True,
+        "tokens": 5,
+        "observed_at": observed_at,
+    }
+    samples, error = ad.parse_ndjson_samples(json.dumps(sample))
+    assert samples == [sample]
+    assert error is None
+
+
 def test_command_adapter_malformed_samples_return_partial_safe_error():
     def fake_runner(argv, **kwargs):
         # exit 0, but the only sample line carries a negative token count
@@ -1251,6 +1278,22 @@ def test_command_adapter_malformed_samples_return_partial_safe_error():
     assert result["status"] == "partial"
     assert result["samples"] == []
     assert "sample" in result["error"]
+
+
+def test_command_adapter_invalid_observed_at_returns_partial_malformed_output():
+    def fake_runner(argv, **kwargs):
+        return _FakeCompleted(0, stdout=json.dumps({
+            "latency_ms": 10,
+            "success": True,
+            "tokens": 5,
+            "observed_at": "2026/08/17 10:00",
+        }))
+
+    adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
+    result = adapter.run(configured_profile(script_path="s.js"))
+    assert result["status"] == "partial"
+    assert result["samples"] == []
+    assert "rejected" in result["error"]
 
 
 def test_run_loadtest_defends_against_injected_malformed_sample_values():
@@ -1272,6 +1315,30 @@ def test_run_loadtest_defends_against_injected_malformed_sample_values():
     assert manifest["diagnostics"]["adapter_error"] is not None
     assert "spec_update_plan" not in manifest
     assert adapter.calls == 1
+
+
+def test_run_loadtest_contains_injected_invalid_observed_at_as_partial_manifest():
+    adapter = FakeAdapter(result={
+        "status": "complete",
+        "samples": [{
+            "latency_ms": 10,
+            "success": True,
+            "tokens": 5,
+            "observed_at": "2026/08/17 10:00",
+        }],
+    })
+    manifest = lt.run_loadtest(
+        profile=configured_profile(),
+        budget_ceiling_usd=100.0,
+        endpoint_class="non-production",
+        adapter=adapter,
+        generated_at=GENERATED_AT,
+    )
+    assert manifest["status"] == "partial"
+    assert finding_map(manifest)["LOAD-002"] == "not-verified"
+    assert manifest["diagnostics"]["sample_count"] == 0
+    assert "spec_update_plan" not in manifest
+    lt.validate_load_manifest(manifest)
 
 
 def test_run_loadtest_defends_against_injected_success_coerced_int():
@@ -1380,9 +1447,14 @@ def test_main_emits_partial_manifest_when_no_engine_available(tmp_path, monkeypa
 
 def test_main_emits_partial_manifest_when_adapter_samples_malformed(tmp_path, monkeypatch, capsys):
     def fake_runner(argv, **kwargs):
-        # exit 0 but the sample line coerces success from an int -> rejected
+        # exit 0 but the sample line has a non-RFC3339 timestamp -> rejected
         return _FakeCompleted(
-            0, stdout=json.dumps({"latency_ms": 10, "success": 1, "tokens": 5})
+            0, stdout=json.dumps({
+                "latency_ms": 10,
+                "success": True,
+                "tokens": 5,
+                "observed_at": "2026/08/17 10:00",
+            })
         )
 
     adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
@@ -1399,7 +1471,15 @@ def test_main_emits_partial_manifest_when_adapter_samples_malformed(tmp_path, mo
     assert rc == 1
     manifest = json.loads(out_path.read_text(encoding="utf-8"))
     assert manifest["status"] == "partial"
+    assert finding_map(manifest)["LOAD-002"] == "not-verified"
     assert "spec_update_plan" not in manifest
+    lt.validate_load_manifest(manifest)
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(
+        (SKILL_ROOT / "references" / "load-manifest.schema.json").read_text(encoding="utf-8")
+    )
+    jsonschema.validate(manifest, schema)
+    assert "Traceback" not in capsys.readouterr().err
 
 
 def test_main_controlled_exit_on_missing_profile_file(tmp_path, capsys):

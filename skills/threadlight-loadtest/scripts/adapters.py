@@ -27,8 +27,19 @@ import math
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, runtime_checkable
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from skills._shared.manifest import (  # noqa: E402
+    ManifestValidationError,
+    _validate_iso8601_timestamp,
+)
 
 # Selection priority: k6 first, then locust. Adding a third engine means
 # adding its name here AND a `_build_<name>_argv` branch in `build_argv` —
@@ -274,7 +285,8 @@ def _normalize_sample(record: Any) -> Optional[dict]:
     Strictly: ``latency_ms``/``tokens`` finite and nonnegative; ``success`` a
     real boolean (an integer ``1``/``0`` is REJECTED, never coerced to a bool);
     optional ``cold_start_latency_ms``/``time_to_scale_s`` finite nonnegative
-    when present; optional ``observed_at`` a non-empty string when present.
+    when present; optional non-null ``observed_at`` a strict shared RFC 3339
+    timestamp when present.
     Unknown extra keys are dropped so nothing unexpected from a command's stdout
     can ride along into downstream aggregation.
     """
@@ -298,7 +310,9 @@ def _normalize_sample(record: Any) -> Optional[dict]:
             clean[key] = record[key]
     observed_at = record.get("observed_at")
     if observed_at is not None:
-        if not isinstance(observed_at, str) or not observed_at:
+        try:
+            _validate_iso8601_timestamp(observed_at, "sample.observed_at")
+        except ManifestValidationError:
             return None
         clean["observed_at"] = observed_at
     return clean
