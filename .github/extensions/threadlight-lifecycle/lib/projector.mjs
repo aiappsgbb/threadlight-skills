@@ -182,6 +182,13 @@ function validateLegEnvelope(value, contract) {
       return { valid: false, reason: `missing required key: ${key}` };
     }
   }
+  const allowedTopLevelKeys = new Set(contract.allowedTopLevelKeys);
+  if (Object.keys(value).some((key) => !allowedTopLevelKeys.has(key))) {
+    return {
+      valid: false,
+      reason: "manifest contains unsupported top-level key(s)",
+    };
+  }
   // Per-file identity: the schema string pins which producer emitted the file.
   if (value.schema !== contract.schema) {
     return { valid: false, reason: `schema is not ${contract.schema}` };
@@ -256,7 +263,7 @@ function validateLegEnvelope(value, contract) {
       typeof finding.status !== "string" ||
       !LEG_FINDING_STATUS_ENUM.has(finding.status)
     ) {
-      return { valid: false, reason: `finding ${finding.id} has an invalid status` };
+      return { valid: false, reason: "findings contains an invalid status" };
     }
     seenIds.add(finding.id);
   }
@@ -295,8 +302,14 @@ function projectLegStatus(json, contract, now) {
   if (json.status === "aborted") {
     return { status: "failed" };
   }
+  // Expiry is resolved before complete/partial or finding-status mapping. Once
+  // evidence expires it can only request a manual leg rerun; it cannot keep
+  // reporting either active progress or a current result.
+  if (!isLegFresh(json, now)) {
+    return { status: "stale" };
+  }
   // Negative evidence dominates: any must-fix finding fails the leg regardless
-  // of the envelope's own status.
+  // of a fresh complete/partial envelope's own status.
   const hasMustFix = json.findings.some(
     (finding) => isPlainObject(finding) && finding.status === "must-fix",
   );
@@ -306,9 +319,7 @@ function projectLegStatus(json, contract, now) {
   if (json.status === "partial") {
     return { status: "running" };
   }
-  // status === "complete" with no must-fix: a stale complete envelope is
-  // downgraded to `stale`, never rendered as a fresh `complete`.
-  return { status: isLegFresh(json, now) ? "complete" : "stale" };
+  return { status: "complete" };
 }
 
 function evidenceStatus(value) {

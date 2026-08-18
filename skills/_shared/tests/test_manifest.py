@@ -243,6 +243,17 @@ def test_validate_envelope_requires_complete_freshness_metadata(missing_key):
         validate_envelope(envelope)
 
 
+def test_validate_envelope_rejects_unknown_freshness_metadata():
+    envelope = valid_envelope()
+    envelope["freshness"]["captured_at"] = "2026-08-17T10:00:00Z"
+
+    with pytest.raises(
+        ManifestValidationError,
+        match="freshness contains unsupported keys: captured_at",
+    ):
+        validate_envelope(envelope)
+
+
 @pytest.mark.parametrize("valid_for_hours", [0, -1, True, 1.5, "24"])
 def test_validate_envelope_rejects_non_positive_integer_validity(valid_for_hours):
     envelope = valid_envelope()

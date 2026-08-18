@@ -20,6 +20,7 @@
     "freshness": {
       "type": "object",
       "required": ["valid_for_hours", "source_oldest_at"],
+      "additionalProperties": false,
       "properties": {
         "valid_for_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
         "source_oldest_at": {

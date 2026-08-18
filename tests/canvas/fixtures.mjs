@@ -50,6 +50,89 @@ export function legEnvelope({
   };
 }
 
+/**
+ * Add the exact producer-specific top-level payload shape to a valid shared
+ * envelope. Values are intentionally synthetic and payload-free; the projector
+ * validates the common trust boundary and per-producer top-level allowlist, not
+ * the producer's full nested schema.
+ */
+export function producerLegEnvelope(options = {}) {
+  const envelope = legEnvelope(options);
+  const payloadBySchema = {
+    "threadlight-connect-manifest/v1": {
+      tool_name: "orders",
+      integration_state: "real-verified",
+      target_state: "real-verified",
+      contract: {
+        schema: "threadlight-connect-data-contract/v1",
+        tool_name: "orders",
+        generated_at: envelope.generated_at,
+        fields: [],
+      },
+      conformance: {
+        passed: true,
+        evaluated: true,
+        item_count: 1,
+        differences: [],
+      },
+      evidence_summary: {
+        obo_present: true,
+        obo_user_scoped: true,
+        roles_revalidated: true,
+        required_roles: ["Orders.Read"],
+        endpoint_configured: true,
+        endpoint_verified: true,
+      },
+      apply_plan: [],
+      changed_paths: [],
+      apply: false,
+    },
+    "threadlight.ground/v1": {
+      sources: [],
+      acl_evidence: [],
+      citation_evidence: [],
+      refusal_evidence: [],
+      telemetry: { retrieval_count: 0, subqueries: 0, tokens: 0 },
+      retrieval_quality_baseline: null,
+    },
+    "threadlight.load/v1": {
+      profile_name: "canvas-fixture",
+      endpoint_class: "non-production",
+      endpoint_configured: false,
+      allow_production: false,
+      adapter_name: "k6",
+      budget: {
+        ceiling_usd: 1,
+        projected_usd: 0,
+        within_ceiling: true,
+        projection_source: "declared",
+      },
+      diagnostics: {
+        sample_count: 1,
+        p50_latency_ms: 10,
+        p95_latency_ms: 20,
+        p99_latency_ms: 30,
+        error_rate: 0,
+        tokens_per_request: 1,
+        throughput_rps: 1,
+        cold_start_latency_ms: 0,
+        time_to_scale_s: 0,
+        adapter_error: null,
+      },
+      spec_update_plan: {
+        action: "advisory",
+        target: "specs/SPEC.md",
+        section: "load profile",
+        snippet: "p95_latency_ms: 20",
+      },
+    },
+    "threadlight.upgrade/v1": {
+      plan: [],
+    },
+  };
+  return { ...envelope, ...payloadBySchema[envelope.schema] };
+}
+
 function fixtureUrl(name) {
   return new URL(
     `./.tmp-projector-${name}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}/`,

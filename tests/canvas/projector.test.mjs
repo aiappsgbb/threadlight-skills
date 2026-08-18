@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import { projectWorkspace } from "../../.github/extensions/threadlight-lifecycle/lib/projector.mjs";
 import { createIntentBroker } from "../../.github/extensions/threadlight-lifecycle/lib/intents.mjs";
-import { createWorkspaceFixture, legEnvelope } from "./fixtures.mjs";
+import {
+  createWorkspaceFixture,
+  legEnvelope,
+  producerLegEnvelope,
+} from "./fixtures.mjs";
 
 const NOW = new Date("2026-08-06T09:00:00Z");
 const REPO_ROOT = path.resolve(
@@ -209,6 +213,40 @@ test("a stale complete envelope must not render complete", async () => {
   assert.equal(stale.status, "stale");
 });
 
+test("a stale partial envelope renders stale with a manual rerun action", async () => {
+  const { model, skill } = await projectLegModel(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "partial",
+      generatedAt: "2026-08-03T09:00:00Z",
+    }),
+  );
+
+  assert.equal(skill.status, "stale");
+  assert.ok(
+    findPhase(model, "discover").nextActions.some(
+      (intent) =>
+        intent.type === "invoke_skill" &&
+        intent.skillId === "threadlight-ground" &&
+        intent.phase === "discover",
+    ),
+    "stale partial evidence offers the named manual skill rerun",
+  );
+});
+
+test("a stale aborted envelope remains failed", async () => {
+  const aborted = await projectLeg(
+    "threadlight-loadtest",
+    legEnvelope({
+      schema: "threadlight.load/v1",
+      status: "aborted",
+      generatedAt: "2026-08-03T09:00:00Z",
+    }),
+  );
+  assert.equal(aborted.status, "failed");
+});
+
 test("a must-fix finding fails the leg even in a complete envelope", async () => {
   const failed = await projectLeg(
     "threadlight-ground",
@@ -253,6 +291,73 @@ test("a leg manifest with the wrong schema for its path renders failed", async (
     legEnvelope({ schema: "threadlight.ground/v1", status: "complete" }),
   );
   assert.equal(skill.status, "failed");
+});
+
+test("actual-producer-like manifests are accepted for every leg", async () => {
+  const cases = [
+    ["threadlight-connect", "threadlight-connect-manifest/v1"],
+    ["threadlight-ground", "threadlight.ground/v1"],
+    ["threadlight-loadtest", "threadlight.load/v1"],
+    ["threadlight-upgrade", "threadlight.upgrade/v1"],
+  ];
+
+  for (const [skillId, schema] of cases) {
+    const { model, skill } = await projectLegModel(
+      skillId,
+      producerLegEnvelope({ schema, status: "complete" }),
+    );
+    assert.equal(skill.status, "complete", skillId);
+    assert.equal(
+      model.errors.some((error) => error.code === "leg-envelope-invalid"),
+      false,
+      skillId,
+    );
+  }
+});
+
+test("an unknown top-level key is rejected for every leg without payload leaks", async () => {
+  const cases = [
+    ["threadlight-connect", "threadlight-connect-manifest/v1"],
+    ["threadlight-ground", "threadlight.ground/v1"],
+    ["threadlight-loadtest", "threadlight.load/v1"],
+    ["threadlight-upgrade", "threadlight.upgrade/v1"],
+  ];
+
+  for (const [skillId, schema] of cases) {
+    const envelope = producerLegEnvelope({ schema, status: "complete" });
+    envelope["secret-customer-payload"] = `sensitive-${skillId}`;
+    const { model, skill } = await projectLegModel(skillId, envelope);
+    const error = model.errors.find(
+      (candidate) => candidate.code === "leg-envelope-invalid",
+    );
+
+    assert.equal(skill.status, "failed", skillId);
+    assert.ok(error, skillId);
+    assert.equal(error.message, "manifest contains unsupported top-level key(s)");
+    assert.doesNotMatch(error.message, /secret-customer-payload|sensitive-/);
+  }
+});
+
+test("freshness rejects additional properties consistently for every leg", async () => {
+  const cases = [
+    ["threadlight-connect", "threadlight-connect-manifest/v1"],
+    ["threadlight-ground", "threadlight.ground/v1"],
+    ["threadlight-loadtest", "threadlight.load/v1"],
+    ["threadlight-upgrade", "threadlight.upgrade/v1"],
+  ];
+
+  for (const [skillId, schema] of cases) {
+    const envelope = producerLegEnvelope({ schema });
+    envelope.freshness.untrusted_timestamp = "customer-payload";
+    const { model, skill } = await projectLegModel(skillId, envelope);
+    const error = model.errors.find(
+      (candidate) => candidate.code === "leg-envelope-invalid",
+    );
+
+    assert.equal(skill.status, "failed", skillId);
+    assert.equal(error?.message, "freshness contains unsupported key(s)");
+    assert.doesNotMatch(error.message, /untrusted_timestamp|customer-payload/);
+  }
 });
 
 test("a leg manifest with unexpected finding ids renders failed", async () => {

@@ -132,6 +132,14 @@ def validate_envelope(envelope):
             "freshness missing required keys: "
             + ", ".join(sorted(missing_freshness_keys))
         )
+    unsupported_freshness_keys = set(freshness).difference(
+        required_freshness_keys
+    )
+    if unsupported_freshness_keys:
+        raise ManifestValidationError(
+            "freshness contains unsupported keys: "
+            + ", ".join(sorted(unsupported_freshness_keys))
+        )
 
     source_oldest_at = freshness["source_oldest_at"]
     if source_oldest_at is not None:

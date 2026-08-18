@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  LEG_ENVELOPE_CONTRACTS,
   LIFECYCLE_PHASES,
   SKILL_REGISTRY,
 } from "../../.github/extensions/threadlight-lifecycle/lib/lifecycle-registry.mjs";
@@ -13,6 +15,38 @@ const NEW_ADVISORY_LEGS = new Set([
   "threadlight-loadtest",
   "threadlight-upgrade",
 ]);
+
+const LEG_SCHEMA_PATHS = {
+  "specs/connect-manifest.json":
+    "../../skills/threadlight-connect/references/connect-manifest.schema.json",
+  "specs/ground-manifest.json":
+    "../../skills/threadlight-ground/references/ground-manifest.schema.json",
+  "specs/load-manifest.json":
+    "../../skills/threadlight-loadtest/references/load-manifest.schema.json",
+  "specs/upgrade-manifest.json":
+    "../../skills/threadlight-upgrade/references/upgrade-manifest.schema.json",
+};
+
+test("leg contracts mirror producer top-level and freshness allowlists", async () => {
+  for (const [artifactPath, contract] of Object.entries(
+    LEG_ENVELOPE_CONTRACTS,
+  )) {
+    const schema = JSON.parse(
+      await readFile(new URL(LEG_SCHEMA_PATHS[artifactPath], import.meta.url)),
+    );
+
+    assert.deepEqual(
+      new Set(contract.allowedTopLevelKeys),
+      new Set(Object.keys(schema.properties)),
+      artifactPath,
+    );
+    assert.equal(
+      schema.properties.freshness.additionalProperties,
+      false,
+      artifactPath,
+    );
+  }
+});
 
 test("registry exposes the exact lifecycle skill ids", () => {
   const expectedIds = new Set([
