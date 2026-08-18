@@ -70,11 +70,13 @@ from skills._shared.manifest import (  # noqa: E402
 )
 
 from adapters import (  # noqa: E402
+    AdapterArgumentError,
     CommandLoadAdapter,
     LoadAdapter,
     detect_available_commands,
     scrub_text,
     select_adapter,
+    validate_adapter_args,
 )
 
 TOOL_VERSION = "0.1.0"
@@ -236,11 +238,6 @@ def validate_profile(profile: Any) -> None:
         )
     if "script_path" in profile:
         _require_nullable_nonempty_str(profile["script_path"], "profile.script_path")
-    if profile.get("adapter_args") is not None:
-        args = profile["adapter_args"]
-        if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
-            raise LoadTestValidationError("profile.adapter_args must be a list of strings")
-
     slo = profile.get("slo")
     if slo is not None:
         if not isinstance(slo, dict):
@@ -262,6 +259,10 @@ def validate_profile(profile: Any) -> None:
                 raise LoadTestValidationError(
                     "profile.slo.max_error_rate must be within [0, 1]"
                 )
+
+    # Kept last so run_loadtest can safely turn this one caller-controlled argv
+    # failure into a partial result after every other profile field is validated.
+    validate_adapter_args(None, profile.get("adapter_args"))
 
 
 # ---------------------------------------------------------------------------
@@ -547,9 +548,12 @@ def run_loadtest(
          nor deterministically derivable) -> ``status: "partial"``, ``LOAD-002``
          not-verified, zero adapter calls. We never invent a request count to
          fabricate a projection that could undercount real spend.
-      4. Adapter gate: ``adapter is None`` -> ``status: "partial"``,
+      4. Adapter-argument gate: malformed, reserved, or unsupported
+         ``adapter_args`` -> ``status: "partial"``, ``LOAD-002`` not-verified,
+         zero adapter calls.
+      5. Adapter gate: ``adapter is None`` -> ``status: "partial"``,
          ``LOAD-002`` not-verified, zero adapter calls.
-      5. Endpoint gate: no ``url`` and/or ``credential_ref`` configured ->
+      6. Endpoint gate: no ``url`` and/or ``credential_ref`` configured ->
          ``status: "partial"``, ``LOAD-002`` not-verified, zero adapter calls —
          this module never calls an adapter blind.
 
@@ -565,7 +569,11 @@ def run_loadtest(
     what aborts/limits the run (e.g. a budget abort on a production endpoint
     still shows ``LOAD-001`` must-fix).
     """
-    validate_profile(profile)
+    adapter_args_error: Optional[AdapterArgumentError] = None
+    try:
+        validate_profile(profile)
+    except AdapterArgumentError as exc:
+        adapter_args_error = exc
     validate_budget_ceiling(budget_ceiling_usd)
     if endpoint_class not in VALID_ENDPOINT_CLASSES:
         raise LoadTestValidationError(
@@ -639,6 +647,20 @@ def run_loadtest(
         validate_load_manifest(manifest)
         return manifest
 
+    def _adapter_args_partial(
+        exc: AdapterArgumentError, adapter_name: Optional[str],
+    ) -> dict:
+        detail = scrub_text(f"adapter arguments rejected: {exc}")
+        diagnostics = _empty_diagnostics()
+        diagnostics["adapter_error"] = detail
+        return _build(
+            "partial",
+            ("not-verified", detail),
+            ("not-verified", "no samples collected"),
+            diagnostics=diagnostics,
+            adapter_name=adapter_name,
+        )
+
     # Gate 1: KNOWN projection strictly over the ceiling -> abort before ANY
     # adapter call. (When the projection is unavailable, within_ceiling is None
     # and this gate is skipped in favour of the partial gate below — we never
@@ -682,7 +704,12 @@ def run_loadtest(
             adapter_name=None,
         )
 
-    # Gate 4: no adapter selected (select_adapter found neither k6 nor
+    # Gate 4: malformed argv is controlled input failure, never an exception
+    # escaping the orchestrator and never an adapter invocation.
+    if adapter_args_error is not None:
+        return _adapter_args_partial(adapter_args_error, None)
+
+    # Gate 5: no adapter selected (select_adapter found neither k6 nor
     # locust) -> nothing was installed, and nothing is called.
     if adapter is None:
         return _build(
@@ -696,7 +723,15 @@ def run_loadtest(
             adapter_name=None,
         )
 
-    # Gate 5: no endpoint/credentials configured -> never call an adapter blind.
+    # Gate 6: engine-specific reserved/unsupported argv is rejected before the
+    # endpoint or adapter can be touched. build_argv repeats this validation as
+    # defense in depth for callers that invoke CommandLoadAdapter directly.
+    try:
+        validate_adapter_args(adapter.name, profile.get("adapter_args"))
+    except AdapterArgumentError as exc:
+        return _adapter_args_partial(exc, adapter.name)
+
+    # Gate 7: no endpoint/credentials configured -> never call an adapter blind.
     if not endpoint_configured:
         return _build(
             "partial",

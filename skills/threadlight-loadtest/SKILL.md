@@ -114,7 +114,7 @@ let the projection be **derived** deterministically from explicit inputs:
 | `spawn_rate_per_s` | no | Ramp-up rate passed to the adapter |
 | `slo` | no | `max_p95_latency_ms` / `max_error_rate` thresholds scored into `LOAD-003` |
 | `script_path` | no | Load-test script path passed to `k6 run` / `locust -f` |
-| `adapter_args` | no | Extra string argv appended safely (list of strings only) |
+| `adapter_args` | no | Optional engine-specific summary/stat presentation argv. Must be a list of non-empty, control-character-free strings; see **Safe adapter arguments** below. |
 
 ¹ *Nothing is structurally required.* To get a budget verdict you need **either**
 a declared `projected_token_cost_usd` **or** enough explicit inputs to derive
@@ -203,6 +203,38 @@ selection, no side effects) and `CommandLoadAdapter`, which:
   with `[REDACTED]`);
 - never returns raw command stdout/stderr — only parsed NDJSON samples and a
   scrubbed, truncated error summary.
+
+### Safe adapter arguments
+
+`adapter_args` is deliberately narrow and fail-closed. Tokens are passed
+**verbatim** in list-form argv (never through a shell): k6 arguments are placed
+after Threadlight's guarded options and before the script path; locust arguments
+are placed after all guarded standard flags. An empty list is equivalent to
+omitting the field.
+
+Allowed presentation-only controls:
+
+- **k6:** `--summary-trend-stats`, `--summary-time-unit`, and
+  `--summary-mode`, either followed by one non-option value or as
+  `--option=value`.
+- **locust:** `--only-summary`, `--print-stats`, and `--reset-stats`.
+
+Everything else is rejected with `AdapterArgumentError`; a guarded
+`run_loadtest` converts that to `status: partial`, `LOAD-002: not-verified`,
+without invoking the adapter. In particular, arguments may not replace or add:
+
+- the command/subcommand or script/locustfile;
+- endpoint/host/environment/config inputs (including a profile endpoint or
+  credential-reference value);
+- VUs/users, spawn rate/RPS/stages/iterations, or duration/run time;
+- headless/worker/master/process behavior; or
+- stdout/log/debug controls and persistent outputs such as k6 `--out`,
+  `--summary-export`, or `--console-output`, and locust CSV/HTML/JSON/log files.
+
+This prevents extra argv from changing Threadlight's safety and budget
+ownership or persisting raw request data. The endpoint remains supplied only by
+Threadlight's standard guarded `TARGET_URL`/`--host` position; credentials and
+credential references are never added to argv.
 
 ## Privacy
 

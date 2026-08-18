@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, runtime_checkable
@@ -160,15 +161,168 @@ def scrub_text(text: Optional[str]) -> str:
     return scrubbed
 
 
-_SAFE_ARG_RE = re.compile(r"^[^\x00-\x1f\x7f]*$")  # no control chars / NUL / DEL
+K6_DENIED_OPTION_NAMES = frozenset({
+    "-a", "--address", "--archive", "--config", "--console-output",
+    "-d", "--duration", "-e", "--env", "--execution-segment",
+    "--execution-segment-sequence", "--ext", "--http-debug", "-i", "--iterations",
+    "--include-system-env-vars", "--log-format", "--log-output", "--no-summary",
+    "--no-thresholds", "-o", "--out", "--paused", "--profiling-enabled",
+    "--quiet", "--rps", "-s", "--stage", "--stages", "--summary-export",
+    "--traces-output", "-u", "--vus", "--vus-max", "--web-dashboard",
+})
+K6_DENIED_OPTION_PREFIXES = (
+    "-a=", "--address=", "--archive=", "--config=", "--console-output=",
+    "-d=", "--duration=", "-e=", "--env=", "--execution-segment=",
+    "--execution-segment-sequence=", "--ext=", "--http-debug=", "-i=",
+    "--iterations=", "--include-system-env-vars=", "--log-format=",
+    "--log-output=", "-o=", "--out=", "--paused=", "--profiling-enabled=",
+    "--rps=", "-s=", "--stage=", "--stages=", "--summary-export=",
+    "--traces-output=", "-u=", "--vus=", "--vus-max=", "--web-dashboard=",
+)
+K6_DENIED_COMPACT_PREFIXES = ("-a", "-d", "-e", "-i", "-o", "-s", "-u")
+K6_COMMAND_TOKENS = frozenset({
+    "archive", "cloud", "completion", "inspect", "login", "pause", "resume",
+    "run", "scale", "stats", "status", "version",
+})
+K6_ALLOWED_VALUE_OPTIONS = frozenset({
+    "--summary-mode", "--summary-time-unit", "--summary-trend-stats",
+})
+
+LOCUST_DENIED_OPTION_NAMES = frozenset({
+    "-c", "--clients", "--config", "--config-users", "--csv",
+    "--csv-full-history", "--csv-prefix", "-f", "--locustfile", "-H", "--host",
+    "--headful", "--headless", "--html", "--json", "--json-file", "--list",
+    "--logfile", "--loglevel", "--master", "--master-bind-host",
+    "--master-bind-port", "--master-host", "--master-port", "--processes",
+    "-r", "--spawn-rate", "--step-load", "--step-time", "--step-users", "-t",
+    "--run-time", "-u", "--users", "--web-host", "--web-login", "--web-port",
+    "--worker",
+})
+LOCUST_DENIED_OPTION_PREFIXES = (
+    "-c=", "--clients=", "--config=", "--config-users=", "--csv=",
+    "--csv-full-history=", "--csv-prefix=", "-f=", "--locustfile=", "-H=",
+    "--host=", "--html=", "--json=", "--json-file=", "--logfile=",
+    "--loglevel=", "--master-bind-host=", "--master-bind-port=",
+    "--master-host=", "--master-port=", "--processes=", "-r=", "--spawn-rate=",
+    "--step-time=", "--step-users=", "-t=", "--run-time=", "-u=", "--users=",
+    "--web-host=", "--web-login=", "--web-port=",
+)
+LOCUST_DENIED_COMPACT_PREFIXES = ("-c", "-f", "-H", "-r", "-t", "-u")
+LOCUST_COMMAND_TOKENS = frozenset({"locust", "run", "version"})
+LOCUST_ALLOWED_FLAG_OPTIONS = frozenset({
+    "--only-summary", "--print-stats", "--reset-stats",
+})
 
 
 def _safe_str(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise AdapterArgumentError(f"{label} must be a non-empty string")
-    if not _SAFE_ARG_RE.match(value):
+    if any(unicodedata.category(char) == "Cc" for char in value):
         raise AdapterArgumentError(f"{label} must not contain control characters")
     return value
+
+
+def _validate_adapter_args_shape(value: Any) -> list[str]:
+    """Return a defensive copy of optional adapter argv after strict validation."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AdapterArgumentError(
+            "profile.adapter_args must be a list of non-empty strings"
+        )
+    return [
+        _safe_str(arg, f"profile.adapter_args[{index}]")
+        for index, arg in enumerate(value)
+    ]
+
+
+def _matches_denied_option(
+    token: str,
+    *,
+    names: frozenset[str],
+    prefixes: tuple[str, ...],
+    compact_prefixes: tuple[str, ...],
+) -> bool:
+    lowered = token.lower()
+    if lowered in names or any(lowered.startswith(prefix.lower()) for prefix in prefixes):
+        return True
+    return any(
+        lowered.startswith(prefix.lower()) and lowered != prefix.lower()
+        for prefix in compact_prefixes
+    )
+
+
+def validate_adapter_args(name: Optional[str], value: Any) -> list[str]:
+    """Validate optional engine arguments and return the tokens verbatim.
+
+    Only non-persisting summary/stat presentation controls are accepted. Engine
+    options that could replace Threadlight-owned target, script, concurrency,
+    duration, headless mode, or output handling are denied explicitly. Unknown
+    options and positional command/subcommand tokens fail closed.
+    """
+    args = _validate_adapter_args_shape(value)
+    if not args or name not in ADAPTER_PRIORITY:
+        return args
+
+    if name == "k6":
+        index = 0
+        while index < len(args):
+            token = args[index]
+            if _matches_denied_option(
+                token,
+                names=K6_DENIED_OPTION_NAMES,
+                prefixes=K6_DENIED_OPTION_PREFIXES,
+                compact_prefixes=K6_DENIED_COMPACT_PREFIXES,
+            ):
+                raise AdapterArgumentError(
+                    f"k6 adapter argument at index {index} is reserved"
+                )
+            option, separator, inline_value = token.partition("=")
+            if option in K6_ALLOWED_VALUE_OPTIONS:
+                if separator:
+                    if not inline_value:
+                        raise AdapterArgumentError(
+                            f"k6 adapter argument requires a value: {option}"
+                        )
+                else:
+                    index += 1
+                    if index >= len(args) or args[index].startswith("-"):
+                        raise AdapterArgumentError(
+                            f"k6 adapter argument requires a value: {option}"
+                        )
+                index += 1
+                continue
+            if token.lower() in K6_COMMAND_TOKENS or not token.startswith("-"):
+                raise AdapterArgumentError(
+                    f"k6 command, subcommand, or positional argument at index "
+                    f"{index} is not allowed"
+                )
+            raise AdapterArgumentError(
+                f"unsupported k6 adapter argument at index {index}"
+            )
+        return args
+
+    for index, token in enumerate(args):
+        if _matches_denied_option(
+            token,
+            names=LOCUST_DENIED_OPTION_NAMES,
+            prefixes=LOCUST_DENIED_OPTION_PREFIXES,
+            compact_prefixes=LOCUST_DENIED_COMPACT_PREFIXES,
+        ):
+            raise AdapterArgumentError(
+                f"locust adapter argument at index {index} is reserved"
+            )
+        if token in LOCUST_ALLOWED_FLAG_OPTIONS:
+            continue
+        if token.lower() in LOCUST_COMMAND_TOKENS or not token.startswith("-"):
+            raise AdapterArgumentError(
+                f"locust command, subcommand, or positional argument at index "
+                f"{index} is not allowed"
+            )
+        raise AdapterArgumentError(
+            f"unsupported locust adapter argument at index {index}"
+        )
+    return args
 
 
 def _positive_number(value: Any, label: str) -> float:
@@ -234,6 +388,15 @@ def build_argv(name: str, command_path: str, profile: Mapping[str, Any]) -> list
     duration_s = _resolve_duration_seconds(profile)
     endpoint = profile.get("endpoint") or {}
     target = endpoint.get("url")
+    adapter_args = validate_adapter_args(name, profile.get("adapter_args"))
+    for label, protected_value in (
+        ("profile.endpoint.url", target),
+        ("profile.endpoint.credential_ref", endpoint.get("credential_ref")),
+    ):
+        if protected_value and any(protected_value in arg for arg in adapter_args):
+            raise AdapterArgumentError(
+                f"profile.adapter_args must not contain {label}"
+            )
 
     if name == "k6":
         argv = [
@@ -243,6 +406,7 @@ def build_argv(name: str, command_path: str, profile: Mapping[str, Any]) -> list
         ]
         if target:
             argv += ["-e", f"TARGET_URL={_safe_str(target, 'profile.endpoint.url')}"]
+        argv.extend(adapter_args)
         argv.append(script_path)
         return argv
 
@@ -260,6 +424,7 @@ def build_argv(name: str, command_path: str, profile: Mapping[str, Any]) -> list
         ]
         if target:
             argv += ["--host", _safe_str(target, "profile.endpoint.url")]
+        argv.extend(adapter_args)
         return argv
 
     raise AdapterArgumentError(f"unsupported adapter name: {name!r}")

@@ -762,10 +762,141 @@ def test_endpoint_url_and_credential_ref_never_reach_the_manifest():
 
 
 def test_adapter_args_is_validated_but_never_leaked_unexpectedly():
-    profile = configured_profile(adapter_args=["--flag", "value"])
+    profile = configured_profile(
+        adapter_args=["--summary-trend-stats", "p(50),p(95),p(99)"]
+    )
     lt.validate_profile(profile)  # must not raise
-    with pytest.raises(lt.LoadTestValidationError):
+    with pytest.raises(ad.AdapterArgumentError):
         lt.validate_profile(configured_profile(adapter_args=["ok", 5]))
+
+
+@pytest.mark.parametrize("bad", [
+    True,
+    "--only-summary",
+    7,
+    [["--only-summary"]],
+    [""],
+    ["line\nbreak"],
+    ["nul\x00byte"],
+    ["c1\x85control"],
+])
+def test_adapter_args_rejects_scalars_nested_empty_and_control_values(bad):
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.validate_adapter_args("locust", bad)
+
+
+def test_k6_adapter_args_exact_review_args_are_verbatim_before_script():
+    argv = ad.build_argv("k6", "/bin/k6", {
+        "script_path": "load/harness.js",
+        "virtual_users": 5,
+        "hold_seconds": 10,
+        "endpoint": {
+            "url": "https://staging.example.test/api",
+            "credential_ref": "kv:load-key",
+        },
+        "adapter_args": ["--summary-trend-stats", "p(50),p(95),p(99)"],
+    })
+    assert argv == [
+        "/bin/k6", "run", "--quiet", "--vus", "5", "--duration", "10s",
+        "-e", "TARGET_URL=https://staging.example.test/api",
+        "--summary-trend-stats", "p(50),p(95),p(99)", "load/harness.js",
+    ]
+    assert "kv:load-key" not in argv
+
+
+def test_k6_inline_summary_stats_argument_is_allowed_verbatim():
+    arg = "--summary-trend-stats=p(90),p(95),p(99)"
+    argv = ad.build_argv("k6", "/bin/k6", {
+        "script_path": "load/harness.js",
+        "virtual_users": 5,
+        "hold_seconds": 10,
+        "adapter_args": [arg],
+    })
+    assert argv[-2:] == [arg, "load/harness.js"]
+
+
+def test_locust_adapter_args_exact_review_args_follow_all_standard_flags():
+    argv = ad.build_argv("locust", "/bin/locust", {
+        "script_path": "load/locustfile.py",
+        "virtual_users": 5,
+        "spawn_rate_per_s": 2,
+        "hold_seconds": 10,
+        "endpoint": {
+            "url": "https://staging.example.test/api",
+            "credential_ref": "kv:load-key",
+        },
+        "adapter_args": ["--only-summary"],
+    })
+    assert argv == [
+        "/bin/locust", "-f", "load/locustfile.py", "--headless",
+        "--users", "5", "--spawn-rate", "2.0", "--run-time", "10s",
+        "--host", "https://staging.example.test/api", "--only-summary",
+    ]
+    assert "kv:load-key" not in argv
+
+
+@pytest.mark.parametrize(("name", "args"), [
+    ("k6", ["--vus", "99"]),
+    ("k6", ["--vus=99"]),
+    ("k6", ["-u99"]),
+    ("k6", ["--duration", "1h"]),
+    ("k6", ["--out", "json=raw.json"]),
+    ("k6", ["--summary-export=summary.json"]),
+    ("k6", ["--http-debug=full"]),
+    ("k6", ["-e", "TARGET_URL=https://other.example"]),
+    ("k6", ["--config", "unsafe.json"]),
+    ("k6", ["run"]),
+    ("k6", ["other.js"]),
+    ("locust", ["-f", "other.py"]),
+    ("locust", ["--host=https://other.example"]),
+    ("locust", ["-Hhttps://other.example"]),
+    ("locust", ["--users", "999"]),
+    ("locust", ["-u999"]),
+    ("locust", ["--run-time", "1h"]),
+    ("locust", ["--headless"]),
+    ("locust", ["--csv", "raw"]),
+    ("locust", ["--csv-full-history"]),
+    ("locust", ["--html=raw.html"]),
+    ("locust", ["--json-file", "raw.json"]),
+    ("locust", ["run"]),
+])
+def test_adapter_args_reject_guard_and_raw_output_overrides(name, args):
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.validate_adapter_args(name, args)
+
+
+def test_adapter_args_cannot_repeat_endpoint_or_credential_values():
+    profile = {
+        "script_path": "s.js",
+        "virtual_users": 5,
+        "hold_seconds": 10,
+        "endpoint": {"url": "https://x", "credential_ref": "kv:key"},
+    }
+    for value in ("https://x", "kv:key"):
+        profile["adapter_args"] = [f"--summary-trend-stats={value}"]
+        with pytest.raises(ad.AdapterArgumentError):
+            ad.build_argv("k6", "/bin/k6", profile)
+
+
+@pytest.mark.parametrize("adapter_args", [
+    ["--vus", "999"],
+    ["nul\x00byte"],
+    True,
+])
+def test_run_loadtest_invalid_adapter_args_is_partial_without_adapter_call(adapter_args):
+    adapter = FakeAdapter(name="k6")
+    manifest = lt.run_loadtest(
+        profile=configured_profile(adapter_args=adapter_args),
+        budget_ceiling_usd=100.0,
+        endpoint_class="non-production",
+        adapter=adapter,
+        generated_at=GENERATED_AT,
+    )
+    assert adapter.calls == 0
+    assert manifest["status"] == "partial"
+    assert finding_map(manifest)["LOAD-002"] == "not-verified"
+    assert manifest["diagnostics"]["adapter_error"]
+    assert "spec_update_plan" not in manifest
 
 
 # ---------------------------------------------------------------------------
