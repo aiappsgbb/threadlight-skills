@@ -255,7 +255,7 @@ regardless of how a real response diverged.
 | Finding | Evidence | `pass` | `must-fix` | `not-verified` |
 |---|---|---|---|---|
 | `INT-001` | Contract conformance | real sample conforms (evaluated, no differences) | any field-level difference | unevaluated (no real records to check) |
-| `INT-002` | Runtime mock→real binding (`target_state`) | `real-verified` | `real-drift` | `mock` / `real-unverified` |
+| `INT-002` | Runtime mock→real binding (`target_state` + persisted `integration_state`) | `target_state: real-verified` **and** persisted `integration_state: real-verified` after successful `--apply` | `target_state: real-drift` | dry-run `target_state: real-verified` with persisted `integration_state: mock`; `target_state: mock` or `real-unverified` |
 | `INT-003` | OBO user-scoped identity | OBO present **and** user-scoped | — (no explicit-failure signal in the evidence shape) | OBO absent or not user-scoped |
 | `INT-004` | Required-role revalidation vs current identity | roles revalidated against the **current** identity | revalidation ran but a required role is missing | never revalidated, no current identity, or a stale/mismatched grant |
 
