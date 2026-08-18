@@ -32,7 +32,9 @@
           "resource_kind": {"type": "string"},
           "monthly_cost_usd": {"type": ["number", "null"]},
           "pricing_status": {"type": "string", "enum": ["priced", "not-priceable"]},
-          "verified": {"type": "boolean"}
+          "verified": {"type": "boolean"},
+          "price_source": {"type": "string", "enum": ["live", "fixture", "fallback"], "description": "Provenance of the rate. A 'fallback' region-blind constant is advisory only: the line is pricing_status='not-priceable', verified=false and does not certify a cost."},
+          "reason": {"type": "string", "description": "Why a line is not-priceable (e.g. a fallback rate is advisory and a live/dated regional price is required)."}
         }
       }
     },

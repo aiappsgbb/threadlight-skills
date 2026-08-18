@@ -43,6 +43,15 @@ from projectors import project_meter_demand, project_resource  # noqa: E402
 COST_MANIFEST_SCHEMA_VERSION = "2.0"
 COST_MANIFEST_SCHEMA_ID = "threadlight.cost-manifest/v2"
 
+# A region-blind fallback constant (a v1 projector's last-resort rate when both
+# live pricing and the dated fixtures miss) is advisory only. It never certifies
+# a bill: the numeric figure is retained on the line for reference, but the line
+# is reported not-priceable / unverified with this static reason.
+FALLBACK_ADVISORY_REASON = (
+    "fallback rate is advisory; a live or dated regional retail price is required "
+    "before this line can certify a cost"
+)
+
 
 def _require_positive_number(name: str, value: Any) -> float:
     """Return ``value`` as a float, or raise ``ValueError`` if it is not a
@@ -125,7 +134,21 @@ def project_profile(
 def _resource_pricing_status(line: dict[str, Any]) -> str:
     if "pricing_status" in line:
         return line["pricing_status"]
+    # A region-blind fallback rate is advisory only — never let a numeric
+    # fallback cost certify itself as a priced/known line.
+    if line.get("price_source") == "fallback":
+        return "not-priceable"
     return "priced" if line.get("monthly_cost_usd") is not None else "not-priceable"
+
+
+def _resource_is_advisory_fallback(line: dict[str, Any]) -> bool:
+    """True when a resource line carries only a region-blind fallback rate.
+
+    Such a line has no caller-declared ``pricing_status`` (the projector did not
+    already classify it) and a ``price_source == 'fallback'`` — i.e. a fixed
+    constant used because live + fixture pricing both missed.
+    """
+    return "pricing_status" not in line and line.get("price_source") == "fallback"
 
 
 def _line_is_complete(status: str, verified: bool, cost: Any) -> bool:
@@ -151,7 +174,14 @@ def build_cost_manifest(
     for line in resources:
         annotated = dict(line)
         annotated["pricing_status"] = _resource_pricing_status(line)
-        annotated.setdefault("verified", annotated.get("monthly_cost_usd") is not None)
+        if _resource_is_advisory_fallback(line):
+            # Retain the numeric fallback figure on the line as advisory, but
+            # never verify/certify it — force it not-priceable + unverified with
+            # a static reason so the total stays incomplete.
+            annotated["verified"] = False
+            annotated.setdefault("reason", FALLBACK_ADVISORY_REASON)
+        else:
+            annotated.setdefault("verified", annotated.get("monthly_cost_usd") is not None)
         resource_lines.append(annotated)
 
     # Coverage: verification is about *volume evidence*; priceability is about
@@ -164,7 +194,7 @@ def build_cost_manifest(
     meter_not_verified = sum(1 for m in meters if not m.get("verified", False))
 
     any_not_priceable = any(
-        _resource_pricing_status(r) == "not-priceable" for r in resources
+        r["pricing_status"] == "not-priceable" for r in resource_lines
     ) or meter_not_priceable > 0
     any_not_verified = meter_not_verified > 0
 
@@ -200,7 +230,11 @@ def build_cost_manifest(
         cost_per_transaction = None
 
     meter_coverage = {
-        "status": "complete" if not any_not_verified else "not-verified",
+        # Coverage is only "complete" when there is no gap of either kind — no
+        # unverified volume AND no not-priceable line (resource or meter). A
+        # region-blind fallback rate is a not-priceable gap, so it is exposed
+        # here rather than silently presented as complete.
+        "status": "complete" if not (any_not_verified or any_not_priceable) else "not-verified",
         "total": meter_total,
         "priced": meter_priced,
         "not_priceable": meter_not_priceable,
@@ -260,15 +294,20 @@ def build_ptu_scenarios(
     model = load_profile.get("ptu_model") or "gpt-4o"
     region = load_profile.get("pinned_region") or load_profile.get("region") or "eastus2"
     # Validate an EXPLICIT ptu_units up front (non-positive / bool / non-numeric
-    # => ValueError); an absent value defaults to a single provisioned unit.
+    # => ValueError); an absent value defaults to a single provisioned unit. PTU
+    # capacity is provisioned in whole units, so the value must be integral: an
+    # integral float (2.0) normalises to int 2, but a fractional value (2.5) is
+    # rejected — the emitted ptu_units is always an int and schema-valid.
     raw_units = load_profile.get("ptu_units")
     if raw_units is None:
-        units: float | int = 1
+        units: int = 1
     else:
         validated = _require_positive_number("ptu_units", raw_units)
-        # PTU capacity is provisioned in whole units; keep an int when the caller
-        # gave a whole number, otherwise preserve the validated fractional value.
-        units = int(validated) if validated.is_integer() else validated
+        if not validated.is_integer():
+            raise ValueError(
+                f"ptu_units must be a whole number of provisioned units, got {raw_units!r}"
+            )
+        units = int(validated)
 
     try:
         env = pricing.get_price(
