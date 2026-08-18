@@ -1,0 +1,90 @@
+{
+  "schema": "threadlight-upgrade-compatibility-matrix/v1",
+  "version": "2026.08.1",
+  "date": "2026-08-01",
+  "source": "https://learn.microsoft.com/azure/ai-foundry/agents/whats-new",
+  "entries": [
+    {
+      "surface": "hosted-agent-protocol",
+      "target": "invocations",
+      "state": "preview",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/whats-new#invocations-api-preview",
+      "last_reviewed": "2026-06-01",
+      "review_window_days": 120,
+      "stable": "responses",
+      "replacement": "responses",
+      "expiry_triggers": ["responses-end-to-end"]
+    },
+    {
+      "surface": "hosted-agent-protocol",
+      "target": "responses",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/whats-new#responses-api-ga",
+      "last_reviewed": "2026-06-01",
+      "review_window_days": 120
+    },
+    {
+      "surface": "agent-framework",
+      "target": "agent-framework",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/agent-framework/overview#versioning",
+      "last_reviewed": "2026-01-01",
+      "review_window_days": 90,
+      "stable": "2.0.0"
+    },
+    {
+      "surface": "toolbox",
+      "target": "agent-governance-toolkit",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/toolbox#versioning",
+      "last_reviewed": "2026-05-01",
+      "review_window_days": 120,
+      "stable": "1.4.0"
+    },
+    {
+      "surface": "skill-publication",
+      "target": "skill-manifest-schema",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/skills/publication#schema-version",
+      "last_reviewed": "2026-05-15",
+      "review_window_days": 120,
+      "stable": "1.0.0"
+    },
+    {
+      "surface": "governance-profile",
+      "target": "legacy-manual-review",
+      "state": "deprecated",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/governance/profiles#deprecated",
+      "last_reviewed": "2026-04-01",
+      "review_window_days": 120,
+      "replacement": "adaptive-guardrails",
+      "expiry": "2026-07-01"
+    },
+    {
+      "surface": "governance-profile",
+      "target": "adaptive-guardrails",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/agents/governance/profiles#adaptive-guardrails",
+      "last_reviewed": "2026-04-01",
+      "review_window_days": 120
+    },
+    {
+      "surface": "model-family",
+      "target": "gpt-4",
+      "state": "deprecated",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/openai/concepts/model-retirements#gpt-4",
+      "last_reviewed": "2026-03-01",
+      "review_window_days": 150,
+      "replacement": "gpt-5",
+      "expiry": "2026-09-01"
+    },
+    {
+      "surface": "model-family",
+      "target": "gpt-5",
+      "state": "stable",
+      "source": "https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models#gpt-5",
+      "last_reviewed": "2026-03-01",
+      "review_window_days": 150
+    }
+  ]
+}

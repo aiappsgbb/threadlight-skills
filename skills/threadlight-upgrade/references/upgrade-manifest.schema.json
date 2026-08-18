@@ -1,0 +1,194 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "upgrade-manifest.schema.json",
+  "title": "threadlight-upgrade manifest",
+  "description": "Emitted by threadlight-upgrade (scripts/upgrade.py) after scanning a normalized project against the versioned skills/threadlight-upgrade/references/compatibility-matrix.json. Extends the shared envelope from skills/_shared/manifest.py (schema, tool_version, generated_at, freshness, status, findings) with an ordered, file-by-file migration `plan`. This skill is PLAN-ONLY: it never edits the project and has no --apply. Persists only surface/target identifiers, version strings, dates, and safe reference strings (the matrix/source `source` fields) — never credentials, tokens, or customer payloads.",
+  "type": "object",
+  "required": [
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings", "plan"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight.upgrade/v1"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1},
+        "source_oldest_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+        }
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array",
+      "description": "Exactly UPG-001 (matrix/dependency staleness), UPG-002 (preview/runtime-policy expiry drift), UPG-003 (official source verification) — unique ids.",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"enum": ["UPG-001", "UPG-002", "UPG-003"]},
+          "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+          "detail": {
+            "type": "object",
+            "description": "Allowlisted structured detail only — IDs, dates, counts, and a controlled reason enum. Never free-form notes, content, or credentials.",
+            "required": ["reason"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "enum": [
+                  "fresh",
+                  "matrix-stale",
+                  "dependency-drift",
+                  "dependency-version-not-verified",
+                  "matrix-stale-and-dependency-drift",
+                  "no-drift",
+                  "preview-or-deprecated-usage",
+                  "usage-target-not-in-matrix",
+                  "official-source-unavailable",
+                  "official-source-unverified",
+                  "preview-to-ga-transition",
+                  "official-source-verified"
+                ]
+              },
+              "message": {"type": "string", "minLength": 1},
+              "stale_entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["surface", "target", "last_reviewed", "review_window_days", "age_days"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surface": {"type": "string", "minLength": 1},
+                    "target": {"type": "string", "minLength": 1},
+                    "last_reviewed": {"type": "string", "minLength": 1},
+                    "review_window_days": {"type": "integer", "minimum": 1},
+                    "age_days": {"type": "integer", "minimum": 0}
+                  }
+                }
+              },
+              "dependencies_behind_stable": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "from", "to"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {"type": "string", "minLength": 1},
+                    "from": {"type": "string", "minLength": 1},
+                    "to": {"type": "string", "minLength": 1}
+                  }
+                }
+              },
+              "dependencies_prerelease_pinned": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "from", "to"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {"type": "string", "minLength": 1},
+                    "from": {"type": "string", "minLength": 1},
+                    "to": {"type": "string", "minLength": 1}
+                  }
+                }
+              },
+              "dependencies_not_verified": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "preview_usages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "target", "state"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {"type": "string", "minLength": 1},
+                    "target": {"type": "string", "minLength": 1},
+                    "state": {"enum": ["stable", "preview", "deprecated"]},
+                    "fired_triggers": {"type": "array", "items": {"type": "string", "minLength": 1}}
+                  }
+                }
+              },
+              "deprecated_usages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "target", "state"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {"type": "string", "minLength": 1},
+                    "target": {"type": "string", "minLength": 1},
+                    "state": {"enum": ["stable", "preview", "deprecated"]}
+                  }
+                }
+              },
+              "expired_decisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "target", "state", "expiry"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {"type": "string", "minLength": 1},
+                    "target": {"type": "string", "minLength": 1},
+                    "state": {"enum": ["stable", "preview", "deprecated"]},
+                    "expiry": {"type": "string", "minLength": 1}
+                  }
+                }
+              },
+              "not_in_matrix": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "unverified_checks": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "transitions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["surface", "target", "from_state", "to_state"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surface": {"type": "string", "minLength": 1},
+                    "target": {"type": "string", "minLength": 1},
+                    "from_state": {"enum": ["stable", "preview", "deprecated"]},
+                    "to_state": {"enum": ["stable", "preview", "deprecated"]},
+                    "latest_version": {"type": "string", "minLength": 1}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "plan": {
+      "type": "array",
+      "description": "Ordered, file-by-file migration plan aggregated across all findings. Plan-only — never applied/written by this skill. No duplicate (path, reason) pairs.",
+      "items": {
+        "type": "object",
+        "required": ["order", "path", "reason", "from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "order": {"type": "integer", "minimum": 1},
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*\\.\\.)(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+          },
+          "reason": {"type": "string", "minLength": 1},
+          "from": {"type": ["string", "null"], "minLength": 1},
+          "to": {"type": ["string", "null"], "minLength": 1}
+        }
+      }
+    }
+  }
+}
