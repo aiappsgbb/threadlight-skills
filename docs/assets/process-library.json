@@ -20,6 +20,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "End-to-end commercial loan processing with credit scoring, risk assessment, compliance verification, and multi-level approval workflows.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -81,6 +85,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Automated insurance claims intake, fraud screening, adjuster assignment, and settlement with regulatory compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -142,6 +150,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Coordinated patient referral workflow from primary care to specialists with insurance verification and care tracking.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -198,6 +210,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "End-to-end clinical trial patient screening, consent, and enrollment with FDA/IRB compliance and safety monitoring.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -259,6 +275,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Manufacturing quality control with defect tracking, root cause analysis, and corrective/preventive action management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -309,6 +329,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Procurement lifecycle from requisition to payment with supplier evaluation, contract management, and spend analytics.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -359,6 +383,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "End-to-end retail order processing from placement through delivery, plus returns/exchanges with fraud screening.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -409,6 +437,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "ITIL-aligned IT incident management with automated triage, priority-based routing, escalation, and SLA tracking.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -459,6 +491,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Government permit and license application processing with multi-agency review, public comment, and compliance verification.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -513,6 +549,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Electric utility outage detection, crew dispatch, restoration prioritization, and regulatory reporting.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -563,6 +603,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Real estate transaction management from offer acceptance through closing with title search, escrow, and compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -613,6 +657,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Pharmacovigilance adverse event intake, causality assessment, regulatory reporting, and signal detection.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -674,6 +722,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "End-to-end onboarding of high-net-worth clients for wealth advisory services, from KYC verification through suitability assessment and initial portfolio construction.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -735,6 +787,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Automated generation, validation, and submission of mandatory regulatory reports including SOX attestations, Basel III capital adequacy filings, and CCAR stress test results.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -796,6 +852,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Customer identity verification, sanctions screening, and continuous AML transaction monitoring with SAR filing capabilities under BSA/USA PATRIOT Act requirements.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -857,6 +917,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "End-to-end payment initiation, validation, clearing, and settlement across ACH, Fedwire, and SWIFT networks with real-time fraud screening and reconciliation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -910,6 +974,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Corporate treasury cash positioning, short-term forecasting, intercompany funding, and liquidity buffer management across multiple entities and currencies.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -963,6 +1031,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Securities trade lifecycle from order routing and execution through confirmation, allocation, and T+1 settlement with DTCC and custodian banks.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1024,6 +1096,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Cardholder dispute intake, investigation, provisional credit issuance, and chargeback processing under Regulation E and Regulation Z timelines.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1077,6 +1153,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Residential mortgage origination from application intake through underwriting, appraisal, closing, and funding in compliance with TRID and RESPA requirements.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1138,6 +1218,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "New deposit and checking account opening with Customer Identification Program verification, initial funding, and product enrollment.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1191,6 +1275,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Risk-based due diligence on correspondent banking relationships including initial assessment, periodic reviews, and ongoing transaction monitoring for BSA/AML compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1252,6 +1340,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Commercial lines underwriting process encompassing risk evaluation, hazard analysis, pricing, terms negotiation, and policy issuance for property, casualty, and specialty lines.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1313,6 +1405,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Full policy servicing lifecycle including endorsement processing, premium adjustments, renewal management, cancellations, and reinstatements across all lines of business.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1366,6 +1462,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Reinsurance program lifecycle including treaty and facultative placement, premium and loss cession processing, bordereaux reporting, and settlement accounting.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1427,6 +1527,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Identification, pursuit, and collection of claim cost recoveries from responsible third parties through negotiation, arbitration, and litigation channels.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1480,6 +1584,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Workers' compensation claim intake, medical treatment management, disability determination, return-to-work coordination, and settlement for occupational injuries and illnesses.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1541,6 +1649,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "CRE lease lifecycle management including lease abstracting, rent and CAM billing, escalation tracking, renewal negotiations, and annual operating expense reconciliation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1599,6 +1711,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Multi-property operational management covering preventive and reactive maintenance, property inspections, vendor coordination, tenant relations, and regulatory compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1649,6 +1765,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Acquisition underwriting and investment analysis including DCF modeling, cap rate analysis, market comparables, physical and environmental due diligence, and investment committee presentation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1707,6 +1827,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Insurance prior authorization for medical procedures and specialty medications with payer-specific rules and clinical criteria.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1760,6 +1884,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Provider credentialing and hospital privileging with primary source verification and NCQA compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1813,6 +1941,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Coordinated patient discharge with care transition planning, follow-up scheduling, and readmission prevention.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1866,6 +1998,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "HIM coding, charge capture, claim submission, and denial management for optimal reimbursement.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1919,6 +2055,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "Patient registration, insurance eligibility verification, and consent collection for ED and clinic visits.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -1972,6 +2112,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Real-time bed assignment, patient flow optimization, and capacity forecasting across hospital units.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2025,6 +2169,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "CDI query process for accurate clinical documentation, coding specificity, and DRG optimization.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2078,6 +2226,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "Imaging order triage, scheduling, protocol assignment, reading, and results delivery.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2131,6 +2283,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "GMP batch record review, QA release decision, and certificate of analysis issuance for drug products.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2192,6 +2348,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Individual case safety report (ICSR) intake, medical assessment, and regulatory submission worldwide.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2253,6 +2413,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "NDA/BLA/MAA dossier preparation, eCTD compilation, and regulatory authority submission management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2314,6 +2478,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Clinical trial material forecasting, packaging, labeling, depot management, and investigational site supply.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2375,6 +2543,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "GMP deviation investigation, root cause analysis, and CAPA implementation in pharmaceutical manufacturing.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2428,6 +2600,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Internal and external GMP audit planning, execution, findings management, and regulatory inspection readiness.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2481,6 +2657,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "ICH stability study design, execution, trending, and shelf-life determination for drug products.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2534,6 +2714,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Product serialization, aggregation hierarchy, and regulatory track-and-trace compliance (DSCSA, EU FMD).",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2587,6 +2771,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Student admissions processing, enrollment confirmation, course registration, and academic onboarding.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2637,6 +2825,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "FAFSA verification, aid packaging, disbursement, and federal Title IV compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2687,6 +2879,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Institutional accreditation self-study, peer review, and continuous improvement reporting.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2748,6 +2944,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Student misconduct investigation, hearing process, and sanctions with due process protections.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2798,6 +2998,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "New program and course proposal review through faculty governance committees and state/board approval.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2848,6 +3052,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "MRP/APS-driven production scheduling with capacity planning, constraint management, and S&OP alignment.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2909,6 +3117,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Raw material and component receiving inspection with supplier scorecards and corrective action management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -2959,6 +3171,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Preventive and predictive maintenance scheduling, work order management, and spare parts optimization.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3009,6 +3225,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "MES-driven work order execution with operator instructions, real-time tracking, and full lot traceability.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3059,6 +3279,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Statistical demand forecasting, consensus planning, and S&OP process alignment across sales and operations.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3109,6 +3333,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Stage-gate NPI process from concept through production ramp-up with cross-functional milestone reviews.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3167,6 +3395,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Inbound/outbound warehouse operations, pick-pack-ship, cycle counting, and inventory accuracy management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3217,6 +3449,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Engineering change request/order process with impact analysis, cross-functional approval, and effectivity management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3267,6 +3503,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Demand-driven auto-replenishment with safety stock optimization, open-to-buy planning, and allocation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3317,6 +3557,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Omnichannel returns processing with refund authorization, disposition routing, and fraud screening.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3367,6 +3611,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Dynamic pricing, promotional pricing rules, markdown cadence management, and competitive price matching.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3417,6 +3665,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Distributed order management with BOPIS, ship-from-store, drop-ship, and marketplace fulfillment.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3475,6 +3727,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "Daily store operations including opening/closing procedures, workforce scheduling, and task execution tracking.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3525,6 +3781,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Points accrual, tier management, redemption processing, and personalized offer delivery.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3575,6 +3835,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Safety recall identification, parts sourcing, dealer notification, owner outreach, and completion tracking.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3633,6 +3897,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Dealer warranty claim submission, technical validation, cost review, and reimbursement processing.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3683,6 +3951,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Build-to-order production sequencing with constraint management, JIT supplier coordination, and line balancing.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3741,6 +4013,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Freight booking, carrier selection, rate negotiation, shipment tracking, and delivery confirmation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3791,6 +4067,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Vehicle lifecycle management, driver compliance, fuel optimization, and DOT regulatory adherence.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3844,6 +4124,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Import/export customs documentation, tariff classification, duty calculation, and regulatory compliance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3897,6 +4181,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Route optimization, delivery scheduling, proof-of-delivery, and customer communication for final-mile delivery.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3947,6 +4235,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "ITIL change management with RFC submission, CAB review, implementation scheduling, and post-implementation review.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -3997,6 +4289,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "SOC incident triage, containment, eradication, forensic investigation, and recovery per NIST CSF.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4055,6 +4351,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Release pipeline management with build validation, staging promotion, production deployment gates, and rollback procedures.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4105,6 +4405,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Starter",
       "use_when": "IT service catalog request intake, approval routing, automated provisioning, and fulfillment tracking.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4155,6 +4459,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "NOC fault detection, alarm correlation, diagnosis, service restoration, and reason-for-outage reporting.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4213,6 +4521,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Service order processing, network resource assignment, provisioning, activation, and customer confirmation.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4263,6 +4575,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Customer billing inquiry investigation, charge validation, credit/adjustment authorization, and root cause fix.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4313,6 +4629,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "T&D infrastructure maintenance scheduling, crew dispatch, outage coordination, and work management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4363,6 +4683,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Wholesale energy market bidding, day-ahead/real-time scheduling, settlement, and imbalance management.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4421,6 +4745,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "AMI data collection, validation, estimation, billing integration, and customer usage analytics.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4471,6 +4799,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Solicitation development, bid evaluation, contract award, and administration per FAR/DFAR regulations.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4532,6 +4864,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Social services eligibility screening, determination, benefit calculation, and periodic recertification.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4585,6 +4921,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "FOIA and public records request intake, document search, legal review, redaction, and response.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4638,6 +4978,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Federal/state grant application, award management, monitoring, reporting, and closeout per Uniform Guidance.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4699,6 +5043,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Hotel guest lifecycle from reservation through post-stay with personalized service and real-time service recovery.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4749,6 +5097,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Advanced",
       "use_when": "Dynamic room pricing, inventory controls, distribution channel management, and demand forecasting.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",
@@ -4807,6 +5159,10 @@
       "schema": "threadlight.playbook/v1",
       "level": "Intermediate",
       "use_when": "Event inquiry handling, proposal generation, BEO creation, execution coordination, and post-event billing.",
+      "entry_skill": "threadlight-qualify",
+      "entry_artifacts": [
+        "qualification/sizing-manifest.json"
+      ],
       "build_skills": [
         "threadlight-design",
         "threadlight-local-test",

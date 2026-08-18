@@ -25,6 +25,15 @@ KEEP = [
 LEAK = re.compile(r"agentic[- ]?loop|threadlight-vnext|northcentralus|remote-gw|gpt-5\.1", re.I)
 EVENT_TAG = re.compile(r"event|trigger|schedul|webhook|cron|real[- ]?time|stream")
 REGULATED_TAG = re.compile(r"regulat|complian|hipaa|gdpr|sox|pci|audit")
+# High-volume / performance workloads MAY pull in the guarded load-evidence leg.
+VOLUME_TAG = re.compile(
+    r"high[- ]?volume|throughput|scalab|concurren|latency|load[- ]?test|"
+    r"peak[- ]?load|stress[- ]?test|requests?[- ]?per[- ]?second"
+)
+# Platform lifecycle / preview-drift signals pull in the plan-only upgrade scan.
+LIFECYCLE_TAG = re.compile(
+    r"preview|deprecat|migration|version[- ]?drift|compatib|upgrade|end[- ]?of[- ]?life"
+)
 COMPLEXITY_LEVELS = {
     "low": "Starter",
     "medium": "Intermediate",
@@ -36,15 +45,23 @@ CANON = [
     "threadlight-local-test",
     "threadlight-hitl-patterns",
     "threadlight-event-triggers",
+    "threadlight-connect",
+    "threadlight-ground",
     "threadlight-safe-check",
     "threadlight-redteam",
     "threadlight-govern",
     "threadlight-deploy",
     "threadlight-cicd",
+    "threadlight-loadtest",
     "threadlight-production-ready",
     "threadlight-evals",
     "threadlight-consumption-iq",
+    "threadlight-upgrade",
 ]
+# The no-repo qualification/sizing entry every process can start from BEFORE a
+# repo exists (Cowork-safe). It is deliberately NOT a build/runtime skill: it is
+# exposed as entry metadata only and is never injected into build_skills.
+ENTRY_SKILL = "threadlight-qualify"
 REGULATED = {
     "financial_services",
     "healthcare",
@@ -58,6 +75,9 @@ PREREQUISITES = [
     "azure-subscription",
 ]
 SKILL_ARTIFACTS = {
+    "threadlight-qualify": [
+        "qualification/sizing-manifest.json",
+    ],
     "threadlight-design": [
         "specs/foundation.md",
         "specs/SPEC.md",
@@ -76,6 +96,12 @@ SKILL_ARTIFACTS = {
         "src/triggers/*/",
         "infra/triggers/*.bicep",
     ],
+    "threadlight-connect": [
+        "specs/connect-manifest.json",
+    ],
+    "threadlight-ground": [
+        "specs/ground-manifest.json",
+    ],
     "threadlight-safe-check": [
         "docs/safe-check-post.md",
     ],
@@ -93,6 +119,9 @@ SKILL_ARTIFACTS = {
     "threadlight-cicd": [
         ".github/workflows/azd-deploy-prod.yml",
     ],
+    "threadlight-loadtest": [
+        "specs/load-manifest.json",
+    ],
     "threadlight-production-ready": [
         "docs/production-readiness-report.md",
         "tests/production-readiness-manifest.json",
@@ -103,6 +132,9 @@ SKILL_ARTIFACTS = {
     "threadlight-consumption-iq": [
         "docs/cost-projection.md",
         "specs/cost-manifest.json",
+    ],
+    "threadlight-upgrade": [
+        "specs/upgrade-manifest.json",
     ],
 }
 
@@ -152,12 +184,19 @@ def derive_build_skills(entry: dict) -> list[str]:
 
     if arr(entry.get("external_integrations")):
         need["threadlight-demo-data-factory"] = True
+        need["threadlight-connect"] = True
     if arr(entry.get("human_approvals")):
         need["threadlight-hitl-patterns"] = True
+    if arr(entry.get("knowledge_sources")):
+        need["threadlight-ground"] = True
 
     tags = [str(tag).lower() for tag in arr(entry.get("tags"))]
     if any(EVENT_TAG.search(tag) for tag in tags):
         need["threadlight-event-triggers"] = True
+    if any(VOLUME_TAG.search(tag) for tag in tags):
+        need["threadlight-loadtest"] = True
+    if any(LIFECYCLE_TAG.search(tag) for tag in tags):
+        need["threadlight-upgrade"] = True
 
     if entry.get("complexity") == "high":
         need["threadlight-production-ready"] = True
@@ -193,6 +232,8 @@ def decorate(entry: dict) -> dict:
         "schema": "threadlight.playbook/v1",
         "level": level_for_complexity(clean),
         "use_when": derive_use_when(clean),
+        "entry_skill": ENTRY_SKILL,
+        "entry_artifacts": list(SKILL_ARTIFACTS[ENTRY_SKILL]),
         "build_skills": build_skills,
         "run_skills": [],
         "run_skills_source": "generated-by-threadlight-design",

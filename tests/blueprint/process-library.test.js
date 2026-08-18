@@ -11,6 +11,8 @@ const REQUIRED = ['id', 'name', 'industry', 'complexity', 'summary', 'descriptio
 const INTERNAL = ['pregenerated_job_id'];
 const PLAYBOOK_PREREQUISITES = ['github-copilot', 'threadlight-skills', 'azure-subscription'];
 const PLAYBOOK_LEVELS = ['Starter', 'Intermediate', 'Advanced'];
+const ENTRY_SKILL = 'threadlight-qualify';
+const ENTRY_ARTIFACTS = ['qualification/sizing-manifest.json'];
 const ALLOWED_SKILLS = new Set(L.CANON);
 // NARROW leak scrub for third-party data: only true supply-chain / internal
 // markers. Generic business vocabulary (e.g. audit / regulatory / risk) is legitimate.
@@ -73,6 +75,12 @@ test('every entry has complete valid generated playbook metadata', () => {
       canonIndex = idx;
     }
     assert.deepStrictEqual(p.build_skills, L.deriveSkills(e), `${e.id} build_skills drift from deriveSkills`);
+
+    // threadlight-qualify is the no-repo Cowork entry — exposed as metadata on
+    // every entry, but NEVER injected into the deployed runtime skill list.
+    assert.strictEqual(p.entry_skill, ENTRY_SKILL, `${e.id} bad entry_skill`);
+    assert.deepStrictEqual(p.entry_artifacts, ENTRY_ARTIFACTS, `${e.id} bad entry_artifacts`);
+    assert.ok(!p.build_skills.includes(ENTRY_SKILL), `${e.id} qualify must not be a build skill`);
 
     assert.deepStrictEqual(p.run_skills, [], `${e.id} run_skills must stay empty`);
     assert.strictEqual(p.run_skills_source, 'generated-by-threadlight-design', `${e.id} bad run_skills_source`);

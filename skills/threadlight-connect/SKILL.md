@@ -12,8 +12,8 @@ description: >-
   not run it. USE FOR: mock-to-real swap, contract extraction, conformance
   tests, integration_state, real-drift, OBO evidence gate, role
   revalidation, connect-manifest, publish/republish. DO NOT USE FOR:
-  customer field mapping; OAuth on-behalf-of exchange itself (owned by
-  `entra-agent-id`; scaffolds around its evidence); role assignment
+  customer field mapping; OAuth on-behalf-of exchange (owned by
+  `entra-agent-id`); role assignment
   (`azure-rbac`); red-team scanning (threadlight-redteam); evals
   (threadlight-evals); AGT governance (threadlight-govern).
 metadata:

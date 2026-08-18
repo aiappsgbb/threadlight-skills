@@ -453,6 +453,27 @@
         <a href="./production.html">Back to production-ready&nbsp;&rarr;</a>
       </p>
     </section>
+
+    <section id="maintain" data-toc-id="maintain" data-toc-label="Lifecycle maintenance">
+      <h2><span class="n">04</span>Keeping a shipped pilot current: plan-only upgrades</h2>
+
+      <p>
+        The loop learns from runs; <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-upgrade"><code>threadlight-upgrade</code></a>
+        keeps an already-<strong>shipped</strong> pilot current between them. It scans
+        <strong>dependency pins</strong>, <strong>runtime policy</strong>, the
+        <strong>governance profile</strong> and <strong>model families</strong> against a
+        <strong>dated <code>compatibility-matrix.json</code></strong> and emits
+        <code>specs/upgrade-manifest.json</code> (<code>UPG-001..003</code>) plus one
+        <strong>ordered migration plan</strong>.
+      </p>
+      <p class="note">
+        It is <strong>plan-only</strong> &mdash; no network calls, no <code>--apply</code>,
+        and it never edits the project. Acting on the plan is a deliberate, human step, so a
+        preview-drift or a deprecated model family surfaces as a ranked recommendation you
+        choose to take &mdash; the same &ldquo;evidence first, change second&rdquo; discipline
+        the learn loop is built on.
+      </p>
+    </section>
   </article>
 </main>
 

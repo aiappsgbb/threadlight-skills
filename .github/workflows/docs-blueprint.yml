@@ -20,6 +20,13 @@ on:
       - "skills/threadlight-design/references/runtime-policy.json"
       - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
+      - "README.md"
+      - "plugin.json"
+      - "docs/funnel.html"
+      - "docs/production.html"
+      - "docs/self-improving.html"
+      - "docs/index.html"
+      - "docs/customize.html"
   push:
     branches: [main]
     paths:
@@ -36,6 +43,13 @@ on:
       - "skills/threadlight-design/references/runtime-policy.json"
       - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
+      - "README.md"
+      - "plugin.json"
+      - "docs/funnel.html"
+      - "docs/production.html"
+      - "docs/self-improving.html"
+      - "docs/index.html"
+      - "docs/customize.html"
   workflow_dispatch: {}
 
 jobs:

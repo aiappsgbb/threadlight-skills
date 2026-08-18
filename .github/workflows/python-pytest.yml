@@ -42,6 +42,23 @@ name: python-pytest
 #     derivation + a structural "shipped" guard that py_compiles every scaffold.
 #     Imports the receiver cores with NO azure SDKs installed — all azure.*
 #     imports are lazy — so it runs stdlib-only, no network)
+#   - skills/_shared/tests/                       (the shared threadlight.*/v1
+#     manifest envelope that the connect/ground/loadtest/upgrade gap-evidence
+#     legs all emit under — schema/validator parity, deterministic, no network)
+#   - skills/threadlight-qualify/tests/           (no-repo/Cowork qualification +
+#     sizing; includes the isolated Cowork bundle test that runs the BUILT
+#     docs/downloads/threadlight-qualify.zip — the workflow builds the zip in a
+#     preceding step so the bundle test has an artifact instead of skipping)
+#   - skills/threadlight-connect/tests/           (CONNECT leg — evidence-based
+#     mock→real tool swap gate; deterministic, no network)
+#   - skills/threadlight-ground/tests/            (GROUND leg — ACL/citation/
+#     refusal grounding evidence assessor; deterministic, no network)
+#   - skills/threadlight-loadtest/tests/          (LOAD leg — budget-capped load
+#     evidence with an injected fake adapter; deterministic, no network)
+#   - skills/threadlight-upgrade/tests/           (UPGRADE leg — plan-only
+#     compatibility/preview-drift scan against a fixture matrix; no network)
+#   - skills/threadlight-safe-check/tests/        (completeness gate, incl. the
+#     applied mock→real integration-binding recognition; static, no network)
 #
 # Every step is a hard gate — no `continue-on-error`. Stdlib-only suites that
 # expose `t_*` functions plus a main() instead of pytest-collectable `test_*`
@@ -86,6 +103,33 @@ jobs:
         run: python -m pytest scripts/ci/tests/ -v
       - name: Run threadlight-consumption-iq tests
         run: python -m pytest skills/threadlight-consumption-iq/tests/ -v
+      - name: Run threadlight shared-contract tests
+        # The shared manifest envelope (skills/_shared/manifest.py) that the
+        # connect/ground/loadtest/upgrade gap-evidence legs all emit under.
+        run: python -m pytest skills/_shared/tests/ -v
+      - name: Build Cowork skill zips (bundle artifact for the qualify bundle test)
+        # threadlight-qualify's tests/test_cowork_bundle.py runs the BUILT +
+        # extracted docs/downloads/threadlight-qualify.zip from outside the repo
+        # tree (empty PYTHONPATH) to prove the vendored cost runtime + dated
+        # pricing fixtures ride along. It SKIPS when the zip is absent, so build
+        # it here first — this step MUST precede "Run threadlight-qualify tests".
+        run: bash scripts/build-cowork-zips.sh
+      - name: Run threadlight-qualify tests
+        # No-repo/Cowork qualification & sizing. Includes the isolated Cowork
+        # bundle test that consumes the zip built in the previous step.
+        run: python -m pytest skills/threadlight-qualify/tests/ -v
+      - name: Run threadlight-connect tests
+        run: python -m pytest skills/threadlight-connect/tests/ -v
+      - name: Run threadlight-ground tests
+        run: python -m pytest skills/threadlight-ground/tests/ -v
+      - name: Run threadlight-loadtest tests
+        run: python -m pytest skills/threadlight-loadtest/tests/ -v
+      - name: Run threadlight-upgrade tests
+        run: python -m pytest skills/threadlight-upgrade/tests/ -v
+      - name: Run threadlight-safe-check tests
+        # Includes the applied mock→real integration binding recognition that
+        # threadlight-connect's --apply produces.
+        run: python -m pytest skills/threadlight-safe-check/tests/ -v
       - name: Run threadlight-design tests
         # Contract linter for a generated pilot's src/agent/skills/. The suite
         # also asserts the shipped examples/returns-triage-governed pilot stays
