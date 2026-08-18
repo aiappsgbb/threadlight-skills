@@ -513,7 +513,11 @@ shape-checked, flag or not:
 ```python
 section13 = extract_section_13(spec_text)  # unchanged existing check, shown for ordering
 if section13 is None:
-    fail.add("design.spec.no-section-13", NO_SECTION_13_MESSAGE)
+    fail.add(
+        "design.spec.no-section-13",
+        "SPEC.md § 13 (Assumptions & Open Questions) not found — "
+        "threadlight-design >= 1.7.0 must emit it",
+    )
     return
 
 section14 = extract_section(spec_text, 14)
@@ -548,10 +552,12 @@ adopted section 14, and is deprecated after that. Do not change any existing
 call site's behavior in this PR — the repository's own contract gate and the
 design-only E2E are the two callers that opt in (Step 5, Task 4).
 
-`NO_SECTION_13_MESSAGE` is the existing, unchanged message text already in
-`check_pilot_contract.py` — do not alter it; it is quoted here only to mark
-where the new section 14 block is inserted, immediately after the existing
-section 13 check and before the profile-gated early return.
+The section 13 `fail.add("design.spec.no-section-13", ...)` call above is the
+existing, unchanged check already in `check_pilot_contract.py` — do not alter
+its message text. It is shown here only for ordering: insert before the
+existing inline `fail.add("design.spec.no-section-13", ...)` block's `return`,
+the new section 14 block goes immediately after that `return` and before the
+profile-gated early return (`if profile != "fast-poc": return`).
 
 (The Fast-PoC callout text check that already follows the profile early
 return is unchanged.) Do not validate numeric values here. Incomplete values
@@ -3276,6 +3282,7 @@ import pytest
 
 import consumption_iq
 from actuals_sources import ActualsSourceError
+from value_model import ValueModelResult
 
 
 def test_parser_accepts_actuals_window_and_scope() -> None:
@@ -3608,11 +3615,21 @@ per-command variations:
 | `--subscription` | default `AZURE_SUBSCRIPTION_ID`; exit 2 if still unset | n/a | same as `actuals` |
 | `--resource-group` | default `AZURE_RESOURCE_GROUP`; exit 2 if still unset | n/a | same as `actuals` |
 | `--workspace-resource-id` | optional, default `None`, no env fallback | n/a | optional, default `None` |
-| `--spec` | default `DEFAULT_SPEC_PATH` | default `DEFAULT_SPEC_PATH` | default `DEFAULT_SPEC_PATH` |
-| `--actuals-manifest` | default `DEFAULT_ACTUALS_MANIFEST` | default `DEFAULT_ACTUALS_MANIFEST` | default `DEFAULT_ACTUALS_MANIFEST` |
+| `--spec` | default `DEFAULT_SPEC_PATH` | default `DEFAULT_SPEC_PATH` | already added by the existing `_common_args(run)` call — do not re-add |
+| `--actuals-manifest` | default `DEFAULT_ACTUALS_MANIFEST` | default `DEFAULT_ACTUALS_MANIFEST` | new flag, default `DEFAULT_ACTUALS_MANIFEST` |
 | `--forecast` | n/a | default `DEFAULT_OUTPUT_MANIFEST` | n/a |
-| `--reconciliation-manifest` | n/a | default `DEFAULT_RECONCILIATION_MANIFEST` | n/a (internal) |
-| `--report` | n/a | default `DEFAULT_RECONCILIATION_REPORT` | n/a (internal) |
+| `--report` / `--manifest` | n/a | n/a | already added by `_common_args(run)`; these stay the *projection* report/manifest paths, unrelated to actuals/reconciliation |
+| `--reconciliation-report` | n/a | n/a (`reconcile` uses its own `--report`) | new flag, default `DEFAULT_RECONCILIATION_REPORT` |
+| `--reconciliation-manifest` | n/a | default `DEFAULT_RECONCILIATION_MANIFEST` | new flag, default `DEFAULT_RECONCILIATION_MANIFEST` |
+
+`run` already has `--all` (`run.add_argument("--all", ...)`) and `--spec`
+(via `_common_args(run)`) from the existing pre-deploy/post-deploy projection
+flow — this task must not call a helper that re-adds `--spec` to `run`, and
+must not add a second `--all`. `run`'s existing `--report`/`--manifest` (also
+from `_common_args`) remain the projection outputs; the actuals and
+reconciliation sidecars get their own, differently named
+`--actuals-manifest` / `--reconciliation-report` / `--reconciliation-manifest`
+flags so the two output families never collide.
 
 `--start`/`--end` on `actuals` use argparse's own `required=True`, which
 already exits `2` on a missing flag — no extra code needed there. But
@@ -3627,6 +3644,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="phase", required=True)
 
     def _add_scope_args(sp: argparse.ArgumentParser, *, start_end_required: bool) -> None:
+        """`--start`/`--end`/`--subscription`/`--resource-group`/
+        `--workspace-resource-id` only. Deliberately does NOT add `--spec` or
+        any output-path flag: `actuals` adds its own `--spec` and
+        `--actuals-manifest` right below, and `run` already has `--spec` from
+        the existing `_common_args(run)` call, so re-adding it here would hit
+        argparse's "conflicting option string" error.
+        """
         sp.add_argument(
             "--start", type=date.fromisoformat, required=start_end_required,
         )
@@ -3640,13 +3664,13 @@ def build_parser() -> argparse.ArgumentParser:
             "--resource-group", default=os.environ.get("AZURE_RESOURCE_GROUP"),
         )
         sp.add_argument("--workspace-resource-id", default=None)
-        sp.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
-        sp.add_argument(
-            "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
-        )
 
     actuals_p = subparsers.add_parser("actuals")
     _add_scope_args(actuals_p, start_end_required=True)
+    actuals_p.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
+    actuals_p.add_argument(
+        "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
+    )
 
     reconcile_p = subparsers.add_parser("reconcile")
     reconcile_p.add_argument("--forecast", type=Path, default=DEFAULT_OUTPUT_MANIFEST)
@@ -3662,11 +3686,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--report", type=Path, default=DEFAULT_RECONCILIATION_REPORT,
     )
 
-    run_p = subparsers.add_parser("run")
-    run_p.add_argument("--all", action="store_true")
-    run_p.add_argument("--with-actuals", action="store_true")
-    _add_scope_args(run_p, start_end_required=False)
-    # ... existing run flags unchanged
+    # `run` is the existing subparser created above by `sub.add_parser("run")`,
+    # with `_common_args(run)` (already supplying `--spec`, `--report`,
+    # `--manifest`, `--pre-deploy`, etc.) and `run.add_argument("--all", ...)`
+    # already applied, unchanged. Do NOT call `_common_args(run)` again and do
+    # NOT add a second `--all` here — only add what `run` does not already
+    # have.
+    run.add_argument("--with-actuals", action="store_true")
+    _add_scope_args(run, start_end_required=False)
+    run.add_argument(
+        "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
+    )
+    run.add_argument(
+        "--reconciliation-report", type=Path,
+        default=DEFAULT_RECONCILIATION_REPORT,
+    )
+    run.add_argument(
+        "--reconciliation-manifest", type=Path,
+        default=DEFAULT_RECONCILIATION_MANIFEST,
+    )
     return parser
 
 
@@ -4429,9 +4467,14 @@ def test_unverified_unit_economics_does_not_pass_kpi003() -> None:
     evidence was unavailable, so `successful_interactions` is `null`. The KPI
     reader must gate on the unit-economics status, not just the envelope."""
     bundle = _cost_bundle(0.012)
-    reconciliation = json.loads(bundle["cost-reconciliation-manifest.json"])
+    # `_cost_bundle` values are already plain dicts, not JSON strings —
+    # `_make_ctx` does the `json.dumps` serialization itself when it writes
+    # each manifest to disk. Copy and mutate the dict directly instead of
+    # round-tripping through `json.loads`/`json.dumps` here.
+    reconciliation = dict(bundle["cost-reconciliation-manifest.json"])
+    reconciliation["unit_economics"] = dict(reconciliation["unit_economics"])
     reconciliation["unit_economics"]["status"] = "not-verified"
-    bundle["cost-reconciliation-manifest.json"] = json.dumps(reconciliation)
+    bundle["cost-reconciliation-manifest.json"] = reconciliation
     ctx = _make_ctx(
         src_text=_OBS_SRC,
         manifests={"evals-manifest.json": _evals_manifest(0.97), **bundle},
