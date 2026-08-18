@@ -7,8 +7,8 @@ description: >-
   sample, and gates mock -> real on conformance AND OBO user-scoped
   evidence AND required-role revalidation vs current identity. States:
   mock, real-unverified, real-verified, real-drift. Config writes (SPEC.md,
-  mcp-config.json) require --apply, only once verified; dry run yields a
-  nonempty apply plan, zero writes. Manual handoff — threadlight-auto does
+  mcp-config.json) require --apply plus a validated --real-endpoint, only
+  once verified; dry run yields a nonempty apply plan, zero writes. Manual handoff — threadlight-auto does
   not run it. USE FOR: mock-to-real swap, contract extraction, conformance
   tests, integration_state, real-drift, OBO evidence gate, role
   revalidation, connect-manifest, publish/republish. DO NOT USE FOR:
@@ -50,9 +50,12 @@ operator decision that requires operator-supplied evidence.
   conformance, gate the mock → real state transition on conformance + OBO +
   role evidence, and — only with `--apply` and only once fully verified —
   transactionally update `specs/SPEC.md`, the effective MCP config
-  (`infra/mcp-config.json` or the caller's actual equivalent), and the
+  (`infra/mcp-config.json` or the caller's actual equivalent) — pointing
+  `servers/<tool>.url` at the validated `--real-endpoint` — and the
   `connect-manifest.json` together, rolling back a partially-applied write so
-  the three never diverge.
+  the three never diverge. The real endpoint URL is persisted **only** in
+  mcp-config.json; the manifest records just safe `endpoint_configured` /
+  `endpoint_verified` booleans, never the URL.
 - **Does NOT** map or rename customer-specific fields. Field **mapping**
   (e.g. `cust_id` → `customer_id`) is explicitly out of scope — this leg
   proves *conformance* between a mock contract and a real response; it does
@@ -107,12 +110,14 @@ verify           check_conformance(): field-level diff against a captured
                  a non-object row is itself a difference at $.items[i]
 plan             build_apply_plan(): file-by-file plan, always computed,
                  read-only, no writes — even in a dry run
-apply            only with --apply AND target_state == real-verified:
-                 builds and fully validates the final manifest FIRST, then
-                 transactionally updates specs/SPEC.md + the MCP config +
-                 connect-manifest.json together (an in-process failure after
-                 any write rolls every applied file back to its prior
-                 bytes/mode) and records only the production changed paths
+apply            only with --apply AND target_state == real-verified AND a
+                 validated --real-endpoint: builds and fully validates the
+                 final manifest FIRST, points servers/<tool>.url at the real
+                 endpoint, then transactionally updates specs/SPEC.md + the MCP
+                 config + connect-manifest.json together (an in-process failure
+                 after any write — or a failed post-apply endpoint re-read —
+                 rolls every applied file back to its prior bytes/mode) and
+                 records only the production changed paths
 emit             on the non-apply / unverified path, write
                  specs/connect-manifest.json — shared envelope,
                  schema-validated, atomic, no credentials/tokens/customer
@@ -138,7 +143,9 @@ python3 scripts/connect.py \
   --evidence-captured-at 2026-08-10T09:00:00+00:00
 
 # Publish: config changes require --apply, and only take effect once fully
-# verified (conformance + OBO + role revalidation all pass).
+# verified (conformance + OBO + role revalidation all pass). --real-endpoint is
+# REQUIRED to apply — it is the real MCP URL that servers/<tool>.url is pointed
+# at (persisted only in mcp-config.json, never in the connect manifest).
 python3 scripts/connect.py \
   --project-root ../my-pilot \
   --tool-name returns_get_case \
@@ -148,6 +155,7 @@ python3 scripts/connect.py \
   --obo-evidence-file obo_evidence.json \
   --role-evidence-file role_evidence.json \
   --current-agent-identity agent-123 \
+  --real-endpoint https://api.example.com/mcp \
   --apply
 ```
 
@@ -177,6 +185,40 @@ non-empty string or null; and `present` / `user_scoped` / `revalidated` must be
 actual booleans (`user_scoped: "true"` as a string is rejected). Note
 `agent_identity` must equal the `--current-agent-identity` you pass, or the
 swap stays `real-unverified`.
+
+## The real endpoint — validated, bound, never leaked
+
+Publishing a swap requires the real endpoint the runtime will actually call,
+supplied via `--real-endpoint`. It is **optional for a dry run** (evidence
+assessment only) but **mandatory to `--apply`** a verified swap: applying
+without it is a controlled error with nothing written, so `INT-002` can never
+pass on an integration that was never actually bound.
+
+Before any write the endpoint is validated (a bad one raises with nothing
+written): it must be a non-empty `https` URL — `http` is allowed **only** for
+`localhost` / `127.0.0.1` — with a hostname, no embedded credentials
+(`user:pass@host`), no URL fragment, no credential/SAS/token query parameter,
+no whitespace/control characters, and it must **not** be the scaffolded mock
+(the same conservative delimited-`mock` marker `threadlight-safe-check` uses —
+so `mock` / `mocked` / `mockserver` are rejected while a real host that merely
+contains the substring, like `mockingbird`, is fine).
+
+On apply, `servers/<tool>.url` in the MCP config is (re)pointed at the
+validated endpoint, preserving unrelated servers, unrelated top-level config,
+and the tool entry's own safe unrelated fields (`type`, `headers`, …) while
+dropping mock/stdio transport fields mutually exclusive with a real HTTPS
+binding. A malformed existing `servers` / tool entry fails **closed** (raises,
+nothing written) rather than being silently overwritten. The predicted binding
+is checked before the transaction, and after the transaction the MCP config is
+re-read and its effective endpoint asserted to still equal the validated real
+endpoint — a mismatch rolls all three files back (or, if rollback also fails,
+raises the inconsistent-state error) so success is never reported on a
+divergent binding.
+
+The endpoint URL is persisted **only** in `mcp-config.json`. The connect
+manifest records just the safe booleans `evidence_summary.endpoint_configured`
+(a validated endpoint was supplied) and `evidence_summary.endpoint_verified`
+(the binding was persisted by a successful apply) — never the URL itself.
 
 `apply` is transactional across `SPEC.md`, the MCP config, **and**
 `connect-manifest.json`. The final manifest is built and fully schema-validated

@@ -529,20 +529,27 @@ def test_real_connect_manifest_emits_exactly_the_int_tuple() -> None:
 
 
 def test_real_connect_success_propagates_all_int_pass() -> None:
-    # A genuine APPLIED swap (apply=True) runs the real connect transaction,
-    # persisting integration_state real-verified into the real production
-    # SPEC.md + infra/mcp-config.json + specs/connect-manifest.json. Only then
-    # does INT-002 legitimately reach pass, and the consumer propagates all four.
+    # A genuine APPLIED swap (apply=True + a validated real endpoint) runs the
+    # real connect transaction, persisting integration_state real-verified into
+    # the real production SPEC.md + infra/mcp-config.json + connect-manifest.json,
+    # with servers[tool].url pointed at the real endpoint. Only then does INT-002
+    # legitimately reach pass, and the consumer propagates all four.
     ctx = _emit_real_connect_manifest(
         real_response={"items": [{"id": "R-1", "status": "open"}]},
-        apply=True)
+        apply=True,
+        real_endpoint="https://api.example.com/mcp")
     # the apply transaction actually wrote the real production config + advanced
     # the persisted binding — this is what makes INT-002 pass truthful.
-    assert (ctx.root / "infra" / "mcp-config.json").exists()
+    mcp_path = ctx.root / "infra" / "mcp-config.json"
+    assert mcp_path.exists()
+    mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
+    assert mcp["servers"]["returns_get_case"]["url"] == "https://api.example.com/mcp"
     manifest = json.loads(
         (ctx.root / "specs" / "connect-manifest.json").read_text(encoding="utf-8"))
     assert manifest["integration_state"] == "real-verified"
     assert manifest["target_state"] == "real-verified"
+    # privacy: the URL is persisted only in mcp-config.json, never the manifest.
+    assert "api.example.com" not in json.dumps(manifest)
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
         assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"

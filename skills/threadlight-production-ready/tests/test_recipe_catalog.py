@@ -84,6 +84,7 @@ def test_int_002_command_matches_connect_parser_contract():
     assert args.obo_evidence_file == "${OBO_EVIDENCE_FILE}"
     assert args.role_evidence_file == "${ROLE_EVIDENCE_FILE}"
     assert args.current_agent_identity == "${CURRENT_AGENT_IDENTITY}"
+    assert args.real_endpoint == "https://api.example.com/mcp"
     assert args.apply is True
 
 

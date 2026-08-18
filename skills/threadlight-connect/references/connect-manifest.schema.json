@@ -120,14 +120,16 @@
     },
     "evidence_summary": {
       "type": "object",
-      "required": ["obo_present", "obo_user_scoped", "roles_revalidated", "required_roles"],
+      "required": ["obo_present", "obo_user_scoped", "roles_revalidated", "required_roles", "endpoint_configured", "endpoint_verified"],
       "additionalProperties": false,
-      "description": "Booleans + role names only — never the raw OBO/role evidence payload (which may carry tokens).",
+      "description": "Booleans + role names only — never the raw OBO/role evidence payload (which may carry tokens) and never the real endpoint URL (which lives only in mcp-config.json).",
       "properties": {
         "obo_present": {"type": "boolean"},
         "obo_user_scoped": {"type": "boolean"},
         "roles_revalidated": {"type": "boolean"},
-        "required_roles": {"type": "array", "items": {"type": "string"}}
+        "required_roles": {"type": "array", "items": {"type": "string"}},
+        "endpoint_configured": {"type": "boolean", "description": "A validated real endpoint was supplied this run (URL itself is never persisted here)."},
+        "endpoint_verified": {"type": "boolean", "description": "The verified real endpoint binding was persisted by a successful --apply (never true on a dry run)."}
       }
     },
     "apply_plan": {

@@ -71,6 +71,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 # ---------------------------------------------------------------------------
 # Shared envelope (skills/_shared/manifest.py) — insert repo root on sys.path
@@ -105,6 +106,38 @@ _FORBIDDEN_KEY_MARKERS = (
     "token", "secret", "password", "credential", "authorization",
     "api_key", "apikey", "connection_string", "access_key",
 )
+
+# Conservative mock-endpoint marker — deliberately IDENTICAL to
+# threadlight-safe-check's `MOCK_ENDPOINT_MARKER` (see that skill's safe_check.py
+# G9.7). It matches `mock` only as a delimited token (`mock`, `mocked`,
+# `mockserver`, or `mock` bounded by non-alphanumerics such as `mock.example` /
+# `erp-mock` / `local mock`), NEVER as a substring of an unrelated word like
+# `mockingbird` or `smock`. Duplicated here (not cross-imported) to avoid
+# coupling two independently-shipped skills; a parity test pins the two patterns
+# to identical behaviour on the mock/mocked/mockserver/mockingbird corpus.
+MOCK_ENDPOINT_MARKER = re.compile(
+    r"(?<![A-Za-z0-9])(?:mockserver|mocked|mock)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+
+# Query-parameter names that would smuggle a credential / SAS / token into a
+# real endpoint URL. A name matches if it is one of these exact names OR
+# contains any `_FORBIDDEN_KEY_MARKERS` substring (so `access_token`,
+# `x-functions-key` … are caught too). Kept conservative so a benign param such
+# as `?region=westus` never trips it.
+_SECRET_QUERY_PARAM_NAMES = frozenset({
+    "sig", "sas", "sharedaccesssignature", "signature", "token", "access_token",
+    "accesstoken", "id_token", "refresh_token", "api_key", "apikey", "key",
+    "code", "secret", "client_secret", "password", "pwd", "credential",
+    "authorization", "auth", "accountkey", "x-functions-key", "awsaccesskeyid",
+})
+
+# Server-entry fields that describe a *mock* transport and are mutually
+# exclusive with a real HTTPS `url` binding. Removed from a preserved server
+# entry ONLY when present, so unrelated fields (`type`, `headers`, custom keys)
+# survive the swap untouched. A key that carries the delimited mock marker
+# (e.g. `mock_url`) is stripped too (see `_update_mcp_config`).
+_MOCK_TRANSPORT_FIELDS = ("command", "args")
 
 
 class ConnectEvidenceError(ValueError):
@@ -155,6 +188,127 @@ class ConnectInconsistentStateError(ConnectApplyError):
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Real-endpoint contract — validate the operator-supplied endpoint BEFORE any
+# write, and only ever persist it in the MCP config (never in the connect
+# manifest / evidence). A malformed / mock / credential-bearing endpoint raises
+# ConnectEvidenceError with nothing written, so INT-002 can never pass on a bad
+# binding.
+# ---------------------------------------------------------------------------
+_LOCAL_HTTP_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _endpoint_is_mock(endpoint) -> bool:
+    """True when a string carries the conservative, delimited mock marker.
+
+    Mirrors threadlight-safe-check's provably-mock predicate exactly: `mock`,
+    `mocked`, `mockserver`, and delimited `mock` count; substrings such as
+    `mockingbird` / `smock` never do. Non-strings are never mock.
+    """
+    return isinstance(endpoint, str) and bool(MOCK_ENDPOINT_MARKER.search(endpoint))
+
+
+def _reject_secret_query(query: str) -> None:
+    """Reject a URL query that carries any credential / SAS / token parameter.
+
+    Matches a param name that is a known secret name OR contains a forbidden
+    marker substring. A SAS URL always includes `sig=`, so this catches it
+    without over-flagging generic short params.
+    """
+    if not query:
+        return
+    for pair in query.split("&"):
+        if not pair:
+            continue
+        raw_name = pair.split("=", 1)[0]
+        name = unquote(raw_name).strip().lower()
+        if not name:
+            continue
+        if name in _SECRET_QUERY_PARAM_NAMES or any(
+            marker in name for marker in _FORBIDDEN_KEY_MARKERS
+        ):
+            raise ConnectEvidenceError(
+                "real_endpoint must not carry secret/SAS/token query parameters "
+                f"(offending parameter {name!r})"
+            )
+
+
+def _validate_real_endpoint(endpoint):
+    """Validate an operator-supplied real endpoint and return it unchanged.
+
+    Enforced, all BEFORE any file is touched (raising ConnectEvidenceError):
+      * a non-empty string with no whitespace / control characters;
+      * an `https` URL (or `http` ONLY for localhost / 127.0.0.1 / ::1) with a
+        hostname;
+      * no embedded userinfo (username / password / `user:pass@host`);
+      * no URL fragment;
+      * no credential / SAS / token query parameter;
+      * not the scaffolded mock (the same conservative marker safe-check uses).
+
+    The returned value is the exact validated ("normalized") string — the apply
+    transaction persists it verbatim into the MCP config and later re-reads it
+    for an exact-equality postcondition.
+    """
+    if not isinstance(endpoint, str) or not endpoint:
+        raise ConnectEvidenceError("real_endpoint must be a non-empty string")
+    for ch in endpoint:
+        if ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F:
+            raise ConnectEvidenceError(
+                "real_endpoint must not contain whitespace or control characters"
+            )
+    try:
+        parts = urlsplit(endpoint)
+        scheme = (parts.scheme or "").lower()
+        hostname = parts.hostname
+        username = parts.username
+        password = parts.password
+        _ = parts.port  # forces port validation (raises ValueError if malformed)
+    except ValueError as exc:
+        raise ConnectEvidenceError(f"real_endpoint is not a valid URL: {exc}") from exc
+    if not hostname:
+        raise ConnectEvidenceError("real_endpoint must include a hostname")
+    if scheme == "https":
+        pass
+    elif scheme == "http":
+        if hostname.lower() not in _LOCAL_HTTP_HOSTS:
+            raise ConnectEvidenceError(
+                "real_endpoint must use https (http is allowed only for "
+                "localhost / 127.0.0.1)"
+            )
+    else:
+        raise ConnectEvidenceError("real_endpoint must use the https scheme")
+    if username or password or "@" in parts.netloc:
+        raise ConnectEvidenceError(
+            "real_endpoint must not embed userinfo/credentials (user:pass@host)"
+        )
+    if parts.fragment:
+        raise ConnectEvidenceError("real_endpoint must not contain a URL fragment")
+    _reject_secret_query(parts.query)
+    if _endpoint_is_mock(endpoint):
+        raise ConnectEvidenceError(
+            "real_endpoint must be a real endpoint, not the scaffolded mock"
+        )
+    return endpoint
+
+
+def _effective_mcp_endpoint(mcp_data, tool_name: str):
+    """Extract the effective bound endpoint for *tool_name* from an MCP config:
+    ``servers[tool_name]["url"]`` when present and well-shaped, else ``None``.
+    Total (never raises) so it is safe in both the predicted-binding pre-check
+    and the post-apply re-read.
+    """
+    if not isinstance(mcp_data, dict):
+        return None
+    servers = mcp_data.get("servers")
+    if not isinstance(servers, dict):
+        return None
+    entry = servers.get(tool_name)
+    if not isinstance(entry, dict):
+        return None
+    url = entry.get("url")
+    return url if isinstance(url, str) else None
 
 
 def _safe_identifier(name: str) -> str:
@@ -803,12 +957,36 @@ def transition_integration(conformance: dict, obo_evidence, role_evidence, *, cu
 # ---------------------------------------------------------------------------
 # Phase: plan — always built, pure (read-only), no writes
 # ---------------------------------------------------------------------------
-def build_apply_plan(project_root, spec_path, mcp_config_path, tool_name: str) -> list:
+def build_apply_plan(
+    project_root,
+    spec_path,
+    mcp_config_path,
+    tool_name: str,
+    *,
+    real_endpoint_present: bool = False,
+) -> list:
+    """Build the file-by-file apply plan (read-only; always computed).
+
+    The MCP-config step's description reflects whether a validated real endpoint
+    is in hand: with one it names the target path/action (never the URL, so no
+    credential can leak into the manifest); without one it says the endpoint
+    must be supplied before ``--apply`` — so a dry run without an endpoint still
+    plans, but says exactly what is missing.
+    """
+    if real_endpoint_present:
+        mcp_description = (
+            f"Point the {tool_name} MCP server entry at the validated real endpoint"
+        )
+    else:
+        mcp_description = (
+            f"Point the {tool_name} MCP server entry at the real endpoint "
+            "(supply --real-endpoint before --apply)"
+        )
     root = Path(project_root)
     plan = []
     for rel_path, description in (
         (spec_path, f"Record {tool_name} as a real, evidence-verified integration"),
-        (mcp_config_path, f"Point the {tool_name} MCP server entry at the real endpoint"),
+        (mcp_config_path, mcp_description),
     ):
         action = "update" if (root / rel_path).exists() else "create"
         plan.append({"path": str(rel_path), "action": action, "description": description})
@@ -852,15 +1030,81 @@ def _update_spec_text(existing_text: str, tool_name: str, contract: dict, genera
     return prefix + "\n\n" + block + "\n"
 
 
-def _update_mcp_config(existing_data, tool_name: str, contract: dict, generated_at: str) -> dict:
+def _coerce_config_mapping(value, label: str) -> dict:
+    """Return a JSON-object config sub-mapping to mutate, failing CLOSED on a
+    malformed shape.
+
+    Absent (``None``) -> a fresh ``{}`` (start clean). An existing JSON object
+    is returned verbatim (its unrelated keys are preserved by the caller). Any
+    other shape (list, string, number, …) is malformed: raise
+    ``ConnectEvidenceError`` before any write rather than silently coercing or
+    overwriting it.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    raise ConnectEvidenceError(
+        f"existing mcp-config {label!r} must be a JSON object; got "
+        f"{type(value).__name__} — refusing to overwrite"
+    )
+
+
+def _update_mcp_config(
+    existing_data,
+    tool_name: str,
+    contract: dict,
+    generated_at: str,
+    real_endpoint: str,
+) -> dict:
+    """Bind ``servers[tool_name].url`` to the validated real endpoint AND record
+    the integration verification metadata, preserving all unrelated config.
+
+    * Unrelated top-level keys and unrelated `servers` / `integrations` entries
+      are copied through untouched.
+    * The tool's own server entry keeps its safe unrelated fields (`type`,
+      `headers`, custom keys); only its `url` is (re)pointed at the real
+      endpoint and any *mock-transport* field mutually exclusive with a real
+      HTTPS binding is dropped — a stdio `command`/`args`, or any field whose
+      key carries the delimited mock marker (e.g. `mock_url`).
+    * A malformed shape fails CLOSED: `servers` / `integrations` that are not
+      JSON objects, or an existing `servers[tool_name]` that is not a JSON
+      object, raise ``ConnectEvidenceError`` rather than being silently
+      overwritten.
+
+    The endpoint is persisted ONLY here (never in the connect manifest /
+    evidence).
+    """
     data = dict(existing_data) if isinstance(existing_data, dict) else {}
-    integrations = dict(data.get("integrations", {}))
+
+    integrations = dict(_coerce_config_mapping(data.get("integrations"), "integrations"))
     integrations[tool_name] = {
         "state": "real-verified",
         "verified_at": generated_at,
         "fields": [f["name"] for f in contract["fields"]],
     }
     data["integrations"] = integrations
+
+    servers = dict(_coerce_config_mapping(data.get("servers"), "servers"))
+    prior_entry = servers.get(tool_name, _MISSING)
+    if prior_entry is _MISSING:
+        entry: dict = {}
+    elif isinstance(prior_entry, dict):
+        entry = dict(prior_entry)  # preserve safe unrelated server fields
+    else:
+        raise ConnectEvidenceError(
+            f"existing mcp-config servers[{tool_name!r}] must be a JSON object; "
+            f"got {type(prior_entry).__name__} — refusing to overwrite"
+        )
+    # Drop mutually-exclusive mock/stdio transport fields ONLY when present, so a
+    # real HTTPS `url` is never left contradicted by a leftover mock transport.
+    for mock_field in _MOCK_TRANSPORT_FIELDS:
+        entry.pop(mock_field, None)
+    for key in [k for k in entry if isinstance(k, str) and _endpoint_is_mock(k)]:
+        entry.pop(key, None)
+    entry["url"] = real_endpoint
+    servers[tool_name] = entry
+    data["servers"] = servers
     return data
 
 
@@ -923,7 +1167,7 @@ def _serialize_manifest(manifest: dict) -> str:
     return json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def _commit_transaction(targets: list) -> None:
+def _commit_transaction(targets: list, postcondition=None) -> None:
     """Commit a set of file writes as one rollback-aware transaction.
 
     `targets` is an ordered list of `(destination: Path, new_text: str)`. A temp
@@ -935,6 +1179,11 @@ def _commit_transaction(targets: list) -> None:
     already-committed destination is rolled back to its captured prior bytes/mode
     (or removed if it did not previously exist) and `ConnectApplyError` is raised
     — every destination survives at its prior bytes/mode/existence.
+
+    An optional `postcondition` callable runs AFTER all replaces succeed but is
+    treated as part of the transaction: if it raises, every committed
+    destination is rolled back exactly as a failed replace would be (so a failed
+    post-apply invariant never leaves a half-applied swap on disk).
 
     Honest limitation: each `os.replace` is individually atomic, but the set of
     replaces is not a single filesystem transaction, so this cannot defend
@@ -960,7 +1209,7 @@ def _commit_transaction(targets: list) -> None:
         raise ConnectApplyError(f"failed to stage transactional write: {exc}") from exc
 
     # Commit one destination at a time, tracking which landed so a later failure
-    # can roll the earlier ones back.
+    # (a replace error OR a failed postcondition) can roll the earlier ones back.
     replaced: list = []
     pending = dict(staged)  # destination -> temp_path not yet replaced
     try:
@@ -968,6 +1217,9 @@ def _commit_transaction(targets: list) -> None:
             os.replace(temp_path, dest)
             replaced.append(dest)
             del pending[dest]
+        if postcondition is not None:
+            # Part of the transaction: a failing invariant rolls all three back.
+            postcondition()
     except BaseException as exc:
         # Discard temp files for destinations we never reached.
         for temp_path in pending.values():
@@ -997,35 +1249,57 @@ def _commit_verified_apply(
     tool_name: str,
     contract: dict,
     generated_at: str,
-    existing_mcp: dict,
+    new_mcp_data: dict,
     manifest: dict,
+    real_endpoint: str,
 ) -> None:
     """Commit the mock-to-real swap — SPEC.md, mcp-config.json, AND the connect
     manifest — as one rollback-aware transaction.
 
-    The manifest passed here is the FINAL, already-validated manifest (built and
-    schema-checked by the caller *before* any file is mutated). The three new
-    file contents are assembled up front, then handed to `_commit_transaction`,
-    so a staging/replace failure on any of the three leaves all three at their
-    prior bytes/modes/existence. `atomic_write_json` is deliberately NOT used for
-    the manifest here — emitting it after the config commit would put it outside
-    the transaction and could leave SPEC/mcp updated while the manifest lagged.
+    `new_mcp_data` is the already-validated updated MCP config (built and its
+    predicted binding checked by the caller *before* any file is mutated). The
+    three new file contents are assembled up front, then handed to
+    `_commit_transaction`, so a staging/replace failure on any of the three
+    leaves all three at their prior bytes/modes/existence. `atomic_write_json`
+    is deliberately NOT used for the manifest here — emitting it after the config
+    commit would put it outside the transaction and could leave SPEC/mcp updated
+    while the manifest lagged.
+
+    A post-apply postcondition re-reads mcp-config.json from disk and asserts its
+    effective endpoint still equals the validated real endpoint (and is not a
+    mock); if it does not, the whole transaction is rolled back (or, if rollback
+    also fails, ConnectInconsistentStateError is raised) so success is never
+    reported on a divergent persisted binding.
     """
     spec_full = root / spec_path
     mcp_full = root / mcp_config_path
 
     existing_spec = spec_full.read_text(encoding="utf-8") if spec_full.exists() else ""
     new_spec_text = _update_spec_text(existing_spec, tool_name, contract, generated_at)
-    new_mcp_data = _update_mcp_config(existing_mcp, tool_name, contract, generated_at)
     new_mcp_text = json.dumps(new_mcp_data, indent=2, sort_keys=True) + "\n"
     new_manifest_text = _serialize_manifest(manifest)
+
+    def _verify_persisted_binding() -> None:
+        try:
+            persisted = json.loads(mcp_full.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ConnectApplyError(
+                f"post-apply re-read of {mcp_config_path} failed: {exc}"
+            ) from exc
+        effective = _effective_mcp_endpoint(persisted, tool_name)
+        if effective != real_endpoint or _endpoint_is_mock(effective):
+            raise ConnectApplyError(
+                "post-apply verification failed: persisted MCP endpoint for "
+                f"{tool_name} does not match the validated real endpoint"
+            )
 
     _commit_transaction(
         [
             (spec_full, new_spec_text),
             (mcp_full, new_mcp_text),
             (manifest_full, new_manifest_text),
-        ]
+        ],
+        postcondition=_verify_persisted_binding,
     )
 
 
@@ -1310,7 +1584,19 @@ def build_connect_manifest(
     generated_at,
     evidence_captured_at=None,
     valid_for_hours=24,
+    endpoint_configured=False,
+    endpoint_verified=False,
 ) -> dict:
+    # `endpoint_configured` / `endpoint_verified` are SAFE booleans only — the
+    # real endpoint URL itself is never persisted in the manifest (it lives only
+    # in mcp-config.json). `endpoint_configured` records that a validated real
+    # endpoint was supplied this run; `endpoint_verified` records that the
+    # verified binding was persisted by a successful --apply.
+    evidence_summary = {
+        **evidence_summary,
+        "endpoint_configured": bool(endpoint_configured),
+        "endpoint_verified": bool(endpoint_verified),
+    }
     payload = {
         "tool_name": tool_name,
         "integration_state": integration_state,
@@ -1356,7 +1642,10 @@ _MANIFEST_TOP_LEVEL_KEYS = {
 }
 _CONFORMANCE_KEYS = {"passed", "evaluated", "item_count", "differences"}
 _DIFFERENCE_KEYS = {"field", "expected", "actual", "path"}
-_EVIDENCE_SUMMARY_KEYS = {"obo_present", "obo_user_scoped", "roles_revalidated", "required_roles"}
+_EVIDENCE_SUMMARY_KEYS = {
+    "obo_present", "obo_user_scoped", "roles_revalidated", "required_roles",
+    "endpoint_configured", "endpoint_verified",
+}
 _CONTRACT_KEYS = {"schema", "tool_name", "generated_at", "fields"}
 _CONTRACT_FIELD_KEYS = {"name", "required", "type", "cardinality"}
 _FINDING_REQUIRED_KEYS = {"id", "status"}
@@ -1561,6 +1850,12 @@ def validate_connect_manifest(manifest: dict) -> None:
     _require_boolean(
         evidence_summary["roles_revalidated"], "evidence_summary.roles_revalidated"
     )
+    _require_boolean(
+        evidence_summary["endpoint_configured"], "evidence_summary.endpoint_configured"
+    )
+    _require_boolean(
+        evidence_summary["endpoint_verified"], "evidence_summary.endpoint_verified"
+    )
     required_roles = _require_array(
         evidence_summary["required_roles"], "evidence_summary.required_roles"
     )
@@ -1625,6 +1920,7 @@ def run_connect(
     obo_evidence=None,
     role_evidence=None,
     apply: bool = False,
+    real_endpoint=None,
     spec_path=DEFAULT_SPEC_PATH,
     mcp_config_path=DEFAULT_MCP_CONFIG_PATH,
     manifest_path=DEFAULT_MANIFEST_PATH,
@@ -1656,15 +1952,49 @@ def run_connect(
 
     apply_verified = apply and target_state == "real-verified"
 
+    # Real-endpoint contract. The endpoint is OPTIONAL for dry-run evidence
+    # assessment but MANDATORY to apply a verified real binding. A supplied
+    # endpoint is validated whenever present (so a mock / credential-bearing /
+    # malformed endpoint is rejected before any write); a missing endpoint on a
+    # verified apply is a controlled ConnectEvidenceError so INT-002 can never
+    # pass on an unbound swap. The validated URL is persisted ONLY in
+    # mcp-config.json, never in the manifest/evidence.
+    normalized_endpoint = None
+    if real_endpoint is not None:
+        normalized_endpoint = _validate_real_endpoint(real_endpoint)
+    if apply_verified and normalized_endpoint is None:
+        raise ConnectEvidenceError(
+            "real_endpoint is required to apply a verified real binding "
+            "(--real-endpoint https://...); refusing to persist a mock->real swap "
+            "without the real endpoint"
+        )
+
     existing_mcp = None
+    new_mcp_data = None
     if apply_verified:
         # Validate the apply destination before generating any artifact. This
         # keeps the CLI's "(nothing written)" guarantee literal when an existing
         # MCP config is corrupt or is not a JSON object, and the parsed value is
         # reused when the transaction builds the new config.
         existing_mcp = _load_existing_mcp_config(root / mcp_config_path, mcp_config_path)
+        # Build the updated config (fails CLOSED on a malformed servers/tool
+        # shape) and verify the PREDICTED effective endpoint equals the
+        # validated real endpoint and is not mock — all before any file is
+        # touched, so a bad binding aborts with nothing written.
+        new_mcp_data = _update_mcp_config(
+            existing_mcp, tool_name, contract, generated_at, normalized_endpoint
+        )
+        predicted = _effective_mcp_endpoint(new_mcp_data, tool_name)
+        if predicted != normalized_endpoint or _endpoint_is_mock(predicted):
+            raise ConnectApplyError(
+                "predicted MCP binding does not resolve to the validated real "
+                f"endpoint for {tool_name} — refusing to apply (nothing written)"
+            )
 
-    apply_plan = build_apply_plan(root, spec_path, mcp_config_path, tool_name)
+    apply_plan = build_apply_plan(
+        root, spec_path, mcp_config_path, tool_name,
+        real_endpoint_present=normalized_endpoint is not None,
+    )
 
     # Deterministic PLANNED changed_paths: a verified apply rewrites exactly the
     # two production config files (never the manifest or the conformance test),
@@ -1709,6 +2039,8 @@ def run_connect(
         generated_at=generated_at,
         evidence_captured_at=evidence_captured_at,
         valid_for_hours=valid_for_hours,
+        endpoint_configured=normalized_endpoint is not None,
+        endpoint_verified=apply_verified,
     )
 
     if apply_verified:
@@ -1723,14 +2055,16 @@ def run_connect(
 
     if apply_verified:
         # SPEC.md + mcp-config.json + the connect manifest are committed as ONE
-        # rollback-aware transaction. An in-process failure rolls every
-        # already-applied file back to its prior bytes/mode/existence and raises
-        # ConnectApplyError (or, if a rollback also fails,
-        # ConnectInconsistentStateError) — so the three never diverge and the
-        # prior manifest survives. No atomic_write_json runs after the commit.
+        # rollback-aware transaction. An in-process failure (or a failed
+        # post-apply endpoint-binding re-read) rolls every already-applied file
+        # back to its prior bytes/mode/existence and raises ConnectApplyError
+        # (or, if a rollback also fails, ConnectInconsistentStateError) — so the
+        # three never diverge and the prior manifest survives. No
+        # atomic_write_json runs after the commit.
         _commit_verified_apply(
             root, spec_path, mcp_config_path, manifest_full_path,
-            tool_name, contract, generated_at, existing_mcp, manifest,
+            tool_name, contract, generated_at, new_mcp_data, manifest,
+            normalized_endpoint,
         )
         integration_state = "real-verified"
     else:
@@ -1777,6 +2111,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--role-evidence-file", default=None, help="JSON required-role revalidation evidence")
     parser.add_argument("--current-agent-identity", default=None)
     parser.add_argument(
+        "--real-endpoint", default=None,
+        help=(
+            "the real MCP endpoint URL to bind servers[<tool-name>].url to. "
+            "Optional for a dry run (evidence assessment only); REQUIRED with "
+            "--apply once the swap verifies. Must be an https URL (http only for "
+            "localhost/127.0.0.1) with no embedded credentials/SAS/token and no "
+            "mock marker. Persisted only in mcp-config.json — never in the "
+            "connect manifest."
+        ),
+    )
+    parser.add_argument(
         "--evidence-captured-at", default=None,
         help=(
             "ISO-8601 timestamp the real evidence was captured at; recorded as "
@@ -1808,6 +2153,7 @@ def main(argv=None) -> int:
             obo_evidence=_load_json_arg(args.obo_evidence_file),
             role_evidence=_load_json_arg(args.role_evidence_file),
             apply=args.apply,
+            real_endpoint=args.real_endpoint,
             spec_path=args.spec_path,
             mcp_config_path=args.mcp_config_path,
             manifest_path=args.manifest_path,

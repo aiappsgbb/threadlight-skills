@@ -37,6 +37,11 @@ from skills._shared.manifest import ManifestValidationError  # noqa: E402
 PINNED = "2026-08-17T10:00:00+00:00"
 CURRENT_IDENTITY = "agent-123"
 
+# A well-formed real endpoint the apply-verified tests bind to. It is a real
+# (non-mock) https URL with no embedded credentials, so it passes
+# _validate_real_endpoint and is the value persisted into servers[tool].url.
+REAL_ENDPOINT = "https://api.example.com/mcp"
+
 TOOL_SOURCE = "return {'id': row['id'], 'status': row.get('status')}"
 SAMPLE = {"id": "R-1001", "status": "open", "internal": "do-not-leak"}
 
@@ -82,6 +87,7 @@ def _run(tmp_path, **kwargs):
         sample=SAMPLE,
         real_response=passing_real_response(),
         generated_at=PINNED,
+        real_endpoint=REAL_ENDPOINT,
     )
     defaults.update(kwargs)
     return run_connect(**defaults)
@@ -350,24 +356,42 @@ def test_apply_true_with_full_evidence_updates_state_and_records_changed_paths(t
 
     mcp_config = json.loads((tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_text(encoding="utf-8"))
     assert mcp_config["integrations"]["returns_get_case"]["state"] == "real-verified"
+    # The core binding: the tool's MCP server entry now points at the real
+    # endpoint (not a mock) — this is what INT-002 pass and safe-check's
+    # binding check both key on.
+    assert mcp_config["servers"]["returns_get_case"]["url"] == REAL_ENDPOINT
 
     manifest = json.loads((tmp_path / connect.DEFAULT_MANIFEST_PATH).read_text(encoding="utf-8"))
     assert manifest["integration_state"] == "real-verified"
     assert manifest["target_state"] == "real-verified"
     assert set(manifest["changed_paths"]) == {connect.DEFAULT_SPEC_PATH, connect.DEFAULT_MCP_CONFIG_PATH}
+    # The URL is persisted ONLY in mcp-config.json — never in the manifest.
+    assert REAL_ENDPOINT not in json.dumps(manifest)
+    assert manifest["evidence_summary"]["endpoint_configured"] is True
+    assert manifest["evidence_summary"]["endpoint_verified"] is True
 
 
 def test_apply_preserves_prior_unrelated_mcp_config_content(tmp_path):
     mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
     mcp_full.parent.mkdir(parents=True, exist_ok=True)
-    mcp_full.write_text(json.dumps({"servers": {"other-tool": {"type": "http"}}}), encoding="utf-8")
+    mcp_full.write_text(
+        json.dumps({
+            "servers": {"other-tool": {"type": "http", "url": "https://other.example/mcp"}},
+            "unrelated_top_level": {"keep": True},
+        }),
+        encoding="utf-8",
+    )
 
     obo, role = full_evidence()
     _run(tmp_path, obo_evidence=obo, role_evidence=role,
          current_agent_identity=CURRENT_IDENTITY, apply=True)
 
     mcp_config = json.loads(mcp_full.read_text(encoding="utf-8"))
-    assert mcp_config["servers"] == {"other-tool": {"type": "http"}}
+    # Unrelated server + unrelated top-level config survive untouched.
+    assert mcp_config["servers"]["other-tool"] == {"type": "http", "url": "https://other.example/mcp"}
+    assert mcp_config["unrelated_top_level"] == {"keep": True}
+    # The tool's own server entry is added and bound to the real endpoint.
+    assert mcp_config["servers"]["returns_get_case"]["url"] == REAL_ENDPOINT
     assert "returns_get_case" in mcp_config["integrations"]
 
 
@@ -385,9 +409,340 @@ def test_second_apply_persists_integration_state_across_runs(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Requirement 8, bullet 6 — malformed evidence and write failure preserve
-# whatever valid manifest/config already existed on disk.
+# The real-endpoint contract — validate, persist ONLY in mcp-config, gate
+# INT-002 pass on the persisted real binding.
 # ---------------------------------------------------------------------------
+def _seed_mock_mcp_config(tmp_path, *, tool="returns_get_case", url="https://returns-mockserver.internal/mcp"):
+    """Seed a starting mcp-config whose tool server still points at a mock."""
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.write_text(json.dumps({"servers": {tool: {"type": "http", "url": url}}}), encoding="utf-8")
+    return mcp_full
+
+
+def test_apply_replaces_starting_mock_url_and_binding_is_verified(tmp_path):
+    # Requirement 9, bullet 1 — starting mock url + full evidence + real endpoint:
+    # servers[tool].url is replaced, integration_state real-verified, INT-002
+    # pass, and safe-check sees NO integration-binding gap.
+    mcp_full = _seed_mock_mcp_config(tmp_path)
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=True)
+
+    assert result["integration_state"] == "real-verified"
+    mcp_config = json.loads(mcp_full.read_text(encoding="utf-8"))
+    assert mcp_config["servers"]["returns_get_case"]["url"] == REAL_ENDPOINT
+    assert mcp_config["integrations"]["returns_get_case"]["state"] == "real-verified"
+    assert _finding_status_map(result)["INT-002"] == "pass"
+
+    # safe-check must now read the persisted binding as real (no gap). Import it
+    # lazily so this suite has no hard dependency on the sibling skill layout.
+    safe_check = _import_safe_check()
+    gaps = safe_check.integration_binding_gaps(
+        [{"id": "returns_get_case", "availability": "real"}], mcp_config
+    )
+    assert gaps == []
+
+
+def test_dry_run_with_endpoint_does_not_edit_and_int_002_not_verified(tmp_path):
+    # Requirement 9, bullet 2 — a dry run with full evidence + a valid endpoint
+    # writes no production config and holds INT-002 not-verified (the binding is
+    # not persisted), but the plan names the validated-endpoint action.
+    mcp_full = _seed_mock_mcp_config(tmp_path)
+    prior = mcp_full.read_bytes()
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=False)
+
+    assert result["changed_paths"] == []
+    assert mcp_full.read_bytes() == prior  # mock url untouched
+    assert _finding_status_map(result)["INT-002"] == "not-verified"
+    es = result["manifest"]["evidence_summary"]
+    assert es["endpoint_configured"] is True
+    assert es["endpoint_verified"] is False
+    mcp_step = next(s for s in result["apply_plan"] if s["path"] == connect.DEFAULT_MCP_CONFIG_PATH)
+    assert "validated real endpoint" in mcp_step["description"]
+
+
+def test_dry_run_without_endpoint_still_assesses_and_plan_flags_requirement(tmp_path):
+    # Requirement 9, bullet 2 + requirement 5 — a dry run WITHOUT an endpoint
+    # still assesses conformance/evidence (target real-verified) but the plan
+    # says the endpoint must be supplied before --apply.
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=False,
+                  real_endpoint=None)
+
+    assert result["target_state"] == "real-verified"
+    assert result["changed_paths"] == []
+    assert result["manifest"]["evidence_summary"]["endpoint_configured"] is False
+    mcp_step = next(s for s in result["apply_plan"] if s["path"] == connect.DEFAULT_MCP_CONFIG_PATH)
+    assert "supply --real-endpoint before --apply" in mcp_step["description"]
+
+
+def test_apply_verified_without_endpoint_raises_and_writes_nothing(tmp_path):
+    # Requirement 9, bullet 3 — apply=True reaching real-verified but no endpoint
+    # is a controlled ConnectEvidenceError with nothing written (INT-002 can
+    # never pass on an unbound swap).
+    obo, role = full_evidence()
+    with pytest.raises(ConnectEvidenceError, match="real_endpoint is required"):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True, real_endpoint=None)
+
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    assert not (tmp_path / "tests" / "threadlight_connect").exists()
+
+
+@pytest.mark.parametrize(
+    "bad_endpoint",
+    [
+        "https://returns-mock.internal/mcp",       # delimited 'mock'
+        "https://mocked-api.example.com/mcp",      # 'mocked'
+        "https://mockserver.example.com/mcp",      # 'mockserver'
+        "http://api.example.com/mcp",              # non-local http
+        "ftp://api.example.com/mcp",               # wrong scheme
+        "https:///nohost/mcp",                     # no hostname
+        "https://api.example.com/mcp#frag",        # fragment
+        "https://user:pass@api.example.com/mcp",   # embedded userinfo
+        "https://api.example.com/mcp?token=abc",   # secret query param
+        "https://blob.core.windows.net/c?sv=2021-08-06&sig=deadbeef",  # SAS
+        "https://api.example.com/ mcp",            # whitespace
+        "",                                        # empty
+    ],
+)
+def test_apply_rejects_bad_endpoint_with_nothing_written(tmp_path, bad_endpoint):
+    # Requirement 9, bullet 3 — mock / credential / SAS / malformed endpoints are
+    # all rejected before any write.
+    obo, role = full_evidence()
+    with pytest.raises(ConnectEvidenceError):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True, real_endpoint=bad_endpoint)
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+
+
+def test_apply_allows_mockingbird_substring_endpoint(tmp_path):
+    # Requirement 9, bullet 3 — a real host that merely CONTAINS 'mock' as a
+    # substring (mockingbird) is NOT a mock endpoint and must be accepted.
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=True,
+                  real_endpoint="https://mockingbird.example.com/mcp")
+    assert result["integration_state"] == "real-verified"
+    mcp_config = json.loads((tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_text(encoding="utf-8"))
+    assert mcp_config["servers"]["returns_get_case"]["url"] == "https://mockingbird.example.com/mcp"
+
+
+def test_apply_allows_localhost_http_endpoint(tmp_path):
+    # http is permitted ONLY for localhost / 127.0.0.1 (local testing).
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=True,
+                  real_endpoint="http://127.0.0.1:8080/mcp")
+    assert result["integration_state"] == "real-verified"
+
+
+def test_apply_preserves_unrelated_server_fields_and_strips_mock_transport(tmp_path):
+    # Requirement 9, bullet 4 + bullet on preservation — the tool's own server
+    # entry keeps safe unrelated fields (headers, type) while the mutually
+    # exclusive mock/stdio transport fields (command/args/mock_url) are dropped.
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.write_text(json.dumps({"servers": {"returns_get_case": {
+        "type": "http",
+        "headers": {"x-trace": "keep"},
+        "command": "python",
+        "args": ["mock_server.py"],
+        "mock_url": "https://returns-mock.internal/mcp",
+    }}}), encoding="utf-8")
+
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=True)
+
+    entry = json.loads(mcp_full.read_text(encoding="utf-8"))["servers"]["returns_get_case"]
+    assert entry["url"] == REAL_ENDPOINT
+    assert entry["headers"] == {"x-trace": "keep"}  # safe unrelated field preserved
+    assert entry["type"] == "http"                  # safe unrelated field preserved
+    assert "command" not in entry                   # stdio transport dropped
+    assert "args" not in entry
+    assert "mock_url" not in entry                  # mock-marker field dropped
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        {"servers": []},                                   # servers not an object
+        {"servers": {"returns_get_case": "not-a-dict"}},   # tool entry not an object
+        {"servers": {"returns_get_case": ["x"]}},          # tool entry a list
+        {"integrations": 5},                               # integrations not an object
+    ],
+)
+def test_apply_fails_closed_on_malformed_mcp_shape(tmp_path, malformed):
+    # Requirement 9, bullet on malformed shapes — a malformed servers/tool/
+    # integrations shape fails CLOSED (raises, nothing written) rather than
+    # silently overwriting it.
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.write_text(json.dumps(malformed), encoding="utf-8")
+    prior = mcp_full.read_bytes()
+
+    obo, role = full_evidence()
+    with pytest.raises(ConnectEvidenceError):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True)
+
+    assert mcp_full.read_bytes() == prior  # malformed file untouched
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+    # the fail-closed check runs before the conformance-test scaffold is written
+    assert not (tmp_path / "tests" / "threadlight_connect").exists()
+
+
+def test_failed_apply_restores_prior_mock_url_byte_identical(tmp_path, monkeypatch):
+    # Requirement 9, bullet on transaction failures — a second-destination write
+    # failure rolls the whole transaction back, restoring the STARTING mock url
+    # (and SPEC + manifest) byte-for-byte.
+    mcp_full = _seed_mock_mcp_config(tmp_path)
+    spec_full = tmp_path / connect.DEFAULT_SPEC_PATH
+    spec_full.parent.mkdir(parents=True, exist_ok=True)
+    spec_full.write_text("# Prior SPEC\n", encoding="utf-8")
+    # a prior manifest so all three destinations have prior bytes
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=False, generated_at=PINNED)
+    # reset the mcp to a mock url (the dry run above did not touch it)
+    mcp_full.write_text(json.dumps({"servers": {"returns_get_case": {"type": "http", "url": "https://returns-mockserver.internal/mcp"}}}), encoding="utf-8")
+    prior_mcp = mcp_full.read_bytes()
+    prior_spec = spec_full.read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    real_replace = connect.os.replace
+    manifest_name = Path(connect.DEFAULT_MANIFEST_PATH).name
+
+    def _boom(source, destination):
+        # Let SPEC + mcp-config commit, then fail the manifest replace (third
+        # destination) so both earlier commits roll back.
+        if Path(destination).name == manifest_name:
+            raise OSError("simulated failure on manifest destination")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(connect.os, "replace", _boom)
+
+    with pytest.raises(ConnectApplyError) as excinfo:
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-19T10:00:00+00:00")
+    assert not isinstance(excinfo.value, connect.ConnectInconsistentStateError)
+
+    # the STARTING mock url is restored, not the real endpoint
+    assert mcp_full.read_bytes() == prior_mcp
+    assert json.loads(mcp_full.read_text(encoding="utf-8"))["servers"]["returns_get_case"]["url"] == "https://returns-mockserver.internal/mcp"
+    assert spec_full.read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+
+
+def test_post_apply_binding_mismatch_rolls_back_all_three(tmp_path, monkeypatch):
+    # Requirement 9 + requirement 4 — if the persisted mcp-config's effective
+    # endpoint does NOT match the validated real endpoint after commit (a
+    # tampered/racey write), the post-apply postcondition rolls back all three
+    # and surfaces an error without a pass.
+    mcp_full = _seed_mock_mcp_config(tmp_path)
+    spec_full = tmp_path / connect.DEFAULT_SPEC_PATH
+    spec_full.parent.mkdir(parents=True, exist_ok=True)
+    spec_full.write_text("# Prior SPEC\n", encoding="utf-8")
+    obo, role = full_evidence()
+    _run(tmp_path, obo_evidence=obo, role_evidence=role,
+         current_agent_identity=CURRENT_IDENTITY, apply=False, generated_at=PINNED)
+    mcp_full.write_text(json.dumps({"servers": {"returns_get_case": {"type": "http", "url": "https://returns-mockserver.internal/mcp"}}}), encoding="utf-8")
+    prior_mcp = mcp_full.read_bytes()
+    prior_spec = spec_full.read_bytes()
+    prior_manifest = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes()
+
+    # The predicted-binding pre-check and the post-apply re-read both call
+    # _effective_mcp_endpoint. Tamper ONLY the second call (the post-commit
+    # re-read) so the pre-check passes and the postcondition is what trips.
+    real_effective = connect._effective_mcp_endpoint
+    calls = {"n": 0}
+
+    def _tampered(mcp_data, tool_name):
+        calls["n"] += 1
+        value = real_effective(mcp_data, tool_name)
+        if calls["n"] >= 2 and value == REAL_ENDPOINT:
+            return "https://api.tampered.example.com/mcp"
+        return value
+
+    monkeypatch.setattr(connect, "_effective_mcp_endpoint", _tampered)
+
+    with pytest.raises(ConnectApplyError, match="post-apply verification failed"):
+        _run(tmp_path, obo_evidence=obo, role_evidence=role,
+             current_agent_identity=CURRENT_IDENTITY, apply=True,
+             generated_at="2026-08-19T10:00:00+00:00")
+
+    # all three rolled back to their prior bytes; no pass persisted
+    assert mcp_full.read_bytes() == prior_mcp
+    assert spec_full.read_bytes() == prior_spec
+    assert (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_bytes() == prior_manifest
+
+
+def test_manifest_never_persists_the_real_endpoint_url(tmp_path):
+    # Privacy — the validated URL lives ONLY in mcp-config.json, never in the
+    # connect manifest (or its evidence_summary).
+    _seed_mock_mcp_config(tmp_path)
+    obo, role = full_evidence()
+    result = _run(tmp_path, obo_evidence=obo, role_evidence=role,
+                  current_agent_identity=CURRENT_IDENTITY, apply=True,
+                  real_endpoint="https://secret-host.example.com/mcp")
+    on_disk = (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_text(encoding="utf-8")
+    assert "secret-host.example.com" not in on_disk
+    assert "secret-host.example.com" not in json.dumps(result["manifest"])
+
+
+# ---------------------------------------------------------------------------
+# Requirement 6 — the connect mock-endpoint predicate is byte-identical to
+# threadlight-safe-check's. Rather than cross-import, pin them with a parity
+# corpus (mock / mocked / mockserver match; mockingbird does not).
+# ---------------------------------------------------------------------------
+def _import_safe_check():
+    import importlib.util
+
+    sc_path = REPO_ROOT / "skills" / "threadlight-safe-check" / "scripts" / "safe_check.py"
+    spec = importlib.util.spec_from_file_location("threadlight_safe_check", sc_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    ("candidate", "is_mock"),
+    [
+        ("https://mock.example/mcp", True),
+        ("erp-mock.internal", True),
+        ("svc_mock", True),
+        ("https://mocked-api.local/mcp", True),
+        ("https://mockserver.internal/mcp", True),
+        ("returns-MockServer", True),
+        ("local mock", True),
+        ("https://mockingbird.example.com/mcp", False),
+        ("https://smock.contoso.com/mcp", False),
+        ("https://mockapifactory.io/mcp", False),
+        ("https://erp.contoso.com/mcp", False),
+    ],
+)
+def test_mock_marker_parity_with_safe_check(candidate, is_mock):
+    safe_check = _import_safe_check()
+    connect_says_mock = connect._endpoint_is_mock(candidate)
+    safe_check_says_mock = bool(safe_check.MOCK_ENDPOINT_MARKER.search(candidate))
+    assert connect_says_mock == is_mock
+    assert connect_says_mock == safe_check_says_mock, (
+        f"connect and safe-check disagree on {candidate!r}"
+    )
+
+
+
 def test_malformed_obo_evidence_raises_and_preserves_prior_manifest(tmp_path):
     obo, role = full_evidence()
     _run(tmp_path, obo_evidence=obo, role_evidence=role,
@@ -631,9 +986,26 @@ def test_build_apply_plan_reports_create_when_targets_absent(tmp_path):
         {
             "path": "infra/mcp-config.json",
             "action": "update" if (tmp_path / "infra/mcp-config.json").exists() else "create",
-            "description": "Point the returns_get_case MCP server entry at the real endpoint",
+            "description": (
+                "Point the returns_get_case MCP server entry at the real endpoint "
+                "(supply --real-endpoint before --apply)"
+            ),
         },
     ]
+
+
+def test_build_apply_plan_with_endpoint_names_validated_binding_without_url(tmp_path):
+    # When a validated real endpoint is in hand the plan says so — but never
+    # leaks the URL itself into the (manifest-persisted) plan.
+    plan = build_apply_plan(
+        tmp_path, "specs/SPEC.md", "infra/mcp-config.json", "returns_get_case",
+        real_endpoint_present=True,
+    )
+    mcp_step = next(s for s in plan if s["path"] == "infra/mcp-config.json")
+    assert mcp_step["description"] == (
+        "Point the returns_get_case MCP server entry at the validated real endpoint"
+    )
+    assert "http" not in mcp_step["description"]  # no URL leaked
 
 
 def test_build_apply_plan_reports_update_when_targets_exist(tmp_path):
@@ -1265,6 +1637,8 @@ def _manifest_with_all_nested_items():
         (("evidence_summary",), "obo_user_scoped"),
         (("evidence_summary",), "roles_revalidated"),
         (("evidence_summary",), "required_roles"),
+        (("evidence_summary",), "endpoint_configured"),
+        (("evidence_summary",), "endpoint_verified"),
         (("contract",), "schema"),
         (("contract",), "tool_name"),
         (("contract",), "generated_at"),
@@ -2332,6 +2706,7 @@ def test_cli_apply_failure_reports_three_unchanged_not_blanket_claim(tmp_path, c
         "--obo-evidence-file", str(tmp_path / "obo.json"),
         "--role-evidence-file", str(tmp_path / "role.json"),
         "--current-agent-identity", CURRENT_IDENTITY,
+        "--real-endpoint", REAL_ENDPOINT,
         "--apply",
     ]
     assert connect.main(apply_args) == 0  # establish a prior applied state
