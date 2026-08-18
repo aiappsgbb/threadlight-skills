@@ -220,6 +220,14 @@ def test_apply_false_with_full_evidence_plans_without_writing(tmp_path):
     }
     assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
     assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+    # The evidence supports the swap, but a dry run has NOT persisted the
+    # binding: INT-002 must stay not-verified (never pass) with a static detail
+    # pointing at the un-run --apply.
+    int_002 = next(
+        f for f in result["manifest"]["findings"] if f["id"] == "INT-002"
+    )
+    assert int_002["status"] == "not-verified"
+    assert "--apply has not persisted the binding" in int_002["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -1975,6 +1983,60 @@ def test_findings_full_success_all_pass_and_manifest_complete(tmp_path):
     # complete when fully evaluated, even though the manifest also records a
     # successful verified apply
     assert result["manifest"]["status"] == "complete"
+
+
+def test_findings_int_002_pass_requires_applied_binding_not_just_evidence(tmp_path):
+    # INT-002 pass keys on the PERSISTED integration_state, not the evidence
+    # alone. A dry run (apply=False) with full evidence computes target_state
+    # real-verified, yet integration_state stays mock — so INT-002 must remain
+    # not-verified with the static "evidence supports the swap but --apply has
+    # not persisted the binding" detail, while INT-001/003/004 legitimately pass.
+    obo, role = full_evidence()
+    dry = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=False,
+    )
+    assert dry["target_state"] == "real-verified"
+    assert dry["integration_state"] == "mock"
+    dry_statuses = _finding_status_map(dry)
+    assert dry_statuses["INT-001"] == "pass"
+    assert dry_statuses["INT-002"] == "not-verified"
+    assert dry_statuses["INT-003"] == "pass"
+    assert dry_statuses["INT-004"] == "pass"
+    int_002 = next(f for f in dry["manifest"]["findings"] if f["id"] == "INT-002")
+    assert int_002["detail"] == (
+        "evidence supports the swap to real-verified, but --apply has not "
+        "persisted the binding"
+    )
+    # The SAME evidence, now applied, persists the binding and flips INT-002 to
+    # pass — the only path to pass is a successful apply transaction.
+    applied = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    assert applied["integration_state"] == "real-verified"
+    assert _finding_status_map(applied)["INT-002"] == "pass"
+
+
+def test_findings_int_002_pass_holds_on_reconfirming_dry_run_after_apply(tmp_path):
+    # Once a successful apply persists real-verified, a LATER dry run (apply=
+    # False) that re-confirms the same full evidence keeps INT-002 pass — the
+    # binding is genuinely persisted at real-verified, so re-confirmation must
+    # not regress it to not-verified.
+    obo, role = full_evidence()
+    first = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True, generated_at=PINNED,
+    )
+    assert first["integration_state"] == "real-verified"
+    second = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=False,
+        generated_at="2026-08-18T10:00:00+00:00",
+    )
+    assert second["integration_state"] == "real-verified"
+    assert second["target_state"] == "real-verified"
+    assert _finding_status_map(second)["INT-002"] == "pass"
 
 
 def test_findings_drift_conformance_and_binding_must_fix(tmp_path):

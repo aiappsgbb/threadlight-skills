@@ -1146,20 +1146,26 @@ def _int_001_conformance(conformance: dict) -> dict:
     }
 
 
-def _int_002_binding(target_state: str) -> dict:
-    """INT-002 — runtime binding / mock->real state (keyed on this run's
-    evidence-computed ``target_state``).
+def _int_002_binding(target_state: str, integration_state: str) -> dict:
+    """INT-002 — runtime binding / mock->real state.
 
-    real-verified -> pass; real-drift -> must-fix (the runtime must never bind
-    to a drifting endpoint); mock / real-unverified -> not-verified (the real,
-    non-mock binding is not yet verified).
+    Keyed on BOTH this run's evidence-computed ``target_state`` AND the
+    ``integration_state`` this manifest actually persists (which stays ``mock``
+    on a dry run and only advances to ``real-verified`` inside a *successful*
+    ``--apply`` transaction). The binding is only ever ``pass`` once the swap is
+    both proven by evidence AND persisted — never on evidence alone.
+
+      * ``real-drift`` target -> must-fix, regardless of ``--apply`` or any
+        previously persisted state (the runtime must never bind to a drifting
+        endpoint);
+      * ``real-verified`` target AND a persisted ``real-verified`` binding ->
+        pass (evidence supports the swap and ``--apply`` has persisted it);
+      * ``real-verified`` target but the binding is NOT persisted (a dry run —
+        ``integration_state`` still ``mock``) -> not-verified: the evidence
+        supports the swap but ``--apply`` has not persisted the binding;
+      * mock / real-unverified target -> not-verified (the real, non-mock
+        binding is not yet verified).
     """
-    if target_state == "real-verified":
-        return {
-            "id": "INT-002",
-            "status": "pass",
-            "detail": "evidence advances the binding to real-verified (mock fully swapped)",
-        }
     if target_state == "real-drift":
         return {
             "id": "INT-002",
@@ -1167,6 +1173,24 @@ def _int_002_binding(target_state: str) -> dict:
             "detail": (
                 "real endpoint drifted from the mock contract (real-drift); the "
                 "runtime must not bind to a drifting endpoint"
+            ),
+        }
+    if target_state == "real-verified":
+        if integration_state == "real-verified":
+            return {
+                "id": "INT-002",
+                "status": "pass",
+                "detail": (
+                    "binding persisted at real-verified (mock fully swapped and "
+                    "applied)"
+                ),
+            }
+        return {
+            "id": "INT-002",
+            "status": "not-verified",
+            "detail": (
+                "evidence supports the swap to real-verified, but --apply has "
+                "not persisted the binding"
             ),
         }
     return {
@@ -1236,11 +1260,17 @@ def _int_004_roles(normalized_role: dict, current_agent_identity) -> dict:
 def _build_findings(
     conformance: dict,
     target_state: str,
+    integration_state: str,
     normalized_obo: dict,
     normalized_role: dict,
     current_agent_identity,
 ) -> list:
     """Emit the four stable INT-001..004 findings, exactly one of each, in order.
+
+    ``integration_state`` is the state THIS manifest persists (``real-verified``
+    only inside a successful ``--apply`` transaction, otherwise the prior
+    persisted state) — INT-002 keys its ``pass`` on it so a dry run never claims
+    an applied binding.
 
     Detailed field-level conformance differences stay in
     ``conformance.differences`` — never expanded into dynamic finding IDs — so
@@ -1248,7 +1278,7 @@ def _build_findings(
     """
     return [
         _int_001_conformance(conformance),
-        _int_002_binding(target_state),
+        _int_002_binding(target_state, integration_state),
         _int_003_identity(normalized_obo),
         _int_004_roles(normalized_role, current_agent_identity),
     ]
@@ -1671,6 +1701,7 @@ def run_connect(
         findings=_build_findings(
             conformance,
             target_state,
+            manifest_integration_state,
             normalized_obo,
             normalized_role,
             current_agent_identity,

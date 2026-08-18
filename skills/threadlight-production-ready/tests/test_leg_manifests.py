@@ -529,11 +529,47 @@ def test_real_connect_manifest_emits_exactly_the_int_tuple() -> None:
 
 
 def test_real_connect_success_propagates_all_int_pass() -> None:
+    # A genuine APPLIED swap (apply=True) runs the real connect transaction,
+    # persisting integration_state real-verified into the real production
+    # SPEC.md + infra/mcp-config.json + specs/connect-manifest.json. Only then
+    # does INT-002 legitimately reach pass, and the consumer propagates all four.
     ctx = _emit_real_connect_manifest(
-        real_response={"items": [{"id": "R-1", "status": "open"}]})
+        real_response={"items": [{"id": "R-1", "status": "open"}]},
+        apply=True)
+    # the apply transaction actually wrote the real production config + advanced
+    # the persisted binding — this is what makes INT-002 pass truthful.
+    assert (ctx.root / "infra" / "mcp-config.json").exists()
+    manifest = json.loads(
+        (ctx.root / "specs" / "connect-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["integration_state"] == "real-verified"
+    assert manifest["target_state"] == "real-verified"
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
         assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_real_connect_dry_run_holds_int_002_not_verified_while_others_pass() -> None:
+    # A dry run (apply=False) with FULL evidence proves conformance, OBO, and
+    # role revalidation, but does NOT persist the binding: integration_state
+    # stays mock even though target_state is real-verified. The producer emits
+    # INT-002 not-verified (evidence supports the swap, but --apply has not
+    # persisted the binding) while INT-001/003/004 reflect the completed
+    # evidence as pass. The consumer must not let the un-applied binding claim
+    # readiness — so production-ready and safe-check agree on the applied state.
+    ctx = _emit_real_connect_manifest(
+        real_response={"items": [{"id": "R-1", "status": "open"}]},
+        apply=False)
+    # a dry run writes NO production config — nothing is actually bound.
+    assert not (ctx.root / "infra" / "mcp-config.json").exists()
+    manifest = json.loads(
+        (ctx.root / "specs" / "connect-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["integration_state"] == "mock"
+    assert manifest["target_state"] == "real-verified"
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["INT-002"].status == "not-verified"   # binding not persisted
+    assert f["INT-001"].status == "pass"           # conformance verified
+    assert f["INT-003"].status == "pass"           # OBO user-scoped
+    assert f["INT-004"].status == "pass"           # roles revalidated
 
 
 def test_real_connect_drift_propagates_must_fix() -> None:

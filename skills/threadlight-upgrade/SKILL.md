@@ -3,19 +3,18 @@ name: threadlight-upgrade
 description: >-
   UPGRADE leg: PLAN-ONLY compatibility/preview-drift scanner. Scans dependency
   pins, hosted-agent runtime policy, governance profile, and model families
-  against a versioned compatibility-matrix.json, emitting threadlight.upgrade/v1
-  with UPG-001 (matrix/dependency staleness), UPG-002 (preview/expiry drift),
-  UPG-003 (source verification), plus one ordered, deduplicated migration plan.
-  No network calls; source verification is fixture-driven. Unavailable source ->
-  exact "Official source unavailable; no latest version was inferred.", never
-  fabricates latest_version. Version compare is stdlib-only, numeric, never
+  against a compatibility-matrix.json, emitting threadlight.upgrade/v1 with
+  UPG-001 (matrix/dependency staleness), UPG-002 (preview/expiry drift),
+  UPG-003 (source verification), plus one ordered, deduped migration plan. No
+  network calls; source verification is fixture-driven, and an unavailable
+  source never fabricates latest_version. Version compare is numeric, never
   lexical/guessed. NEVER edits the project; no --apply exists. Read-only;
-  project-inspection inputs and the manifest output stay within --project-root,
-  while --matrix-path/--source-results-path are explicit operator-supplied
-  read-only fixtures. Persists only IDs/versions/dates/safe source
-  strings, never secrets. Handoff to an edit is manual. USE FOR: drift scanning,
-  preview-to-GA planning, deprecation tripwires, upgrade-manifest. DO NOT USE
-  FOR: applying edits, live lookups, ACL/citation grounding, cross-leg gating.
+  inputs and manifest stay within --project-root;
+  --matrix-path/--source-results-path are operator fixtures. Persists only
+  IDs/versions/dates/safe source strings, never secrets. Handoff to an edit is
+  manual. USE FOR: drift scanning, preview-to-GA planning, deprecation
+  tripwires, upgrade-manifest. DO NOT USE FOR: applying edits, live lookups,
+  ACL/citation grounding, cross-leg gating.
 metadata:
   version: "0.1.0"
 ---

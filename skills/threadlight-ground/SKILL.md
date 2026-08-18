@@ -1,28 +1,20 @@
 ---
 name: threadlight-ground
 description: >-
-  GROUND leg: assesses already-produced ACL/citation/refusal probe evidence
-  into a threadlight.ground/v1 manifest (GRD-001 ACL, GRD-002 citation,
-  GRD-003 refusal, GRD-004 freshness/coverage/baseline). The SPEC-derived
-  knowledge_sources list is the authoritative inventory: every source's
-  enabled control (ACL when permission_model=acl, citations when
-  citation_required, refusal when refuse_when_unsupported) must be covered by
-  evidence carrying that source_id, never inferred across sources. Missing
-  source/control evidence, ambiguous expected_entitled, or missing runs ->
-  not-verified, never guessed; a proven leak (an unentitled principal given
-  any document outside its explicit allowed_document_ids, subsets included) ->
-  must-fix. Explicit expected_entitled is required - no naive name heuristic.
-  An executed must-fix/should-fix with complete coverage is still complete
-  evidence; status is partial only when evidence is missing/not-verified.
-  Malformed evidence shapes raise GroundEvidenceError before any output.
-  Persists only source metadata, principal/document IDs, allowlisted finding
-  detail, telemetry, and a retrieval-quality baseline reference - never
-  content, prompts, completions, tokens/credentials, or customer payloads.
-  Manual handoff - threadlight-auto never runs probes. USE FOR: grounding
-  evidence, ACL leak detection, citation validation, refusal checks,
-  ground-manifest, knowledge_sources gate. DO NOT USE FOR: Foundry IQ
-  retrieval, quality scoring (threadlight-evals), live probes, cross-leg
-  readiness gating (threadlight-production-ready).
+  GROUND leg: assesses ACL/citation/refusal probe evidence into a
+  threadlight.ground/v1 manifest (GRD-001..004: ACL, citation, refusal,
+  freshness/coverage/baseline). Each SPEC knowledge_source's enabled control
+  must be evidenced under its own source_id, never inferred across sources.
+  expected_entitled is required (no name heuristic); missing/ambiguous evidence
+  -> not-verified, never guessed; a proven leak (an unentitled principal handed
+  a document outside its allowed_document_ids) -> must-fix. Malformed evidence
+  raises GroundEvidenceError before any output. Persists only source metadata,
+  principal/document IDs and allowlisted detail - never content, prompts,
+  completions, tokens/credentials, or payloads. Manual handoff -
+  threadlight-auto never runs probes. USE FOR: grounding evidence, ACL leak
+  detection, citation validation, refusal checks, ground-manifest,
+  knowledge_sources gate. DO NOT USE FOR: Foundry IQ retrieval, quality
+  scoring, live probes, cross-leg readiness gating.
 metadata:
   version: "0.1.0"
 ---
