@@ -554,10 +554,10 @@ design-only E2E are the two callers that opt in (Step 5, Task 4).
 
 The section 13 `fail.add("design.spec.no-section-13", ...)` call above is the
 existing, unchanged check already in `check_pilot_contract.py` — do not alter
-its message text. It is shown here only for ordering: insert before the
-existing inline `fail.add("design.spec.no-section-13", ...)` block's `return`,
-the new section 14 block goes immediately after that `return` and before the
-profile-gated early return (`if profile != "fast-poc": return`).
+its message text. It is shown here only for ordering: retain the existing
+inline `fail.add("design.spec.no-section-13", ...)` block and its `return`
+statement as-is, then insert the new section 14 block immediately after that
+return and before the profile-gated early return (`if profile != "fast-poc": return`).
 
 (The Fast-PoC callout text check that already follows the profile early
 return is unchanged.) Do not validate numeric values here. Incomplete values
