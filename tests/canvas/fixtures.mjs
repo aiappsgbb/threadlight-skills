@@ -3,25 +3,50 @@ import { fileURLToPath } from "node:url";
 
 const FIXTURE_TIME = new Date("2026-08-06T08:00:00Z");
 
+// Exact finding-id set each live-leg producer emits (one each), keyed by the
+// per-file schema. Mirrors LEG_ENVELOPE_CONTRACTS in the registry so a default
+// envelope built here is VALID against the projector's strict trust boundary.
+const LEG_FINDING_IDS = {
+  "threadlight-connect-manifest/v1": ["INT-001", "INT-002", "INT-003", "INT-004"],
+  "threadlight.ground/v1": ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+  "threadlight.load/v1": ["LOAD-001", "LOAD-002", "LOAD-003"],
+  "threadlight.upgrade/v1": ["UPG-001", "UPG-002", "UPG-003"],
+};
+
 /**
  * Build a shared-envelope leg manifest (skills/_shared/manifest.py shape:
  * schema / tool_version / generated_at / freshness / status / findings). Used
  * by the projector tests for the connect / ground / load / upgrade legs.
+ *
+ * By default the full required finding set for `schema` is emitted with every
+ * finding `pass`, producing a manifest that VALIDATES against the projector's
+ * strict trust boundary. Pass `overrides` to flip individual finding statuses
+ * (e.g. `{ "GRD-001": "must-fix" }`), or `findings` to supply a raw list
+ * verbatim (used by the negative tests that deliberately forge the shape).
  */
 export function legEnvelope({
-  schema = "threadlight.leg/v1",
+  schema = "threadlight.ground/v1",
   status = "complete",
-  findings = [],
+  overrides = {},
+  findings,
+  toolVersion = "0.1.0",
   generatedAt = FIXTURE_TIME.toISOString(),
   validForHours = 24,
+  sourceOldestAt = null,
 } = {}) {
+  const resolvedFindings =
+    findings ??
+    (LEG_FINDING_IDS[schema] ?? []).map((id) => ({
+      id,
+      status: overrides[id] ?? "pass",
+    }));
   return {
     schema,
-    tool_version: "0.1.0",
+    tool_version: toolVersion,
     generated_at: generatedAt,
-    freshness: { valid_for_hours: validForHours, source_oldest_at: null },
+    freshness: { valid_for_hours: validForHours, source_oldest_at: sourceOldestAt },
     status,
-    findings,
+    findings: resolvedFindings,
   };
 }
 

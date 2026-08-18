@@ -791,6 +791,33 @@ def test_unparseable_manifest_is_not_verified() -> None:
     assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
 
 
+@pytest.mark.parametrize("filename,finding_id", [
+    ("connect-manifest.json", "INT-001"),
+    ("ground-manifest.json", "GRD-001"),
+    ("load-manifest.json", "LOAD-001"),
+    ("upgrade-manifest.json", "UPG-001"),
+])
+def test_non_utf8_leg_manifest_is_not_verified(filename: str, finding_id: str) -> None:
+    # Non-UTF-8 bytes on a leg artifact must be treated as unparseable evidence:
+    # the reader raises UnicodeDecodeError (a ValueError, not an OSError), which
+    # must be caught at the leg trust boundary rather than crashing the scan.
+    from pathlib import Path as _Path
+    ctx = _make_ctx()
+    (_Path(ctx.root) / "specs" / filename).write_bytes(b"\xff\xfe\x00\x81\x9c not utf-8")
+
+    # Neither the low-level reader/loader nor the finding projector may raise.
+    assert pr._read_leg_manifest(ctx, filename) is None
+    assert pr._load_leg_manifest(ctx, filename) is None
+
+    findings = pr._check_gap_leg_manifests(ctx)
+    finding = _by_id(findings)[finding_id]
+    # Untrusted bytes never certify readiness: the related finding degrades to
+    # not-verified with a "run the leg" hint, and nothing is scored as pass.
+    assert finding.status == "not-verified"
+    assert filename in finding.detail
+    assert all(f.status == "not-verified" for f in findings if f.detail and filename in f.detail)
+
+
 def test_gap_findings_registered_in_expected_pillars() -> None:
     cat = pr.FINDING_CATALOG
     expected_pillar = {

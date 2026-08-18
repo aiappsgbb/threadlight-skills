@@ -164,6 +164,14 @@ async function projectLeg(skillId, envelope, now = NOW) {
   });
 }
 
+async function projectLegModel(skillId, envelope, now = NOW) {
+  return withFixture("empty", async ({ workspace, writeJson }) => {
+    await writeJson(LEG[skillId], envelope);
+    const model = await projectWorkspace(workspace, { now });
+    return { model, skill: findSkill(model, skillId) };
+  });
+}
+
 test("partial and aborted envelopes do not render complete", async () => {
   const partial = await projectLeg(
     "threadlight-ground",
@@ -183,7 +191,6 @@ test("a fresh complete envelope renders complete", async () => {
     legEnvelope({
       schema: "threadlight-connect-manifest/v1",
       status: "complete",
-      findings: [{ id: "INT-001", status: "pass" }],
     }),
   );
   assert.equal(complete.status, "complete");
@@ -195,9 +202,8 @@ test("a stale complete envelope must not render complete", async () => {
     legEnvelope({
       schema: "threadlight.upgrade/v1",
       status: "complete",
-      // 3 days before NOW, past the leg's 24h freshness window.
+      // 3 days before NOW, past the envelope's own 24h validity window.
       generatedAt: "2026-08-03T09:00:00Z",
-      findings: [{ id: "UPG-001", status: "pass" }],
     }),
   );
   assert.equal(stale.status, "stale");
@@ -209,10 +215,207 @@ test("a must-fix finding fails the leg even in a complete envelope", async () =>
     legEnvelope({
       schema: "threadlight.ground/v1",
       status: "complete",
-      findings: [{ id: "GRD-001", status: "must-fix" }],
+      overrides: { "GRD-001": "must-fix" },
     }),
   );
   assert.equal(failed.status, "failed");
+});
+
+// --- Strict trust boundary: malformed leg evidence never renders complete ----
+
+test("an unknown envelope status ('done') is rejected as malformed, not complete", async () => {
+  const { model, skill } = await projectLegModel(
+    "threadlight-connect",
+    legEnvelope({ schema: "threadlight-connect-manifest/v1", status: "done" }),
+  );
+  assert.equal(skill.status, "failed");
+  const error = model.errors.find(
+    (candidate) => candidate.code === "leg-envelope-invalid",
+  );
+  assert.ok(error, "a payload-free leg-envelope-invalid error is surfaced");
+  assert.equal(error.path, "specs/connect-manifest.json");
+  // The safe error echoes only the expected shape, never the forged value.
+  assert.doesNotMatch(error.message, /done/);
+});
+
+test("a leg manifest missing a required envelope key renders failed", async () => {
+  const envelope = legEnvelope({ schema: "threadlight.load/v1" });
+  delete envelope.tool_version;
+  const skill = await projectLeg("threadlight-loadtest", envelope);
+  assert.equal(skill.status, "failed");
+});
+
+test("a leg manifest with the wrong schema for its path renders failed", async () => {
+  // A ground-schema envelope written to the connect leg's path: the projector
+  // pins schema identity per file, so the mismatched producer is rejected.
+  const skill = await projectLeg(
+    "threadlight-connect",
+    legEnvelope({ schema: "threadlight.ground/v1", status: "complete" }),
+  );
+  assert.equal(skill.status, "failed");
+});
+
+test("a leg manifest with unexpected finding ids renders failed", async () => {
+  const skill = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      findings: [
+        { id: "GRD-001", status: "pass" },
+        { id: "GRD-002", status: "pass" },
+        { id: "GRD-003", status: "pass" },
+        { id: "WRONG-999", status: "pass" },
+      ],
+    }),
+  );
+  assert.equal(skill.status, "failed");
+});
+
+test("a leg manifest with duplicate finding ids renders failed", async () => {
+  const skill = await projectLeg(
+    "threadlight-loadtest",
+    legEnvelope({
+      schema: "threadlight.load/v1",
+      status: "complete",
+      findings: [
+        { id: "LOAD-001", status: "pass" },
+        { id: "LOAD-001", status: "pass" },
+        { id: "LOAD-002", status: "pass" },
+      ],
+    }),
+  );
+  assert.equal(skill.status, "failed");
+});
+
+test("non-object finding entries never throw and render failed", async () => {
+  // Arrays / null / primitives where a finding object is expected: the
+  // projector must stay throw-free (no set/hash of an unhashable JS shape) and
+  // treat the evidence as malformed.
+  const { model, skill } = await projectLegModel(
+    "threadlight-loadtest",
+    legEnvelope({
+      schema: "threadlight.load/v1",
+      status: "complete",
+      findings: [[], null, 1],
+    }),
+  );
+  assert.equal(skill.status, "failed");
+  assert.ok(
+    model.errors.some((error) => error.code === "leg-envelope-invalid"),
+    "malformed findings surface a safe error rather than throwing",
+  );
+});
+
+test("a non-object leg manifest renders failed without throwing", async () => {
+  for (const shape of [[1, 2, 3], 42, "manifest", null]) {
+    const skill = await projectLeg("threadlight-upgrade", shape);
+    assert.equal(skill.status, "failed");
+  }
+});
+
+test("freshness uses the envelope's own valid_for_hours (1h window => stale)", async () => {
+  // Generated 2h before NOW with a 1h validity window: the leg is stale even
+  // though the registry's fixed 24h window would still call it fresh.
+  const skill = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      generatedAt: "2026-08-06T07:00:00Z",
+      validForHours: 1,
+    }),
+  );
+  assert.equal(skill.status, "stale");
+});
+
+test("a short validity window still renders complete inside its own hours", async () => {
+  // Generated 1h before NOW with a 2h window: fresh by the envelope's clock.
+  const skill = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      generatedAt: "2026-08-06T08:00:00Z",
+      validForHours: 2,
+    }),
+  );
+  assert.equal(skill.status, "complete");
+});
+
+test("a non-integer valid_for_hours is rejected as malformed", async () => {
+  const skill = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      validForHours: 1.5,
+    }),
+  );
+  assert.equal(skill.status, "failed");
+});
+
+test("an integral valid_for_hours is accepted (Draft-07 integer semantics)", async () => {
+  // 24.0 collapses to 24 in JSON/JS and must be honored as an integer.
+  const skill = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      validForHours: 24.0,
+    }),
+  );
+  assert.equal(skill.status, "complete");
+});
+
+test("producer-like envelopes map partial->running, aborted->failed, complete->complete", async () => {
+  // Realistic manifests carry a mix of non-must-fix finding statuses.
+  const partial = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "partial",
+      overrides: { "GRD-002": "should-fix", "GRD-004": "not-verified" },
+    }),
+  );
+  const aborted = await projectLeg(
+    "threadlight-loadtest",
+    legEnvelope({
+      schema: "threadlight.load/v1",
+      status: "aborted",
+      overrides: { "LOAD-003": "not-verified" },
+    }),
+  );
+  const complete = await projectLeg(
+    "threadlight-upgrade",
+    legEnvelope({
+      schema: "threadlight.upgrade/v1",
+      status: "complete",
+      overrides: { "UPG-002": "should-fix" },
+    }),
+  );
+  assert.equal(partial.status, "running");
+  assert.equal(aborted.status, "failed");
+  assert.equal(complete.status, "complete");
+});
+
+test("a malformed advisory leg does not disturb its phase status", async () => {
+  // The connect/ground legs live in the discover phase but are advisory
+  // (affectsPhaseStatus: false). A malformed manifest fails the skill without
+  // changing the phase roll-up.
+  await withFixture("empty", async ({ workspace, writeJson }) => {
+    const baseline = await projectWorkspace(workspace, { now: NOW });
+    const discoverBefore = findPhase(baseline, "discover").status;
+
+    await writeJson(
+      "specs/ground-manifest.json",
+      legEnvelope({ schema: "threadlight.ground/v1", status: "done" }),
+    );
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-ground").status, "failed");
+    assert.equal(findPhase(model, "discover").status, discoverBefore);
+  });
 });
 
 test("a missing leg manifest never renders complete (blocked by prerequisites)", async () => {

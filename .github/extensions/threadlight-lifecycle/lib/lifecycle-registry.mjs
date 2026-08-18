@@ -44,6 +44,33 @@ export function skill(
   return deepFreeze(definition);
 }
 
+// Live-leg shared-envelope contracts (skills/_shared/manifest.py). Keyed by the
+// leg's required artifact PATH so the Canvas projector recognizes a new-leg
+// manifest by path and can strictly validate the safe common envelope before it
+// trusts any status. Mirrors the consumer-side trust boundary in
+// threadlight-production-ready (_GAP_LEG_EXPECTED_SCHEMA / _GAP_LEG_REQUIRED_IDS)
+// so both surfaces reject the same forged evidence. `schema` is the per-file
+// identity (connect is hyphen-namespaced; ground/load/upgrade are dotted);
+// `findingIds` is the exact finding-id set the producer emits — one each.
+export const LEG_ENVELOPE_CONTRACTS = deepFreeze({
+  "specs/connect-manifest.json": {
+    schema: "threadlight-connect-manifest/v1",
+    findingIds: ["INT-001", "INT-002", "INT-003", "INT-004"],
+  },
+  "specs/ground-manifest.json": {
+    schema: "threadlight.ground/v1",
+    findingIds: ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+  },
+  "specs/load-manifest.json": {
+    schema: "threadlight.load/v1",
+    findingIds: ["LOAD-001", "LOAD-002", "LOAD-003"],
+  },
+  "specs/upgrade-manifest.json": {
+    schema: "threadlight.upgrade/v1",
+    findingIds: ["UPG-001", "UPG-002", "UPG-003"],
+  },
+});
+
 export const LIFECYCLE_PHASES = Object.freeze([
   Object.freeze({ id: "design", label: "Design", view: "design" }),
   Object.freeze({

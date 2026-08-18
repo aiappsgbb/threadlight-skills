@@ -1753,7 +1753,16 @@ _GAP_MAX_VALID_FOR_HOURS = 8760
 
 def _read_leg_manifest(ctx: RepoContext, filename: str) -> dict | None:
     """Parse specs/<filename> as an object without interpreting its contents."""
-    raw = _read_text(ctx.root / "specs" / filename)
+    try:
+        raw = _read_text(ctx.root / "specs" / filename)
+    except UnicodeDecodeError:
+        # Non-UTF-8 bytes on a leg artifact are untrusted, unparseable evidence:
+        # treat the manifest as absent so the related findings fall through to
+        # not-verified rather than crashing the run. `_read_text` deliberately
+        # only guards filesystem errors (FileNotFoundError/OSError); the decode
+        # error is a ValueError that escapes it, so it is caught here at the leg
+        # trust boundary instead of broadening the shared reader.
+        return None
     if not raw:
         return None
     try:
