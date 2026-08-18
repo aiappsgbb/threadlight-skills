@@ -117,10 +117,30 @@ next. Do not open PR N+1 until PR N is merged.
 Run:
 
 ```bash
-rg -n -i \
-  'T[B]D|T[O]DO|FIX[M]E|X[X]X|NEEDS CLARIFICATION|<place''holder>|to be decided|open question' \
-  docs/superpowers/specs/2026-08-18-cost-actuals-reconciliation-design.md \
-  docs/superpowers/plans/2026-08-18-cost-actuals-reconciliation.md
+python3 - <<'PY'
+from pathlib import Path
+
+patterns = (
+    "T" + "BD",
+    "TO" + "DO",
+    "FIX" + "ME",
+    "NEEDS " + "CLARIFICATION",
+    "<place" + "holder>",
+    "to be " + "decided",
+    "open " + "question",
+)
+paths = (
+    Path("docs/superpowers/specs/2026-08-18-cost-actuals-reconciliation-design.md"),
+    Path("docs/superpowers/plans/2026-08-18-cost-actuals-reconciliation.md"),
+)
+hits = [
+    f"{path}: {pattern}"
+    for path in paths
+    for pattern in patterns
+    if pattern.casefold() in path.read_text(encoding="utf-8").casefold()
+]
+assert not hits, "\n".join(hits)
+PY
 ```
 
 Expected: no matches. Text inside code that intentionally demonstrates an
