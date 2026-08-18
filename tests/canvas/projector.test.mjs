@@ -4,6 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { projectWorkspace } from "../../.github/extensions/threadlight-lifecycle/lib/projector.mjs";
+import { createIntentBroker } from "../../.github/extensions/threadlight-lifecycle/lib/intents.mjs";
 import { createWorkspaceFixture, legEnvelope } from "./fixtures.mjs";
 
 const NOW = new Date("2026-08-06T09:00:00Z");
@@ -238,5 +239,46 @@ test("advisory live legs do not disturb complete-pilot phase completion", async 
     // The advisory legs are present in their phases but sit at `ready`.
     assert.equal(findSkill(model, "threadlight-connect").status, "ready");
     assert.equal(findSkill(model, "threadlight-upgrade").status, "ready");
+  });
+});
+
+test("a projected advisory next intent brokers a named manual-invocation prompt", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const discover = findPhase(model, "discover");
+
+    // The projector surfaces the advisory legs as skill-named invoke_skill
+    // intents — not a generic resume_phase.
+    const connect = discover.nextActions.find(
+      (intent) => intent.skillId === "threadlight-connect",
+    );
+    assert.ok(connect, "connect advisory leg surfaced as a next action");
+    assert.deepEqual(connect, {
+      type: "invoke_skill",
+      skillId: "threadlight-connect",
+      phase: "discover",
+    });
+
+    // Brokering that projected intent asks chat to invoke the exact named skill
+    // by hand, with the existing confirmation-gate suffix and no auto-run.
+    const sent = [];
+    const broker = createIntentBroker({
+      send: async (payload) => {
+        sent.push(payload);
+      },
+    });
+    const result = await broker.submit(connect);
+
+    assert.equal(result.accepted, true);
+    assert.equal(sent.length, 1);
+    assert.match(
+      sent[0].prompt,
+      /Manually invoke the Threadlight skill "threadlight-connect"/,
+    );
+    assert.match(
+      sent[0].prompt,
+      /do not auto-run any command, tool, or live action/,
+    );
+    assert.match(sent[0].prompt, /Explain the proposed next action in chat/);
   });
 });

@@ -73,7 +73,7 @@ export const SKILL_REGISTRY = Object.freeze([
       // advisory and never gates the Design phase.
       affectsPhaseStatus: false,
       completionMode: "artifact-complete",
-      nextIntent: { type: "resume_phase", phase: "design" },
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-qualify", phase: "design" },
     },
   ),
   skill(
@@ -207,7 +207,7 @@ export const SKILL_REGISTRY = Object.freeze([
       affectsPhaseStatus: false,
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "resume_phase", phase: "discover" },
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-connect", phase: "discover" },
     },
   ),
   skill(
@@ -220,7 +220,7 @@ export const SKILL_REGISTRY = Object.freeze([
       affectsPhaseStatus: false,
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "resume_phase", phase: "discover" },
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-ground", phase: "discover" },
     },
   ),
   skill(
@@ -233,7 +233,7 @@ export const SKILL_REGISTRY = Object.freeze([
       affectsPhaseStatus: false,
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "resume_phase", phase: "discover" },
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-loadtest", phase: "discover" },
     },
   ),
   skill(
@@ -265,7 +265,7 @@ export const SKILL_REGISTRY = Object.freeze([
       affectsPhaseStatus: false,
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "resume_phase", phase: "improve" },
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-upgrade", phase: "improve" },
     },
   ),
   skill(

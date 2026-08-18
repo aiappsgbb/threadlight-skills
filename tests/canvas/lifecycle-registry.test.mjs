@@ -136,19 +136,48 @@ test("new live legs are advisory manual handoffs in their phases", () => {
   }
 });
 
-test("new advisory legs + qualify next intents are valid, chat-mediated intents", () => {
+test("new advisory legs + qualify next intents name their own skill", () => {
   // Every next intent must pass the intent validator (proving it is a real,
   // permission-gated chat intent) — there is no automatic live/tool action.
   for (const id of [...NEW_ADVISORY_LEGS, "threadlight-qualify"]) {
     const skill = SKILL_REGISTRY.find((s) => s.id === id);
     assert.ok(skill, `${id} registered`);
-    const intent = { ...skill.nextIntent };
-    assert.doesNotThrow(() => validateIntent(intent), `${id} nextIntent must validate`);
-    assert.equal(intent.type, "resume_phase", id);
-    assert.equal(intent.phase, skill.phase, id);
-    // Declarative: no imperative command / handler that could auto-run.
+    // Declarative payload names its own skill id (and phase context).
+    assert.equal(skill.nextIntent.type, "invoke_skill", id);
+    assert.equal(skill.nextIntent.skillId, id, id);
+    assert.equal(skill.nextIntent.phase, skill.phase, id);
+    // Round-trips through the validator unchanged — a real chat-mediated intent.
+    assert.deepEqual(
+      validateIntent({ ...skill.nextIntent }),
+      { type: "invoke_skill", skillId: id, phase: skill.phase },
+      id,
+    );
+    // Declarative: no imperative command / handler / action that could auto-run.
     assert.equal(Object.hasOwn(skill, "command"), false, id);
     assert.equal(Object.hasOwn(skill, "handler"), false, id);
+    assert.equal(Object.hasOwn(skill, "action"), false, id);
+    // Advisory legs remain non-gating (qualify included).
+    assert.equal(skill.affectsPhaseStatus, false, id);
+  }
+});
+
+test("existing phase skills keep their resume_phase next intents unchanged", () => {
+  const named = new Set([...NEW_ADVISORY_LEGS, "threadlight-qualify"]);
+  const existing = SKILL_REGISTRY.filter((skill) => !named.has(skill.id));
+
+  // 22 registry skills minus the 5 skill-named legs leaves 17 phase intents.
+  assert.equal(existing.length, 17);
+  for (const skill of existing) {
+    assert.deepEqual(
+      { ...skill.nextIntent },
+      { type: "resume_phase", phase: skill.phase },
+      skill.id,
+    );
+    assert.deepEqual(
+      validateIntent({ ...skill.nextIntent }),
+      { type: "resume_phase", phase: skill.phase },
+      skill.id,
+    );
   }
 });
 
