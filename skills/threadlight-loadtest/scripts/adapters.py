@@ -110,6 +110,16 @@ _SECRET_PATTERNS = (
     re.compile(r"://[^/\s:@]+:[^/\s:@]+@"),  # credentials embedded in a URL
     re.compile(r"\bsk-[0-9A-Za-z]{20,}\b"),  # OpenAI-style key
     re.compile(r"\beyJ[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]+"),  # JWT
+    re.compile(r"(?i)[?&]sig=[A-Za-z0-9%/+_-]{8,}"),  # Azure SAS signature
+    re.compile(
+        r"(?i)\b(?:AccountKey|SharedAccessKey|SharedAccessSignature)=[^;\s]+"
+    ),  # storage / connection-string secret
+    re.compile(
+        r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+        re.DOTALL,
+    ),  # PEM private key block
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),  # lone PEM header
+    re.compile(r"\*{6,}"),  # a masked-secret marker (******) — normalize to our sentinel
 )
 
 _MAX_SCRUBBED_LENGTH = 200
