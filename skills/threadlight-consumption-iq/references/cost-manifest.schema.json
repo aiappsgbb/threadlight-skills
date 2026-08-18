@@ -89,7 +89,7 @@
       "properties": {
         "model": {"type": "string"},
         "region": {"type": "string"},
-        "ptu_units": {"type": "integer"},
+        "ptu_units": {"type": "integer", "minimum": 1},
         "scenarios": {
           "type": "array",
           "description": "hourly, one-month, one-year commitments, each priced separately."

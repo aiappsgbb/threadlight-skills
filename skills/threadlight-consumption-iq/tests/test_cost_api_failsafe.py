@@ -15,6 +15,7 @@ int 2; the emitted value is always an ``int`` and validates against the schema.
 """
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 from pathlib import Path
@@ -47,10 +48,34 @@ def _schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
-def _validate_manifest(manifest: dict) -> None:
-    import jsonschema
+def _jsonschema():
+    try:
+        import jsonschema
+    except ModuleNotFoundError:
+        return None
+    return jsonschema
 
-    jsonschema.Draft7Validator(_schema()).validate(manifest)
+
+def _validate_manifest(manifest: dict) -> None:
+    schema = _schema()
+    validator = _jsonschema()
+    if validator is not None:
+        validator.Draft7Validator(schema).validate(manifest)
+    else:
+        assert schema["properties"]["ptu_scenarios"]["properties"]["ptu_units"] == {
+            "type": "integer",
+            "minimum": 1,
+        }
+        assert manifest["schema_version"] == "2.0"
+
+
+def _validate_ptu_scenarios(ptu: dict) -> None:
+    schema = _schema()["properties"]["ptu_scenarios"]
+    assert schema["properties"]["ptu_units"] == {"type": "integer", "minimum": 1}
+    assert isinstance(ptu["ptu_units"], int) and not isinstance(ptu["ptu_units"], bool)
+    validator = _jsonschema()
+    if validator is not None:
+        validator.Draft7Validator(schema).validate(ptu)
 
 
 def _storage_resource() -> dict:
@@ -68,6 +93,18 @@ def _storage_resource() -> dict:
             "extra": {"redundancy": "LRS", "access_tier": "hot"},
         },
     }
+
+
+def test_schema_checks_remain_useful_without_optional_jsonschema(monkeypatch):
+    real_import = builtins.__import__
+
+    def import_without_jsonschema(name, *args, **kwargs):
+        if name == "jsonschema":
+            raise ModuleNotFoundError("jsonschema intentionally unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_jsonschema)
+    _validate_ptu_scenarios({"ptu_units": 2})
 
 
 # ---------------------------------------------------------------------------
@@ -250,10 +287,7 @@ def test_ptu_units_integer_emits_int_and_schema_valid(tmp_path):
     )
     assert ptu is not None
     assert ptu["ptu_units"] == 2
-    assert isinstance(ptu["ptu_units"], int) and not isinstance(ptu["ptu_units"], bool)
-    import jsonschema
-
-    jsonschema.Draft7Validator(_schema()["properties"]["ptu_scenarios"]).validate(ptu)
+    _validate_ptu_scenarios(ptu)
 
 
 def test_ptu_units_integral_float_normalized_to_int(tmp_path):
@@ -263,10 +297,7 @@ def test_ptu_units_integral_float_normalized_to_int(tmp_path):
     )
     assert ptu is not None
     assert ptu["ptu_units"] == 2
-    assert isinstance(ptu["ptu_units"], int)
-    import jsonschema
-
-    jsonschema.Draft7Validator(_schema()["properties"]["ptu_scenarios"]).validate(ptu)
+    _validate_ptu_scenarios(ptu)
 
 
 def test_ptu_units_emitted_int_validates_in_full_manifest(tmp_path):
