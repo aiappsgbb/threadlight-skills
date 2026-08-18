@@ -40,18 +40,28 @@ The twenty-two skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-auto                threadlight-govern
-threadlight-cicd                threadlight-ground
-threadlight-connect             threadlight-hitl-patterns
-threadlight-consumption-iq      threadlight-loadtest
-threadlight-customize           threadlight-local-test
-threadlight-demo-data-factory   threadlight-production-ready
-threadlight-deploy              threadlight-qualify
-threadlight-design              threadlight-redteam
-threadlight-evals               threadlight-router-bench
-threadlight-event-triggers      threadlight-safe-check
-threadlight-ground              threadlight-upgrade
-                                threadlight-workspace-ui
+threadlight-auto
+threadlight-cicd
+threadlight-connect
+threadlight-consumption-iq
+threadlight-customize
+threadlight-demo-data-factory
+threadlight-deploy
+threadlight-design
+threadlight-evals
+threadlight-event-triggers
+threadlight-govern
+threadlight-ground
+threadlight-hitl-patterns
+threadlight-loadtest
+threadlight-local-test
+threadlight-production-ready
+threadlight-qualify
+threadlight-redteam
+threadlight-router-bench
+threadlight-safe-check
+threadlight-upgrade
+threadlight-workspace-ui
 ```
 
 ---

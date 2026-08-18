@@ -14,6 +14,31 @@ const NEW_SKILLS = [
   'threadlight-upgrade',
 ];
 
+const THREADLIGHT_SKILLS = [
+  'threadlight-auto',
+  'threadlight-cicd',
+  'threadlight-connect',
+  'threadlight-consumption-iq',
+  'threadlight-customize',
+  'threadlight-demo-data-factory',
+  'threadlight-deploy',
+  'threadlight-design',
+  'threadlight-evals',
+  'threadlight-event-triggers',
+  'threadlight-govern',
+  'threadlight-ground',
+  'threadlight-hitl-patterns',
+  'threadlight-loadtest',
+  'threadlight-local-test',
+  'threadlight-production-ready',
+  'threadlight-qualify',
+  'threadlight-redteam',
+  'threadlight-router-bench',
+  'threadlight-safe-check',
+  'threadlight-upgrade',
+  'threadlight-workspace-ui',
+];
+
 // Active product surfaces that must never carry a stale skill-count claim. NB:
 // "thirteen pillars" / "13 pillars" are production-ready PILLAR counts, not
 // skill counts, and are deliberately NOT matched by STALE_COUNT below.
@@ -48,6 +73,18 @@ test('published surfaces enumerate the 22-skill pack', () => {
   assert.match(read('plugin.json'), /22 total/);
   assert.match(read('README.md'), /threadlight-qualify/);
   assert.match(read('THREADLIGHT.md'), /threadlight-upgrade/);
+});
+
+test('THREADLIGHT inventory is the exact unique alphabetical 22-skill set', () => {
+  const briefing = read('THREADLIGHT.md');
+  const inventory = briefing.match(
+    /The twenty-two skills \(alphabetical,[\s\S]*?\n```(?:text)?\n([\s\S]*?)\n```/,
+  );
+  assert.ok(inventory, 'THREADLIGHT.md must contain the fenced twenty-two-skill inventory');
+
+  const published = inventory[1].match(/threadlight-[a-z0-9-]+/g) || [];
+  assert.deepStrictEqual(published, THREADLIGHT_SKILLS);
+  assert.strictEqual(new Set(published).size, 22, 'inventory skill IDs must be unique');
 });
 
 test('README, THREADLIGHT and plugin.json each name all five new skills', () => {

@@ -5,11 +5,9 @@
 //   - production.html      — connect / ground / loadtest evidence progression
 //   - self-improving.html  — threadlight-upgrade plan-only lifecycle scan
 //
-// These are self-contained and target the CURRENT page structure. (The older
-// tests/site.spec.mjs suite predates a large site restructure and references
-// selectors like #stage-show that no longer exist; it is stale independently of
-// this release. This spec covers the gap-closure surfaces without depending on
-// that suite.)
+// These focused release checks complement tests/site.spec.mjs: that suite
+// covers the current shared site structure and navigation, while this spec
+// protects the gap-closure skills' page-specific links and semantics.
 import { test, expect } from '@playwright/test';
 
 const REPO = 'aiappsgbb/threadlight-skills';
