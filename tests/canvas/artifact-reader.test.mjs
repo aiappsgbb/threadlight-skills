@@ -149,3 +149,44 @@ test("reader accepts every registry artifact path even when absent", async () =>
     }
   });
 });
+
+test("reader allowlists the new live-leg + qualification manifests", async () => {
+  const NEW_PATHS = [
+    "qualification/sizing-manifest.json",
+    "specs/connect-manifest.json",
+    "specs/ground-manifest.json",
+    "specs/load-manifest.json",
+    "specs/upgrade-manifest.json",
+  ];
+  await withWorkspace("new-leg-paths", async ({ workspacePath }) => {
+    const reader = await createArtifactReader(workspacePath);
+    for (const artifactPath of NEW_PATHS) {
+      // Absent-but-allowlisted: no throw, and exists() is false until written.
+      assert.equal(await reader.exists(artifactPath), false, artifactPath);
+    }
+  });
+  // And every new path is actually referenced by the registry (reader <-> registry parity).
+  const registryPaths = new Set(
+    SKILL_REGISTRY.flatMap((skill) =>
+      skill.requiredArtifactGroups.flat(),
+    ),
+  );
+  for (const artifactPath of NEW_PATHS) {
+    assert.ok(
+      registryPaths.has(artifactPath),
+      `${artifactPath} is allowlisted but not referenced by any registry skill`,
+    );
+  }
+});
+
+test("reader still rejects a non-allowlisted specs manifest", async () => {
+  await withWorkspace("denied-specs", async ({ workspacePath }) => {
+    const reader = await createArtifactReader(workspacePath);
+    await assert.rejects(
+      reader.exists("specs/not-a-real-manifest.json"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === "specs/not-a-real-manifest.json",
+    );
+  });
+});

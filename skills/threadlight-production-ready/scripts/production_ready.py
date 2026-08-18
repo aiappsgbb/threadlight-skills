@@ -892,6 +892,33 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 
     # ---- supply-chain — NEW v0.3.0: Defender for Servers / Containers
     "GOV-103": {"title": "Defender for Servers/Containers plan enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
+
+    # ---- live-leg gap evidence (Task 7 — integrate gap evidence across gates)
+    # These 14 findings are propagated from the four executable live legs whose
+    # shared-envelope manifests land under specs/. Each maps 1:1 (source id ==
+    # target id) via _check_gap_leg_manifests + _leg_finding. They are tier-0
+    # advisory: absent a fresh, complete leg manifest they stay `not-verified`
+    # (verification debt), so they never inflate score/readiness and never trip
+    # the hard gate on a pilot that has not run the leg.
+    #
+    # INT-001..004 — threadlight-connect (specs/connect-manifest.json)
+    "INT-001": {"title": "Real integration tool contract conformance verified (connect leg)", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "INT-002": {"title": "Runtime endpoint bound to a real (non-mock) integration server", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    "INT-003": {"title": "Real integration reachability/availability evidence captured", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    "INT-004": {"title": "Real integration failure-mode handling verified (timeout/retry)", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    # GRD-001..004 — threadlight-ground (specs/ground-manifest.json)
+    "GRD-001": {"title": "Knowledge-source ACL enforcement proven on protected sources", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
+    "GRD-002": {"title": "Answer citations grounded in retrieved context", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "GRD-003": {"title": "Refusal behaviour holds on unsupported queries", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
+    "GRD-004": {"title": "Knowledge-source freshness and coverage verified", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    # LOAD-001..003 — threadlight-loadtest (specs/load-manifest.json)
+    "LOAD-001": {"title": "Load test honored the production-safety guard", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "LOAD-002": {"title": "Projected load stays within the budget ceiling", "pillar": "cost", "severity": "should-fix", "tier": 0},
+    "LOAD-003": {"title": "SLO thresholds (p95 latency / error rate) held under load", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    # UPG-001..003 — threadlight-upgrade (specs/upgrade-manifest.json)
+    "UPG-001": {"title": "Model/dependency compatibility matrix is current", "pillar": "model-lifecycle", "severity": "should-fix", "tier": 0},
+    "UPG-002": {"title": "Preview / runtime-policy expiry drift addressed", "pillar": "model-lifecycle", "severity": "must-fix", "tier": 0},
+    "UPG-003": {"title": "Upgrade sources verified against the official channel", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
 }
 
 WAIVER_SCHEMA_FIELDS = ("owner", "expiry", "justification", "compensating_control", "accepted_risk")
@@ -1718,6 +1745,18 @@ def _load_leg_manifest(ctx: RepoContext, filename: str,
     Returns the parsed dict with two computed keys injected — ``_age_days``
     (float | None) and ``_fresh`` (bool) — or ``None`` if the file is absent
     or unparseable. Never raises.
+
+    Two manifest generations coexist:
+
+      * Legacy legs (govern / evals / redteam) stamp ``captured_at`` and use a
+        fixed 90-day freshness window (``max_age_days``). Behaviour here is
+        unchanged.
+      * The shared-envelope legs (connect / ground / load / upgrade) stamp
+        ``generated_at`` plus ``freshness.valid_for_hours`` (RFC 3339). For
+        those, ``_fresh`` is computed from ``generated_at + valid_for_hours``.
+        ``freshness.source_oldest_at`` may inform detail elsewhere, but expiry
+        is anchored on ``generated_at`` — a partial run with a very old source
+        is still "fresh" until its ``valid_for_hours`` elapses.
     """
     path = ctx.root / "specs" / filename
     raw = _read_text(path)
@@ -1729,17 +1768,42 @@ def _load_leg_manifest(ctx: RepoContext, filename: str,
         return None
     if not isinstance(data, dict):
         return None
-    age: float | None = None
     captured = data.get("captured_at") or ""
     if captured:
+        # ---- legacy path (captured_at + 90-day window) ----
+        age: float | None = None
         try:
             cap_dt = datetime.fromisoformat(str(captured).replace("Z", "+00:00"))
             now = datetime.now(cap_dt.tzinfo) if cap_dt.tzinfo else datetime.now()
             age = round((now - cap_dt).total_seconds() / 86400.0, 1)
         except (ValueError, TypeError):
             age = None
-    data["_age_days"] = age
-    data["_fresh"] = age is not None and 0 <= age <= max_age_days
+        data["_age_days"] = age
+        data["_fresh"] = age is not None and 0 <= age <= max_age_days
+        return data
+    # ---- shared-envelope path (generated_at + freshness.valid_for_hours) ----
+    generated = data.get("generated_at") or ""
+    age_hours: float | None = None
+    if generated:
+        try:
+            gen_dt = datetime.fromisoformat(str(generated).replace("Z", "+00:00"))
+            now = datetime.now(gen_dt.tzinfo) if gen_dt.tzinfo else datetime.now()
+            age_hours = (now - gen_dt).total_seconds() / 3600.0
+        except (ValueError, TypeError):
+            age_hours = None
+    freshness = data.get("freshness")
+    valid_for_hours = freshness.get("valid_for_hours") if isinstance(freshness, dict) else None
+    valid_hours_ok = (
+        isinstance(valid_for_hours, (int, float))
+        and not isinstance(valid_for_hours, bool)
+        and valid_for_hours > 0
+    )
+    data["_age_days"] = round(age_hours / 24.0, 1) if age_hours is not None else None
+    data["_fresh"] = (
+        age_hours is not None
+        and valid_hours_ok
+        and 0 <= age_hours <= float(valid_for_hours)
+    )
     return data
 
 
@@ -1751,6 +1815,140 @@ def _leg_cap_status(manifest: dict, key: str) -> str | None:
         if status in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable"):
             return status
     return None
+
+
+# ---------------------------------------------------------------------------
+# Shared-envelope live-leg gap evidence (Task 7)
+# ---------------------------------------------------------------------------
+#
+# The four executable live legs each emit a shared-envelope manifest under
+# specs/. production-ready propagates their findings into existing pillars as
+# advisory evidence — WITHOUT ever letting an incomplete leg inflate a pillar's
+# score/readiness. Every target finding maps 1:1 to a same-named source finding
+# in the producing leg's manifest:
+#
+#   threadlight-connect   specs/connect-manifest.json   INT-001..004
+#   threadlight-ground    specs/ground-manifest.json    GRD-001..004
+#   threadlight-loadtest  specs/load-manifest.json      LOAD-001..003
+#   threadlight-upgrade   specs/upgrade-manifest.json   UPG-001..003
+#
+# Ordered INT -> GRD -> LOAD -> UPG so the returned set is stable.
+GAP_LEG_SOURCE: dict[str, str] = {
+    "INT-001": "connect-manifest.json",
+    "INT-002": "connect-manifest.json",
+    "INT-003": "connect-manifest.json",
+    "INT-004": "connect-manifest.json",
+    "GRD-001": "ground-manifest.json",
+    "GRD-002": "ground-manifest.json",
+    "GRD-003": "ground-manifest.json",
+    "GRD-004": "ground-manifest.json",
+    "LOAD-001": "load-manifest.json",
+    "LOAD-002": "load-manifest.json",
+    "LOAD-003": "load-manifest.json",
+    "UPG-001": "upgrade-manifest.json",
+    "UPG-002": "upgrade-manifest.json",
+    "UPG-003": "upgrade-manifest.json",
+}
+
+_GAP_READY_STATUSES = frozenset({"pass", "should-fix", "not-applicable"})
+
+
+def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
+                 target_id: str) -> Finding:
+    """Project one live-leg source finding onto a production-ready target id.
+
+    Evidence rules (negative evidence dominates; incomplete legs never inflate
+    readiness):
+
+      * missing / unparseable / invalid manifest, or the finding absent from a
+        complete fresh envelope -> ``not-verified``;
+      * a ``must-fix`` source finding is ALWAYS ``must-fix`` — even if the
+        envelope is partial, stale, or aborted (negative-evidence dominance);
+      * an ``aborted`` envelope -> ``must-fix`` for the applicable leg evidence
+        (never pass);
+      * a ``partial`` / stale envelope that would otherwise pass/should-fix ->
+        ``not-verified``;
+      * ONLY a fresh, complete envelope can propagate ``pass`` / ``should-fix``
+        / ``not-applicable``; a source ``not-verified`` stays ``not-verified``;
+      * a malformed status, a duplicate source id, or an unknown status cannot
+        prove readiness -> ``not-verified``.
+    """
+    data = _load_leg_manifest(ctx, filename)
+    if not isinstance(data, dict):
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"Run the producing leg to create specs/{filename}.")
+
+    findings_list = data.get("findings")
+    if not isinstance(findings_list, list):
+        findings_list = []
+    matches = [
+        item for item in findings_list
+        if isinstance(item, dict) and item.get("id") == source_id
+    ]
+    statuses = [m.get("status") for m in matches]
+
+    # Negative evidence dominates every freshness / completeness consideration.
+    if "must-fix" in statuses:
+        detail = next(
+            (m.get("detail") for m in matches
+             if m.get("status") == "must-fix" and m.get("detail")),
+            None,
+        )
+        return _mk_finding(
+            target_id, status="must-fix",
+            detail=str(detail) if detail else
+            f"specs/{filename} reports {source_id} must-fix (executed evidence failed).")
+
+    # An aborted run can never certify readiness.
+    if data.get("status") == "aborted":
+        return _mk_finding(
+            target_id, status="must-fix",
+            detail=f"specs/{filename} records an aborted run.")
+
+    # Partial, stale, or otherwise-invalid envelope cannot propagate a pass.
+    if data.get("status") != "complete" or not data.get("_fresh"):
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"specs/{filename} is partial, stale, or invalid.")
+
+    # From here the envelope is fresh + complete.
+    if not matches:
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"specs/{filename} has no {source_id} evidence.")
+    if len(matches) > 1:
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"specs/{filename} has duplicate {source_id} evidence — cannot prove readiness.")
+    status = statuses[0]
+    if status not in _GAP_READY_STATUSES:
+        # not-verified stays not-verified; an unknown/malformed status cannot
+        # prove readiness either.
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"specs/{filename} {source_id} status {status!r} cannot prove readiness.")
+    return _mk_finding(target_id, status=status,
+                       detail=str(matches[0].get("detail", "")))
+
+
+def _check_gap_leg_manifests(ctx: RepoContext) -> list[Finding]:
+    """Return all 14 live-leg gap findings (INT/GRD/LOAD/UPG), exactly once each,
+    ordered INT -> GRD -> LOAD -> UPG."""
+    return [
+        _leg_finding(ctx, filename=filename, source_id=fid, target_id=fid)
+        for fid, filename in GAP_LEG_SOURCE.items()
+    ]
+
+
+def _gap_findings_for_pillar(ctx: RepoContext, pillar: str) -> list[Finding]:
+    """Subset of the live-leg gap findings that belong to *pillar* (reads only
+    the manifests those findings source from)."""
+    return [
+        _leg_finding(ctx, filename=filename, source_id=fid, target_id=fid)
+        for fid, filename in GAP_LEG_SOURCE.items()
+        if FINDING_CATALOG[fid]["pillar"] == pillar
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -4649,6 +4847,15 @@ def _run_pillar(
         print(f"[warn] static checks for pillar '{pillar}' raised "
               f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
               file=sys.stderr)
+    # Live-leg gap evidence (Task 7): fold the shared-envelope leg findings that
+    # belong to this pillar into the static set. They are tier-0 advisory and
+    # default to `not-verified` when the leg has not run, so they never inflate
+    # score/readiness. Dedup against anything the pillar already emitted (e.g. a
+    # fail-closed sweep above) so a finding is never counted twice.
+    existing_gap_ids = {f.id for f in findings}
+    for gap in _gap_findings_for_pillar(ctx, pillar):
+        if gap.id not in existing_gap_ids:
+            findings.append(gap)
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)
         # v4-preview live deep checks: gated to fire only when profile is v4_preview.

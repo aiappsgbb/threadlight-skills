@@ -63,6 +63,20 @@ export const LIFECYCLE_PHASES = Object.freeze([
 
 export const SKILL_REGISTRY = Object.freeze([
   skill(
+    "threadlight-qualify",
+    "design",
+    "Size the engagement",
+    [artifactGroup("qualification/sizing-manifest.json")],
+    {
+      role: "entry",
+      // No-repo entry point: qualification/sizing precedes the repo, so it is
+      // advisory and never gates the Design phase.
+      affectsPhaseStatus: false,
+      completionMode: "artifact-complete",
+      nextIntent: { type: "resume_phase", phase: "design" },
+    },
+  ),
+  skill(
     "threadlight-design",
     "design",
     "Define the pilot",
@@ -183,6 +197,46 @@ export const SKILL_REGISTRY = Object.freeze([
     },
   ),
   skill(
+    "threadlight-connect",
+    "discover",
+    "Bind real integrations",
+    [artifactGroup("specs/connect-manifest.json")],
+    {
+      // Advisory live leg: manual invocation only, never gates the phase.
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "resume_phase", phase: "discover" },
+    },
+  ),
+  skill(
+    "threadlight-ground",
+    "discover",
+    "Prove grounding & ACLs",
+    [artifactGroup("specs/ground-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "resume_phase", phase: "discover" },
+    },
+  ),
+  skill(
+    "threadlight-loadtest",
+    "discover",
+    "Load-test the pilot",
+    [artifactGroup("specs/load-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "resume_phase", phase: "discover" },
+    },
+  ),
+  skill(
     "threadlight-govern",
     "protect-govern",
     "Verify runtime governance",
@@ -199,6 +253,19 @@ export const SKILL_REGISTRY = Object.freeze([
     [artifactGroup("router-bench-out")],
     {
       prerequisiteSkills: ["threadlight-evals"],
+    },
+  ),
+  skill(
+    "threadlight-upgrade",
+    "improve",
+    "Track upgrade drift",
+    [artifactGroup("specs/upgrade-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "resume_phase", phase: "improve" },
     },
   ),
   skill(

@@ -67,3 +67,18 @@ PII policy, eval evidence.
 
 ---
 **v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.
+
+## Live-leg gap evidence (Task 7)
+
+These findings are **advisory, tier-0** evidence propagated from the executable
+threadlight-ground leg(s). production-ready reads each same-named finding from the leg's
+shared-envelope manifest under `specs/`. Absent a fresh, **complete** leg
+manifest they stay `not-verified` (verification debt) — an incomplete, stale,
+or `aborted` leg never inflates this pillar's score or readiness, and a
+`must-fix` in the leg's evidence dominates regardless of envelope freshness.
+
+| ID | Verified when the leg reports it (fresh + complete) | Severity |
+|---|---|---|
+| `GRD-002` | `threadlight-ground` proved answer citations are grounded in the retrieved context | `must-fix` |
+| `GRD-003` | `threadlight-ground` proved refusal behaviour holds on unsupported queries | `must-fix` |
+| `GRD-004` | `threadlight-ground` verified knowledge-source freshness and coverage | `should-fix` |

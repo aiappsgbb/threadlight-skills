@@ -3,6 +3,28 @@ import { fileURLToPath } from "node:url";
 
 const FIXTURE_TIME = new Date("2026-08-06T08:00:00Z");
 
+/**
+ * Build a shared-envelope leg manifest (skills/_shared/manifest.py shape:
+ * schema / tool_version / generated_at / freshness / status / findings). Used
+ * by the projector tests for the connect / ground / load / upgrade legs.
+ */
+export function legEnvelope({
+  schema = "threadlight.leg/v1",
+  status = "complete",
+  findings = [],
+  generatedAt = FIXTURE_TIME.toISOString(),
+  validForHours = 24,
+} = {}) {
+  return {
+    schema,
+    tool_version: "0.1.0",
+    generated_at: generatedAt,
+    freshness: { valid_for_hours: validForHours, source_oldest_at: null },
+    status,
+    findings,
+  };
+}
+
 function fixtureUrl(name) {
   return new URL(
     `./.tmp-projector-${name}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}/`,

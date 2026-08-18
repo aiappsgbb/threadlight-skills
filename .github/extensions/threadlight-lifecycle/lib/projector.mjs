@@ -101,9 +101,53 @@ function evidenceTimestamp(json, metadata) {
   return parseTimestamp(metadata?.modifiedAt);
 }
 
+const ENVELOPE_STATUSES = new Set(["complete", "partial", "aborted"]);
+
+function isLegEnvelope(value) {
+  // A shared-envelope leg manifest (skills/_shared/manifest.py) declares a
+  // schema string, a recognized status, and a findings array. Distinct from the
+  // legacy `verdict`/`must_fix` manifests below, and from the sizing manifest
+  // (which has a status but no findings array).
+  return (
+    isPlainObject(value) &&
+    typeof value.schema === "string" &&
+    ENVELOPE_STATUSES.has(value.status) &&
+    Array.isArray(value.findings)
+  );
+}
+
+function envelopeEvidenceStatus(value) {
+  if (!isLegEnvelope(value)) {
+    return null;
+  }
+  // An aborted run can never render as complete.
+  if (value.status === "aborted") {
+    return "failed";
+  }
+  // Negative evidence dominates: any must-fix finding fails the leg regardless
+  // of the envelope's own status.
+  const hasMustFix = value.findings.some(
+    (finding) => isPlainObject(finding) && finding.status === "must-fix",
+  );
+  if (hasMustFix) {
+    return "failed";
+  }
+  if (value.status === "partial") {
+    return "running";
+  }
+  // status === "complete" with no must-fix: defer to the presence + freshness
+  // logic so a stale complete envelope is downgraded to `stale`, never rendered
+  // as a fresh `complete`.
+  return null;
+}
+
 function evidenceStatus(value) {
   if (!isPlainObject(value)) {
     return null;
+  }
+  const envelope = envelopeEvidenceStatus(value);
+  if (envelope) {
+    return envelope;
   }
   if (
     hasItems(value.must_fix) ||

@@ -89,7 +89,7 @@ flowchart LR
 The skill drives **production onboarding** in three phases:
 
 1. **Assess.** A Python script (`scripts/production_ready.py`) inventories your
-   target Azure subscription/resource group, scores it against 174 findings
+   target Azure subscription/resource group, scores it against 188 findings
    spanning 13 production-readiness pillars, and emits an `apply-plan.json`
    that names every must-fix gap and the remediation recipe that closes it.
 

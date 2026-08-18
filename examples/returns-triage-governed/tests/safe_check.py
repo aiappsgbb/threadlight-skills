@@ -77,6 +77,24 @@ PLACEHOLDER_IMAGE_REGEX = re.compile(
 # succeeded and the image is the right one. Trip the gate.
 JOB_EXECUTION_WINDOW = 5
 
+# G9.7 — Integration binding. A system integration whose deployment snapshot
+# declares availability `real` MUST NOT still resolve to the scaffolded mock
+# MCP endpoint. This regex is the ONLY mock signal the binding check trusts —
+# an explicit `mock` token in an endpoint string (url / host / name). It is
+# deliberately conservative: missing endpoint metadata is *never* treated as a
+# mock (absence of evidence is not evidence of a mock), so the gate only fires
+# on a certain contradiction (declared real + provably-mock endpoint).
+MOCK_ENDPOINT_MARKER = re.compile(r"mock", re.IGNORECASE)
+
+# Candidate locations for the effective MCP server config, in priority order.
+# threadlight-connect writes `infra/mcp-config.json`; a Foundry agent bundle may
+# instead carry `src/agent/mcp-config.json`; a bare repo may keep it at the root.
+MCP_CONFIG_CANDIDATES = (
+    "infra/mcp-config.json",
+    "src/agent/mcp-config.json",
+    "mcp-config.json",
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -130,6 +148,88 @@ def _load_manifest(path: Path) -> dict[str, Any]:
               file=sys.stderr)
         raise SystemExit(2)
     return data
+
+
+def _endpoint_is_provably_mock(server: Any) -> bool:
+    """True only when a server's declared endpoint metadata EXPLICITLY carries a
+    mock marker.
+
+    Conservative on purpose: inspects the endpoint-shaped fields
+    (``url`` / ``host`` / ``name`` / ``endpoint``) for an explicit ``mock``
+    token and nothing else. A server with no endpoint metadata, or endpoints
+    that carry no mock marker, is never reported as mock — missing metadata is
+    not evidence of a mock.
+    """
+    if not isinstance(server, dict):
+        return False
+    for key in ("url", "host", "name", "endpoint"):
+        val = server.get(key)
+        if isinstance(val, str) and MOCK_ENDPOINT_MARKER.search(val):
+            return True
+    return False
+
+
+def integration_binding_gaps(integrations: Any, mcp_config: Any) -> list[str]:
+    """Report the certain contradiction: a system integration whose deployment
+    snapshot declares ``availability: real`` while its effective MCP server
+    endpoint is provably still the scaffolded mock.
+
+    Pure and total — never raises, never calls the network. The ONLY gap emitted
+    is when ALL of the following hold for an integration:
+
+      * the snapshot declares ``availability == "real"``; and
+      * a matching MCP server exists (keyed by the integration id, or by an
+        explicit ``server`` / ``mcp_server`` reference on the integration); and
+      * that server's endpoint metadata carries an explicit mock marker.
+
+    A mock integration, a real integration with no matching server, and a real
+    integration whose server has no endpoint metadata all produce NO gap — the
+    check never invents a mock from missing config, and never flags unrelated
+    drift.
+    """
+    gaps: list[str] = []
+    if not isinstance(integrations, list):
+        return gaps
+    servers: dict[str, Any] = {}
+    if isinstance(mcp_config, dict):
+        raw = mcp_config.get("servers")
+        if isinstance(raw, dict):
+            servers = raw
+    for integ in integrations:
+        if not isinstance(integ, dict):
+            continue
+        if str(integ.get("availability", "")).strip().lower() != "real":
+            continue
+        integ_id = integ.get("id")
+        if not isinstance(integ_id, str) or not integ_id:
+            continue
+        server_ref = integ.get("server") or integ.get("mcp_server") or integ_id
+        server = servers.get(server_ref)
+        if server is None and server_ref != integ_id:
+            server = servers.get(integ_id)
+        if not _endpoint_is_provably_mock(server):
+            continue
+        gaps.append(
+            f"integration {integ_id} is declared real but runtime endpoint is still mock"
+        )
+    return gaps
+
+
+def _load_effective_mcp_config(repo: Path) -> dict[str, Any]:
+    """Load the effective MCP server config from the first candidate path that
+    parses. Returns ``{}`` when none is present or valid — a missing config
+    contributes no integration-binding gaps."""
+    for rel in MCP_CONFIG_CANDIDATES:
+        path = repo / rel
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
 
 
 def _print_active_context() -> None:
@@ -777,6 +877,26 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
             job_results.append({"name": job["name"],
                                 "schedule": match["schedule"], "status": "OK"})
 
+    # ------------------------------------------------------------------
+    # G9.7 — Integration binding (integration_binding)
+    # A system integration whose deployment snapshot declares availability
+    # `real` must not still resolve to the scaffolded mock MCP endpoint. This
+    # is a pure, file-only check (deployment_manifest.integrations[] vs the
+    # effective mcp-config.json) folded into the same failure contract as every
+    # other post-deploy gap. It only fires on a certain contradiction, so a
+    # snapshot with no integrations (or all-mock integrations) adds nothing.
+    # ------------------------------------------------------------------
+    integrations = dm.get("integrations", [])
+    repo_root = manifest_path.parent.parent
+    effective_mcp_config = _load_effective_mcp_config(repo_root)
+    binding_gaps = integration_binding_gaps(integrations, effective_mcp_config)
+    gaps.extend(binding_gaps)
+    integration_binding_results = {
+        "integrations_declared": len(integrations) if isinstance(integrations, list) else 0,
+        "mcp_config_present": bool(effective_mcp_config),
+        "gaps": binding_gaps,
+    }
+
     payload = {
         "phase": "post-deploy",
         "deployed_at": _utc_now(),
@@ -788,6 +908,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "appin_health": appin_health_results,
         "bot_auth_health": bot_auth_health_results,
         "cosmos_firewall_health": cosmos_firewall_health_results,
+        "integration_binding": integration_binding_results,
         "channels": channel_results,
         "scheduled_jobs": job_results,
         "gaps": gaps,

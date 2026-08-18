@@ -148,8 +148,10 @@ Optional flags:
 ```
 threadlight-safe-check/
 ├── SKILL.md                       (this file)
-└── scripts/
-    └── safe_check.py              (single-file Python module — the CLI)
+├── scripts/
+│   └── safe_check.py              (single-file Python module — the CLI)
+└── tests/
+    └── test_safe_check.py         (integration_binding_gaps + example parity)
 ```
 
 The CLI is **one file** (~250 LOC) intentionally — copy it into the pilot
@@ -157,6 +159,18 @@ repo as `tests/safe_check.py` (or symlink / install as a package) and
 invoke. No external dependencies beyond stdlib + `azure-identity` (for
 `AzureCliCredential`-honored `az` calls already required by everything
 else in the toolchain).
+
+Run the shipped tests standalone (no pytest required):
+
+```bash
+python3 skills/threadlight-safe-check/tests/test_safe_check.py
+# or, with pytest:
+python3 -m pytest skills/threadlight-safe-check/tests/ -q
+```
+
+`test_safe_check.py` also asserts the example copy shipped as
+`examples/returns-triage-governed/tests/safe_check.py` stays **byte-for-byte**
+identical to `scripts/safe_check.py`, so the two never drift.
 
 ---
 
@@ -596,6 +610,43 @@ declare `cosmos-db`, the check is skipped silently.
 > `azd-patterns` SKILL.md § "Cosmos firewall — pilot-grade defaults"
 > and `foundry-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress".
 
+### Step 5.10 — Integration binding (catches "declared real, still wired to the mock")
+
+> **Binding check (file-only, no `az`).** A pilot can flip a system
+> integration from `mock` to `real` in SPEC § 5 / the `deployment_manifest`
+> and still ship pointing at the scaffolded mock MCP endpoint — because the
+> `mcp-config.json` server url/host was never re-pointed at the real backend.
+> The agent then answers happily against fake data while the customer believes
+> it is live. `threadlight-connect` is the leg that performs the evidence-based
+> swap; this gate is the last structural backstop that the swap actually landed.
+
+The gate reads the deployment snapshot's `deployment_manifest.integrations[]`
+(each `{ "id": ..., "availability": "real" | "mock" | ... }`) and the effective
+`mcp-config.json` (first of `infra/mcp-config.json`, `src/agent/mcp-config.json`,
+or `mcp-config.json`). It emits **exactly one** kind of gap, and only on a
+certain contradiction:
+
+```python
+integration_binding_gaps(
+    integrations=[{"id": "erp", "availability": "real"}],
+    mcp_config={"servers": {"erp": {"url": "https://mock.example/mcp"}}},
+)
+# -> ["integration erp is declared real but runtime endpoint is still mock"]
+```
+
+The helper (`integration_binding_gaps`) is deliberately conservative:
+
+- `mock` + mock endpoint → **allowed** (the swap has not started yet).
+- `real` + endpoint whose `url` / `host` / `name` carries an explicit `mock`
+  marker → **gap**.
+- `real` + **missing** server, or a server with **no** endpoint metadata →
+  **no gap** — absence of config is never invented into a mock, and unrelated
+  drift is never flagged.
+
+The probe records `integration_binding` in the manifest
+(`integrations_declared`, `mcp_config_present`, `gaps`). A snapshot that
+declares no integrations, or only mock ones, contributes nothing.
+
 ### Step 6 — write `tests/postdeploy-manifest.json`
 
 ```json
@@ -621,6 +672,11 @@ declare `cosmos-db`, the check is skipped silently.
   "cosmos_firewall_health": [
     { "name": "<your-cosmos>", "publicNetworkAccess": "Enabled", "networkAclBypass": "AzureServices", "ipRules": ["1.2.3.4"], "status": "OK" }
   ],
+  "integration_binding": {
+    "integrations_declared": 3,
+    "mcp_config_present": true,
+    "gaps": []
+  },
   "channels": [
     { "name": "Analyst Workspace", "type": "web", "fqdn": "ca-workspace-...azurecontainerapps.io", "status": "OK" },
     { "name": "Teams adaptive card", "type": "teams", "fqdn": "ca-bot-...azurecontainerapps.io", "status": "OK_jwt_alive" }
@@ -655,6 +711,13 @@ Recent pilots passed all structural checks AND the JWT-alive channel probe,
 but the bot returned HTTP 500 on every real Teams message because the
 `AUTHTYPE` env var was missing. Structural checks alone weren't enough;
 the behavioural checks close that loop.
+
+Step 5.10 is a **binding** check — it answers *"is a system integration we
+declared `real` actually wired to a real endpoint, or still pointing at the
+mock?"*. A pilot can pass every structural and behavioural check and still be
+answering against fake data because the `mcp-config.json` was never re-pointed
+after the mock→real swap. It only fires on the certain contradiction (declared
+real + provably-mock endpoint), so it adds no noise.
 
 Both layers are cheap (single `az` call per resource) and run on the
 same schedule (post-deploy hook). There's no scenario where you want

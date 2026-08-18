@@ -20,6 +20,8 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 TEST_DIR = Path(__file__).resolve().parent
 SKILL_DIR = TEST_DIR.parent
 SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
@@ -212,3 +214,262 @@ def test_safe_catalog_severities() -> None:
         assert cat.get(fid, {}).get("severity") == "must-fix", f"{fid} should be must-fix"
     for fid in ("SAFE-104", "SAFE-105", "SAFE-106"):
         assert cat.get(fid, {}).get("severity") == "should-fix", f"{fid} should be should-fix"
+
+
+# ---------------------------------------------------------------------------
+# Live-leg gap evidence (Task 7): shared-envelope legs -> INT/GRD/LOAD/UPG.
+# _check_gap_leg_manifests never lets an incomplete leg inflate readiness.
+# ---------------------------------------------------------------------------
+
+def gap_manifest(name: str, **body) -> dict:
+    """Build a shared-envelope leg manifest (schema/tool_version/generated_at/
+    freshness/status/findings) with sensible defaults."""
+    generated_at = body.pop("generated_at", _iso(datetime.now(timezone.utc)))
+    valid_for_hours = body.pop("valid_for_hours", 24)
+    return {
+        "schema": f"threadlight.{name}/v1",
+        "tool_version": "0.1.0",
+        "generated_at": generated_at,
+        "freshness": {"valid_for_hours": valid_for_hours, "source_oldest_at": None},
+        **body,
+    }
+
+
+@pytest.mark.parametrize("name,finding_id", [
+    ("connect", "INT-001"),
+    ("ground", "GRD-001"),
+    ("load", "LOAD-001"),
+    ("upgrade", "UPG-001"),
+])
+def test_missing_new_leg_manifest_is_not_verified(name: str, finding_id: str) -> None:
+    findings = pr._check_gap_leg_manifests(_make_ctx())
+    assert _by_id(findings)[finding_id].status == "not-verified"
+
+
+def test_gap_check_returns_all_14_exactly_once() -> None:
+    findings = pr._check_gap_leg_manifests(_make_ctx())
+    ids = [f.id for f in findings]
+    expected = [
+        "INT-001", "INT-002", "INT-003", "INT-004",
+        "GRD-001", "GRD-002", "GRD-003", "GRD-004",
+        "LOAD-001", "LOAD-002", "LOAD-003",
+        "UPG-001", "UPG-002", "UPG-003",
+    ]
+    assert ids == expected, ids
+    assert len(ids) == len(set(ids)) == 14
+
+
+def test_executed_acl_failure_is_must_fix() -> None:
+    ctx = _make_ctx(manifests={
+        "ground-manifest.json": gap_manifest(
+            "ground",
+            status="complete",
+            findings=[{"id": "GRD-001", "status": "must-fix"}],
+        ),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["GRD-001"].status == "must-fix"
+
+
+def test_aborted_load_manifest_never_counts_as_pass() -> None:
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest(
+            "load",
+            status="aborted",
+            findings=[{"id": "LOAD-001", "status": "must-fix"}],
+        ),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "must-fix"
+
+
+def test_aborted_dominates_even_for_findings_absent_from_envelope() -> None:
+    # LOAD-002/LOAD-003 are not in the aborted manifest — they must still be
+    # must-fix (never pass) because the run aborted.
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest("load", status="aborted", findings=[]),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("LOAD-001", "LOAD-002", "LOAD-003"):
+        assert f[fid].status == "must-fix", f"{fid}: {f[fid].detail}"
+
+
+def test_partial_or_stale_pass_evidence_is_not_verified() -> None:
+    stale = _iso(datetime.now(timezone.utc) - timedelta(days=2))
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect",
+            status="partial",
+            findings=[{"id": "INT-001", "status": "pass"}],
+        ),
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade",
+            generated_at=stale,
+            status="complete",
+            findings=[{"id": "UPG-001", "status": "pass"}],
+        ),
+    })
+    findings = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert findings["INT-001"].status == "not-verified"
+    assert findings["UPG-001"].status == "not-verified"
+
+
+def test_must_fix_dominates_partial_and_stale_envelopes() -> None:
+    # Negative evidence dominates even when the envelope itself is not fresh /
+    # complete: a partial or stale run that recorded a must-fix stays must-fix.
+    stale = _iso(datetime.now(timezone.utc) - timedelta(days=5))
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="partial",
+            findings=[{"id": "INT-002", "status": "must-fix"}]),
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade", generated_at=stale, status="complete",
+            findings=[{"id": "UPG-002", "status": "must-fix"}]),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["INT-002"].status == "must-fix"
+    assert f["UPG-002"].status == "must-fix"
+
+
+def test_complete_fresh_envelope_propagates_pass_and_should_fix() -> None:
+    ctx = _make_ctx(manifests={
+        "ground-manifest.json": gap_manifest(
+            "ground",
+            status="complete",
+            findings=[
+                {"id": "GRD-001", "status": "pass"},
+                {"id": "GRD-002", "status": "pass"},
+                {"id": "GRD-003", "status": "should-fix"},
+                {"id": "GRD-004", "status": "not-applicable"},
+            ],
+        ),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["GRD-001"].status == "pass"
+    assert f["GRD-002"].status == "pass"
+    assert f["GRD-003"].status == "should-fix"
+    assert f["GRD-004"].status == "not-applicable"
+
+
+def test_complete_fresh_not_verified_source_stays_not_verified() -> None:
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete",
+            findings=[{"id": "INT-001", "status": "not-verified"}]),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
+
+
+def test_missing_finding_in_complete_envelope_is_not_verified() -> None:
+    # A fresh, complete connect envelope that simply omits INT-003 cannot prove
+    # INT-003 — it stays not-verified rather than defaulting to pass.
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete",
+            findings=[{"id": "INT-001", "status": "pass"}]),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-003"].status == "not-verified"
+
+
+def test_duplicate_source_finding_cannot_prove_readiness() -> None:
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest(
+            "load", status="complete",
+            findings=[
+                {"id": "LOAD-001", "status": "pass"},
+                {"id": "LOAD-001", "status": "pass"},
+            ]),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "not-verified"
+
+
+def test_duplicate_with_a_must_fix_still_dominates() -> None:
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest(
+            "load", status="complete",
+            findings=[
+                {"id": "LOAD-001", "status": "pass"},
+                {"id": "LOAD-001", "status": "must-fix"},
+            ]),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "must-fix"
+
+
+def test_unknown_or_malformed_status_cannot_prove_readiness() -> None:
+    ctx = _make_ctx(manifests={
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade", status="complete",
+            findings=[{"id": "UPG-001", "status": "green"}]),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["UPG-001"].status == "not-verified"
+
+
+def test_unparseable_manifest_is_not_verified() -> None:
+    import tempfile
+    from pathlib import Path as _Path
+    ctx = _make_ctx()
+    (_Path(ctx.root) / "specs" / "connect-manifest.json").write_text("{ not json", encoding="utf-8")
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
+
+
+def test_gap_findings_registered_in_expected_pillars() -> None:
+    cat = pr.FINDING_CATALOG
+    expected_pillar = {
+        "INT-001": "supply-chain", "INT-002": "supply-chain",
+        "INT-003": "reliability", "INT-004": "reliability",
+        "GRD-001": "identity-access",
+        "GRD-002": "responsible-ai", "GRD-003": "responsible-ai", "GRD-004": "responsible-ai",
+        "LOAD-001": "reliability", "LOAD-002": "cost", "LOAD-003": "reliability",
+        "UPG-001": "model-lifecycle", "UPG-002": "model-lifecycle", "UPG-003": "supply-chain",
+    }
+    for fid, pillar in expected_pillar.items():
+        assert fid in cat, f"{fid} missing from FINDING_CATALOG"
+        assert cat[fid]["pillar"] == pillar, f"{fid} pillar {cat[fid]['pillar']} != {pillar}"
+        assert cat[fid]["tier"] == 0, f"{fid} must be tier-0 (static synthesis)"
+        assert not cat[fid].get("experimental"), f"{fid} must not be experimental"
+
+
+def test_gap_findings_dispatched_through_pillars() -> None:
+    # The gap findings must reach the pillar dispatch so they appear in scoring,
+    # not just via the standalone helper. A fresh complete ground manifest with a
+    # GRD-001 must-fix should surface in the identity-access pillar's static set.
+    ctx = _make_ctx(manifests={
+        "ground-manifest.json": gap_manifest(
+            "ground", status="complete",
+            findings=[{"id": "GRD-001", "status": "must-fix"}]),
+    })
+    findings, _ = pr._run_pillar(
+        "identity-access", ctx, static_only=True, tiers={}, sub=None, rg=None,
+        resolved_posture="none", agt_profile="none", quick=False,
+    )
+    by_id = _by_id(findings)
+    assert "GRD-001" in by_id, "GRD-001 not dispatched into identity-access pillar"
+    assert by_id["GRD-001"].status == "must-fix"
+    # And the target-id appears exactly once (no double-emit from fail-closed).
+    assert [f.id for f in findings].count("GRD-001") == 1
+
+
+# ---------------------------------------------------------------------------
+# Legacy freshness window (captured_at + 90 days) stays unchanged.
+# ---------------------------------------------------------------------------
+
+def test_legacy_captured_at_freshness_unchanged() -> None:
+    fresh = _fresh_govern_manifest()
+    ctx = _make_ctx(manifests={"govern-manifest.json": fresh})
+    loaded = pr._load_leg_manifest(ctx, "govern-manifest.json")
+    assert loaded is not None and loaded["_fresh"] is True
+
+    stale = _fresh_govern_manifest()
+    stale["captured_at"] = _iso(datetime.now(timezone.utc) - timedelta(days=120))
+    ctx2 = _make_ctx(manifests={"govern-manifest.json": stale})
+    loaded2 = pr._load_leg_manifest(ctx2, "govern-manifest.json")
+    assert loaded2 is not None and loaded2["_fresh"] is False
+
+
+def test_shared_envelope_freshness_uses_valid_for_hours() -> None:
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=1,
+            generated_at=_iso(datetime.now(timezone.utc) - timedelta(hours=3)),
+            findings=[{"id": "INT-001", "status": "pass"}]),
+    })
+    loaded = pr._load_leg_manifest(ctx, "connect-manifest.json")
+    assert loaded is not None and loaded["_fresh"] is False, "3h old with 1h validity is stale"
