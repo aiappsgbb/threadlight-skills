@@ -365,7 +365,7 @@ def test_must_fix_dominates_partial_and_stale_envelopes() -> None:
     assert f["UPG-002"].status == "must-fix"
 
 
-def test_complete_fresh_envelope_propagates_pass_and_should_fix() -> None:
+def test_complete_fresh_envelope_propagates_producer_statuses() -> None:
     ctx = _make_ctx(manifests={
         "ground-manifest.json": gap_manifest(
             "ground",
@@ -374,7 +374,7 @@ def test_complete_fresh_envelope_propagates_pass_and_should_fix() -> None:
                 {"id": "GRD-001", "status": "pass"},
                 {"id": "GRD-002", "status": "pass"},
                 {"id": "GRD-003", "status": "should-fix"},
-                {"id": "GRD-004", "status": "not-applicable"},
+                {"id": "GRD-004", "status": "pass"},
             ],
         ),
     })
@@ -382,7 +382,7 @@ def test_complete_fresh_envelope_propagates_pass_and_should_fix() -> None:
     assert f["GRD-001"].status == "pass"
     assert f["GRD-002"].status == "pass"
     assert f["GRD-003"].status == "should-fix"
-    assert f["GRD-004"].status == "not-applicable"
+    assert f["GRD-004"].status == "pass"
 
 
 def test_complete_fresh_not_verified_source_stays_not_verified() -> None:
@@ -599,6 +599,119 @@ def test_nonpositive_valid_for_hours_is_rejected() -> None:
     assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
 
 
+@pytest.mark.parametrize(
+    "valid_for_hours",
+    [8761, 10**1000, float("nan"), float("inf"), [], {}],
+)
+def test_unsafe_valid_for_hours_is_rejected_without_exception(valid_for_hours) -> None:
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=valid_for_hours),
+    })
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("INT-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+    assert pr._score_pillar(findings)[1] == 0
+    assert sum(f.status != "not-verified" for f in findings) == 0
+    assert not pr._hard_gate_would_fail(findings)
+
+
+def test_maximum_valid_for_hours_is_accepted() -> None:
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=8760),
+    })
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("INT-")
+    ]
+    assert all(f.status == "pass" for f in findings)
+
+
+@pytest.mark.parametrize("freshness", [[], {}, 10**1000, float("nan")])
+def test_malformed_freshness_is_not_verified_without_exception(freshness) -> None:
+    manifest = gap_manifest("ground")
+    manifest["freshness"] = freshness
+    ctx = _make_ctx(manifests={"ground-manifest.json": manifest})
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("GRD-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+    assert pr._score_pillar(findings)[1] == 0
+    assert not pr._hard_gate_would_fail(findings)
+
+
+@pytest.mark.parametrize("status", [[], {}, 10**1000, float("nan")])
+def test_malformed_envelope_status_is_not_verified_without_exception(status) -> None:
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest("load", status=status),
+    })
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("LOAD-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+    assert pr._score_pillar(findings)[1] == 0
+    assert not pr._hard_gate_would_fail(findings)
+
+
+@pytest.mark.parametrize("status", [[], {}, 10**1000, float("nan"), "not-applicable"])
+def test_malformed_or_nonproducer_finding_status_cannot_inflate_readiness(status) -> None:
+    manifest = gap_manifest("upgrade", status="complete")
+    manifest["findings"][0]["status"] = status
+    ctx = _make_ctx(manifests={"upgrade-manifest.json": manifest})
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("UPG-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+    assert pr._score_pillar(findings)[1] == 0
+    assert sum(f.status != "not-verified" for f in findings) == 0
+    assert not pr._hard_gate_would_fail(findings)
+
+
+def test_stale_new_envelope_cannot_be_freshened_by_captured_at() -> None:
+    manifest = gap_manifest(
+        "connect",
+        generated_at=_iso(datetime.now(timezone.utc) - timedelta(days=2)),
+        valid_for_hours=1,
+    )
+    manifest["captured_at"] = _iso(datetime.now(timezone.utc))
+    ctx = _make_ctx(manifests={"connect-manifest.json": manifest})
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("INT-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+    assert all("failed manifest validation" in f.detail for f in findings)
+    assert pr._score_pillar(findings)[1] == 0
+    assert sum(f.status != "not-verified" for f in findings) == 0
+    assert not pr._hard_gate_would_fail(findings)
+
+
+@pytest.mark.parametrize("legacy_key", ["captured_at", "freshness_window_days"])
+def test_new_envelope_rejects_legacy_freshness_top_level_fields(legacy_key) -> None:
+    manifest = gap_manifest("ground")
+    manifest[legacy_key] = (
+        _iso(datetime.now(timezone.utc)) if legacy_key == "captured_at" else 90
+    )
+    ctx = _make_ctx(manifests={"ground-manifest.json": manifest})
+    findings = [
+        f for f in pr._check_gap_leg_manifests(ctx) if f.id.startswith("GRD-")
+    ]
+    assert all(f.status == "not-verified" for f in findings)
+
+
+def test_recognized_new_schema_never_uses_legacy_captured_at_path() -> None:
+    manifest = gap_manifest(
+        "connect",
+        generated_at=_iso(datetime.now(timezone.utc) - timedelta(days=2)),
+        valid_for_hours=1,
+    )
+    manifest["captured_at"] = _iso(datetime.now(timezone.utc))
+    ctx = _make_ctx(manifests={"govern-manifest.json": manifest})
+    loaded = pr._load_leg_manifest(ctx, "govern-manifest.json")
+    assert loaded is not None
+    assert loaded.get("_fresh") is False
+
+
 def test_validation_detail_never_echoes_raw_payload() -> None:
     # The invalidation detail must identify the evidence as invalid WITHOUT
     # echoing the raw (possibly oversharing) payload — only the filename +
@@ -736,7 +849,7 @@ def test_shared_envelope_freshness_uses_valid_for_hours() -> None:
         "connect-manifest.json": gap_manifest(
             "connect", status="complete", valid_for_hours=1,
             generated_at=_iso(datetime.now(timezone.utc) - timedelta(hours=3)),
-            findings=[{"id": "INT-001", "status": "pass"}]),
+        ),
     })
     loaded = pr._load_leg_manifest(ctx, "connect-manifest.json")
     assert loaded is not None and loaded["_fresh"] is False, "3h old with 1h validity is stale"
@@ -985,4 +1098,3 @@ def test_real_upgrade_manifest_propagates_all_upg_pass() -> None:
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     for fid in ("UPG-001", "UPG-002", "UPG-003"):
         assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
-

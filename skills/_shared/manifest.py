@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 VALID_STATUSES = frozenset({"complete", "partial", "aborted"})
+MAX_VALID_FOR_HOURS = 8760
 REQUIRED_KEYS = frozenset(
     {"schema", "tool_version", "generated_at", "freshness", "status", "findings"}
 )
@@ -152,6 +153,10 @@ def validate_envelope(envelope):
     if not _is_draft7_integer(valid_for_hours) or valid_for_hours <= 0:
         raise ManifestValidationError(
             "freshness.valid_for_hours must be a positive integer"
+        )
+    if valid_for_hours > MAX_VALID_FOR_HOURS:
+        raise ManifestValidationError(
+            "freshness.valid_for_hours must be between 1 and 8760 hours"
         )
 
 

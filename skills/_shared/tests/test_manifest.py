@@ -285,6 +285,25 @@ def test_validate_envelope_rejects_non_integral_or_nonfinite_validity(valid_for_
         validate_envelope(envelope)
 
 
+@pytest.mark.parametrize("valid_for_hours", [8761, 10**1000])
+def test_validate_envelope_rejects_validity_over_one_year(valid_for_hours):
+    envelope = valid_envelope()
+    envelope["freshness"]["valid_for_hours"] = valid_for_hours
+
+    with pytest.raises(
+        ManifestValidationError,
+        match="freshness.valid_for_hours must be between 1 and 8760 hours",
+    ):
+        validate_envelope(envelope)
+
+
+def test_validate_envelope_accepts_one_year_validity_limit():
+    envelope = valid_envelope()
+    envelope["freshness"]["valid_for_hours"] = 8760
+
+    assert validate_envelope(envelope) is None
+
+
 def test_atomic_write_json_preserves_valid_file_when_validation_fails(tmp_path):
     path = tmp_path / "nested" / "manifest.json"
     original = valid_envelope()

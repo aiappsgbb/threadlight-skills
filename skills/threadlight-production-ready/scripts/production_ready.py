@@ -1738,6 +1738,55 @@ def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]
 
 _LEG_FRESHNESS_DAYS = 90
 
+# New shared-envelope legs have a deliberately separate freshness contract.
+# Keep this identity map above the loader so a recognized filename OR schema can
+# never fall through to the legacy captured_at path.
+_GAP_LEG_EXPECTED_SCHEMA: dict[str, str] = {
+    "connect-manifest.json": "threadlight-connect-manifest/v1",
+    "ground-manifest.json": "threadlight.ground/v1",
+    "load-manifest.json": "threadlight.load/v1",
+    "upgrade-manifest.json": "threadlight.upgrade/v1",
+}
+_GAP_LEG_SCHEMA_VALUES = frozenset(_GAP_LEG_EXPECTED_SCHEMA.values())
+_GAP_MAX_VALID_FOR_HOURS = 8760
+
+
+def _read_leg_manifest(ctx: RepoContext, filename: str) -> dict | None:
+    """Parse specs/<filename> as an object without interpreting its contents."""
+    raw = _read_text(ctx.root / "specs" / filename)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _is_recognized_gap_leg(data: dict, filename: str) -> bool:
+    schema = data.get("schema")
+    return (
+        filename in _GAP_LEG_EXPECTED_SCHEMA
+        or (isinstance(schema, str) and schema in _GAP_LEG_SCHEMA_VALUES)
+    )
+
+
+def _set_validated_gap_freshness(data: dict) -> None:
+    """Inject computed freshness after the new-leg envelope has been validated."""
+    try:
+        generated = data["generated_at"]
+        normalized = generated[:-1] + "+00:00" if generated[-1] in "Zz" else generated
+        generated_at = datetime.fromisoformat(normalized)
+        age = datetime.now(timezone.utc) - generated_at.astimezone(timezone.utc)
+        validity = timedelta(hours=int(data["freshness"]["valid_for_hours"]))
+        data["_age_days"] = round(age.total_seconds() / 86400.0, 1)
+        data["_fresh"] = timedelta(0) <= age <= validity
+    except (KeyError, TypeError, ValueError, OverflowError):
+        # Defensive fail-closed guard. The validator should make this unreachable,
+        # but malformed evidence must never escape as an exception.
+        data["_age_days"] = None
+        data["_fresh"] = False
+
 
 def _load_leg_manifest(ctx: RepoContext, filename: str,
                        max_age_days: int = _LEG_FRESHNESS_DAYS) -> dict | None:
@@ -1759,16 +1808,23 @@ def _load_leg_manifest(ctx: RepoContext, filename: str,
         is anchored on ``generated_at`` — a partial run with a very old source
         is still "fresh" until its ``valid_for_hours`` elapses.
     """
-    path = ctx.root / "specs" / filename
-    raw = _read_text(path)
-    if not raw:
+    data = _read_leg_manifest(ctx, filename)
+    if data is None:
         return None
-    try:
-        data = json.loads(raw)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
+
+    # A recognized new filename OR schema can only use generated_at +
+    # freshness.valid_for_hours. Validate before any timestamp or duration
+    # arithmetic; captured_at and other unknown legacy fields are rejected by
+    # the strict top-level allowlist.
+    if _is_recognized_gap_leg(data, filename):
+        invalid_reason = _validate_gap_leg_envelope(data, filename)
+        if invalid_reason is not None:
+            data["_age_days"] = None
+            data["_fresh"] = False
+            return data
+        _set_validated_gap_freshness(data)
+        return data
+
     captured = data.get("captured_at") or ""
     if captured:
         # ---- legacy path (captured_at + 90-day window) ----
@@ -1782,29 +1838,8 @@ def _load_leg_manifest(ctx: RepoContext, filename: str,
         data["_age_days"] = age
         data["_fresh"] = age is not None and 0 <= age <= max_age_days
         return data
-    # ---- shared-envelope path (generated_at + freshness.valid_for_hours) ----
-    generated = data.get("generated_at") or ""
-    age_hours: float | None = None
-    if generated:
-        try:
-            gen_dt = datetime.fromisoformat(str(generated).replace("Z", "+00:00"))
-            now = datetime.now(gen_dt.tzinfo) if gen_dt.tzinfo else datetime.now()
-            age_hours = (now - gen_dt).total_seconds() / 3600.0
-        except (ValueError, TypeError):
-            age_hours = None
-    freshness = data.get("freshness")
-    valid_for_hours = freshness.get("valid_for_hours") if isinstance(freshness, dict) else None
-    valid_hours_ok = (
-        isinstance(valid_for_hours, (int, float))
-        and not isinstance(valid_for_hours, bool)
-        and valid_for_hours > 0
-    )
-    data["_age_days"] = round(age_hours / 24.0, 1) if age_hours is not None else None
-    data["_fresh"] = (
-        age_hours is not None
-        and valid_hours_ok
-        and 0 <= age_hours <= float(valid_for_hours)
-    )
+    data["_age_days"] = None
+    data["_fresh"] = False
     return data
 
 
@@ -1851,7 +1886,7 @@ GAP_LEG_SOURCE: dict[str, str] = {
     "UPG-003": "upgrade-manifest.json",
 }
 
-_GAP_READY_STATUSES = frozenset({"pass", "should-fix", "not-applicable"})
+_GAP_READY_STATUSES = frozenset({"pass", "should-fix"})
 
 # ---------------------------------------------------------------------------
 # Consumer-side envelope + identity validation for the live-leg manifests
@@ -1874,14 +1909,6 @@ _GAP_READY_STATUSES = frozenset({"pass", "should-fix", "not-applicable"})
 # the per-file identity that pins which producer emitted the file; the rest of
 # the producer-specific payload is out of scope here by design.
 
-# Per-file identity: the exact `schema` string each new-leg file must carry.
-_GAP_LEG_EXPECTED_SCHEMA: dict[str, str] = {
-    "connect-manifest.json": "threadlight-connect-manifest/v1",
-    "ground-manifest.json": "threadlight.ground/v1",
-    "load-manifest.json": "threadlight.load/v1",
-    "upgrade-manifest.json": "threadlight.upgrade/v1",
-}
-
 # Per-file required finding-id tuple: exactly these ids, one each — derived from
 # GAP_LEG_SOURCE so there is a single source of truth for which ids belong to a
 # leg (insertion order preserved).
@@ -1889,17 +1916,34 @@ _GAP_LEG_REQUIRED_IDS: dict[str, tuple[str, ...]] = {}
 for _fid, _fname in GAP_LEG_SOURCE.items():
     _GAP_LEG_REQUIRED_IDS[_fname] = _GAP_LEG_REQUIRED_IDS.get(_fname, ()) + (_fid,)
 
-# The consumer accepts the full finding-status enum the schemas allow; note this
-# is a superset of what the producers emit today (they never emit
-# `not-applicable`) — being permissive on the enum but strict on the id tuple.
+# Exact producer finding-status enum. `not-applicable` belongs to legacy
+# capability manifests, not these new shared-envelope leg schemas.
 _GAP_FINDING_STATUS_ENUM = frozenset(
-    {"pass", "must-fix", "should-fix", "not-verified", "not-applicable"}
+    {"pass", "must-fix", "should-fix", "not-verified"}
 )
 
 _GAP_ENVELOPE_REQUIRED_KEYS = (
     "schema", "tool_version", "generated_at", "freshness", "status", "findings",
 )
 _GAP_STATUS_ENUM = frozenset({"complete", "partial", "aborted"})
+_GAP_COMMON_TOP_LEVEL_KEYS = frozenset(_GAP_ENVELOPE_REQUIRED_KEYS)
+_GAP_LEG_ALLOWED_TOP_LEVEL_KEYS: dict[str, frozenset[str]] = {
+    "connect-manifest.json": _GAP_COMMON_TOP_LEVEL_KEYS | frozenset({
+        "tool_name", "integration_state", "target_state", "contract",
+        "conformance", "evidence_summary", "apply_plan", "changed_paths", "apply",
+    }),
+    "ground-manifest.json": _GAP_COMMON_TOP_LEVEL_KEYS | frozenset({
+        "sources", "acl_evidence", "citation_evidence", "refusal_evidence",
+        "telemetry", "retrieval_quality_baseline",
+    }),
+    "load-manifest.json": _GAP_COMMON_TOP_LEVEL_KEYS | frozenset({
+        "profile_name", "endpoint_class", "endpoint_configured",
+        "allow_production", "adapter_name", "budget", "diagnostics",
+        "spec_update_plan",
+    }),
+    "upgrade-manifest.json": _GAP_COMMON_TOP_LEVEL_KEYS | frozenset({"plan"}),
+}
+_GAP_FRESHNESS_KEYS = frozenset({"valid_for_hours", "source_oldest_at"})
 
 # Strict RFC 3339 `date-time` with a MANDATORY timezone offset (Z/z or ±HH:MM)
 # and a `T`/`t` separator — intentionally stricter than datetime.fromisoformat
@@ -1938,7 +1982,7 @@ def _gap_is_draft7_integer(value: Any) -> bool:
     return isinstance(value, float) and math.isfinite(value) and value.is_integer()
 
 
-def _validate_gap_leg_envelope(data: dict, filename: str) -> str | None:
+def _validate_gap_leg_envelope(data: Any, filename: str) -> str | None:
     """Validate a live-leg manifest against the strict common envelope + the
     per-file identity and finding-id contract.
 
@@ -1953,13 +1997,20 @@ def _validate_gap_leg_envelope(data: dict, filename: str) -> str | None:
     required_ids = _GAP_LEG_REQUIRED_IDS.get(filename)
     if expected_schema is None or required_ids is None:
         return "unknown leg manifest"
+    if not isinstance(data, dict):
+        return "manifest must be an object"
+    if any(not isinstance(key, str) for key in data):
+        return "manifest contains a non-string top-level key"
 
     missing = [k for k in _GAP_ENVELOPE_REQUIRED_KEYS if k not in data]
     if missing:
         return "missing required key(s): " + ", ".join(missing)
+    allowed_keys = _GAP_LEG_ALLOWED_TOP_LEVEL_KEYS[filename]
+    if any(key not in allowed_keys for key in data):
+        return "manifest contains unsupported top-level key(s)"
 
     # Per-file identity: schema must exactly match this producer's contract.
-    if data["schema"] != expected_schema:
+    if not isinstance(data["schema"], str) or data["schema"] != expected_schema:
         return f"schema is not {expected_schema!r}"
 
     tool_version = data["tool_version"]
@@ -1972,31 +2023,51 @@ def _validate_gap_leg_envelope(data: dict, filename: str) -> str | None:
     freshness = data["freshness"]
     if not isinstance(freshness, dict):
         return "freshness must be an object"
+    if any(not isinstance(key, str) for key in freshness):
+        return "freshness contains a non-string key"
     for key in ("valid_for_hours", "source_oldest_at"):
         if key not in freshness:
             return f"freshness missing required key: {key}"
+    if any(key not in _GAP_FRESHNESS_KEYS for key in freshness):
+        return "freshness contains unsupported key(s)"
     valid_for_hours = freshness["valid_for_hours"]
     if not _gap_is_draft7_integer(valid_for_hours) or valid_for_hours <= 0:
         return "freshness.valid_for_hours must be a positive integer"
+    if valid_for_hours > _GAP_MAX_VALID_FOR_HOURS:
+        return (
+            "freshness.valid_for_hours must be at most "
+            f"{_GAP_MAX_VALID_FOR_HOURS}"
+        )
     source_oldest_at = freshness["source_oldest_at"]
     if source_oldest_at is not None and not _gap_is_rfc3339(source_oldest_at):
         return "freshness.source_oldest_at must be null or an RFC3339 timestamp"
 
-    if data["status"] not in _GAP_STATUS_ENUM:
+    envelope_status = data["status"]
+    if not isinstance(envelope_status, str) or envelope_status not in _GAP_STATUS_ENUM:
         return "status must be one of complete|partial|aborted"
 
     findings = data["findings"]
     if not isinstance(findings, list):
         return "findings must be a list"
+    if len(findings) != len(required_ids):
+        return (
+            "findings must contain exactly "
+            + ", ".join(required_ids)
+            + " (one each, no duplicates/unknowns)"
+        )
     seen_ids: list[str] = []
     for item in findings:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             return "findings contains a malformed entry"
-        if item.get("status") not in _GAP_FINDING_STATUS_ENUM:
+        finding_status = item.get("status")
+        if (
+            not isinstance(finding_status, str)
+            or finding_status not in _GAP_FINDING_STATUS_ENUM
+        ):
             return f"finding {item['id']} has an invalid status"
         seen_ids.append(item["id"])
     # Exactly the required ids, one each: no missing, duplicate, or unknown id.
-    if sorted(seen_ids) != sorted(required_ids):
+    if len(set(seen_ids)) != len(seen_ids) or set(seen_ids) != set(required_ids):
         return (
             "findings must contain exactly "
             + ", ".join(required_ids)
@@ -2026,10 +2097,12 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
       * a trusted ``partial`` / stale envelope that would otherwise
         pass/should-fix -> ``not-verified``;
       * ONLY a trusted, fresh, complete envelope can propagate ``pass`` /
-        ``should-fix`` / ``not-applicable``; a source ``not-verified`` stays
+        ``should-fix``; a source ``not-verified`` stays
         ``not-verified``.
     """
-    data = _load_leg_manifest(ctx, filename)
+    # Parse only. Validation must happen before all untrusted freshness
+    # arithmetic, including datetime subtraction and duration construction.
+    data = _read_leg_manifest(ctx, filename)
     if not isinstance(data, dict):
         return _mk_finding(
             target_id, status="not-verified",
@@ -2047,6 +2120,8 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
         return _mk_finding(
             target_id, status="not-verified",
             detail=f"specs/{filename} failed manifest validation: {invalid_reason}.")
+
+    _set_validated_gap_freshness(data)
 
     # The envelope is now TRUSTED: exactly the required finding ids are present,
     # one each, every status in the allowed enum.
