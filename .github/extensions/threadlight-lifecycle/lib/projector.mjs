@@ -302,19 +302,18 @@ function projectLegStatus(json, contract, now) {
   if (json.status === "aborted") {
     return { status: "failed" };
   }
-  // Expiry is resolved before complete/partial or finding-status mapping. Once
-  // evidence expires it can only request a manual leg rerun; it cannot keep
-  // reporting either active progress or a current result.
-  if (!isLegFresh(json, now)) {
-    return { status: "stale" };
-  }
-  // Negative evidence dominates: any must-fix finding fails the leg regardless
-  // of a fresh complete/partial envelope's own status.
+  // Negative evidence dominates freshness and completeness: a trusted must-fix
+  // remains failed even when the envelope is partial or expired.
   const hasMustFix = json.findings.some(
     (finding) => isPlainObject(finding) && finding.status === "must-fix",
   );
   if (hasMustFix) {
     return { status: "failed" };
+  }
+  // Without negative evidence, expired complete/partial evidence requests a
+  // manual rerun rather than reporting active progress or a current result.
+  if (!isLegFresh(json, now)) {
+    return { status: "stale" };
   }
   if (json.status === "partial") {
     return { status: "running" };

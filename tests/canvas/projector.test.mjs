@@ -259,6 +259,44 @@ test("a must-fix finding fails the leg even in a complete envelope", async () =>
   assert.equal(failed.status, "failed");
 });
 
+test("a stale must-fix finding remains failed", async () => {
+  const failed = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      generatedAt: "2026-08-03T09:00:00Z",
+      overrides: { "GRD-001": "must-fix" },
+    }),
+  );
+  assert.equal(failed.status, "failed");
+});
+
+test("a partial must-fix finding fails instead of rendering running", async () => {
+  const failed = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "partial",
+      overrides: { "GRD-001": "must-fix" },
+    }),
+  );
+  assert.equal(failed.status, "failed");
+});
+
+test("an expired pass finding renders stale", async () => {
+  const stale = await projectLeg(
+    "threadlight-ground",
+    legEnvelope({
+      schema: "threadlight.ground/v1",
+      status: "complete",
+      generatedAt: "2026-08-03T09:00:00Z",
+      overrides: { "GRD-001": "pass" },
+    }),
+  );
+  assert.equal(stale.status, "stale");
+});
+
 // --- Strict trust boundary: malformed leg evidence never renders complete ----
 
 test("an unknown envelope status ('done') is rejected as malformed, not complete", async () => {
