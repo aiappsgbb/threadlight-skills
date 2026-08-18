@@ -22,8 +22,8 @@ the invocation is expected to flip green.
 | SAFE-103 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after egress hardening via `threadlight-govern` | Data/prompt exfiltration ASR above threshold — deny egress sinks + block external PII, then re-scan. |
 | INT-001 | `threadlight-connect` | `target` (repo root); re-runs contract conformance and re-emits `specs/connect-manifest.json` | Real integration tool contract conformance — fix schema drift, then re-verify. |
 | INT-002 | `threadlight-connect` | `target` (repo root); `--apply` advances `integration_state` to `real-verified` and re-points `mcp-config.json` | Runtime endpoint still mock — complete the mock→real swap; safe-check G9.7 confirms. |
-| INT-003 | `threadlight-connect` | `target` (repo root); captures reachability evidence into `specs/connect-manifest.json` | Real integration reachability/availability evidence. |
-| INT-004 | `threadlight-connect` | `target` (repo root); records failure-mode coverage into `specs/connect-manifest.json` | Real integration timeout/retry/backoff handling. |
+| INT-003 | `threadlight-connect` | `target` (repo root); captures OBO user-scoped identity evidence into `specs/connect-manifest.json` | Real integration OBO user-scoped identity evidence — capture the on-behalf-of proof, then re-emit. |
+| INT-004 | `threadlight-connect` | `target` (repo root); revalidates required roles vs the current agent identity into `specs/connect-manifest.json` | Real integration required-role revalidation vs the current identity — revalidate the grant, then re-emit. |
 | GRD-001 | `threadlight-ground` | `target` (repo root); re-captures ACL probes and re-emits `specs/ground-manifest.json` | Knowledge-source ACL enforcement over protected sources. |
 | GRD-002 | `threadlight-ground` | `target` (repo root); re-captures citation evidence | Citations grounded in retrieved context. |
 | GRD-003 | `threadlight-ground` | `target` (repo root); re-captures refusal probes | Refusal behaviour on unsupported queries. |

@@ -1098,35 +1098,160 @@ def load_current_state(manifest_full_path) -> str:
     return state
 
 
-def _build_findings(conformance: dict, target_state: str) -> list:
-    findings = [
-        {"id": f"CONNECT-DRIFT-{diff['field']}", "status": "must-fix", "detail": diff}
-        for diff in conformance.get("differences", [])
+# The connect leg emits EXACTLY these four findings, one each, in this order —
+# the stable live-leg gap-evidence contract threadlight-production-ready projects
+# 1:1 onto its INT-001..004 targets (see that skill's _leg_finding). The IDs are
+# fixed and never dynamic: field-level conformance detail stays in
+# ``conformance.differences`` rather than being fanned out into per-field finding
+# IDs, so a consumer always sees the same four IDs regardless of how the real
+# response diverged.
+INT_FINDING_IDS = ("INT-001", "INT-002", "INT-003", "INT-004")
+
+
+def _int_001_conformance(conformance: dict) -> dict:
+    """INT-001 — contract conformance evidence.
+
+    unevaluated (no real records captured) -> not-verified (insufficient
+    evidence, never a vacuous pass); any field-level difference / non-pass ->
+    must-fix (the detail lives in ``conformance.differences``); an evaluated,
+    clean pass -> pass.
+    """
+    if not conformance.get("evaluated", False):
+        return {
+            "id": "INT-001",
+            "status": "not-verified",
+            "detail": (
+                "conformance unevaluated — the captured real response had no "
+                "items to check; capture a non-empty real sample to verify the "
+                "contract"
+            ),
+        }
+    differences = conformance.get("differences") or []
+    if differences or not conformance.get("passed", False):
+        return {
+            "id": "INT-001",
+            "status": "must-fix",
+            "detail": (
+                f"real response diverged from the mock contract in "
+                f"{len(differences)} field(s); see conformance.differences"
+            ),
+        }
+    return {
+        "id": "INT-001",
+        "status": "pass",
+        "detail": (
+            f"real response conforms to the mock contract across "
+            f"{conformance.get('item_count', 0)} record(s)"
+        ),
+    }
+
+
+def _int_002_binding(target_state: str) -> dict:
+    """INT-002 — runtime binding / mock->real state (keyed on this run's
+    evidence-computed ``target_state``).
+
+    real-verified -> pass; real-drift -> must-fix (the runtime must never bind
+    to a drifting endpoint); mock / real-unverified -> not-verified (the real,
+    non-mock binding is not yet verified).
+    """
+    if target_state == "real-verified":
+        return {
+            "id": "INT-002",
+            "status": "pass",
+            "detail": "evidence advances the binding to real-verified (mock fully swapped)",
+        }
+    if target_state == "real-drift":
+        return {
+            "id": "INT-002",
+            "status": "must-fix",
+            "detail": (
+                "real endpoint drifted from the mock contract (real-drift); the "
+                "runtime must not bind to a drifting endpoint"
+            ),
+        }
+    return {
+        "id": "INT-002",
+        "status": "not-verified",
+        "detail": (
+            f"integration still {target_state} — real (non-mock) binding not yet verified"
+        ),
+    }
+
+
+def _int_003_identity(normalized_obo: dict) -> dict:
+    """INT-003 — identity / OBO evidence.
+
+    present AND user-scoped -> pass; anything else (absent, or present but not
+    user-scoped) -> not-verified. There is no explicit-OBO-failure signal in the
+    evidence shape, so an explicit must-fix is not representable here.
+    """
+    if _obo_ok(normalized_obo):
+        return {
+            "id": "INT-003",
+            "status": "pass",
+            "detail": "OBO evidence is present and user-scoped",
+        }
+    return {
+        "id": "INT-003",
+        "status": "not-verified",
+        "detail": "OBO user-scoped identity evidence is missing or incomplete",
+    }
+
+
+def _int_004_roles(normalized_role: dict, current_agent_identity) -> dict:
+    """INT-004 — required-role revalidation / apply evidence.
+
+    revalidated against the CURRENT agent identity with every required role
+    granted -> pass; revalidation ran but a required role is missing (an
+    explicit failure) -> must-fix; otherwise (never revalidated, no current
+    identity, or a stale/mismatched identity) -> not-verified.
+    """
+    if _roles_ok(normalized_role, current_agent_identity):
+        return {
+            "id": "INT-004",
+            "status": "pass",
+            "detail": "required roles revalidated against the current agent identity",
+        }
+    required = set(normalized_role.get("required_roles") or [])
+    validated = set(normalized_role.get("validated_roles") or [])
+    if normalized_role.get("revalidated") is True and required and not required.issubset(validated):
+        return {
+            "id": "INT-004",
+            "status": "must-fix",
+            "detail": (
+                "role revalidation ran but the current identity is missing "
+                "required role(s)"
+            ),
+        }
+    return {
+        "id": "INT-004",
+        "status": "not-verified",
+        "detail": (
+            "required-role revalidation against the current agent identity is "
+            "missing or stale"
+        ),
+    }
+
+
+def _build_findings(
+    conformance: dict,
+    target_state: str,
+    normalized_obo: dict,
+    normalized_role: dict,
+    current_agent_identity,
+) -> list:
+    """Emit the four stable INT-001..004 findings, exactly one of each, in order.
+
+    Detailed field-level conformance differences stay in
+    ``conformance.differences`` — never expanded into dynamic finding IDs — so
+    the findings array is always exactly ``INT_FINDING_IDS``.
+    """
+    return [
+        _int_001_conformance(conformance),
+        _int_002_binding(target_state),
+        _int_003_identity(normalized_obo),
+        _int_004_roles(normalized_role, current_agent_identity),
     ]
-    if not conformance.get("evaluated", True):
-        findings.append(
-            {
-                "id": "CONNECT-EVIDENCE-EMPTY",
-                "status": "not-verified",
-                "detail": (
-                    "captured real response contained no items to check — "
-                    "conformance cannot be verified vacuously; target held at "
-                    "real-unverified until a non-empty real sample is provided"
-                ),
-            }
-        )
-    elif target_state == "real-unverified":
-        findings.append(
-            {
-                "id": "CONNECT-EVIDENCE-INCOMPLETE",
-                "status": "should-fix",
-                "detail": (
-                    "OBO user-scoped evidence and/or required-role "
-                    "revalidation against the current agent identity is missing"
-                ),
-            }
-        )
-    return findings
 
 
 def _manifest_status(real_response) -> str:
@@ -1206,6 +1331,12 @@ _CONTRACT_KEYS = {"schema", "tool_name", "generated_at", "fields"}
 _CONTRACT_FIELD_KEYS = {"name", "required", "type", "cardinality"}
 _FINDING_REQUIRED_KEYS = {"id", "status"}
 _APPLY_PLAN_ITEM_REQUIRED_KEYS = {"path", "action", "description"}
+
+# The findings array is a fixed tuple: exactly INT-001..INT-004, one each, in
+# order. This mirrors the schema's tuple `items` + minItems/maxItems 4 +
+# additionalItems:false, so the hand validator and Draft7Validator reject the
+# same shapes (missing IDs, extra findings, wrong order, dynamic IDs).
+_FINDING_ID_SEQUENCE = list(INT_FINDING_IDS)
 
 # Value-domain enums mirrored 1:1 from the schemas so the hand validator
 # rejects exactly what jsonschema would (see tests/test_connect.py parity).
@@ -1357,11 +1488,23 @@ def validate_connect_manifest(manifest: dict) -> None:
             field["cardinality"], _CONTRACT_CARDINALITY_ENUM, f"{label}.cardinality"
         )
 
-    for index, finding in enumerate(manifest["findings"]):
+    findings = _require_array(manifest["findings"], "findings")
+    for index, finding in enumerate(findings):
         label = f"findings[{index}]"
         finding = _require_object_keys(finding, _FINDING_REQUIRED_KEYS, label)
         _require_string(finding["id"], f"{label}.id")
         _require_enum(finding["status"], _FINDING_STATUS_ENUM, f"{label}.status")
+    # Strict tuple: exactly INT-001..INT-004, one each, in order (mirrors the
+    # schema). Field-level conformance detail lives in conformance.differences,
+    # never in dynamic finding IDs, so the set is always these four.
+    finding_ids = [finding["id"] for finding in findings]
+    if finding_ids != _FINDING_ID_SEQUENCE:
+        raise ManifestValidationError(
+            "findings must be exactly "
+            + ", ".join(_FINDING_ID_SEQUENCE)
+            + " (one each, in order); got "
+            + (", ".join(finding_ids) if finding_ids else "[]")
+        )
 
     conformance = manifest["conformance"]
     conformance = _require_object_keys(conformance, _CONFORMANCE_KEYS, "conformance")
@@ -1525,7 +1668,13 @@ def run_connect(
         changed_paths=changed_paths,
         apply=apply,
         status=_manifest_status(real_response),
-        findings=_build_findings(conformance, target_state),
+        findings=_build_findings(
+            conformance,
+            target_state,
+            normalized_obo,
+            normalized_role,
+            current_agent_identity,
+        ),
         generated_at=generated_at,
         evidence_captured_at=evidence_captured_at,
         valid_for_hours=valid_for_hours,

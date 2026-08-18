@@ -63,6 +63,17 @@ def drifting_real_response():
     return {"items": [{"id": "R-1001", "status": 42}]}
 
 
+# The connect leg emits EXACTLY these four findings, one each, in order. Fixtures
+# that stand in for an emitted manifest reuse this canonical shape; the exact
+# statuses only matter where a test asserts them (the validator only enforces the
+# id tuple + status enum).
+def _int_findings(statuses=("pass", "pass", "pass", "pass")):
+    return [
+        {"id": fid, "status": status, "detail": ""}
+        for fid, status in zip(connect.INT_FINDING_IDS, statuses)
+    ]
+
+
 def _run(tmp_path, **kwargs):
     defaults = dict(
         project_root=tmp_path,
@@ -665,7 +676,7 @@ def test_manifest_contains_no_sample_field_values():
         changed_paths=[],
         apply=False,
         status="complete",
-        findings=[],
+        findings=_int_findings(),
         generated_at=PINNED,
     )
     manifest_text = json.dumps(manifest)
@@ -695,7 +706,7 @@ def test_validate_connect_manifest_rejects_unknown_integration_state():
         tool_name="t", integration_state="mock", target_state="real-verified",
         contract={"fields": []}, conformance={"passed": True, "differences": []},
         evidence_summary=obo_summary, apply_plan=[], changed_paths=[], apply=False,
-        status="complete", findings=[], generated_at=PINNED,
+        status="complete", findings=_int_findings(), generated_at=PINNED,
     )
     manifest["integration_state"] = "bogus-state"
     with pytest.raises(ManifestValidationError, match="integration_state"):
@@ -747,7 +758,9 @@ def test_empty_or_missing_real_response_is_unverified_and_makes_no_edits(tmp_pat
     assert manifest["integration_state"] == "mock"
     assert manifest["target_state"] == "real-unverified"
     finding_ids = {f["id"]: f["status"] for f in manifest["findings"]}
-    assert finding_ids.get("CONNECT-EVIDENCE-EMPTY") == "not-verified"
+    # unevaluated conformance -> INT-001/002 not-verified (never a vacuous pass)
+    assert finding_ids["INT-001"] == "not-verified"
+    assert finding_ids["INT-002"] == "not-verified"
     connect.validate_connect_manifest(manifest)  # non-vacuous conformance still schema-valid
 
 
@@ -861,7 +874,7 @@ def _valid_manifest(conformance=None):
         changed_paths=[],
         apply=False,
         status="complete",
-        findings=[],
+        findings=_int_findings(),
         generated_at=PINNED,
     )
 
@@ -1230,7 +1243,7 @@ def _manifest_with_all_nested_items():
     contract = extract_contract("returns_get_case", TOOL_SOURCE, SAMPLE, generated_at=PINNED)
     conformance = check_conformance(contract, drifting_real_response())
     manifest = _valid_manifest(conformance=conformance)
-    manifest["findings"] = [{"id": "CONNECT-DRIFT", "status": "must-fix"}]
+    manifest["findings"] = _int_findings(("must-fix", "must-fix", "pass", "pass"))
     manifest["apply_plan"] = [
         {"path": "SPEC.md", "action": "create", "description": "Update the specification"}
     ]
@@ -1378,9 +1391,7 @@ def _rich_connect_manifest(**overrides):
         changed_paths=["specs/SPEC.md"],
         apply=True,
         status="complete",
-        findings=[
-            {"id": "CONNECT-DRIFT-status", "status": "must-fix", "detail": {"field": "status"}},
-        ],
+        findings=_int_findings(("must-fix", "must-fix", "pass", "pass")),
         generated_at=PINNED,
     )
     params.update(overrides)
@@ -1410,9 +1421,9 @@ def _partial_connect_manifest():
         changed_paths=[],
         apply=False,
         status="partial",
-        findings=[
-            {"id": "CONNECT-EVIDENCE-EMPTY", "status": "not-verified", "detail": "no items"},
-        ],
+        findings=_int_findings(
+            ("not-verified", "not-verified", "not-verified", "not-verified")
+        ),
         generated_at=PINNED,
     )
 
@@ -1438,11 +1449,12 @@ def _manifest_integral_float_item_count():
 
 
 def _manifest_all_empty_arrays():
-    """Every schema array emptied at once — no array declares a minItems, so an
-    empty findings/differences/required_roles/apply_plan/changed_paths/fields is
-    valid under both validators."""
+    """Every EMPTY-able schema array emptied at once — differences,
+    required_roles, apply_plan, changed_paths, and contract.fields declare no
+    minItems, so all-empty is valid under both validators. ``findings`` is the
+    one exception: it is a fixed four-element tuple (INT-001..004), so it keeps
+    its four entries rather than being emptied."""
     manifest = copy.deepcopy(_valid_manifest())
-    manifest["findings"] = []
     manifest["conformance"]["differences"] = []
     manifest["evidence_summary"]["required_roles"] = []
     manifest["apply_plan"] = []
@@ -1463,13 +1475,12 @@ def _manifest_null_nullable_fields():
 
 
 def _manifest_with_two_element_arrays():
-    """A schema-valid manifest whose every constrained array carries two valid
-    elements, so a single mutation of the SECOND element (index 1) exercises the
-    validator's array-index path reporting."""
+    """A schema-valid manifest whose every constrained array carries at least two
+    valid elements, so a single mutation of the SECOND element (index 1)
+    exercises the validator's array-index path reporting. ``findings`` already
+    holds the fixed four-element INT tuple, so index 1 (INT-002) is present
+    without appending a fifth (which the tuple schema forbids)."""
     manifest = copy.deepcopy(_rich_connect_manifest())
-    manifest["findings"].append(
-        {"id": "CONNECT-SECOND", "status": "pass", "detail": {}}
-    )
     manifest["conformance"]["differences"].append(
         {"field": "f2", "expected": "string|required", "actual": "missing", "path": "$.items[1].f2"}
     )
@@ -1904,8 +1915,162 @@ def test_run_with_non_object_row_targets_real_drift_and_manifest_is_valid(tmp_pa
     assert result["integration_state"] == "mock"
     assert result["changed_paths"] == []
     connect.validate_connect_manifest(result["manifest"])  # $-field difference is schema-valid
-    ids = {f["id"] for f in result["manifest"]["findings"]}
-    assert "CONNECT-DRIFT-$" in ids
+    findings = {f["id"]: f["status"] for f in result["manifest"]["findings"]}
+    # The non-object row is a conformance difference -> INT-001 + INT-002 must-fix;
+    # the field-level detail stays in conformance.differences, not a finding id.
+    assert findings["INT-001"] == "must-fix"
+    assert findings["INT-002"] == "must-fix"
+    diff_paths = {d["path"] for d in result["manifest"]["conformance"]["differences"]}
+    assert "$.items[1]" in diff_paths
+
+
+# ---------------------------------------------------------------------------
+# The stable INT-001..004 live-leg gap-evidence contract. The connect leg emits
+# EXACTLY these four findings, one each, in order — the same IDs the consumer
+# (threadlight-production-ready) projects 1:1. Detailed conformance differences
+# stay in conformance.differences, never fanned out into dynamic finding IDs.
+# ---------------------------------------------------------------------------
+def _finding_status_map(result):
+    return {f["id"]: f["status"] for f in result["manifest"]["findings"]}
+
+
+def test_findings_are_exactly_int_001_004_in_order(tmp_path):
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    ids = [f["id"] for f in result["manifest"]["findings"]]
+    assert ids == ["INT-001", "INT-002", "INT-003", "INT-004"]
+    # no dynamic / unknown IDs ever
+    assert all(fid.startswith("INT-00") for fid in ids)
+    connect.validate_connect_manifest(result["manifest"])
+
+
+def test_findings_present_even_when_no_evidence_supplied(tmp_path):
+    # No OBO/role evidence and an empty real response: still exactly the four
+    # findings (all not-verified), never a variable-length array.
+    result = _run(tmp_path, real_response={"items": []}, apply=False)
+    ids = [f["id"] for f in result["manifest"]["findings"]]
+    assert ids == ["INT-001", "INT-002", "INT-003", "INT-004"]
+    statuses = _finding_status_map(result)
+    assert statuses["INT-001"] == "not-verified"
+    assert statuses["INT-002"] == "not-verified"
+    assert statuses["INT-003"] == "not-verified"
+    assert statuses["INT-004"] == "not-verified"
+    assert result["manifest"]["status"] == "partial"
+
+
+def test_findings_full_success_all_pass_and_manifest_complete(tmp_path):
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    statuses = _finding_status_map(result)
+    assert statuses == {
+        "INT-001": "pass", "INT-002": "pass",
+        "INT-003": "pass", "INT-004": "pass",
+    }
+    # complete when fully evaluated, even though the manifest also records a
+    # successful verified apply
+    assert result["manifest"]["status"] == "complete"
+
+
+def test_findings_drift_conformance_and_binding_must_fix(tmp_path):
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path, real_response=drifting_real_response(),
+        obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    statuses = _finding_status_map(result)
+    assert statuses["INT-001"] == "must-fix"  # conformance diverged
+    assert statuses["INT-002"] == "must-fix"  # real-drift binding
+    assert statuses["INT-003"] == "pass"      # OBO still user-scoped
+    assert statuses["INT-004"] == "pass"      # roles still revalidated
+    # must-fix on drift keeps the manifest complete (it WAS evaluated)
+    assert result["manifest"]["status"] == "complete"
+    # detail is carried by conformance.differences, not a dynamic finding id
+    assert result["manifest"]["conformance"]["differences"]
+
+
+def test_findings_obo_missing_is_int_003_not_verified(tmp_path):
+    _, role = full_evidence()
+    result = _run(
+        tmp_path,
+        obo_evidence={"present": False, "user_scoped": False},
+        role_evidence=role, current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    statuses = _finding_status_map(result)
+    assert statuses["INT-001"] == "pass"          # conformance still passes
+    assert statuses["INT-002"] == "not-verified"  # target held at real-unverified
+    assert statuses["INT-003"] == "not-verified"  # OBO absent
+    assert statuses["INT-004"] == "pass"          # roles revalidated vs identity
+
+
+def test_findings_explicit_missing_role_is_int_004_must_fix(tmp_path):
+    obo, _ = full_evidence()
+    role = {
+        "revalidated": True,
+        "required_roles": ["Case.Read", "Case.Admin"],
+        "validated_roles": ["Case.Read"],  # Case.Admin missing -> explicit failure
+        "agent_identity": CURRENT_IDENTITY,
+    }
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    statuses = _finding_status_map(result)
+    assert statuses["INT-003"] == "pass"
+    assert statuses["INT-004"] == "must-fix"
+
+
+def test_findings_stale_role_identity_is_int_004_not_verified(tmp_path):
+    obo, role = full_evidence()
+    # Roles revalidated + granted, but no --current-agent-identity supplied: the
+    # grant is stale, not an explicit failure -> not-verified (never pass).
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=None, apply=True,
+    )
+    statuses = _finding_status_map(result)
+    assert statuses["INT-004"] == "not-verified"
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda f: [{"id": "CONNECT-DRIFT-status", "status": "must-fix"}] + f[1:],
+        lambda f: f[:3],                                      # only three
+        lambda f: f + [{"id": "INT-005", "status": "pass"}],  # a fifth
+        lambda f: [f[1], f[0]] + f[2:],                       # wrong order
+        lambda f: [f[0], f[0], f[2], f[3]],                   # duplicate INT-001
+        lambda f: [],                                          # empty
+    ],
+    ids=["dynamic-id", "only-three", "extra-fifth", "wrong-order", "duplicate", "empty"],
+)
+def test_validate_rejects_findings_that_are_not_the_int_tuple(mutate):
+    manifest = _valid_manifest()
+    manifest["findings"] = mutate(copy.deepcopy(manifest["findings"]))
+    with pytest.raises(ManifestValidationError, match="findings must be exactly"):
+        connect.validate_connect_manifest(manifest)
+
+
+def test_valid_int_tuple_manifest_round_trips(tmp_path):
+    # A real emitted manifest is written and re-validated intact.
+    obo, role = full_evidence()
+    result = _run(
+        tmp_path, obo_evidence=obo, role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY, apply=True,
+    )
+    on_disk = json.loads(
+        (tmp_path / connect.DEFAULT_MANIFEST_PATH).read_text(encoding="utf-8")
+    )
+    assert [f["id"] for f in on_disk["findings"]] == [
+        "INT-001", "INT-002", "INT-003", "INT-004",
+    ]
+    connect.validate_connect_manifest(on_disk)
 
 
 # ---------------------------------------------------------------------------

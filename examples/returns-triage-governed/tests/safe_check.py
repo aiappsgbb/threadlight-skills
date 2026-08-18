@@ -81,10 +81,17 @@ JOB_EXECUTION_WINDOW = 5
 # declares availability `real` MUST NOT still resolve to the scaffolded mock
 # MCP endpoint. This regex is the ONLY mock signal the binding check trusts —
 # an explicit `mock` token in an endpoint string (url / host / name). It is
-# deliberately conservative: missing endpoint metadata is *never* treated as a
-# mock (absence of evidence is not evidence of a mock), so the gate only fires
-# on a certain contradiction (declared real + provably-mock endpoint).
-MOCK_ENDPOINT_MARKER = re.compile(r"mock", re.IGNORECASE)
+# deliberately conservative: it matches `mock` only as a delimited token
+# (`mock`, `mocked`, `mockserver`, or `mock` bounded by non-alphanumerics such
+# as `mock.example` / `erp-mock` / `local mock`), NEVER as a substring of an
+# unrelated word like `mockingbird` or `smock`. Missing endpoint metadata is
+# *never* treated as a mock (absence of evidence is not evidence of a mock), so
+# the gate only fires on a certain contradiction (declared real + provably-mock
+# endpoint).
+MOCK_ENDPOINT_MARKER = re.compile(
+    r"(?<![A-Za-z0-9])(?:mockserver|mocked|mock)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 
 # Candidate locations for the effective MCP server config, in priority order.
 # threadlight-connect writes `infra/mcp-config.json`; a Foundry agent bundle may
@@ -230,6 +237,46 @@ def _load_effective_mcp_config(repo: Path) -> dict[str, Any]:
         if isinstance(data, dict):
             return data
     return {}
+
+
+# Directory entries that identify a repo/project ROOT (not the ``specs`` subdir
+# the manifest lives in). Used to resolve the root a manifest belongs to when it
+# sits at a non-default (nested) path and no explicit CLI root was supplied —
+# instead of blindly assuming the manifest is exactly one directory below the
+# root (``manifest_path.parent.parent``).
+_REPO_ROOT_MARKERS = ("azure.yaml", ".git", "infra")
+
+
+def _looks_like_repo_root(path: Path) -> bool:
+    """True when *path* carries a recognizable repo/project-root marker: an
+    ``azure.yaml`` / ``.git`` / ``infra`` entry, or one of the known
+    effective-MCP-config candidates."""
+    for marker in _REPO_ROOT_MARKERS:
+        if (path / marker).exists():
+            return True
+    return any((path / candidate).exists() for candidate in MCP_CONFIG_CANDIDATES)
+
+
+def _repo_root_for_manifest(manifest_path: Path,
+                            explicit_root: Path | None = None) -> Path:
+    """Resolve the repo root a manifest belongs to.
+
+    Prefers an *explicit* root (the CLI's ``Path.cwd()``) whenever one is
+    supplied. Otherwise walks up from the manifest's own directory to the
+    nearest ancestor that looks like a repo root (see
+    :func:`_looks_like_repo_root`) rather than assuming the manifest sits exactly
+    one level below the root. Falls back to the legacy grandparent
+    (``manifest_path.parent.parent``) only when no marker is found up the tree,
+    so the default ``<root>/specs/manifest.json`` layout is unaffected while a
+    nested ``--manifest a/b/specs/manifest.json`` no longer mis-roots.
+    """
+    if explicit_root is not None:
+        return explicit_root
+    start = manifest_path.parent
+    for candidate in (start, *start.parents):
+        if _looks_like_repo_root(candidate):
+            return candidate
+    return manifest_path.parent.parent
 
 
 def _print_active_context() -> None:
@@ -416,7 +463,7 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def phase_postdeploy(manifest_path: Path, out_path: Path,
-                     rg: str | None) -> int:
+                     rg: str | None, repo_root: Path | None = None) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     selectors = {k for k, v in dm.get("module_selectors", {}).items() if v == "yes"}
@@ -887,8 +934,8 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     # snapshot with no integrations (or all-mock integrations) adds nothing.
     # ------------------------------------------------------------------
     integrations = dm.get("integrations", [])
-    repo_root = manifest_path.parent.parent
-    effective_mcp_config = _load_effective_mcp_config(repo_root)
+    resolved_root = _repo_root_for_manifest(manifest_path, repo_root)
+    effective_mcp_config = _load_effective_mcp_config(resolved_root)
     binding_gaps = integration_binding_gaps(integrations, effective_mcp_config)
     gaps.extend(binding_gaps)
     integration_binding_results = {
@@ -1010,7 +1057,7 @@ def main() -> int:
     if args.phase == "post-deploy":
         _print_active_context()
         out = out_dir / "postdeploy-manifest.json"
-        return phase_postdeploy(manifest_path, out, args.rg)
+        return phase_postdeploy(manifest_path, out, args.rg, repo_root=repo)
     if args.phase == "design":
         out = out_dir / "safe-check-design-manifest.json"
         return phase_design(manifest_path, out)

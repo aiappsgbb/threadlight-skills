@@ -904,8 +904,8 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     # INT-001..004 — threadlight-connect (specs/connect-manifest.json)
     "INT-001": {"title": "Real integration tool contract conformance verified (connect leg)", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
     "INT-002": {"title": "Runtime endpoint bound to a real (non-mock) integration server", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
-    "INT-003": {"title": "Real integration reachability/availability evidence captured", "pillar": "reliability", "severity": "should-fix", "tier": 0},
-    "INT-004": {"title": "Real integration failure-mode handling verified (timeout/retry)", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    "INT-003": {"title": "Real integration exercised through user-scoped identity (OBO) evidence", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    "INT-004": {"title": "Real integration authorized by required-role revalidation vs current identity", "pillar": "reliability", "severity": "should-fix", "tier": 0},
     # GRD-001..004 — threadlight-ground (specs/ground-manifest.json)
     "GRD-001": {"title": "Knowledge-source ACL enforcement proven on protected sources", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
     "GRD-002": {"title": "Answer citations grounded in retrieved context", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},

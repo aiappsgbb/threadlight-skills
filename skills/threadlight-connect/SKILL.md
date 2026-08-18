@@ -243,6 +243,30 @@ and cardinality are inferred **only where evidence exists** in the sample;
 a field read but absent from the sample gets `type: null` rather than a
 guess.
 
+## Manifest findings — the stable `INT-001..004` gap-evidence contract
+
+The emitted `specs/connect-manifest.json` always carries **exactly four
+findings, one each, in this order** — the live-leg gap evidence that
+`threadlight-production-ready` projects 1:1 onto its `INT-001..004` targets.
+The IDs are never dynamic: field-level conformance detail stays in
+`conformance.differences`, so a consumer always sees the same four IDs
+regardless of how a real response diverged.
+
+| Finding | Evidence | `pass` | `must-fix` | `not-verified` |
+|---|---|---|---|---|
+| `INT-001` | Contract conformance | real sample conforms (evaluated, no differences) | any field-level difference | unevaluated (no real records to check) |
+| `INT-002` | Runtime mock→real binding (`target_state`) | `real-verified` | `real-drift` | `mock` / `real-unverified` |
+| `INT-003` | OBO user-scoped identity | OBO present **and** user-scoped | — (no explicit-failure signal in the evidence shape) | OBO absent or not user-scoped |
+| `INT-004` | Required-role revalidation vs current identity | roles revalidated against the **current** identity | revalidation ran but a required role is missing | never revalidated, no current identity, or a stale/mismatched grant |
+
+`status` follows evaluation, not the finding severities: the envelope stays
+`partial` whenever conformance was unevaluated (nothing real to check) and is
+`complete` once fully evaluated **even if a finding is `must-fix`** (e.g. a
+`real-drift` result is a complete-but-failing manifest). Because the consumer
+downgrades any `pass`/`should-fix` it reads from a `partial`, stale, or
+`aborted` envelope to `not-verified`, an incomplete leg can never inflate a
+pillar's readiness — negative (`must-fix`) evidence still dominates.
+
 ## Files
 
 ```

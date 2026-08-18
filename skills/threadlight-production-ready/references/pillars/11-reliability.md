@@ -89,7 +89,7 @@ or `aborted` leg never inflates this pillar's score or readiness, and a
 
 | ID | Verified when the leg reports it (fresh + complete) | Severity |
 |---|---|---|
-| `INT-003` | `threadlight-connect` captured reachability/availability evidence for the real integration | `should-fix` |
-| `INT-004` | `threadlight-connect` verified failure-mode handling (timeout/retry/backoff) | `should-fix` |
+| `INT-003` | `threadlight-connect` captured OBO user-scoped identity evidence for the real integration call | `should-fix` |
+| `INT-004` | `threadlight-connect` revalidated the required roles against the current agent identity | `should-fix` |
 | `LOAD-001` | `threadlight-loadtest` respected the production-safety guard | `must-fix` |
 | `LOAD-003` | `threadlight-loadtest` held the declared SLO thresholds (p95 latency / error rate) under load | `should-fix` |

@@ -34,15 +34,48 @@
     "status": {"enum": ["complete", "partial", "aborted"]},
     "findings": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "status"],
-        "properties": {
-          "id": {"type": "string"},
-          "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
-          "detail": {}
+      "description": "Exactly the four stable live-leg gap-evidence findings, one each, in order: INT-001 (contract conformance), INT-002 (runtime mock->real binding), INT-003 (OBO user-scoped identity), INT-004 (required-role revalidation / apply). IDs are never dynamic — field-level conformance detail lives in conformance.differences.",
+      "minItems": 4,
+      "maxItems": 4,
+      "additionalItems": false,
+      "items": [
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-001"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-002"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-003"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-004"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
         }
-      }
+      ]
     },
     "tool_name": {"type": "string", "minLength": 1},
     "integration_state": {

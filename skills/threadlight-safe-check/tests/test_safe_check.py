@@ -20,6 +20,7 @@ skill ships no pytest harness of its own.
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -124,6 +125,124 @@ def test_malformed_inputs_never_raise() -> None:
         integrations=["not-a-dict", {"availability": "real"}],  # no id
         mcp_config={"servers": {"erp": {"url": "mock"}}},
     ) == []
+
+
+# ---------------------------------------------------------------------------
+# Mock marker — a conservative, delimited token, never a substring
+# ---------------------------------------------------------------------------
+
+def test_mock_marker_matches_delimited_mock_conventions() -> None:
+    # Standalone / delimited mock, mocked, mockserver, and "local mock" all count.
+    for endpoint in (
+        "https://mock.example/mcp",   # dot-delimited
+        "erp-mock.internal",          # hyphen-delimited
+        "erp-mock",                   # trailing token
+        "svc_mock",                   # underscore-delimited
+        "mocked-api.local",           # 'mocked'
+        "mockserver.internal",        # 'mockserver' compound convention
+        "returns-MockServer",         # case-insensitive
+        "local mock",                 # space-delimited
+    ):
+        gaps = sc.integration_binding_gaps(
+            integrations=[{"id": "erp", "availability": "real"}],
+            mcp_config={"servers": {"erp": {"url": endpoint}}},
+        )
+        assert gaps == [
+            "integration erp is declared real but runtime endpoint is still mock"
+        ], f"expected {endpoint!r} to read as a mock endpoint"
+
+
+def test_mock_marker_does_not_match_substrings_like_mockingbird() -> None:
+    # A real hostname that merely CONTAINS 'mock' as a substring (mockingbird,
+    # smock, mockapifactory) is not a mock endpoint and must not trip the gate.
+    for endpoint in (
+        "https://mockingbird.example.com/mcp",
+        "https://smock.contoso.com/mcp",
+        "https://mockapifactory.io/mcp",
+        "https://erp.contoso.com/mcp",
+    ):
+        assert sc.integration_binding_gaps(
+            integrations=[{"id": "erp", "availability": "real"}],
+            mcp_config={"servers": {"erp": {"url": endpoint}}},
+        ) == [], f"{endpoint!r} must not be treated as a mock endpoint"
+
+
+# ---------------------------------------------------------------------------
+# Repo-root resolution — prefer the explicit CLI root, else discover the nearest
+# marked ancestor; never blindly assume parent.parent for a nested manifest.
+# ---------------------------------------------------------------------------
+
+def _make_repo_with_nested_manifest() -> tuple[Path, Path]:
+    """Build <root>/{azure.yaml, infra/mcp-config.json} with a manifest nested at
+    <root>/a/b/specs/manifest.json (a non-default path). Returns (root, manifest).
+
+    Uses ``tempfile.mkdtemp`` (not the pytest ``tmp_path`` fixture) so the file
+    is exercised identically under pytest and the standalone runner below."""
+    root = Path(tempfile.mkdtemp()) / "root"
+    (root / "infra").mkdir(parents=True)
+    (root / "infra" / "mcp-config.json").write_text(
+        '{"servers": {"erp": {"url": "https://mock.example/mcp"}}}',
+        encoding="utf-8",
+    )
+    (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    nested = root / "a" / "b" / "specs"
+    nested.mkdir(parents=True)
+    manifest = nested / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    return root, manifest
+
+
+def test_repo_root_prefers_explicit_cli_root() -> None:
+    root, manifest = _make_repo_with_nested_manifest()
+    # An explicit root (what the CLI passes as Path.cwd()) always wins, even for a
+    # deeply nested manifest whose parent.parent is NOT the root.
+    assert sc._repo_root_for_manifest(manifest, explicit_root=root) == root
+    assert manifest.parent.parent != root  # precondition: parent.parent is wrong
+
+
+def test_repo_root_discovers_nearest_marked_ancestor_for_nested_manifest() -> None:
+    root, manifest = _make_repo_with_nested_manifest()
+    # No explicit root: walk up to the nearest ancestor carrying a repo marker
+    # (azure.yaml / infra), NOT the manifest's grandparent (a/b).
+    resolved = sc._repo_root_for_manifest(manifest)
+    assert resolved == root
+    assert resolved != manifest.parent.parent
+
+
+def test_repo_root_default_layout_unaffected() -> None:
+    root = Path(tempfile.mkdtemp()) / "root"
+    (root / "infra").mkdir(parents=True)
+    (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (root / "specs").mkdir()
+    manifest = root / "specs" / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    assert sc._repo_root_for_manifest(manifest) == root
+
+
+def test_repo_root_falls_back_to_grandparent_without_markers() -> None:
+    # A bare pilot with no azure.yaml / infra / .git / mcp-config: discovery finds
+    # no marker and falls back to the legacy grandparent, which is correct for the
+    # default specs layout.
+    root = Path(tempfile.mkdtemp()) / "bare"
+    (root / "specs").mkdir(parents=True)
+    manifest = root / "specs" / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
+
+
+def test_nested_manifest_binding_gap_uses_correct_root() -> None:
+    # End-to-end: with the explicit CLI root, the nested manifest still resolves
+    # the effective mcp-config under <root>/infra and flags the mock binding.
+    root, manifest = _make_repo_with_nested_manifest()
+    resolved = sc._repo_root_for_manifest(manifest, explicit_root=root)
+    mcp = sc._load_effective_mcp_config(resolved)
+    gaps = sc.integration_binding_gaps(
+        integrations=[{"id": "erp", "availability": "real"}],
+        mcp_config=mcp,
+    )
+    assert gaps == [
+        "integration erp is declared real but runtime endpoint is still mock"
+    ]
 
 
 # ---------------------------------------------------------------------------

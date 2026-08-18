@@ -29,6 +29,12 @@ SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 sys.path.insert(0, str(SCRIPT.parent))
 import production_ready as pr  # noqa: E402
 
+# The REAL producer: import threadlight-connect so a genuine emitted
+# connect-manifest.json (not a hand-built one) can be fed to the consumer.
+CONNECT_SCRIPTS = SKILL_DIR.parent / "threadlight-connect" / "scripts"
+sys.path.insert(0, str(CONNECT_SCRIPTS))
+import connect  # noqa: E402
+
 
 def _iso(dt: datetime) -> str:
     return dt.replace(microsecond=0).isoformat()
@@ -473,3 +479,97 @@ def test_shared_envelope_freshness_uses_valid_for_hours() -> None:
     })
     loaded = pr._load_leg_manifest(ctx, "connect-manifest.json")
     assert loaded is not None and loaded["_fresh"] is False, "3h old with 1h validity is stale"
+
+
+# ---------------------------------------------------------------------------
+# REAL producer -> consumer integration: emit an ACTUAL connect-manifest.json
+# via threadlight-connect's own run_connect, then feed it to the consumer's
+# _check_gap_leg_manifests. No INT ids are hand-authored here — they come from
+# the producer — so this pins the end-to-end contract, not a mock of it.
+# ---------------------------------------------------------------------------
+
+_CONNECT_TOOL_SOURCE = "return {'id': row['id'], 'status': row.get('status')}"
+_CONNECT_SAMPLE = {"id": "R-1", "status": "open"}
+_CONNECT_OBO = {"present": True, "user_scoped": True}
+_CONNECT_ROLE = {
+    "revalidated": True,
+    "required_roles": ["Case.Read"],
+    "validated_roles": ["Case.Read"],
+    "agent_identity": "agent-xyz",
+}
+
+
+def _emit_real_connect_manifest(**run_kwargs) -> "pr.RepoContext":
+    """Run the real connect producer into a fresh ctx root, writing an actual
+    specs/connect-manifest.json for the consumer to read."""
+    ctx = _make_ctx()
+    defaults = dict(
+        project_root=ctx.root,
+        tool_name="returns_get_case",
+        tool_source=_CONNECT_TOOL_SOURCE,
+        sample=_CONNECT_SAMPLE,
+        obo_evidence=_CONNECT_OBO,
+        role_evidence=_CONNECT_ROLE,
+        current_agent_identity="agent-xyz",
+        generated_at=_iso(datetime.now(timezone.utc)),  # fresh envelope
+        apply=False,
+    )
+    defaults.update(run_kwargs)
+    connect.run_connect(**defaults)
+    return ctx
+
+
+def test_real_connect_manifest_emits_exactly_the_int_tuple() -> None:
+    ctx = _emit_real_connect_manifest(
+        real_response={"items": [{"id": "R-1", "status": "open"}]})
+    raw = json.loads(
+        (ctx.root / "specs" / "connect-manifest.json").read_text(encoding="utf-8"))
+    assert [f["id"] for f in raw["findings"]] == [
+        "INT-001", "INT-002", "INT-003", "INT-004"]
+
+
+def test_real_connect_success_propagates_all_int_pass() -> None:
+    ctx = _emit_real_connect_manifest(
+        real_response={"items": [{"id": "R-1", "status": "open"}]})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_real_connect_drift_propagates_must_fix() -> None:
+    # A wrong-typed field is a real conformance difference -> real-drift.
+    ctx = _emit_real_connect_manifest(
+        real_response={"items": [{"id": "R-1", "status": 42}]})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["INT-001"].status == "must-fix"  # conformance diverged
+    assert f["INT-002"].status == "must-fix"  # runtime must not bind to drift
+    # OBO + role evidence still hold, and the run WAS evaluated (complete), so
+    # those two propagate pass rather than being downgraded.
+    assert f["INT-003"].status == "pass"
+    assert f["INT-004"].status == "pass"
+
+
+def test_real_connect_incomplete_holds_every_int_not_verified() -> None:
+    # No real records to check -> unevaluated conformance -> partial envelope.
+    ctx = _emit_real_connect_manifest(real_response={"items": []})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    # A partial envelope can never inflate readiness: even the OBO/role passes
+    # recorded in the manifest are downgraded to not-verified by the consumer.
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_real_connect_missing_evidence_propagates_identity_not_verified() -> None:
+    # Conformance passes, but OBO absent and no --current-agent-identity: the
+    # producer emits INT-003/INT-004 not-verified, which propagate 1:1.
+    ctx = _emit_real_connect_manifest(
+        real_response={"items": [{"id": "R-1", "status": "open"}]},
+        obo_evidence={"present": False, "user_scoped": False},
+        current_agent_identity=None,
+    )
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["INT-001"].status == "pass"           # conformance still passes
+    assert f["INT-002"].status == "not-verified"   # binding held at unverified
+    assert f["INT-003"].status == "not-verified"   # OBO absent
+    assert f["INT-004"].status == "not-verified"   # roles stale (no current id)
+
