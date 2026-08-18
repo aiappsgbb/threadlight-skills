@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -1852,26 +1853,181 @@ GAP_LEG_SOURCE: dict[str, str] = {
 
 _GAP_READY_STATUSES = frozenset({"pass", "should-fix", "not-applicable"})
 
+# ---------------------------------------------------------------------------
+# Consumer-side envelope + identity validation for the live-leg manifests
+# ---------------------------------------------------------------------------
+#
+# production-ready is a CONSUMER of the four live-leg manifests. It must NEVER
+# trust an untrusted / hand-forged manifest: a malformed envelope that happens
+# to carry a `must-fix` finding must not be able to trip the hard go-live gate,
+# and a malformed envelope that happens to carry a `pass` finding must not be
+# able to score. So before any freshness / finding propagation, every new-leg
+# manifest is independently validated (stdlib-only — we do NOT import the
+# producer's own validator, which lives on the untrusted side of the boundary)
+# against the shared common envelope PLUS the per-file identity + finding-id
+# contract. Any failure marks the manifest INVALID -> every related finding is
+# reported `not-verified` (never `must-fix`, never a scoring `pass`).
+#
+# The contract deliberately checks only the SHARED envelope + identity/finding
+# shape — it does not re-implement each producer's full payload JSON schema
+# (contract/conformance/diagnostics/plan/...). The top-level `schema` string is
+# the per-file identity that pins which producer emitted the file; the rest of
+# the producer-specific payload is out of scope here by design.
+
+# Per-file identity: the exact `schema` string each new-leg file must carry.
+_GAP_LEG_EXPECTED_SCHEMA: dict[str, str] = {
+    "connect-manifest.json": "threadlight-connect-manifest/v1",
+    "ground-manifest.json": "threadlight.ground/v1",
+    "load-manifest.json": "threadlight.load/v1",
+    "upgrade-manifest.json": "threadlight.upgrade/v1",
+}
+
+# Per-file required finding-id tuple: exactly these ids, one each — derived from
+# GAP_LEG_SOURCE so there is a single source of truth for which ids belong to a
+# leg (insertion order preserved).
+_GAP_LEG_REQUIRED_IDS: dict[str, tuple[str, ...]] = {}
+for _fid, _fname in GAP_LEG_SOURCE.items():
+    _GAP_LEG_REQUIRED_IDS[_fname] = _GAP_LEG_REQUIRED_IDS.get(_fname, ()) + (_fid,)
+
+# The consumer accepts the full finding-status enum the schemas allow; note this
+# is a superset of what the producers emit today (they never emit
+# `not-applicable`) — being permissive on the enum but strict on the id tuple.
+_GAP_FINDING_STATUS_ENUM = frozenset(
+    {"pass", "must-fix", "should-fix", "not-verified", "not-applicable"}
+)
+
+_GAP_ENVELOPE_REQUIRED_KEYS = (
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings",
+)
+_GAP_STATUS_ENUM = frozenset({"complete", "partial", "aborted"})
+
+# Strict RFC 3339 `date-time` with a MANDATORY timezone offset (Z/z or ±HH:MM)
+# and a `T`/`t` separator — intentionally stricter than datetime.fromisoformat
+# (which accepts naive datetimes, a space separator, and bare dates). Mirrors
+# skills/_shared/manifest.py so the consumer refuses exactly what the producer's
+# format: date-time contract forbids, but stays stdlib-only.
+_GAP_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?"
+    r"(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
+)
+
+
+def _gap_is_rfc3339(value: Any) -> bool:
+    """True iff *value* is a strict RFC 3339 timestamp with a timezone offset."""
+    if not isinstance(value, str) or not _GAP_RFC3339_RE.match(value):
+        return False
+    # The regex fixes the shape; parsing rejects the impossible calendar days
+    # the digit classes still allow (month 13, 2026-02-30). Normalise a trailing
+    # Z/z so fromisoformat accepts it on every CPython version.
+    normalized = value[:-1] + "+00:00" if value[-1] in "Zz" else value
+    try:
+        datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return True
+
+
+def _gap_is_draft7_integer(value: Any) -> bool:
+    """JSON-Schema Draft-07 integer semantics: an integral float such as 24.0 IS
+    an integer, but a bool / 1.5 / nan / inf is not. Mirrors the shared producer
+    policy so 24 and 24.0 are both accepted while True is refused."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    return isinstance(value, float) and math.isfinite(value) and value.is_integer()
+
+
+def _validate_gap_leg_envelope(data: dict, filename: str) -> str | None:
+    """Validate a live-leg manifest against the strict common envelope + the
+    per-file identity and finding-id contract.
+
+    Returns ``None`` when the manifest is structurally valid/trusted, or a
+    short, payload-free reason string identifying the invalid evidence when it
+    is not. A non-``None`` return means the manifest is UNTRUSTED: the caller
+    reports every related finding ``not-verified`` and never propagates a
+    ``must-fix`` (so forged negative evidence cannot trip the hard gate) or a
+    scoring ``pass`` (so forged positive evidence cannot score).
+    """
+    expected_schema = _GAP_LEG_EXPECTED_SCHEMA.get(filename)
+    required_ids = _GAP_LEG_REQUIRED_IDS.get(filename)
+    if expected_schema is None or required_ids is None:
+        return "unknown leg manifest"
+
+    missing = [k for k in _GAP_ENVELOPE_REQUIRED_KEYS if k not in data]
+    if missing:
+        return "missing required key(s): " + ", ".join(missing)
+
+    # Per-file identity: schema must exactly match this producer's contract.
+    if data["schema"] != expected_schema:
+        return f"schema is not {expected_schema!r}"
+
+    tool_version = data["tool_version"]
+    if not isinstance(tool_version, str) or not tool_version:
+        return "tool_version must be a non-empty string"
+
+    if not _gap_is_rfc3339(data["generated_at"]):
+        return "generated_at must be an RFC3339 timestamp with a timezone"
+
+    freshness = data["freshness"]
+    if not isinstance(freshness, dict):
+        return "freshness must be an object"
+    for key in ("valid_for_hours", "source_oldest_at"):
+        if key not in freshness:
+            return f"freshness missing required key: {key}"
+    valid_for_hours = freshness["valid_for_hours"]
+    if not _gap_is_draft7_integer(valid_for_hours) or valid_for_hours <= 0:
+        return "freshness.valid_for_hours must be a positive integer"
+    source_oldest_at = freshness["source_oldest_at"]
+    if source_oldest_at is not None and not _gap_is_rfc3339(source_oldest_at):
+        return "freshness.source_oldest_at must be null or an RFC3339 timestamp"
+
+    if data["status"] not in _GAP_STATUS_ENUM:
+        return "status must be one of complete|partial|aborted"
+
+    findings = data["findings"]
+    if not isinstance(findings, list):
+        return "findings must be a list"
+    seen_ids: list[str] = []
+    for item in findings:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            return "findings contains a malformed entry"
+        if item.get("status") not in _GAP_FINDING_STATUS_ENUM:
+            return f"finding {item['id']} has an invalid status"
+        seen_ids.append(item["id"])
+    # Exactly the required ids, one each: no missing, duplicate, or unknown id.
+    if sorted(seen_ids) != sorted(required_ids):
+        return (
+            "findings must contain exactly "
+            + ", ".join(required_ids)
+            + " (one each, no duplicates/unknowns)"
+        )
+    return None
+
 
 def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
                  target_id: str) -> Finding:
     """Project one live-leg source finding onto a production-ready target id.
 
-    Evidence rules (negative evidence dominates; incomplete legs never inflate
-    readiness):
+    Evidence rules (negative evidence dominates for TRUSTED envelopes only;
+    incomplete legs never inflate readiness):
 
-      * missing / unparseable / invalid manifest, or the finding absent from a
-        complete fresh envelope -> ``not-verified``;
-      * a ``must-fix`` source finding is ALWAYS ``must-fix`` — even if the
-        envelope is partial, stale, or aborted (negative-evidence dominance);
-      * an ``aborted`` envelope -> ``must-fix`` for the applicable leg evidence
-        (never pass);
-      * a ``partial`` / stale envelope that would otherwise pass/should-fix ->
-        ``not-verified``;
-      * ONLY a fresh, complete envelope can propagate ``pass`` / ``should-fix``
-        / ``not-applicable``; a source ``not-verified`` stays ``not-verified``;
-      * a malformed status, a duplicate source id, or an unknown status cannot
-        prove readiness -> ``not-verified``.
+      * missing / unparseable manifest -> ``not-verified`` (run the leg);
+      * a manifest that fails the strict common-envelope + identity + finding-id
+        contract is UNTRUSTED -> ``not-verified`` for every related finding. A
+        forged ``must-fix`` on an invalid manifest is NOT propagated (it cannot
+        trip the hard gate) and a forged ``pass`` is NOT propagated (it cannot
+        score);
+      * once the envelope is trusted: a ``must-fix`` source finding is ALWAYS
+        ``must-fix`` — even if the envelope is partial, stale, or aborted
+        (negative-evidence dominance);
+      * a trusted ``aborted`` envelope -> ``must-fix`` for the applicable leg
+        evidence (never pass);
+      * a trusted ``partial`` / stale envelope that would otherwise
+        pass/should-fix -> ``not-verified``;
+      * ONLY a trusted, fresh, complete envelope can propagate ``pass`` /
+        ``should-fix`` / ``not-applicable``; a source ``not-verified`` stays
+        ``not-verified``.
     """
     data = _load_leg_manifest(ctx, filename)
     if not isinstance(data, dict):
@@ -1879,16 +2035,27 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
             target_id, status="not-verified",
             detail=f"Run the producing leg to create specs/{filename}.")
 
-    findings_list = data.get("findings")
-    if not isinstance(findings_list, list):
-        findings_list = []
-    matches = [
-        item for item in findings_list
-        if isinstance(item, dict) and item.get("id") == source_id
-    ]
+    # Trust boundary: independently validate the manifest against the strict
+    # common envelope + per-file identity + finding-id contract BEFORE any
+    # freshness / finding propagation. A structurally invalid (untrusted)
+    # manifest can never certify readiness AND can never trip the hard gate —
+    # every related finding degrades to not-verified, and a forged `must-fix`
+    # is NOT propagated. The reason identifies the invalid evidence without ever
+    # echoing the raw payload.
+    invalid_reason = _validate_gap_leg_envelope(data, filename)
+    if invalid_reason is not None:
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=f"specs/{filename} failed manifest validation: {invalid_reason}.")
+
+    # The envelope is now TRUSTED: exactly the required finding ids are present,
+    # one each, every status in the allowed enum.
+    findings_list = data["findings"]
+    matches = [item for item in findings_list if item.get("id") == source_id]
     statuses = [m.get("status") for m in matches]
 
-    # Negative evidence dominates every freshness / completeness consideration.
+    # Negative evidence dominates every freshness / completeness consideration —
+    # but only now that the envelope is trusted.
     if "must-fix" in statuses:
         detail = next(
             (m.get("detail") for m in matches
@@ -1906,25 +2073,17 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
             target_id, status="must-fix",
             detail=f"specs/{filename} records an aborted run.")
 
-    # Partial, stale, or otherwise-invalid envelope cannot propagate a pass.
+    # Partial or stale envelope cannot propagate a pass.
     if data.get("status") != "complete" or not data.get("_fresh"):
         return _mk_finding(
             target_id, status="not-verified",
-            detail=f"specs/{filename} is partial, stale, or invalid.")
+            detail=f"specs/{filename} is partial or stale.")
 
-    # From here the envelope is fresh + complete.
-    if not matches:
-        return _mk_finding(
-            target_id, status="not-verified",
-            detail=f"specs/{filename} has no {source_id} evidence.")
-    if len(matches) > 1:
-        return _mk_finding(
-            target_id, status="not-verified",
-            detail=f"specs/{filename} has duplicate {source_id} evidence — cannot prove readiness.")
+    # From here the envelope is trusted, fresh + complete, with exactly one
+    # match for source_id.
     status = statuses[0]
     if status not in _GAP_READY_STATUSES:
-        # not-verified stays not-verified; an unknown/malformed status cannot
-        # prove readiness either.
+        # A source `not-verified` stays not-verified — it cannot prove readiness.
         return _mk_finding(
             target_id, status="not-verified",
             detail=f"specs/{filename} {source_id} status {status!r} cannot prove readiness.")

@@ -35,6 +35,16 @@ CONNECT_SCRIPTS = SKILL_DIR.parent / "threadlight-connect" / "scripts"
 sys.path.insert(0, str(CONNECT_SCRIPTS))
 import connect  # noqa: E402
 
+# The other three live-leg producers, imported the same way, so their ACTUAL
+# emitted manifests (ground/load/upgrade) can be fed end-to-end to the consumer.
+REPO_ROOT = SKILL_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+for _leg in ("threadlight-ground", "threadlight-loadtest", "threadlight-upgrade"):
+    sys.path.insert(0, str(SKILL_DIR.parent / _leg / "scripts"))
+import ground  # noqa: E402
+import loadtest  # noqa: E402
+import upgrade  # noqa: E402
+
 
 def _iso(dt: datetime) -> str:
     return dt.replace(microsecond=0).isoformat()
@@ -227,17 +237,44 @@ def test_safe_catalog_severities() -> None:
 # _check_gap_leg_manifests never lets an incomplete leg inflate readiness.
 # ---------------------------------------------------------------------------
 
-def gap_manifest(name: str, **body) -> dict:
-    """Build a shared-envelope leg manifest (schema/tool_version/generated_at/
-    freshness/status/findings) with sensible defaults."""
-    generated_at = body.pop("generated_at", _iso(datetime.now(timezone.utc)))
-    valid_for_hours = body.pop("valid_for_hours", 24)
+# The exact per-file identity + finding-id contract the consumer now enforces.
+_LEG_SCHEMAS = {
+    "connect": "threadlight-connect-manifest/v1",
+    "ground": "threadlight.ground/v1",
+    "load": "threadlight.load/v1",
+    "upgrade": "threadlight.upgrade/v1",
+}
+_LEG_IDS = {
+    "connect": ["INT-001", "INT-002", "INT-003", "INT-004"],
+    "ground": ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+    "load": ["LOAD-001", "LOAD-002", "LOAD-003"],
+    "upgrade": ["UPG-001", "UPG-002", "UPG-003"],
+}
+
+
+def gap_manifest(name: str, *, status: str = "complete", findings=None,
+                 overrides: dict | None = None, generated_at: str | None = None,
+                 valid_for_hours=24, source_oldest_at=None,
+                 tool_version: str = "0.1.0", schema: str | None = None) -> dict:
+    """Build a shared-envelope leg manifest.
+
+    By default emits a STRUCTURALLY VALID manifest: the correct per-file schema,
+    a non-empty tool_version, a strict-RFC3339 generated_at, a freshness object,
+    and the FULL required finding-id tuple all ``pass`` (apply per-id
+    ``overrides`` to flip specific findings). Pass ``findings=[...]`` to author a
+    raw (possibly invalid-shape) findings list for the negative-path tests, or
+    ``schema=``/``tool_version=`` to author an invalid envelope."""
+    gen = generated_at if generated_at is not None else _iso(datetime.now(timezone.utc))
+    if findings is None:
+        ov = overrides or {}
+        findings = [{"id": fid, "status": ov.get(fid, "pass")} for fid in _LEG_IDS[name]]
     return {
-        "schema": f"threadlight.{name}/v1",
-        "tool_version": "0.1.0",
-        "generated_at": generated_at,
-        "freshness": {"valid_for_hours": valid_for_hours, "source_oldest_at": None},
-        **body,
+        "schema": schema if schema is not None else _LEG_SCHEMAS[name],
+        "tool_version": tool_version,
+        "generated_at": gen,
+        "freshness": {"valid_for_hours": valid_for_hours, "source_oldest_at": source_oldest_at},
+        "status": status,
+        "findings": findings,
     }
 
 
@@ -270,7 +307,7 @@ def test_executed_acl_failure_is_must_fix() -> None:
         "ground-manifest.json": gap_manifest(
             "ground",
             status="complete",
-            findings=[{"id": "GRD-001", "status": "must-fix"}],
+            overrides={"GRD-001": "must-fix"},
         ),
     })
     assert _by_id(pr._check_gap_leg_manifests(ctx))["GRD-001"].status == "must-fix"
@@ -281,17 +318,18 @@ def test_aborted_load_manifest_never_counts_as_pass() -> None:
         "load-manifest.json": gap_manifest(
             "load",
             status="aborted",
-            findings=[{"id": "LOAD-001", "status": "must-fix"}],
+            overrides={"LOAD-001": "must-fix"},
         ),
     })
     assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "must-fix"
 
 
-def test_aborted_dominates_even_for_findings_absent_from_envelope() -> None:
-    # LOAD-002/LOAD-003 are not in the aborted manifest — they must still be
-    # must-fix (never pass) because the run aborted.
+def test_aborted_valid_envelope_flips_even_pass_findings_to_must_fix() -> None:
+    # A structurally valid aborted envelope that (dishonestly) claims every
+    # finding passed must still flip all of them to must-fix — an aborted run
+    # can never certify readiness.
     ctx = _make_ctx(manifests={
-        "load-manifest.json": gap_manifest("load", status="aborted", findings=[]),
+        "load-manifest.json": gap_manifest("load", status="aborted"),
     })
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     for fid in ("LOAD-001", "LOAD-002", "LOAD-003"):
@@ -301,17 +339,9 @@ def test_aborted_dominates_even_for_findings_absent_from_envelope() -> None:
 def test_partial_or_stale_pass_evidence_is_not_verified() -> None:
     stale = _iso(datetime.now(timezone.utc) - timedelta(days=2))
     ctx = _make_ctx(manifests={
-        "connect-manifest.json": gap_manifest(
-            "connect",
-            status="partial",
-            findings=[{"id": "INT-001", "status": "pass"}],
-        ),
+        "connect-manifest.json": gap_manifest("connect", status="partial"),
         "upgrade-manifest.json": gap_manifest(
-            "upgrade",
-            generated_at=stale,
-            status="complete",
-            findings=[{"id": "UPG-001", "status": "pass"}],
-        ),
+            "upgrade", generated_at=stale, status="complete"),
     })
     findings = _by_id(pr._check_gap_leg_manifests(ctx))
     assert findings["INT-001"].status == "not-verified"
@@ -319,16 +349,16 @@ def test_partial_or_stale_pass_evidence_is_not_verified() -> None:
 
 
 def test_must_fix_dominates_partial_and_stale_envelopes() -> None:
-    # Negative evidence dominates even when the envelope itself is not fresh /
-    # complete: a partial or stale run that recorded a must-fix stays must-fix.
+    # Negative evidence dominates even when the (still structurally valid)
+    # envelope itself is not fresh / complete: a partial or stale run that
+    # recorded a must-fix stays must-fix.
     stale = _iso(datetime.now(timezone.utc) - timedelta(days=5))
     ctx = _make_ctx(manifests={
         "connect-manifest.json": gap_manifest(
-            "connect", status="partial",
-            findings=[{"id": "INT-002", "status": "must-fix"}]),
+            "connect", status="partial", overrides={"INT-002": "must-fix"}),
         "upgrade-manifest.json": gap_manifest(
             "upgrade", generated_at=stale, status="complete",
-            findings=[{"id": "UPG-002", "status": "must-fix"}]),
+            overrides={"UPG-002": "must-fix"}),
     })
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     assert f["INT-002"].status == "must-fix"
@@ -358,54 +388,286 @@ def test_complete_fresh_envelope_propagates_pass_and_should_fix() -> None:
 def test_complete_fresh_not_verified_source_stays_not_verified() -> None:
     ctx = _make_ctx(manifests={
         "connect-manifest.json": gap_manifest(
-            "connect", status="complete",
-            findings=[{"id": "INT-001", "status": "not-verified"}]),
+            "connect", status="complete", overrides={"INT-001": "not-verified"}),
     })
     assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
 
 
-def test_missing_finding_in_complete_envelope_is_not_verified() -> None:
-    # A fresh, complete connect envelope that simply omits INT-003 cannot prove
-    # INT-003 — it stays not-verified rather than defaulting to pass.
+def test_missing_finding_in_envelope_invalidates_whole_manifest() -> None:
+    # A connect envelope that omits a required finding id (INT-003) violates the
+    # exact one-each identity contract -> the whole manifest is untrusted and
+    # every INT finding degrades to not-verified (never a default pass).
     ctx = _make_ctx(manifests={
         "connect-manifest.json": gap_manifest(
             "connect", status="complete",
-            findings=[{"id": "INT-001", "status": "pass"}]),
+            findings=[
+                {"id": "INT-001", "status": "pass"},
+                {"id": "INT-002", "status": "pass"},
+                {"id": "INT-004", "status": "pass"},
+            ]),
     })
-    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-003"].status == "not-verified"
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
 
 
 def test_duplicate_source_finding_cannot_prove_readiness() -> None:
+    # A duplicated id (full tuple + one repeat) breaks the one-each contract.
     ctx = _make_ctx(manifests={
         "load-manifest.json": gap_manifest(
             "load", status="complete",
             findings=[
                 {"id": "LOAD-001", "status": "pass"},
+                {"id": "LOAD-002", "status": "pass"},
+                {"id": "LOAD-003", "status": "pass"},
                 {"id": "LOAD-001", "status": "pass"},
             ]),
     })
     assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "not-verified"
 
 
-def test_duplicate_with_a_must_fix_still_dominates() -> None:
+def test_duplicate_must_fix_is_untrusted_and_not_propagated() -> None:
+    # A duplicated id is structurally invalid, so even a handcrafted must-fix on
+    # the duplicate is UNTRUSTED: it degrades to not-verified and must never trip
+    # the hard gate.
     ctx = _make_ctx(manifests={
         "load-manifest.json": gap_manifest(
             "load", status="complete",
             findings=[
                 {"id": "LOAD-001", "status": "pass"},
+                {"id": "LOAD-002", "status": "pass"},
+                {"id": "LOAD-003", "status": "pass"},
                 {"id": "LOAD-001", "status": "must-fix"},
             ]),
     })
-    assert _by_id(pr._check_gap_leg_manifests(ctx))["LOAD-001"].status == "must-fix"
+    gap = pr._check_gap_leg_manifests(ctx)
+    assert _by_id(gap)["LOAD-001"].status == "not-verified"
+    assert not pr._hard_gate_would_fail(gap), "untrusted must-fix tripped the hard gate"
+
+
+def test_unknown_id_invalidates_manifest() -> None:
+    # An unexpected finding id (not in the required tuple) is untrusted.
+    ctx = _make_ctx(manifests={
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade", status="complete",
+            findings=[
+                {"id": "UPG-001", "status": "pass"},
+                {"id": "UPG-002", "status": "pass"},
+                {"id": "UPG-003", "status": "pass"},
+                {"id": "UPG-999", "status": "pass"},
+            ]),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("UPG-001", "UPG-002", "UPG-003"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
 
 
 def test_unknown_or_malformed_status_cannot_prove_readiness() -> None:
     ctx = _make_ctx(manifests={
         "upgrade-manifest.json": gap_manifest(
-            "upgrade", status="complete",
-            findings=[{"id": "UPG-001", "status": "green"}]),
+            "upgrade", status="complete", overrides={"UPG-001": "green"}),
     })
     assert _by_id(pr._check_gap_leg_manifests(ctx))["UPG-001"].status == "not-verified"
+
+
+# ---------------------------------------------------------------------------
+# Strict common-envelope + identity contract: every structural defect makes
+# the whole manifest untrusted, so all its findings degrade to not-verified.
+# ---------------------------------------------------------------------------
+
+def test_missing_schema_invalidates_manifest() -> None:
+    m = gap_manifest("connect", status="complete")
+    del m["schema"]
+    ctx = _make_ctx(manifests={"connect-manifest.json": m})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_wrong_schema_invalidates_manifest() -> None:
+    # connect file carrying the WRONG schema string (the exact bug class the
+    # consumer must now catch: a plausible-but-wrong 'threadlight.connect/v1').
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", schema="threadlight.connect/v1"),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_missing_tool_version_invalidates_manifest() -> None:
+    m = gap_manifest("ground", status="complete")
+    del m["tool_version"]
+    ctx = _make_ctx(manifests={"ground-manifest.json": m})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_empty_tool_version_invalidates_manifest() -> None:
+    ctx = _make_ctx(manifests={
+        "ground-manifest.json": gap_manifest("ground", status="complete", tool_version=""),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["GRD-001"].status == "not-verified"
+
+
+def test_invalid_generated_at_timestamp_invalidates_manifest() -> None:
+    # A naive (timezone-less) timestamp is not strict RFC3339.
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest(
+            "load", status="complete", generated_at="2026-08-18T10:00:00"),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("LOAD-001", "LOAD-002", "LOAD-003"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_invalid_envelope_status_invalidates_manifest() -> None:
+    ctx = _make_ctx(manifests={
+        "load-manifest.json": gap_manifest("load", status="done"),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("LOAD-001", "LOAD-002", "LOAD-003"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_missing_freshness_source_oldest_at_invalidates_manifest() -> None:
+    m = gap_manifest("upgrade", status="complete")
+    del m["freshness"]["source_oldest_at"]
+    ctx = _make_ctx(manifests={"upgrade-manifest.json": m})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("UPG-001", "UPG-002", "UPG-003"):
+        assert f[fid].status == "not-verified", f"{fid}: {f[fid].detail}"
+
+
+def test_invalid_source_oldest_at_timestamp_invalidates_manifest() -> None:
+    # source_oldest_at must be null or strict RFC3339 — a bare date is neither.
+    ctx = _make_ctx(manifests={
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade", status="complete", source_oldest_at="2026-06-01"),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["UPG-001"].status == "not-verified"
+
+
+def test_valid_source_oldest_at_timestamp_is_accepted() -> None:
+    # A proper RFC3339 source_oldest_at must NOT invalidate an otherwise-valid,
+    # fresh, complete manifest.
+    ctx = _make_ctx(manifests={
+        "upgrade-manifest.json": gap_manifest(
+            "upgrade", status="complete",
+            source_oldest_at="2026-06-01T00:00:00+00:00"),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("UPG-001", "UPG-002", "UPG-003"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_missing_findings_list_invalidates_manifest() -> None:
+    m = gap_manifest("connect", status="complete")
+    del m["findings"]
+    ctx = _make_ctx(manifests={"connect-manifest.json": m})
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
+
+
+def test_integral_float_valid_for_hours_is_accepted() -> None:
+    # A manifest that serialized valid_for_hours as 24.0 (integral float) is a
+    # valid Draft7 integer and must not be rejected.
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=24.0),
+    })
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("INT-001", "INT-002", "INT-003", "INT-004"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_bool_valid_for_hours_is_rejected() -> None:
+    # bool is a subclass of int but must NOT satisfy the integer freshness field.
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=True),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
+
+
+def test_nonpositive_valid_for_hours_is_rejected() -> None:
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", valid_for_hours=0),
+    })
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].status == "not-verified"
+
+
+def test_validation_detail_never_echoes_raw_payload() -> None:
+    # The invalidation detail must identify the evidence as invalid WITHOUT
+    # echoing the raw (possibly oversharing) payload — only the filename +
+    # a short structural reason.
+    secret = "s3cr3t-not-for-logs"
+    ctx = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", schema="threadlight.connect/v1",
+            tool_version=secret),
+    })
+    detail = _by_id(pr._check_gap_leg_manifests(ctx))["INT-001"].detail
+    assert "connect-manifest.json" in detail
+    assert "failed manifest validation" in detail
+    assert secret not in detail
+
+
+# ---------------------------------------------------------------------------
+# Trust-boundary security invariants: a forged manifest can neither trip the
+# hard go-live gate nor score. Contrasted against a genuine, valid manifest so
+# the mechanism is proven, not merely absent.
+# ---------------------------------------------------------------------------
+
+def test_valid_must_fix_trips_hard_gate_but_invalid_one_cannot() -> None:
+    # A genuine, structurally valid connect manifest with an INT-001 must-fix
+    # DOES trip the hard gate...
+    valid = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", overrides={"INT-001": "must-fix"}),
+    })
+    valid_gap = pr._check_gap_leg_manifests(valid)
+    assert _by_id(valid_gap)["INT-001"].status == "must-fix"
+    assert pr._hard_gate_would_fail(valid_gap), "a real must-fix must fail the gate"
+
+    # ...but the SAME handcrafted must-fix on a structurally invalid (wrong
+    # schema) manifest is untrusted: it degrades to not-verified and the hard
+    # gate stays green.
+    forged = _make_ctx(manifests={
+        "connect-manifest.json": gap_manifest(
+            "connect", status="complete", schema="threadlight.connect/v1",
+            overrides={"INT-001": "must-fix"}),
+    })
+    forged_gap = pr._check_gap_leg_manifests(forged)
+    assert _by_id(forged_gap)["INT-001"].status == "not-verified"
+    assert not pr._hard_gate_would_fail(forged_gap), \
+        "a forged must-fix must NOT trip the hard gate"
+
+
+def test_valid_pass_scores_but_invalid_pass_cannot() -> None:
+    # A genuine, valid, fresh, complete connect manifest with all-pass INT
+    # findings scores full marks for those findings...
+    valid_gap = pr._check_gap_leg_manifests(_make_ctx(manifests={
+        "connect-manifest.json": gap_manifest("connect", status="complete"),
+    }))
+    int_valid = [f for f in valid_gap if f.id.startswith("INT-")]
+    assert all(f.status == "pass" for f in int_valid)
+    _, pct_valid, _, _ = pr._score_pillar(int_valid)
+    assert pct_valid == 100
+
+    # ...but the same all-pass claims on a structurally invalid (missing
+    # tool_version) manifest are untrusted: not-verified earns nothing.
+    m = gap_manifest("connect", status="complete")
+    del m["tool_version"]
+    forged_gap = pr._check_gap_leg_manifests(_make_ctx(manifests={
+        "connect-manifest.json": m,
+    }))
+    int_forged = [f for f in forged_gap if f.id.startswith("INT-")]
+    assert all(f.status == "not-verified" for f in int_forged)
+    _, pct_forged, _, _ = pr._score_pillar(int_forged)
+    assert pct_forged == 0, "a forged pass must not score"
 
 
 def test_unparseable_manifest_is_not_verified() -> None:
@@ -439,8 +701,7 @@ def test_gap_findings_dispatched_through_pillars() -> None:
     # GRD-001 must-fix should surface in the identity-access pillar's static set.
     ctx = _make_ctx(manifests={
         "ground-manifest.json": gap_manifest(
-            "ground", status="complete",
-            findings=[{"id": "GRD-001", "status": "must-fix"}]),
+            "ground", status="complete", overrides={"GRD-001": "must-fix"}),
     })
     findings, _ = pr._run_pillar(
         "identity-access", ctx, static_only=True, tiers={}, sub=None, rg=None,
@@ -615,4 +876,113 @@ def test_real_connect_missing_evidence_propagates_identity_not_verified() -> Non
     assert f["INT-002"].status == "not-verified"   # binding held at unverified
     assert f["INT-003"].status == "not-verified"   # OBO absent
     assert f["INT-004"].status == "not-verified"   # roles stale (no current id)
+
+
+# ---------------------------------------------------------------------------
+# REAL producer -> consumer integration for the other three legs. Each emits
+# an ACTUAL manifest via its own producer (ground/loadtest/upgrade), writes it
+# to specs/<leg>-manifest.json, and asserts the consumer validates + propagates
+# the genuine all-pass evidence. No finding ids or envelope fields are
+# hand-authored — they come from the producers, so these pin the end-to-end
+# contract, not a mock of it.
+# ---------------------------------------------------------------------------
+
+def _now_iso() -> str:
+    return _iso(datetime.now(timezone.utc))
+
+
+def _write_manifest(ctx: "pr.RepoContext", name: str, manifest: dict) -> None:
+    (ctx.root / "specs" / name).write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_real_ground_manifest_propagates_all_grd_pass() -> None:
+    now = _now_iso()
+    src = {
+        "id": "policy-library", "type": "documents", "permission_model": "acl",
+        "refresh_cadence": "daily", "citation_required": True,
+        "refuse_when_unsupported": True,
+    }
+    manifest = ground.assess_grounding(
+        sources=[src],
+        acl_runs=[
+            {"principal": "entitled-analyst", "document_ids": ["doc-1"],
+             "source_id": "policy-library", "captured_at": now,
+             "expected_entitled": True},
+            {"principal": "unentitled-guest", "document_ids": [],
+             "source_id": "policy-library", "captured_at": now,
+             "expected_entitled": False},
+        ],
+        citation_runs=[{"citations": ["doc-1"], "retrieved_ids": ["doc-1", "doc-2"],
+                        "source_id": "policy-library", "captured_at": now}],
+        refusal_runs=[{"query_id": "q1", "refused": True,
+                       "source_id": "policy-library", "captured_at": now}],
+        generated_at=now,
+        retrieval_quality_baseline="specs/baselines/retrieval-quality.json",
+    )
+    assert manifest["schema"] == "threadlight.ground/v1"
+    assert manifest["status"] == "complete"
+    ctx = _make_ctx()
+    _write_manifest(ctx, "ground-manifest.json", manifest)
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_real_load_manifest_propagates_all_load_pass() -> None:
+    now = _now_iso()
+
+    class _FakeAdapter:
+        name = "fake-engine"
+
+        def run(self, profile):
+            return {"status": "complete",
+                    "samples": [{"latency_ms": v, "success": True, "tokens": 50}
+                                for v in (100, 200, 300, 400, 500)]}
+
+    profile = {
+        "name": "checkout-agent-smoke",
+        "endpoint": {"url": "https://staging.example.test/api",
+                     "credential_ref": "kv:load-test-key"},
+        "duration_s": 30, "virtual_users": 10,
+        "tokens_per_request_estimate": 500, "price_per_1k_tokens_usd": 0.002,
+        "projected_token_cost_usd": 0.30,
+        "slo": {"max_p95_latency_ms": 900, "max_error_rate": 0.5},
+    }
+    manifest = loadtest.run_loadtest(
+        profile=profile, budget_ceiling_usd=100.0, endpoint_class="non-production",
+        adapter=_FakeAdapter(), generated_at=now,
+    )
+    assert manifest["schema"] == "threadlight.load/v1"
+    assert manifest["status"] == "complete"
+    ctx = _make_ctx()
+    _write_manifest(ctx, "load-manifest.json", manifest)
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("LOAD-001", "LOAD-002", "LOAD-003"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_real_upgrade_manifest_propagates_all_upg_pass() -> None:
+    entry = {
+        "surface": "agent-framework", "target": "agent-framework", "state": "stable",
+        "source": "https://learn.microsoft.com/example", "last_reviewed": "2026-06-01",
+        "review_window_days": 120, "stable": "2.0.0",
+    }
+    matrix = {
+        "schema": "threadlight-upgrade-compatibility-matrix/v1", "version": "1.0",
+        "date": "2026-06-01", "source": "https://learn.microsoft.com/matrix",
+        "entries": [entry],
+    }
+    # scan_project stamps generated_at from its own clock, so the envelope is
+    # always fresh at emit time.
+    manifest = upgrade.scan_project(
+        {}, matrix, "2026-06-15",
+        source_results={"agent-framework:agent-framework": {"state": "stable"}},
+    )
+    assert manifest["schema"] == "threadlight.upgrade/v1"
+    assert manifest["status"] == "complete"
+    ctx = _make_ctx()
+    _write_manifest(ctx, "upgrade-manifest.json", manifest)
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    for fid in ("UPG-001", "UPG-002", "UPG-003"):
+        assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
 
