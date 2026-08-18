@@ -709,6 +709,89 @@ def test_scan_project_rejects_non_dict_dependencies():
         )
 
 
+@pytest.mark.parametrize(
+    "field,bad_value",
+    [
+        *[
+            (field, bad_value)
+            for field in (
+                "dependencies",
+                "runtime_policy",
+                "artifact_paths",
+                "dependency_paths",
+            )
+            for bad_value in ("", 0, False, [])
+        ],
+        *[
+            (field, bad_value)
+            for field in ("model_families", "triggered_expiry_conditions")
+            for bad_value in ("", 0, False, {})
+        ],
+    ],
+)
+def test_normalized_project_falsey_wrong_types_are_rejected(field, bad_value):
+    with pytest.raises(UpgradeProjectError, match=field):
+        scan_project(
+            {field: bad_value},
+            matrix([AGENT_FRAMEWORK_ENTRY]),
+            "2026-06-15",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,empty_value",
+    [
+        ("dependencies", {}),
+        ("runtime_policy", {}),
+        ("model_families", []),
+        ("triggered_expiry_conditions", []),
+        ("artifact_paths", {}),
+        ("dependency_paths", {}),
+    ],
+)
+def test_normalized_project_absent_none_and_semantic_empty_use_defaults(
+    field, empty_value
+):
+    baseline = scan_project({}, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15")
+    explicit_none = scan_project(
+        {field: None}, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15"
+    )
+    explicit_empty = scan_project(
+        {field: empty_value}, matrix([AGENT_FRAMEWORK_ENTRY]), "2026-06-15"
+    )
+    for manifest in (baseline, explicit_none, explicit_empty):
+        manifest.pop("generated_at")
+    assert baseline == explicit_none == explicit_empty
+
+
+@pytest.mark.parametrize(
+    "field,bad_mapping",
+    [
+        ("dependencies", {"": "1.0.0"}),
+        ("dependencies", {"pkg": ""}),
+        ("dependencies", {1: "1.0.0"}),
+        ("dependencies", {"pkg": False}),
+        ("runtime_policy", {"": "responses"}),
+        ("runtime_policy", {"agent": ""}),
+        ("runtime_policy", {1: "responses"}),
+        ("runtime_policy", {"agent": False}),
+        ("artifact_paths", {"": "config.json"}),
+        ("artifact_paths", {"agent-framework": ""}),
+        ("dependency_paths", {"": "package.json"}),
+        ("dependency_paths", {"pkg": ""}),
+    ],
+)
+def test_normalized_project_mapping_keys_and_values_are_nonempty_strings(
+    field, bad_mapping
+):
+    with pytest.raises(UpgradeProjectError, match=field):
+        scan_project(
+            {field: bad_mapping},
+            matrix([AGENT_FRAMEWORK_ENTRY]),
+            "2026-06-15",
+        )
+
+
 def test_scan_project_rejects_bad_today_shape():
     with pytest.raises(UpgradeProjectError):
         scan_project({}, matrix([AGENT_FRAMEWORK_ENTRY]), "17-08-2026")
@@ -1158,6 +1241,78 @@ def test_parse_pyproject_dependencies_skips_bare_name_and_reduces_after_marker()
 
 
 @pytest.mark.parametrize(
+    "text,expected_error",
+    [
+        ("project = []\n", "project must be a table"),
+        ('tool = "not-a-table"\n', "tool must be a table"),
+        ("[project]\ndependencies = {}\n", "project.dependencies must be an array"),
+        (
+            "[project]\ndependencies = [1]\n",
+            r"project.dependencies\[0\] must be a non-empty string",
+        ),
+        (
+            '[project]\ndependencies = [""]\n',
+            r"project.dependencies\[0\] must be a non-empty string",
+        ),
+        (
+            "[project]\noptional-dependencies = []\n",
+            "project.optional-dependencies must be a table",
+        ),
+        (
+            "[project.optional-dependencies]\ntest = [1]\n",
+            r"project.optional-dependencies\['test'\]\[0\] must be a non-empty string",
+        ),
+        (
+            'tool = { poetry = "not-a-table" }\n',
+            "tool.poetry must be a table",
+        ),
+        (
+            "[tool.poetry]\ndependencies = []\n",
+            "tool.poetry.dependencies must be a table",
+        ),
+        (
+            "[tool.poetry.dependencies]\npkg = 1\n",
+            r"tool.poetry.dependencies\['pkg'\] must be a non-empty string",
+        ),
+    ],
+)
+def test_parse_pyproject_dependencies_rejects_syntactically_valid_bad_shapes(
+    text, expected_error
+):
+    with pytest.raises(UpgradeProjectError, match=expected_error):
+        parse_pyproject_dependencies(text)
+
+
+def test_parse_pyproject_dependencies_supports_poetry_dependency_table():
+    text = (
+        "[tool.poetry]\n"
+        'name = "demo"\n'
+        "[tool.poetry.dependencies]\n"
+        'python = "^3.11"\n'
+        'agent-framework = "==2.0.0"\n'
+        'toolbox = "1.2.3"\n'
+    )
+    assert parse_pyproject_dependencies(text) == {
+        "python": "^3.11",
+        "agent-framework": "2.0.0",
+        "toolbox": "1.2.3",
+    }
+
+
+def test_parse_pyproject_dependencies_supports_optional_and_poetry_group_tables():
+    text = (
+        "[project.optional-dependencies]\n"
+        'test = ["pytest==9.0.0"]\n'
+        "[tool.poetry.group.dev.dependencies]\n"
+        'ruff = "^0.12"\n'
+    )
+    assert parse_pyproject_dependencies(text) == {
+        "pytest": "9.0.0",
+        "ruff": "^0.12",
+    }
+
+
+@pytest.mark.parametrize(
     "spec, expected",
     [
         # Exact literals (optionally a single leading `=`) reduce.
@@ -1226,6 +1381,78 @@ def test_parse_package_json_dependencies_empty_spec_is_skipped():
     # An empty spec carries no constraint at all and is skipped, not emitted
     # as a bogus empty pin.
     assert parse_package_json_dependencies(text) == {"real": "1.2.3"}
+
+
+@pytest.mark.parametrize("bad_top_level", [None, [], "", 0, False])
+def test_parse_package_json_top_level_must_be_an_object(bad_top_level):
+    with pytest.raises(UpgradeProjectError, match="JSON object"):
+        parse_package_json_dependencies(json.dumps(bad_top_level))
+
+
+@pytest.mark.parametrize(
+    "section,bad_value",
+    [
+        (section, bad_value)
+        for section in (
+            "dependencies",
+            "devDependencies",
+            "optionalDependencies",
+            "peerDependencies",
+        )
+        for bad_value in (None, [], "", 0, False)
+    ],
+)
+def test_parse_package_json_dependency_sections_must_be_objects(section, bad_value):
+    with pytest.raises(UpgradeProjectError, match=section):
+        parse_package_json_dependencies(json.dumps({section: bad_value}))
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ],
+)
+def test_parse_package_json_supports_all_dependency_sections(section):
+    assert parse_package_json_dependencies(
+        json.dumps({section: {"pkg": "1.2.3"}})
+    ) == {"pkg": "1.2.3"}
+
+
+@pytest.mark.parametrize(
+    "dependencies",
+    [
+        {"": "1.2.3"},
+        {"pkg": None},
+        {"pkg": 1},
+        {"pkg": False},
+        {"pkg": []},
+        {"pkg": {}},
+    ],
+)
+def test_parse_package_json_dependency_names_and_specs_have_exact_types(dependencies):
+    with pytest.raises(UpgradeProjectError, match="dependencies"):
+        parse_package_json_dependencies(json.dumps({"dependencies": dependencies}))
+
+
+def test_parse_package_json_rejects_conflicting_specs_across_sections():
+    text = json.dumps({
+        "dependencies": {"pkg": "1.2.3"},
+        "peerDependencies": {"pkg": "^1.2.3"},
+    })
+    with pytest.raises(UpgradeProjectError, match="conflicting specs.*pkg"):
+        parse_package_json_dependencies(text)
+
+
+def test_parse_package_json_accepts_duplicate_matching_specs_across_sections():
+    text = json.dumps({
+        "dependencies": {"pkg": "1.2.3"},
+        "optionalDependencies": {"pkg": "=1.2.3"},
+    })
+    assert parse_package_json_dependencies(text) == {"pkg": "1.2.3"}
 
 
 def test_parse_runtime_policy_file_returns_plain_mapping():
@@ -1375,6 +1602,37 @@ def test_cli_malformed_all_operator_pyproject_spec_is_not_verified(tmp_path, cap
     upg001 = by_id(manifest)["UPG-001"]
     assert upg001["status"] == "not-verified"
     assert upg001["detail"]["dependencies_not_verified"] == ["agent-framework"]
+
+
+@pytest.mark.parametrize(
+    "artifact_flag,filename,contents",
+    [
+        ("--pyproject-path", "pyproject.toml", "project = []\n"),
+        (
+            "--package-json-path",
+            "package.json",
+            json.dumps({"dependencies": []}),
+        ),
+    ],
+)
+def test_cli_malformed_artifact_is_controlled_and_never_writes_manifest(
+    tmp_path, capsys, artifact_flag, filename, contents
+):
+    matrix_path = _write_matrix(tmp_path, matrix([AGENT_FRAMEWORK_ENTRY]))
+    (tmp_path / filename).write_text(contents, encoding="utf-8")
+    code = upgrade.main([
+        "--project-root", str(tmp_path),
+        "--matrix-path", str(matrix_path),
+        artifact_flag, filename,
+        "--today", "2026-06-15",
+        "--emit",
+        "--json",
+    ])
+    assert code == 1
+    output = capsys.readouterr()
+    assert "error:" in output.out
+    assert "Traceback" not in output.out + output.err
+    assert not (tmp_path / "specs" / "upgrade-manifest.json").exists()
 
 
 # ---------------------------------------------------------------------------

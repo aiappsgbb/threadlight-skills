@@ -507,6 +507,81 @@ def _coerce_date(today: Any) -> date:
     raise UpgradeProjectError("today must be a date, datetime, or YYYY-MM-DD string")
 
 
+def _project_object_field(project: dict, field: str) -> dict:
+    value = project.get(field)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise UpgradeProjectError(f"project.{field} must be an object")
+    return value
+
+
+def _project_array_field(project: dict, field: str) -> list:
+    value = project.get(field)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise UpgradeProjectError(f"project.{field} must be an array")
+    return value
+
+
+def _validate_string_mapping(value: dict, label: str) -> None:
+    for key, item in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise UpgradeProjectError(f"{label} keys must be non-empty strings")
+        if not isinstance(item, str) or not item.strip():
+            raise UpgradeProjectError(
+                f"{label}[{key!r}] must be a non-empty string"
+            )
+
+
+def _validate_string_array(value: list, label: str) -> None:
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise UpgradeProjectError(
+                f"{label}[{index}] must be a non-empty string"
+            )
+
+
+def _normalize_project(project: Any) -> dict:
+    if not isinstance(project, dict):
+        raise UpgradeProjectError("project must be an object")
+
+    normalized = dict(project)
+    for field in ("dependencies", "runtime_policy"):
+        mapping = _project_object_field(project, field)
+        _validate_string_mapping(mapping, f"project.{field}")
+        normalized[field] = dict(mapping)
+
+    for field in ("model_families", "triggered_expiry_conditions"):
+        values = _project_array_field(project, field)
+        _validate_string_array(values, f"project.{field}")
+        normalized[field] = list(values)
+
+    artifact_paths = _project_object_field(project, "artifact_paths")
+    for surface, path in artifact_paths.items():
+        if not isinstance(surface, str) or not surface.strip():
+            raise UpgradeProjectError(
+                "project.artifact_paths keys must be non-empty strings"
+            )
+        if surface not in SURFACES:
+            raise UpgradeProjectError(
+                f"project.artifact_paths has unknown surface {surface!r}"
+            )
+        _require_safe_path(path, f"project.artifact_paths[{surface!r}]")
+    normalized["artifact_paths"] = dict(artifact_paths)
+
+    dependency_paths = _project_object_field(project, "dependency_paths")
+    for name, path in dependency_paths.items():
+        if not isinstance(name, str) or not name.strip():
+            raise UpgradeProjectError(
+                "project.dependency_paths keys must be non-empty strings"
+            )
+        _require_safe_path(path, f"project.dependency_paths[{name!r}]")
+    normalized["dependency_paths"] = dict(dependency_paths)
+    return normalized
+
+
 def _normalize_artifact_paths(raw: Any) -> tuple:
     """Return (paths, explicit_surfaces): the merged surface->path map (matrix
     defaults overlaid with any caller override) plus the set of surfaces the
@@ -516,7 +591,7 @@ def _normalize_artifact_paths(raw: Any) -> tuple:
     """
     paths = dict(DEFAULT_ARTIFACT_PATHS)
     explicit: set = set()
-    if not raw:
+    if raw is None:
         return paths, explicit
     if not isinstance(raw, dict):
         raise UpgradeProjectError("project.artifact_paths must be an object")
@@ -536,13 +611,13 @@ def _normalize_dependency_paths(raw: Any) -> dict:
     package.json path, a pyproject pin -> the pyproject path). Never guessed;
     only ever populated from a real, supplied artifact.
     """
-    if not raw:
+    if raw is None:
         return {}
     if not isinstance(raw, dict):
         raise UpgradeProjectError("project.dependency_paths must be an object")
     result: dict = {}
     for name, path in raw.items():
-        if not isinstance(name, str) or not name:
+        if not isinstance(name, str) or not name.strip():
             raise UpgradeProjectError(
                 "project.dependency_paths keys must be non-empty strings"
             )
@@ -628,9 +703,7 @@ def check_matrix_and_dependency_staleness(
     not_verified_deps = []
     plan_items = []
 
-    dependencies = project.get("dependencies") or {}
-    if not isinstance(dependencies, dict):
-        raise UpgradeProjectError("project.dependencies must be an object")
+    dependencies = project["dependencies"]
 
     for name in sorted(dependencies):
         version_text = dependencies[name]
@@ -704,15 +777,9 @@ def _collect_usages(project: dict) -> list:
     """
     usages = []
 
-    runtime_policy = project.get("runtime_policy") or {}
-    if not isinstance(runtime_policy, dict):
-        raise UpgradeProjectError("project.runtime_policy must be an object")
+    runtime_policy = project["runtime_policy"]
     for agent_name in sorted(runtime_policy):
         target = runtime_policy[agent_name]
-        if not isinstance(target, str) or not target:
-            raise UpgradeProjectError(
-                f"project.runtime_policy[{agent_name!r}] must be a non-empty string"
-            )
         usages.append(("hosted-agent-protocol", agent_name, target))
 
     governance_profile = project.get("governance_profile")
@@ -721,14 +788,7 @@ def _collect_usages(project: dict) -> list:
             raise UpgradeProjectError("project.governance_profile must be a string")
         usages.append(("governance-profile", "governance_profile", governance_profile))
 
-    model_families = project.get("model_families") or []
-    if not isinstance(model_families, list):
-        raise UpgradeProjectError("project.model_families must be an array")
-    for index, family in enumerate(model_families):
-        if not isinstance(family, str) or not family:
-            raise UpgradeProjectError(
-                f"project.model_families[{index}] must be a non-empty string"
-            )
+    model_families = project["model_families"]
     for family in sorted(model_families):
         usages.append(("model-family", family, family))
 
@@ -744,17 +804,7 @@ def check_usage_drift(
     not_in_matrix = []
     plan_items = []
 
-    raw_triggered = project.get("triggered_expiry_conditions") or []
-    if not isinstance(raw_triggered, list):
-        raise UpgradeProjectError(
-            "project.triggered_expiry_conditions must be an array of strings"
-        )
-    for index, item in enumerate(raw_triggered):
-        if not isinstance(item, str) or not item:
-            raise UpgradeProjectError(
-                f"project.triggered_expiry_conditions[{index}] must be a "
-                f"non-empty string"
-            )
+    raw_triggered = project["triggered_expiry_conditions"]
     triggered = set(raw_triggered)
 
     for surface, label, target in _collect_usages(project):
@@ -856,7 +906,7 @@ def _referenced_target_paths(
     """
     mapping: dict = {}
 
-    dependencies = project.get("dependencies") or {}
+    dependencies = project["dependencies"]
     for name in dependencies:
         entry = entries_by_target.get(name)
         if entry and entry["surface"] in DEPENDENCY_SURFACES:
@@ -1232,8 +1282,7 @@ def scan_project(
     (below an explicit `artifact_paths` override, above the surface default),
     so a JS pin is never silently attributed to `pyproject.toml`.
     """
-    if not isinstance(project, dict):
-        raise UpgradeProjectError("project must be an object")
+    project = _normalize_project(project)
 
     validate_matrix(matrix)
     today_date = _coerce_date(today)
@@ -1329,14 +1378,46 @@ def _classify_spec(spec: str, exact_pattern) -> tuple:
     return "ambiguous", text
 
 
+def _merge_dependency_value(
+    dependencies: dict, sources: dict, name: str, value: str, source: str
+) -> None:
+    if name in dependencies and dependencies[name] != value:
+        raise UpgradeProjectError(
+            f"pyproject.toml has conflicting specs for dependency {name!r} "
+            f"in {sources[name]} and {source}"
+        )
+    dependencies[name] = value
+    sources[name] = source
+
+
+def _parse_pep_requirement(requirement: Any, label: str) -> Optional[tuple]:
+    if not isinstance(requirement, str) or not requirement.strip():
+        raise UpgradeProjectError(f"{label} must be a non-empty string")
+    match = _DEP_SPLIT_RE.match(requirement)
+    if not match:
+        raise UpgradeProjectError(f"{label} must be a valid dependency string")
+    name = match.group(1)
+    constraint = match.group(2).split(";", 1)[0].strip()
+    kind, value = _classify_spec(constraint, _PEP_EXACT_RE)
+    if kind == "empty":
+        return None
+    return name, value
+
+
+def _parse_poetry_spec(spec: str) -> tuple:
+    kind, value = _classify_spec(spec, _PEP_EXACT_RE)
+    if kind == "ambiguous":
+        kind, value = _classify_spec(spec, _NPM_EXACT_RE)
+    return kind, value
+
+
 def parse_pyproject_dependencies(text: str) -> dict:
-    """Extract `{name: spec}` from a PEP 621 `[project] dependencies` array
-    using `tomllib` (stdlib, Python >= 3.11). A confidently exact `==`/`===`
-    literal pin is reduced to a bare, comparable version; every other
-    constraint (a range, a `~=` compatible release, a `.*` wildcard, a
-    `,`-joined compound) is represented verbatim so it surfaces as
-    not-verified downstream — never guessed. An unpinned bare name (no
-    version constraint at all) is skipped.
+    """Extract `{name: spec}` from PEP 621 dependency arrays (including
+    optional groups) and Poetry dependency tables using `tomllib`. A
+    confidently exact literal pin is reduced to a bare, comparable version;
+    every other constraint is represented verbatim so it surfaces as
+    not-verified downstream — never guessed. An unpinned PEP 621 bare name is
+    skipped. Present sections and entries are shape-checked before use.
     """
     try:
         import tomllib
@@ -1348,30 +1429,127 @@ def parse_pyproject_dependencies(text: str) -> dict:
     except tomllib.TOMLDecodeError as exc:
         raise UpgradeProjectError(f"invalid pyproject.toml: {exc}") from exc
 
-    dependencies = {}
-    for requirement in data.get("project", {}).get("dependencies", []) or []:
-        if not isinstance(requirement, str):
-            continue
-        match = _DEP_SPLIT_RE.match(requirement)
-        if not match:
-            continue
-        name = match.group(1)
-        constraint = match.group(2).split(";", 1)[0].strip()
-        kind, value = _classify_spec(constraint, _PEP_EXACT_RE)
-        if kind == "empty":
-            continue
-        dependencies[name] = value
+    dependencies: dict = {}
+    sources: dict = {}
+
+    project = data.get("project")
+    if project is not None:
+        if not isinstance(project, dict):
+            raise UpgradeProjectError("pyproject.toml project must be a table")
+        if "dependencies" in project:
+            project_dependencies = project["dependencies"]
+            if not isinstance(project_dependencies, list):
+                raise UpgradeProjectError(
+                    "pyproject.toml project.dependencies must be an array"
+                )
+            for index, requirement in enumerate(project_dependencies):
+                label = f"pyproject.toml project.dependencies[{index}]"
+                parsed = _parse_pep_requirement(requirement, label)
+                if parsed is not None:
+                    name, value = parsed
+                    _merge_dependency_value(
+                        dependencies, sources, name, value, label
+                    )
+
+        if "optional-dependencies" in project:
+            optional = project["optional-dependencies"]
+            if not isinstance(optional, dict):
+                raise UpgradeProjectError(
+                    "pyproject.toml project.optional-dependencies must be a table"
+                )
+            for group, requirements in optional.items():
+                if not isinstance(group, str) or not group.strip():
+                    raise UpgradeProjectError(
+                        "pyproject.toml project.optional-dependencies keys must "
+                        "be non-empty strings"
+                    )
+                group_label = (
+                    f"pyproject.toml project.optional-dependencies[{group!r}]"
+                )
+                if not isinstance(requirements, list):
+                    raise UpgradeProjectError(f"{group_label} must be an array")
+                for index, requirement in enumerate(requirements):
+                    label = f"{group_label}[{index}]"
+                    parsed = _parse_pep_requirement(requirement, label)
+                    if parsed is not None:
+                        name, value = parsed
+                        _merge_dependency_value(
+                            dependencies, sources, name, value, label
+                        )
+
+    tool = data.get("tool")
+    if tool is not None:
+        if not isinstance(tool, dict):
+            raise UpgradeProjectError("pyproject.toml tool must be a table")
+        poetry = tool.get("poetry")
+        if poetry is not None:
+            if not isinstance(poetry, dict):
+                raise UpgradeProjectError(
+                    "pyproject.toml tool.poetry must be a table"
+                )
+            poetry_tables = []
+            for table_name in ("dependencies", "dev-dependencies"):
+                if table_name in poetry:
+                    poetry_tables.append(
+                        (f"tool.poetry.{table_name}", poetry[table_name])
+                    )
+            groups = poetry.get("group")
+            if groups is not None:
+                if not isinstance(groups, dict):
+                    raise UpgradeProjectError(
+                        "pyproject.toml tool.poetry.group must be a table"
+                    )
+                for group_name, group in groups.items():
+                    if not isinstance(group_name, str) or not group_name.strip():
+                        raise UpgradeProjectError(
+                            "pyproject.toml tool.poetry.group keys must be "
+                            "non-empty strings"
+                        )
+                    group_label = f"tool.poetry.group.{group_name}"
+                    if not isinstance(group, dict):
+                        raise UpgradeProjectError(
+                            f"pyproject.toml {group_label} must be a table"
+                        )
+                    if "dependencies" in group:
+                        poetry_tables.append(
+                            (
+                                f"{group_label}.dependencies",
+                                group["dependencies"],
+                            )
+                        )
+
+            for table_name, dependency_table in poetry_tables:
+                table_label = f"pyproject.toml {table_name}"
+                if not isinstance(dependency_table, dict):
+                    raise UpgradeProjectError(f"{table_label} must be a table")
+                for name, spec in dependency_table.items():
+                    if not isinstance(name, str) or not name.strip():
+                        raise UpgradeProjectError(
+                            f"{table_label} keys must be non-empty strings"
+                        )
+                    item_label = f"{table_label}[{name!r}]"
+                    if not isinstance(spec, str) or not spec.strip():
+                        raise UpgradeProjectError(
+                            f"{item_label} must be a non-empty string"
+                        )
+                    kind, value = _parse_poetry_spec(spec)
+                    if kind == "empty":
+                        continue
+                    _merge_dependency_value(
+                        dependencies, sources, name, value, item_label
+                    )
     return dependencies
 
 
 def parse_package_json_dependencies(text: str) -> dict:
-    """Extract `{name: spec}` from a package.json's `dependencies` +
-    `devDependencies`. Only a confidently exact literal version (optionally a
-    single leading `=`) is reduced to a bare, comparable version; every range,
-    compound, OR, hyphen, wildcard, dist-tag, and
+    """Extract `{name: spec}` from all four package.json dependency sections.
+    Only a confidently exact literal version (optionally a single leading `=`)
+    is reduced to a bare, comparable version; every range, compound, OR,
+    hyphen, wildcard, dist-tag, and
     `workspace:`/`file:`/`link:`/`git`/URL spec is represented verbatim so it
     surfaces as not-verified downstream — never stripped to a guessable core,
     never silently dropped, and never an IndexError on an all-operator spec.
+    Conflicting declarations across sections are rejected.
     """
     try:
         data = json.loads(text)
@@ -1380,18 +1558,38 @@ def parse_package_json_dependencies(text: str) -> dict:
     if not isinstance(data, dict):
         raise UpgradeProjectError("package.json must contain a JSON object")
 
-    dependencies = {}
-    for key in ("dependencies", "devDependencies"):
-        section = data.get(key) or {}
-        if not isinstance(section, dict):
+    dependencies: dict = {}
+    dependency_sections: dict = {}
+    for key in (
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ):
+        if key not in data:
             continue
+        section = data[key]
+        if not isinstance(section, dict):
+            raise UpgradeProjectError(f"package.json {key} must be an object")
         for name, spec in section.items():
+            if not isinstance(name, str) or not name.strip():
+                raise UpgradeProjectError(
+                    f"package.json {key} keys must be non-empty strings"
+                )
             if not isinstance(spec, str):
-                continue
+                raise UpgradeProjectError(
+                    f"package.json {key}[{name!r}] must be a string"
+                )
             kind, value = _classify_spec(spec, _NPM_EXACT_RE)
             if kind == "empty":
                 continue
+            if name in dependencies and dependencies[name] != value:
+                raise UpgradeProjectError(
+                    f"package.json has conflicting specs for dependency {name!r} "
+                    f"in {dependency_sections[name]} and {key}"
+                )
             dependencies[name] = value
+            dependency_sections[name] = key
     return dependencies
 
 
@@ -1465,7 +1663,13 @@ def _merge_parsed_dependencies(
     package.json), reject the conflict deterministically rather than silently
     picking a winner and mis-attributing the plan item.
     """
-    merged = dict(project.get("dependencies") or {})
+    current = project.get("dependencies")
+    if current is None:
+        merged = {}
+    elif not isinstance(current, dict):
+        raise UpgradeProjectError("project.dependencies must be an object")
+    else:
+        merged = dict(current)
     for name, spec in parsed.items():
         existing_source = dependency_paths.get(name)
         if existing_source is not None and existing_source != source_path:
@@ -1487,6 +1691,8 @@ def build_normalized_project(args, root: str) -> dict:
             raise UpgradeProjectError("--project-file must contain a JSON object")
         project = loaded
 
+    project = _normalize_project(project)
+
     # Seed provenance from any dependency_paths the project-file itself
     # declared, then let each parsed artifact record (and conflict-check) its
     # own pins on top.
@@ -1505,7 +1711,13 @@ def build_normalized_project(args, root: str) -> dict:
     if args.runtime_policy_path:
         text = _read_project_text(root, args.runtime_policy_path)
         parsed = parse_runtime_policy_file(text)
-        merged = dict(project.get("runtime_policy") or {})
+        current_policy = project.get("runtime_policy")
+        if current_policy is None:
+            merged = {}
+        elif not isinstance(current_policy, dict):
+            raise UpgradeProjectError("project.runtime_policy must be an object")
+        else:
+            merged = dict(current_policy)
         merged.update(parsed)
         project["runtime_policy"] = merged
 
