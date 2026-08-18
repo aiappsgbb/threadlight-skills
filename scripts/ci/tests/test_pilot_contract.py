@@ -39,16 +39,11 @@ def _load_module():
 
 mod = _load_module()
 
-# Markers required inside SPEC section 14, kept as one source of truth so
-# every test that removes one to prove it is enforced uses the exact same
-# list the checker itself validates against.
-VALUE_MODEL_MARKERS = (
-    "value_model:",
-    "maturity_policy:",
-    "success_event:",
-    "baseline:",
-    "accounting:",
-)
+# The markers required inside SPEC section 14 come from the checker itself
+# (`mod.VALUE_MODEL_MARKERS`) rather than a second, hand-copied tuple here —
+# a duplicate list could silently drift from what the checker actually
+# validates against and every test parametrized over it would then be
+# checking the wrong thing.
 
 # The single canonical, blank (no-default) section 14 body. Every test that
 # rewrites SPEC.md and needs a *valid* section 14 appends this exact text —
@@ -314,7 +309,7 @@ def test_legacy_pilot_without_section_14_still_passes_by_default(pilot: Path) ->
     assert "design.spec.no-section-14" not in rules(check(pilot))
 
 
-@pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
+@pytest.mark.parametrize("marker", mod.VALUE_MODEL_MARKERS)
 def test_section_14_requires_value_model_shape(pilot: Path, marker: str) -> None:
     # Same reasoning as above: appending a second `VALUE_MODEL_BLOCK` here
     # would leave an intact, unmodified copy of `marker` sitting right after
@@ -328,7 +323,7 @@ def test_section_14_requires_value_model_shape(pilot: Path, marker: str) -> None
     assert "design.spec.value-model-shape" in rules(check(pilot, require_value_model=True))
 
 
-@pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
+@pytest.mark.parametrize("marker", mod.VALUE_MODEL_MARKERS)
 def test_present_but_malformed_section_14_fails_without_the_flag(
     pilot: Path, marker: str
 ) -> None:
@@ -346,6 +341,70 @@ def test_section_14_does_not_require_numeric_defaults(pilot: Path) -> None:
     assert spec.read_text(encoding="utf-8").count("## 14. Value Model") == 1
     failures = check(pilot, require_value_model=True)
     assert "design.spec.value-model-shape" not in rules(failures)
+
+
+def test_main_cli_enforces_require_value_model_flag(pilot: Path) -> None:
+    """Exercise `main` itself — real argv parsing, not `run_checks` directly —
+    so a regression in the argparse wiring (flag name, dest, forwarding into
+    `run_checks`) would be caught here even if `run_checks` unit tests pass.
+    """
+    spec = pilot / "specs" / "SPEC.md"
+    text = spec.read_text(encoding="utf-8")
+    assert text.count("## 14. Value Model") == 1
+    spec.write_text(text.split("## 14.")[0], encoding="utf-8")
+
+    assert mod.main([str(pilot), "--stage", "design", "--profile", "governed"]) == 0
+    assert (
+        mod.main(
+            [
+                str(pilot),
+                "--stage",
+                "design",
+                "--profile",
+                "governed",
+                "--require-value-model",
+            ]
+        )
+        == 1
+    )
+
+
+# -- extract_section: direct unit coverage -----------------------------------
+
+def test_extract_section_returns_none_when_section_absent() -> None:
+    assert mod.extract_section("## 13. Assumptions\nBody.\n", 14) is None
+
+
+def test_extract_section_keeps_lettered_subsection_and_stops_at_next_section() -> None:
+    """`## 14b.` shares section 14's leading integer and stays in its body;
+    `## 15.` is a strictly greater heading and is the real boundary."""
+    text = (
+        "## 14. Value Model\n"
+        "Body line.\n\n"
+        "## 14b. Lettered subsection\n"
+        "Still section 14's body.\n\n"
+        "## 15. Next section\n"
+        "Not part of section 14.\n"
+    )
+    section14 = mod.extract_section(text, 14)
+    assert section14 is not None
+    assert "## 14b. Lettered subsection" in section14
+    assert "Still section 14's body." in section14
+    assert "Not part of section 14." not in section14
+
+
+def test_extract_section_rejects_decimal_subsection_as_base_heading() -> None:
+    """`## 14.1 ...` is a decimal sub-numbering, not the base section 14
+    heading, and must not be picked up as its start."""
+    text = "## 14.1 Not the real section\nDecoy body.\n"
+    assert mod.extract_section(text, 14) is None
+
+
+def test_extract_section_rejects_non_int_number() -> None:
+    with pytest.raises(TypeError):
+        mod.extract_section("## 13. X\nBody.\n", "13")
+    with pytest.raises(TypeError):
+        mod.extract_section("## 13. X\nBody.\n", True)
 
 
 def test_extract_section_ignores_an_out_of_order_lower_numbered_heading() -> None:

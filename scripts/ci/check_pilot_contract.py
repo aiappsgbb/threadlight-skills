@@ -119,10 +119,22 @@ def extract_section(spec_text: str, number: int) -> str | None:
     such as a stray `## 12.` inside section 13's body — does NOT stop the
     section: only a strictly greater number is a boundary. A lettered
     subsection such as `## 13b.` shares section 13's leading integer (13),
-    so it is never a boundary either and stays inside the section.
+    so it is never a boundary either and stays inside the section. A
+    *decimal* sub-numbering such as `## 13.1 ...`, by contrast, is not this
+    section's start heading at all: the heading regex requires whitespace
+    or end-of-line right after the numbered dot, so `13.1` never matches
+    section `13`'s start.
+
+    Known limitation: headings inside a fenced code block (``` ``` ```)
+    are not parsed specially here and can still act as section boundaries.
+    A generated SPEC contract must therefore never place a top-level
+    numbered heading (`## N. ...`) inside a fence.
     """
+    if isinstance(number, bool) or not isinstance(number, int):
+        raise TypeError(f"section number must be a real int, got {type(number).__name__}")
+
     start = re.search(
-        rf"^##[ \t]+{number}\.[^\n]*$",
+        rf"^##[ \t]+{number}\.(?=[ \t]|$)[^\n]*$",
         spec_text,
         flags=re.MULTILINE,
     )
@@ -206,10 +218,13 @@ def check_design(
                 "SPEC.md section 14 Value Model is missing",
             )
     else:
-        # A plain substring test would be fooled by the test fixture's own
-        # "# removed value_model:" probe (the marker text is still present
-        # as a substring of that comment), so require the marker to start a
-        # line (after leading indentation) instead.
+        # Each marker is a YAML key (e.g. `value_model:`) that must start a
+        # non-comment line, after leading indentation: a marker that only
+        # ever appears inside a `#`-prefixed comment — such as the probe
+        # text `# removed value_model:` this file's own tests inject — is a
+        # commented-out mention, not a live key, and must never satisfy the
+        # check. A plain substring test cannot tell the two apart, so anchor
+        # the match to line-start instead.
         missing = [
             marker
             for marker in VALUE_MODEL_MARKERS
