@@ -343,10 +343,16 @@ def test_section_14_does_not_require_numeric_defaults(pilot: Path) -> None:
     assert "design.spec.value-model-shape" not in rules(failures)
 ```
 
-`check(pilot, ...)` above is the existing test helper; give it a
-`require_value_model: bool = False` keyword that it forwards to
-`check_design`, matching the checker default. Every existing call site keeps
-working untouched, which is the point of the opt-in.
+`check(pilot, ...)` above is the existing test helper
+(`scripts/ci/tests/test_pilot_contract.py`); give it a
+`require_value_model: bool = False` keyword that it forwards, unchanged, to
+`run_checks(pilot, ALL_STAGES, profile, target, require_value_model=...)`
+(`scripts/ci/check_pilot_contract.py`) — `check()` never calls `check_design`
+directly. `run_checks` itself gains the same
+`require_value_model: bool = False` keyword and passes it straight through to
+its own `check_design(pilot, profile, fail, require_value_model=...)` call.
+Every existing call site keeps working untouched, which is the point of the
+opt-in.
 
 None of the tests above append a second `VALUE_MODEL_BLOCK`: the
 shared `pilot` fixture (updated next) already carries exactly one copy, and
@@ -504,8 +510,13 @@ Add the section 14 check to `check_design` **before** the existing
 `if profile != "fast-poc": return` early return, so governed profiles are
 checked for section 14 too — only the Fast-PoC callout text check further
 below is profile-gated, not the section 14 shape check. `check_design` gains a
-`require_value_model: bool = False` keyword, threaded from a new
-`--require-value-model` argparse flag on `check_pilot_contract.py`. The default
+`require_value_model: bool = False` keyword. `run_checks(pilot, stages,
+profile, expected_target)` — the aggregator that already calls
+`check_design(pilot, profile, fail)` — gains the identical
+`require_value_model: bool = False` keyword on its own signature and forwards
+it unchanged to `check_design(pilot, profile, fail, require_value_model=...)`.
+That keyword is threaded from a new `--require-value-model` argparse flag on
+`check_pilot_contract.py`, through `main()`'s call to `run_checks(...)`. The default
 is `False` on purpose: an absent section 14 must stay valid for pilots
 authored before this design (RFC §14.1). A **present** section 14 is always
 shape-checked, flag or not:
@@ -568,7 +579,19 @@ are a valid design state and become `not-verified` in Consumption IQ.
 Once Step 3 lands, `test_shipped_example_satisfies_the_contract()` runs the
 checker with `require_value_model=True` against
 `examples/returns-triage-governed`, so the shipped example must carry a real
-section 14. Update that example's `SPEC.md` now, in this same task, with
+section 14. That test's existing direct call to `run_checks` (it does not go
+through the `check()` helper) becomes:
+
+```python
+def test_shipped_example_satisfies_the_contract() -> None:
+    failures = mod.run_checks(
+        EXAMPLE, ["design", "deploy"], "governed", "customer-pilot",
+        require_value_model=True,
+    )
+    assert not failures, rules(failures)
+```
+
+Update that example's `SPEC.md` now, in this same task, with
 values labeled as decisions for this example, not defaults:
 
 ```yaml
@@ -2793,7 +2816,7 @@ def test_interaction_query_uses_the_resolved_workspace_customer_id() -> None:
     }]}
     runner = FakeRunner([result(json.dumps(response))])
     assert fetch_interaction_result(
-        "workspace-customer-id", "AppTraces | count", runner
+        "workspace-customer-id", "AppTraces | count", runner=runner
     ) == response
     assert "workspace-customer-id" in runner.calls[0]
 
@@ -2989,6 +3012,23 @@ def resolve_workspace_customer_id(
     literal "None", or non-GUID value. A workspace that cannot be resolved
     degrades interaction evidence to a warning and `not-verified`; it never
     affects Cost Management collection.
+    """
+
+
+def fetch_interaction_result(
+    workspace_resource_id: str,
+    kql: str,
+    *,
+    runner: Runner,
+) -> object:
+    """Run `kql` against the workspace and return the parsed JSON document.
+
+    Internally resolves `workspace_resource_id` to its query `customerId` via
+    `resolve_workspace_customer_id` before issuing the query — callers never
+    supply a GUID directly. Returns `None` — never raises — when resolution
+    or the query itself fails; `collect_sources` turns that `None` into
+    `bundle["interaction_result"] = None` plus a warning, and never lets it
+    affect Cost Management collection.
     """
 
 
@@ -3638,11 +3678,16 @@ have an environment-variable fallback; they need `default=os.environ.get(...)`
 plus an explicit post-parse check, since argparse has no built-in concept of
 "required unless an environment variable resolves it":
 
-```python
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="consumption_iq.py")
-    subparsers = parser.add_subparsers(dest="phase", required=True)
+The snippet below shows only the *additions* this task makes inside the
+existing `build_parser()` (`skills/threadlight-consumption-iq/scripts/consumption_iq.py`).
+It reuses the function's existing `sub = parser.add_subparsers(dest="phase", required=True)`
+variable — already created earlier in `build_parser()` and already used by
+every existing phase parser and by `run = sub.add_parser("run")` — do not
+recreate `parser.add_subparsers(...)` under a new `subparsers` name, and do
+not drop or recreate any of the existing subcommands (`discover`,
+`load-profile`, `price`, `project`, `recommend`, `emit`, `run`, `estimate`):
 
+```python
     def _add_scope_args(sp: argparse.ArgumentParser, *, start_end_required: bool) -> None:
         """`--start`/`--end`/`--subscription`/`--resource-group`/
         `--workspace-resource-id` only. Deliberately does NOT add `--spec` or
@@ -3665,14 +3710,14 @@ def build_parser() -> argparse.ArgumentParser:
         )
         sp.add_argument("--workspace-resource-id", default=None)
 
-    actuals_p = subparsers.add_parser("actuals")
+    actuals_p = sub.add_parser("actuals")
     _add_scope_args(actuals_p, start_end_required=True)
     actuals_p.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
     actuals_p.add_argument(
         "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
     )
 
-    reconcile_p = subparsers.add_parser("reconcile")
+    reconcile_p = sub.add_parser("reconcile")
     reconcile_p.add_argument("--forecast", type=Path, default=DEFAULT_OUTPUT_MANIFEST)
     reconcile_p.add_argument(
         "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
@@ -3705,9 +3750,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--reconciliation-manifest", type=Path,
         default=DEFAULT_RECONCILIATION_MANIFEST,
     )
-    return parser
+    # The existing `return parser` at the end of `build_parser()` is
+    # unchanged; nothing above needs to run before it.
+```
 
-
+```python
 def _resolve_scope_or_exit(args: argparse.Namespace) -> int | None:
     """Shared post-parse validation for `actuals` and `run --with-actuals`.
 
@@ -3769,7 +3816,9 @@ is a single `reconcile` rerun with zero Azure traffic and zero rate-limit cost.
 `--with-actuals` is false by default. `--pre-deploy --with-actuals` is rejected
 with exit 2, same as an unresolved `--subscription`/`--resource-group`.
 
-Before adding branches, extract today's lines 363-376 into:
+Before adding branches, extract today's lines 363-370 (the
+`resources = _phase_discover(args)` ... `_phase_emit(projected, recs, profile,
+args)` body of the `run` phase's dispatch) into:
 
 ```python
 def _run_projection(args: argparse.Namespace) -> None:
@@ -3781,6 +3830,32 @@ def _run_projection(args: argparse.Namespace) -> None:
     )
     recs = _phase_recommend(projected, profile)
     _phase_emit(projected, recs, profile, args)
+```
+
+The existing verbose block immediately after that (today's lines 371-375 —
+`if args.verbose: print(f"emitted {args.report} and {args.manifest}",
+file=sys.stderr)`) is **not** part of this extraction and is **not** moved
+into `_run_projection`: it stays in `main()`'s `run` phase, called
+immediately after `_run_projection(args)`, unchanged:
+
+```python
+_run_projection(args)
+if args.verbose:
+    print(
+        f"emitted {args.report} and {args.manifest}",
+        file=sys.stderr,
+    )
+return 0
+```
+
+Add a test asserting that verbose behavior survives the extraction:
+
+```python
+def test_run_all_verbose_prints_emitted_paths(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(consumption_iq, "_run_projection", lambda args: None)
+    rc = consumption_iq.main(["run", "--all", "--verbose"])
+    assert rc == 0
+    assert "emitted" in capsys.readouterr().err
 ```
 
 Pin that `run --all` calls only this helper unless `--with-actuals` is present.
@@ -4102,12 +4177,17 @@ def test_cost102_should_fix_outside_declared_variance(tmp_path) -> None:
 
 
 def test_cost102_does_not_use_hardcoded_twenty_percent(tmp_path) -> None:
-    ctx = make_ctx(tmp_path, variance_status="pass", variance_pct=0.50)
-    path = tmp_path / "specs" / "cost-reconciliation-manifest.json"
-    data = json.loads(path.read_text())
-    data["policy_snapshot"]["max_forecast_variance_pct"] = 0.60
-    path.write_text(json.dumps(data))
-    assert findings(ctx)["COST-102"].status == "pass"
+    """Superseded below: forcing `variance_status="pass"` here and then
+    asserting `.status == "pass"` is self-defeating — `COST-102` consumes
+    the reconciler's `variance_status` verbatim (it never recomputes a
+    threshold), so this only restates the input and proves nothing about
+    whether `20%` is hardcoded anywhere. The two direct checks that replace
+    it are `test_cost102_title_and_detail_do_not_hardcode_twenty_percent`
+    (catalog title/detail contain no literal `20%`) and
+    `test_live_probe_no_longer_emits_duplicate_stub_findings` (combined
+    findings carry exactly one `COST-102` and one `COST-103` in both tier
+    states) below.
+    """
 
 
 def test_cost102_title_and_detail_do_not_hardcode_twenty_percent(tmp_path) -> None:
@@ -4659,10 +4739,17 @@ python scripts/ci/check_pilot_contract.py \
   examples/returns-triage-governed \
   --stage design --stage deploy \
   --profile governed \
+  --require-value-model \
   --expect-deployment-target customer-pilot
 ```
 
-Expected: all pass.
+Expected: all pass. This strict `--require-value-model` invocation is the
+same enforcement PR 2 (Task 2) already exercises; the legacy no-flag default
+behavior — an absent section 14 still passing unless a caller opts in — is
+already protected on its own by
+`test_legacy_pilot_without_section_14_still_passes_by_default` in
+`scripts/ci/tests/test_pilot_contract.py`, so this gate does not need to also
+run the no-flag form to cover that case.
 
 - [ ] **Step 3: Run `design-only` E2E**
 
