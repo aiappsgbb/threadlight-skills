@@ -721,32 +721,56 @@ def run_loadtest(
 
     # A "complete" claim with zero samples is not trustworthy evidence and is
     # treated defensively the same as a partial run.
-    if result["status"] == "complete" and samples:
-        diagnostics = summarize_samples(samples, duration_s=effective_duration)
-        diagnostics["adapter_error"] = None
-        load_003 = _evaluate_slo(profile.get("slo"), diagnostics)
-        spec_update_plan = _build_spec_update_plan(diagnostics, generated_at)
-        source_oldest_at = _extract_source_oldest_at(samples)
+    #
+    # Malformed sample DATA from an adapter (structurally a list, but carrying
+    # values that fail summarize_samples' own validation — e.g. a non-numeric
+    # latency, a negative token count, or success coerced from an int) must
+    # NEVER crash the run. Such input degrades to a ``partial`` / ``LOAD-002``
+    # not-verified manifest with safe, zeroed aggregate diagnostics and no
+    # spec-update plan — exactly like an adapter that returned no samples.
+    try:
+        if result["status"] == "complete" and samples:
+            diagnostics = summarize_samples(samples, duration_s=effective_duration)
+            diagnostics["adapter_error"] = None
+            load_003 = _evaluate_slo(profile.get("slo"), diagnostics)
+            spec_update_plan = _build_spec_update_plan(diagnostics, generated_at)
+            source_oldest_at = _extract_source_oldest_at(samples)
+            return _build(
+                "complete",
+                ("pass", None),
+                load_003,
+                diagnostics=diagnostics,
+                adapter_name=adapter.name,
+                spec_update_plan=spec_update_plan,
+                source_oldest_at=source_oldest_at,
+            )
+
+        diagnostics = (
+            summarize_samples(samples, duration_s=effective_duration) if samples
+            else summarize_samples([])
+        )
+        source_oldest_at = _extract_source_oldest_at(samples) if samples else None
+    except LoadTestValidationError as exc:
+        # Injected/parsed samples were structurally a list but semantically
+        # invalid. Do not propagate — emit a safe partial with zeroed
+        # diagnostics and a scrubbed diagnostic string, and no spec plan.
+        safe_detail = scrub_text(f"adapter samples rejected: {exc}")
+        diagnostics = _empty_diagnostics()
+        diagnostics["adapter_error"] = safe_detail
         return _build(
-            "complete",
-            ("pass", None),
-            load_003,
+            "partial",
+            ("not-verified", safe_detail),
+            ("not-verified", "insufficient samples to evaluate SLO thresholds"),
             diagnostics=diagnostics,
             adapter_name=adapter.name,
-            spec_update_plan=spec_update_plan,
-            source_oldest_at=source_oldest_at,
+            source_oldest_at=None,
         )
 
-    diagnostics = (
-        summarize_samples(samples, duration_s=effective_duration) if samples
-        else summarize_samples([])
-    )
     diagnostics["adapter_error"] = scrub_text(adapter_error) if adapter_error else None
     if samples and profile.get("slo"):
         load_003 = _evaluate_slo(profile.get("slo"), diagnostics)
     else:
         load_003 = ("not-verified", "insufficient samples to evaluate SLO thresholds")
-    source_oldest_at = _extract_source_oldest_at(samples) if samples else None
     load_002_detail = diagnostics["adapter_error"] or "adapter run did not complete"
     return _build(
         "partial",
@@ -956,7 +980,10 @@ def _is_forbidden_key(key: str) -> bool:
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"\bsk-[0-9A-Za-z]{20,}\b"),
+    # OpenAI keys: modern hyphenated project/service keys (``sk-proj-...``,
+    # ``sk-svcacct-...``) AND the classic single-segment ``sk-<40+ alnum>``.
+    re.compile(r"\bsk-[A-Za-z0-9]{2,}(?:[-_][A-Za-z0-9]+)+"),
+    re.compile(r"\bsk-[A-Za-z0-9]{20,}"),
     re.compile(r"\beyJ[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]{6,}\.[0-9A-Za-z_-]+"),
     re.compile(r"://[^/\s:@]+:[^/\s:@]+@"),
     # A masked-secret marker (******) is itself evidence a secret was present;
@@ -1038,21 +1065,45 @@ def main(argv: Optional[list] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    with open(args.profile, "r", encoding="utf-8") as handle:
-        profile = json.load(handle)
+    try:
+        with open(args.profile, "r", encoding="utf-8") as handle:
+            profile = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print(
+            scrub_text(f"error: could not read profile {args.profile!r}: {exc}"),
+            file=sys.stderr,
+        )
+        return 2
 
     generated_at = args.generated_at or _now_iso()
     adapter = build_cli_adapter(timeout_s=args.adapter_timeout_s)
 
-    manifest = run_loadtest(
-        profile=profile,
-        budget_ceiling_usd=args.budget_ceiling_usd,
-        endpoint_class=args.endpoint_class,
-        allow_production=args.allow_production,
-        adapter=adapter,
-        generated_at=generated_at,
-    )
-    write_load_manifest(args.out, manifest)
+    # run_loadtest degrades adapter-execution and sample-parsing failures to a
+    # ``partial`` manifest (it does not raise for them), so those still write a
+    # manifest below. A raise here means a controlled input/contract error
+    # (bad profile shape, privacy violation); surface it scrubbed, non-zero.
+    try:
+        manifest = run_loadtest(
+            profile=profile,
+            budget_ceiling_usd=args.budget_ceiling_usd,
+            endpoint_class=args.endpoint_class,
+            allow_production=args.allow_production,
+            adapter=adapter,
+            generated_at=generated_at,
+        )
+    except (LoadTestValidationError, LoadTestPrivacyError) as exc:
+        print(scrub_text(f"error: load test aborted: {exc}"), file=sys.stderr)
+        return 2
+
+    try:
+        write_load_manifest(args.out, manifest)
+    except (ManifestValidationError, LoadTestPrivacyError, OSError) as exc:
+        print(
+            scrub_text(f"error: could not write manifest to {args.out!r}: {exc}"),
+            file=sys.stderr,
+        )
+        return 2
+
     print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0 if manifest["status"] == "complete" else 1
 

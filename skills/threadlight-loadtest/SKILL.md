@@ -222,6 +222,7 @@ markers — a strict allowlist of value shapes, so opaque metric IDs
 ## Usage
 
 ```python
+import shutil
 import sys
 sys.path.insert(0, "skills/threadlight-loadtest/scripts")
 from loadtest import run_loadtest, write_load_manifest
@@ -235,9 +236,16 @@ profile = {
     "projected_token_cost_usd": 3.00,  # declared → compared directly to the ceiling
 }
 
-available = detect_available_commands()          # pure shutil.which probe
-name = select_adapter(available)                  # "k6" | "locust" | None
-adapter = CommandLoadAdapter(name=name, command_path=available[name]) if name else None
+# detect_available_commands() returns a *set* of names (a pure shutil.which
+# probe), so resolve the chosen name's path with shutil.which — never index the
+# set. (loadtest.build_cli_adapter() wraps these three lines if you don't need
+# the intermediate values.)
+name = select_adapter(detect_available_commands())    # "k6" | "locust" | None
+command_path = shutil.which(name) if name else None
+adapter = (
+    CommandLoadAdapter(name=name, command_path=command_path)
+    if command_path else None
+)
 
 manifest = run_loadtest(
     profile=profile,

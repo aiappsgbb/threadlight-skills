@@ -12,6 +12,7 @@ secret-value scrubbing), and a successful complete run's advisory spec plan.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -481,29 +482,49 @@ def test_command_adapter_invokes_list_argv_with_shell_false_and_timeout():
 
 
 def test_command_adapter_never_returns_raw_stdout_stderr():
+    """stdout is the NDJSON sample channel: a non-JSON debug/banner line there
+    carrying a real secret must NEVER appear in the returned error (raw OR
+    scrubbed), and a real secret in stderr must be redacted to the sentinel."""
+    stdout_secret = "sk-proj-STDOUTleak0123456789_abcDEFghiJKLmno-PQR"
+    stderr_secret = "sk-proj-STDERRleak0123456789_abcDEFghiJKLmno-PQR"
+
     def fake_runner(argv, **kwargs):
         return _FakeCompleted(
-            1, stdout="line one\nline two\nsecret internal debug info",
-            stderr="password=hunter2 leaked in logs",
+            1,
+            stdout="starting run\n" + stdout_secret + "\nvus=5 debug=on",
+            stderr="fatal: auth failed using " + stderr_secret,
         )
 
     adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
     result = adapter.run(configured_profile(script_path="s.js"))
     assert result["status"] == "partial"
-    assert "hunter2" not in result["error"]
+    # The raw stdout debug lines and the secret they carried are never surfaced.
+    assert stdout_secret not in result["error"]
+    assert "starting run" not in result["error"]
+    assert "debug=on" not in result["error"]
+    # The stderr secret is present-but-redacted, not leaked verbatim.
+    assert stderr_secret not in result["error"]
     assert "[REDACTED]" in result["error"]
+    assert result["error"].startswith("k6 exited 1")
+    # No raw passthrough keys of any kind.
     assert "raw" not in result  # sanity: no such key at all
     assert "stdout" not in result
     assert "stderr" not in result
 
 
 def test_command_adapter_scrubs_bearer_token_from_error():
+    """A genuine bearer/JWT credential in stderr is redacted — the exact token
+    text is absent and the sentinel is present."""
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N"
+    bearer = "Bearer " + jwt
+
     def fake_runner(argv, **kwargs):
-        return _FakeCompleted(1, stderr="Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz123456")
+        return _FakeCompleted(1, stderr="401 Unauthorized (Authorization: " + bearer + ")")
 
     adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
     result = adapter.run(configured_profile(script_path="s.js"))
-    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in result["error"]
+    assert bearer not in result["error"]
+    assert jwt not in result["error"]
     assert "[REDACTED]" in result["error"]
 
 
@@ -1082,3 +1103,344 @@ def test_findings_uniqueness_is_enforced_by_both_layers(mutate):
         lt.validate_load_manifest(tampered)
     with pytest.raises(Exception):
         jsonschema.validate(tampered, schema)
+
+
+# ===========================================================================
+# Task-5 hardening: live-adapter argv, sample validation, secret scrubbing,
+# runnable SKILL example, and controlled CLI exceptions.
+# ===========================================================================
+
+# --- Finding 1: build_argv hold_seconds precedence + strict validation -----
+def test_build_argv_uses_hold_seconds_for_duration():
+    argv = ad.build_argv("k6", "/bin/k6", {
+        "script_path": "s.js", "virtual_users": 5, "hold_seconds": 10,
+        "endpoint": {"url": "https://x"},
+    })
+    assert argv[argv.index("--duration") + 1] == "10s"
+
+
+def test_build_argv_hold_seconds_takes_precedence_over_legacy_duration_s():
+    argv = ad.build_argv("k6", "/bin/k6", {
+        "script_path": "s.js", "virtual_users": 5, "hold_seconds": 10, "duration_s": 999,
+    })
+    assert argv[argv.index("--duration") + 1] == "10s"
+
+
+def test_build_argv_falls_back_to_legacy_duration_s_when_no_hold_seconds():
+    argv = ad.build_argv("k6", "/bin/k6", {
+        "script_path": "s.js", "virtual_users": 5, "duration_s": 45,
+    })
+    assert argv[argv.index("--duration") + 1] == "45s"
+
+
+def test_build_argv_missing_virtual_users_raises_adapter_argument_error():
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.build_argv("k6", "/bin/k6", {"script_path": "s.js", "hold_seconds": 10})
+
+
+def test_build_argv_missing_duration_raises_adapter_argument_error():
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.build_argv("k6", "/bin/k6", {"script_path": "s.js", "virtual_users": 5})
+
+
+def test_build_argv_missing_script_raises_adapter_argument_error():
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.build_argv("k6", "/bin/k6", {"virtual_users": 5, "hold_seconds": 10})
+
+
+@pytest.mark.parametrize("bad", [0, -5, float("inf"), float("nan"), "10", True])
+def test_build_argv_rejects_nonpositive_nonfinite_or_nonnumeric_duration(bad):
+    with pytest.raises(ad.AdapterArgumentError):
+        ad.build_argv("k6", "/bin/k6", {
+            "script_path": "s.js", "virtual_users": 5, "hold_seconds": bad,
+        })
+
+
+def test_command_adapter_missing_args_return_partial_not_keyerror():
+    """A profile missing virtual_users makes build_argv raise
+    AdapterArgumentError, which the adapter catches into a safe partial — never
+    a KeyError, and the runner is never even invoked."""
+    def fake_runner(argv, **kwargs):  # pragma: no cover - must not run
+        raise AssertionError("runner must not run when argv cannot be built")
+
+    adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
+    result = adapter.run({
+        "script_path": "s.js", "hold_seconds": 10,  # no virtual_users
+        "endpoint": {"url": "https://x", "credential_ref": "kv:k"},
+    })
+    assert result["status"] == "partial"
+    assert result["samples"] == []
+    assert "virtual_users" in result["error"]
+
+
+def test_run_loadtest_end_to_end_through_real_command_adapter_hold_seconds_only():
+    """A hold_seconds-only approved profile drives a COMPLETE run through the
+    real CommandLoadAdapter (with a fake runner): hold_seconds resolves the
+    engine --duration, NDJSON samples parse, and an advisory spec plan appears."""
+    captured = {}
+
+    def fake_runner(argv, **kwargs):
+        captured["argv"] = argv
+        body = chr(10).join(
+            json.dumps({"latency_ms": v, "success": True, "tokens": 40})
+            for v in (100, 200, 300, 400, 500)
+        )
+        return _FakeCompleted(0, stdout=body)
+
+    adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
+    profile = approved_profile(
+        virtual_users=5,
+        script_path="scripts/harness.js",
+        endpoint={"url": "https://staging.example.test/api", "credential_ref": "kv:key"},
+    )  # hold_seconds=10, NO duration_s / no virtual_users in the base shape
+    manifest = lt.run_loadtest(
+        profile=profile, budget_ceiling_usd=100.0, endpoint_class="non-production",
+        adapter=adapter, generated_at=GENERATED_AT,
+    )
+    assert manifest["status"] == "complete"
+    assert captured["argv"][captured["argv"].index("--duration") + 1] == "10s"
+    assert manifest["diagnostics"]["sample_count"] == 5
+    assert manifest["diagnostics"]["p95_latency_ms"] == 500
+    assert "spec_update_plan" in manifest
+
+
+# --- Finding 2: strict sample validation (no silent success=1 coercion) -----
+def test_parse_ndjson_rejects_success_coerced_from_int():
+    samples, error = ad.parse_ndjson_samples(
+        json.dumps({"latency_ms": 10, "success": 1, "tokens": 5})
+    )
+    assert samples == []
+    assert error is not None
+    assert "1" in error  # counted diagnostic, not a silent coercion
+
+
+def test_parse_ndjson_rejects_malformed_latency():
+    samples, error = ad.parse_ndjson_samples(
+        json.dumps({"latency_ms": "x", "success": True, "tokens": 5})
+    )
+    assert samples == []
+    assert error is not None
+
+
+def test_parse_ndjson_rejects_negative_tokens():
+    samples, error = ad.parse_ndjson_samples(
+        json.dumps({"latency_ms": 10, "success": True, "tokens": -1})
+    )
+    assert samples == []
+    assert error is not None
+
+
+def test_parse_ndjson_counts_mixed_valid_and_invalid():
+    good = json.dumps({"latency_ms": 10, "success": True, "tokens": 5})
+    bad = json.dumps({"latency_ms": 10, "success": 1, "tokens": 5})
+    samples, error = ad.parse_ndjson_samples(good + chr(10) + bad)
+    assert samples == [{"latency_ms": 10, "success": True, "tokens": 5}]
+    assert error is not None
+    assert "1 of 2" in error
+
+
+def test_command_adapter_malformed_samples_return_partial_safe_error():
+    def fake_runner(argv, **kwargs):
+        # exit 0, but the only sample line carries a negative token count
+        return _FakeCompleted(
+            0, stdout=json.dumps({"latency_ms": 10, "success": True, "tokens": -5})
+        )
+
+    adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
+    result = adapter.run(configured_profile(script_path="s.js"))
+    assert result["status"] == "partial"
+    assert result["samples"] == []
+    assert "sample" in result["error"]
+
+
+def test_run_loadtest_defends_against_injected_malformed_sample_values():
+    """An injected adapter returning a structurally-valid list with a
+    non-numeric latency degrades to partial/not-verified with safe aggregate
+    diagnostics and no plan — run_loadtest never crashes."""
+    adapter = FakeAdapter(result={
+        "status": "complete",
+        "samples": [{"latency_ms": "not-a-number", "success": True, "tokens": 5}],
+    })
+    manifest = lt.run_loadtest(
+        profile=configured_profile(slo={"max_p95_latency_ms": 900}),
+        budget_ceiling_usd=100.0, endpoint_class="non-production",
+        adapter=adapter, generated_at=GENERATED_AT,
+    )
+    assert manifest["status"] == "partial"
+    assert finding_map(manifest)["LOAD-002"] == "not-verified"
+    assert manifest["diagnostics"]["sample_count"] == 0
+    assert manifest["diagnostics"]["adapter_error"] is not None
+    assert "spec_update_plan" not in manifest
+    assert adapter.calls == 1
+
+
+def test_run_loadtest_defends_against_injected_success_coerced_int():
+    adapter = FakeAdapter(result={
+        "status": "complete",
+        "samples": [{"latency_ms": 10, "success": 1, "tokens": 5}],  # success not a bool
+    })
+    manifest = lt.run_loadtest(
+        profile=configured_profile(),
+        budget_ceiling_usd=100.0, endpoint_class="non-production",
+        adapter=adapter, generated_at=GENERATED_AT,
+    )
+    assert manifest["status"] == "partial"
+    assert manifest["diagnostics"]["sample_count"] == 0
+    assert "spec_update_plan" not in manifest
+
+
+# --- Finding 3: modern secret shapes scrubbed + rejected; opaque IDs safe ---
+@pytest.mark.parametrize("secret", [
+    "sk-proj-abcDEF123456_ghiJKLmno-pqrSTUvwx",     # modern project key
+    "sk-svcacct-abcDEF123456-ghiJKLmnopqrSTUv",      # modern service-account key
+    "sk-abcdefghijklmnopqrstuvwxyz0123456789AB",      # classic single-segment key
+    "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.aBcDeFgHiJ",  # bearer + JWT
+])
+def test_scrub_redacts_secret_shapes(secret):
+    scrubbed = ad.scrub_text("prefix " + secret + " suffix")
+    assert secret not in scrubbed
+    assert "[REDACTED]" in scrubbed
+    assert "prefix" in scrubbed and "suffix" in scrubbed
+
+
+@pytest.mark.parametrize("opaque", [
+    "3fa85f64-5717-4562-b3fc-2c963f66afa6",  # UUID run id
+    "a1b2c3d4e5f6a7b8",                       # hex trace id
+    "task-000123",                            # opaque task id
+    "risk-checkout-42",                       # opaque risk id
+])
+def test_scrub_preserves_opaque_ids(opaque):
+    assert ad.scrub_text("id=" + opaque) == "id=" + opaque
+
+
+@pytest.mark.parametrize("secret", [
+    "sk-proj-abcDEF123456_ghiJKLmno-pqrSTUvwx",
+    "sk-svcacct-abcDEF123456-ghiJKLmnopqrSTUv",
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.aBcDeFgHiJkLmN",
+])
+def test_persist_time_rejects_modern_secret_values(tmp_path, secret):
+    manifest = _valid_complete_manifest()
+    tampered = json.loads(json.dumps(manifest))
+    tampered["adapter_name"] = "engine " + secret
+    with pytest.raises(lt.LoadTestPrivacyError):
+        lt.write_load_manifest(tmp_path / "m.json", tampered)
+    assert not (tmp_path / "m.json").exists()
+
+
+# --- Finding 4/5: the SKILL.md usage example actually runs -------------------
+def test_skill_md_python_example_is_runnable(tmp_path, monkeypatch):
+    """The documented Python example must run end-to-end. The old
+    ``available[name]`` line raised TypeError (a set is not subscriptable)
+    whenever an engine was present; force that branch and prove it constructs a
+    real CommandLoadAdapter via shutil.which and writes a manifest."""
+    import shutil
+
+    skill_md = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    match = re.search(r"```python\n(.*?)\n```", skill_md, re.S)
+    assert match, "expected a python usage example in SKILL.md"
+    block = match.group(1)
+
+    monkeypatch.setattr(ad, "detect_available_commands", lambda: {"k6"})
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/" + name)
+    monkeypatch.chdir(tmp_path)
+
+    namespace = {"__name__": "__example__"}
+    exec(compile(block, "SKILL.md-example", "exec"), namespace)
+
+    assert isinstance(namespace["adapter"], ad.CommandLoadAdapter)
+    assert namespace["adapter"].command_path == "/usr/local/bin/k6"
+    manifest = json.loads((tmp_path / "specs" / "load-manifest.json").read_text(encoding="utf-8"))
+    # dry-run profile (no live endpoint) -> partial, adapter never invoked.
+    assert manifest["status"] == "partial"
+
+
+# --- Finding 6: controlled CLI exceptions + partial manifest emission --------
+def _write_profile(tmp_path, profile):
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(profile), encoding="utf-8")
+    return path
+
+
+def test_main_emits_partial_manifest_when_no_engine_available(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(lt, "build_cli_adapter", lambda timeout_s=120.0: None)
+    profile_path = _write_profile(tmp_path, configured_profile())
+    out_path = tmp_path / "specs" / "load-manifest.json"
+    rc = lt.main([
+        "--profile", str(profile_path),
+        "--budget-ceiling-usd", "100",
+        "--endpoint-class", "non-production",
+        "--out", str(out_path),
+        "--generated-at", GENERATED_AT,
+    ])
+    assert rc == 1  # partial, not complete
+    manifest = json.loads(out_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "partial"
+    assert finding_map(manifest)["LOAD-002"] == "not-verified"
+
+
+def test_main_emits_partial_manifest_when_adapter_samples_malformed(tmp_path, monkeypatch, capsys):
+    def fake_runner(argv, **kwargs):
+        # exit 0 but the sample line coerces success from an int -> rejected
+        return _FakeCompleted(
+            0, stdout=json.dumps({"latency_ms": 10, "success": 1, "tokens": 5})
+        )
+
+    adapter = ad.CommandLoadAdapter(name="k6", command_path="/bin/k6", runner=fake_runner)
+    monkeypatch.setattr(lt, "build_cli_adapter", lambda timeout_s=120.0: adapter)
+    profile_path = _write_profile(tmp_path, configured_profile(script_path="s.js"))
+    out_path = tmp_path / "specs" / "load-manifest.json"
+    rc = lt.main([
+        "--profile", str(profile_path),
+        "--budget-ceiling-usd", "100",
+        "--endpoint-class", "non-production",
+        "--out", str(out_path),
+        "--generated-at", GENERATED_AT,
+    ])
+    assert rc == 1
+    manifest = json.loads(out_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "partial"
+    assert "spec_update_plan" not in manifest
+
+
+def test_main_controlled_exit_on_missing_profile_file(tmp_path, capsys):
+    out_path = tmp_path / "m.json"
+    rc = lt.main([
+        "--profile", str(tmp_path / "does-not-exist.json"),
+        "--budget-ceiling-usd", "100",
+        "--endpoint-class", "non-production",
+        "--out", str(out_path),
+    ])
+    assert rc == 2
+    assert "could not read profile" in capsys.readouterr().err
+    assert not out_path.exists()
+
+
+def test_main_controlled_exit_on_malformed_profile_json(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+    out_path = tmp_path / "m.json"
+    rc = lt.main([
+        "--profile", str(bad),
+        "--budget-ceiling-usd", "100",
+        "--endpoint-class", "non-production",
+        "--out", str(out_path),
+    ])
+    assert rc == 2
+    assert not out_path.exists()
+
+
+def test_main_controlled_exit_on_invalid_profile_shape(tmp_path, capsys):
+    # a JSON array is not a valid profile object -> LoadTestValidationError,
+    # surfaced as a controlled non-zero exit, no traceback, nothing written.
+    bad = tmp_path / "arr.json"
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+    out_path = tmp_path / "m.json"
+    rc = lt.main([
+        "--profile", str(bad),
+        "--budget-ceiling-usd", "100",
+        "--endpoint-class", "non-production",
+        "--out", str(out_path),
+    ])
+    assert rc == 2
+    assert "load test aborted" in capsys.readouterr().err
+    assert not out_path.exists()
