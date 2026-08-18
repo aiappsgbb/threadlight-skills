@@ -239,24 +239,50 @@ VALUE_MODEL_BLOCK = (
 
 
 def test_missing_spec_section_14_is_rejected(pilot: Path) -> None:
+    # The `pilot` fixture (updated below) already carries exactly one
+    # `VALUE_MODEL_BLOCK`. Do NOT append another copy here: with two `## 14.`
+    # headings present, the corrected extractor in Step 3 stops only at a
+    # heading whose number is *strictly greater* than 14, so a second `## 14.`
+    # would not terminate the first one's extraction and this test would
+    # start truncating the wrong thing. `spec_text.count(...) == 1` guards
+    # that invariant before every mutation in this file.
     spec = pilot / "specs" / "SPEC.md"
-    text = spec.read_text(encoding="utf-8") + VALUE_MODEL_BLOCK
+    text = spec.read_text(encoding="utf-8")
+    assert text.count("## 14. Value Model") == 1
     spec.write_text(text.split("## 14.")[0], encoding="utf-8")
     assert "design.spec.no-section-14" in rules(check(pilot))
 
 
 @pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
 def test_section_14_requires_value_model_shape(pilot: Path, marker: str) -> None:
+    # Same reasoning as above: appending a second `VALUE_MODEL_BLOCK` here
+    # would leave an intact, unmodified copy of `marker` sitting right after
+    # the mutated one, and the extractor would fold both into one section 14
+    # body — silently backfilling the marker this test just removed and
+    # defeating the assertion below without ever failing loudly.
     spec = pilot / "specs" / "SPEC.md"
-    text = spec.read_text(encoding="utf-8") + VALUE_MODEL_BLOCK
+    text = spec.read_text(encoding="utf-8")
+    assert text.count("## 14. Value Model") == 1
     spec.write_text(text.replace(marker, f"# removed {marker}", 1), encoding="utf-8")
     assert "design.spec.value-model-shape" in rules(check(pilot))
 
 
 def test_section_14_does_not_require_numeric_defaults(pilot: Path) -> None:
+    spec = pilot / "specs" / "SPEC.md"
+    assert spec.read_text(encoding="utf-8").count("## 14. Value Model") == 1
     failures = check(pilot)
     assert "design.spec.value-model-shape" not in rules(failures)
 ```
+
+None of the three tests above append a second `VALUE_MODEL_BLOCK`: the
+shared `pilot` fixture (updated next) already carries exactly one copy, and
+every retrofit below that appends its own copy does so only after slicing
+away everything from `"## 13."` onward — which also discards the fixture's
+already-appended block — so the written file still ends up with exactly one
+`## 14. Value Model` heading. Where a retrofit below is shown only as prose
+rather than full code, apply the same rule when implementing it: read the
+current text, append `VALUE_MODEL_BLOCK` at most once, and assert
+`text.count("## 14. Value Model") == 1` immediately before writing.
 
 Update the `pilot` fixture (the hand-built, from-scratch fixture, not the
 shipped example) to append `VALUE_MODEL_BLOCK` after its existing section 13
@@ -315,12 +341,23 @@ truthiness check, because an extracted section whose body happens to be
 empty (blank line only) is a different, valid case from a genuinely absent
 heading:
 
+A digit-count shortcut is not an exact algorithm: matching `(?:{number + 1}|[1-9]\d+)` stops at *any* two-or-more-digit heading — including one *lower* than `number`, such as a stray out-of-order `## 12.` inside section 13's body — while also failing to stop at a genuinely later single-digit heading in the rare case `number >= 9`. The exact rule is "stop at the first later heading whose integer is strictly greater than `number`," evaluated by parsing every later heading's number, not by pattern-matching digit counts:
+
 ```python
+_TOP_LEVEL_HEADING = re.compile(r"^##[ \t]+(\d+)[.\w]*\.", re.MULTILINE)
+
+
 def extract_section(spec_text: str, number: int) -> str | None:
     """Return the body of top-level SPEC section `number`, or None if absent.
 
-    Stops at the next top-level numbered heading (`## N.`) but not at a
-    lettered subsection such as `## 13b.`, which belongs to the section.
+    Scans every later top-level numbered heading (`## N.` or a lettered
+    subsection such as `## 13b.`) in document order and stops at the first
+    one whose leading integer is strictly greater than `number`. A heading
+    with an equal or lower integer — even one that appears out of order,
+    such as a stray `## 12.` inside section 13's body — does NOT stop the
+    section: only a strictly greater number is a boundary. A lettered
+    subsection such as `## 13b.` shares section 13's leading integer (13),
+    so it is never a boundary either and stays inside the section.
     """
     start = re.search(
         rf"^##[ \t]+{number}\.[^\n]*$",
@@ -330,16 +367,52 @@ def extract_section(spec_text: str, number: int) -> str | None:
     if start is None:
         return None
     tail = spec_text[start.end():]
-    next_h2 = re.search(
-        rf"^##[ \t]+(?:{number + 1}|[1-9]\d+)\.[^\n]*$",
-        tail,
-        flags=re.MULTILINE,
-    )
-    return tail[:next_h2.start()] if next_h2 else tail
+    for later in _TOP_LEVEL_HEADING.finditer(tail):
+        if int(later.group(1)) > number:
+            return tail[:later.start()]
+    return tail
 
 
 def extract_section_13(spec_text: str) -> str | None:
     return extract_section(spec_text, 13)
+```
+
+Add two direct unit tests for `extract_section` itself, alongside the
+`check()`-level tests retrofitted above. These use ad hoc strings rather than
+the `pilot` fixture specifically so they exercise the boundary rule in
+isolation, without depending on (or colliding with) section 14 becoming
+mandatory in the fixture:
+
+```python
+def test_extract_section_ignores_an_out_of_order_lower_numbered_heading() -> None:
+    """A stray `## 12.` inside section 13's body must not truncate it — only
+    a heading numbered strictly greater than 13 is a boundary."""
+    text = (
+        "## 13. Assumptions\n"
+        "Body line one.\n\n"
+        "## 12. Stray heading from a bad merge\n"
+        "Still section 13's body.\n\n"
+        "## 14. Next section\n"
+        "Not part of section 13.\n"
+    )
+    section13 = mod.extract_section(text, 13)
+    assert section13 is not None
+    assert "## 12. Stray heading" in section13
+    assert "Still section 13's body." in section13
+    assert "Not part of section 13." not in section13
+
+
+def test_extract_section_stops_at_the_next_strictly_greater_heading() -> None:
+    text = (
+        "## 13. Assumptions\n"
+        "Body line one.\n\n"
+        "## 14. Next section\n"
+        "Not part of section 13.\n"
+    )
+    section13 = mod.extract_section(text, 13)
+    assert section13 is not None
+    assert "Body line one." in section13
+    assert "Not part of section 13." not in section13
 ```
 
 Add the section 14 check to `check_design` **before** the existing
@@ -1428,6 +1501,19 @@ def test_zero_successes_yields_not_verified_unit_economics() -> None:
     assert result["unit_economics"]["target_status"] == "not-verified"
 
 
+def test_unverified_actuals_collection_yields_not_verified_unit_economics() -> None:
+    """A `not-verified` Cost Management collection means there is no verified
+    actual total to divide by successful_interactions, independent of policy
+    completeness or how many successful interactions were observed. Token
+    metrics (`usage.models`) are irrelevant to this gate either way."""
+    a = actuals()
+    a["status"] = "not-verified"
+    result = run(a=a)
+    assert result["unit_economics"]["status"] == "not-verified"
+    assert result["unit_economics"]["cost_per_successful_interaction_usd"] is None
+    assert result["unit_economics"]["target_status"] == "not-verified"
+
+
 def test_unit_economics_target_status_pass_when_within_baseline() -> None:
     """`total=70.0` over `successes=100` is 0.70/interaction; baseline target is 1.0."""
     result = run()
@@ -1447,7 +1533,12 @@ def test_unit_economics_target_status_should_fix_when_above_baseline() -> None:
 def test_incomplete_policy_yields_not_verified() -> None:
     p = policy()
     del p["cost"]["maturity_policy"]["min_complete_days"]
-    assert run(p=p)["maturity"]["status"] == "not-verified"
+    result = run(p=p)
+    assert result["maturity"]["status"] == "not-verified"
+    # An incomplete declared policy leaves unit economics with no mature
+    # policy to gate against either — it must not silently report `pass`
+    # just because actuals are verified and successful_interactions > 0.
+    assert result["unit_economics"]["status"] == "not-verified"
 
 
 def test_window_too_recent_to_settle_yields_not_verified() -> None:
@@ -1560,10 +1651,23 @@ both must be present in every emitted manifest:
 
 - `status` (`pass | not-verified`) is an evidence/maturity signal: whether
   `cost_per_successful_interaction_usd` could be computed at all. It is
-  `not-verified` only when `successful_interactions` is zero (division is not
-  attempted), independent of any policy target.
-- `target_status` (`pass | should-fix | not-verified`) compares the computed
-  cost against `policy.cost.baseline.target_cost_per_successful_interaction_usd`.
+  `pass` only when **all three** hold:
+  1. `actuals["status"] == "pass"` — a verified Cost Management total, not a
+     `not-verified` collection;
+  2. the SPEC-declared `maturity_policy` is complete — every field the
+     policy schema requires (§8 of the RFC; the same completeness check
+     `evaluate_maturity` already performs for `maturity.status`) is present,
+     independent of whether its thresholds are actually met;
+  3. `successful_interactions > 0` — a divide-by-zero guard, not a
+     threshold comparison; division is never attempted at zero.
+
+  It is `not-verified` if any of the three fails. Token metrics
+  (`usage.models`) are optional evidence for model-level attribution only
+  (see RFC §7.3/§9.3) and are never part of this gate: missing or
+  incomplete token metrics must never flip `status` away from `pass`.
+- `target_status` (`pass | should-fix | not-verified`) is evaluated only when
+  `status` is `pass`, and separately compares the computed cost against
+  `policy.cost.baseline.target_cost_per_successful_interaction_usd`.
   It is `not-verified` whenever `status` is `not-verified` (there is nothing to
   compare), `pass` when at or under the target, and `should-fix` when over it.
 
@@ -2184,6 +2288,59 @@ def test_parser_accepts_actuals_window_and_scope() -> None:
     assert args.resource_group == "rg-pilot"
     assert str(args.spec) == "SPEC.md"
     assert str(args.actuals_manifest) == "actuals.json"
+    # `--workspace-resource-id` is optional and was not passed above.
+    assert args.workspace_resource_id is None
+
+
+def test_actuals_requires_start_and_end() -> None:
+    with pytest.raises(SystemExit) as exc:
+        consumption_iq.build_parser().parse_args([
+            "actuals",
+            "--subscription", "sub-1",
+            "--resource-group", "rg-pilot",
+        ])
+    assert exc.value.code == 2
+
+
+def test_actuals_subscription_and_resource_group_default_from_environment(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-from-env")
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP", "rg-from-env")
+    args = consumption_iq.build_parser().parse_args([
+        "actuals", "--start", "2026-08-01", "--end", "2026-08-08",
+    ])
+    assert args.subscription == "sub-from-env"
+    assert args.resource_group == "rg-from-env"
+    # Defaults are per-parser-build; every command still gets the canonical
+    # spec/manifest paths without needing to repeat them on the CLI.
+    assert args.spec == consumption_iq.DEFAULT_SPEC_PATH
+    assert args.actuals_manifest == consumption_iq.DEFAULT_ACTUALS_MANIFEST
+
+
+@pytest.mark.parametrize(
+    "env_overrides",
+    [
+        {"AZURE_SUBSCRIPTION_ID": None, "AZURE_RESOURCE_GROUP": "rg-from-env"},
+        {"AZURE_SUBSCRIPTION_ID": "sub-from-env", "AZURE_RESOURCE_GROUP": None},
+        {"AZURE_SUBSCRIPTION_ID": None, "AZURE_RESOURCE_GROUP": None},
+    ],
+)
+def test_actuals_missing_scope_after_env_resolution_exits_2(
+    monkeypatch, env_overrides
+) -> None:
+    """Neither `--subscription`/`--resource-group` nor their environment
+    fallbacks were provided; the command must exit 2 before attempting any
+    Azure call, not raise or silently proceed with a `None` scope."""
+    for key, value in env_overrides.items():
+        if value is None:
+            monkeypatch.delenv(key, raising=False)
+        else:
+            monkeypatch.setenv(key, value)
+    rc = consumption_iq.main([
+        "actuals", "--start", "2026-08-01", "--end", "2026-08-08",
+    ])
+    assert rc == 2
 
 
 def test_parser_accepts_reconcile_paths() -> None:
@@ -2192,10 +2349,26 @@ def test_parser_accepts_reconcile_paths() -> None:
         "--forecast", "forecast.json",
         "--actuals-manifest", "actuals.json",
         "--spec", "SPEC.md",
+        "--reconciliation-manifest", "reconciliation.json",
+        "--report", "report.md",
     ])
     assert str(args.forecast) == "forecast.json"
     assert str(args.actuals_manifest) == "actuals.json"
     assert str(args.spec) == "SPEC.md"
+    assert str(args.reconciliation_manifest) == "reconciliation.json"
+    assert str(args.report) == "report.md"
+
+
+def test_parser_reconcile_defaults_use_module_constants() -> None:
+    args = consumption_iq.build_parser().parse_args(["reconcile"])
+    assert args.forecast == consumption_iq.DEFAULT_OUTPUT_MANIFEST
+    assert args.actuals_manifest == consumption_iq.DEFAULT_ACTUALS_MANIFEST
+    assert args.spec == consumption_iq.DEFAULT_SPEC_PATH
+    assert (
+        args.reconciliation_manifest
+        == consumption_iq.DEFAULT_RECONCILIATION_MANIFEST
+    )
+    assert args.report == consumption_iq.DEFAULT_RECONCILIATION_REPORT
 
 
 def test_run_all_default_does_not_call_actuals(monkeypatch) -> None:
@@ -2210,6 +2383,15 @@ def test_run_all_default_does_not_call_actuals(monkeypatch) -> None:
     assert calls == ["projection"]
 
 
+def test_run_all_with_actuals_requires_start_and_end(monkeypatch) -> None:
+    monkeypatch.setattr(consumption_iq, "_run_projection", lambda args: None)
+    rc = consumption_iq.main([
+        "run", "--all", "--with-actuals",
+        "--subscription", "sub-1", "--resource-group", "rg-pilot",
+    ])
+    assert rc == 2
+
+
 def test_run_all_with_actuals_calls_projection_then_actuals(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(consumption_iq, "_run_projection", lambda args: calls.append("projection"))
@@ -2219,6 +2401,12 @@ def test_run_all_with_actuals_calls_projection_then_actuals(monkeypatch) -> None
         "_phase_reconcile",
         lambda args: calls.append("reconcile") or {"status": "pass"},
     )
+    # `_phase_actuals` above is a stub that returns `None` and never writes
+    # anything; both real writer helpers the dispatch path calls after it
+    # must also be stubbed, or a real writer would receive that `None` (or
+    # attempt to write to the real CWD's `specs/` paths) during this test.
+    monkeypatch.setattr(consumption_iq, "_emit_actuals", lambda args, result: None)
+    monkeypatch.setattr(consumption_iq, "_emit_reconciliation", lambda args, result: None)
     rc = consumption_iq.main([
         "run", "--all", "--with-actuals",
         "--start", "2026-08-01", "--end", "2026-08-08",
@@ -2237,6 +2425,10 @@ def test_incomplete_maturity_returns_exit_5_after_emit(monkeypatch) -> None:
         "_phase_reconcile",
         lambda args: {"status": "not-verified"},
     )
+    # `_phase_actuals` here also returns a stub value that must never reach
+    # a real writer; stub `_emit_actuals` as a no-op alongside the
+    # `_emit_reconciliation` capture below.
+    monkeypatch.setattr(consumption_iq, "_emit_actuals", lambda args, result: None)
     monkeypatch.setattr(
         consumption_iq,
         "_emit_reconciliation",
@@ -2270,6 +2462,11 @@ def test_trace_failure_returns_exit_5_not_exit_3(monkeypatch) -> None:
         "_phase_actuals",
         lambda args: {"status": "not-verified", "warnings": ["logs forbidden"]},
     )
+    # The `actuals` command dispatch itself writes the actuals manifest via
+    # `_emit_actuals` before returning; without this stub the real writer
+    # would receive the stub dict above and attempt to write to the real
+    # CWD's `specs/cost-actuals-manifest.json`.
+    monkeypatch.setattr(consumption_iq, "_emit_actuals", lambda args, result: None)
     assert consumption_iq.main([
         "actuals",
         "--start", "2026-08-01", "--end", "2026-08-08",
@@ -2288,28 +2485,117 @@ DEFAULT_RECONCILIATION_REPORT = Path("docs/cost-reconciliation.md")
 DEFAULT_COST_HISTORY = Path("specs/cost-history")
 ```
 
-Commands:
+`actuals`, `reconcile`, and `run --all --with-actuals` share one required/
+default contract; canonicalize it exactly like this — do not improvise
+per-command variations:
 
-```text
-actuals --start YYYY-MM-DD --end YYYY-MM-DD
-        --subscription ID --resource-group NAME
-        --workspace-resource-id ID
-        [--spec PATH] [--actuals-manifest PATH]
-reconcile --forecast PATH --actuals-manifest PATH --spec PATH
-run --all --with-actuals [same live args]
+| Flag | `actuals` | `reconcile` | `run --all --with-actuals` |
+|---|---|---|---|
+| `--start` / `--end` | required | n/a | required only when `--with-actuals` is passed |
+| `--subscription` | default `AZURE_SUBSCRIPTION_ID`; exit 2 if still unset | n/a | same as `actuals` |
+| `--resource-group` | default `AZURE_RESOURCE_GROUP`; exit 2 if still unset | n/a | same as `actuals` |
+| `--workspace-resource-id` | optional, default `None`, no env fallback | n/a | optional, default `None` |
+| `--spec` | default `DEFAULT_SPEC_PATH` | default `DEFAULT_SPEC_PATH` | default `DEFAULT_SPEC_PATH` |
+| `--actuals-manifest` | default `DEFAULT_ACTUALS_MANIFEST` | default `DEFAULT_ACTUALS_MANIFEST` | default `DEFAULT_ACTUALS_MANIFEST` |
+| `--forecast` | n/a | default `DEFAULT_OUTPUT_MANIFEST` | n/a |
+| `--reconciliation-manifest` | n/a | default `DEFAULT_RECONCILIATION_MANIFEST` | n/a (internal) |
+| `--report` | n/a | default `DEFAULT_RECONCILIATION_REPORT` | n/a (internal) |
+
+`--start`/`--end` on `actuals` use argparse's own `required=True`, which
+already exits `2` on a missing flag — no extra code needed there. But
+`--subscription`/`--resource-group` cannot use `required=True`, because they
+have an environment-variable fallback; they need `default=os.environ.get(...)`
+plus an explicit post-parse check, since argparse has no built-in concept of
+"required unless an environment variable resolves it":
+
+```python
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="consumption_iq.py")
+    subparsers = parser.add_subparsers(dest="phase", required=True)
+
+    def _add_scope_args(sp: argparse.ArgumentParser, *, start_end_required: bool) -> None:
+        sp.add_argument(
+            "--start", type=date.fromisoformat, required=start_end_required,
+        )
+        sp.add_argument(
+            "--end", type=date.fromisoformat, required=start_end_required,
+        )
+        sp.add_argument(
+            "--subscription", default=os.environ.get("AZURE_SUBSCRIPTION_ID"),
+        )
+        sp.add_argument(
+            "--resource-group", default=os.environ.get("AZURE_RESOURCE_GROUP"),
+        )
+        sp.add_argument("--workspace-resource-id", default=None)
+        sp.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
+        sp.add_argument(
+            "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
+        )
+
+    actuals_p = subparsers.add_parser("actuals")
+    _add_scope_args(actuals_p, start_end_required=True)
+
+    reconcile_p = subparsers.add_parser("reconcile")
+    reconcile_p.add_argument("--forecast", type=Path, default=DEFAULT_OUTPUT_MANIFEST)
+    reconcile_p.add_argument(
+        "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST,
+    )
+    reconcile_p.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
+    reconcile_p.add_argument(
+        "--reconciliation-manifest", type=Path,
+        default=DEFAULT_RECONCILIATION_MANIFEST,
+    )
+    reconcile_p.add_argument(
+        "--report", type=Path, default=DEFAULT_RECONCILIATION_REPORT,
+    )
+
+    run_p = subparsers.add_parser("run")
+    run_p.add_argument("--all", action="store_true")
+    run_p.add_argument("--with-actuals", action="store_true")
+    _add_scope_args(run_p, start_end_required=False)
+    # ... existing run flags unchanged
+    return parser
+
+
+def _resolve_scope_or_exit(args: argparse.Namespace) -> int | None:
+    """Shared post-parse validation for `actuals` and `run --with-actuals`.
+
+    Returns an exit code if the scope is invalid, or `None` if it is valid
+    and dispatch should continue.
+    """
+    if getattr(args, "phase", None) == "run" and not getattr(args, "with_actuals", False):
+        return None
+    if getattr(args, "phase", None) == "run" and (args.start is None or args.end is None):
+        print("--with-actuals requires --start and --end", file=sys.stderr)
+        return 2
+    if not args.subscription or not args.resource_group:
+        print(
+            "--subscription/AZURE_SUBSCRIPTION_ID and --resource-group/"
+            "AZURE_RESOURCE_GROUP must resolve to a value",
+            file=sys.stderr,
+        )
+        return 2
+    return None
 ```
 
-`--spec` and `--actuals-manifest` are optional on `actuals` (defaulting to
-`DEFAULT_ACTUALS_MANIFEST`, and to no SPEC read when `--spec` is omitted):
-`actuals` only ever writes the actuals manifest and never reads SPEC's policy,
-so both are only needed when a caller wants a non-default manifest path or
-wants `actuals` to also record which SPEC section 14 revision the observed
-window corresponds to. They are always present on `reconcile`, because
-`reconcile` reads the SPEC policy at `--spec` to evaluate maturity/variance,
-and reads the actuals manifest at `--actuals-manifest` as its input.
+`main()` calls `_resolve_scope_or_exit(args)` immediately after parsing, for
+both the `actuals` phase and the `run` phase, and returns its result directly
+if it is not `None`, before dispatching to `_phase_actuals`/`_run_projection`
+or any Azure-touching code. `reconcile` never calls it — that command has no
+scope arguments to validate.
+
+`--spec` and `--actuals-manifest` on `actuals` default to the same canonical
+paths every other command uses (`DEFAULT_SPEC_PATH`,
+`DEFAULT_ACTUALS_MANIFEST`) purely for a consistent, low-surprise CLI and to
+fail fast if the SPEC path doesn't exist; `actuals` itself still never
+evaluates section 14 policy or writes a `policy_ref` — only `reconcile`
+reads and hashes SPEC's `value_model` (RFC §7.3/§9). `--workspace-resource-id`
+has no environment fallback and stays optional everywhere: an omitted
+workspace only degrades Azure Monitor token attribution, never the Cost
+Management total itself, so there is nothing to fail closed on.
 
 `--with-actuals` is false by default. `--pre-deploy --with-actuals` is rejected
-with exit 2.
+with exit 2, same as an unresolved `--subscription`/`--resource-group`.
 
 Before adding branches, extract today's lines 363-376 into:
 
@@ -2326,6 +2612,24 @@ def _run_projection(args: argparse.Namespace) -> None:
 ```
 
 Pin that `run --all` calls only this helper unless `--with-actuals` is present.
+
+Introduce an explicit `_emit_actuals(args, result)` helper in
+`consumption_iq.py`, alongside the existing `_emit_reconciliation(args, result)`
+CLI-layer wrapper (the thin adapter around `reconciliation_emitter.emit_reconciliation`,
+Task 10, that the tests below already monkeypatch), and call it
+everywhere the `actuals` phase's result is produced and needs to be written:
+by the `actuals` command's own dispatch, and by `run --all --with-actuals`
+immediately after `_phase_actuals` and before `_phase_reconcile`/
+`_emit_reconciliation` run. `_emit_actuals` performs a plain canonical write
+of just the actuals manifest (`DEFAULT_ACTUALS_MANIFEST` or `--actuals-manifest`);
+it does not write history, because `reconciliation_emitter.emit_reconciliation`
+(Task 10) only writes the atomic actuals+reconciliation history pair once
+both documents exist, which is not yet true when `actuals` runs standalone.
+Every test above that stubs `_phase_actuals` also stubs `_emit_actuals` (and
+`_emit_reconciliation`, where reconcile also runs) for exactly this reason:
+without that stub, the real writer would receive the stub's return value —
+often `None` or an incomplete dict — and either raise or write bogus content
+to the real working directory's `specs/` paths.
 
 - [ ] **Step 3: Add narrow exception mapping**
 
@@ -2417,6 +2721,17 @@ Confirm the subscription is in the alias's `allowed_subscriptions`.
 : "${PILOT_RESOURCE_GROUP:?set dedicated pilot resource group}"
 : "${LOG_ANALYTICS_RESOURCE_ID:?set workspace resource id}"
 : "${PILOT_ROOT:?set pilot workspace path}"
+: "${RAW_EVIDENCE_DIR:?set a private, out-of-repo directory for raw billing evidence; there is no default}"
+
+mkdir -p "$RAW_EVIDENCE_DIR"
+RAW_EVIDENCE_DIR="$(cd "$RAW_EVIDENCE_DIR" && pwd)"
+REPO_ROOT="$(cd "$PILOT_ROOT" && git rev-parse --show-toplevel)"
+case "$RAW_EVIDENCE_DIR" in
+  "$REPO_ROOT"|"$REPO_ROOT"/*)
+    echo "RAW_EVIDENCE_DIR ($RAW_EVIDENCE_DIR) resolves inside the git repository ($REPO_ROOT); refusing to write raw billing evidence there." >&2
+    exit 1
+    ;;
+esac
 
 python skills/threadlight-consumption-iq/scripts/consumption_iq.py actuals \
   --start "$COST_WINDOW_START" \
@@ -2425,21 +2740,30 @@ python skills/threadlight-consumption-iq/scripts/consumption_iq.py actuals \
   --resource-group "$PILOT_RESOURCE_GROUP" \
   --workspace-resource-id "$LOG_ANALYTICS_RESOURCE_ID" \
   --spec "$PILOT_ROOT/specs/SPEC.md" \
-  --actuals-manifest /tmp/threadlight-cost-actuals.json
+  --actuals-manifest "$RAW_EVIDENCE_DIR/threadlight-cost-actuals.json"
 ```
 
 Expected: read-only calls only; no Azure mutation.
 
-`--actuals-manifest /tmp/threadlight-cost-actuals.json` here is deliberate,
-not an oversight to fix: this is the one place in the whole plan where the
-manifest holds real, unsanitized billing evidence (live resource IDs,
-subscription/tenant IDs, actual prices) from a customer or internal pilot
-subscription. It must never land inside the repository working tree, where an
-accidental `git add -A` or editor autosave could pick it up. Step 3 below
-sanitizes a copy before anything derived from it is committed; the raw
-`/tmp` file is discarded afterward. Every other `--actuals-manifest` use in
-this plan (CLI tests, fixtures, `reconcile`) writes inside the repository
-because those manifests are synthetic or already-sanitized fixtures.
+`--actuals-manifest "$RAW_EVIDENCE_DIR/threadlight-cost-actuals.json"` here is
+deliberate, not a placeholder to fill in casually: this is the one place in
+the whole plan where the manifest holds real, unsanitized billing evidence
+(live resource IDs, subscription/tenant IDs, actual prices) from a customer
+or internal pilot subscription. `RAW_EVIDENCE_DIR` is a **required**,
+operator-provided, private, out-of-repo directory — there is no default and
+it must never be `/tmp` or any other shared/ephemeral location. The guard
+block above enforces that: `RAW_EVIDENCE_DIR` must be set (the `:?` fails
+loudly otherwise), the directory is created if it does not exist
+(`mkdir -p`), its path is resolved to a canonical absolute form, and the
+script fails closed (`exit 1`, with an explicit stderr message) if that
+resolved path is the repository root or nested inside it. It must never land
+inside the repository working tree, where an accidental `git add -A` or
+editor autosave could pick it up. Step 3 below sanitizes a copy before
+anything derived from it is committed; the raw file under
+`$RAW_EVIDENCE_DIR` stays outside any repository and is discarded once
+sanitization is complete. Every other `--actuals-manifest` use in this plan
+(CLI tests, fixtures, `reconcile`) writes inside the repository because those
+manifests are synthetic or already-sanitized fixtures.
 
 - [ ] **Step 3: Sanitize before committing**
 
@@ -2625,16 +2949,38 @@ def test_hash_mismatch_never_raises_or_passes(tmp_path) -> None:
     assert result["COST-103"].status == "not-verified"
 
 
+def test_missing_spec_never_raises_and_is_not_verified(tmp_path) -> None:
+    """A deleted or never-committed SPEC.md must fail closed, not raise.
+
+    `_read_cost_reconciliation` hashes the current SPEC.md against
+    `policy_ref.spec_sha256`; without a guard for a missing file, `_read_text`
+    returns `None` and `None.encode(...)` raises `AttributeError` instead of
+    producing a `not-verified` finding.
+    """
+    ctx = make_ctx(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").unlink()
+    result = findings(ctx)
+    assert result["COST-102"].status == "not-verified"
+    assert result["COST-103"].status == "not-verified"
+
+
 def test_live_probe_no_longer_emits_duplicate_stub_findings(
     tmp_path, monkeypatch
 ) -> None:
+    """`_check_cost_reconciliation_static` must be the sole producer of
+    `COST-102`/`COST-103` in both `_check_cost_live` branches: with tier 3
+    available (the reconciliation-manifest path runs) and with tier 3
+    unavailable (the early-return budget-unavailable path runs). Neither
+    branch may also emit its own stub `not-verified` for those two IDs —
+    the combined finding list must carry exactly one of each.
+    """
     ctx = make_ctx(tmp_path)
     monkeypatch.setattr(pr, "_az_json", lambda *args: [])
-    live, _ = pr._check_cost_live(
-        ctx, {3: True}, "sub-1", "rg-pilot"
-    )
-    assert "COST-102" not in {f.id for f in live}
-    assert "COST-103" not in {f.id for f in live}
+    for tiers in ({3: True}, {3: False}):
+        live, _ = pr._check_cost_live(ctx, tiers, "sub-1", "rg-pilot")
+        ids = [f.id for f in live]
+        assert ids.count("COST-102") == 1
+        assert ids.count("COST-103") == 1
 ```
 
 - [ ] **Step 2: Add strict manifest reader**
@@ -2684,12 +3030,17 @@ def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
     if not isinstance(expected_spec_hash, str):
         return None
     current_spec = _read_text(ctx.root / "specs" / "SPEC.md")
+    if current_spec is None:
+        # SPEC.md missing entirely (deleted, moved, or never committed) is a
+        # fail-closed case, not a crash: there is nothing to hash, so this
+        # cannot be treated as a verified reconciliation either way.
+        return None
     if hashlib.sha256(current_spec.encode("utf-8")).hexdigest() != expected_spec_hash:
         return None
     return data
 ```
 
-- [ ] **Step 3: Replace only the `COST-102/103` stubs**
+- [ ] **Step 3: Replace only the `COST-102/103` stubs, in both `_check_cost_live` branches**
 
 First, change `FINDING_CATALOG["COST-102"]["title"]` from the current
 `"Live actuals vs forecast within 20%"` to
@@ -2699,12 +3050,35 @@ real tolerance is `policy_snapshot.max_forecast_variance_pct`, read from
 SPEC section 14 and unique per workload, so the catalog's static title text
 must not name one specific number.
 
-Keep `COST-101` live budget behavior. Remove the loop that blindly emits
-`not-verified` for both IDs and call:
+`_check_cost_reconciliation_static` must be the **sole** producer of
+`COST-102`/`COST-103` — call it exactly once, unconditionally, as the first
+statement in `_check_cost_live`, before the tier-3/subscription/resource-group
+gate:
 
 ```python
-findings.extend(_check_cost_reconciliation_static(ctx))
+def _check_cost_live(ctx, tiers, sub, rg):
+    findings: list[Finding] = []
+    evidence: list[EvidenceEntry] = []
+    findings.extend(_check_cost_reconciliation_static(ctx))
+    if not tiers.get(3) or not sub or not rg:
+        for fid in ("COST-101", "COST-104", "COST-105"):
+            findings.append(_not_verified(fid, "Tier 3 Cost Management Reader unavailable"))
+        return findings, evidence
+    ...  # unchanged COST-101/104/105 live probing below
 ```
+
+Both call sites that previously duplicated `COST-102`/`COST-103` must be
+removed, not just one:
+
+- the tier-3-unavailable early-return loop currently iterates
+  `("COST-101", "COST-102", "COST-103", "COST-104", "COST-105")`; narrow it
+  to `("COST-101", "COST-104", "COST-105")` only — `COST-102`/`COST-103` are
+  already in `findings` from the unconditional static call above, regardless
+  of which branch runs;
+- the tier-3-available branch's own
+  `for fid in ("COST-102", "COST-103"): findings.append(_not_verified(fid, ...))`
+  stub loop is deleted entirely, not replaced — the static call above already
+  supplied both findings before this branch's code even runs.
 
 `COST-102`:
 

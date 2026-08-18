@@ -272,14 +272,23 @@ percentage threshold of its own.
 `unit_economics` carries two independent verdicts, both required:
 
 - `status` (`pass | not-verified`) is evidence maturity — whether
-  `cost_per_successful_interaction_usd` could be computed at all (nonzero
-  successful interactions, complete evidence). It is `not-verified` before any
-  target comparison is meaningful.
-- `target_status` (`pass | should-fix | not-verified`) compares the computed
-  `cost_per_successful_interaction_usd` against the SPEC-declared
-  `target_usd`. It inherits `not-verified` from `status`, is `pass` when the
-  observed cost is at or below target, and `should-fix` when it exceeds
-  target.
+  `cost_per_successful_interaction_usd` could be computed at all. It is
+  `pass` only when all three hold: the actuals evidence itself carries a
+  verified Cost Management total (the actuals manifest's own `status` is
+  `pass`, not `not-verified`); SPEC's declared `maturity_policy` (§8) is
+  complete — every required field present, independent of whether its
+  thresholds are actually met; and `successful_interactions` is greater
+  than zero (a divide-by-zero guard, not a threshold comparison). Azure
+  Monitor token metrics (§9.1, §10) are attribution evidence only and are
+  optional here — missing or incomplete token metrics never prevent
+  `status` from being `pass`; they only degrade `drivers.payg_ptu` and
+  model-level breakdowns.
+- `target_status` (`pass | should-fix | not-verified`) is a separate,
+  secondary comparison, evaluated only when `status` is `pass`: it compares
+  the computed `cost_per_successful_interaction_usd` against the
+  SPEC-declared `target_usd`. It inherits `not-verified` from `status`, is
+  `pass` when the observed cost is at or below target, and `should-fix` when
+  it exceeds target.
 
 `drivers` is an **object keyed by driver name** (for example `payg_ptu`), not
 an array. Each driver's status and evidence live at a stable, addressable key
@@ -413,9 +422,16 @@ cost_per_successful_interaction_usd =
 ```
 
 This intentionally includes the complete Azure workload cost, not only model
-tokens. Zero successful interactions produces `unit_economics.status =
+tokens. `unit_economics.status` is `pass` only when the actuals evidence
+itself is verified (Cost Management collection `status` is `pass`), SPEC's
+declared `maturity_policy` is complete, and `successful_interactions` is
+greater than zero; if any of those does not hold — including the simple case
+of a zero-interaction window — it produces `unit_economics.status =
 not-verified` and a null `cost_per_successful_interaction_usd`; division is
-not attempted. `unit_economics.target_status` compares the resulting cost
+not attempted. Token metrics are never part of this gate (see §7.3):
+incomplete or missing model attribution degrades `drivers.payg_ptu` and
+model-level breakdowns, never `unit_economics.status`.
+`unit_economics.target_status` compares the resulting cost
 against SPEC's `baseline.target_cost_per_successful_interaction_usd` (see
 §7.3) and is itself `not-verified` whenever `status` is `not-verified`.
 
@@ -492,15 +508,27 @@ valid raw artifacts it collected.
 The existing projection commands remain unchanged. Add:
 
 ```bash
-# Collect observed evidence only
+# Collect observed evidence only. --start/--end are required. --subscription
+# and --resource-group are optional flags here: they default from
+# AZURE_SUBSCRIPTION_ID and AZURE_RESOURCE_GROUP, and the command exits 2 if
+# neither the flag nor the matching environment variable resolves one.
+# --workspace-resource-id is optional with no environment fallback; omitting
+# it only degrades Azure Monitor token attribution, never the Cost
+# Management total.
 scripts/consumption_iq.py actuals \
   --start 2026-08-01 --end 2026-08-08
 
-# Join existing projection, actuals, and SPEC section 14 policy
+# Join existing projection, actuals, and SPEC section 14 policy.
+# --forecast, --actuals-manifest, and --spec all default to the same
+# canonical paths (DEFAULT_OUTPUT_MANIFEST, DEFAULT_ACTUALS_MANIFEST,
+# DEFAULT_SPEC_PATH) the rest of the pipeline already reads and writes.
 scripts/consumption_iq.py reconcile
 
-# Existing projection plus best-effort post-deploy evidence
-scripts/consumption_iq.py run --all --with-actuals
+# Existing projection plus best-effort post-deploy evidence. --with-actuals
+# requires --start/--end and resolves --subscription/--resource-group the
+# same way `actuals` does.
+scripts/consumption_iq.py run --all --with-actuals \
+  --start 2026-08-01 --end 2026-08-08
 ```
 
 `run --all` without `--with-actuals` preserves current behavior.
@@ -510,7 +538,7 @@ Suggested evidence exit codes:
 | Code | Meaning |
 |---:|---|
 | 0 | Requested artifacts produced and mature |
-| 2 | Missing prerequisite |
+| 2 | Missing prerequisite (including an unresolved `--subscription`/`--resource-group` or a missing `--start`/`--end`) |
 | 3 | Required live source unavailable |
 | 4 | Existing incomplete load profile |
 | 5 | Actuals collected but maturity policy not satisfied |
