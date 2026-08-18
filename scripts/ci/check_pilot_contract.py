@@ -75,7 +75,21 @@ FAST_POC_MARKERS: tuple[tuple[str, str], ...] = (
     (r"neutral.+defaults|demo defaults", "'neutral/demo defaults' phrase"),
 )
 
-SPEC_SECTION_13_HEADING = re.compile(r"^##\s+13\.", re.MULTILINE)
+# Matches any top-level numbered SPEC heading, including lettered subsections
+# such as `## 13b.` (which share section 13's leading integer).
+_TOP_LEVEL_HEADING = re.compile(r"^##[ \t]+(\d+)[.\w]*\.", re.MULTILINE)
+
+# The five markers a well-formed SPEC section 14 (Value Model) must carry.
+# Numeric values are deliberately not validated here — an incomplete policy
+# is a valid design state (it becomes `not-verified` downstream); only the
+# presence of the shape is checked.
+VALUE_MODEL_MARKERS: tuple[str, ...] = (
+    "value_model:",
+    "maturity_policy:",
+    "success_event:",
+    "baseline:",
+    "accounting:",
+)
 
 
 class Failures:
@@ -95,26 +109,48 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def extract_section(spec_text: str, number: int) -> str | None:
+    """Return the body of top-level SPEC section `number`, or None if absent.
+
+    Scans every later top-level numbered heading (`## N.` or a lettered
+    subsection such as `## 13b.`) in document order and stops at the first
+    one whose leading integer is strictly greater than `number`. A heading
+    with an equal or lower integer — even one that appears out of order,
+    such as a stray `## 12.` inside section 13's body — does NOT stop the
+    section: only a strictly greater number is a boundary. A lettered
+    subsection such as `## 13b.` shares section 13's leading integer (13),
+    so it is never a boundary either and stays inside the section.
+    """
+    start = re.search(
+        rf"^##[ \t]+{number}\.[^\n]*$",
+        spec_text,
+        flags=re.MULTILINE,
+    )
+    if start is None:
+        return None
+
+    tail = spec_text[start.end():]
+    for later in _TOP_LEVEL_HEADING.finditer(tail):
+        if int(later.group(1)) > number:
+            return tail[: later.start()]
+    return tail
+
+
 def extract_section_13(spec_text: str) -> str | None:
     """Return the body of SPEC § 13, or None if the section is absent.
 
-    § 13 is the last numbered section in the speckit template, so the section
-    normally runs to EOF. We still stop at any later top-level numbered heading
-    (§ 14+) in case the template grows, and we deliberately do *not* stop at
-    lettered subsections like `## 13b.`, which belong to § 13.
+    § 13 is the last numbered section in the speckit template before § 14
+    (Value Model), so the section normally runs up to § 14. We still stop at
+    any later top-level numbered heading in case the template grows further,
+    and we deliberately do *not* stop at lettered subsections like
+    `## 13b.`, which belong to § 13.
     """
-    match = SPEC_SECTION_13_HEADING.search(spec_text)
-    if match is None:
-        return None
-
-    body = spec_text[match.end():]
-    for later in re.finditer(r"^##\s+(\d+)[.a-z]*\.", body, re.MULTILINE):
-        if int(later.group(1)) > 13:
-            return body[: later.start()]
-    return body
+    return extract_section(spec_text, 13)
 
 
-def check_design(pilot: Path, profile: str, fail: Failures) -> None:
+def check_design(
+    pilot: Path, profile: str, fail: Failures, require_value_model: bool = False
+) -> None:
     spec_path = pilot / "specs" / "SPEC.md"
 
     sample_dir = pilot / "specs" / "sample-data"
@@ -146,7 +182,8 @@ def check_design(pilot: Path, profile: str, fail: Failures) -> None:
     if not spec_path.is_file():
         return  # already reported by the required-files check
 
-    section13 = extract_section_13(_read(spec_path))
+    spec_text = _read(spec_path)
+    section13 = extract_section_13(spec_text)
     if section13 is None:
         fail.add(
             "design.spec.no-section-13",
@@ -154,6 +191,35 @@ def check_design(pilot: Path, profile: str, fail: Failures) -> None:
             "threadlight-design >= 1.7.0 must emit it",
         )
         return
+
+    # Section 14 (Value Model) is checked here — before the fast-poc-only
+    # early return below — so a governed profile is validated too. Absence
+    # is opt-in (a pilot authored before this design must keep passing
+    # unless the caller asks for it via --require-value-model); a *present*
+    # section 14 is always shape-checked, flag or not, because shipping a
+    # half-written section 14 is asserting the new contract.
+    section14 = extract_section(spec_text, 14)
+    if section14 is None:
+        if require_value_model:
+            fail.add(
+                "design.spec.no-section-14",
+                "SPEC.md section 14 Value Model is missing",
+            )
+    else:
+        # A plain substring test would be fooled by the test fixture's own
+        # "# removed value_model:" probe (the marker text is still present
+        # as a substring of that comment), so require the marker to start a
+        # line (after leading indentation) instead.
+        missing = [
+            marker
+            for marker in VALUE_MODEL_MARKERS
+            if not re.search(rf"^[ \t]*{re.escape(marker)}", section14, re.MULTILINE)
+        ]
+        if missing:
+            fail.add(
+                "design.spec.value-model-shape",
+                "SPEC section 14 is missing: " + ", ".join(missing),
+            )
 
     if profile != "fast-poc":
         return
@@ -229,6 +295,7 @@ def run_checks(
     stages: list[str],
     profile: str,
     expected_target: str | None,
+    require_value_model: bool = False,
 ) -> Failures:
     fail = Failures()
 
@@ -243,7 +310,7 @@ def run_checks(
                 fail.add(f"{stage}.file.missing", f"missing or empty: {rel}")
 
     if "design" in stages:
-        check_design(pilot, profile, fail)
+        check_design(pilot, profile, fail, require_value_model=require_value_model)
     if "pattern0" in stages:
         check_pattern0(pilot, fail)
     if "deploy" in stages:
@@ -276,12 +343,29 @@ def main(argv: list[str] | None = None) -> int:
         choices=VALID_DEPLOYMENT_TARGETS,
         help="assert the recorded posture target matches exactly",
     )
+    parser.add_argument(
+        "--require-value-model",
+        action="store_true",
+        help=(
+            "fail if SPEC.md section 14 (Value Model) is absent. Opt-in for now "
+            "so pilots authored before this contract keep passing unchanged; "
+            "intended to become the default once legacy pilots have migrated. "
+            "A section 14 that IS present is always shape-checked regardless "
+            "of this flag."
+        ),
+    )
     args = parser.parse_args(argv)
 
     stages = args.stages or ["design", "deploy"]
     pilot = args.pilot_dir
 
-    fail = run_checks(pilot, stages, args.profile, args.expect_deployment_target)
+    fail = run_checks(
+        pilot,
+        stages,
+        args.profile,
+        args.expect_deployment_target,
+        require_value_model=args.require_value_model,
+    )
 
     if fail:
         print(f"Pilot contract FAILED for {pilot} ({len(fail.items)} problem(s)):", file=sys.stderr)
