@@ -121,16 +121,23 @@ MOCK_ENDPOINT_MARKER = re.compile(
 )
 
 # Query-parameter names that would smuggle a credential / SAS / token into a
-# real endpoint URL. A name matches if it is one of these exact names OR
-# contains any `_FORBIDDEN_KEY_MARKERS` substring (so `access_token`,
-# `x-functions-key` … are caught too). Kept conservative so a benign param such
-# as `?region=westus` never trips it.
+# real endpoint URL. Names are compared after lowercasing and removing `-` / `_`
+# separators, so spelling variants such as `subscription-key`,
+# `subscription_key`, and `SubscriptionKey` have identical semantics.
 _SECRET_QUERY_PARAM_NAMES = frozenset({
-    "sig", "sas", "sharedaccesssignature", "signature", "token", "access_token",
-    "accesstoken", "id_token", "refresh_token", "api_key", "apikey", "key",
-    "code", "secret", "client_secret", "password", "pwd", "credential",
-    "authorization", "auth", "accountkey", "x-functions-key", "awsaccesskeyid",
+    "sig", "sas", "sharedaccesssignature", "signature", "token", "accesstoken",
+    "idtoken", "refreshtoken", "apikey", "key", "code", "secret",
+    "clientsecret", "password", "pwd", "credential", "authorization", "auth",
+    "accountkey", "xfunctionskey", "awsaccesskeyid", "subscriptionkey",
+    "accesskey", "sharedaccesskey",
 })
+_FORBIDDEN_QUERY_NAME_MARKERS = tuple(
+    marker.replace("-", "").replace("_", "") for marker in _FORBIDDEN_KEY_MARKERS
+)
+
+# Kept byte-for-behaviour equivalent to safe-check's canonical
+# `_endpoint_is_provably_mock` field corpus.
+_SAFE_CHECK_ENDPOINT_FIELDS = ("url", "host", "name", "endpoint")
 
 # Server-entry fields that describe a *mock* transport and are mutually
 # exclusive with a real HTTPS `url` binding. Removed from a preserved server
@@ -210,6 +217,21 @@ def _endpoint_is_mock(endpoint) -> bool:
     return isinstance(endpoint, str) and bool(MOCK_ENDPOINT_MARKER.search(endpoint))
 
 
+def _server_is_provably_mock(server) -> bool:
+    """Match safe-check's canonical mock predicate over all endpoint fields."""
+    if not isinstance(server, dict):
+        return False
+    for key in _SAFE_CHECK_ENDPOINT_FIELDS:
+        value = server.get(key)
+        if isinstance(value, str) and MOCK_ENDPOINT_MARKER.search(value):
+            return True
+    return False
+
+
+def _normalize_query_param_name(raw_name: str) -> str:
+    return re.sub(r"[-_]+", "", unquote(raw_name).strip().lower())
+
+
 def _reject_secret_query(query: str) -> None:
     """Reject a URL query that carries any credential / SAS / token parameter.
 
@@ -223,11 +245,11 @@ def _reject_secret_query(query: str) -> None:
         if not pair:
             continue
         raw_name = pair.split("=", 1)[0]
-        name = unquote(raw_name).strip().lower()
+        name = _normalize_query_param_name(raw_name)
         if not name:
             continue
         if name in _SECRET_QUERY_PARAM_NAMES or any(
-            marker in name for marker in _FORBIDDEN_KEY_MARKERS
+            marker in name for marker in _FORBIDDEN_QUERY_NAME_MARKERS
         ):
             raise ConnectEvidenceError(
                 "real_endpoint must not carry secret/SAS/token query parameters "
@@ -309,6 +331,17 @@ def _effective_mcp_endpoint(mcp_data, tool_name: str):
         return None
     url = entry.get("url")
     return url if isinstance(url, str) else None
+
+
+def _effective_mcp_server(mcp_data, tool_name: str):
+    """Return a well-shaped server entry, or ``None`` for malformed input."""
+    if not isinstance(mcp_data, dict):
+        return None
+    servers = mcp_data.get("servers")
+    if not isinstance(servers, dict):
+        return None
+    entry = servers.get(tool_name)
+    return entry if isinstance(entry, dict) else None
 
 
 def _safe_identifier(name: str) -> str:
@@ -1063,10 +1096,9 @@ def _update_mcp_config(
     * Unrelated top-level keys and unrelated `servers` / `integrations` entries
       are copied through untouched.
     * The tool's own server entry keeps its safe unrelated fields (`type`,
-      `headers`, custom keys); only its `url` is (re)pointed at the real
-      endpoint and any *mock-transport* field mutually exclusive with a real
-      HTTPS binding is dropped — a stdio `command`/`args`, or any field whose
-      key carries the delimited mock marker (e.g. `mock_url`).
+      `headers`, custom keys); its `url` is (re)pointed at the real endpoint,
+      stale `host` / `endpoint` aliases and stdio `command` / `args` are
+      dropped, and a descriptive `name` is retained only when it is not mock.
     * A malformed shape fails CLOSED: `servers` / `integrations` that are not
       JSON objects, or an existing `servers[tool_name]` that is not a JSON
       object, raise ``ConnectEvidenceError`` rather than being silently
@@ -1102,6 +1134,10 @@ def _update_mcp_config(
         entry.pop(mock_field, None)
     for key in [k for k in entry if isinstance(k, str) and _endpoint_is_mock(k)]:
         entry.pop(key, None)
+    entry.pop("host", None)
+    entry.pop("endpoint", None)
+    if _endpoint_is_mock(entry.get("name")):
+        entry.pop("name", None)
     entry["url"] = real_endpoint
     servers[tool_name] = entry
     data["servers"] = servers
@@ -1287,7 +1323,8 @@ def _commit_verified_apply(
                 f"post-apply re-read of {mcp_config_path} failed: {exc}"
             ) from exc
         effective = _effective_mcp_endpoint(persisted, tool_name)
-        if effective != real_endpoint or _endpoint_is_mock(effective):
+        server = _effective_mcp_server(persisted, tool_name)
+        if effective != real_endpoint or _server_is_provably_mock(server):
             raise ConnectApplyError(
                 "post-apply verification failed: persisted MCP endpoint for "
                 f"{tool_name} does not match the validated real endpoint"
@@ -1985,7 +2022,11 @@ def run_connect(
             existing_mcp, tool_name, contract, generated_at, normalized_endpoint
         )
         predicted = _effective_mcp_endpoint(new_mcp_data, tool_name)
-        if predicted != normalized_endpoint or _endpoint_is_mock(predicted):
+        predicted_server = _effective_mcp_server(new_mcp_data, tool_name)
+        if (
+            predicted != normalized_endpoint
+            or _server_is_provably_mock(predicted_server)
+        ):
             raise ConnectApplyError(
                 "predicted MCP binding does not resolve to the validated real "
                 f"endpoint for {tool_name} — refusing to apply (nothing written)"

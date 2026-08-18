@@ -524,6 +524,63 @@ def test_apply_rejects_bad_endpoint_with_nothing_written(tmp_path, bad_endpoint)
     assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
 
 
+@pytest.mark.parametrize(
+    "secret_name",
+    [
+        "subscription-key",
+        "subscription_key",
+        "SubscriptionKey",
+        "api-key",
+        "API_KEY",
+        "access-key",
+        "access_key",
+        "shared-access-key",
+        "shared_access_key",
+        "SharedAccessKey",
+    ],
+)
+def test_apply_rejects_separator_and_case_variants_of_secret_query_names(
+    tmp_path, secret_name
+):
+    obo, role = full_evidence()
+    endpoint = f"https://api.example.com/mcp?{secret_name}=deadbeef"
+
+    with pytest.raises(ConnectEvidenceError, match="secret/SAS/token"):
+        _run(
+            tmp_path,
+            obo_evidence=obo,
+            role_evidence=role,
+            current_agent_identity=CURRENT_IDENTITY,
+            apply=True,
+            real_endpoint=endpoint,
+        )
+
+    assert not (tmp_path / connect.DEFAULT_MANIFEST_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).exists()
+    assert not (tmp_path / connect.DEFAULT_SPEC_PATH).exists()
+
+
+@pytest.mark.parametrize("param_name", ["trace-id", "api-version", "access-mode"])
+def test_apply_allows_ordinary_hyphenated_nonsecret_query_names(tmp_path, param_name):
+    obo, role = full_evidence()
+    endpoint = f"https://api.example.com/mcp?{param_name}=ordinary"
+
+    result = _run(
+        tmp_path,
+        obo_evidence=obo,
+        role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+        apply=True,
+        real_endpoint=endpoint,
+    )
+
+    assert result["integration_state"] == "real-verified"
+    mcp = json.loads(
+        (tmp_path / connect.DEFAULT_MCP_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    assert mcp["servers"]["returns_get_case"]["url"] == endpoint
+
+
 def test_apply_allows_mockingbird_substring_endpoint(tmp_path):
     # Requirement 9, bullet 3 — a real host that merely CONTAINS 'mock' as a
     # substring (mockingbird) is NOT a mock endpoint and must be accepted.
@@ -570,6 +627,86 @@ def test_apply_preserves_unrelated_server_fields_and_strips_mock_transport(tmp_p
     assert "command" not in entry                   # stdio transport dropped
     assert "args" not in entry
     assert "mock_url" not in entry                  # mock-marker field dropped
+
+
+@pytest.mark.parametrize(
+    "mock_fields",
+    [
+        {"url": "https://returns-mock.internal/mcp"},
+        {"host": "returns-mock.internal"},
+        {"name": "returns mock server"},
+        {"endpoint": "https://mockserver.internal/mcp"},
+        {
+            "url": "https://returns-mock.internal/mcp",
+            "host": "returns-mock.internal",
+            "name": "returns mock server",
+            "endpoint": "https://mockserver.internal/mcp",
+        },
+    ],
+)
+def test_apply_removes_every_safe_check_mock_binding_alias(tmp_path, mock_fields):
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.write_text(
+        json.dumps({"servers": {"returns_get_case": mock_fields}}),
+        encoding="utf-8",
+    )
+
+    obo, role = full_evidence()
+    _run(
+        tmp_path,
+        obo_evidence=obo,
+        role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+        apply=True,
+    )
+
+    mcp = json.loads(mcp_full.read_text(encoding="utf-8"))
+    entry = mcp["servers"]["returns_get_case"]
+    assert entry["url"] == REAL_ENDPOINT
+    assert "host" not in entry
+    assert "endpoint" not in entry
+    assert not connect._server_is_provably_mock(entry)
+    safe_check = _import_safe_check()
+    assert safe_check.integration_binding_gaps(
+        integrations=[{"id": "returns_get_case", "availability": "real"}],
+        mcp_config=mcp,
+    ) == []
+
+
+def test_apply_preserves_non_mock_mockingbird_descriptive_name(tmp_path):
+    mcp_full = tmp_path / connect.DEFAULT_MCP_CONFIG_PATH
+    mcp_full.parent.mkdir(parents=True, exist_ok=True)
+    mcp_full.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "returns_get_case": {
+                        "name": "Mockingbird Returns Connector",
+                        "host": "old-transport.internal",
+                        "endpoint": "https://old-transport.internal/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    obo, role = full_evidence()
+    _run(
+        tmp_path,
+        obo_evidence=obo,
+        role_evidence=role,
+        current_agent_identity=CURRENT_IDENTITY,
+        apply=True,
+    )
+
+    entry = json.loads(mcp_full.read_text(encoding="utf-8"))["servers"][
+        "returns_get_case"
+    ]
+    assert entry["name"] == "Mockingbird Returns Connector"
+    assert "host" not in entry
+    assert "endpoint" not in entry
 
 
 @pytest.mark.parametrize(
@@ -740,6 +877,28 @@ def test_mock_marker_parity_with_safe_check(candidate, is_mock):
     assert connect_says_mock == safe_check_says_mock, (
         f"connect and safe-check disagree on {candidate!r}"
     )
+
+
+@pytest.mark.parametrize("field", ["url", "host", "name", "endpoint"])
+@pytest.mark.parametrize(
+    ("candidate", "is_mock"),
+    [
+        ("https://mock.example/mcp", True),
+        ("returns-MockServer", True),
+        ("local mock", True),
+        ("Mockingbird Returns Connector", False),
+        ("https://erp.contoso.com/mcp", False),
+    ],
+)
+def test_mock_server_field_corpus_parity_with_safe_check(field, candidate, is_mock):
+    safe_check = _import_safe_check()
+    server = {field: candidate}
+
+    connect_says_mock = connect._server_is_provably_mock(server)
+    safe_check_says_mock = safe_check._endpoint_is_provably_mock(server)
+
+    assert connect_says_mock == is_mock
+    assert connect_says_mock == safe_check_says_mock
 
 
 
