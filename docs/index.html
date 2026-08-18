@@ -800,6 +800,7 @@
   }
   .hiw-def .hiw-ico svg { width: 20px; height: 20px; }
   .hiw-def dt {
+    display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3);
     font-family: var(--sans); font-weight: 700;
     font-size: var(--t-h3); color: var(--ink-0);
   }
@@ -900,23 +901,19 @@
 
       <dl class="hiw-defs reveal" data-delay="3" aria-label="The four building blocks, in plain English">
         <div class="hiw-def">
-          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></span>
-          <dt>Agent</dt>
+          <dt><span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></span>Agent</dt>
           <dd>An LLM that works in a loop &mdash; it plans, calls a tool, reads the result, and repeats until the job&rsquo;s done.</dd>
         </div>
         <div class="hiw-def">
-          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>
-          <dt>Skill</dt>
+          <dt><span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>Skill</dt>
           <dd>A plain-Markdown playbook Copilot reads and runs. You trigger it by asking, in English.</dd>
         </div>
         <div class="hiw-def">
-          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
-          <dt>Tool</dt>
+          <dt><span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Tool</dt>
           <dd>A function the agent can call &mdash; search a document, hit an API, run code, post to Teams.</dd>
         </div>
         <div class="hiw-def">
-          <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.26A7 7 0 1 0 4 15.25"/></svg></span>
-          <dt>Hosted runtime</dt>
+          <dt><span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.26A7 7 0 1 0 4 15.25"/></svg></span>Hosted runtime</dt>
           <dd>Where it lives in production &mdash; a Foundry Hosted Agent with identity, scaling and tracing built in.</dd>
         </div>
       </dl>
@@ -966,7 +963,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">copilot — credit-memo</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-design</span> to spec a credit-memo</span></span><span class="term-line"><span class="cmd">triage agent for a regional commercial bank.</span></span><span class="term-line"><span class="cmd">For each SME loan application: pull the credit-</span></span><span class="term-line"><span class="cmd">bureau report, compute DSCR &amp; LTV, then</span></span><span class="term-line"><span class="cmd">auto-approve, refer, or decline — drafting a</span></span><span class="term-line"><span class="cmd">memo that cites the policy rule. Floors:</span></span><span class="term-line"><span class="cmd">DSCR &ge; 1.25, LTV &le; 0.80.<span class="caret"></span></span></span><span class="term-line"><span class="out"><span class="skill">threadlight-design</span> · fast-PoC engaged</span></span><span class="term-line"><span class="cmt"># parsing process · entities · branches · rules</span></span></pre>
+                  <pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-design</span> to spec a credit-memo</span></span><span class="term-line"><span class="cmd">triage agent for a regional commercial bank.</span></span><span class="term-line"><span class="cmd">For each SME loan application: pull the credit-</span></span><span class="term-line"><span class="cmd">bureau report, compute DSCR &amp; LTV, then</span></span><span class="term-line"><span class="cmd">auto-approve, refer, or decline — drafting a</span></span><span class="term-line"><span class="cmd">memo that cites the policy rule. Floors:</span></span><span class="term-line"><span class="cmd">DSCR &ge; 1.25, LTV &le; 0.80.<span class="caret"></span></span></span><span class="term-line"><span class="out"><span class="skill">threadlight-design</span> · fast-PoC engaged</span></span><span class="term-line"><span class="cmt"># parsing process · entities · branches · rules</span></span></pre>
                 </div>
                 <div class="art" aria-label="Parsed intent">
                   <div class="art-head"><b>Understood from your paragraph</b><span class="art-tag">FSI</span></div>
@@ -990,7 +987,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-design</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">rendering demo-deck + prep-guide</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
+                  <pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">›</span><span class="cmd">Looks right — scaffold the whole project:</span></span><span class="term-line"><span class="cmd">spec, the four tools, sample data, and tests.</span></span><span class="term-line"><span class="out">writing specs/SPEC.md + AGENTS.md</span></span><span class="term-line"><span class="out">scaffolding src/agent/skills/ — 4 tools</span></span><span class="term-line"><span class="out">rendering demo-deck + prep-guide</span></span><span class="term-line"><span class="out">writing tests/killer-prompts.md<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Generated design artifacts">
                   <div class="art-head"><b>Generated artifacts</b><span class="art-tag">design</span></div>
@@ -1025,7 +1022,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-local-test</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-local-test</span> to run the agent</span></span><span class="term-line"><span class="cmd">on my own PC so I can chat with it first.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider · tools wired</span></span><span class="term-line"><span class="out">agent ready · running on your machine<span class="caret"></span></span></span></pre>
+                  <pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">›</span><span class="cmd">Use <span class="skill">threadlight-local-test</span> to run the agent</span></span><span class="term-line"><span class="cmd">on my own PC so I can chat with it first.</span></span><span class="term-line"><span class="out">discovering tools from SPEC.md…</span></span><span class="term-line"><span class="out">MAF agent + SkillsProvider · tools wired</span></span><span class="term-line"><span class="out">agent ready · running on your machine<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Local credit-memo chat">
                   <div class="art-head"><b>credit-memo · chat</b><span class="art-tag">local</span></div>
@@ -1053,7 +1050,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">threadlight-deploy · azd</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Now deploy it to my own Azure subscription</span></span><span class="term-line"><span class="cmd">with <span class="skill">threadlight-deploy</span>.</span></span><span class="term-line"><span class="out">azd up · tenant + subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
+                  <pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">›</span><span class="cmd">Now deploy it to my own Azure subscription</span></span><span class="term-line"><span class="cmd">with <span class="skill">threadlight-deploy</span>.</span></span><span class="term-line"><span class="out">azd up · tenant + subscription asserted</span></span><span class="term-line"><span class="out">remote build · hosted-agent container</span></span><span class="term-line"><span class="out">provisioning rg-credit-memo · eastus2<span class="caret"></span></span></span></pre>
                 </div>
                 <div class="art" aria-label="Live credit-memo agent in your Azure tenant">
                   <div class="art-head"><b>credit-memo · live</b><span class="art-tag">your Azure</span></div>
@@ -1087,7 +1084,7 @@
               <div class="beat-grid">
                 <div class="terminal-card is-typing">
                   <div class="term-bar"><span class="term-dots"><span></span><span></span><span></span></span><span class="term-title">govern · evals · red-team</span></div>
-                  <pre class="term-body"><span class="term-line"><span class="prompt">›</span><span class="cmd">Before we ship, run the three gate skills:</span></span><span class="term-line"><span class="cmd"><span class="skill">threadlight-govern</span>, <span class="skill">threadlight-evals</span>,</span></span><span class="term-line"><span class="cmd">and <span class="skill">threadlight-redteam</span>.</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
+                  <pre class="term-body" tabindex="0"><span class="term-line"><span class="prompt">›</span><span class="cmd">Before we ship, run the three gate skills:</span></span><span class="term-line"><span class="cmd"><span class="skill">threadlight-govern</span>, <span class="skill">threadlight-evals</span>,</span></span><span class="term-line"><span class="cmd">and <span class="skill">threadlight-redteam</span>.</span></span><span class="term-line"><span class="out">govern: AGT policy + middleware at the</span></span><span class="term-line"><span class="out">container boundary → govern-manifest.json</span></span><span class="term-line"><span class="out">evals: 15 offline + continuous → App Insights</span></span><span class="term-line"><span class="out">redteam: PyRIT scan — jailbreak · injection ·<span class="caret"></span></span></span><span class="term-line"><span class="cmt"># deprecated model refused at the boundary · 403</span></span></pre>
                 </div>
                 <div class="art" aria-label="Governance gates">
                   <div class="art-head"><b>Control-plane gates</b><span class="art-tag">DISCOVER · PROTECT</span></div>

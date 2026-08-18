@@ -1,101 +1,86 @@
-// End-to-end checks for docs/index.html (landing) — public release scope.
-// Numbers in the cost widget come from the v0.1.0 golden manifest.
-// The skills catalog page (docs/skills.html) is deliberately out of scope
-// for the initial release — it lives untracked under .gitignore.
+// End-to-end checks for the Threadlight GitHub Pages site (docs/).
+//
+// This suite tracks the CURRENT site contract, after a large restructure:
+//   - docs/index.html          — the scrubbable DEMO landing page.
+//   - docs/funnel.html         — the five-stage funnel narrative (the old
+//                                landing "scenes" moved here).
+//   - docs/production.html     — the 13-pillar production-ready chapter.
+//   - docs/industries.html     — the process library (89 processes / 15 industries).
+//   - docs/self-improving.html — the learning-CI chapter.
+//   - blueprint / case-study / customize / workbook round out the chapters.
+//
+// Deliberate boundaries (no duplication):
+//   - The five NEW-skill surfaces (threadlight-qualify + Cowork zip, the
+//     connect / ground / loadtest evidence progression, and the plan-only
+//     threadlight-upgrade lifecycle scan) are owned by gap-closure.spec.mjs.
+//   - The "how it works" primer internals are owned by how-it-works.spec.mjs.
+// Both are covered there and are intentionally not re-asserted in this file.
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const LANDING = '/index.html';
 
-test.describe('landing page (index.html)', () => {
-  test('renders the hero + has working title', async ({ page }) => {
+// Every page that carries the shared masthead + chapter nav.
+const CHAPTER_PAGES = [
+  '/index.html',
+  '/funnel.html',
+  '/production.html',
+  '/industries.html',
+  '/self-improving.html',
+  '/blueprint.html',
+  '/case-study.html',
+  '/customize.html',
+  '/workbook.html',
+];
+
+// The top nav is chapter pages only — these five, in this shape.
+const NAV_TARGET_RE = /^(\.\/)?(index|blueprint|case-study|production|customize)\.html$/;
+const NAV_LABELS = ['Home', 'Blueprint', 'Case study', 'Production-ready', 'Customize'];
+
+// Turn an absolute production OG url into a path the local static server can
+// serve (docs/ is the web root; production serves under a /threadlight-skills base).
+function toLocalAssetPath(absUrl) {
+  return new URL(absUrl).pathname.replace(/^\/threadlight-skills/, '');
+}
+
+test.describe('landing page — the scrubbable demo (index.html)', () => {
+  test('renders the demo hero, the Threadlight brand, and the 22-skill public count', async ({ page }) => {
     await page.goto(LANDING);
-    await expect(page).toHaveTitle(/Threadlight/);
-    await expect(page.getByRole('heading', { name: /Business process/i })).toBeVisible();
-    await expect(page.locator('.hero-cta-row .btn-primary').first()).toContainText(/Open the technical briefing/i);
+    await expect(page).toHaveTitle(/governed agent/i);
+    await expect(page.locator('header.masthead .brand-name')).toContainText(/Threadlight/);
+    const hero = page.locator('#demo-h');
+    await expect(hero).toBeVisible();
+    await expect(hero).toContainText(/governed agent/i);
+    // The public library is exactly 22 skills — stated in the primer.
+    await expect(page.locator('#how-it-works')).toContainText(/22\s+skills/i);
   });
 
-  test('nav has no duplicate Setup link', async ({ page }) => {
+  test('footer is public-safe (open guidance, no "internal use" leak)', async ({ page }) => {
     await page.goto(LANDING);
-    const setupLinks = page.locator('header.masthead nav.nav a', { hasText: /^Setup$/ });
-    // Zero (removed) or one (kept) is fine; two or more is a regression.
-    await expect(await setupLinks.count()).toBeLessThan(2);
-  });
-
-  test('footer is public-safe (no "internal use" leak)', async ({ page }) => {
-    await page.goto(LANDING);
-    const footer = page.locator('footer').first();
+    // The page footer is the direct child of <body>; a hidden .sc-footer also
+    // lives inside a demo-reel beat, so scope to the real one.
+    const footer = page.locator('body > footer');
     await expect(footer).toBeVisible();
-    await expect(footer).not.toContainText(/internal use/i);
     await expect(footer).toContainText(/open guidance/i);
+    await expect(footer).not.toContainText(/internal use/i);
   });
 
-  test('cost forecast section on production.html — framed as forecast/scale/governance, not savings', async ({ page }) => {
-    await page.goto('/production.html');
-    const cost = page.locator('#prod-cost');
-    const counters = cost.locator('.cost-counters');
-    await counters.scrollIntoViewIfNeeded();
-    // Counter animation ~1.1s + buffer
-    await page.waitForTimeout(2000);
-
-    // Realistic order-of-magnitude compare pair: unreviewed prod vs tailored
-    await expect(counters).toHaveCount(1);
-    const labels = (await counters.locator('.ctr-label').allTextContents()).join(' | ').toLowerCase();
-    expect(labels).toMatch(/unreviewed/);
-    expect(labels).toMatch(/tailored/);
-    await expect(cost.locator('.ctr-value.is-current')).toContainText('$20,000/mo');
-    await expect(cost.locator('.ctr-value.is-recommended')).toContainText('$12,000/mo');
-    await expect(cost.locator('.cost-savings-pill')).toContainText(/40%/);
-
-    // Per-resource $ table is GONE (replaced by posture-shaped artefact)
-    await expect(cost.locator('.cost-table'), 'no per-resource $ table').toHaveCount(0);
-
-    // Faux scorecard artefact with .cost-artefact-grid: 4 header + 6 layers × 4 cells = 28
-    await expect(cost.locator('.scorecard-preview')).toHaveCount(1);
-    const grid = cost.locator('.cost-artefact-grid');
-    await expect(grid).toHaveCount(1);
-    await expect(grid.locator('.ca-cell')).toHaveCount(28);
-    const layers = (await grid.locator('.ca-cell:not(.ca-cell-head) strong').allTextContents()).join(' | ').toLowerCase();
-    for (const layer of ['llm', 'vector', 'data plane', 'gateway', 'compute', 'observability']) {
-      expect(layers, `forecast artefact must name layer: ${layer}`).toContain(layer);
-    }
-
-    // 3 forecast signals: forecast / scale / governance
-    const recs = cost.locator('.cost-recs .cost-rec');
-    await expect(recs).toHaveCount(3);
-    const recText = (await recs.allTextContents()).join(' | ').toLowerCase();
-    expect(recText).toMatch(/forecast/);
-    expect(recText).toMatch(/scale/);
-    expect(recText).toMatch(/governance/);
-
-    // Skill link still present
-    await expect(cost.locator('a[href*="/skills/threadlight-consumption-iq"]').first()).toBeVisible();
-
-    // Framing audit: no savings/cheapest language anywhere
-    const sectionText = ((await cost.textContent()) || '').toLowerCase();
-    expect(sectionText, 'must NOT promise savings').not.toMatch(/cheapest|saves|savings|cut the bill|right-sized/);
-    // Must contain the three explicit goals
-    expect(sectionText).toMatch(/forecast/);
-    expect(sectionText).toMatch(/scale/);
-    expect(sectionText).toMatch(/governance/);
-
-    // Numeric-honesty audit: only the realistic compare pair carries $.
-    // No fixture leftovers like $246.10 / $341.19 / $397.57.
-    expect(sectionText).not.toMatch(/\$(246|341|397|45|10\.56|0\.29)/);
-  });
-
-  test('all internal anchors resolve', async ({ page }) => {
+  test('the reel enhances and its cover fires on click (basic visual interaction)', async ({ page }) => {
     await page.goto(LANDING);
-    const hrefs = await page.locator('header.masthead nav.nav a[href^="#"]').evaluateAll(
-      (els) => els.map((e) => e.getAttribute('href'))
-    );
-    for (const h of hrefs) {
-      const id = h.slice(1);
-      await expect(page.locator('#' + id), `nav target ${h} should exist`).toHaveCount(1);
-    }
+    const reel = page.locator('#reel');
+    // demo-reel.js upgrades the static storyboard into the interactive reel.
+    await expect(reel).toHaveClass(/is-enhanced/);
+    // Seven scrubbable beats on the rail.
+    await expect(reel.locator('.beat-rail .beat-chip')).toHaveCount(7);
+    const cover = reel.locator('[data-reel="cover"]');
+    await expect(cover).toBeVisible();
+    // Firing the poster starts the experience and dismisses the cover.
+    await reel.locator('[data-reel="start"]').click();
+    await expect(reel).toHaveClass(/is-started/);
+    await expect(cover).toBeHidden();
   });
 
-  test('has favicon + OpenGraph tags', async ({ page }) => {
+  test('favicon is an inline SVG and the social meta tags are present', async ({ page }) => {
     await page.goto(LANDING);
     const icon = await page.locator('link[rel="icon"]').getAttribute('href');
     expect(icon).toMatch(/^data:image\/svg\+xml/);
@@ -103,452 +88,258 @@ test.describe('landing page (index.html)', () => {
     await expect(page.locator('meta[property="og:description"]')).toHaveCount(1);
     await expect(page.locator('meta[name="twitter:card"]')).toHaveCount(1);
   });
-
-  test('axe-core: no serious or critical a11y violations on landing', async ({ page }) => {
-    await page.goto(LANDING);
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast'])
-      .analyze();
-    const offenders = results.violations.filter(v => ['serious', 'critical'].includes(v.impact));
-    expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
-  });
 });
 
-test.describe('catalog page (skills.html) — DEFERRED out of initial release', () => {
-  test.skip('the docs/skills.html catalog is intentionally not shipped yet; its prior tests live in git history', () => {
-    // The catalog page lives untracked under .gitignore and may come back in
-    // a follow-up release. Reinstate the prior describe block when it does.
-  });
+test.describe('primary navigation — shared across every chapter page', () => {
+  for (const url of CHAPTER_PAGES) {
+    test(`${url} carries the masthead + the five chapter links`, async ({ page }) => {
+      await page.goto(url);
+      const nav = page.locator('header.masthead nav.nav');
+      await expect(nav).toHaveCount(1);
+      // The brand always links home.
+      await expect(page.locator('header.masthead .brand a[href="./index.html"]')).toHaveCount(1);
+
+      const links = nav.locator('a');
+      const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href') || ''));
+      expect(hrefs.length, `${url} nav link count (lower bound)`).toBeGreaterThanOrEqual(3);
+      expect(hrefs.length, `${url} nav link count (upper bound)`).toBeLessThanOrEqual(6);
+      for (const h of hrefs) {
+        expect(h, `${url}: nav link "${h}" should be a chapter page`).toMatch(NAV_TARGET_RE);
+      }
+      // No duplicate nav targets (regression guard for double-linked chapters).
+      expect(new Set(hrefs).size, `${url} nav has no duplicate targets`).toBe(hrefs.length);
+
+      const labels = (await links.allTextContents()).map((t) => t.trim()).join(' | ');
+      for (const want of NAV_LABELS) {
+        expect(labels, `${url} nav labels include ${want}`).toContain(want);
+      }
+    });
+  }
 });
 
-test.describe('deck-spine additions (evolution / funnel / industries / channels)', () => {
-  test('evolution band renders all five waves with Skills marked active', async ({ page }) => {
-    await page.goto(LANDING);
-    const band = page.locator('.evolution-band');
-    await expect(band).toBeVisible();
-    const chips = band.locator('.evo-chip');
+test.describe('public-safety audit — no internal-only phrasing leaks', () => {
+  for (const url of CHAPTER_PAGES) {
+    test(`${url} contains no leak terms`, async ({ page }) => {
+      await page.goto(url);
+      const body = (await page.locator('body').textContent()) || '';
+      for (const re of [/internal use/i, /do not share/i, /microsoft only/i, /confidential/i]) {
+        expect(body, `${url} should not contain ${re}`).not.toMatch(re);
+      }
+    });
+  }
+});
+
+test.describe('funnel chapter — the five-stage narrative (funnel.html)', () => {
+  test('hero: Threadlight title, the process → agent headline, and the technical-briefing CTA', async ({ page }) => {
+    await page.goto('/funnel.html');
+    await expect(page).toHaveTitle(/Threadlight/);
+    const headline = page.locator('#scene-hero .hero-headline');
+    await expect(headline).toContainText(/Business\s+process/i);
+    await expect(headline).toContainText(/working\s+agent/i);
+    await expect(
+      page.locator('#scene-hero .hero-cta-row a.btn-primary').first(),
+    ).toContainText(/Open the technical briefing/i);
+  });
+
+  test('the scenes appear in the intended order', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const ids = await page.locator('main section.scene').evaluateAll((els) => els.map((e) => e.id));
+    expect(ids).toEqual([
+      'scene-hero',
+      'scene-show',
+      'scene-funnel',
+      'scene-chain',
+      'scene-prod-ready',
+      'scene-customize',
+      'scene-industries',
+      'scene-kratos',
+      'scene-cta',
+    ]);
+  });
+
+  test('the evolution band renders five waves with Skills marked active', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const chips = page.locator('.evolution-band .evo-chip');
     await expect(chips).toHaveCount(5);
-    await expect(chips.nth(0)).toContainText('LLMs');
-    await expect(chips.nth(1)).toContainText('RAG');
-    await expect(chips.nth(2)).toContainText('Multi-agent');
-    await expect(chips.nth(3)).toContainText('MCP');
-    await expect(chips.nth(4)).toContainText('Skills');
+    const text = (await chips.allTextContents()).join(' | ');
+    for (const w of ['LLMs', 'RAG', 'Multi-agent', 'MCP', 'Skills']) {
+      expect(text, `evolution band should include ${w}`).toContain(w);
+    }
     await expect(chips.nth(4)).toHaveClass(/is-now/);
   });
 
-  test('funnel teaser on home shows exactly 5 stages with skill chips', async ({ page }) => {
-    await page.goto(LANDING);
-    const funnel = page.locator('#scene-funnel');
-    await funnel.scrollIntoViewIfNeeded();
-    const steps = funnel.locator('.funnel-step');
+  test('the funnel flow lists five named stages, each leading to the production chapter', async ({ page }) => {
+    await page.goto('/funnel.html');
+    const steps = page.locator('#scene-funnel .funnel-step');
     await expect(steps).toHaveCount(5);
-    const expected = ['01 · Conversation', '02 · Co-design', '03 · Deploy', '04 · Safe-check', '05 · Production'];
-    for (let i = 0; i < expected.length; i++) {
-      await expect(steps.nth(i)).toContainText(expected[i]);
+    const all = (await steps.allTextContents()).join(' | ');
+    for (const token of ['01', 'Conversation', '02', 'Co-design', '03', 'Deploy', '04', 'Safe-check', '05', 'Production']) {
+      expect(all, `funnel flow should name ${token}`).toContain(token);
     }
-    // every step links to a REAL anchor on the funnel chapter (no
-    // dead #stage-ladder leftovers from v20 cleanup)
-    const hrefs = await steps.evaluateAll(els => els.map(e => e.getAttribute('href')));
+    const hrefs = await steps.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
     for (const h of hrefs) {
-      expect(h, 'funnel step should link to the funnel chapter').toMatch(/^\.\/funnel\.html(#|$)/);
-      expect(h, 'funnel step href must NOT reference deleted #stage-ladder').not.toContain('#stage-ladder');
-      expect(h, 'funnel step href must NOT reference deleted #stage-glance').not.toContain('#stage-glance');
+      expect(h, 'each funnel stage links to the production chapter').toMatch(/production\.html$/);
     }
-    // The actual anchors must resolve to real sections on funnel.html
-    const targets = hrefs
-      .map(h => h && h.includes('#') ? h.split('#')[1] : null)
-      .filter(Boolean);
-    if (targets.length) {
-      await page.goto('/funnel.html');
-      for (const id of targets) {
-        await expect(page.locator('#' + id), `funnel.html must have #${id}`).toHaveCount(1);
-      }
-      await page.goto(LANDING);
-    }
-    // skill chips per stage make the teaser more than a label
-    const allText = (await steps.allTextContents()).join(' | ');
-    expect(allText).toMatch(/threadlight-design/);
-    expect(allText).toMatch(/threadlight-deploy/);
-    expect(allText).toMatch(/threadlight-production-ready/);
   });
 
-  test('funnel chapter has stage-show vertical chain-rail with 3 primary skill cards + 6 supporting chips', async ({ page }) => {
+  test('the skills chain shows the primary cards, supporting chips, and the 22-skill library note', async ({ page }) => {
     await page.goto('/funnel.html');
-    const show = page.locator('#stage-show');
-    await show.scrollIntoViewIfNeeded();
-    const rail = show.locator('.chain-rail');
+    const rail = page.locator('#scene-chain .chain-rail');
     await expect(rail).toHaveCount(1);
-    // 3 primary skill cards (design / deploy / production-ready)
+    // Four primary skill cards: the qualify no-repo entry + design / deploy / production-ready.
     const cards = rail.locator('.skill-card');
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(4);
     const names = (await cards.locator('.skill-name').allTextContents()).join(' | ').toLowerCase();
-    expect(names).toMatch(/threadlight-design/);
-    expect(names).toMatch(/threadlight-deploy/);
-    expect(names).toMatch(/threadlight-production-ready/);
-    // 6 supporting chips between primary cards
+    for (const s of ['threadlight-design', 'threadlight-deploy', 'threadlight-production-ready']) {
+      expect(names, `chain should name primary skill ${s}`).toContain(s);
+    }
+    // Eight supporting chips, each a real threadlight-* skill.
     const chips = rail.locator('.aux-chip');
-    await expect(chips).toHaveCount(6);
+    await expect(chips).toHaveCount(8);
     const chipNames = (await chips.locator('.aux-name').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers']) {
-      expect(chipNames, `funnel chain should name ${s}`).toContain(s);
+    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers', 'cicd', 'customize']) {
+      expect(chipNames, `chain should name supporting skill ${s}`).toContain(s);
     }
+    await expect(page.locator('#scene-chain')).toContainText(/22-skill library/i);
   });
 
-  test('funnel chapter keeps the rich funnel-step cards (5 stages w/ skill chips) on home only', async ({ page }) => {
-    // The rich funnel-step teaser lives on home; funnel.html doesn't
-    // duplicate it. Sanity-check both: home has 5, funnel has 0.
-    await page.goto(LANDING);
-    await expect(page.locator('#scene-funnel .funnel-step')).toHaveCount(5);
+  test('the industries strip shows six sectors, each linking to the industries chapter', async ({ page }) => {
     await page.goto('/funnel.html');
-    await expect(page.locator('.funnel-step')).toHaveCount(0);
-  });
-
-  test('industries strip renders all 6 sectors with non-empty pilots', async ({ page }) => {
-    await page.goto(LANDING);
-    const ind = page.locator('#scene-industries');
-    await ind.scrollIntoViewIfNeeded();
-    const tiles = ind.locator('.industry-tile');
+    const tiles = page.locator('#scene-industries .industry-tile');
     await expect(tiles).toHaveCount(6);
-    const sectors = await ind.locator('.industry-tile .it-sector').allTextContents();
-    for (const s of ['Financial services', 'Healthcare', 'Manufacturing', 'Retail', 'Energy', 'Telco']) {
-      expect(sectors.join(' | ').toLowerCase()).toContain(s.toLowerCase());
+    const sectors = (await tiles.locator('.it-sector').allTextContents()).join(' | ').toLowerCase();
+    for (const s of ['financial services', 'retail', 'telco', 'manufacturing', 'healthcare', 'energy']) {
+      expect(sectors, `industries strip should name ${s}`).toContain(s);
     }
-    // No "Public sector" tile — was removed in v21 (no library content)
-    expect(sectors.join(' | ').toLowerCase()).not.toContain('public sector');
-    // each tile has a one-line pilot description, not empty
-    for (let i = 0; i < 6; i++) {
-      const line = await tiles.nth(i).locator('.it-line').textContent();
-      expect((line || '').trim().length, `industry ${i} should have copy`).toBeGreaterThan(20);
-    }
-    // Each home tile links to the industries chapter for the full library
-    for (let i = 0; i < 6; i++) {
-      const href = await tiles.nth(i).getAttribute('href');
-      expect(href, `tile ${i} should link to industries.html`).toMatch(/industries\.html/);
-    }
+    const hrefs = await tiles.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    for (const h of hrefs) expect(h, 'industry tile links to the industries chapter').toMatch(/industries\.html/);
   });
 
-  test('kratos showcase links out to live demo + GitHub repo', async ({ page }) => {
-    await page.goto(LANDING);
+  test('the Kratos no-code alt links out to the live demo and its GitHub repo', async ({ page }) => {
+    await page.goto('/funnel.html');
     const ch = page.locator('#scene-kratos');
-    await ch.scrollIntoViewIfNeeded();
-    await expect(ch.getByRole('heading', { name: /Kratos Agent/i })).toBeVisible();
     const live = ch.locator('a[href="https://aka.ms/kratos"]');
     await expect(live).toBeVisible();
     await expect(live).toHaveAttribute('target', '_blank');
     await expect(live).toHaveAttribute('rel', /noopener/);
-    const repo = ch.locator('a[href="https://github.com/kmavrodis/kratos-agent"]');
-    await expect(repo).toBeVisible();
-    // Screenshot loads from the kratos repo, not embedded in this repo
+    await expect(ch.locator('a[href="https://github.com/kmavrodis/kratos-agent"]')).toBeVisible();
     const shot = ch.locator('img.kc-shot');
     await expect(shot).toHaveAttribute('src', /raw\.githubusercontent\.com\/kmavrodis\/kratos-agent/);
     await expect(shot).toHaveAttribute('alt', /kratos/i);
   });
 
-  test('kratos sits in the no-code-alt slot (near the end, NOT slot 2) and is framed as the simpler-path option', async ({ page }) => {
-    await page.goto(LANDING);
-    // Order: hero → show → funnel → prod-ready → industries → kratos → cta
-    // Kratos must NOT be slot 2 (that pushes a competitor before the chain message)
-    const ids = await page.locator('main section.scene').evaluateAll(
-      els => els.map(e => e.id)
-    );
-    const heroIdx   = ids.indexOf('scene-hero');
-    const kratosIdx = ids.indexOf('scene-kratos');
-    const showIdx   = ids.indexOf('scene-show');
-    const ctaIdx    = ids.indexOf('scene-cta');
-    expect(heroIdx,   'scene-hero present').toBeGreaterThanOrEqual(0);
-    expect(kratosIdx, 'scene-kratos present').toBeGreaterThanOrEqual(0);
-    expect(showIdx,   'scene-show present').toBeGreaterThanOrEqual(0);
-    expect(ctaIdx,    'scene-cta present').toBeGreaterThanOrEqual(0);
-    // Chain SVG must come BEFORE Kratos (we tell the threadlight story first)
-    expect(showIdx,   'chain SVG before kratos').toBeLessThan(kratosIdx);
-    // Kratos must sit late in the page, immediately before the CTA
-    expect(kratosIdx, 'kratos immediately precedes CTA').toBe(ctaIdx - 1);
-
-    // The hero MUST surface a small no-code banner linking to kratos (so the
-    // reader sees the alternative without scrolling past the whole chain)
-    const banner = page.locator('#scene-hero .hero-banner');
-    await expect(banner).toBeVisible();
-    await expect(banner.locator('a[href="#scene-kratos"]')).toHaveCount(1);
-    const bannerText = (await banner.textContent() || '').toLowerCase();
-    expect(bannerText).toMatch(/no[- ]code|no customization/);
-    expect(bannerText).toMatch(/kratos/);
-
-    // Kratos block framing
-    const ch  = page.locator('#scene-kratos');
-    const txt = ((await ch.locator('.channels-copy').textContent()) || '').toLowerCase();
-    expect(txt).toMatch(/customization/);
-    expect(txt).toMatch(/threadlight/);
-  });
-
-  test('home chain SVG hero shows three panels: paragraph, SPEC, deployed agent', async ({ page }) => {
-    await page.goto(LANDING);
-    // The chain SVG hero lives in #scene-show — three panels: paragraph, SPEC, deployed agent
-    const hero = page.locator('#scene-show .svg-hero svg.funnel-chain-svg');
-    await expect(hero).toHaveCount(1);
-    const stageLabels = hero.locator('text.panel-num');
-    expect(await stageLabels.count(), 'chain SVG should have 3 stage labels').toBe(3);
-    const titles = (await hero.locator('text.panel-title').allTextContents()).join(' | ');
-    expect(titles).toMatch(/paragraph/i);
-    expect(titles).toMatch(/SPEC/i);
-    expect(titles).toMatch(/deployed agent/i);
-    // Sub-copy must be public-readable, not promise a CLI we don't ship
-    const sub = (await page.locator('#scene-show .sub').first().textContent()) || '';
-    expect(sub).not.toMatch(/^\s*no cli\b/i);  // bare "No CLI" claim is false (Copilot CLI exists)
-    expect(sub).not.toMatch(/the seller/i);
-  });
-
-  test('skill-eyebrow disclaimer (.md, not commands) ships on every page', async ({ page }) => {
-    // Skills are .md files a coding agent reads — not bash commands. This eyebrow
-    // is the site-wide correction to the original framing and must appear above
-    // the signature artefact on every chapter page.
-    const pages = [LANDING, '/funnel.html', '/production.html', '/industries.html'];
-    for (const url of pages) {
-      await page.goto(url);
-      const eyebrow = page.locator('.skill-eyebrow');
-      await expect(eyebrow, `${url} should ship a .skill-eyebrow`).toHaveCount(1);
-      const text = (await eyebrow.textContent()) || '';
-      expect(text, `${url} eyebrow positions skills as .md`).toMatch(/\.md/);
-      expect(text, `${url} eyebrow positions skills against being commands`).toMatch(/not commands/i);
-      expect(text, `${url} eyebrow names coding-agent hosts`).toMatch(/copilot/i);
-    }
-  });
-
-  test('top nav is chapter pages only — no in-page anchors', async ({ page }) => {
-    for (const url of [LANDING, '/funnel.html', '/industries.html', '/production.html']) {
-      await page.goto(url);
-      const hrefs = await page.locator('header.masthead nav.nav a').evaluateAll(
-        els => els.map(e => e.getAttribute('href') || '')
-      );
-      expect(hrefs.length, `${url} nav should have at least 3 links`).toBeGreaterThanOrEqual(3);
-      expect(hrefs.length, `${url} nav should stay under 6 links`).toBeLessThanOrEqual(6);
-      for (const h of hrefs) {
-        expect(h, `${url}: nav link "${h}" should be a chapter page, not an in-page anchor`)
-          .toMatch(/^(\.\/)?(index|blueprint|case-study|production|customize)\.html$/);
-      }
-      // Page link labels must include the primary chapters
-      const labels = (await page.locator('header.masthead nav.nav a').allTextContents()).join(' | ');
-      expect(labels).toMatch(/Home/);
-      expect(labels).toMatch(/Blueprint/);
-      expect(labels).toMatch(/Production-ready/);
-      expect(labels).toMatch(/Customize/);
-    }
-  });
-});
-
-test.describe('public-safety audit (no leaks of internal-only phrasing)', () => {
-  test('no obvious leak terms on landing, funnel, industries, or production', async ({ page }) => {
-    for (const path of [LANDING, '/funnel.html', '/industries.html', '/production.html']) {
-      await page.goto(path);
-      const body = (await page.locator('body').textContent()) || '';
-      const forbidden = [
-        /internal use/i,
-        /confidential/i,
-        /do not share/i,
-        /microsoft only/i,
-        /tier-1 european telco/i
-      ];
-      for (const re of forbidden) {
-        expect(body, `${path} should not contain ${re}`).not.toMatch(re);
-      }
-    }
-  });
-});
-
-test.describe('deep pages (funnel.html + industries.html)', () => {
-  test('funnel.html renders the chapter hero + relay SVG + skills-chain centerpiece', async ({ page }) => {
+  test('the skill eyebrow frames skills as .md files a coding agent runs — not commands', async ({ page }) => {
     await page.goto('/funnel.html');
-    await expect(page).toHaveTitle(/funnel/i);
-    await expect(page.locator('h1')).toContainText(/five named stages/i);
-    // After the v20 cleanup the chapter is just: hero → relay SVG → skills
-    // chain → recap. The ladder and the stages-at-a-glance grid are gone.
-    const sections = ['#chapter-top', '#stage-relay', '#stage-show', '#stage-recap'];
-    for (const id of sections) {
-      await expect(page.locator(id), `funnel section ${id} should exist`).toHaveCount(1);
-    }
-    // The relay SVG hero is the artefact strip (5 stage exits)
-    await expect(page.locator('#stage-relay.relay-svg-hero')).toHaveCount(1);
-    await expect(page.locator('#stage-relay svg')).toHaveCount(1);
-    // The skills-in-detail chain-rail is the centerpiece
-    await expect(page.locator('#stage-show .chain-rail')).toHaveCount(1);
-    // Deleted sections must NOT come back
-    await expect(page.locator('#stage-ladder'),  'stage-ladder should be deleted').toHaveCount(0);
-    await expect(page.locator('#stage-glance'),  'stage-glance should be deleted').toHaveCount(0);
+    const eyebrow = page.locator('.skill-eyebrow');
+    await expect(eyebrow).toHaveCount(1);
+    const text = (await eyebrow.textContent()) || '';
+    expect(text, 'skills are .md files').toMatch(/\.md/);
+    expect(text, 'skills are read by a coding agent').toMatch(/coding agent/i);
+    expect(text, 'names a coding-agent host').toMatch(/copilot/i);
+    expect(text, 'skills are not our own commands').toMatch(/not commands/i);
+  });
+});
+
+test.describe('production chapter (production.html)', () => {
+  test('hero: production-ready title, the ship headline, and the 13-pillar stat strip', async ({ page }) => {
+    await page.goto('/production.html');
+    await expect(page).toHaveTitle(/Production-ready/i);
+    await expect(page.locator('#chapter-top h1')).toContainText(/prove it can ship/i);
+    const stats = page.locator('#chapter-top .stat-strip .stat');
+    await expect(stats).toHaveCount(3);
+    await expect(page.locator('#chapter-top .stat-strip')).toContainText('13');
   });
 
-  test('industries.html renders the chapter hero + posterized sections', async ({ page }) => {
+  test('the chapter sections are all present and name the thirteen pillars', async ({ page }) => {
+    await page.goto('/production.html');
+    for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {
+      await expect(page.locator('#' + id), `production section #${id}`).toHaveCount(1);
+    }
+    await expect(page.locator('#checks')).toContainText(/13 pillars|thirteen pillars/i);
+  });
+
+  test('the gap grid names nine gaps, each with a live repository skill link', async ({ page }) => {
+    await page.goto('/production.html');
+    const cards = page.locator('#legs .gap-card');
+    await expect(cards).toHaveCount(9);
+    const links = page.locator('#legs .gap-card a.gap-link');
+    await expect(links).toHaveCount(9);
+    const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    for (const h of hrefs) {
+      expect(h, `gap link ${h} points at a real aiappsgbb skill`).toMatch(
+        /github\.com\/aiappsgbb\/(threadlight-skills|awesome-gbb)\//,
+      );
+    }
+    // The grid names the platform-capability skills. (connect / ground / loadtest
+    // are covered by gap-closure.spec.mjs and are intentionally not re-asserted here.)
+    const gridText = ((await page.locator('#legs').textContent()) || '').toLowerCase();
+    for (const s of ['threadlight-govern', 'threadlight-evals', 'threadlight-redteam', 'threadlight-consumption-iq', 'threadlight-cicd']) {
+      expect(gridText, `gap grid should name ${s}`).toContain(s);
+    }
+  });
+});
+
+test.describe('industries chapter (industries.html)', () => {
+  test('hero, sections, the 89/15 library counts, and the stat strip', async ({ page }) => {
     await page.goto('/industries.html');
     await expect(page).toHaveTitle(/industries/i);
-    // Hero h1 reframed from "one pattern" → "any business process, any industry"
-    await expect(page.locator('.chapter-hero h1')).toContainText(/any business process|any industry/i);
-    const sections = ['#chapter-top', '#sector-grid', '#ind-spec', '#industry-recap'];
-    for (const id of sections) {
-      await expect(page.locator(id), `industry section ${id} should exist`).toHaveCount(1);
+    await expect(page.locator('#chapter-top h1')).toContainText(/any business process|any industry/i);
+    for (const id of ['chapter-top', 'library', 'ind-spec', 'industry-recap']) {
+      await expect(page.locator('#' + id), `industries section #${id}`).toHaveCount(1);
     }
-    // posterized: faux SPEC.md preview + read-deeper to operator MD
-    // posterized: universal SPEC.md shape (was hardcoded FSI claims-triage mock)
-    await expect(page.locator('#ind-spec .spec-shape')).toHaveCount(1);
-    await expect(page.locator('#ind-spec .spec-shape .ss-cell')).toHaveCount(12);
-    await expect(page.locator('#ind-spec .read-deeper a[href*="THREADLIGHT.md"]')).toHaveCount(1);
-    // No customer-specific copy on the public industries page
-    const indSpec = ((await page.locator('#ind-spec').textContent()) || '').toLowerCase();
-    expect(indSpec, 'no hardcoded FSI mock anymore').not.toMatch(/claims triage.*route by complexity/);
+    const body = (await page.locator('main').textContent()) || '';
+    expect(body, 'names the 89-process library').toMatch(/89\s+(shaped\s+)?(business\s+)?process/i);
+    expect(body, 'names the 15-industry spread').toMatch(/15\s+industr/i);
+    await expect(page.locator('.chapter-hero .stat-strip .stat')).toHaveCount(3);
   });
+});
 
-  test('production.html renders the chapter hero + amber→green journey + scorecard', async ({ page }) => {
-    await page.goto('/production.html');
-    await expect(page).toHaveTitle(/production/i);
-    await expect(page.locator('h1')).toContainText(/(green safe-check|production-ready|go-live)/i);
-    const sections = [
-      '#chapter-top',
-      '#amber-green',
-      '#governance-triggers',
-      '#posture-overview',
-      '#prod-scorecard',
-      '#chapter-recap',
-    ];
-    for (const id of sections) {
-      await expect(page.locator(id), `production section ${id} should exist`).toHaveCount(1);
+test.describe('self-improving chapter (self-improving.html)', () => {
+  test('title, headline, and the four numbered sections', async ({ page }) => {
+    await page.goto('/self-improving.html');
+    await expect(page).toHaveTitle(/Self-improving/i);
+    await expect(page.locator('h1')).toContainText(/learns from every run/i);
+    for (const id of ['how', 'caught', 'found', 'maintain']) {
+      await expect(page.locator('#' + id), `self-improving section #${id}`).toHaveCount(1);
     }
-    // The amber→green journey is the new centerpiece — six amber pillars, six green
-    const amber = page.locator('#amber-green .agt-column.is-amber .agt-pillar');
-    const green = page.locator('#amber-green .agt-column.is-green .agt-pillar');
-    expect(await amber.count(), 'amber column should have 6 pillars').toBeGreaterThanOrEqual(6);
-    expect(await green.count(), 'green column should have 6 pillars').toBeGreaterThanOrEqual(6);
-    // The track has both day labels
-    const labels = (await page.locator('#amber-green .agt-stage-labels .agt-day').allTextContents()).join(' | ');
-    expect(labels).toMatch(/Day\s+0/i);
-    expect(labels).toMatch(/Day\s+6/i);
-    // The scorecard is still the destination — 13-pillar preview + read-deeper
-    await expect(page.locator('#prod-scorecard .scorecard-preview')).toHaveCount(1);
-    const pillars = page.locator('#prod-scorecard .sc-pillar');
-    const pillarCount = await pillars.count();
-    expect(pillarCount, 'scorecard should have at least 13 pillars').toBeGreaterThanOrEqual(13);
-    await expect(page.locator('#prod-scorecard .read-deeper a[href*="production-readiness.md"]')).toHaveCount(1);
   });
+});
 
-  test('floating ToC auto-builds on all chapter pages with the right link count', async ({ page }) => {
-    const expectations = [
-      { url: LANDING,             min: 6 },
-      { url: '/funnel.html',      min: 4 },
-      { url: '/industries.html',  min: 3 },
-      { url: '/production.html',  min: 4 },
-    ];
-    for (const { url, min } of expectations) {
+test.describe('chapter chrome — floating ToC, stat strips, design tokens', () => {
+  const TOC_PAGES = [
+    { url: '/funnel.html', min: 6 },
+    { url: '/production.html', min: 6 },
+    { url: '/industries.html', min: 4 },
+    { url: '/self-improving.html', min: 4 },
+    { url: '/customize.html', min: 3 },
+    { url: '/workbook.html', min: 6 },
+    { url: '/case-study.html', min: 6 },
+  ];
+  for (const { url, min } of TOC_PAGES) {
+    test(`${url} auto-builds a floating ToC whose links resolve`, async ({ page }) => {
       await page.goto(url);
-      const toc = page.locator('.floating-toc');
-      await expect(toc, `${url} should have a floating-toc element`).toHaveCount(1);
-      await page.evaluate(() => window.scrollTo(0, 1));
-      await page.waitForFunction(() => document.querySelector('.floating-toc.is-ready') !== null, null, { timeout: 4000 });
-      const links = toc.locator('a[data-toc-link]');
+      await expect(page.locator('.floating-toc.is-ready')).toHaveCount(1);
+      const links = page.locator('.floating-toc a[data-toc-link]');
       const count = await links.count();
-      expect(count, `${url} ToC should have at least ${min} links`).toBeGreaterThanOrEqual(min);
-    }
-  });
+      expect(count, `${url} ToC link count`).toBeGreaterThanOrEqual(min);
+      // Every ToC link points at a section that exists on the page.
+      const ids = await links.evaluateAll((els) => els.map((e) => e.getAttribute('data-toc-link')));
+      for (const id of ids) {
+        await expect(page.locator('#' + id), `${url} ToC target #${id}`).toHaveCount(1);
+      }
+    });
+  }
 
-  test('production teaser on home introduces the 4 themes + 13 pillars', async ({ page }) => {
-    await page.goto(LANDING);
-    const prod = page.locator('#scene-prod-ready');
-    await prod.scrollIntoViewIfNeeded();
-    // 4 theme cards
-    const themes = prod.locator('.theme-quad .theme-card');
-    await expect(themes).toHaveCount(4);
-    // Theme names cover the 13 pillars
-    const allText = (await themes.allTextContents()).join(' | ').toLowerCase();
-    expect(allText).toMatch(/network/);
-    expect(allText).toMatch(/observability|governance/);
-    expect(allText).toMatch(/supply chain|cost/);
-    expect(allText).toMatch(/lifecycle|hand-off/);
-    // Pillar number chips render
-    const chips = await themes.locator('.th-pillars span').count();
-    expect(chips, 'all 13 pillar chips should render across the 4 themes').toBe(13);
-    // Teaser still links out to the deep chapter
-    await expect(prod.locator('a[href="./production.html"]')).toHaveCount(1);
-  });
-
-  test('skills chain block lives on home with all 3 primary skill cards + supporting chips', async ({ page }) => {
-    await page.goto(LANDING);
-    const chain = page.locator('#scene-chain');
-    await chain.scrollIntoViewIfNeeded();
-    // 3 primary skill cards: design, deploy, production-ready
-    const cards = chain.locator('.skill-card');
-    await expect(cards).toHaveCount(3);
-    const skillNames = (await cards.locator('.skill-name').allTextContents()).join(' | ').toLowerCase();
-    expect(skillNames).toMatch(/threadlight-design/);
-    expect(skillNames).toMatch(/threadlight-deploy/);
-    expect(skillNames).toMatch(/threadlight-production-ready/);
-    // Supporting chips: 3 always-wired + 3 conditional
-    const chips = chain.locator('.aux-chip');
-    await expect(chips).toHaveCount(6);
-    // Each chip names a real threadlight-* skill
-    const chipNames = (await chips.locator('.aux-name').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers']) {
-      expect(chipNames, `skills chain should name ${s}`).toContain(s);
-    }
-    // Hero CTA "See the chain" should land on this block
-    const ctaHref = await page.locator('#scene-hero .hero-cta-row a[href="#scene-chain"]').getAttribute('href');
-    expect(ctaHref).toBe('#scene-chain');
-  });
-
-  test('landing teasers point at the deep pages', async ({ page }) => {
-    await page.goto(LANDING);
-    await expect(page.locator('#scene-funnel a[href^="./funnel.html"]').first()).toHaveCount(1);
-    await expect(page.locator('#scene-industries a[href="./industries.html"]')).toHaveCount(1);
-    await expect(page.locator('#scene-prod-ready a[href="./production.html"]')).toHaveCount(1);
-  });
-
-  test('deep pages link back to home + each other', async ({ page }) => {
-    for (const url of ['/funnel.html', '/industries.html', '/production.html']) {
+  test('stat strips render on the chapters that advertise them', async ({ page }) => {
+    for (const url of ['/production.html', '/industries.html', '/blueprint.html']) {
       await page.goto(url);
-      await expect(page.locator('header.masthead .brand a[href="./index.html"]')).toHaveCount(1);
-      const navText = (await page.locator('header.masthead nav.nav').textContent()) || '';
-      expect(navText).toMatch(/Home/);
-      expect(navText).toMatch(/Blueprint/);
-      expect(navText).toMatch(/Production-ready/);
-      expect(navText).toMatch(/Customize/);
-    }
-  });
-
-  test('axe-core: no serious or critical a11y violations on deep pages', async ({ page }) => {
-    for (const url of ['/funnel.html', '/industries.html', '/production.html']) {
-      await page.goto(url);
-      const results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa'])
-        .disableRules(['color-contrast'])
-        .analyze();
-      const offenders = results.violations.filter(v => ['serious', 'critical'].includes(v.impact));
-      expect(offenders, `${url}\n${JSON.stringify(offenders, null, 2)}`).toEqual([]);
-    }
-  });
-
-  test('chapter visual toolkit: stat-strip, inline ToC, and signature artefact render on each chapter', async ({ page }) => {
-    // After the Posterize-v2 SVG pass, funnel & production lift hand-authored
-    // SVG centerpieces (.ladder-svg-hero, .amber-green-track) into chapter heroes.
-    // Industries keeps its faux SPEC.md preview as its signature artefact.
-    const pages = [
-      { url: '/funnel.html', bodyClass: 'chapter-funnel', minTocLinks: 2, artefact: '.relay-svg-hero,.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview,.chain-rail' },
-      { url: '/production.html', bodyClass: 'chapter-production', minTocLinks: 4, artefact: '.amber-green-track,.terminal-card,.scorecard-preview,.spec-preview' },
-      { url: '/industries.html', bodyClass: 'chapter-industries', minTocLinks: 3, artefact: '.spec-shape,.terminal-card,.scorecard-preview,.spec-preview' },
-    ];
-    for (const p of pages) {
-      await page.goto(p.url);
-      const bodyClass = await page.locator('body').getAttribute('class');
-      expect(bodyClass, `${p.url} body class`).toContain(p.bodyClass);
-      const statStrip = page.locator('.chapter-hero .stat-strip');
-      await expect(statStrip, `${p.url} has stat-strip in hero`).toHaveCount(1);
       const stats = page.locator('.chapter-hero .stat-strip .stat');
-      const statCount = await stats.count();
-      expect(statCount, `${p.url} stat count`).toBeGreaterThanOrEqual(3);
-      const tocLinks = page.locator('.chapter-hero .chapter-toc-inline a');
-      const tocCount = await tocLinks.count();
-      expect(tocCount, `${p.url} inline ToC link count`).toBeGreaterThanOrEqual(p.minTocLinks);
-      const artefactCount = await page.locator(p.artefact).count();
-      expect(artefactCount, `${p.url} signature artefact count`).toBeGreaterThanOrEqual(1);
+      expect(await stats.count(), `${url} stat count`).toBeGreaterThanOrEqual(3);
     }
   });
 
   test('design-system tokens are loaded on every page', async ({ page }) => {
-    for (const url of ['/', '/funnel.html', '/production.html', '/industries.html']) {
+    for (const url of CHAPTER_PAGES) {
       await page.goto(url);
       const tokens = await page.evaluate(() => {
         const s = getComputedStyle(document.documentElement);
@@ -558,161 +349,104 @@ test.describe('deep pages (funnel.html + industries.html)', () => {
           easeOut: s.getPropertyValue('--ease-out').trim(),
         };
       });
-      expect(tokens.s4, `${url} --s-4 token`).toBe('20px');
-      expect(tokens.tDisplay, `${url} --t-display token`).toMatch(/^clamp\(/);
-      expect(tokens.easeOut, `${url} --ease-out token`).toMatch(/cubic-bezier/);
+      expect(tokens.s4, `${url} --s-4`).toBe('20px');
+      expect(tokens.tDisplay, `${url} --t-display`).toMatch(/^clamp\(/);
+      expect(tokens.easeOut, `${url} --ease-out`).toMatch(/cubic-bezier/);
     }
   });
+});
 
-  test('funnel relay strip is present with five stage exits', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const relay = page.locator('#stage-relay');
-    await expect(relay).toHaveCount(1);
-    await expect(relay).toHaveClass(/relay-svg-hero/);
-    const diagram = relay.locator('svg').first();
-    await expect(diagram).toHaveCount(1);
-    // Five stage tags STAGE 01..STAGE 05 in the SVG
-    const tags = (await diagram.locator('text.ar-stage').allTextContents()).join(' | ');
-    for (const want of ['STAGE 01', 'STAGE 02', 'STAGE 03', 'STAGE 04', 'STAGE 05']) {
-      expect(tags, `relay SVG must include ${want}`).toContain(want);
-    }
-  });
-
-  test('production posture triptych replaces the old 4-up grid', async ({ page }) => {
-    await page.goto('/production.html');
-    const triptych = page.locator('#posture-overview .poster-triptych');
-    await expect(triptych).toHaveCount(1);
-    const posters = triptych.locator('.poster-card');
-    await expect(posters).toHaveCount(3);
-    // each poster must have a signature svg shape, an h3, and a poster-foot
-    for (let i = 0; i < 3; i++) {
-      const card = posters.nth(i);
-      await expect(card.locator('svg')).toHaveCount(1);
-      await expect(card.locator('h3')).toHaveCount(1);
-      await expect(card.locator('.poster-foot')).toHaveCount(1);
-    }
-  });
-
-  test('funnel artefact-relay SVG shows the 5 named files flowing left-to-right', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const relay = page.locator('#stage-relay.relay-svg-hero');
-    await expect(relay).toHaveCount(1);
-    const svg = relay.locator('svg.artefact-relay-svg');
-    await expect(svg).toHaveCount(1);
-    // Five stage tags STAGE 01..STAGE 05 must all appear inside the SVG
-    const tags = (await svg.locator('text.ar-stage').allTextContents()).join(' | ');
-    for (const want of ['STAGE 01', 'STAGE 02', 'STAGE 03', 'STAGE 04', 'STAGE 05']) {
-      expect(tags, `relay SVG must include ${want}`).toContain(want);
-    }
-    // Five artefact names per stage exit: SPEC.md / Agent+dataset / Live agent / Scorecard / Hand-off
-    const names = (await svg.locator('text.ar-name').allTextContents()).join(' | ');
-    for (const want of ['SPEC.md', 'Agent + dataset', 'Live agent', 'Scorecard', 'Hand-off']) {
-      expect(names, `relay SVG must include artefact ${want}`).toContain(want);
-    }
-  });
-
-  test('production CISO pentagon SVG shows 6 trigger questions around a core', async ({ page }) => {
-    await page.goto('/production.html');
-    const svg = page.locator('#governance-triggers svg.ciso-pentagon-svg');
-    await expect(svg).toHaveCount(1);
-    // Six numbered question tags
-    const tags = (await svg.locator('text.ciso-num').allTextContents()).join(' | ');
-    for (const want of ['01 · IDENTITY', '02 · AUDIT', '03 · RBAC', '04 · TELEMETRY', '05 · EVALS', '06 · SAFETY']) {
-      expect(tags, `CISO SVG must include ${want}`).toContain(want);
-    }
-    // Six spoke lines from the core
-    await expect(svg.locator('g.ciso-spokes > line')).toHaveCount(6);
-  });
-
-  test('production posture-trio hero SVG renders 3 distinct architectural shapes', async ({ page }) => {
-    await page.goto('/production.html');
-    const svg = page.locator('#posture-overview svg.posture-trio-svg');
-    await expect(svg).toHaveCount(1);
-    const tags = (await svg.locator('text.pt-tag').allTextContents()).join(' | ');
-    expect(tags).toContain('01 · GATEWAY-FRONTED');
-    expect(tags).toContain('02 · FOUNDRY-NATIVE');
-    expect(tags).toContain('03 · CUSTOMER-OWNED EDGE');
-    // sits BEFORE the existing poster-triptych, not replacing it
-    const fig = svg.locator('xpath=ancestor::figure[1]');
-    await expect(fig).toHaveCount(1);
-  });
-
-  test('reveal animation does NOT strand content for real visitors (no JS required for visibility)', async ({ page }) => {
-    // This test is the regression guard for the .reveal opacity:0 bug.
-    // If .reveal stays hidden on initial paint without scrolling, 11+ elements
-    // on funnel and production pages become invisible to real users.
-    for (const url of ['/funnel.html', '/production.html', '/index.html', '/industries.html']) {
+test.describe('reveal animation — never strands content for real visitors', () => {
+  // Regression guard for the .reveal opacity:0 bug: the safety-net sweep must
+  // add .in to every reveal so no section is left invisible without scrolling.
+  for (const url of ['/index.html', '/funnel.html', '/production.html', '/industries.html']) {
+    test(`${url} reveals all resolve to .in`, async ({ page }) => {
       await page.goto(url);
-      // wait for safety-net sweep (1.2s) to fire
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1500); // safety-net sweep fires at 1.2s
       const result = await page.evaluate(() => {
         const reveals = [...document.querySelectorAll('.reveal')];
-        // Bug regression: any .reveal without .in stays at opacity:0 forever
-        // (the html.js .reveal:not(.in) rule). The safety net must add .in
-        // to every element so the transition (1.1s + delay) can complete.
-        const notIn = reveals.filter(el => !el.classList.contains('in')).length;
-        return { total: reveals.length, notIn };
+        return { total: reveals.length, notIn: reveals.filter((el) => !el.classList.contains('in')).length };
       });
-      expect(result.notIn, `${url} should have .in on every .reveal after safety-net sweep (had ${result.notIn}/${result.total} still missing .in)`).toBe(0);
-    }
-  });
+      expect(result.total, `${url} should have reveal elements`).toBeGreaterThan(0);
+      expect(result.notIn, `${url} left ${result.notIn}/${result.total} reveals hidden`).toBe(0);
+    });
+  }
+});
 
-  test('industries sector grid shows the 6 library industries with process lists', async ({ page }) => {
-    await page.goto('/industries.html');
-    const grid = page.locator('#sector-grid .poster-triptych');
-    await expect(grid).toHaveCount(1);
-    const cards = grid.locator('.poster-card');
-    await expect(cards).toHaveCount(6);
-    // Each card carries the new .ind-proc-list (process bullets)
-    for (let i = 0; i < 6; i++) {
-      await expect(cards.nth(i).locator('svg.icon use')).toHaveCount(1);
-      const items = cards.nth(i).locator('.ind-proc-list li');
-      const n = await items.count();
-      expect(n, `card ${i} should list >=3 processes`).toBeGreaterThanOrEqual(3);
-    }
-    // Across all 6 cards: exactly 19 curated SPECs in the library today
-    const totalProcs = await grid.locator('.ind-proc-list li').count();
-    expect(totalProcs, 'library = 19 SPECs total across 6 sectors').toBe(19);
-    // 6 sectors named (Energy & utilities replaces Public sector)
-    const sectors = (await grid.locator('.poster-eyebrow span').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['financial', 'retail', 'telco', 'manufacturing', 'healthcare', 'energy']) {
-      expect(sectors, `sector grid must include ${s}`).toContain(s);
-    }
-    expect(sectors, 'no public sector — removed in v21').not.toContain('public sector');
-  });
-
-  test('chapter recap block carries scorecard, three metrics, and CTA bar', async ({ page }) => {
-    const cases = [
-      { url: '/funnel.html',     recap: '#stage-recap' },
-      { url: '/production.html', recap: '#chapter-recap' },
-      { url: '/industries.html', recap: '#industry-recap' },
-    ];
-    for (const c of cases) {
-      await page.goto(c.url);
-      const block = page.locator(`${c.recap} .chapter-recap-block`);
-      await expect(block, `${c.url} has chapter-recap-block`).toHaveCount(1);
-      await expect(block.locator('.recap-scorecard'), `${c.url} scorecard`).toHaveCount(1);
-      await expect(block.locator('.recap-metrics .metric-card'), `${c.url} metrics`).toHaveCount(3);
-      await expect(block.locator('.recap-cta .btn'), `${c.url} cta count`).toHaveCount(3);
-    }
-  });
-
-  test('every page advertises an OG image PNG', async ({ page }) => {
-    const cases = [
-      { url: '/',                 want: 'og-home.png' },
-      { url: '/funnel.html',      want: 'og-funnel.png' },
-      { url: '/production.html',  want: 'og-production.png' },
-      { url: '/industries.html',  want: 'og-industries.png' },
-    ];
-    for (const c of cases) {
-      await page.goto(c.url);
+test.describe('Open Graph & social assets', () => {
+  // Each page's og:image must resolve to an asset that actually ships in the
+  // repo, and og:image must equal twitter:image.
+  const OG_PAGES = [
+    { url: '/index.html', asset: '/assets/og/og-home.png' },
+    { url: '/funnel.html', asset: '/assets/og/og-home.png' },
+    { url: '/production.html', asset: '/assets/og/og-production.png' },
+    { url: '/industries.html', asset: '/assets/og/og-industries.png' },
+    { url: '/self-improving.html', asset: '/assets/og/og-self-improving.svg' },
+    { url: '/case-study.html', asset: '/assets/og/og-production.png' },
+    { url: '/customize.html', asset: '/assets/og/og-customize.svg' },
+    { url: '/workbook.html', asset: '/assets/og/og-home.png' },
+  ];
+  for (const { url, asset } of OG_PAGES) {
+    test(`${url} advertises an OG image that actually exists`, async ({ page }) => {
+      await page.goto(url);
       const og = await page.locator('meta[property="og:image"]').getAttribute('content');
       const tw = await page.locator('meta[name="twitter:image"]').getAttribute('content');
-      expect(og, `${c.url} og:image`).toContain(c.want);
-      expect(tw, `${c.url} twitter:image`).toContain(c.want);
-      // og:image:width/height must exist
-      await expect(page.locator('meta[property="og:image:width"]')).toHaveCount(1);
-      await expect(page.locator('meta[property="og:image:height"]')).toHaveCount(1);
-    }
+      expect(og, `${url} og:image is set`).toBeTruthy();
+      expect(tw, `${url} twitter:image mirrors og:image`).toBe(og);
+      const local = toLocalAssetPath(og);
+      expect(local, `${url} og:image maps to the expected asset`).toBe(asset);
+      const res = await page.request.get(local);
+      expect(res.ok(), `${url} og:image asset resolves (${res.status()})`).toBeTruthy();
+    });
+  }
+
+  test('blueprint.html keeps social metadata but intentionally ships no OG image', async ({ page }) => {
+    await page.goto('/blueprint.html');
+    // Meaningful absence: no image is advertised, so there is no broken-file promise…
+    await expect(page.locator('meta[property="og:image"]')).toHaveCount(0);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveCount(0);
+    // …but the core social metadata is still present (this is a policy, not a gap).
+    await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveCount(1);
   });
+});
+
+test.describe('internal link integrity — page links reachable from the primary pages', () => {
+  test('every internal .html link resolves (excluding anchors/downloads/mailto/external)', async ({ page }) => {
+    const broken = [];
+    const checked = new Set();
+    for (const url of CHAPTER_PAGES) {
+      await page.goto(url);
+      const hrefs = await page.locator('a[href]').evaluateAll((els) => els.map((e) => e.getAttribute('href') || ''));
+      for (const raw of hrefs) {
+        if (!raw) continue;
+        if (/^(https?:|mailto:|tel:)/i.test(raw)) continue; // external / mailto / tel
+        if (raw.startsWith('#')) continue; // intentional in-page anchor
+        const path = raw.split('#')[0];
+        if (!path) continue; // pure anchor
+        if (!/\.html$/i.test(path)) continue; // page links only (skips downloads/assets)
+        let norm = path.replace(/^\.\//, '/');
+        if (!norm.startsWith('/')) norm = '/' + norm;
+        if (checked.has(norm)) continue;
+        checked.add(norm);
+        const res = await page.request.get(norm);
+        if (!res.ok()) broken.push(`${url} -> ${raw} (${res.status()})`);
+      }
+    }
+    expect(broken, `broken internal page links:\n${broken.join('\n')}`).toEqual([]);
+  });
+});
+
+test.describe('accessibility — no serious/critical axe violations', () => {
+  for (const url of ['/index.html', '/funnel.html', '/production.html', '/industries.html', '/self-improving.html']) {
+    test(`${url} passes axe (wcag2a/aa, contrast excluded)`, async ({ page }) => {
+      await page.goto(url);
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa'])
+        .disableRules(['color-contrast'])
+        .analyze();
+      const offenders = results.violations.filter((v) => ['serious', 'critical'].includes(v.impact));
+      expect(offenders, `${url}\n${JSON.stringify(offenders, null, 2)}`).toEqual([]);
+    });
+  }
 });

@@ -189,7 +189,7 @@
     </div>
 
     <figure class="diagram-card" aria-labelledby="loop-cap">
-      <div class="diagram-frame">
+      <div class="diagram-frame" tabindex="0">
         <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The self-improving loop: a single CI run is harvested deterministically with no model, classified into an ordered taxonomy, and written to a digest; one scoped LLM step turns the digest into ranked fixes; new signatures fold back into rules and tests so the next run reads sharper.">
           <defs>
             <style>
@@ -402,7 +402,7 @@
         and <strong>modeled Azure spend</strong>.
       </p>
 
-      <div class="cost-table-wrap">
+      <div class="cost-table-wrap" tabindex="0" role="group" aria-label="Cost comparison table (scroll to view)">
         <table class="cost-table">
           <thead>
             <tr><th>Workload</th><th>Arm</th><th>Model(s)</th><th class="num">Rounds</th><th class="num">Illustrative&nbsp;$</th></tr>
