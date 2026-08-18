@@ -163,11 +163,11 @@ threadlight-auto resumability continue to consume it.
     "start": "2026-08-01T00:00:00Z",
     "end": "2026-08-08T00:00:00Z",
     "complete_days": 7,
-    "cost_data_through": "2026-08-08T00:00:00Z",
-    "cost_data_lag_hours": 48
+    "settlement_age_hours": 48,
+    "window_end_age_days": 2
   },
   "cost": {
-    "basis": "actual",
+    "basis": "usage-pretax",
     "currency": "USD",
     "period_total_usd": 182.41,
     "resources": [],
@@ -212,7 +212,15 @@ only in the reconciliation artifact.
     "path": "specs/cost-actuals-manifest.json",
     "sha256": "<hex>"
   },
-  "policy_ref": "specs/SPEC.md#section-14-value-model",
+  "policy_ref": {
+    "path": "specs/SPEC.md",
+    "section": 14,
+    "spec_sha256": "<hex>"
+  },
+  "policy_snapshot": {
+    "target_cost_per_successful_interaction_usd": 0.18,
+    "max_forecast_variance_pct": 0.20
+  },
   "maturity": {
     "status": "pass",
     "checks": []
@@ -243,10 +251,24 @@ only in the reconciliation artifact.
 
 The two canonical manifest paths always contain the latest completed window.
 Each successful collection also writes the same payloads under
-`specs/cost-history/<start-date>--<end-date>/`. History entries are immutable;
-the canonical files are the latest-view contract consumed by other skills.
-Hashes in the reconciliation manifest prevent a forecast from being silently
-joined to the wrong actuals snapshot.
+`specs/cost-history/<start-date>--<end-date>/<generated-at>/`. History entries
+are immutable; collecting the same window after more charges settle creates a
+new timestamped snapshot rather than overwriting evidence. The canonical files
+are the latest-view contract consumed by other skills.
+
+The canonical reconciliation manifest is the **commit marker**. Publishers
+write the actuals file first and reconciliation last. Consumers accept the pair
+only when the reconciliation's `actuals_ref.sha256` matches the canonical
+actuals JSON document and its `forecast_ref.sha256` matches the forecast JSON
+document. A process
+failure can therefore leave a newer actuals file next to an older
+reconciliation, but that pair is necessarily `not-verified`; it can never
+silently pass as a completed publish.
+
+Consumers also compare `policy_ref.spec_sha256` with the current SPEC bytes.
+Any SPEC edit invalidates the reconciliation conservatively. The snapshot keeps
+the exact thresholds used to render the historical verdict auditable even
+after a later SPEC revision.
 
 ### 7.4 Human report
 
@@ -270,16 +292,18 @@ value_model:
     maturity_policy:
       min_complete_days: 7
       min_successful_interactions: 100
-      max_cost_data_lag_hours: 48
+      min_cost_settlement_age_hours: 48
+      max_window_end_age_days: 14
       min_attribution_coverage_pct: 0.95
     success_event:
       name: return_decision_completed
-      predicate: outcome in [approved, denied, escalated]
+      trace_attribute: decision.outcome
+      success_values: [approved, denied, escalated]
     baseline:
       target_cost_per_successful_interaction_usd: 0.18
       max_forecast_variance_pct: 0.20
     accounting:
-      actual_cost_basis: actual
+      actual_cost_basis: usage-pretax
       forecast_price_basis: retail
       allow_basis_mismatch_for_verdict: false
       scope_policy: dedicated_resource_group
@@ -288,12 +312,28 @@ value_model:
 The numbers above illustrate shape only; generated projects must not copy
 them as defaults.
 
+`usage-pretax` names the read-only Cost Management Query API contract used by
+v1 (`type: Usage`, aggregate `PreTaxCost`). It is observed Azure spend, but it
+is not described as a finalized invoice. The API contract is pinned to
+`2025-03-01`: <https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2025-03-01>.
+
+The Query API does not expose a trustworthy per-response "data through"
+timestamp. V1 therefore uses a conservative, measurable window rule:
+`settlement_age_hours = generated_at - window.end`. The window must be old
+enough for the operator-declared settlement buffer and recent enough for the
+operator-declared operational recency. This does not claim that every provider
+has finished billing; it makes the assumption explicit.
+
 If any required policy field is absent, raw actual collection may still
 succeed, but maturity and unit-economics verdicts are `not-verified`.
 
-The success predicate is workload-owned. V1 standardizes cost per successful
-interaction, not the meaning of success. A future version may add business
-outcomes such as cost per claim resolved without changing the v1 denominator.
+The success event is workload-owned. `trace_attribute` and every
+`success_values` entry use a restricted identifier grammar
+`^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`; the collector refuses arbitrary KQL
+fragments. It builds the fixed query shape itself and treats invalid values as
+an incomplete policy. V1 standardizes cost per successful interaction, not the
+meaning of success. A future version may add business outcomes such as cost per
+claim resolved without changing the v1 denominator.
 
 ## 9. Calculation rules
 
@@ -385,7 +425,8 @@ policy complete
   AND dedicated workload scope or explicit tagged allocation established
   AND complete_days >= declared minimum
   AND successful_interactions >= declared minimum
-  AND cost_data_lag_hours <= declared maximum
+  AND settlement_age_hours >= declared minimum
+  AND window_end_age_days <= declared maximum
   AND attribution_coverage_pct >= declared minimum
   AND price bases compatible or explicitly allowed
 ```
@@ -397,7 +438,7 @@ policy complete
 | Cost Management unavailable | `not-verified`; preserve forecast |
 | Traces unavailable | actual total can pass collection; unit economics is `not-verified` |
 | Token metrics unavailable | actual total and unit economics may still pass; model attribution is `not-verified` |
-| Data stale or lag too high | `not-verified`; never extrapolate silently |
+| Window too recent to settle or too old to represent current operations | `not-verified`; never extrapolate silently |
 | Scope contains unrelated workloads | `not-verified` unless SPEC declares tagged allocation and coverage satisfies policy |
 
 No broad exception handler may turn an evidence failure into an empty manifest.
@@ -545,6 +586,7 @@ The design is implemented when:
 | Shared RG contaminates unit cost | Dedicated-scope evidence plus declared coverage threshold |
 | Billing lag creates false confidence | Policy-owned maximum lag and complete-day windows |
 | Teams tune thresholds after seeing results | Policy lives in versioned SPEC section 14 and is hashed into reconciliation |
+| Free-form success predicate becomes KQL injection | SPEC declares restricted attribute/value identifiers; code owns the fixed KQL shape |
 | Retail forecast vs negotiated actual creates fake savings | Record both bases; fail closed on mismatch |
 | Generic "success" metric is meaningless | Workload declares the trace predicate |
 | Live queries regress deploy | Opt-in post-deploy path; never blocks design-to-deploy |
