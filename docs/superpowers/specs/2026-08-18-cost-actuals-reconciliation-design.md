@@ -151,7 +151,7 @@ threadlight-auto resumability continue to consume it.
 ```jsonc
 {
   "schema": "threadlight-cost-actuals/v1",
-  "generated_at": "2026-08-18T08:00:00Z",
+  "generated_at": "2026-08-10T00:00:00Z",
   "status": "pass",
   "scope": {
     "subscription_id": "<guid>",
@@ -178,7 +178,7 @@ threadlight-auto resumability continue to consume it.
     "total_interactions": 1240,
     "successful_interactions": 1178,
     "success_predicate_ref": "SPEC.md#section-14-value-model",
-    "models": {}
+    "models": []
   },
   "provenance": {
     "cost_management": {},
@@ -195,6 +195,12 @@ Collection can be valid even when reconciliation is not mature.
 The manifest must retain the raw period total. A monthly run-rate is derived
 only in the reconciliation artifact.
 
+`usage.models` is a **list**, not a keyed object. A single collection window
+can observe many deployment/model combinations (primary deployment, spillover
+deployment, multiple model versions), and each combination needs its own row
+of input/output token counts. A list preserves every observed row without
+forcing an arbitrary composite key.
+
 ### 7.3 New reconciliation manifest
 
 `specs/cost-reconciliation-manifest.json` joins forecast, actuals, and policy:
@@ -202,8 +208,9 @@ only in the reconciliation artifact.
 ```jsonc
 {
   "schema": "threadlight-cost-reconciliation/v1",
-  "generated_at": "2026-08-18T08:00:00Z",
+  "generated_at": "2026-08-10T00:00:00Z",
   "status": "pass",
+  "variance_status": "pass",
   "forecast_ref": {
     "path": "specs/cost-manifest.json",
     "sha256": "<hex>"
@@ -234,6 +241,7 @@ only in the reconciliation artifact.
     "variance_pct": -0.0165
   },
   "unit_economics": {
+    "status": "pass",
     "successful_interactions": 1178,
     "cost_per_successful_interaction_usd": 0.1548,
     "target_usd": 0.18,
@@ -244,10 +252,41 @@ only in the reconciliation artifact.
     "unmodeled_actual_usd": 12.30,
     "forecast_not_observed_usd": 0.0
   },
-  "drivers": [],
+  "drivers": {
+    "payg_ptu": {"status": "pass", "observed_volume_variance_pct": 0.0}
+  },
   "warnings": []
 }
 ```
+
+`status` is the overall evidence/maturity state of the reconciliation artifact
+(`pass | not-verified`; it mirrors `maturity.status`). `variance_status` is a
+separate, narrower verdict: `pass | should-fix | not-verified`, computed by
+comparing `totals.variance_pct` against the SPEC-declared
+`policy_snapshot.max_forecast_variance_pct`. It is `not-verified` whenever
+`status`/`maturity.status` is `not-verified`, or when price bases mismatch
+without an explicit SPEC opt-in (§9.5). `threadlight-production-ready`'s
+`COST-102` consumes `variance_status` directly; it does not hardcode any
+percentage threshold of its own.
+
+`unit_economics` carries two independent verdicts, both required:
+
+- `status` (`pass | not-verified`) is evidence maturity — whether
+  `cost_per_successful_interaction_usd` could be computed at all (nonzero
+  successful interactions, complete evidence). It is `not-verified` before any
+  target comparison is meaningful.
+- `target_status` (`pass | should-fix | not-verified`) compares the computed
+  `cost_per_successful_interaction_usd` against the SPEC-declared
+  `target_usd`. It inherits `not-verified` from `status`, is `pass` when the
+  observed cost is at or below target, and `should-fix` when it exceeds
+  target.
+
+`drivers` is an **object keyed by driver name** (for example `payg_ptu`), not
+an array. Each driver's status and evidence live at a stable, addressable key
+so a consumer can read `drivers.payg_ptu.status` directly instead of
+searching an array for a matching entry. V1 defines a single driver,
+`payg_ptu`; future drivers are added as additional keys, never as array
+elements.
 
 The two canonical manifest paths always contain the latest completed window.
 Each successful collection also writes the same payloads under
@@ -374,8 +413,11 @@ cost_per_successful_interaction_usd =
 ```
 
 This intentionally includes the complete Azure workload cost, not only model
-tokens. Zero successful interactions produces `not-verified`; division is not
-attempted.
+tokens. Zero successful interactions produces `unit_economics.status =
+not-verified` and a null `cost_per_successful_interaction_usd`; division is
+not attempted. `unit_economics.target_status` compares the resulting cost
+against SPEC's `baseline.target_cost_per_successful_interaction_usd` (see
+§7.3) and is itself `not-verified` whenever `status` is `not-verified`.
 
 ### 9.4 Attribution and unmodeled costs
 
@@ -555,14 +597,19 @@ Each PR is independently reviewable and keeps the base path stable.
 3. **Actuals contracts and pure core:** schemas, source parsers, maturity
    evaluator, reconciler, and offline fixtures. No CLI wiring.
 4. **Consumption IQ integration:** `actuals`, `reconcile`, and opt-in
-   `--with-actuals`; existing `run --all` unchanged.
+   `--with-actuals`; existing `run --all` unchanged. This PR also updates
+   `SKILL.md` operational guidance (RBAC scope, cadence, `usage-pretax`
+   terminology) for the new CLI surface, and performs and ships the sanitized
+   mature-pilot live-shape validation fixture produced by a real read-only run
+   against that surface. That validation is folded in here, not a separate
+   PR, because it exercises the exact CLI this PR adds; a live probe cannot
+   validate a CLI surface that does not exist yet.
 5. **Production-ready integration:** consume fresh reconciliation evidence for
    `COST-102`, `COST-103`, and KPI scorecard.
-6. **Optional live evidence:** sanitized mature-pilot validation record and
-   operational runbook after the first real read-only run.
 
-PR 2 is a prerequisite for PRs 3-5 because the user selected SPEC section 14
-as the policy source and explicitly rejected tool-owned defaults.
+There are exactly five PRs. PR 2 is a prerequisite for PRs 3-5 because the
+user selected SPEC section 14 as the policy source and explicitly rejected
+tool-owned defaults.
 
 ## 15. Acceptance criteria
 

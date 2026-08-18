@@ -184,14 +184,23 @@ Expected: squash-merged PR and no open PR for this branch.
 
 ### Task 2: Make section 14 a generated artifact contract
 
+This task lands the checker, retrofits every existing test that rewrites
+`SPEC.md`, and updates the shipped golden example — all in one commit — so no
+intermediate commit knowingly leaves `scripts/ci/tests/test_pilot_contract.py`
+red. Splitting the checker change from the golden-example update would leave
+`test_shipped_example_satisfies_the_contract()` failing between commits,
+because the real example has no section 14 until this task adds one.
+
 **Files:**
 - Modify: `scripts/ci/tests/test_pilot_contract.py`
 - Modify: `scripts/ci/check_pilot_contract.py`
+- Modify: `examples/returns-triage-governed/specs/SPEC.md`
 - Test: `scripts/ci/tests/test_pilot_contract.py`
 
-- [ ] **Step 1: Write failing section 14 tests**
+- [ ] **Step 1: Add a reusable value-model fixture and failing section 14 tests**
 
-Add:
+Add a module-level constant so every test that needs a valid section 14 uses
+the exact same text — no drifting copies:
 
 ```python
 VALUE_MODEL_MARKERS = (
@@ -202,10 +211,36 @@ VALUE_MODEL_MARKERS = (
     "accounting:",
 )
 
+VALUE_MODEL_BLOCK = (
+    "## 14. Value Model\n\n"
+    "```yaml\n"
+    "value_model:\n"
+    "  cost:\n"
+    "    maturity_policy:\n"
+    "      min_complete_days:\n"
+    "      min_successful_interactions:\n"
+    "      min_cost_settlement_age_hours:\n"
+    "      max_window_end_age_days:\n"
+    "      min_attribution_coverage_pct:\n"
+    "    success_event:\n"
+    "      name:\n"
+    "      trace_attribute:\n"
+    "      success_values: []\n"
+    "    baseline:\n"
+    "      target_cost_per_successful_interaction_usd:\n"
+    "      max_forecast_variance_pct:\n"
+    "    accounting:\n"
+    "      actual_cost_basis:\n"
+    "      forecast_price_basis:\n"
+    "      allow_basis_mismatch_for_verdict:\n"
+    "      scope_policy:\n"
+    "```\n"
+)
+
 
 def test_missing_spec_section_14_is_rejected(pilot: Path) -> None:
     spec = pilot / "specs" / "SPEC.md"
-    text = spec.read_text(encoding="utf-8")
+    text = spec.read_text(encoding="utf-8") + VALUE_MODEL_BLOCK
     spec.write_text(text.split("## 14.")[0], encoding="utf-8")
     assert "design.spec.no-section-14" in rules(check(pilot))
 
@@ -213,7 +248,7 @@ def test_missing_spec_section_14_is_rejected(pilot: Path) -> None:
 @pytest.mark.parametrize("marker", VALUE_MODEL_MARKERS)
 def test_section_14_requires_value_model_shape(pilot: Path, marker: str) -> None:
     spec = pilot / "specs" / "SPEC.md"
-    text = spec.read_text(encoding="utf-8")
+    text = spec.read_text(encoding="utf-8") + VALUE_MODEL_BLOCK
     spec.write_text(text.replace(marker, f"# removed {marker}", 1), encoding="utf-8")
     assert "design.spec.value-model-shape" in rules(check(pilot))
 
@@ -223,34 +258,41 @@ def test_section_14_does_not_require_numeric_defaults(pilot: Path) -> None:
     assert "design.spec.value-model-shape" not in rules(failures)
 ```
 
-Update the `pilot` fixture to append:
+Update the `pilot` fixture (the hand-built, from-scratch fixture, not the
+shipped example) to append `VALUE_MODEL_BLOCK` after its existing section 13
+text, so it stays fully valid once section 14 becomes mandatory.
 
-````markdown
-## 14. Value Model
+Then retrofit every existing test that rewrites `SPEC.md` and would otherwise
+lose section 14 in the process, so the suite never goes red for a reason
+unrelated to what each test is actually asserting:
 
-```yaml
-value_model:
-  cost:
-    maturity_policy:
-      min_complete_days:
-      min_successful_interactions:
-      min_cost_settlement_age_hours:
-      max_window_end_age_days:
-      min_attribution_coverage_pct:
-    success_event:
-      name:
-      trace_attribute:
-      success_values: []
-    baseline:
-      target_cost_per_successful_interaction_usd:
-      max_forecast_variance_pct:
-    accounting:
-      actual_cost_basis:
-      forecast_price_basis:
-      allow_basis_mismatch_for_verdict:
-      scope_policy:
-```
-````
+- `test_missing_spec_section_13_is_rejected` — this is also the regression
+  test for the extractor refactor in Step 3: append `VALUE_MODEL_BLOCK` after
+  the truncated head so the case under test is "section 13 missing, section
+  14 present," not "both missing." Assert `"design.spec.no-section-13" in
+  rules(check(pilot))` continues to hold — i.e. the generic extractor must
+  still surface `None` (not an empty string that happens to look falsy for
+  the wrong reason) for a genuinely absent section 13 even when a sibling
+  section 14 parses cleanly.
+- `test_fast_poc_callout_needs_all_markers` — append `VALUE_MODEL_BLOCK` after
+  the rebuilt `## 13.` body.
+- `test_governed_profile_does_not_demand_the_fast_poc_callout` — append
+  `VALUE_MODEL_BLOCK` after the rebuilt `## 13.` body. This is also the
+  regression coverage for "section 14 validation runs for governed profiles
+  too" (Step 3): the fixture must carry a fully valid section 14, or this
+  `assert not check(pilot, profile="governed")` would start failing the
+  moment the checker is implemented, for a reason unrelated to the fast-poc
+  callout this test targets.
+- `test_section_13_extraction_stops_at_section_14` — this test's fake
+  `## 14. Appendix` heading now collides with the real, mandatory section 14.
+  Insert the real `VALUE_MODEL_BLOCK` as section 14 and renumber the test's
+  probe heading to `## 15. Appendix`, keeping its Fast-PoC-looking phrase
+  there. The assertion is unchanged (`"design.spec.fast-poc-callout" in
+  rules(check(pilot))`): a callout phrase outside section 13 — whether the
+  next heading is numbered 14 or 15 — must not satisfy the section 13 check.
+- `test_section_13_extraction_keeps_lettered_subsections` — append
+  `VALUE_MODEL_BLOCK` after the `## 13b.` body so `assert not check(pilot)`
+  (zero failures) still holds with section 14 mandatory.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -265,17 +307,28 @@ Expected: failures because section 14 has no checker yet.
 
 - [ ] **Step 3: Implement a generic top-level section extractor**
 
-In `scripts/ci/check_pilot_contract.py`, replace section-specific slicing with:
+In `scripts/ci/check_pilot_contract.py`, replace section-specific slicing with
+a generic extractor that preserves the existing `None`-on-missing contract —
+`extract_section_13` already returns `str | None` and its caller already
+tests `if section13 is None:`; the refactor must not change that caller to a
+truthiness check, because an extracted section whose body happens to be
+empty (blank line only) is a different, valid case from a genuinely absent
+heading:
 
 ```python
-def extract_section(spec_text: str, number: int) -> str:
+def extract_section(spec_text: str, number: int) -> str | None:
+    """Return the body of top-level SPEC section `number`, or None if absent.
+
+    Stops at the next top-level numbered heading (`## N.`) but not at a
+    lettered subsection such as `## 13b.`, which belongs to the section.
+    """
     start = re.search(
         rf"^##[ \t]+{number}\.[^\n]*$",
         spec_text,
         flags=re.MULTILINE,
     )
-    if not start:
-        return ""
+    if start is None:
+        return None
     tail = spec_text[start.end():]
     next_h2 = re.search(
         rf"^##[ \t]+(?:{number + 1}|[1-9]\d+)\.[^\n]*$",
@@ -285,15 +338,23 @@ def extract_section(spec_text: str, number: int) -> str:
     return tail[:next_h2.start()] if next_h2 else tail
 
 
-def extract_section_13(spec_text: str) -> str:
+def extract_section_13(spec_text: str) -> str | None:
     return extract_section(spec_text, 13)
 ```
 
-Add to `check_design`:
+Add the section 14 check to `check_design` **before** the existing
+`if profile != "fast-poc": return` early return, so governed profiles are
+checked for section 14 too — only the Fast-PoC callout text check further
+below is profile-gated, not the section 14 shape check:
 
 ```python
+section13 = extract_section_13(spec_text)  # unchanged existing check, shown for ordering
+if section13 is None:
+    fail.add("design.spec.no-section-13", NO_SECTION_13_MESSAGE)
+    return
+
 section14 = extract_section(spec_text, 14)
-if not section14:
+if section14 is None:
     fail.add("design.spec.no-section-14", "SPEC.md section 14 Value Model is missing")
 else:
     required = (
@@ -309,27 +370,80 @@ else:
             "design.spec.value-model-shape",
             "SPEC section 14 is missing: " + ", ".join(missing),
         )
+
+if profile != "fast-poc":
+    return
 ```
 
-Do not validate numeric values here. Incomplete values are a valid design
-state and become `not-verified` in Consumption IQ.
+`NO_SECTION_13_MESSAGE` is the existing, unchanged message text already in
+`check_pilot_contract.py` — do not alter it; it is quoted here only to mark
+where the new section 14 block is inserted, immediately after the existing
+section 13 check and before the profile-gated early return.
 
-- [ ] **Step 4: Run contract tests**
+(The Fast-PoC callout text check that already follows the profile early
+return is unchanged.) Do not validate numeric values here. Incomplete values
+are a valid design state and become `not-verified` in Consumption IQ.
+
+- [ ] **Step 4: Add section 14 to the shipped golden example**
+
+Once Step 3 lands, the checker requires section 14 on every pilot it checks,
+including `examples/returns-triage-governed` via
+`test_shipped_example_satisfies_the_contract()`. Update that example's
+`SPEC.md` now, in this same task, with values labeled as decisions for this
+example, not defaults:
+
+```yaml
+value_model:
+  cost:
+    maturity_policy:
+      min_complete_days: 7
+      min_successful_interactions: 100
+      min_cost_settlement_age_hours: 48
+      max_window_end_age_days: 14
+      min_attribution_coverage_pct: 0.95
+    success_event:
+      name: return_decision_completed
+      trace_attribute: decision.outcome
+      success_values: [approved, denied, escalated]
+    baseline:
+      target_cost_per_successful_interaction_usd: 0.18
+      max_forecast_variance_pct: 0.20
+    accounting:
+      actual_cost_basis: usage-pretax
+      forecast_price_basis: retail
+      allow_basis_mismatch_for_verdict: false
+      scope_policy: dedicated_resource_group
+```
+
+- [ ] **Step 5: Run contract tests**
 
 Run:
 
 ```bash
 python -m pytest scripts/ci/tests/test_pilot_contract.py -q
+python scripts/ci/check_pilot_contract.py \
+  examples/returns-triage-governed \
+  --stage design --stage deploy \
+  --profile governed \
+  --expect-deployment-target customer-pilot
 ```
 
-Expected: all tests pass, including existing section 13 boundary tests.
+Expected: all tests pass — including the existing section 13 boundary tests,
+`test_shipped_example_satisfies_the_contract()`, and the new section 14
+tests — and the static contract check against the shipped example passes.
 
-- [ ] **Step 5: Commit the checker change**
+- [ ] **Step 6: Commit the checker, tests, and golden example together**
 
 ```bash
-git add scripts/ci/check_pilot_contract.py scripts/ci/tests/test_pilot_contract.py
+git add \
+  scripts/ci/check_pilot_contract.py \
+  scripts/ci/tests/test_pilot_contract.py \
+  examples/returns-triage-governed/specs/SPEC.md
 git commit -m "test(design): require the SPEC value-model shape"
 ```
+
+Committing all three together — rather than the checker first and the
+example later — is what keeps the suite green at every commit boundary.
 
 ### Task 3: Add the canonical value-model schema without defaults
 
@@ -448,42 +562,18 @@ git add \
 git commit -m "feat(design): add the SPEC value-model contract"
 ```
 
-### Task 4: Update the governed golden example and prove generation
+### Task 4: Final validation, changelog, and design-only E2E for PR 2
+
+The golden example already gained its section 14 value policy in Task 2 (folded
+in there so the checker and the example land in the same commit and the suite
+is never red). This task does not make the example valid for the first time —
+it is the closing validation gate for PR 2: full-suite confirmation, the
+changelog entry, and the real E2E dispatch before squash-merge.
 
 **Files:**
-- Modify: `examples/returns-triage-governed/specs/SPEC.md`
 - Modify: `CHANGELOG.md`
-- Test: `scripts/ci/tests/test_pilot_contract.py`
 
-- [ ] **Step 1: Add explicit returns-triage policy**
-
-Append section 14 with values labeled as decisions for this example, not
-defaults:
-
-```yaml
-value_model:
-  cost:
-    maturity_policy:
-      min_complete_days: 7
-      min_successful_interactions: 100
-      min_cost_settlement_age_hours: 48
-      max_window_end_age_days: 14
-      min_attribution_coverage_pct: 0.95
-    success_event:
-      name: return_decision_completed
-      trace_attribute: decision.outcome
-      success_values: [approved, denied, escalated]
-    baseline:
-      target_cost_per_successful_interaction_usd: 0.18
-      max_forecast_variance_pct: 0.20
-    accounting:
-      actual_cost_basis: usage-pretax
-      forecast_price_basis: retail
-      allow_basis_mismatch_for_verdict: false
-      scope_policy: dedicated_resource_group
-```
-
-- [ ] **Step 2: Run static contract checks**
+- [ ] **Step 1: Run the full static and unit-test surface**
 
 ```bash
 python scripts/ci/check_pilot_contract.py \
@@ -492,18 +582,21 @@ python scripts/ci/check_pilot_contract.py \
   --profile governed \
   --expect-deployment-target customer-pilot
 python -m pytest scripts/ci/tests -q
+python -m pytest skills/threadlight-design/tests -q
 ```
 
-Expected: contract OK; all CI-script tests pass.
+Expected: contract OK; all CI-script and threadlight-design tests pass,
+confirming Task 2's checker/example commit and Task 3's schema/template
+commit are consistent with each other.
 
-- [ ] **Step 3: Update changelog and commit**
+- [ ] **Step 2: Update changelog and commit**
 
 ```bash
-git add examples/returns-triage-governed/specs/SPEC.md CHANGELOG.md
-git commit -m "docs(example): declare returns-triage value policy"
+git add CHANGELOG.md
+git commit -m "docs: note SPEC section 14 value-model contract in changelog"
 ```
 
-- [ ] **Step 4: Run a real design-only E2E**
+- [ ] **Step 3: Run a real design-only E2E**
 
 Dispatch from the PR branch:
 
@@ -754,12 +847,14 @@ Use:
 
 ```python
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import pytest
 
 from cost_actuals import (
     ActualsEvidenceError,
     aggregate_cost_rows,
+    build_actuals_manifest,
     rows_from_query_page,
 )
 
@@ -868,7 +963,51 @@ def test_total_equals_resources_plus_unattributed() -> None:
         ])
     ])
     assert total == sum(r["period_cost_usd"] for r in resources) + unattributed
+
+
+def _manifest_kwargs(*, start, end, generated_at):
+    return dict(
+        scope={"subscription_id": "00000000-0000-0000-0000-000000000000"},
+        start=start,
+        end=end,
+        generated_at=generated_at,
+        cost_pages=[page([["x", 10.0, "USD", RID, "A"]])],
+        token_series=None,
+        interaction_counts=None,
+        provenance={"query_api_version": "2025-03-01"},
+        warnings=[],
+    )
+
+
+def test_settlement_age_hours_is_generated_at_minus_window_end() -> None:
+    manifest = build_actuals_manifest(
+        **_manifest_kwargs(
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+        )
+    )
+    assert manifest["window"]["settlement_age_hours"] == 48
+    assert manifest["window"]["window_end_age_days"] == 2
+
+
+def test_generated_at_before_window_end_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="generated_at.*before.*end"):
+        build_actuals_manifest(
+            **_manifest_kwargs(
+                start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+                generated_at=datetime(2026, 8, 7, tzinfo=timezone.utc),
+            )
+        )
 ```
+
+`build_actuals_manifest` is the only place `settlement_age_hours` and
+`window_end_age_days` are computed; these two tests pin that computation
+directly (rather than only through the higher-level reconciliation fixtures
+in Task 8) and pin fail-closed behavior for a `generated_at` that precedes
+`window.end`, which would otherwise silently produce a negative settlement
+age.
 
 - [ ] **Step 2: Run and verify failure**
 
@@ -939,7 +1078,10 @@ Normalize resource IDs with `.casefold().rstrip("/")`, but retain the original
 ID for reporting. Sum with `decimal.Decimal` internally and round only at
 manifest serialization. Compute `settlement_age_hours` and
 `window_end_age_days` from `generated_at - end`; the source does not claim an
-unobservable Cost Management refresh timestamp.
+unobservable Cost Management refresh timestamp. Reject with
+`ActualsEvidenceError` when `generated_at` is before `end`: a negative
+settlement age is evidence of a caller bug (a stale or misordered
+`generated_at`), not a value to silently clamp to zero.
 
 - [ ] **Step 4: Write the actuals schema**
 
@@ -1283,6 +1425,23 @@ def test_zero_successes_yields_not_verified_unit_economics() -> None:
     result = run(a=actuals(successes=0))
     assert result["unit_economics"]["status"] == "not-verified"
     assert result["unit_economics"]["cost_per_successful_interaction_usd"] is None
+    assert result["unit_economics"]["target_status"] == "not-verified"
+
+
+def test_unit_economics_target_status_pass_when_within_baseline() -> None:
+    """`total=70.0` over `successes=100` is 0.70/interaction; baseline target is 1.0."""
+    result = run()
+    assert result["unit_economics"]["status"] == "pass"
+    assert result["unit_economics"]["cost_per_successful_interaction_usd"] == 0.70
+    assert result["unit_economics"]["target_status"] == "pass"
+
+
+def test_unit_economics_target_status_should_fix_when_above_baseline() -> None:
+    p = policy()
+    p["cost"]["baseline"]["target_cost_per_successful_interaction_usd"] = 0.50
+    result = run(p=p)
+    assert result["unit_economics"]["status"] == "pass"
+    assert result["unit_economics"]["target_status"] == "should-fix"
 
 
 def test_incomplete_policy_yields_not_verified() -> None:
@@ -1395,6 +1554,18 @@ def reconcile_costs(
 
 Use `Decimal` for money. Do not accept a token-cost argument in
 `reconcile_costs`; the type boundary itself prevents double counting.
+
+`unit_economics` carries two independent fields, matching RFC §9.3/§7.3, and
+both must be present in every emitted manifest:
+
+- `status` (`pass | not-verified`) is an evidence/maturity signal: whether
+  `cost_per_successful_interaction_usd` could be computed at all. It is
+  `not-verified` only when `successful_interactions` is zero (division is not
+  attempted), independent of any policy target.
+- `target_status` (`pass | should-fix | not-verified`) compares the computed
+  cost against `policy.cost.baseline.target_cost_per_successful_interaction_usd`.
+  It is `not-verified` whenever `status` is `not-verified` (there is nothing to
+  compare), `pass` when at or under the target, and `should-fix` when over it.
 
 Resource matching order:
 
@@ -1810,6 +1981,7 @@ def documents(generated_at="2026-08-10T00:00:00Z"):
         "schema": "threadlight-cost-reconciliation/v1",
         "generated_at": generated_at,
         "status": "pass",
+        "variance_status": "pass",
         "maturity": {"status": "pass", "checks": []},
         "totals": {
             "forecast_monthly_usd": 300.0,
@@ -1817,6 +1989,8 @@ def documents(generated_at="2026-08-10T00:00:00Z"):
             "actual_monthly_run_rate_usd": 300.0,
         },
         "unit_economics": {
+            "status": "pass",
+            "target_status": "pass",
             "cost_per_successful_interaction_usd": 0.70,
         },
     }
@@ -2000,12 +2174,16 @@ def test_parser_accepts_actuals_window_and_scope() -> None:
         "--end", "2026-08-08",
         "--subscription", "sub-1",
         "--resource-group", "rg-pilot",
+        "--spec", "SPEC.md",
+        "--actuals-manifest", "actuals.json",
     ])
     assert args.phase == "actuals"
     assert args.start == date(2026, 8, 1)
     assert args.end == date(2026, 8, 8)
     assert args.subscription == "sub-1"
     assert args.resource_group == "rg-pilot"
+    assert str(args.spec) == "SPEC.md"
+    assert str(args.actuals_manifest) == "actuals.json"
 
 
 def test_parser_accepts_reconcile_paths() -> None:
@@ -2116,9 +2294,19 @@ Commands:
 actuals --start YYYY-MM-DD --end YYYY-MM-DD
         --subscription ID --resource-group NAME
         --workspace-resource-id ID
+        [--spec PATH] [--actuals-manifest PATH]
 reconcile --forecast PATH --actuals-manifest PATH --spec PATH
 run --all --with-actuals [same live args]
 ```
+
+`--spec` and `--actuals-manifest` are optional on `actuals` (defaulting to
+`DEFAULT_ACTUALS_MANIFEST`, and to no SPEC read when `--spec` is omitted):
+`actuals` only ever writes the actuals manifest and never reads SPEC's policy,
+so both are only needed when a caller wants a non-default manifest path or
+wants `actuals` to also record which SPEC section 14 revision the observed
+window corresponds to. They are always present on `reconcile`, because
+`reconcile` reads the SPEC policy at `--spec` to evaluate maturity/variance,
+and reads the actuals manifest at `--actuals-manifest` as its input.
 
 `--with-actuals` is false by default. `--pre-deploy --with-actuals` is rejected
 with exit 2.
@@ -2241,6 +2429,17 @@ python skills/threadlight-consumption-iq/scripts/consumption_iq.py actuals \
 ```
 
 Expected: read-only calls only; no Azure mutation.
+
+`--actuals-manifest /tmp/threadlight-cost-actuals.json` here is deliberate,
+not an oversight to fix: this is the one place in the whole plan where the
+manifest holds real, unsanitized billing evidence (live resource IDs,
+subscription/tenant IDs, actual prices) from a customer or internal pilot
+subscription. It must never land inside the repository working tree, where an
+accidental `git add -A` or editor autosave could pick it up. Step 3 below
+sanitizes a copy before anything derived from it is committed; the raw
+`/tmp` file is discarded afterward. Every other `--actuals-manifest` use in
+this plan (CLI tests, fixtures, `reconcile`) writes inside the repository
+because those manifests are synthetic or already-sanitized fixtures.
 
 - [ ] **Step 3: Sanitize before committing**
 
@@ -2380,6 +2579,22 @@ def test_cost102_does_not_use_hardcoded_twenty_percent(tmp_path) -> None:
     assert findings(ctx)["COST-102"].status == "pass"
 
 
+def test_cost102_title_and_detail_do_not_hardcode_twenty_percent(tmp_path) -> None:
+    """`FINDING_CATALOG["COST-102"]` must describe declared tolerance, not 20%.
+
+    The variance threshold is read from `policy_snapshot.max_forecast_variance_pct`
+    (SPEC section 14), which is per-workload; the finding's static title text
+    must not bake in the one example value used in fixtures and docs, and no
+    emitted finding's dynamically built detail text may either.
+    """
+    catalog_entry = pr.FINDING_CATALOG["COST-102"]
+    assert "20%" not in catalog_entry["title"]
+    assert catalog_entry["title"] == "Live actuals vs forecast within declared tolerance"
+    for finding in findings(make_ctx(tmp_path)).values():
+        assert "20%" not in finding.title
+        assert "20%" not in finding.detail
+
+
 def test_cost103_not_verified_without_driver(tmp_path) -> None:
     assert findings(make_ctx(tmp_path, payg_ptu="not-verified"))[
         "COST-103"
@@ -2476,6 +2691,14 @@ def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
 
 - [ ] **Step 3: Replace only the `COST-102/103` stubs**
 
+First, change `FINDING_CATALOG["COST-102"]["title"]` from the current
+`"Live actuals vs forecast within 20%"` to
+`"Live actuals vs forecast within declared tolerance"`. `20%` is only ever
+the example value used in this plan's and the RFC's fixtures/examples; the
+real tolerance is `policy_snapshot.max_forecast_variance_pct`, read from
+SPEC section 14 and unique per workload, so the catalog's static title text
+must not name one specific number.
+
 Keep `COST-101` live budget behavior. Remove the loop that blindly emits
 `not-verified` for both IDs and call:
 
@@ -2551,7 +2774,12 @@ def _cost_bundle(
     }
     unit = {}
     if cpi is not None:
+        unit["status"] = "pass"
+        unit["target_status"] = "pass"
         unit["cost_per_successful_interaction_usd"] = cpi
+    else:
+        unit["status"] = "not-verified"
+        unit["target_status"] = "not-verified"
     reconciliation = {
         "schema": "threadlight-cost-reconciliation/v1",
         "status": status,
