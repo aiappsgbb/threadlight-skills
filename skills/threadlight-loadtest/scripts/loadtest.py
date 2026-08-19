@@ -1076,7 +1076,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def main(argv: Optional[list] = None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run a guarded, budget-capped load test and emit "
@@ -1100,6 +1100,11 @@ def main(argv: Optional[list] = None) -> int:
         "--adapter-timeout-s", type=float, default=120.0,
         help="Timeout for the selected k6/locust command, in seconds",
     )
+    return parser
+
+
+def main(argv: Optional[list] = None) -> int:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     try:

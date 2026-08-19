@@ -114,6 +114,16 @@ jobs:
         # pricing fixtures ride along. It SKIPS when the zip is absent, so build
         # it here first — this step MUST precede "Run threadlight-qualify tests".
         run: bash scripts/build-cowork-zips.sh
+      - name: Guard - committed Cowork zips are in sync with source
+        # docs/downloads/*.zip are BUILT artifacts. This rebuilds them into a
+        # throwaway dir and compares against the committed archives by member
+        # name + CRC — recursing into vendor/cost-runtime.zip — so a source edit
+        # that was not followed by `bash scripts/build-cowork-zips.sh` fails here
+        # instead of silently shipping a stale bundle to Cowork sellers. It is
+        # content-based (not a raw `git diff` of bytes) so it stays robust to zip
+        # timestamp churn and macOS-vs-Linux `zip` differences; the builder is
+        # separately made byte-reproducible so "rebuild twice" is a no-op.
+        run: python scripts/ci/check_cowork_zip_drift.py
       - name: Run threadlight-qualify tests
         # No-repo/Cowork qualification & sizing. Includes the isolated Cowork
         # bundle test that consumes the zip built in the previous step.

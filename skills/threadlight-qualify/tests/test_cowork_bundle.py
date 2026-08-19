@@ -58,6 +58,37 @@ def _extract(dest: Path) -> Path:
     return bundle
 
 
+def _extract_runtime(dest: Path) -> Path:
+    """Extract the vendored ``cost-runtime.zip`` from the committed outer bundle
+    and return the directory the importable cost engine lives in."""
+    bundle = _extract(dest)
+    runtime = dest / "runtime"
+    with zipfile.ZipFile(bundle / "vendor" / "cost-runtime.zip") as rt:
+        rt.extractall(runtime)
+    return runtime
+
+
+def _run_inner_cost_api(runtime_dir: Path, body: str) -> subprocess.CompletedProcess:
+    """Import ``cost_api`` from the extracted runtime dir in a fresh interpreter.
+
+    Running the check in a subprocess whose cwd is the extracted runtime dir
+    (and with an empty PYTHONPATH) guarantees the assertions exercise the cost
+    engine that shipped INSIDE the committed ``cost-runtime.zip`` — never the
+    in-repo ``threadlight-consumption-iq/scripts`` copy — so the test is a true
+    inspection of the published artifact.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = ""
+    script = "import cost_api\n" + body + "\nprint('INNER_OK')\n"
+    return subprocess.run(  # noqa: S603 - fixed, trusted argv
+        [sys.executable, "-c", script],
+        cwd=runtime_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_outer_archive_contract_is_six_members_five_companions(tmp_path):
     bundle = _extract(tmp_path)
     members = sorted(
@@ -76,6 +107,68 @@ def test_runtime_zip_ships_packaged_pricing_fixtures(tmp_path):
     # The dated rates PricingClient needs offline: meter rates + AOAI SKU/PTU.
     assert "pricing_fixtures/meters.json" in names
     assert "pricing_fixtures/microsoft-cognitiveservices-accounts-deployments.json" in names
+
+
+def test_inner_cost_api_fails_closed_on_advisory_fallback(tmp_path):
+    """The committed inner ``cost_api`` must carry the fail-closed fallback
+    contract: a resource priced only from a region-blind ``price_source =
+    'fallback'`` constant is advisory, so the manifest goes ``partial`` with
+    ``totals.complete = False`` and NO per-transaction cost. A stale bundle
+    (pre-rebase inner engine) treats the fallback figure as a priced/known line
+    and reports ``complete`` — this test fails against that stale artifact.
+    """
+    runtime = _extract_runtime(tmp_path)
+    body = (
+        "m = cost_api.build_cost_manifest(\n"
+        "    resources=[{'kind': 'Microsoft.App/containerApps', 'name': 'aca',\n"
+        "                'monthly_cost_usd': 123.45, 'price_source': 'fallback'}],\n"
+        "    meters=[], load_profile={}, transaction_unit='interaction',\n"
+        "    monthly_transactions=1000, pricing=None)\n"
+        "assert m['status'] == 'partial', m['status']\n"
+        "assert m['totals']['complete'] is False, m['totals']\n"
+        "assert m['totals']['cost_per_transaction_usd'] is None, m['totals']\n"
+        "line = m['resources'][0]\n"
+        "assert line['pricing_status'] == 'not-priceable', line\n"
+        "assert line['verified'] is False, line\n"
+        "assert isinstance(line.get('reason'), str) and line['reason'].strip(), line\n"
+        "assert m['meter_coverage']['status'] != 'complete', m['meter_coverage']\n"
+    )
+    proc = _run_inner_cost_api(runtime, body)
+    assert proc.returncode == 0 and "INNER_OK" in proc.stdout, (
+        "committed cost-runtime.zip does not fail closed on advisory fallback "
+        f"(rebuild scripts/build-cowork-zips.sh):\nstdout={proc.stdout!r}\n"
+        f"stderr={proc.stderr!r}"
+    )
+
+
+def test_inner_cost_api_rejects_fractional_ptu_units(tmp_path):
+    """The committed inner ``cost_api`` must reject a fractional ``ptu_units``
+    (PTU capacity is provisioned in whole units). An integral float normalises
+    to an int; a fractional value raises ``ValueError`` before any output. A
+    stale bundle preserved the fractional value instead — this test fails
+    against that stale artifact.
+    """
+    runtime = _extract_runtime(tmp_path)
+    body = (
+        "class _P:\n"
+        "    def get_price(self, *a, **k):\n"
+        "        return {'unit_price_usd': 1.0}\n"
+        "raised = False\n"
+        "try:\n"
+        "    cost_api.build_ptu_scenarios({'ptu_units': 2.5}, _P())\n"
+        "except ValueError:\n"
+        "    raised = True\n"
+        "assert raised, 'fractional ptu_units was not rejected'\n"
+        "# An integral float still normalises to a whole-unit int.\n"
+        "s = cost_api.build_ptu_scenarios({'ptu_units': 2.0}, _P())\n"
+        "assert s is not None and s['ptu_units'] == 2 and isinstance(s['ptu_units'], int), s\n"
+    )
+    proc = _run_inner_cost_api(runtime, body)
+    assert proc.returncode == 0 and "INNER_OK" in proc.stdout, (
+        "committed cost-runtime.zip does not reject fractional ptu_units "
+        f"(rebuild scripts/build-cowork-zips.sh):\nstdout={proc.stdout!r}\n"
+        f"stderr={proc.stderr!r}"
+    )
 
 
 def test_extracted_bundle_prices_offline_without_repo_pythonpath(tmp_path):

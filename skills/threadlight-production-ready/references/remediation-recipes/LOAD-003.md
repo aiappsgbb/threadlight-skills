@@ -12,10 +12,14 @@ N/A — this fix runs the threadlight `threadlight-loadtest` leg. LOAD-003 is mu
 
 ## Edit recipe
 1. Declare `slo` thresholds in the SPEC and collect real samples; if thresholds are violated, tune scaling / caching / model routing until they hold.
-2. Re-run `threadlight-loadtest` to refresh the manifest.
+2. Re-run `threadlight-loadtest` to refresh the manifest. The SLO thresholds and endpoint/adapter wiring live in the JSON load profile; keep `--endpoint-class non-production` and `--budget-ceiling-usd` at your reviewed ceiling (USD).
 
    ```bash
-   python3 skills/threadlight-loadtest/scripts/loadtest.py --spec specs/SPEC.md --out specs/load-manifest.json
+   python3 skills/threadlight-loadtest/scripts/loadtest.py \
+     --profile "${LOAD_PROFILE_FILE}" \
+     --budget-ceiling-usd 25 \
+     --endpoint-class non-production \
+     --out specs/load-manifest.json
    ```
 
 ## Verification

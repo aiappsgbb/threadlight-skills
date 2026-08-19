@@ -1748,7 +1748,7 @@ def _load_source_results_arg(source_results_path: Optional[str]) -> Optional[dic
     return data
 
 
-def main(argv=None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "threadlight-upgrade — PLAN-ONLY compatibility/preview-drift scanner. "
@@ -1797,6 +1797,11 @@ def main(argv=None) -> int:
         "--gate", action="store_true",
         help="exit 2 when any finding is should-fix or not-verified",
     )
+    return parser
+
+
+def main(argv=None) -> int:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     try:

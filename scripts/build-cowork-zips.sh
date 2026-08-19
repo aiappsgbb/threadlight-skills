@@ -22,7 +22,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="${REPO_ROOT}/docs/downloads"
+# Output directory for the published archives. Overridable (COWORK_OUT_DIR) so
+# the CI drift check can build into a throwaway directory and diff the result
+# against the committed docs/downloads/ archives without mutating the worktree.
+OUT_DIR="${COWORK_OUT_DIR:-${REPO_ROOT}/docs/downloads}"
 SRC_DIR="${REPO_ROOT}/skills"
 
 # List of Cowork-safe skill folder names (must match `name:` in each SKILL.md)
@@ -32,6 +35,41 @@ COWORK_SAFE_SKILLS=(
 
 mkdir -p "${OUT_DIR}"
 
+# ---------------------------------------------------------------------------
+# Reproducible archive helper.
+#
+# These zips are committed to docs/downloads/ and gated by a CI drift check, so
+# determinism matters: rebuilding the same source must yield the same archive.
+# Plain `zip` otherwise stamps each member with its filesystem mtime and adds
+# members in readdir order, both of which churn between checkouts and machines.
+#
+# det_zip normalises all of that on a staging tree BEFORE zipping:
+#   * canonical permissions (dirs 755, files 644) — umask-independent;
+#   * one fixed mtime on every entry (a constant DOS timestamp in the archive);
+#   * members added in a stable LC_ALL=C sorted order (files only — parent dirs
+#     are implied on extraction, so no directory entries are stored);
+#   * -X strips the platform "extra fields" (UT timestamps, uid/gid) that churn.
+# Two builds on the same machine are then byte-identical. The CI drift check
+# compares member CONTENT (name + CRC, recursing into the inner runtime zip) so
+# it also stays robust across macOS/Linux `zip` implementations.
+# ---------------------------------------------------------------------------
+COWORK_ZIP_MTIME="202601010000.00"   # touch -t stamp: 2026-01-01T00:00:00
+
+det_zip() {
+  local stage="$1" out="$2"
+  rm -f "${out}"
+  find "${stage}" -type d -exec chmod 755 {} +
+  find "${stage}" -type f -exec chmod 644 {} +
+  find "${stage}" -exec touch -t "${COWORK_ZIP_MTIME}" {} +
+  ( cd "${stage}" \
+      && find . -type f \
+           ! -name '.DS_Store' \
+           ! -path '*/__pycache__/*' \
+           ! -name '*.pyc' \
+      | LC_ALL=C sort \
+      | zip -X --quiet -@ "${out}" )
+}
+
 for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   if [[ ! -f "${SRC_DIR}/${skill}/SKILL.md" ]]; then
     echo "ERROR: ${SRC_DIR}/${skill}/SKILL.md not found — aborting." >&2
@@ -39,16 +77,24 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   fi
 
   zip_path="${OUT_DIR}/${skill}.zip"
-  rm -f "${zip_path}"
 
-  # Flat zip: SKILL.md at the root, references/ as a sibling.
-  # Cowork's installer expects SKILL.md at the top level of the archive.
-  (cd "${SRC_DIR}/${skill}" && zip -r --quiet "${zip_path}" . -x "*.DS_Store" "*/__pycache__/*")
+  # Stage a clean copy (no .DS_Store / __pycache__ / *.pyc), then build a
+  # reproducible FLAT zip: SKILL.md at the root, references/ (+ scripts/ tests/)
+  # as siblings. Cowork's installer expects SKILL.md at the top level of the
+  # archive. The whole-folder member set is the design skill's outer contract.
+  design_stage="${REPO_ROOT}/.cowork-build-tmp/${skill}.$$"
+  rm -rf "${design_stage}"
+  mkdir -p "${design_stage}"
+  cp -R "${SRC_DIR}/${skill}/." "${design_stage}/"
+  find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 
-  # Enforce Cowork per-skill limits
-  skill_md_bytes=$(wc -c < "${SRC_DIR}/${skill}/SKILL.md" | tr -d ' ')
-  companion_count=$(find "${SRC_DIR}/${skill}" -type f ! -name SKILL.md | wc -l | tr -d ' ')
-  companion_bytes=$(find "${SRC_DIR}/${skill}" -type f ! -name SKILL.md -exec wc -c {} + | tail -n1 | awk '{print $1}')
+  det_zip "${design_stage}" "${zip_path}"
+
+  # Enforce Cowork per-skill limits (measured on the staged tree that ships)
+  skill_md_bytes=$(wc -c < "${design_stage}/SKILL.md" | tr -d ' ')
+  companion_count=$(find "${design_stage}" -type f ! -name SKILL.md | wc -l | tr -d ' ')
+  companion_bytes=$(find "${design_stage}" -type f ! -name SKILL.md -exec wc -c {} + | tail -n1 | awk '{print $1}')
 
   echo "✓ ${skill}.zip ($(wc -c < "${zip_path}" | tr -d ' ') bytes)"
   echo "  SKILL.md: ${skill_md_bytes} / 1048576 bytes"
@@ -68,6 +114,8 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   if (( companion_bytes > 10485760 )); then
     echo "  ✗ companion files exceed 10 MB total" >&2; exit 1
   fi
+
+  rm -rf "${design_stage}"
 done
 
 # ---------------------------------------------------------------------------
@@ -131,8 +179,9 @@ build_qualify_zip() {
 
   find "${rt}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${rt}" -name '*.pyc' -delete 2>/dev/null || true
-  ( cd "${rt}" && zip -r --quiet "${stage}/vendor/cost-runtime.zip" . \
-      -x "*/__pycache__/*" "*.pyc" "*.DS_Store" )
+  # Reproducible inner runtime zip (code + packaged pricing fixtures). Its bytes
+  # must be stable so the OUTER archive that embeds it is stable too.
+  det_zip "${rt}" "${stage}/vendor/cost-runtime.zip"
 
   # --- outer flat staging: SKILL.md + exactly five companions --------------
   mkdir -p "${stage}/scripts" "${stage}/references"
@@ -142,8 +191,8 @@ build_qualify_zip() {
   cp "${skill_root}/references/citadel-sizing.json" "${stage}/references/citadel-sizing.json"
   cp "${cq_refs}/model-catalog.json" "${stage}/vendor/model-catalog.json"
 
-  rm -f "${zip_path}"
-  ( cd "${stage}" && zip -r --quiet "${zip_path}" . -x "*.DS_Store" "*/__pycache__/*" )
+  # Reproducible outer archive (embeds the already-deterministic inner zip).
+  det_zip "${stage}" "${zip_path}"
 
   # --- enforce Cowork limits + the exact-five-companions contract ----------
   local skill_md_bytes companion_count companion_bytes

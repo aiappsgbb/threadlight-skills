@@ -1427,7 +1427,7 @@ def _resolve_within_root(root: str, relative_path: str) -> str:
     return str(resolved_candidate)
 
 
-def main(argv=None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "threadlight-ground — assess already-produced ACL/citation/refusal "
@@ -1456,6 +1456,11 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--gate", action="store_true", help="exit 2 when any finding is must-fix"
     )
+    return parser
+
+
+def main(argv=None) -> int:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     try:

@@ -11,11 +11,15 @@ N/A — this fix runs the threadlight `threadlight-loadtest` leg. LOAD-001 is mu
 `sibling-skill`
 
 ## Edit recipe
-1. Point the load test at a non-production endpoint, OR set `allow_production: true` with an explicit, reviewed justification if a production run is genuinely intended.
-2. Re-run `threadlight-loadtest` to produce a clean load manifest.
+1. Point the load test at a non-production endpoint (`--endpoint-class non-production`) — the default, safe path. Only if a production run is genuinely intended and reviewed, pass `--endpoint-class production --allow-production` with an explicit written justification.
+2. Re-run `threadlight-loadtest` to produce a clean load manifest. `--budget-ceiling-usd` is your explicit, reviewed cost ceiling in USD (example below: 25); the endpoint/adapter/credential wiring lives in the JSON load profile.
 
    ```bash
-   python3 skills/threadlight-loadtest/scripts/loadtest.py --spec specs/SPEC.md --out specs/load-manifest.json
+   python3 skills/threadlight-loadtest/scripts/loadtest.py \
+     --profile "${LOAD_PROFILE_FILE}" \
+     --budget-ceiling-usd 25 \
+     --endpoint-class non-production \
+     --out specs/load-manifest.json
    ```
 
 ## Verification
