@@ -9,15 +9,16 @@ field.
 
 ### Added
 
-- **SPEC § 14 (Value Model) is generated with no numeric defaults.** The
-  design→deploy scaffolding now emits an explicit `value_model` block instead
-  of emitting with an intentionally blank, no-default shape for the §14 field
-  groups (maturity policy, success event, cost baselines, accounting) unless
-  values are explicitly supplied and agreed upon. This makes the value model
-  a reviewable, explicit policy rather than an implicit guess. `examples/returns-triage-governed/specs/SPEC.md` § 14 carries that
-  explicit policy for the reference governed example. This changes only the
-  generated design artifacts — the complete Azure monthly cost projection and the
-  base `full`-mode deploy path are unaffected.
+- **SPEC § 14 (Value Model) is generated with no numeric defaults.**
+  `threadlight-design` emits SPEC § 14 `value_model` with an intentionally
+  blank, no-default shape for field groups `maturity_policy`,
+  `success_event`, `baseline`, `accounting`, unless values are explicitly
+  supplied and agreed upon. This makes the value model a reviewable,
+  explicit policy rather than an implicit guess.
+  `examples/returns-triage-governed/specs/SPEC.md` § 14 carries that
+  explicit policy for the reference governed example. This changes only
+  the generated design artifacts — the complete Azure monthly cost
+  projection and the base `full`-mode deploy path are unaffected.
 
 - **A cheap middle tier for the E2E gate: `mode: design-only`.** The E2E
   workflow was all-or-nothing — either a `smoke-only` run that proves nothing
