@@ -37,7 +37,13 @@ verdict-shaped fields here; add them to the reconciliation artifact instead.
     "end": "2026-08-08T00:00:00Z",
     "complete_days": 7,
     "settlement_age_hours": 48,
-    "window_end_age_days": 2
+    "window_end_age_days": 2,
+    "observed_usage_dates": [
+      "2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04",
+      "2026-08-05", "2026-08-06", "2026-08-07"
+    ],
+    "observed_day_count": 7,
+    "missing_usage_dates": []
   },
   "cost": {
     "basis": "usage-pretax",
@@ -141,6 +147,53 @@ from the request, it does not replace the fail-closed check.
   negative settlement age is evidence of a caller bug, not a value to
   silently clamp to zero).
 
+### Day-coverage evidence: `observed_usage_dates` / `observed_day_count` / `missing_usage_dates`
+
+These three fields are **evidence, not a verdict** — they never change
+`status`, and a window with missing days is still reported `status: "pass"`
+when everything else validated. This parser cannot tell a genuinely
+zero-cost day apart from a day Cost Management omitted for some other
+reason: both look identical (no row for that `UsageDate`). Rather than
+guessing at a cause, the manifest records the fact and lets a human or a
+downstream check decide what it means.
+
+* `observed_usage_dates` — every distinct in-window `UsageDate` that had at
+  least one row, as sorted ISO `YYYY-MM-DD` strings (deduplicated; a day
+  with several rows across resources/services still appears once).
+* `observed_day_count` — `len(observed_usage_dates)`. Compare against
+  `complete_days` to see at a glance whether every declared day actually
+  returned a row.
+* `missing_usage_dates` — every date in the declared half-open
+  `[window.start, window.end)` range **not** present in
+  `observed_usage_dates`, sorted ISO `YYYY-MM-DD` strings. Empty when every
+  declared day returned at least one row. When the Cost Management
+  page(s) are present but have **zero rows at all** (see
+  [`cost_pages`](#cost_pages-empty-vs-zero-rows) below), every declared
+  day is missing, `cost.currency` is `null`, and `cost.period_total_usd`
+  is `0.0` — still `status: "pass"`, because a present page with zero rows
+  is an observed zero, not a parse failure.
+
+When `missing_usage_dates` is non-empty, `build_actuals_manifest` appends
+**exactly one** warning to `warnings`:
+`"Cost Management returned no cost rows for N requested day(s); treated as
+zero-cost days"` (with a short preview of up to five example dates inline —
+the complete, authoritative list is always `missing_usage_dates` above,
+never only the warning text, so a wide window with many missing days never
+turns into an unreadable wall of dates in `warnings`).
+
+This is deliberately asymmetric with **extra or out-of-window** dates: a
+row whose `UsageDate` falls outside the declared window is never recorded
+as evidence — it still raises `ActualsEvidenceError` immediately (see
+[Window](#window) above and
+`test_row_before_window_start_is_rejected_not_dropped`). Missing days are
+silent-by-nature on the wire (Cost Management just doesn't send a row), so
+they are made visible here instead; extra days are a loud, unambiguous
+adapter/API bug and are rejected instead of silently absorbed. See
+[§8.1's live observation
+note](../../../docs/superpowers/specs/2026-08-18-cost-actuals-reconciliation-design.md#81-window-and-daily-granularity-contract)
+for the specific Cost Management behavior (`timePeriod.to` inclusivity)
+that motivates keeping this check fail-closed rather than relaxing it.
+
 ### `UsageDate` normalization
 
 Each Cost Management row's `UsageDate` cell is normalized to a plain `date`
@@ -226,12 +279,17 @@ let a row bucket into a day nobody actually wrote in ASCII):
     identity, so reconciliation and every per-resource total use the
     `ResourceId` sum across all of its service dimensions — never a
     per-service split.
-  * `service_name` — the backward-compatible scalar: the sole entry of
-    `service_names` when exactly one name was observed, and `null`
-    otherwise (zero names observed, or several). It is deliberately never
-    an arbitrary first-observed pick, because that would let a reader
-    mistake one cost dimension for the resource's only one. Read
-    `service_names` when the full picture matters.
+  * `service_name` — a convenience scalar, **not** a fully
+    backward-compatible one: the sole entry of `service_names` when exactly
+    one name was observed, and `null` otherwise (zero names observed, or
+    several). `service_names` is the canonical field; `service_name` is
+    deliberately never an arbitrary first-observed pick when there is more
+    than one name, because that would let a reader mistake one cost
+    dimension for the resource's only one — and a `null` here (a value a
+    pre-multi-service consumer of this scalar would not have seen) is exactly
+    what makes it not a drop-in replacement for reading `service_names`
+    directly. Read `service_names` when the full picture matters, or when
+    `service_name` is `null`.
   * `period_cost_usd` — the resource's summed cost for the window, quantized
     per the [rounding policy](#money-rounding-and-the-accounting-identity)
     below.

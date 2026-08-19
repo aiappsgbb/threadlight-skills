@@ -227,9 +227,13 @@ example, a separate protection/security service billed against the same
 resource. Every distinct nonblank name observed for a resource is therefore
 recorded in `cost.resources[].service_names` (deduplicated case-insensitively,
 sorted deterministically), and the row costs are summed into that one
-resource's `period_cost_usd`; multiplicity is never a parse error. The
-backward-compatible scalar `cost.resources[].service_name` is the sole name
-when exactly one was observed and `null` otherwise, so a reader is never
+resource's `period_cost_usd`; multiplicity is never a parse error.
+`cost.resources[].service_names` is the canonical field; the convenience
+scalar `cost.resources[].service_name` is the sole name when exactly one
+was observed and `null` otherwise — it is **not** a fully
+backward-compatible substitute for `service_names` (a consumer that only
+ever read `service_name` before multi-service rows existed would now see
+`null` whenever a resource carries more than one), so a reader is never
 handed an arbitrary pick as if it were the resource's only cost dimension.
 Reconciliation attributes and compares on the `ResourceId` total, never on a
 per-service split. `resource_type` is identity, not a dimension: two
@@ -542,6 +546,28 @@ fail-closed error, not a service bug. The parser continues to enforce the
 end-exclusive rule against observed `UsageDate` values regardless, so the
 artifact's window semantics are guaranteed by validation rather than by an
 assumption about the service.
+
+**Battle-tested note (2026-08-19).** A live probe against Query API
+`2025-03-01`, requesting the internal half-open window
+`[2026-08-09, 2026-08-16)`, sent `to=2026-08-16T00:00:00Z` (the exclusive
+end day's midnight, before the translation above existed) and observed a
+returned row stamped `UsageDate = 2026-08-16` — the exclusive end day
+itself. That is a direct, real-response confirmation that `timePeriod.to`
+behaves inclusively on this observed surface, not just the documented
+description quoted above. (No subscription/resource identifiers or cost
+figures are recorded here — only the boundary-inclusivity fact.) This is
+exactly why the adapter sends the previous day's `T23:59:59Z` rather than
+the declared end day's midnight, and why the parser keeps the half-open
+`[start, end)` validation active regardless: per-day rows make the
+translation auditable rather than merely assumed. The manifest's
+`window.observed_usage_dates` / `window.observed_day_count` /
+`window.missing_usage_dates` (`cost-actuals-manifest-schema.md`) are the
+auditable evidence this produces going forward — if a future API response
+ever again includes the exclusive end day, the existing end-exclusive
+check still fails loudly (never silently accepted); if the API instead
+omits a day Cost Management should have billed, that day is not hidden —
+it is recorded in `missing_usage_dates` and surfaced as a warning, not
+silently absorbed into a lower total.
 
 If any required policy field is absent, raw actual collection may still
 succeed, but maturity and unit-economics verdicts are `not-verified`.

@@ -648,11 +648,15 @@ def aggregate_cost_rows(
     on the same day. Every distinct nonblank name observed for a resource is
     collected into `service_names` (deduplicated case-insensitively, keeping
     the first-observed display casing, sorted case-insensitively so the
-    output is deterministic). The backward-compatible scalar `service_name`
-    is that sole name when exactly one was observed, and `None` otherwise —
-    honest ambiguity rather than an arbitrary first pick. Multiplicity never
-    changes the aggregation identity: `ResourceId` alone decides which bucket
-    a row's cost lands in, so a resource's `period_cost_usd` is the sum
+    output is deterministic). The scalar `service_name` is that sole name
+    when exactly one was observed, and `None` otherwise — honest ambiguity
+    rather than an arbitrary first pick. It is a convenience, **not** a fully
+    backward-compatible substitute for `service_names`: a resource with more
+    than one observed name now yields `None` here, a value a caller that only
+    ever read `service_name` before multi-service rows existed would not have
+    seen. `service_names` is the canonical field. Multiplicity never changes
+    the aggregation identity: `ResourceId` alone decides which bucket a
+    row's cost lands in, so a resource's `period_cost_usd` is the sum
     across all of its service dimensions.
 
     Every USD amount returned (`total_usd`, `unattributed_usd`, and each
@@ -1111,6 +1115,66 @@ def parse_interaction_counts(doc: object) -> tuple[int, int]:
     return (total, successful)
 
 
+# Number of missing-day examples surfaced inline in the one warning message
+# `build_actuals_manifest` appends when `window.missing_usage_dates` is
+# non-empty. The full list is always in the manifest itself
+# (`window.missing_usage_dates`) regardless of this cap — it only keeps the
+# warning *text* readable for a wide window with many missing days, rather
+# than inlining a potentially huge date range into `warnings`.
+_MISSING_DATE_WARNING_PREVIEW_LIMIT = 5
+
+
+def _missing_usage_dates(
+    observed: set[date], *, window_start_date: date, window_end_date: date
+) -> list[date]:
+    """Return every date in the half-open `[window_start_date,
+    window_end_date)` range absent from `observed`, sorted ascending.
+
+    This performs no window validation of its own — `window_start_date`
+    and `window_end_date` must already be a validated `start.date()` /
+    `end.date()` pair with `window_start_date < window_end_date`, both at
+    exact UTC midnight; that check (`_require_utc_midnight`, `end > start`)
+    lives in `aggregate_cost_rows`, which `build_actuals_manifest` always
+    calls, and raises, before this helper ever runs. Likewise, every member
+    of `observed` is guaranteed to already lie inside that range:
+    `aggregate_cost_rows` rejects (never silently drops) any row whose
+    `UsageDate` falls outside the declared window, so `observed` can never
+    itself contain an out-of-window date for this helper to reconcile.
+    A day absent from `observed` is not, on its own, evidence of a problem:
+    a genuinely zero-cost day produces no row at all, and this parser
+    cannot distinguish that from a day Cost Management omitted for some
+    other reason — both look identical (no row). This is what makes
+    `window.missing_usage_dates` evidence rather than a verdict.
+    """
+    day_count = (window_end_date - window_start_date).days
+    return [
+        day
+        for offset in range(day_count)
+        if (day := window_start_date + timedelta(days=offset)) not in observed
+    ]
+
+
+def _missing_usage_dates_warning(missing: list[date]) -> str:
+    """Build the single warning appended when `missing` is non-empty.
+
+    Only the first `_MISSING_DATE_WARNING_PREVIEW_LIMIT` dates are named
+    inline — the complete, authoritative list is always
+    `window.missing_usage_dates` in the manifest itself, never only this
+    message. This warning does not, and cannot, claim these days had zero
+    cost; it records that no row was returned for them and that they were
+    therefore treated as zero-cost, which is the honest, auditable
+    distinction this module can actually make.
+    """
+    preview = missing[:_MISSING_DATE_WARNING_PREVIEW_LIMIT]
+    preview_text = ", ".join(day.isoformat() for day in preview)
+    if len(missing) > len(preview):
+        preview_text += ", …"
+    return (
+        f"Cost Management returned no cost rows for {len(missing)} "
+        f"requested day(s); treated as zero-cost days (e.g. {preview_text})"
+    )
+
+
 def build_actuals_manifest(
     *,
     scope: dict[str, object],
@@ -1143,6 +1207,21 @@ def build_actuals_manifest(
     `usage.model_attribution_status` / `usage.interaction_status`, `pass`
     only when that evidence was actually collected (including a genuinely
     observed zero, which is `pass`, not `not-verified`).
+
+    `window.observed_usage_dates` / `window.observed_day_count` /
+    `window.missing_usage_dates` are deterministic evidence derived from
+    `aggregate_cost_rows`'s validated `usage_dates`, never a pass/fail
+    signal: a requested day genuinely can carry zero cost and zero rows,
+    and this parser has no way to tell that apart from a day Cost
+    Management silently omitted for some other reason. `missing_usage_dates`
+    makes that ambiguity visible instead of hiding it, and — because every
+    returned row is still validated against the declared window in
+    `aggregate_cost_rows` — an *extra*, out-of-window day the API might
+    someday return remains a loud `ActualsEvidenceError`, never a silently
+    accepted addition. When `missing_usage_dates` is non-empty exactly one
+    warning naming the count (and a short preview) is appended to the
+    returned `warnings`; the caller's own `warnings` list is never mutated
+    in place.
     """
     if not isinstance(scope, dict) or not scope:
         raise ActualsEvidenceError("scope must be a non-empty mapping")
@@ -1171,6 +1250,21 @@ def build_actuals_manifest(
     settlement_delta = generated_at - end
     settlement_age_hours = int(settlement_delta.total_seconds() // 3600)
     window_end_age_days = settlement_delta.days
+
+    # `aggregate_cost_rows` (above) has already required `start`/`end` to be
+    # exact UTC midnight and `end > start`, so `.date()` here is always a
+    # valid, ordered pair — no re-validation is needed or performed here.
+    observed_usage_dates = sorted(aggregate.usage_dates)
+    missing_usage_dates = _missing_usage_dates(
+        aggregate.usage_dates,
+        window_start_date=start.date(),
+        window_end_date=end.date(),
+    )
+    # A new list, never the caller's own `warnings` mutated in place — see
+    # `test_missing_usage_date_warning_does_not_mutate_caller_warnings`.
+    effective_warnings = list(warnings)
+    if missing_usage_dates:
+        effective_warnings.append(_missing_usage_dates_warning(missing_usage_dates))
 
     if interaction_counts is None:
         interaction_status = "not-verified"
@@ -1226,6 +1320,9 @@ def build_actuals_manifest(
             "complete_days": complete_days,
             "settlement_age_hours": settlement_age_hours,
             "window_end_age_days": window_end_age_days,
+            "observed_usage_dates": [d.isoformat() for d in observed_usage_dates],
+            "observed_day_count": len(observed_usage_dates),
+            "missing_usage_dates": [d.isoformat() for d in missing_usage_dates],
         },
         "cost": {
             "basis": "usage-pretax",
@@ -1252,7 +1349,7 @@ def build_actuals_manifest(
             "models": models,
         },
         "provenance": deepcopy(provenance),
-        "warnings": deepcopy(warnings),
+        "warnings": deepcopy(effective_warnings),
     }
 
 

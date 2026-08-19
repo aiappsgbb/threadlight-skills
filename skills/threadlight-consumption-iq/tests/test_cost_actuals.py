@@ -34,6 +34,7 @@ Core contract under test:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
@@ -542,13 +543,24 @@ def test_aggregate_cost_rows_never_mutates_the_input_pages() -> None:
 # ---------------------------------------------------------------------------
 
 
+# Full daily coverage for the default 2026-08-01..2026-08-08 (7-day,
+# half-open) window used by `_manifest_kwargs` below, so that a test using
+# the default `cost_pages` observes zero missing days and therefore no
+# missing-usage-date warning by default. Tests that specifically exercise
+# `window.missing_usage_dates` / the missing-day warning override
+# `cost_pages` themselves with a deliberately incomplete set of rows.
+_FULL_WEEK_COST_PAGES = [
+    page([[20260801 + offset, "x", 10.0, "USD", RID, "A"] for offset in range(7)])
+]
+
+
 def _manifest_kwargs(*, start, end, generated_at):
     return dict(
         scope={"subscription_id": "00000000-0000-0000-0000-000000000000"},
         start=start,
         end=end,
         generated_at=generated_at,
-        cost_pages=[page([[20260801, "x", 10.0, "USD", RID, "A"]])],
+        cost_pages=deepcopy(_FULL_WEEK_COST_PAGES),
         token_series=None,
         interaction_counts=None,
         provenance={"query_api_version": "2025-03-01"},
@@ -793,6 +805,147 @@ def test_warnings_and_provenance_are_copied_through() -> None:
         "query_api_version": "2025-03-01",
         "cost_management": {"granularity": "Daily"},
     }
+
+
+# ---------------------------------------------------------------------------
+# window.observed_usage_dates / observed_day_count / missing_usage_dates:
+# deterministic day-coverage evidence. A day absent from Cost Management is
+# recorded, never hidden and never treated as a failure — a genuinely
+# zero-cost day and a day Cost Management omitted for some other reason both
+# look identical (no row), so the manifest surfaces the fact rather than
+# guessing at a cause. `status` stays "pass"; only extra/out-of-window rows
+# still raise (covered elsewhere by `test_row_before_window_start_is_rejected
+# _not_dropped` / `test_row_on_window_end_is_rejected_because_end_is_
+# exclusive`).
+# ---------------------------------------------------------------------------
+
+
+def test_full_day_coverage_yields_no_missing_dates_and_no_extra_warning() -> None:
+    manifest = build_actuals_manifest(
+        **_manifest_kwargs(
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+        )
+    )
+    window = manifest["window"]
+    assert window["observed_usage_dates"] == [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+    assert window["observed_day_count"] == 7 == window["complete_days"]
+    assert window["missing_usage_dates"] == []
+    assert manifest["warnings"] == []
+
+
+def test_a_missing_middle_day_is_recorded_and_warned() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [
+        page(
+            [
+                [20260801 + offset, "x", 10.0, "USD", RID, "A"]
+                for offset in range(7)
+                if offset != 3  # 2026-08-04 never gets a row
+            ]
+        )
+    ]
+    manifest = build_actuals_manifest(**kwargs)
+    window = manifest["window"]
+    assert window["observed_day_count"] == 6
+    assert window["missing_usage_dates"] == ["2026-08-04"]
+    assert "2026-08-04" not in window["observed_usage_dates"]
+    assert manifest["status"] == "pass"
+    assert len(manifest["warnings"]) == 1
+    assert re.search(
+        r"Cost Management returned no cost rows for 1 requested day\(s\); "
+        r"treated as zero-cost days",
+        manifest["warnings"][0],
+    )
+
+
+def test_a_missing_final_day_is_recorded_and_warned() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [
+        page(
+            [
+                [20260801 + offset, "x", 10.0, "USD", RID, "A"]
+                for offset in range(6)  # 2026-08-07, the last window day, is absent
+            ]
+        )
+    ]
+    manifest = build_actuals_manifest(**kwargs)
+    window = manifest["window"]
+    assert window["observed_day_count"] == 6
+    assert window["missing_usage_dates"] == ["2026-08-07"]
+    assert manifest["status"] == "pass"
+    assert len(manifest["warnings"]) == 1
+    assert "2026-08-07" in manifest["warnings"][0]
+
+
+def test_zero_row_page_records_all_days_missing_and_still_passes() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([])]  # a valid page, deliberately zero rows
+    manifest = build_actuals_manifest(**kwargs)
+
+    assert manifest["status"] == "pass"
+    window = manifest["window"]
+    assert window["observed_usage_dates"] == []
+    assert window["observed_day_count"] == 0
+    assert window["missing_usage_dates"] == [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+    assert manifest["cost"]["currency"] is None
+    assert manifest["cost"]["period_total_usd"] == 0.0
+    assert manifest["cost"]["resources"] == []
+
+    assert len(manifest["warnings"]) == 1
+    warning = manifest["warnings"][0]
+    assert "7 requested day(s)" in warning
+    # The preview inlined in the warning text is capped; the full list is
+    # always available, uncapped, in `window.missing_usage_dates` above.
+    assert "…" in warning
+    assert "2026-08-01" in warning
+
+
+def test_missing_usage_date_warning_does_not_mutate_caller_warnings() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([[20260801, "x", 10.0, "USD", RID, "A"]])]
+    original_warnings = ["preexisting warning"]
+    kwargs["warnings"] = original_warnings
+
+    manifest = build_actuals_manifest(**kwargs)
+
+    assert original_warnings == ["preexisting warning"]
+    assert manifest["warnings"][0] == "preexisting warning"
+    assert len(manifest["warnings"]) == 2
+    assert "requested day(s)" in manifest["warnings"][1]
 
 
 # ---------------------------------------------------------------------------
@@ -1293,8 +1446,8 @@ def test_multiple_service_names_for_same_resource_are_accepted_and_summed() -> N
     assert result.total_usd == 5.0
     assert resource["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
     # Honest ambiguity: with more than one observed name there is no single
-    # correct value, so the backward-compatible scalar is null rather than an
-    # arbitrary first-observed pick.
+    # correct value, so the convenience scalar is null rather than an
+    # arbitrary first-observed pick. `service_names` is the canonical field.
     assert resource["service_name"] is None
 
 

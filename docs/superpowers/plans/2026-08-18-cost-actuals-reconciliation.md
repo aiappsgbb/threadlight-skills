@@ -2697,9 +2697,13 @@ def az_config_dir(monkeypatch, tmp_path: Path) -> str:
 
 def test_cost_query_uses_custom_window_and_daily_grouping() -> None:
     body = cost_query_body(date(2026, 8, 1), date(2026, 8, 8))
+    # `timePeriod.to` is inclusive on the live Query API (§8.1's battle-tested
+    # note), so the request bound is the previous day at 23:59:59, never the
+    # declared exclusive end day's midnight — sending the latter would make
+    # the API legitimately return an extra day that the parser then rejects.
     assert body["timePeriod"] == {
         "from": "2026-08-01T00:00:00Z",
-        "to": "2026-08-08T00:00:00Z",
+        "to": "2026-08-07T23:59:59Z",
     }
     # Daily granularity is what makes the window verifiable downstream: the
     # parser can only check `start <= usage_date < end` if rows carry a date.
@@ -2912,13 +2916,26 @@ Runner = Callable[
 ]
 
 
+def _inclusive_utc_end(end: date) -> str:
+    # The internal CLI/window contract is half-open [start, end), but the
+    # Query API's `timePeriod.to` is *inclusive* (§8.1's battle-tested
+    # note): a `to` sent at the end day's midnight makes the API legitimately
+    # return rows dated on that day, which the parser then rejects as
+    # out-of-window. Send `end - 1 second` — the previous day's
+    # `T23:59:59Z` — so the API is never asked for the exclusive end day.
+    last_instant = datetime(
+        end.year, end.month, end.day, tzinfo=timezone.utc
+    ) - timedelta(seconds=1)
+    return last_instant.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def cost_query_body(start: date, end: date) -> dict[str, object]:
     return {
         "type": "Usage",
         "timeframe": "Custom",
         "timePeriod": {
             "from": f"{start.isoformat()}T00:00:00Z",
-            "to": f"{end.isoformat()}T00:00:00Z",
+            "to": _inclusive_utc_end(end),
         },
         "dataset": {
             "granularity": "Daily",
