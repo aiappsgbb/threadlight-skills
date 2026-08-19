@@ -220,6 +220,99 @@ def test_boolean_cost_is_rejected() -> None:
         aggregate([[20260801, "x", True, "USD", RID, "A"]])
 
 
+# ---------------------------------------------------------------------------
+# decimal.InvalidOperation / overflow / context failures from quantize must
+# never escape as a raw decimal exception — always ActualsEvidenceError with
+# cost context.
+# ---------------------------------------------------------------------------
+
+
+def test_scientific_notation_exponent_cost_raises_actuals_error_not_raw_decimal() -> None:
+    # Decimal("1e300") parses fine (the constructor never applies context),
+    # but quantizing it to the cent needs ~302 significant digits — far past
+    # the default 28-digit Decimal context precision — and raises
+    # decimal.InvalidOperation. That raw exception must never escape.
+    with pytest.raises(ActualsEvidenceError, match="cost"):
+        aggregate([[20260801, "x", "1e300", "USD", RID, "A"]])
+
+
+def test_uppercase_signed_exponent_cost_raises_actuals_error_not_raw_decimal() -> None:
+    with pytest.raises(ActualsEvidenceError, match="cost"):
+        aggregate([[20260801, "x", "1E+30", "USD", RID, "A"]])
+
+
+def test_giant_digit_string_cost_raises_actuals_error_not_raw_decimal() -> None:
+    with pytest.raises(ActualsEvidenceError, match="cost"):
+        aggregate([[20260801, "x", "9" * 60, "USD", RID, "A"]])
+
+
+def test_giant_cost_via_python_int_raises_actuals_error_not_raw_decimal() -> None:
+    # Ints bypass string parsing entirely (`Decimal(raw)` on an int), so the
+    # same context-overflow-at-quantize hazard must be guarded independently
+    # of the string path.
+    with pytest.raises(ActualsEvidenceError, match="cost"):
+        aggregate([[20260801, "x", 10**300, "USD", RID, "A"]])
+
+
+def test_giant_cost_does_not_raise_raw_decimal_invalid_operation() -> None:
+    import decimal
+
+    try:
+        aggregate([[20260801, "x", "1e300", "USD", RID, "A"]])
+    except ActualsEvidenceError:
+        pass
+    except decimal.InvalidOperation:  # pragma: no cover - the bug we're fixing
+        pytest.fail(
+            "raw decimal.InvalidOperation escaped instead of "
+            "ActualsEvidenceError"
+        )
+
+
+def test_giant_unattributed_cost_also_raises_actuals_error() -> None:
+    with pytest.raises(ActualsEvidenceError, match="cost"):
+        aggregate([[20260801, "", "1e300", "USD", "", "Tax"]])
+
+
+# ---------------------------------------------------------------------------
+# Money strings: reject underscore digit separators and any non-ASCII
+# numeric syntax before Decimal() ever sees the string; only plain ASCII
+# sign/digits/decimal-point/exponent is accepted.
+# ---------------------------------------------------------------------------
+
+
+def test_underscore_digit_separator_in_cost_string_is_rejected() -> None:
+    # Decimal("1_000.50") silently parses as 1000.50 — a Python-literal
+    # readability feature that must never leak into external evidence
+    # parsing (a "1_000.50" cell arriving verbatim is far more likely a
+    # data-quality bug than an intentional four-digit dollar amount).
+    with pytest.raises(ActualsEvidenceError, match="cost value is not numeric"):
+        aggregate([[20260801, "x", "1_000.50", "USD", RID, "A"]])
+
+
+def test_underscore_in_small_cost_string_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="cost value is not numeric"):
+        aggregate([[20260801, "x", "1_0.5", "USD", RID, "A"]])
+
+
+def test_arabic_indic_digit_cost_string_is_rejected() -> None:
+    # "١٠.٥٠" is "10.50" spelled with Arabic-Indic digits. Decimal() parses
+    # these happily; re.ASCII on the money-shape regex must reject them.
+    with pytest.raises(ActualsEvidenceError, match="cost value is not numeric"):
+        aggregate([[20260801, "x", "١٠.٥٠", "USD", RID, "A"]])
+
+
+def test_fullwidth_digit_cost_string_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="cost value is not numeric"):
+        aggregate([[20260801, "x", "\uff11\uff10.\uff15\uff10", "USD", RID, "A"]])
+
+
+def test_plain_ascii_signed_decimal_cost_string_is_still_accepted() -> None:
+    # The rejection is specifically underscore/non-ASCII syntax, not
+    # ordinary sign/decimal-point/exponent forms.
+    result = aggregate([[20260801, "x", "-10.50", "USD", RID, "A"]])
+    assert result.total_usd == -10.50
+
+
 def test_malformed_row_is_rejected_not_dropped() -> None:
     with pytest.raises(ActualsEvidenceError, match="row does not match columns"):
         rows_from_query_page(page([[20260801, 1.0]]))
@@ -730,6 +823,23 @@ def test_money_rounds_with_decimal_round_half_up_not_python_round() -> None:
     assert round(2.675, 2) == 2.67  # sanity: this is exactly the trap
 
 
+def test_negative_quantized_zero_is_normalized_to_plain_zero() -> None:
+    # A raw -0.001 quantizes to Decimal("-0.00") (a signed zero), which
+    # must never surface as -0.0 in the reported/serialized manifest.
+    result = aggregate([[20260801, "x", -0.001, "USD", RID, "A"]])
+    assert result.resources[0]["period_cost_usd"] == 0.0
+    import math
+
+    assert not math.copysign(1.0, result.resources[0]["period_cost_usd"]) < 0
+    assert json.dumps(result.resources[0]["period_cost_usd"]) == "0.0"
+
+
+def test_negative_quantized_zero_unattributed_is_normalized_to_plain_zero() -> None:
+    result = aggregate([[20260801, "", -0.001, "USD", "", "Tax"]])
+    assert result.unattributed_usd == 0.0
+    assert json.dumps(result.unattributed_usd) == "0.0"
+
+
 # ---------------------------------------------------------------------------
 # Accounting identity: period_total_usd == sum(resources) + unattributed,
 # exactly at the cent, even with half-cent rows and refunds
@@ -755,6 +865,15 @@ def test_several_half_cent_resource_rows_reconcile_exactly_after_quantization() 
 
 
 def test_half_cent_reconciliation_with_a_resource_and_unattributed_refund() -> None:
+    # RID: raw 10.005 -> rounds to 10.01 (diff = raw - rounded = -0.005,
+    # over-rounded). rid_b: raw -0.005 -> rounds to -0.01 (diff = +0.005,
+    # under-rounded). unattributed: raw -0.005 -> rounds to -0.01 (diff =
+    # +0.005, under-rounded, tied with rid_b). Raw total = 9.995 -> quantized
+    # total 10.00; quantized parts sum to 9.99, so residual is +0.01. The
+    # largest-remainder policy adds it to the most under-rounded bucket
+    # (largest `raw - rounded`); rid_b and unattributed are tied, and the
+    # deterministic tie-break sends it to the resource bucket, never
+    # unattributed (unattributed always loses ties).
     rid_b = RID + "/b"
     result = aggregate([
         [20260801, "x", 10.005, "USD", RID, "A"],
@@ -766,11 +885,9 @@ def test_half_cent_reconciliation_with_a_resource_and_unattributed_refund() -> N
     ) + Decimal(str(result.unattributed_usd))
     assert parts_sum == Decimal(str(result.total_usd))
     assert Decimal(str(result.total_usd)) == Decimal("10.00")
-    # The residual is added to the largest-*absolute*-value resource
-    # bucket (RID at 10.01), never to unattributed, since resources exist.
     by_id = {r["resource_id"]: r["period_cost_usd"] for r in result.resources}
-    assert by_id[RID] == 10.02
-    assert by_id[rid_b] == -0.01
+    assert by_id[RID] == 10.01
+    assert by_id[rid_b] == 0.0
     assert result.unattributed_usd == -0.01
 
 
@@ -783,6 +900,123 @@ def test_all_unattributed_half_cent_rows_still_reconcile_exactly() -> None:
     assert result.resources == []
     assert Decimal(str(result.total_usd)) == Decimal(str(result.unattributed_usd))
     assert Decimal(str(result.total_usd)) == Decimal("0.02")
+
+
+# ---------------------------------------------------------------------------
+# Largest-remainder residual distribution: over ALL attributed resources
+# PLUS the unattributed bucket, deterministic, per-bucket error bound, no
+# sign flips caused solely by allocation.
+# ---------------------------------------------------------------------------
+
+
+def _assert_reconciled(result, expected_total: str) -> dict[str, float]:
+    by_id = {r["resource_id"]: r["period_cost_usd"] for r in result.resources}
+    parts_sum = sum(
+        (Decimal(str(v)) for v in by_id.values()), Decimal("0")
+    ) + Decimal(str(result.unattributed_usd))
+    assert parts_sum == Decimal(str(result.total_usd))
+    assert Decimal(str(result.total_usd)) == Decimal(expected_total)
+    return by_id
+
+
+def test_100_half_cent_positive_rows_distribute_over_remainder_with_no_negative_artifact() -> None:
+    # Every raw value is +0.005 (positive). Each independently rounds to
+    # +0.01 (tie, HALF_UP rounds away from zero), so the 100 quantized parts
+    # sum to 1.00 while the true raw total is only 0.50 -> residual is -0.50
+    # (50 cents must be subtracted). All 100 buckets are tied at the same
+    # `raw - rounded` remainder, so the tie-break (ascending normalized
+    # resource key) picks the 50 lexicographically-smallest IDs to give back
+    # a cent each. No bucket may go negative: every raw value here was
+    # strictly positive, so "no negative artifact for positive raw" means
+    # every reconciled value must land in {0.00, 0.01}, never -0.01.
+    rows = [
+        [20260801, "x", 0.005, "USD", f"{RID}/{i:03d}", "A"] for i in range(100)
+    ]
+    result = aggregate(rows)
+    by_id = _assert_reconciled(result, "0.50")
+    assert len(by_id) == 100
+    values = sorted(by_id.values())
+    assert values == [0.0] * 50 + [0.01] * 50
+    assert all(v >= 0.0 for v in by_id.values())
+    # Deterministic: the 50 lexicographically-smallest IDs are the ones that
+    # gave back a cent (rounded down to 0.00).
+    zeroed = {rid for rid, v in by_id.items() if v == 0.0}
+    assert zeroed == {f"{RID}/{i:03d}" for i in range(50)}
+
+
+def test_1000_small_positive_rows_distribute_over_remainder_deterministically() -> None:
+    # Every raw value is +0.004 (positive, below the half-cent tie point),
+    # so each independently rounds *down* to 0.00. 1000 * 0.00 == 0.00, but
+    # the true raw total is 1000 * 0.004 == 4.000 -> quantized total 4.00,
+    # a residual of +4.00 (400 cents to add). All 1000 buckets are tied at
+    # the same remainder, so the ascending normalized-key tie-break gives a
+    # cent to the 400 lexicographically-smallest IDs.
+    rows = [
+        [20260801, "x", 0.004, "USD", f"{RID}/{i:04d}", "A"] for i in range(1000)
+    ]
+    result = aggregate(rows)
+    by_id = _assert_reconciled(result, "4.00")
+    assert len(by_id) == 1000
+    values = sorted(by_id.values())
+    assert values == [0.0] * 600 + [0.01] * 400
+    assert all(v >= 0.0 for v in by_id.values())
+    raised = {rid for rid, v in by_id.items() if v == 0.01}
+    assert raised == {f"{RID}/{i:04d}" for i in range(400)}
+
+
+def test_mixed_positive_refund_and_unattributed_reconciles_with_bounded_error() -> None:
+    rid_a, rid_b, rid_c, rid_d = (RID + f"/{c}" for c in "abcd")
+    raws = {
+        rid_a: Decimal("3.005"),
+        rid_b: Decimal("-1.005"),
+        rid_c: Decimal("0.002"),
+        rid_d: Decimal("-0.001"),
+    }
+    unattributed_raw = Decimal("-0.004")
+    rows = [
+        [20260801, "x", str(raws[rid_a]), "USD", rid_a, "A"],
+        [20260801, "x", str(raws[rid_b]), "USD", rid_b, "B"],
+        [20260801, "x", str(raws[rid_c]), "USD", rid_c, "C"],
+        [20260801, "x", str(raws[rid_d]), "USD", rid_d, "D"],
+        [20260801, "", str(unattributed_raw), "USD", "", "Refund"],
+    ]
+    result = aggregate(rows)
+    by_id = {r["resource_id"]: r["period_cost_usd"] for r in result.resources}
+    parts_sum = sum(
+        (Decimal(str(v)) for v in by_id.values()), Decimal("0")
+    ) + Decimal(str(result.unattributed_usd))
+    assert parts_sum == Decimal(str(result.total_usd))
+    # Every reconciled bucket (resources + unattributed) must stay within
+    # one cent of its own raw value — the allocation only ever moves a
+    # bucket by at most one additional cent past its own independent
+    # rounding, and independent HALF_UP rounding error is itself bounded by
+    # half a cent, so the combined bound is <= 0.01 exactly.
+    for rid, raw in raws.items():
+        assert abs(Decimal(str(by_id[rid])) - raw) <= Decimal("0.01")
+    assert abs(Decimal(str(result.unattributed_usd)) - unattributed_raw) <= Decimal(
+        "0.01"
+    )
+
+
+def test_residual_distribution_is_independent_of_input_row_order() -> None:
+    rid_a, rid_b, rid_c, rid_d = (RID + f"/{c}" for c in "abcd")
+    rows = [
+        [20260801, "x", 0.005, "USD", rid_a, "A"],
+        [20260801, "x", 0.005, "USD", rid_b, "A"],
+        [20260801, "x", -0.005, "USD", rid_c, "A"],
+        [20260801, "", -0.005, "USD", "", "Refund"],
+    ]
+    forward = aggregate(rows)
+    shuffled = aggregate(list(reversed(rows)))
+
+    def _as_dict(result):
+        return {
+            **{r["resource_id"]: r["period_cost_usd"] for r in result.resources},
+            "__unattributed__": result.unattributed_usd,
+            "__total__": result.total_usd,
+        }
+
+    assert _as_dict(forward) == _as_dict(shuffled)
 
 
 def test_manifest_accounting_identity_holds_exactly_after_serialization() -> None:
@@ -972,6 +1206,40 @@ def test_conflicting_nonempty_service_name_for_same_resource_is_rejected() -> No
         ])
 
 
+def test_whitespace_only_resource_type_is_treated_as_blank_and_backfilled() -> None:
+    # A cell containing only whitespace must be treated exactly like an
+    # empty string for blank/backfill purposes — a bare truthiness check
+    # would treat "   " as a real (if odd) observed value instead.
+    result = aggregate([
+        [20260801, "   ", 5.0, "USD", RID, "  "],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+    ])
+    assert result.resources == [{
+        "resource_id": RID,
+        "resource_type": "microsoft.app/containerapps",
+        "service_name": "ACA",
+        "period_cost_usd": 10.0,
+    }]
+
+
+def test_resource_type_differing_only_by_case_is_not_a_conflict() -> None:
+    result = aggregate([
+        [20260801, "Microsoft.App/ContainerApps", 5.0, "USD", RID, "ACA"],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+    ])
+    # First-observed display casing is retained, not overwritten by a
+    # later row that is only a case variant of the same value.
+    assert result.resources[0]["resource_type"] == "Microsoft.App/ContainerApps"
+
+
+def test_service_name_differing_only_by_case_is_not_a_conflict() -> None:
+    result = aggregate([
+        [20260801, "x", 5.0, "USD", RID, "aca"],
+        [20260802, "x", 5.0, "USD", RID, "ACA"],
+    ])
+    assert result.resources[0]["service_name"] == "aca"
+
+
 # ---------------------------------------------------------------------------
 # select_cost_column accepts raw (uncasefolded) casing
 # ---------------------------------------------------------------------------
@@ -1028,6 +1296,65 @@ def test_non_list_token_series_is_rejected() -> None:
     )
     kwargs["token_series"] = {"deployment": "gpt4o"}
     with pytest.raises(ActualsEvidenceError, match="token_series must be a list"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_token_series_with_a_non_dict_element_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["token_series"] = [{"deployment": "gpt4o"}, "not-a-dict"]
+    with pytest.raises(ActualsEvidenceError, match="token_series must be a list of dict"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_empty_list_token_series_element_check_still_allows_empty_list() -> None:
+    # An empty observed list is a genuinely observed zero (pass), not
+    # subject to the per-element dict check simply because there are no
+    # elements to check.
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["token_series"] = []
+    manifest = build_actuals_manifest(**kwargs)
+    assert manifest["usage"]["model_attribution_status"] == "pass"
+    assert manifest["usage"]["models"] == []
+
+
+def test_non_mapping_provenance_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["provenance"] = ["query_api_version", "2025-03-01"]
+    with pytest.raises(ActualsEvidenceError, match="provenance must be a mapping"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_non_list_warnings_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["warnings"] = "a single warning string, not a list"
+    with pytest.raises(ActualsEvidenceError, match="warnings must be a list of str"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_warnings_with_a_non_str_element_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["warnings"] = ["a fine warning", 42]
+    with pytest.raises(ActualsEvidenceError, match="warnings must be a list of str"):
         build_actuals_manifest(**kwargs)
 
 

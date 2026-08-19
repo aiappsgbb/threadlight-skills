@@ -249,22 +249,76 @@ rounding=ROUND_HALF_UP)` — true half-up rounding, e.g. `2.675` quantizes to
 rounds half-to-even on the *binary* approximation of the value (`2.675` is
 actually stored as `2.67499999999999982...`, so `round(2.675, 2) == 2.67`,
 not the correct `2.68`). Values are cast from `Decimal` to `float` only
-after this quantization step, and are never re-rounded afterward.
+after this quantization step, and are never re-rounded afterward. A
+quantized amount that is exactly zero but carries a negative sign (e.g. a
+raw `-0.001` quantizing to `Decimal("-0.00")`) is normalized to a plain
+`0.0` before being reported — a signed-zero cent amount is never a
+meaningful distinct value and must never surface as `-0.0` in the
+serialized manifest.
+
+A cost cell whose value is syntactically numeric but too large to
+represent at cent precision under the ambient `decimal` context (for
+example a `"1e300"`-style value, which needs on the order of 300
+significant digits once quantized) raises `ActualsEvidenceError` naming the
+offending amount — it is never allowed to escape as a raw
+`decimal.InvalidOperation`/`decimal.Overflow` exception, since this module's
+entire contract is that malformed or unrepresentable evidence fails closed
+through `ActualsEvidenceError`, not through leaking an implementation-detail
+exception type a caller was never told to expect.
 
 Because each resource bucket and `unattributed_usd` are quantized
 **independently**, their sum can differ from the total (computed once,
-directly, from the exact unrounded grand sum) by up to a cent whenever the
-input contains sub-cent values such as `0.005`-per-row half-cent charges.
-To guarantee `period_total_usd == sum(resources[].period_cost_usd) +
-unattributed_usd` **exactly**, any such residual is deterministically
-allocated to the resource bucket with the largest absolute quantized value
-(ties broken by the lexicographically smallest normalized resource key, so
-the choice is reproducible run to run); if there are no resource buckets at
-all, the residual goes to `unattributed_usd` instead. This never invents a
-new field or a hidden adjustment record — the reconciled numbers *are* the
-reported numbers — but the policy itself is documented here precisely so
-the adjustment is inspectable rather than a silent, unexplained cent
-appearing or disappearing.
+directly, from the exact unrounded grand sum) by more than a cent whenever
+the input contains many sub-cent values such as `0.005`-per-row half-cent
+charges. To guarantee `period_total_usd == sum(resources[].period_cost_usd)
++ unattributed_usd` **exactly**, any such residual is distributed one cent
+at a time across *every* resource bucket plus `unattributed_usd` using the
+largest-remainder method, never dumped onto a single arbitrary bucket:
+
+* Every bucket's own signed remainder — its exact raw value minus its own
+  independently-quantized value — is ranked.
+* A positive residual (the independently-rounded parts under-sum the total)
+  hands out `+0.01` to the buckets with the *largest* remainder first (the
+  ones that rounded down the most relative to their raw value), one cent
+  per bucket, until the residual is exhausted.
+* A negative residual (the parts over-sum the total) takes back `-0.01`
+  from the buckets with the *smallest* (most negative) remainder first (the
+  ones that rounded up the most).
+* Ties are broken deterministically by the normalized
+  `.casefold().rstrip("/")` resource key, ascending — the same ordering
+  `cost.resources[]` is already sorted by — so the outcome is reproducible
+  run to run and independent of the order rows were observed in.
+  `unattributed_usd` always loses ties against a real resource bucket (it
+  is the last candidate adjusted), so a one-cent nudge lands on a specific,
+  identifiable resource whenever the choice between resource and
+  unattributed is otherwise arbitrary.
+
+Because a correctly HALF_UP-rounded value is always within half a cent of
+its raw value, and this method moves any single bucket by at most one
+additional cent, every bucket's final reported value stays within `0.01` of
+its own raw value, and allocation alone never flips a non-negative raw
+value's displayed sign negative (it can only move a zero-rounding bucket up
+to `0.01`, never down past zero) — a genuine sign change always comes from
+the *raw* value itself, never from the residual-distribution step. This
+never invents a new field or a hidden adjustment record — the reconciled
+numbers *are* the reported numbers — but the policy itself is documented
+here precisely so the adjustment is inspectable rather than a silent,
+unexplained cent appearing or disappearing.
+
+### Comparing money fields exactly
+
+Every reported USD field here (`period_total_usd`, `period_cost_usd`,
+`unattributed_usd`) is a JSON number produced from an already
+cent-quantized `Decimal`, but it is still serialized as an IEEE-754 binary
+`float` in the JSON document. A consumer that re-derives the accounting
+identity (`period_total_usd == sum(period_cost_usd) + unattributed_usd`) by
+adding the deserialized `float`s directly with ordinary binary addition can
+still observe spurious inequality from binary-float representation error,
+even though every value is exact to the cent in decimal. Consumers must
+instead compare either as **integer cents** (multiply each value by 100 and
+round to the nearest integer before comparing/summing) or by reconstructing
+`Decimal(str(value))` for each field before summing/comparing — never by
+summing the raw deserialized `float`s and expecting exact binary equality.
 
 
 

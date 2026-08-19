@@ -92,6 +92,22 @@ COST_COLUMN_PRIORITY = ("pretaxcost", "costusd", "cost")
 _YYYYMMDD_RE = re.compile(r"\d{8}", re.ASCII)
 _ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 
+# `decimal.Decimal(str)` is far more permissive than a Cost Management cost
+# cell should ever need: it silently accepts underscore digit separators
+# (`Decimal("1_000.50")` parses as `1000.50`, a readability feature meant for
+# Python source literals, not external data) and, without `re.ASCII`, `\d`
+# would also match non-ASCII decimal digits (Arabic-Indic, fullwidth, ...)
+# that `Decimal()` happily parses too. Both are silent-acceptance hazards a
+# malformed or adversarial response cell could exploit to sneak a
+# non-plain-ASCII numeric syntax past validation. Every string cost cell is
+# matched against this strict sign/digits/decimal-point/exponent ASCII-only
+# grammar *before* `Decimal()` ever sees it; anything else (underscores,
+# non-ASCII digits, "Infinity"/"NaN" spellings, empty strings) is rejected
+# as `"cost value is not numeric"` rather than silently coerced.
+_ASCII_MONEY_RE = re.compile(
+    r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII
+)
+
 
 def select_cost_column(names: list[str]) -> str:
     """Return the casefolded name of the single cost column to use.
@@ -255,7 +271,16 @@ def rows_from_query_page(page: dict[str, object]) -> list[dict[str, object]]:
 def _parse_cost_value(raw: object) -> Decimal:
     """Parse one cost cell into `Decimal`. Rejects `bool` (an `int`
     subclass), non-finite floats, and anything that does not represent a
-    finite real number. Negative values (refunds) are accepted unchanged."""
+    finite real number. Negative values (refunds) are accepted unchanged.
+
+    String cells are validated against `_ASCII_MONEY_RE` (plain ASCII
+    sign/digits/decimal-point/exponent only) *before* `Decimal()` ever sees
+    them, rejecting underscore digit separators and non-ASCII digit
+    syntaxes that `Decimal()` would otherwise silently accept. This does
+    not reject `1e300`-style values with a huge exponent — those are
+    syntactically valid money strings and are only unrepresentable once
+    quantized to the cent; see `_quantize_usd` for that failure mode.
+    """
     if isinstance(raw, bool):
         raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
     if isinstance(raw, int):
@@ -265,8 +290,11 @@ def _parse_cost_value(raw: object) -> Decimal:
             raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
         return Decimal(str(raw))
     if isinstance(raw, str):
+        candidate = raw.strip()
+        if not _ASCII_MONEY_RE.fullmatch(candidate):
+            raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
         try:
-            value = Decimal(raw.strip())
+            value = Decimal(candidate)
         except (InvalidOperation, ValueError) as exc:
             raise ActualsEvidenceError(
                 f"cost value is not numeric: {raw!r}"
@@ -312,8 +340,14 @@ def _require_utc_midnight(value: object, label: str) -> datetime:
 
 _CENT = Decimal("0.01")
 
+# Sentinel bucket key for the unattributed total in the largest-remainder
+# candidate list (never collides with a normalized `.casefold().rstrip("/")`
+# resource key, since those are always non-empty after the blank/whitespace
+# check in `aggregate_cost_rows`).
+_UNATTRIBUTED_KEY = ""
 
-def _quantize_usd(value: Decimal) -> Decimal:
+
+def _quantize_usd(value: Decimal, *, context: str) -> Decimal:
     """Round one USD amount to the cent with `ROUND_HALF_UP` (ties away
     from zero) — the accounting-standard rounding, and never Python's
     `round()` on a `float`. `round()` operates on the *binary* float
@@ -325,8 +359,36 @@ def _quantize_usd(value: Decimal) -> Decimal:
     the caller's original string/exact representation (as
     `_parse_cost_value` already does), never a `Decimal` re-derived from an
     already-rounded `float`.
+
+    `Decimal.quantize` consults the *ambient decimal context* (default
+    precision 28 significant digits), not just the two target fractional
+    digits: a syntactically valid cost cell such as `"1e300"` parses fine
+    (the `Decimal()` constructor never applies context) but needs roughly
+    302 significant digits once quantized to whole cents, which raises
+    `decimal.InvalidOperation` — a value simply too large to represent at
+    cent precision, not a caller bug in the usual "bad input" sense, but
+    still an evidence problem that must fail closed rather than let a raw
+    `decimal` exception escape past this module's `ActualsEvidenceError`
+    contract. `context` names *which* amount was being rounded (a specific
+    resource, "unattributed total", or "period total") so the error is
+    actionable rather than a bare traceback.
+
+    A quantized result that is exactly zero but carries a negative sign
+    (`Decimal("-0.00")`, e.g. from a raw `-0.001`) is normalized to a plain
+    `0.00` — a signed-zero cent amount is not a meaningful distinct value
+    and must never surface as `-0.0` in a serialized manifest.
     """
-    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+    try:
+        quantized = value.quantize(_CENT, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ArithmeticError) as exc:
+        raise ActualsEvidenceError(
+            f"cost value could not be rounded to the cent ({context}): "
+            f"{value!r} is not representable at 2 decimal places under the "
+            f"current decimal context ({exc})"
+        ) from exc
+    if quantized.is_zero():
+        quantized = abs(quantized)
+    return quantized
 
 
 def _reconcile_quantized_costs(
@@ -347,45 +409,126 @@ def _reconcile_quantized_costs(
     guaranteed to sum to the independently-rounded total: three rows of
     exactly `0.005` sum to a raw `0.015` (which quantizes to `0.02`), but
     each `0.005` part quantizes to `0.01` on its own (summing those parts
-    gives `0.03`). Whenever the two disagree, the (always-exact, since
-    every value here is already cent-quantized) residual is added to the
-    largest-absolute-value resource bucket — ties are broken
-    deterministically by the same `.casefold().rstrip("/")` resource-key
-    ordering the manifest already sorts `cost.resources[]` by (the
-    lexically smallest normalized key wins), so the adjustment target is
-    reproducible run to run and documented, not an arbitrary
-    dict-iteration artifact. `unattributed` only ever absorbs the residual
-    when there are no resource buckets at all — in that case
-    `unattributed` is the *only* remaining part, so it is already trivially
-    equal to the total and this branch never actually changes a value; it
-    exists purely so the policy is total and well-defined (e.g. for a
-    future multi-bucket `unattributed`), not because it is reachable
-    today.
+    gives `0.03`).
+
+    Whenever the two disagree, the (always-exact, since every value here is
+    already cent-quantized) residual is distributed one cent at a time
+    across *every* attributed resource bucket plus the `unattributed`
+    bucket — the classic largest-remainder method, not a single arbitrary
+    bucket absorbing the whole residual:
+
+    * Rank every bucket by its own signed remainder
+      `raw - rounded` (how far its independent HALF_UP rounding is from the
+      exact value it rounded away from).
+    * A positive residual (parts under-sum the total) hands out `+0.01` to
+      the buckets with the *largest* remainder first (the ones rounding
+      *down* the most relative to their raw value) until the residual is
+      exhausted.
+    * A negative residual (parts over-sum the total) takes back `-0.01`
+      from the buckets with the *smallest* (most negative) remainder first
+      (the ones rounding *up* the most).
+    * Ties are broken deterministically by the normalized
+      `.casefold().rstrip("/")` resource key, ascending — the same
+      ordering `cost.resources[]` is already sorted by — so the choice is
+      reproducible run to run and independent of input row order.
+      `unattributed` always loses ties against a real resource bucket (it
+      is adjusted last), since a resource-level breakdown is the more
+      informative place for a visible one-cent nudge when the choice is
+      otherwise arbitrary.
+
+    Because a correctly HALF_UP-rounded value is always within half a cent
+    of its raw value, and this method only ever moves a given bucket by one
+    additional cent, every bucket's final displayed error against its own
+    raw value stays bounded at `<= 0.01`, and a bucket whose raw value was
+    unambiguously non-negative is never nudged into a negative displayed
+    value by allocation alone (it can only move from `0.00` up to `0.01`,
+    never down past zero) — sign flips are a property of the *raw* value,
+    not an artifact this method introduces.
+
+    Distributing `|residual|` cents one at a time requires at least that
+    many buckets (resources + `unattributed`) to exist; violating that
+    would mean the exact-vs-independently-rounded gap exceeded what
+    largest-remainder distribution can represent, an internal invariant
+    this function was designed to always satisfy — if it is ever broken,
+    that is a contract violation and is raised as `ActualsEvidenceError`
+    rather than silently truncated or dropped.
     """
-    raw_total = (
-        sum((bucket["cost"] for bucket in resource_totals.values()), Decimal("0"))
-        + unattributed_raw
-    )
-    quantized_total = _quantize_usd(raw_total)
+    try:
+        raw_total = (
+            sum((bucket["cost"] for bucket in resource_totals.values()), Decimal("0"))
+            + unattributed_raw
+        )
+    except (InvalidOperation, ArithmeticError) as exc:
+        raise ActualsEvidenceError(
+            f"cost values could not be summed to a period total: {exc}"
+        ) from exc
 
-    quantized_resources = {
-        key: _quantize_usd(bucket["cost"]) for key, bucket in resource_totals.items()
+    quantized_total = _quantize_usd(raw_total, context="period total")
+
+    raw_by_key: dict[str, Decimal] = {
+        key: bucket["cost"] for key, bucket in resource_totals.items()
     }
-    quantized_unattributed = _quantize_usd(unattributed_raw)
+    quantized_resources = {
+        key: _quantize_usd(
+            raw, context=f"resource {resource_totals[key]['resource_id']!r}"
+        )
+        for key, raw in raw_by_key.items()
+    }
+    quantized_unattributed = _quantize_usd(unattributed_raw, context="unattributed total")
 
-    residual = quantized_total - (
-        sum(quantized_resources.values(), Decimal("0")) + quantized_unattributed
-    )
+    try:
+        residual = quantized_total - (
+            sum(quantized_resources.values(), Decimal("0")) + quantized_unattributed
+        )
+        residual_cents = int(residual / _CENT)
+    except (InvalidOperation, ArithmeticError) as exc:
+        raise ActualsEvidenceError(
+            f"cost rounding residual could not be computed: {exc}"
+        ) from exc
 
-    if residual != 0:
-        if quantized_resources:
-            target_key = max(
-                sorted(quantized_resources),
-                key=lambda key: abs(quantized_resources[key]),
+    if residual_cents != 0:
+        # (remainder, is_unattributed, normalized_key) per candidate
+        # bucket. `is_unattributed` sorts real resources (False == 0)
+        # ahead of `unattributed` (True == 1) in *every* tie, in both the
+        # ascending and descending orderings below.
+        candidates: list[tuple[Decimal, bool, str]] = [
+            (raw_by_key[key] - quantized_resources[key], False, key)
+            for key in raw_by_key
+        ]
+        candidates.append(
+            (unattributed_raw - quantized_unattributed, True, _UNATTRIBUTED_KEY)
+        )
+
+        if abs(residual_cents) > len(candidates):
+            raise ActualsEvidenceError(
+                f"cost rounding residual of {residual_cents} cent(s) cannot "
+                f"be distributed at one cent per bucket across "
+                f"{len(candidates)} bucket(s) — quantization invariant "
+                "violated"
             )
-            quantized_resources[target_key] += residual
+
+        if residual_cents > 0:
+            # Largest remainder first: the most under-rounded bucket
+            # (raw - rounded largest) gets the +0.01 first.
+            ordered = sorted(candidates, key=lambda item: (-item[0], item[1], item[2]))
+            adjustment = _CENT
         else:
-            quantized_unattributed += residual
+            # Mirror image: the most over-rounded bucket
+            # (raw - rounded smallest/most negative) gives back -0.01 first.
+            ordered = sorted(candidates, key=lambda item: (item[0], item[1], item[2]))
+            adjustment = -_CENT
+
+        for _remainder, is_unattributed, key in ordered[: abs(residual_cents)]:
+            if is_unattributed:
+                quantized_unattributed += adjustment
+            else:
+                quantized_resources[key] += adjustment
+
+        if quantized_unattributed.is_zero():
+            quantized_unattributed = abs(quantized_unattributed)
+        for key, value in quantized_resources.items():
+            if value.is_zero():
+                quantized_resources[key] = abs(value)
 
     return quantized_resources, quantized_unattributed, quantized_total
 
@@ -521,11 +664,15 @@ def aggregate_cost_rows(
             raw_resource_id = row.get("resourceid")
             resource_type = row.get("resourcetype")
             service_name = row.get("servicename")
+            # Whitespace-only strings are blank, exactly like the resource
+            # ID blank check below (`.strip()`, never a bare truthiness
+            # check) — a cell containing `"   "` must backfill the same as
+            # an empty string, not be treated as a real observed value.
             observed_resource_type = (
-                resource_type if isinstance(resource_type, str) else ""
+                resource_type.strip() if isinstance(resource_type, str) else ""
             )
             observed_service_name = (
-                service_name if isinstance(service_name, str) else ""
+                service_name.strip() if isinstance(service_name, str) else ""
             )
 
             resource_key = None
@@ -556,12 +703,16 @@ def aggregate_cost_rows(
                         # carried a blank value; a later row observed a
                         # real one.
                         bucket[field] = observed
-                    elif existing != observed:
+                    elif existing.casefold() != observed.casefold():
                         raise ActualsEvidenceError(
                             f"Cost Management rows disagree on {field} for "
                             f"resource {raw_resource_id!r}: {existing!r} vs "
                             f"{observed!r}"
                         )
+                    # else: same value up to case — keep the first-observed
+                    # (or backfilled) display casing; a later row that only
+                    # differs by case is not a conflict and must never
+                    # overwrite it.
             else:
                 unattributed += cost_value
 
@@ -608,12 +759,14 @@ def build_actuals_manifest(
     """Build `threadlight-cost-actuals/v1` without issuing live calls.
 
     Raises `ActualsEvidenceError` when `scope` is not a non-empty mapping,
-    when `start`/`end`/`generated_at` are not timezone-aware UTC datetimes,
-    when `generated_at` precedes `end` (a negative settlement age is
-    evidence of a caller bug, never silently clamped to zero), when
+    when `provenance` is not a mapping, when `warnings` is not a list of
+    `str`, when `start`/`end`/`generated_at` are not timezone-aware UTC
+    datetimes, when `generated_at` precedes `end` (a negative settlement
+    age is evidence of a caller bug, never silently clamped to zero), when
     `interaction_counts` is present but not a `(total, successful)` pair of
-    non-negative ints, or when any `cost_pages` evidence fails to parse or
-    validate against the window (see `aggregate_cost_rows`).
+    non-negative ints, when `token_series` is present but not a list of
+    `dict`, or when any `cost_pages` evidence fails to parse or validate
+    against the window (see `aggregate_cost_rows`).
 
     Top-level `status` is `pass` whenever this function returns at all: it
     is produced by the Cost Management source, scope, and window alone
@@ -626,6 +779,14 @@ def build_actuals_manifest(
     """
     if not isinstance(scope, dict) or not scope:
         raise ActualsEvidenceError("scope must be a non-empty mapping")
+
+    if not isinstance(provenance, dict):
+        raise ActualsEvidenceError("provenance must be a mapping")
+
+    if not isinstance(warnings, list) or any(
+        not isinstance(warning, str) for warning in warnings
+    ):
+        raise ActualsEvidenceError("warnings must be a list of str")
 
     start = _require_utc(start, "start")
     end = _require_utc(end, "end")
@@ -673,8 +834,12 @@ def build_actuals_manifest(
         model_attribution_status = "not-verified"
         models: list[dict[str, object]] = []
     else:
-        if not isinstance(token_series, list):
-            raise ActualsEvidenceError("token_series must be a list or None")
+        if not isinstance(token_series, list) or any(
+            not isinstance(row, dict) for row in token_series
+        ):
+            raise ActualsEvidenceError(
+                "token_series must be a list of dict, or None"
+            )
         model_attribution_status = "pass"
         models = deepcopy(token_series)
 
