@@ -61,6 +61,18 @@ actual-vs-projection cost verdict. All fields required; no defaults.
 Identifies which traced events count as a "successful interaction" for the
 cost-per-success calculation.
 
+> **`success_event` is unambiguous: operator-confirmed in Full mode, blank
+> in Fast-PoC, never derived.** In **Full mode** the operator must state and
+> confirm `name`, `trace_attribute`, and every `success_values` entry
+> explicitly — this triple is never inferred from a BR-XXX business rule,
+> guessed from the process description, or silently derived from any other
+> field. In **Fast-PoC mode** all three stay blank (`success_values: []`)
+> and the source is left open in § 13 with `Source: open-question`, exactly
+> like every other § 14 leaf. A final review must treat an invented
+> `success_event` leaf as a defect with the same severity as an invented
+> numeric threshold — it is never acceptable to fabricate an event name
+> just to make the section look complete.
+
 | Field | Type | Constraint |
 |---|---|---|
 | `name` | string | nonempty; identifier grammar (see below) |
@@ -93,9 +105,25 @@ judged against.
 
 | Field | Type | Bounds | Applies to |
 |---|---|---|---|
-| `target_cost_per_successful_interaction_usd` | float | `> 0` | — |
-| `max_forecast_variance_pct` | float | `>= 0` | **cost** variance only |
-| `max_token_volume_variance_pct` | float | `>= 0` | **token volume** variance only |
+| `target_cost_per_successful_interaction_usd` | float | `> 0`; USD per successful interaction (as defined by `success_event`); no default | — |
+| `max_forecast_variance_pct` | float | fractional, `[0, 1]` (`0.20` = 20%); no default; values `> 1` are invalid | **cost** variance only |
+| `max_token_volume_variance_pct` | float | fractional, `[0, 1]` (`0.20` = 20%); no default; values `> 1` are invalid | **token volume** variance only |
+
+> **`target_cost_per_successful_interaction_usd` is an explicit USD amount
+> per successful interaction, never a percentage or a rate.** It is the
+> target cost — in US dollars — of one interaction that satisfies
+> `success_event`, and it must be strictly greater than `0`. There is no
+> default: an operator who cannot state this number yet leaves the field
+> blank and records it in § 13 Open Questions, exactly like every other
+> § 14 leaf.
+
+> **`max_forecast_variance_pct` and `max_token_volume_variance_pct` are
+> fractional floats, not percentage integers, and have no default.**
+> `0.20` means 20%; both fields are bounded to `[0, 1]` inclusive. A value
+> greater than `1` — for example `20`, written as if "20" meant "20
+> percent" — is **invalid** and must be rejected, not silently
+> reinterpreted or divided by 100. When the field is unanswered it stays
+> blank; there is no fallback value.
 
 > **Cost variance and token-volume variance are distinct, independently
 > tunable thresholds** — they are not the same number wearing two names, and
@@ -165,11 +193,15 @@ basis mismatch between them is handled.
    projection coverage is policy-gated here.
 7. Cost variance (`max_forecast_variance_pct`) and token-volume variance
    (`max_token_volume_variance_pct`) are separate thresholds — never merge
-   or derive one from the other.
+   or derive one from the other. Both are **fractional floats in `[0, 1]`**
+   (`0.20` = 20%), never a bare percentage integer; a value `> 1` is invalid.
 8. `success_event` identifiers are restricted to
    `^[A-Za-z][A-Za-z0-9_.:-]{0,127}$` because the reconciliation code compiles
    them into a fixed AppTraces KQL query — it never builds arbitrary KQL from
-   operator input.
+   operator input. `success_event` is always **operator-confirmed** in Full
+   mode and blank/open-question in Fast-PoC — never derived or invented.
 9. `actual_billing_price_basis` is always an explicit operator declaration
    (the Query API cannot derive it); `unknown` is a valid choice and is
    always a basis mismatch unless `allow_basis_mismatch_for_verdict: true`.
+10. `target_cost_per_successful_interaction_usd` is an explicit USD amount
+    per successful interaction, strictly `> 0`, with no default.

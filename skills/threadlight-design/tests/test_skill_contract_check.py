@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import pytest
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT = TEST_DIR.parent / "scripts" / "skill_contract_check.py"
 REPO_ROOT = TEST_DIR.parents[2]
+CHECK_PILOT_CONTRACT_SCRIPT = REPO_ROOT / "scripts" / "ci" / "check_pilot_contract.py"
 
 
 def _load_module():
@@ -27,6 +29,26 @@ def _load_module():
 
 
 scc = _load_module()
+
+
+def _load_check_pilot_contract():
+    """Load the production `scripts/ci/check_pilot_contract.py` module.
+
+    `VALUE_MODEL_MARKERS` and `extract_section` must come from this one
+    source — a hand-copied duplicate here could silently drift from what the
+    real design->deploy checker validates against, and the template tests
+    below would then be pinning the wrong contract.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "check_pilot_contract", CHECK_PILOT_CONTRACT_SCRIPT
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["check_pilot_contract"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+cpc = _load_check_pilot_contract()
 
 
 # --------------------------------------------------------------------------
@@ -476,28 +498,32 @@ def test_speckit_template_declares_section_14_value_model():
     `VALUE_MODEL_MARKERS` validates against, and the schema documented in
     `references/value-model-schema.md`. The template is a *blank* contract —
     every numeric/decision leaf must stay a bare YAML key (a comment, not a
-    value) so no pilot inherits an invented number.
+    value) so no pilot inherits an invented number. `VALUE_MODEL_MARKERS` and
+    the section boundary are loaded from the production checker itself
+    (`cpc`), not re-typed here, and every assertion below is scoped to the
+    *extracted* § 14 body — never the whole template file, where a stray
+    match elsewhere (e.g. in § 12's prose) could pass by accident.
     """
     template = (
         TEST_DIR.parent / "references" / "speckit-template.md"
     ).read_text(encoding="utf-8")
 
-    assert "## 14. Value Model" in template
+    # Exactly one § 14 heading, and no § 15 — § 14 must stay the template's
+    # last section. `extract_section`'s boundary is "the next heading whose
+    # leading integer is strictly greater than 14"; a second `## 14.` or a
+    # stray `## 15.` would silently change what "all of § 14" means.
+    assert template.count("## 14. Value Model") == 1
+    assert not re.search(r"^##[ \t]+15\.", template, re.MULTILINE)
 
-    # Structural markers the design->deploy checker keys off (VALUE_MODEL_MARKERS).
-    for marker in (
-        "value_model:",
-        "maturity_policy:",
-        "success_event:",
-        "baseline:",
-        "accounting:",
-    ):
-        assert marker in template, f"section 14 must declare `{marker}`"
+    section = cpc.extract_section(template, 14)
+    assert section is not None, "check_pilot_contract.extract_section must find § 14"
 
-    # Section 14 is the last section in the template body (there is no
-    # `## 15.`), so slicing to end-of-file is safe and sidesteps the nested
-    # ```yaml fence inside the outer ```markdown wrapper.
-    section = template[template.index("## 14. Value Model"):]
+    # Structural markers the design->deploy checker keys off, loaded from the
+    # production module rather than a hand-copied duplicate.
+    for marker in cpc.VALUE_MODEL_MARKERS:
+        assert re.search(rf"^[ \t]*{re.escape(marker)}", section, re.MULTILINE), (
+            f"section 14 must declare `{marker}` as a live (non-comment) key"
+        )
 
     required_fields = (
         "min_complete_days",
@@ -520,26 +546,203 @@ def test_speckit_template_declares_section_14_value_model():
     for field in required_fields:
         assert field in section, f"section 14 must declare field `{field}`"
 
-    # The template is a *blank* shape: every numeric/decision field is a bare
+    # The template is a *blank* shape: every numeric/decision leaf is a bare
     # `key:` (optionally followed only by a trailing comment), never a
     # populated value like `7` or `0.95` copied from the reference example.
-    numeric_fields = (
+    # This covers every leaf EXCEPT `actual_cost_basis`, the sole fixed
+    # literal (checked separately below).
+    blank_fields = (
         "min_complete_days",
         "min_successful_interactions",
         "min_cost_settlement_age_hours",
         "max_window_end_age_days",
         "min_projection_attribution_coverage_pct",
+        "name",
+        "trace_attribute",
+        "success_values",
         "target_cost_per_successful_interaction_usd",
         "max_forecast_variance_pct",
         "max_token_volume_variance_pct",
+        "actual_billing_price_basis",
+        "forecast_price_basis",
+        "allow_basis_mismatch_for_verdict",
+        "scope_policy",
     )
     for line in section.splitlines():
         stripped = line.strip()
-        for field in numeric_fields:
+        for field in blank_fields:
             if not stripped.startswith(f"{field}:"):
                 continue
             remainder = stripped[len(f"{field}:"):].split("#", 1)[0].strip()
-            assert remainder == "", (
+            # `success_values` is a list leaf; its blank form is `[]`, not a
+            # bare key, but it must never carry actual entries.
+            allowed = {"[]"} if field == "success_values" else {""}
+            assert remainder in allowed, (
                 f"template field `{field}` must stay blank (comment only, "
                 f"no invented value), found: {stripped!r}"
             )
+
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("actual_cost_basis:"):
+            remainder = stripped[len("actual_cost_basis:"):].split("#", 1)[0].strip()
+            assert remainder == "usage-pretax", (
+                "`actual_cost_basis` must be the fixed literal `usage-pretax`, "
+                f"found: {stripped!r}"
+            )
+            break
+    else:
+        pytest.fail("section 14 must declare `actual_cost_basis:`")
+
+
+def test_speckit_template_variance_thresholds_are_fractional_with_no_default():
+    """`max_forecast_variance_pct` / `max_token_volume_variance_pct` are
+    fractional floats in [0, 1] (`0.20` == 20%) — never a bare percentage
+    integer, and never pre-filled with a default value.
+    """
+    template = (
+        TEST_DIR.parent / "references" / "speckit-template.md"
+    ).read_text(encoding="utf-8")
+    section = cpc.extract_section(template, 14)
+    assert section is not None
+
+    for field in ("max_forecast_variance_pct", "max_token_volume_variance_pct"):
+        match = re.search(rf"^[ \t]*{field}:[^\n]*$", section, re.MULTILINE)
+        assert match, f"section 14 must declare `{field}`"
+        line = match.group(0)
+        value_part, _, comment = line.partition("#")
+        assert value_part.split(":", 1)[1].strip() == "", (
+            f"`{field}` must not ship a default value, found: {line!r}"
+        )
+        assert "fractional" in comment.lower(), (
+            f"`{field}` comment must state the value is fractional, found: {line!r}"
+        )
+        assert "[0, 1]" in comment, (
+            f"`{field}` comment must state the [0, 1] bound, found: {line!r}"
+        )
+
+
+def test_speckit_template_target_cpi_is_explicit_usd_definition():
+    """`target_cost_per_successful_interaction_usd` must be documented as a
+    USD amount per successful interaction, strictly greater than 0."""
+    template = (
+        TEST_DIR.parent / "references" / "speckit-template.md"
+    ).read_text(encoding="utf-8")
+    section = cpc.extract_section(template, 14)
+    assert section is not None
+
+    match = re.search(
+        r"^[ \t]*target_cost_per_successful_interaction_usd:[^\n]*"
+        r"(?:\n[ \t]+#[^\n]*)*",
+        section,
+        re.MULTILINE,
+    )
+    assert match, "section 14 must declare `target_cost_per_successful_interaction_usd`"
+    comment = match.group(0).lower()
+    assert "usd" in comment
+    assert "successful interaction" in comment
+    assert "> 0" in comment
+
+
+def test_fast_poc_callout_verbatim_and_value_model_row_present():
+    """The checker's `FAST_POC_MARKERS` key off an exact § 13 callout string
+    — it must stay untouched — but an actionable § 14 captured-context row
+    must immediately follow it so the audit trail also covers the value
+    model, not just § 1 / § 11f.
+    """
+    template = (
+        TEST_DIR.parent / "references" / "speckit-template.md"
+    ).read_text(encoding="utf-8")
+    # Mirror how this text renders in a real generated SPEC: the template's
+    # leading `> ` blockquote markers are authoring annotations, not part of
+    # the emitted content, and the callout wraps across several such lines.
+    stripped_lines = [
+        line[2:] if line.startswith("> ") else line
+        for line in template.splitlines()
+    ]
+    flat = " ".join(" ".join(stripped_lines).split())
+
+    verbatim_callout = (
+        "_Fast-PoC mode: audience mode, customer context, brand, and "
+        "production posture were not collected; using neutral demo "
+        "defaults. Override later in SPEC § 1 / § 11f / § 13._"
+    )
+    assert verbatim_callout in flat, "the mandatory Fast-PoC § 13 callout must stay verbatim"
+
+    row = "| § 14.value_model | not collected | open-question | no | yes |"
+    assert row in flat, "§ 14's captured-context row must be present and literal"
+
+    callout_idx = flat.index(verbatim_callout)
+    row_idx = flat.index(row)
+    assert row_idx > callout_idx, "the § 14 row must immediately follow the Fast-PoC callout"
+
+
+def test_success_event_is_unambiguous_across_template_and_schema():
+    """`success_event` must read the same way everywhere: operator-confirmed
+    in Full mode, blank/open-question in Fast-PoC, and never derived or
+    invented — in the template, the schema, and the final-review checklist.
+    """
+    template = (
+        TEST_DIR.parent / "references" / "speckit-template.md"
+    ).read_text(encoding="utf-8")
+    schema = (
+        TEST_DIR.parent / "references" / "value-model-schema.md"
+    ).read_text(encoding="utf-8")
+    skill = (TEST_DIR.parent / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "operator-confirmed" in template.lower()
+    assert "success_event" in schema
+    assert "operator-confirmed" in schema.lower()
+
+    review_line = next(
+        line for line in skill.splitlines()
+        if "SPEC § 14 Value Model has the correct" in line
+    )
+    idx = review_line.index("No numeric or decision field was invented")
+    tail = review_line[idx:]
+    assert "success_event" in tail, (
+        "the final-review checklist's invented-value ban must name "
+        "`success_event` explicitly, not just maturity_policy/baseline/accounting"
+    )
+
+
+def test_value_model_schema_defines_fractional_variance_and_explicit_cpi():
+    schema = (
+        TEST_DIR.parent / "references" / "value-model-schema.md"
+    ).read_text(encoding="utf-8")
+    lower = schema.lower()
+
+    assert "fractional" in lower
+    assert "[0, 1]" in schema
+    assert "invalid" in lower
+    assert "usd per successful interaction" in lower
+
+
+def test_skill_md_documents_section_14_consistently():
+    """Stale § 14 prose in SKILL.md: a template section-count that predates
+    §§ 13-14, § 14 missing from the input-contract enumeration, and
+    `check_pilot_contract.py` read as a plugin-local runtime dependency
+    instead of repo-side CI.
+    """
+    skill = (TEST_DIR.parent / "SKILL.md").read_text(encoding="utf-8")
+
+    ref_line = next(
+        line for line in skill.splitlines()
+        if line.startswith("| `references/speckit-template.md`")
+    )
+    assert "12 sections" not in ref_line, f"stale section count: {ref_line!r}"
+    assert re.search(r"(?<!\d)14(?!\d)", ref_line), f"section count must include § 14: {ref_line!r}"
+
+    match = re.search(
+        r"Sections\s+\*\*(.+?)\*\*\s+are\s+\*\*input contracts\*\*", skill, re.DOTALL
+    )
+    assert match, "input-contract enumeration paragraph not found"
+    enumeration = match.group(1)
+    assert re.search(r"(?<!\d)14(?!\d)", enumeration), (
+        f"§ 14 must be named in the input-contract enumeration, found: {enumeration!r}"
+    )
+
+    assert "repo-side CI" in skill or "repo's own CI" in skill, (
+        "`check_pilot_contract.py` must be qualified as repo-side CI, not a "
+        "plugin-local runtime dependency of this skill"
+    )

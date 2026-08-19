@@ -68,7 +68,7 @@ VALUE_MODEL_BLOCK = (
     "      max_forecast_variance_pct:\n"
     "      max_token_volume_variance_pct:\n"
     "    accounting:\n"
-    "      actual_cost_basis:\n"
+    "      actual_cost_basis: usage-pretax\n"
     "      actual_billing_price_basis:\n"
     "      forecast_price_basis:\n"
     "      allow_basis_mismatch_for_verdict:\n"
