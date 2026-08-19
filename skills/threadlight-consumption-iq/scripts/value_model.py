@@ -109,10 +109,16 @@ class ValueModelResult:
     `policy` only ever contains fields that both parsed AND validated
     cleanly — a field that is missing, malformed, unsafe, or unknown never
     appears in it, but every such problem still gets an entry in `errors`.
+
+    `errors` is a `list[str]` (approved public API), not a `tuple`. This
+    dataclass is still `frozen=True`, so REBINDING `.errors` (or `.policy`)
+    always raises `dataclasses.FrozenInstanceError` — only in-place list
+    mutation (`.errors.append(...)`) is left possible, which is an accepted
+    trade-off of this contract, not a bug.
     """
 
     policy: dict[str, object]
-    errors: tuple[str, ...]
+    errors: list[str]
 
     @property
     def is_complete(self) -> bool:
@@ -146,12 +152,12 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
     section_text = _extract_section_14(spec_text)
     if section_text is None:
         errors.append("value_model: SPEC section 14 (Value Model) not found")
-        return ValueModelResult(policy={}, errors=tuple(errors))
+        return ValueModelResult(policy={}, errors=errors)
 
     yaml_text, fence_errors = _extract_yaml_block(section_text)
     if yaml_text is None:
         errors.extend(fence_errors)
-        return ValueModelResult(policy={}, errors=tuple(errors))
+        return ValueModelResult(policy={}, errors=errors)
 
     parsed, duplicate_key_paths = _parse_indented_yaml(yaml_text)
     # Structural parse-time errors (duplicate keys at any level) are
@@ -167,7 +173,7 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
         # from "key not found": report what's wrong with the body, not that
         # the key is missing.
         errors.append("value_model: expected a mapping")
-        return ValueModelResult(policy={}, errors=tuple(errors))
+        return ValueModelResult(policy={}, errors=errors)
 
     # `.policy`'s root already IS `value_model` (see `ValueModelResult`), so
     # every error path below is relative to it — never re-prefixed with
@@ -202,7 +208,7 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
     if cost_policy:
         policy["cost"] = cost_policy
 
-    return ValueModelResult(policy=policy, errors=tuple(errors))
+    return ValueModelResult(policy=policy, errors=errors)
 
 
 def load_value_model(spec_path: Path) -> ValueModelResult:
@@ -540,8 +546,13 @@ def _v_identifier_list(raw: Any, path: str) -> tuple[Any, list[str]]:
     values: list[str] = []
     for i, item in enumerate(raw):
         if not isinstance(item, str) or not _IDENTIFIER_RE.fullmatch(item):
+            # Deliberate exception to this module's usual `<path>: ...`
+            # colon grammar: the approved security contract requires the
+            # contiguous substring `<path>[i] invalid` (no colon between
+            # the index and `invalid`) so a reviewer/log-scanner can grep
+            # for it verbatim without worrying about punctuation drift.
             errs.append(
-                f"{path}[{i}]: invalid — must match identifier grammar "
+                f"{path}[{i}] invalid: must match identifier grammar "
                 f"^[A-Za-z][A-Za-z0-9_.:-]{{0,127}}$, got {item!r}"
             )
         else:

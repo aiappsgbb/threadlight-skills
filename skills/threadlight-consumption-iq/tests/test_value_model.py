@@ -185,7 +185,7 @@ def _scalar_with_orphaned_children(yaml_body: str, group: str, scalar: str) -> s
 def test_complete_canonical_fixture_parses_with_no_errors():
     result = parse_value_model(_spec(_section(CANONICAL_YAML_BODY)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.is_complete is True
 
     cost = result.policy["cost"]
@@ -221,7 +221,7 @@ def test_matches_shipped_reference_example_verbatim():
     spec_text = REFERENCE_SPEC.read_text(encoding="utf-8")
     result = parse_value_model(spec_text)
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.is_complete is True
     assert result.policy["cost"]["success_event"]["name"] == "return_decision_completed"
     assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == "retail"
@@ -237,7 +237,7 @@ def test_absent_section_is_error_and_empty_policy():
     result = parse_value_model(spec_text)
 
     assert result.policy == {}
-    assert result.errors == ("value_model: SPEC section 14 (Value Model) not found",)
+    assert result.errors == ["value_model: SPEC section 14 (Value Model) not found"]
     assert result.is_complete is False
 
 
@@ -256,7 +256,7 @@ def test_section_15_is_a_hard_boundary():
     spec_text = _spec(_section(CANONICAL_YAML_BODY, after=decoy))
     result = parse_value_model(spec_text)
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
 
@@ -269,7 +269,7 @@ def test_lower_numbered_heading_inside_body_is_not_a_boundary():
     spec_text = _spec(body_with_stray_heading)
     result = parse_value_model(spec_text)
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["baseline"]["max_forecast_variance_pct"] == 0.20
 
 
@@ -371,7 +371,7 @@ def test_comment_only_value_is_treated_as_missing_not_as_text():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ("cost.maturity_policy.min_complete_days: missing",)
+    assert result.errors == ["cost.maturity_policy.min_complete_days: missing"]
     # Every other field in the same group must still survive.
     mp = result.policy["cost"]["maturity_policy"]
     assert mp == {
@@ -414,7 +414,7 @@ def test_min_cost_settlement_age_hours_allows_zero():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["maturity_policy"]["min_cost_settlement_age_hours"] == 0
 
 
@@ -515,7 +515,7 @@ def test_identifier_grammar_accepts_dots_colons_dashes_underscores():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert (
         result.policy["cost"]["success_event"]["trace_attribute"] == "decision.outcome:v1-2_3"
     )
@@ -574,7 +574,7 @@ def test_variance_fields_at_exact_bounds_are_valid():
 
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["baseline"]["max_forecast_variance_pct"] == 1.0
     assert result.policy["cost"]["baseline"]["max_token_volume_variance_pct"] == 0.0
 
@@ -602,7 +602,7 @@ def test_actual_billing_price_basis_accepts_all_four_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == value
 
 
@@ -638,7 +638,7 @@ def test_forecast_price_basis_accepts_only_three_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["accounting"]["forecast_price_basis"] == value
 
 
@@ -662,7 +662,7 @@ def test_allow_basis_mismatch_accepts_strict_lowercase_bool(value, expected):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["accounting"]["allow_basis_mismatch_for_verdict"] is expected
 
 
@@ -687,7 +687,7 @@ def test_scope_policy_accepts_both_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["accounting"]["scope_policy"] == value
 
 
@@ -1004,7 +1004,7 @@ def test_earlier_unrelated_fence_is_skipped_in_favor_of_the_value_model_fence():
     )
     result = parse_value_model(_spec(section14))
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
 
@@ -1046,15 +1046,14 @@ def test_malicious_success_value_produces_exact_invalid_error_with_index():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    # Grammar is uniform `<path>: invalid ...` everywhere in this module —
-    # the colon must follow the exact indexed path immediately, so an
-    # operator can locate `success_values[0]` before ever reading the
-    # message. Checked as two substrings (path, then "invalid") rather
-    # than one exact literal so the assertion doesn't over-pin incidental
-    # wording after the colon.
+    # This is the one deliberate exception to this module's usual
+    # `<path>: ...` colon grammar: the approved security contract requires
+    # the exact contiguous substring `<path>[i] invalid` — no colon between
+    # the index and `invalid` — so an operator/reviewer can grep the raw
+    # error text for it immediately, even though the grammar detail may be
+    # appended after it.
     assert any(
-        e.startswith("cost.success_event.success_values[0]:") and "invalid" in e
-        for e in result.errors
+        "cost.success_event.success_values[0] invalid" in e for e in result.errors
     )
     assert "success_values" not in result.policy["cost"]["success_event"]
 
@@ -1106,7 +1105,7 @@ def test_crlf_line_endings_parse_identically_to_lf():
 
     result = parse_value_model(crlf_text)
 
-    assert result.errors == ()
+    assert result.errors == []
     assert result.is_complete is True
     assert result.policy == parse_value_model(lf_text).policy
 
@@ -1165,7 +1164,7 @@ def test_price_bases_used_by_actual_billing_price_basis_accepts_all_four():
             "actual_billing_price_basis: retail", f"actual_billing_price_basis: {value}"
         )
         result = parse_value_model(_spec(_section(yaml_body)))
-        assert result.errors == (), value
+        assert result.errors == [], value
         assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == value
 
 
@@ -1262,11 +1261,14 @@ def test_result_is_frozen_dataclass_with_expected_fields():
         result.errors = []  # type: ignore[misc]  # frozen — must reject mutation
 
 
-def test_result_errors_is_a_true_immutable_tuple_not_just_a_frozen_attribute():
-    """`@dataclass(frozen=True)` alone only blocks REASSIGNING `.errors` —
-    it does nothing to stop `.errors.append(...)` mutating the list in
-    place. `.errors` must be a `tuple[str, ...]`, which has no `.append`
-    at all, for the error collection to be genuinely immutable."""
+def test_result_errors_is_a_list_and_only_rebinding_is_blocked():
+    """`errors: list[str]` is the approved public API (not a tuple).
+    `@dataclass(frozen=True)` blocks REASSIGNING `.errors` (see
+    `test_result_is_frozen_dataclass_with_expected_fields` above), but a
+    frozen dataclass does nothing to stop `.errors.append(...)` mutating
+    the list in place — that shallow mutability is an accepted trade-off
+    of this contract, not a bug, so it must NOT raise."""
     result = parse_value_model(_spec(_section(CANONICAL_YAML_BODY)))
-    assert isinstance(result.errors, tuple)
-    assert not hasattr(result.errors, "append")
+    assert isinstance(result.errors, list)
+    result.errors.append("not-a-real-error")  # must not raise
+    assert result.errors[-1] == "not-a-real-error"
