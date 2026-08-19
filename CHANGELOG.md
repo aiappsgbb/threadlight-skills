@@ -9,6 +9,154 @@ field.
 
 ### Fixed
 
+- **E2E job-start `azd auth login` had zero retry against an external OIDC
+  outage (run #32296600274).** The initial `azd auth login (federated OIDC)`
+  step waited ~47s and then failed with `ClientAssertionCredential: fetching
+  federated token: expected 200 response, got: 503` — every phase in the run
+  was skipped even though it was a design-only dispatch and a prior full run
+  against the exact same client/tenant/federated-credential-provider had
+  already logged in cleanly. GitHub's OIDC token endpoint returned a
+  transient 503, not a config problem. The step now retries the login +
+  `azd auth login --check-status` pair up to 3 times (15s then 30s backoff)
+  — but only when the captured output matches a transient signature (502,
+  503, 504, timeout/timed out, "temporarily unavailable", or azd's own
+  "fetching federated token: expected 200 response, got: 5xx" wrapper). Any
+  other failure — bad client id, wrong tenant, missing federated-credential
+  subject — still fails on attempt 1 with no retry, no `continue-on-error`,
+  and no swallowed output. Client id, tenant id, provider, and the isolated
+  `AZURE_CONFIG_DIR`/`AZD_CONFIG_DIR` dirs are unchanged; `azure/login@v3.0.0`
+  (the separate `az`-side OIDC step) is untouched.
+  `scripts/ci/tests/test_azd_auth_login_retry.py` asserts the bounded
+  3-attempt loop, the transient-signature grep (including a non-transient
+  message negative case), the 15s/30s backoff, `--check-status` gating
+  success, and `continue-on-error` absence — plus a mutation-style
+  behavioural proof that runs the real extracted step script under `bash`
+  against a fake `azd`/`sleep` on `PATH` for the transient-then-succeed,
+  non-transient-immediate-failure, and all-transient-exhausted cases.
+
+- **Full E2E Phase 3 "deploy" timed out on a lingering shell, not a failed
+  deployment (run #32290332688).** In the fsi-kyc-aml arm, Phase 3 started at
+  19:05:25 and the agent reported the deployment succeeded/active at
+  19:43:11 — teardown afterwards proved the deployment genuinely existed and
+  deleted cleanly. But the phase log showed an async/long-running shell
+  (`Deploy after RBAC grant`) plus polling/read-shell-output calls with no
+  final `Stop shell` cleanup once success was verified, so the step produced
+  no further activity and the job died on its step timeout at 19:50:37 —
+  6+ minutes after the real work was already done. Both workload deploy
+  prompts (`returns-triage`, `fsi-kyc-aml`) now carry an explicit
+  finalization instruction, placed right after `Final state required:` and
+  before the failure-close line so it runs on the success path: wait for
+  every shell command the agent started to exit, then call the `Stop shell`
+  tool on any still-running session (azd up, activation pollers, auth
+  retries, other background/async commands) before sending the final
+  response — scoped to the agent's own tool sessions, never to killing
+  arbitrary system processes. This is a single-variable prompt change only;
+  no workflow timeout, `continue-on-error`, or failure-masking was touched.
+  `scripts/ci/tests/test_workload_deploy_prompt.py` guards the instruction's
+  presence, keyword content, and position in both packs.
+
+- **E2E Skill-tool registry smoke gate false-negatived on a non-skill support
+  directory (run #32287231962).** main #116 added `skills/_shared`, a shared
+  library (`manifest.py`) with its own `tests/`, but no `SKILL.md`.
+  `scripts/ci/skill-discovery-smoke.sh` computed its expected skill set from
+  every immediate `skills/<name>/` directory, so it expected `_shared` to be
+  registered in the Copilot CLI's Skill-tool catalog — but Copilot correctly
+  never registers a directory without a `SKILL.md`, so the smoke check
+  reported it as a missing skill and failed the manually-dispatched E2E
+  workflow. The check was never actually broken; the expectation was wrong.
+  The expected set is now every immediate `skills/<name>/SKILL.md` instead of
+  every immediate `skills/<name>/` directory: no hardcoded `_shared`
+  exception, no reliance on underscore-prefixed naming, no hardcoded skill
+  count — a real underscore-named skill directory with its own `SKILL.md`
+  still counts, and any genuine missing skill still fails the diff. The
+  script also gained a `THREADLIGHT_DISCOVERY_EXPECTED_ONLY=1` list-only mode
+  that prints the computed expected set and exits before the
+  `jq`/`copilot`/`timeout` requirement checks, the Copilot CLI call, or any
+  output directory — letting
+  `scripts/ci/tests/test_skill_discovery_smoke.py` assert the expected-set
+  computation with bash alone, no `jq`, `copilot`, or network access
+  required.
+
+- **`threadlight-production-ready`'s outcome-KPI unit cost was a self-report,
+  not a measurement.** KPI-003's "actual cost per successful interaction" was
+  relayed straight out of `unit_economics` in
+  `specs/cost-reconciliation-manifest.json` — but that block states *both* the
+  unit cost and the success count it divided by, so the two agreeing with each
+  other proved nothing. A reconciliation quoting `$0.05` over evidence that
+  reads `$130.00 / 1200 successes` passed every gate and printed a green
+  $0.05 unit cost into the customer-facing report. The number is now
+  re-derived from the *digest-pinned* actuals the loader already proves:
+  `cost.period_total_usd / usage.successful_interactions` out of
+  `specs/cost-actuals-manifest.json`, whose canonical-JSON digest means an
+  in-place edit invalidates the whole bundle and an honest restatement
+  re-chains the digest and moves the measurement. The relayed value is
+  reported only when the pinned actuals verified their interaction count
+  (`usage.interaction_status == pass`), recorded a positive success count that
+  equals the one the reconciliation divided by, carry a finite non-negative
+  period total, and produce that unit cost when recomputed at the reconciler's
+  own precision (cent-normalized total, `ROUND_HALF_UP` to 4 dp, matching
+  `reconcile._rate`; a disagreement within half of that last step is a
+  rounding convention and is accepted). A contradiction is withheld — KPI-003
+  degrades to `should-fix`/`not-verified` with one bounded `[warn]` line, and
+  the report renders `not-verified` rather than a number nobody can reproduce.
+  This module still never authors a figure of its own: a withheld unit cost is
+  never replaced by the recomputed one. Internally, the strict loader is now
+  `_read_cost_reconciliation_bundle`, returning the `(reconciliation, actuals,
+  forecast)` triple it already read and proved once;
+  `_read_cost_reconciliation` remains the wrapper COST-102/COST-103 use, with
+  identical proofs, the same `_stale_reason` contract and no cross-run caching,
+  so staleness is still re-evaluated against the clock on every read.
+  KPI-003's catalog title, report row and uplift wording now read `actual
+  cost/successful interaction`; its ID, `should-fix` severity and tier-0
+  classification are unchanged, and KPI-001/KPI-002, COST-102/COST-103 and
+  scoring are untouched.
+
+- **`threadlight-production-ready`'s reconciled cost evidence parsing was one
+  hostile JSON integer away from crashing the whole assessment, and
+  COST-103's driver threshold was never checked against the SPEC-anchored
+  policy it claims to represent.** A JSON number hundreds of digits long is a
+  legal Python `int` that `float()` cannot represent (`OverflowError`, not a
+  normal comparison); `_is_finite_number` now catches
+  `OverflowError`/`ArithmeticError` and rejects such a value the same way it
+  already rejects NaN, infinity, bool, and non-numeric input — every ratio
+  conversion COST-102/COST-103 and the staleness loader perform is gated
+  through it, so a giant int in `variance_pct`, `max_forecast_variance_pct`,
+  `observed_volume_variance_pct`, `threshold_pct`, or
+  `max_window_end_age_days` degrades only the affected finding (or the whole
+  bundle, for the staleness gate) to `not-verified`; `_run_pillar` never
+  aborts. Separately, COST-103 now requires
+  `drivers.payg_ptu.threshold_pct` to be the *same producer value* as
+  `policy_snapshot.max_token_volume_variance_pct` — the SPEC § 14 figure every
+  other reconciled control reads its tolerance from. A driver free to declare
+  its own threshold independent of the snapshot could report `pass` against a
+  band nobody anchored to SPEC § 14; a missing or numerically mismatched
+  snapshot value is withheld as `not-verified` naming the internal
+  inconsistency, before the volume-variance-vs-band comparison ever runs. An
+  equal value (including at the declared boundary) still passes as before.
+  COST-102, COST-001…007, scoring and severities are unchanged.
+
+- **`threadlight-production-ready` relayed reconciled cost verdicts without
+  checking them against their own numbers, and lost them entirely when the
+  cost static analyzer crashed.** COST-102/COST-103 consumed
+  `variance_status` / `drivers.payg_ptu.status` verbatim, so a broken or
+  tampered `cost-reconciliation-manifest.json` claiming `pass` on a 400%
+  variance against a 5% declared tolerance produced a green cost control —
+  and the mirror image raised a `should-fix` alarm nobody could reproduce.
+  Both findings now verify the relayed verdict against the artifact's own
+  ratio (`|variance| <= tolerance`, inclusive, magnitude-only so an underspend
+  counts) and, on disagreement, withhold it as `not-verified` naming
+  `reconciliation verdict contradicts its numeric variance/tolerance`. The
+  gate can only ever withhold a decided verdict, never author or upgrade one:
+  a reconciler `not-verified` stays `not-verified`, and unusable numbers stay
+  malformed-evidence. COST-103 additionally requires a finite
+  `observed_volume_variance_pct` and reports it in the finding. Separately,
+  the two findings are now emitted by `_run_pillar` *before* the Bicep/ARM
+  cost static analyzer, so an ARM shape that analyzer cannot parse no longer
+  deletes artifact-only evidence from the report — the tier-0 fail-closed
+  sweep still fires, the live leg still adds COST-101/104/105 only, and
+  static/live/quick each carry exactly one COST-102 and one COST-103.
+  COST-001…007, scoring and severities are unchanged.
+
 - **`threadlight-consumption-iq`'s token metrics query could lose mandatory
   input/output token evidence over an optional cache metric.** A live probe
   against a real `Microsoft.CognitiveServices/accounts` resource showed
@@ -30,6 +178,47 @@ field.
   (`fetch_token_metrics`) and its tests only.
 
 ### Added
+
+- **`threadlight-auto` now carries reconciled cost actuals as an advisory,
+  opt-in subphase — and nothing about the state machine changed.**
+  `references/orchestrator.py`, `STAGES`, and `.threadlight/auto-state.json`'s
+  stage keys are byte-for-byte untouched: there is no `cost_actuals` stage,
+  `cost_projection` still sits between `safe_check` and `invoke`, and the
+  resumption table grew no actuals row. What changed is the guidance an agent
+  reads. Stage 5 always runs `scripts/consumption_iq.py run --all` exactly as
+  before (projection artefacts and exit 2/3/4 semantics unchanged);
+  `--with-actuals` is strictly additive and only appended when an operator
+  explicitly asks on a **resumed, mature** pilot *and* supplies or approves a
+  settled `--start`/`--end` window, with `--subscription`/`--resource-group`
+  derived from the active `azd env` and asserted against `az account show`
+  under per-tenant isolation. A first-time deploy never collects actuals —
+  Cost Management usage data refreshes on its own cadence, so a
+  minutes-old pilot has no settled window — and the orchestrator therefore
+  does not poll, sleep, retry in a loop, or hold Invoke behind billing
+  ingestion. Missing arguments mean the subphase is **skipped with guidance**,
+  never a guessed or partial command. Exit 3 records
+  `cost-reconciliation: degraded-source`, exit 5 records
+  `cost-reconciliation: not-verified` (always returned *after* every artefact
+  is written), exit 0 records `pass` — all three continue to
+  Invoke → Evals → Red-team → Govern. The API shape itself is not speculative:
+  it was probed read-only against an isolated demo subscription
+  (`threadlight-consumption-iq/references/live-actuals-probe.md`); the opt-in
+  is about cost, RBAC breadth, and pilot maturity. `threadlight-production-ready`
+  gains the matching evidence contract: forecast evidence
+  (`COST-005`/`006`/`007`) is always preserved and never reinterpreted by
+  reconciliation; `COST-102`/`COST-103` are opt-in artifact consumers whose
+  absence is `not-verified` (excluded from the raw score, never a `must-fix`);
+  `COST-101` remains the live budget check; `KPI-003` reads the actual cost per
+  successful interaction re-derived from the digest-pinned actuals; the
+  schema/SHA-256/freshness/maturity bar stays strict with anything short of it
+  withheld as `not-verified`; and SPEC section 14 enforcement remains opt-in via
+  `check_pilot_contract.py --require-value-model`, so legacy pilots keep passing
+  until they migrate. Versions: `threadlight-auto` 1.1.0 → 1.2.0;
+  `threadlight-production-ready` SKILL metadata + `production_ready.py::VERSION`
+  0.10.0 → 0.11.0 in lockstep. Guidance is pinned by a new section-scoped
+  contract test (`skills/threadlight-auto/tests/test_cost_actuals_guidance.py`)
+  that also asserts `STAGES`, `STAGE_PROBES`, and the absence of any actuals
+  wiring in `orchestrator.py`. No executable behaviour changed.
 
 - **`threadlight-consumption-iq` can now reconcile a forecast against live
   Azure cost actuals — opt-in only.** Two new commands, `actuals` (read-only

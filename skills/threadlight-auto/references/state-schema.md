@@ -5,7 +5,8 @@ this file to track which stages have run, what artifact hashes they produced,
 and which auto-recovery actions fired. Format: pretty-printed JSON.
 
 > **Schema.** Stage names are `preflight / design / deploy / safe_check /
-> invoke`; artifact paths are `specs/SPEC.md`, `docs/safe-check-post.md`,
+> cost_projection / invoke`; artifact paths are `specs/SPEC.md`,
+> `docs/safe-check-post.md`, `specs/cost-manifest.json`,
 > `docs/invoke-results.md`.
 
 ## Top-level shape
@@ -24,6 +25,7 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
   "design":     { "..." },
   "deploy":     { "..." },
   "safe_check": { "..." },
+  "cost_projection": { "...stage shape (below), plus last_deploy_at/passed_at — see § Cost-projection fields..." },
   "invoke":     { "..." },
   "evals":      { "..." },
   "redteam":    { "..." },
@@ -58,10 +60,27 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
 | design | `specs/SPEC.md` | Drives all downstream gates (NEEDS CLARIFICATION scan, hash drift) |
 | deploy | `infra/main.bicep` | Bicep authoring is the load-bearing artifact for safe-check |
 | safe_check | `docs/safe-check-post.md` | End-state record for resumption-aware invoke |
+| cost_projection | `specs/cost-manifest.json` | Feeds `orchestrator.py`'s `_check_cost_projection` freshness/resumability check (`generated_at` vs last deploy) |
 | invoke | `docs/invoke-results.md` | Demo-scenario evidence; freshness gates re-run after spec change |
 | evals | `specs/evals-manifest.json` | Discover leg — offline + online (Foundry CE) + A/B eval evidence consumed by production-ready pillar 6 |
 | redteam | `specs/redteam-manifest.json` | Discover leg — AI Red Teaming Agent scan evidence consumed by production-ready pillar 7 (SAFE-1xx) |
 | govern | `specs/govern-manifest.json` | Protect leg — AGT runtime-governance artefact consumed by production-ready pillar 2 + pillar 7 (RAI-002/003) |
+
+### Cost-projection fields
+
+`orchestrator.py::_check_cost_projection` reads two fields off the
+`cost_projection` stage entry directly — `last_deploy_at` (fallback: `azd env`'s
+`AZURE_LAST_DEPLOY_AT`) and `passed_at` — to decide whether a fresh
+`specs/cost-manifest.json` can be reused instead of re-running
+`scripts/consumption_iq.py run --all`. Those two are real, orchestrator-read
+fields and are documented here for that reason.
+
+The stage entry may also carry a `cost-reconciliation` status
+(`pass` / `degraded-source` / `not-verified`) when the optional actuals
+subphase has run. That key is written by agent guidance, not read by
+`_check_cost_projection` or any other orchestrator code path, so it is
+intentionally left out of a fixed shape here — see `SKILL.md` § "Cost-projection
+stage — optional reconciled-actuals subphase" for its informal contract.
 
 ## `recovery_events` shape
 

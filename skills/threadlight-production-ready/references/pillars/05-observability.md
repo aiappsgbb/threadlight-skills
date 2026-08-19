@@ -33,13 +33,64 @@ effect**.
 CAF's agent observability triad puts *baselines* (latency, cost-per-interaction,
 success-rate) and *deviation alerts* under observability, and asks teams to
 measure a real outcome — not just wire traces. These join eval pass-rate +
-cost-per-interaction + live traces into one view (rendered as report § 8).
+the **measured** cost per successful interaction + live traces into one view
+(rendered as report § 8).
 
 | ID | Check | Default status |
 |---|---|---|
 | `KPI-001` | SPEC/docs declare all three outcome baselines: target latency, cost-per-interaction, success/pass rate | `should-fix` if any missing |
 | `KPI-002` | A deviation alert is wired against a KPI baseline (Insights `metricAlerts`/`scheduledQueryRules` referencing latency/cost/success, or a declared baseline alert) | `should-fix` if absent (recipe `KPI-002`) |
-| `KPI-003` | Outcome scorecard is joinable: eval pass-rate (`specs/evals-manifest.json`) **+** cost-per-interaction (`specs/cost-manifest.json`) **+** traces emitting all present | `should-fix` if partial, `not-verified` if no signals |
+| `KPI-003` | Outcome scorecard is joinable: eval pass-rate (`specs/evals-manifest.json`) **+** actual cost/successful interaction (`specs/cost-reconciliation-manifest.json` → `unit_economics`, re-derived from the pinned actuals) **+** traces emitting all present | `should-fix` if partial, `not-verified` if no signals |
+
+### The KPI-003 cost signal is an actual, never a forecast
+
+`specs/cost-manifest.json` is a *projection*: a cost-per-interaction number in
+it is what someone planned to spend, so it can never satisfy KPI-003 — a pilot
+that has not billed a single interaction would otherwise report a green unit
+cost. (COST-005/006/007 keep consuming that forecast; KPI-003 does not read it.)
+
+The value is read through the same strict loader COST-102/COST-103 use, so it
+inherits every proof in that bundle (exact schemas, canonical-JSON digests of
+the forecast and actuals, the raw `specs/SPEC.md` § 14 anchor,
+verdict-after-evidence timestamps, and a staleness re-check against *today's*
+clock — never a `*_ref.path` the artifact chose). On top of that, all of the
+reconciler's own gates must hold: envelope `status`, `maturity.status` and
+`unit_economics.status` are `pass`, `successful_interactions` is a positive
+integer, and `cost_per_successful_interaction_usd` is a finite number `>= 0`.
+
+`unit_economics.target_status` must be a *decided* verdict — `pass` **or**
+`should-fix`. A unit cost above the declared § 14 target is still a measured
+unit cost, and KPI-003 reports whether the outcome can be measured, not whether
+it complies: the target gap is carried by the COST findings. `not-verified`
+there is rejected, because a not-verified comparison beside a `pass`
+measurement is an internally inconsistent artifact.
+
+### The unit cost is re-derived from the digest-pinned actuals
+
+`unit_economics` states both the unit cost **and** the success count it divided
+by, in the same block — so those two agreeing with each other proves nothing.
+The canonical numbers are `cost.period_total_usd` and
+`usage.successful_interactions` in `specs/cost-actuals-manifest.json`, which the
+loader has already pinned by canonical-JSON digest: editing that document in
+place invalidates the whole bundle, and restating it honestly re-chains the
+digest and *moves the measurement*.
+
+So the relayed number is only reported when the pinned actuals support it:
+
+| Requirement | Withheld when |
+|---|---|
+| `usage.interaction_status` is `pass` | the actuals never verified their own interaction count |
+| `usage.successful_interactions` is a positive integer | there is no divisor to re-derive against |
+| it equals `unit_economics.successful_interactions` | the reconciliation divided by a count its evidence does not record |
+| `cost.period_total_usd` is a finite number `>= 0` | there is no authoritative actual total |
+| the relayed unit cost equals `period_total_usd / successful_interactions` | the reported unit cost is not the one the evidence produces |
+
+The recompute mirrors `reconcile._rate`: the period total is normalized to
+cents, divided, and quantized to 4 dp with `ROUND_HALF_UP`. A disagreement
+within half of that last step (`0.00005`) is a rounding convention, not a
+contradiction, and is accepted. Anything larger is withheld with one bounded
+`[warn]` line — KPI-003 never relays a contradicted number, and never
+substitutes its own recomputed one for the artifact's.
 
 ### Live (tier 2 — `Monitoring Reader` + `Log Analytics Reader`)
 

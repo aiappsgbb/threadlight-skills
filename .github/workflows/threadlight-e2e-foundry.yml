@@ -325,17 +325,59 @@ jobs:
       # 'not logged in, run `azd auth login` to login to Azure'
       # at the deploy stage. Explicit azd auth login with the same
       # federated credential the rest of the job uses.
+      #
+      # Run #32296600274: this exact command waited ~47s and then failed
+      # with `ClientAssertionCredential: fetching federated token: expected
+      # 200 response, got: 503` — every downstream phase was skipped even
+      # though the client/tenant/provider are unchanged and a prior full run
+      # against this same config had already logged in cleanly. That is
+      # GitHub's OIDC token endpoint being transiently unavailable, not a
+      # config problem, so bound the retry to that failure class only: a
+      # real auth/tenant/client/config mistake fails once and stops, it does
+      # not get three tries at burning wall-clock before failing the same
+      # way.
       - name: azd auth login (federated OIDC)
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
-          azd auth login \
-            --client-id "$AZURE_CLIENT_ID" \
-            --federated-credential-provider github \
-            --tenant-id "$AZURE_TENANT_ID"
-          azd auth login --check-status
+          LOG="${AZD_AUTH_LOGIN_LOG:-/tmp/azd-auth-login-attempt.log}"
+          for attempt in 1 2 3; do
+            echo "===== azd auth login attempt $attempt of 3 ====="
+            : > "$LOG"
+            if azd auth login \
+                 --client-id "$AZURE_CLIENT_ID" \
+                 --federated-credential-provider github \
+                 --tenant-id "$AZURE_TENANT_ID" \
+                 2>&1 | tee -a "$LOG" \
+               && azd auth login --check-status 2>&1 | tee -a "$LOG"; then
+              echo "===== azd auth login attempt $attempt succeeded (check-status confirmed) ====="
+              exit 0
+            fi
+            echo "===== azd auth login attempt $attempt failed — full output above ====="
+            # Only retry the transient signatures this run actually hit
+            # (fetching-federated-token 5xx) plus the sibling shapes of the
+            # same external-outage failure mode (502/504, timeouts, "temporarily
+            # unavailable"). Anything else — bad client id, wrong tenant,
+            # missing federated-credential subject config — is not transient
+            # and must fail on attempt 1, not get masked by a retry loop.
+            if ! grep -qEi '\b(502|503|504)\b|timeout|timed out|temporarily unavailable|fetching federated token:.*expected 200 response, got: 5[0-9]{2}' "$LOG"; then
+              echo "===== Non-transient failure (auth/tenant/client/config) — not retrying ====="
+              exit 1
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "===== azd auth login: all 3 attempts exhausted on transient errors ====="
+              exit 1
+            fi
+            if [ "$attempt" -eq 1 ]; then
+              BACKOFF=15
+            else
+              BACKOFF=30
+            fi
+            echo "===== Transient failure detected; sleeping ${BACKOFF}s before retry ====="
+            sleep "$BACKOFF"
+          done
 
       # ── Tenant-isolation shim ─────────────────────────────────────────
       # threadlight-deploy's Phase 0 reads ~/.azure-tenants/index.json to
@@ -403,16 +445,20 @@ jobs:
           echo "===== Installed plugins ====="
           copilot plugin list 2>&1 | head -20
 
-      # Fail-fast gate: asserts every directory under skills/ is registered
-      # in the Copilot CLI's Skill-tool catalog. Catches the silent loader-
-      # drop regression first observed in run #26772059599, where the agent
-      # fell back to Read on SKILL.md when skill(<name>) returned
-      # "Skill not found", masking the failure as "success".
+      # Fail-fast gate: asserts every skill under skills/ (every immediate
+      # skills/<name>/SKILL.md) is registered in the Copilot CLI's
+      # Skill-tool catalog. Catches the silent loader-drop regression first
+      # observed in run #26772059599, where the agent fell back to Read on
+      # SKILL.md when skill(<name>) returned "Skill not found", masking the
+      # failure as "success".
       #
       # Protocol: `copilot --output-format json` emits JSONL on stdout
       # including `session.skills_loaded` events whose `data.skills` is
       # the registered catalog. The smoke script parses the last non-empty
-      # event and diffs against `find skills/ -mindepth 1 -maxdepth 1`.
+      # event and diffs against every immediate `skills/<name>/SKILL.md`
+      # (not every immediate `skills/<name>/` directory -- a support
+      # directory without a SKILL.md, e.g. skills/_shared, is not a skill
+      # and Copilot correctly never registers it; see run #32287231962).
       # No model assertions, no per-skill ECHO prompts — ~30s, deterministic,
       # no output-formatting variance under Foundry routing.
       - name: Smoke-check Skill-tool discovery

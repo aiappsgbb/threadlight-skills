@@ -84,6 +84,8 @@ phases:
         - 'azd ai agent show' (or equivalent) returns the deployed agent in an active state
         - `azd env get-value AZURE_RESOURCE_GROUP` returns "$AZURE_RESOURCE_GROUP" (the workflow asserts this post-deploy)
 
+      Before sending your final response, wait for every shell command you started to exit, then call the Stop shell tool to stop every still-running shell session (including azd up, activation pollers, auth retries, or any other background/async command) — this means stopping your own lingering tool sessions, NOT killing arbitrary system processes. Do not leave an async/background shell or a polling command running once the required deployment state above is verified: a lingering shell session keeps the Copilot CLI process alive and makes the workflow time out on its step timeout even when the deployment already succeeded.
+
       If anything fails that you cannot auto-recover from, stop and surface the exact error.
     gates: []
   invoke:
