@@ -43,7 +43,9 @@ There is deliberately no `fail`. A threshold breach is `should-fix`
 ```jsonc
 {
   "schema": "threadlight-cost-reconciliation/v1",
-  "generated_at": "2026-08-10T00:00:00Z",   // caller-supplied, echoed verbatim
+  "generated_at": "2026-08-10T00:00:00Z",   // caller-supplied reconciled_at,
+                                            // echoed verbatim; NOT the
+                                            // actuals' collected_at
   "status": "not-verified",                 // mirrors maturity.status exactly
   "variance_status": "pass",                // narrow cost verdict, see below
   "forecast_ref":  { "path": "specs/cost-manifest.json",         "sha256": "…" },
@@ -64,7 +66,7 @@ Every key above is **always present**. A field whose evidence was missing is
 `null` (or `not-verified`), never omitted — a consumer must never have to
 distinguish "absent key" from "unknown value".
 
-### `generated_at`
+### `generated_at` — the *reconciled_at* instant
 
 `string`, required, exactly `YYYY-MM-DDTHH:MM:SSZ` (UTC, `Z` suffix, second
 precision) and a real calendar instant. A `+00:00` offset is the same moment
@@ -72,6 +74,30 @@ but a different string, and this value is hashed and compared byte-for-byte
 downstream, so exactly one spelling is accepted;
 `ReconciliationInputError` is raised otherwise. The value is echoed
 unchanged so the artifact stays byte-reproducible for a fixed set of inputs.
+
+**This is not the same instant as the actuals manifest's `generated_at`, and
+the two must not be conflated.** Both documents spell the field
+`generated_at` — what differs is *what each one generated*:
+
+| Document | Field | Read it as | Answers |
+| --- | --- | --- | --- |
+| `threadlight-cost-actuals/v1` | `generated_at` | **`collected_at`** | When Azure Cost Management was read. |
+| `threadlight-cost-reconciliation/v1` | `generated_at` | **`reconciled_at`** | When that evidence was re-projected against a forecast and a policy. |
+
+The CLI supplies `reconciled_at` from the clock at the moment
+`reconcile_costs` is called; it never copies the actuals' `collected_at`. The
+two are equal only in the ordinary fast path where evidence is collected and
+immediately reconciled (`run --all --with-actuals`). Every later
+re-reconciliation of the same evidence — after a pricing refresh or a SPEC
+edit, and with **no Azure call at all** — produces a strictly later
+`reconciled_at` over an unchanged `collected_at`.
+
+`reconciled_at` must therefore never precede `collected_at`: a verdict
+cannot predate the evidence it judges, and the emitter rejects that pair
+outright. `reconciled_at` is also what names the immutable history snapshot
+(see below), so one collected actuals document legitimately appears in
+several snapshots — each one bound to its exact source bytes by
+`actuals_ref.sha256`, never by a matching timestamp.
 
 ### `status` vs `variance_status`
 
@@ -118,7 +144,9 @@ including the inputs' own `generated_at`. A consequence is that a pure
 the observed bill did not change. That invalidation is intentional: a
 reconciliation is only meaningful against the exact forecast it was computed
 from. It is also cheap to resolve, since `reconcile` re-runs offline over
-already-collected actuals with no new Azure calls.
+already-collected actuals with no new Azure calls — producing a document that
+differs from its predecessor in exactly two places, `forecast_ref.sha256` and
+`generated_at` (`reconciled_at`), over an unchanged `collected_at`.
 
 ### The SPEC anchor must be a real digest
 
@@ -652,5 +680,6 @@ re-raised as `ReconciliationInputError` naming the offending field.
   `generated_at`, the document is byte-identical across runs. All ordering
   is explicit (`sorted()`), never dictionary or set iteration order.
 * No network access, no process execution, no file access, no clock read,
-  no environment lookup. `generated_at` is supplied by the caller precisely
-  so this module has no hidden non-determinism.
+  no environment lookup. `generated_at` (the `reconciled_at` instant) is
+  supplied by the caller precisely so this module has no hidden
+  non-determinism; the CLI reads the clock once, on its side of the boundary.

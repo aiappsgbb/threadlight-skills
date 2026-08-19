@@ -595,9 +595,12 @@ def _phase_reconcile(args: argparse.Namespace) -> dict[str, Any]:
         actuals,
         policy.policy,
         policy_errors=list(policy.errors),
-        # The emitter binds a reconciliation to the instant of the evidence it
-        # re-projects, so this is the actuals' instant, not "now".
-        generated_at=str(actuals.get("generated_at")),
+        # When this verdict was COMPUTED, which is not when its evidence was
+        # collected. The actuals keep their own `generated_at` (`collected_at`
+        # in the report); copying it here would claim a re-projection ran days
+        # before it did, and would make every re-reconciliation of unchanged
+        # evidence collide with the first one in immutable history.
+        generated_at=_iso_utc(_utc_now()),
         policy_spec_sha256=hashlib.sha256(spec_bytes).hexdigest(),
     )
 

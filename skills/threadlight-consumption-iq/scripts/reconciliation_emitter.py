@@ -69,14 +69,28 @@ needs before it consumes either file.
 ## History is immutable evidence
 
 Each snapshot lives at
-`<history_root>/<YYYY-MM-DD>--<YYYY-MM-DD>/<generated_at compact Z>/`. Both
-path components are re-formatted from PARSED `datetime` values, never
-interpolated from raw document strings, so no traversal-shaped input can
-escape `history_root` — it fails window validation long before it reaches a
-path. Re-emitting an identical payload is a no-op (idempotent), a different
-payload for the same window and instant raises `HistoryConflictError` rather
-than overwriting evidence, and a snapshot interrupted after one of its two
-files can be completed only when the file already on disk still matches.
+`<history_root>/<YYYY-MM-DD>--<YYYY-MM-DD>/<reconciliation generated_at
+compact Z>/`. Both path components are re-formatted from PARSED `datetime`
+values, never interpolated from raw document strings, so no traversal-shaped
+input can escape `history_root` — it fails window validation long before it
+reaches a path. Re-emitting an identical payload is a no-op (idempotent), a
+different payload for the same window and instant raises
+`HistoryConflictError` rather than overwriting evidence, and a snapshot
+interrupted after one of its two files can be completed only when the file
+already on disk still matches.
+
+The key is the RECONCILIATION instant, not the collection instant, because
+they answer different questions. `actuals.generated_at` (`collected_at` in
+the report) is when Cost Management was read; `reconciliation.generated_at`
+(`reconciled_at`) is when that evidence was re-projected against a forecast
+and a policy. A pricing refresh or a SPEC edit re-reconciles evidence
+collected days ago — offline, with no Azure call — and each of those verdicts
+is its own auditable snapshot. Keying on the collection instant would instead
+make every re-reconciliation of unchanged evidence collide with the first
+one. One collected actuals document therefore appears verbatim in several
+snapshots; `reconciliation.actuals_ref.sha256` is what binds each verdict to
+the exact evidence bytes underneath it, so nothing is ambiguous about which
+source a snapshot re-projected.
 
 A history entry is put in place with `os.link`, never `os.replace`. That is
 the whole difference between "immutable" and "immutable unless two publishers
@@ -491,24 +505,34 @@ def _validate_actuals(actuals: object) -> tuple[datetime, datetime, datetime]:
 
 
 def _validate_reconciliation(
-    reconciliation: object, actuals: dict[str, Any], generated_at: datetime
-) -> None:
+    reconciliation: object, actuals: dict[str, Any], collected_at: datetime
+) -> datetime:
+    """Validate the reconciliation half and return the instant it names.
+
+    `actuals.generated_at` is when the bill was COLLECTED;
+    `reconciliation.generated_at` is when that evidence was RE-PROJECTED
+    against a forecast and a policy. They are two different events and the
+    second can never precede the first, but it very often follows it: a
+    pricing refresh or a SPEC edit re-reconciles evidence collected days ago
+    without touching Azure at all. Equality is the ordinary fast path — the
+    first reconciliation of fresh evidence — and is accepted for exactly
+    that reason, not because the two values are the same fact.
+    """
     document = _require_mapping(reconciliation, "reconciliation")
     _require_keys(document, _RECONCILIATION_REQUIRED_KEYS, "reconciliation")
     _require_literal(document, "schema", RECONCILIATION_SCHEMA, "reconciliation")
     _require_enum(document, "status", _STATUS_VALUES, "reconciliation")
     _require_enum(document, "variance_status", _VERDICT_VALUES, "reconciliation")
 
-    own_generated_at = _require_instant(
+    reconciled_at = _require_instant(
         document.get("generated_at"), "reconciliation generated_at"
     )
-    if own_generated_at != generated_at or document["generated_at"] != actuals[
-        "generated_at"
-    ]:
+    if reconciled_at < collected_at:
         raise EmissionValidationError(
-            "generated_at must be identical in both documents "
-            f"(actuals={actuals['generated_at']!r}, "
-            f"reconciliation={document['generated_at']!r})"
+            "reconciliation generated_at must not precede the actuals "
+            "generated_at it re-projects (actuals collected_at="
+            f"{actuals['generated_at']!r}, reconciliation reconciled_at="
+            f"{document['generated_at']!r})"
         )
 
     maturity = _require_mapping(document.get("maturity"), "reconciliation maturity")
@@ -552,6 +576,7 @@ def _validate_reconciliation(
         )
 
     _scan_for_credentials(document["warnings"], "reconciliation warnings")
+    return reconciled_at
 
 
 # ---------------------------------------------------------------------------
@@ -811,8 +836,8 @@ def emit_reconciliation(
     already holds a different payload, and `OSError` for a genuine I/O
     failure. Neither input document is mutated.
     """
-    start, end, generated_at = _validate_actuals(actuals)
-    _validate_reconciliation(reconciliation, actuals, generated_at)
+    start, end, collected_at = _validate_actuals(actuals)
+    reconciled_at = _validate_reconciliation(reconciliation, actuals, collected_at)
 
     actuals_text = _canonical_json_text(actuals, "actuals")
     reconciliation_text = _canonical_json_text(reconciliation, "reconciliation")
@@ -826,7 +851,10 @@ def emit_reconciliation(
     window_dir = history_root / (
         f"{start.date().isoformat()}--{end.date().isoformat()}"
     )
-    snapshot_dir = window_dir / generated_at.strftime(_SNAPSHOT_FORMAT)
+    # Keyed by when the RECONCILIATION was computed, not by when the evidence
+    # was collected: one collection is legitimately re-projected many times,
+    # and each of those verdicts needs its own immutable snapshot.
+    snapshot_dir = window_dir / reconciled_at.strftime(_SNAPSHOT_FORMAT)
     history_actuals = snapshot_dir / HISTORY_ACTUALS_NAME
     history_reconciliation = snapshot_dir / HISTORY_RECONCILIATION_NAME
 
@@ -902,8 +930,16 @@ def canonical_pair_is_complete(
 
     This is the consumer-side gate for the multi-file publish: it re-derives
     the canonical hash of the actuals document and compares it with the
-    reconciliation's own `actuals_ref.sha256`, and requires both documents to
-    name the same `generated_at`.
+    reconciliation's own `actuals_ref.sha256`, and requires the
+    reconciliation's `generated_at` (when the verdict was computed) not to
+    precede the actuals' `generated_at` (when the bill was collected).
+
+    The hash — not the timestamp — is what binds the pair. Two documents may
+    legitimately name different instants, because the same collected evidence
+    is re-reconciled whenever the forecast or the SPEC changes; requiring
+    equality here would reject every one of those pairs. The ordering check
+    is kept because a verdict that claims to predate its own evidence is
+    incoherent however its hash reads.
 
     It is the ONE function in this module that answers with `False` instead
     of raising. A missing file, unreadable bytes, a foreign schema, a scalar
@@ -929,12 +965,23 @@ def canonical_pair_is_complete(
             return False
         if recorded.casefold() != sha256_json(actuals):
             return False
-        generated_at = actuals.get("generated_at")
-        if not isinstance(generated_at, str):
+        collected_at = _parse_instant(actuals.get("generated_at"))
+        reconciled_at = _parse_instant(reconciliation.get("generated_at"))
+        if collected_at is None or reconciled_at is None:
             return False
-        return generated_at == reconciliation.get("generated_at")
+        return reconciled_at >= collected_at
     except (OSError, ValueError, TypeError, ReconciliationInputError):
         return False
+
+
+def _parse_instant(value: object) -> Optional[datetime]:
+    """Parse a canonical instant, or `None` — never raise. Reader-side twin
+    of `_require_instant`, used by the one function here that answers with
+    `False` instead of raising."""
+    try:
+        return _require_instant(value, "generated_at")
+    except EmissionValidationError:
+        return None
 
 
 def _load_document(path: object) -> Optional[dict[str, Any]]:
@@ -1093,7 +1140,8 @@ def _render_header(
             f"> Observed window {_code(window.get('start'))} to "
             f"{_code(window.get('end'))} "
             f"({_count(window.get('complete_days'))} complete UTC days), "
-            f"collected {_code(actuals.get('generated_at'))}.",
+            f"collected_at {_code(actuals.get('generated_at'))}, "
+            f"reconciled_at {_code(reconciliation.get('generated_at'))}.",
             "> Source: Azure Cost Management `Usage` query, accounting metric "
             f"{_code(cost.get('basis'))}, cost column "
             f"{_code(cost.get('cost_column'))}, currency "
@@ -1488,7 +1536,14 @@ def _render_provenance(
     lines += _key_value_rows(_mapping(actuals.get("provenance")))
     lines += [
         "",
-        f"Reconciliation generated {_code(reconciliation.get('generated_at'))}.",
+        # Two distinct events, named distinctly. Both documents spell this
+        # field `generated_at`; what differs is what each one generated.
+        f"`collected_at` {_code(actuals.get('generated_at'))} — when Cost "
+        "Management was read.",
+        f"`reconciled_at` {_code(reconciliation.get('generated_at'))} — when "
+        "that evidence was re-projected against the forecast and policy "
+        "above. The same evidence is reconciled again whenever either "
+        "changes, so this is at or after `collected_at`, never before it.",
     ]
     return "\n".join(lines)
 

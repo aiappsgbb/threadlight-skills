@@ -69,6 +69,10 @@ START = "2026-08-01"
 END = "2026-08-08"
 PINNED_NOW = datetime(2026, 8, 10, 6, 30, 0, tzinfo=timezone.utc)
 PINNED_GENERATED_AT = "2026-08-10T06:30:00Z"
+# A later instant, used wherever a reconciliation is computed over evidence
+# that was collected earlier — which is every re-reconciliation.
+PINNED_RECONCILED_NOW = datetime(2026, 8, 12, 9, 15, 0, tzinfo=timezone.utc)
+PINNED_RECONCILED_AT = "2026-08-12T09:15:00Z"
 
 
 SPEC_SECTION_14 = """\
@@ -413,6 +417,28 @@ def test_pre_deploy_with_actuals_exits_2(monkeypatch) -> None:
         "--subscription", SUB, "--resource-group", RG,
     ])
     assert rc == 2
+
+
+def test_pre_sales_with_actuals_exits_2(monkeypatch, capsys) -> None:
+    """A pre-sales estimate has no deployment, so it has no actuals."""
+    monkeypatch.setattr(
+        consumption_iq,
+        "_phase_estimate",
+        lambda args: pytest.fail("validation must run before any estimate"),
+    )
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("no Azure call may be attempted"),
+    )
+    rc = consumption_iq.main([
+        "run", "--all", "--pre-sales", "--with-actuals",
+        "--rollout", "pilot",
+        "--start", START, "--end", END,
+        "--subscription", SUB, "--resource-group", RG,
+    ])
+    assert rc == 2
+    assert "--pre-sales" in capsys.readouterr().err
 
 
 def test_scope_is_validated_before_any_projection_or_azure_call(monkeypatch) -> None:
@@ -1029,13 +1055,17 @@ def test_phase_reconcile_never_calls_a_source(monkeypatch, tmp_path) -> None:
         "collect_sources",
         lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
     )
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
     result = consumption_iq._phase_reconcile(_reconcile_args(tmp_path))
     assert result["schema"] == "threadlight-cost-reconciliation/v1"
     assert result["status"] in {"pass", "not-verified"}
 
 
-def test_phase_reconcile_hashes_raw_spec_bytes_and_both_documents(tmp_path) -> None:
+def test_phase_reconcile_hashes_raw_spec_bytes_and_both_documents(
+    monkeypatch, tmp_path
+) -> None:
     args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
     result = consumption_iq._phase_reconcile(args)
 
     assert result["policy_ref"]["spec_sha256"] == hashlib.sha256(
@@ -1043,13 +1073,31 @@ def test_phase_reconcile_hashes_raw_spec_bytes_and_both_documents(tmp_path) -> N
     ).hexdigest()
     assert result["forecast_ref"]["sha256"] == sha256_json(_forecast())
     assert result["actuals_ref"]["sha256"] == sha256_json(_minimal_actuals())
-    # The reconciliation is published beside the actuals it reconciles, so it
-    # carries that document's instant, not a fresh one.
-    assert result["generated_at"] == PINNED_GENERATED_AT
 
 
-def test_phase_reconcile_carries_policy_errors(tmp_path) -> None:
+def test_phase_reconcile_stamps_the_computation_instant_not_the_collection(
+    monkeypatch, tmp_path
+) -> None:
+    """`reconciliation.generated_at` is when the verdict was computed.
+
+    Copying the actuals' instant would claim the re-projection happened when
+    the bill was read, and would make every later re-reconciliation of the
+    same evidence collide in immutable history.
+    """
+    args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    result = consumption_iq._phase_reconcile(args)
+
+    assert result["generated_at"] == PINNED_RECONCILED_AT
+    assert result["generated_at"] != PINNED_GENERATED_AT
+    assert json.loads(Path(args.actuals_manifest).read_text())[
+        "generated_at"
+    ] == PINNED_GENERATED_AT
+
+
+def test_phase_reconcile_carries_policy_errors(monkeypatch, tmp_path) -> None:
     broken = SPEC_SECTION_14.replace("max_forecast_variance_pct: 0.20", "")
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
     result = consumption_iq._phase_reconcile(_reconcile_args(tmp_path, broken))
     assert result["policy_errors"]
     assert result["status"] == "not-verified"
@@ -1071,8 +1119,11 @@ def test_phase_reconcile_rejects_a_foreign_schema(tmp_path) -> None:
         consumption_iq._phase_reconcile(args)
 
 
-def test_emit_reconciliation_publishes_the_pair_and_history(tmp_path) -> None:
+def test_emit_reconciliation_publishes_the_pair_and_history(
+    monkeypatch, tmp_path
+) -> None:
     args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
     result = consumption_iq._phase_reconcile(args)
     consumption_iq._emit_reconciliation(args, result)
 
@@ -1081,10 +1132,16 @@ def test_emit_reconciliation_publishes_the_pair_and_history(tmp_path) -> None:
     assert Path(args.report).exists()
     history = list(Path(args.cost_history).rglob("reconciliation.json"))
     assert len(history) == 1
+    # The snapshot is keyed by when the verdict was computed, not by when the
+    # evidence underneath it was collected.
+    assert history[0].parent.name == "2026-08-12T091500Z"
 
 
-def test_reconcile_command_emits_then_reports_the_verdict(tmp_path) -> None:
+def test_reconcile_command_emits_then_reports_the_verdict(
+    monkeypatch, tmp_path
+) -> None:
     args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
     rc = consumption_iq.main([
         "reconcile",
         "--forecast", str(args.forecast),
@@ -1097,6 +1154,78 @@ def test_reconcile_command_emits_then_reports_the_verdict(tmp_path) -> None:
     assert rc in {0, 5}
     assert Path(args.reconciliation_manifest).exists()
     assert Path(args.report).exists()
+
+
+def test_reconcile_over_the_same_actuals_writes_a_new_snapshot(
+    monkeypatch, tmp_path
+) -> None:
+    """A pricing refresh must be re-reconcilable without re-collecting.
+
+    Nothing is stubbed below except the clock and the Azure boundary: the
+    real reconciliation core and the real emitter run twice over the SAME
+    collected actuals, with a changed forecast in between. The second run
+    must succeed and add its own immutable snapshot rather than colliding
+    with the first one.
+    """
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
+    )
+    args = _reconcile_args(tmp_path)
+    actuals_before = json.loads(Path(args.actuals_manifest).read_text())
+
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    first = consumption_iq._phase_reconcile(args)
+    consumption_iq._emit_reconciliation(args, first)
+
+    Path(args.forecast).write_text(json.dumps(_forecast(555.0)), encoding="utf-8")
+    later = datetime(2026, 8, 13, 11, 45, 0, tzinfo=timezone.utc)
+    _pin_now(monkeypatch, later)
+    second = consumption_iq._phase_reconcile(args)
+    consumption_iq._emit_reconciliation(args, second)
+
+    assert json.loads(Path(args.actuals_manifest).read_text()) == actuals_before
+    assert first["actuals_ref"]["sha256"] == second["actuals_ref"]["sha256"]
+    assert first["forecast_ref"]["sha256"] != second["forecast_ref"]["sha256"]
+
+    window = Path(args.cost_history) / "2026-08-01--2026-08-08"
+    assert sorted(path.name for path in window.iterdir()) == [
+        "2026-08-12T091500Z",
+        "2026-08-13T114500Z",
+    ]
+    published = json.loads(Path(args.reconciliation_manifest).read_text())
+    assert published["forecast_ref"]["sha256"] == second["forecast_ref"]["sha256"]
+
+
+def test_reconcile_command_succeeds_twice_over_unchanged_actuals(
+    monkeypatch, tmp_path
+) -> None:
+    """The same journey through `main`, exit code included."""
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
+    )
+    args = _reconcile_args(tmp_path)
+    argv = [
+        "reconcile",
+        "--forecast", str(args.forecast),
+        "--actuals-manifest", str(args.actuals_manifest),
+        "--spec", str(args.spec),
+        "--reconciliation-manifest", str(args.reconciliation_manifest),
+        "--report", str(args.report),
+        "--cost-history", str(args.cost_history),
+    ]
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    assert consumption_iq.main(argv) in {0, 5}
+
+    Path(args.forecast).write_text(json.dumps(_forecast(555.0)), encoding="utf-8")
+    _pin_now(monkeypatch, datetime(2026, 8, 13, 11, 45, 0, tzinfo=timezone.utc))
+    assert consumption_iq.main(argv) in {0, 5}
+
+    window = Path(args.cost_history) / "2026-08-01--2026-08-08"
+    assert len(list(window.iterdir())) == 2
 
 
 # ---------------------------------------------------------------------------

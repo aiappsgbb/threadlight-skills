@@ -345,11 +345,25 @@ searching an array for a matching entry. V1 defines a single driver,
 elements.
 
 The two canonical manifest paths always contain the latest completed window.
-Each successful collection also writes the same payloads under
-`specs/cost-history/<start-date>--<end-date>/<generated-at>/`. History entries
-are immutable; collecting the same window after more charges settle creates a
-new timestamped snapshot rather than overwriting evidence. The canonical files
-are the latest-view contract consumed by other skills.
+Each successful **reconciliation** also writes the same payloads under
+`specs/cost-history/<start-date>--<end-date>/<reconciled-at>/`, where
+`<reconciled-at>` is the reconciliation manifest's own `generated_at`.
+History entries are immutable; collecting the same window after more charges
+settle creates a new timestamped snapshot rather than overwriting evidence,
+and so does re-reconciling already-collected evidence against a refreshed
+forecast or an edited SPEC. The canonical files are the latest-view contract
+consumed by other skills.
+
+The two documents both spell this field `generated_at`, and they mean
+different things — read the actuals' as **`collected_at`** (when Cost
+Management was read) and the reconciliation's as **`reconciled_at`** (when
+that evidence was re-projected). `reconciled_at` may never precede
+`collected_at`; it equals it only on the fast path where fresh evidence is
+reconciled immediately, and is strictly later for every offline
+re-reconciliation. Snapshots are therefore keyed on `reconciled_at`, so one
+collected actuals document appears verbatim in as many snapshots as it has
+verdicts. What binds each snapshot to its exact source is
+`reconciliation.actuals_ref.sha256`, never a matching timestamp.
 
 The canonical reconciliation manifest is the **commit marker**. Publishers
 write the actuals file first and reconciliation last. Consumers accept the pair

@@ -3266,7 +3266,15 @@ def canonical_pair_is_complete(
 ```
 
 Write history in the concrete shape
-`specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/{actuals,reconciliation}.json`.
+`specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/{actuals,reconciliation}.json`,
+where the second path component is the **reconciliation** manifest's
+`generated_at` (`reconciled_at`), not the actuals' (`collected_at`). The two
+are equal only when fresh evidence is reconciled immediately; keying on
+`collected_at` would make every offline re-reconciliation of the same
+evidence collide with the first verdict. Validate that `reconciled_at` is at
+or after `collected_at` — never require equality — and let the same actuals
+appear in several snapshots, each bound to its source by
+`actuals_ref.sha256`.
 Write temp files in the destination directory, `flush`, `os.fsync`, then
 `os.replace`. Refuse to replace an existing timestamped history file with a
 different hash. Replace canonical actuals first and canonical reconciliation
@@ -3876,6 +3884,13 @@ of just the actuals manifest (`DEFAULT_ACTUALS_MANIFEST` or `--actuals-manifest`
 it does not write history, because `reconciliation_emitter.emit_reconciliation`
 (Task 10) only writes the atomic actuals+reconciliation history pair once
 both documents exist, which is not yet true when `actuals` runs standalone.
+
+`_phase_reconcile` stamps `reconcile_costs(generated_at=...)` from the CLI's
+own `_utc_now()` — the instant the verdict is COMPUTED (`reconciled_at`) —
+and never copies the actuals manifest's `generated_at` (`collected_at`).
+Copying it would date every re-projection to its evidence and collide in
+immutable history the moment the same actuals are reconciled twice. Tests
+monkeypatch `_utc_now` so both instants stay deterministic and distinct.
 Every test above that stubs `_phase_actuals` also stubs `_emit_actuals` (and
 `_emit_reconciliation`, where reconcile also runs) for exactly this reason:
 without that stub, the real writer would receive the stub's return value —
@@ -4796,6 +4811,9 @@ Expected: PR state `MERGED`; no leftover implementation PR.
 - [ ] Section 14 enforcement is opt-in: legacy pilots without the section still
       pass by default; a present-but-malformed section always fails.
 - [ ] History snapshots are immutable; canonical files point to latest.
+- [ ] Re-reconciling unchanged actuals against a refreshed forecast or an
+      edited SPEC writes a NEW snapshot (keyed by `reconciled_at`) and issues
+      no Azure call — it is never a history conflict.
 - [ ] `COST-101` remains live; `COST-102/103` consume evidence artifacts.
 - [ ] Default Consumption IQ and auto behavior is unchanged.
 - [ ] Full design-to-deploy E2E remains green.

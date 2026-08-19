@@ -8,16 +8,20 @@ See `docs/superpowers/specs/2026-08-18-cost-actuals-reconciliation-design.md`
 Core contract under test:
   - Nothing is written until every document, path and hash has validated.
     A validation failure leaves the destination tree byte-for-byte untouched.
-  - History under `<root>/<start>--<end>/<generated_at>/` is immutable:
-    re-emitting the same payload is a no-op, a different payload for the same
-    snapshot raises `HistoryConflictError`, and an interrupted snapshot is
-    completed only when the file already on disk matches.
+  - History under `<root>/<start>--<end>/<reconciliation generated_at>/` is
+    immutable: re-emitting the same payload is a no-op, a different payload
+    for the same snapshot raises `HistoryConflictError`, and an interrupted
+    snapshot is completed only when the file already on disk matches. The key
+    is the RECONCILIATION instant, so the same collected actuals can appear
+    in several snapshots — one per re-projection — each binding its source
+    through `actuals_ref.sha256`.
   - Publish order is history, canonical actuals, report, canonical
     reconciliation LAST. The canonical reconciliation is the commit marker:
     every partial failure leaves `canonical_pair_is_complete` False rather
     than a pair that looks published but is not.
   - `canonical_pair_is_complete` never raises. Missing files, garbage bytes,
-    a hash mismatch and a `generated_at` mismatch are all False.
+    a hash mismatch and a reconciliation older than its actuals are all
+    False.
   - The report leads with four separate numbers in a fixed order, gates the
     run-rate on maturity and the unit cost on `unit_economics.status`, never
     fabricates 0 for a null, and never phrases observed spend as a reprice.
@@ -143,6 +147,7 @@ def policy():
 def documents(
     generated_at=GENERATED,
     *,
+    reconciled_at=None,
     total=70.0,
     interaction_counts=(105, 100),
     token_series=None,
@@ -157,6 +162,12 @@ def documents(
 
     Both halves come from the real cores, so `actuals_ref.sha256` is the
     canonical hash of the actuals document actually handed to the emitter.
+
+    `generated_at` is when the evidence was COLLECTED; `reconciled_at` is
+    when it was RE-PROJECTED, and defaults to the collection instant because
+    the first reconciliation of fresh evidence genuinely happens then. The
+    two are separate parameters because the same actuals are reconciled
+    again — later — whenever the forecast or the SPEC changes.
     """
     instant = datetime.strptime(generated_at, "%Y-%m-%dT%H:%M:%SZ").replace(
         tzinfo=timezone.utc
@@ -179,7 +190,7 @@ def documents(
         actuals,
         policy() if policy_document is None else policy_document,
         policy_errors=[] if policy_errors is None else policy_errors,
-        generated_at=generated_at,
+        generated_at=generated_at if reconciled_at is None else reconciled_at,
         policy_spec_sha256=spec_sha256,
     )
     return actuals, reconciliation
@@ -284,6 +295,85 @@ def test_same_window_new_collection_creates_new_snapshot(tmp_path) -> None:
         "2026-08-10T000000Z",
         "2026-08-11T000000Z",
     ]
+
+
+def test_snapshot_is_keyed_by_the_reconciliation_instant(tmp_path) -> None:
+    """The snapshot directory names when the evidence was RECONCILED.
+
+    Evidence collected once can be re-projected many times; keying history on
+    the collection instant would make every later re-projection collide with
+    the first one.
+    """
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    history = tmp_path / "specs" / "cost-history" / "2026-08-01--2026-08-08"
+    assert [path.name for path in history.iterdir()] == ["2026-08-12T091500Z"]
+    entry = json.loads(
+        (history / "2026-08-12T091500Z" / "actuals.json").read_text()
+    )
+    assert entry["generated_at"] == GENERATED
+
+
+def test_same_actuals_reconciled_again_writes_a_second_snapshot(
+    tmp_path,
+) -> None:
+    """Re-reconciling unchanged evidence must never be a history conflict.
+
+    A pricing refresh rewrites the forecast, so the reconciliation payload
+    differs while the actuals bytes are identical. Both snapshots are kept,
+    each pinned to its own reconciliation instant, and each binding the same
+    actuals through `actuals_ref.sha256`.
+    """
+    first_actuals, first_reconciliation = documents()
+    emit(tmp_path, first_actuals, first_reconciliation)
+
+    second_actuals, second_reconciliation = documents(
+        reconciled_at="2026-08-12T09:15:00Z", forecast_document=forecast(555.0)
+    )
+    emit(tmp_path, second_actuals, second_reconciliation)
+
+    history = tmp_path / "specs" / "cost-history" / "2026-08-01--2026-08-08"
+    assert sorted(path.name for path in history.iterdir()) == [
+        "2026-08-10T000000Z",
+        "2026-08-12T091500Z",
+    ]
+    assert (
+        first_reconciliation["forecast_ref"]["sha256"]
+        != second_reconciliation["forecast_ref"]["sha256"]
+    )
+    assert (
+        first_reconciliation["actuals_ref"]["sha256"]
+        == second_reconciliation["actuals_ref"]["sha256"]
+    )
+    assert (
+        snapshot_dir(tmp_path, "2026-08-10T000000Z") / "actuals.json"
+    ).read_bytes() == (
+        snapshot_dir(tmp_path, "2026-08-12T091500Z") / "actuals.json"
+    ).read_bytes()
+
+
+def test_repeated_identical_reconciliation_in_the_same_second_is_idempotent(
+    tmp_path,
+) -> None:
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    emit(tmp_path, actuals, reconciliation)
+    history = tmp_path / "specs" / "cost-history" / "2026-08-01--2026-08-08"
+    assert [path.name for path in history.iterdir()] == ["2026-08-12T091500Z"]
+    assert len(list(history.rglob("reconciliation.json"))) == 1
+
+
+def test_different_reconciliation_at_the_same_instant_is_still_a_conflict(
+    tmp_path,
+) -> None:
+    """Immutability is unchanged: one instant names exactly one payload."""
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    other_actuals, other_reconciliation = documents(
+        reconciled_at="2026-08-12T09:15:00Z", forecast_document=forecast(555.0)
+    )
+    with pytest.raises(emitter.HistoryConflictError):
+        emit(tmp_path, other_actuals, other_reconciliation)
 
 
 def test_refuses_to_overwrite_a_different_snapshot_payload(tmp_path) -> None:
@@ -706,15 +796,48 @@ def test_canonical_pair_is_false_when_the_actuals_payload_changed(
 
 
 def test_canonical_pair_is_false_on_generated_at_disagreement(tmp_path) -> None:
+    """A reconciliation older than the actuals it names cannot be the pair."""
     emit(tmp_path)
     reconciliation_path = tmp_path / "specs" / "cost-reconciliation-manifest.json"
     document = json.loads(reconciliation_path.read_text())
-    document["generated_at"] = "2026-08-11T00:00:00Z"
+    document["generated_at"] = "2026-08-09T00:00:00Z"
     reconciliation_path.write_text(json.dumps(document), encoding="utf-8")
     assert (
         emitter.canonical_pair_is_complete(
             tmp_path / "specs" / "cost-actuals-manifest.json",
             reconciliation_path,
+        )
+        is False
+    )
+
+
+def test_canonical_pair_is_complete_for_a_later_reconciliation(tmp_path) -> None:
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    assert emitter.canonical_pair_is_complete(
+        tmp_path / "specs" / "cost-actuals-manifest.json",
+        tmp_path / "specs" / "cost-reconciliation-manifest.json",
+    )
+
+
+@pytest.mark.parametrize("field", ["actuals", "reconciliation"])
+def test_canonical_pair_is_false_for_an_unparseable_instant(
+    tmp_path, field
+) -> None:
+    emit(tmp_path)
+    name = (
+        "cost-actuals-manifest.json"
+        if field == "actuals"
+        else "cost-reconciliation-manifest.json"
+    )
+    path = tmp_path / "specs" / name
+    document = json.loads(path.read_text())
+    document["generated_at"] = "not-an-instant"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert (
+        emitter.canonical_pair_is_complete(
+            tmp_path / "specs" / "cost-actuals-manifest.json",
+            tmp_path / "specs" / "cost-reconciliation-manifest.json",
         )
         is False
     )
@@ -782,11 +905,26 @@ def test_wrong_schema_is_rejected(tmp_path, half) -> None:
 
 
 def test_generated_at_disagreement_is_rejected(tmp_path) -> None:
+    """A reconciliation may be LATER than its evidence, never earlier."""
     actuals, reconciliation = documents()
-    reconciliation["generated_at"] = "2026-08-11T00:00:00Z"
+    reconciliation["generated_at"] = "2026-08-09T00:00:00Z"
     with pytest.raises(emitter.EmissionValidationError, match="generated_at"):
         emit(tmp_path, actuals, reconciliation)
     assert_nothing_written(tmp_path)
+
+
+def test_a_later_reconciliation_instant_is_accepted(tmp_path) -> None:
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    assert (snapshot_dir(tmp_path, "2026-08-12T091500Z") / "actuals.json").is_file()
+
+
+def test_an_equal_reconciliation_instant_is_accepted(tmp_path) -> None:
+    """The first reconciliation of fresh evidence happens at collection time."""
+    actuals, reconciliation = documents()
+    assert actuals["generated_at"] == reconciliation["generated_at"]
+    emit(tmp_path, actuals, reconciliation)
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
 
 
 @pytest.mark.parametrize(
@@ -1792,6 +1930,30 @@ def test_header_states_window_source_and_statuses(tmp_path) -> None:
     assert GENERATED in header
     assert "usage-pretax" in header
     assert "`pass`" in header
+
+
+def test_report_labels_collection_and_reconciliation_instants_distinctly(
+    tmp_path,
+) -> None:
+    """Two different questions, two different labelled timestamps.
+
+    `collected_at` answers "when was this bill read?"; `reconciled_at`
+    answers "when was it last compared with the forecast?". A reader who
+    cannot tell them apart cannot tell a stale verdict from stale evidence.
+    """
+    actuals, reconciliation = documents(reconciled_at="2026-08-12T09:15:00Z")
+    emit(tmp_path, actuals, reconciliation)
+    report = report_text(tmp_path)
+    header = report.split("## ", 1)[0]
+    assert "collected_at" in header
+    assert GENERATED in header
+    assert "reconciled_at" in header
+    assert "2026-08-12T09:15:00Z" in header
+
+    provenance = section(report, "Provenance")
+    assert "collected_at" in provenance
+    assert "reconciled_at" in provenance
+    assert "2026-08-12T09:15:00Z" in provenance
 
 
 # ---------------------------------------------------------------------------
