@@ -220,6 +220,22 @@ addressable statuses inside `usage`, each `pass | not-verified`:
 actually consumed (§9.7), so a reader can tell `PreTaxCost` evidence from an
 alias without re-querying.
 
+**`ResourceId` is the sole aggregation identity, and `ServiceName` is a cost
+dimension rather than an identity.** One resource legitimately produces daily
+rows under more than one service — its own workload service plus, for
+example, a separate protection/security service billed against the same
+resource. Every distinct nonblank name observed for a resource is therefore
+recorded in `cost.resources[].service_names` (deduplicated case-insensitively,
+sorted deterministically), and the row costs are summed into that one
+resource's `period_cost_usd`; multiplicity is never a parse error. The
+backward-compatible scalar `cost.resources[].service_name` is the sole name
+when exactly one was observed and `null` otherwise, so a reader is never
+handed an arbitrary pick as if it were the resource's only cost dimension.
+Reconciliation attributes and compares on the `ResourceId` total, never on a
+per-service split. `resource_type` is identity, not a dimension: two
+both-nonblank, differing `resource_type` values for one `ResourceId` remain a
+fail-closed error.
+
 `cost.resource_id_coverage_pct` is a **source-quality** measure only: actual
 cost rows carrying a nonblank resource ID divided by total actual cost. It says
 nothing about whether the forecast modeled those resources. The separate,
@@ -500,10 +516,10 @@ merely from the request the tool believes it sent. V1 therefore queries with
 `dataset.granularity: "Daily"` and requires a `UsageDate` column in every
 returned page. The documented Query API semantics this assumes are stated
 explicitly so a future API change breaks a test rather than a customer report:
-`timePeriod.from` is inclusive, `timePeriod.to` is treated as the end of the
-declared range, and daily granularity emits one row per resource per UTC day.
-The parser does not trust that description on its own — it re-validates every
-row:
+`timePeriod.from` is inclusive, `timePeriod.to` is **also inclusive** (a `to`
+sent at midnight of day D returns rows dated D), and daily granularity emits
+one row per resource per UTC day. The parser does not trust that description
+on its own — it re-validates every row:
 
 - `UsageDate` values are normalized from either the integer/string `YYYYMMDD`
   form or an ISO date string into a UTC date;
@@ -515,9 +531,16 @@ row:
 - `complete_days = (window.end - window.start).days`, computed from the
   declared boundaries, and `window.end <= window.start` is rejected outright.
 
-The request body sends `to` at UTC midnight of the declared end date while the
-parser enforces the end-exclusive rule against observed `UsageDate` values, so
-the artifact's window semantics are guaranteed by validation rather than by an
+The internal window contract stays half-open `[start, end)` everywhere — CLI
+arguments, manifest `window`, and parser validation. Because the API's `to`
+bound is inclusive, the source adapter translates it once, at the transport
+boundary: `from = start` at `T00:00:00Z` and `to = end - 1 second`, rendered
+as the previous day's `T23:59:59Z`. Sending `to` at the end day's midnight
+instead would make the API legitimately return rows dated on the exclusive
+end day, which the parser then rejects as out-of-window — a self-inflicted
+fail-closed error, not a service bug. The parser continues to enforce the
+end-exclusive rule against observed `UsageDate` values regardless, so the
+artifact's window semantics are guaranteed by validation rather than by an
 assumption about the service.
 
 If any required policy field is absent, raw actual collection may still

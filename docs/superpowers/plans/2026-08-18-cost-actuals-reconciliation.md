@@ -1172,7 +1172,13 @@ git commit -m "feat(consumption-iq): parse SPEC value policy"
 The query is issued with `granularity: "Daily"` and groups by `UsageDate`
 (Task 9), so every page carries a `UsageDate` column and the parser is the
 component that proves the returned rows actually lie inside the requested
-window. Use sanitized Query API responses shaped as:
+window. Note that a single `ResourceId` legitimately appears on several rows
+for the same day under *different* `ServiceName` values (its own workload
+service plus, for example, a separate protection/security service billed
+against it). `ResourceId` alone is the aggregation identity: those rows sum
+into one resource entry, every distinct name is recorded in `service_names`,
+and the multiplicity is never treated as a conflict. Only `resource_type`
+disagreement is fail-closed. Use sanitized Query API responses shaped as:
 
 ```json
 {
@@ -1262,6 +1268,7 @@ def test_rows_for_same_resource_are_summed() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
     assert (result.total_usd, result.currency, result.unattributed_usd) == (
@@ -1595,12 +1602,14 @@ Window rules (RFC §8.1):
   charges is still a complete day;
 - `end <= start` is rejected;
 - every row must satisfy `start.date() <= usage_date < end.date()`;
-- the request body sends `end` at UTC midnight, and the parser enforces
-  end-exclusivity itself rather than trusting the Query API's own boundary
-  semantics. Document that assumption next to the check: the API is
-  *documented* as inclusive of the period it returns, so the guard exists
-  precisely so a boundary-semantics change surfaces as a loud failure instead
-  of a silently inflated total.
+- the request body sends `to` at `end - 1 second` (the previous day's
+  `T23:59:59Z`) because the Query API's `to` bound is **inclusive**, and the
+  parser enforces end-exclusivity itself rather than trusting the API's
+  boundary semantics. Document that translation next to the check: the API is
+  *documented* as inclusive of the period it returns, so the request is
+  narrowed to match the half-open internal contract *and* the guard still
+  exists, precisely so a boundary-semantics change surfaces as a loud failure
+  instead of a silently inflated total.
 
 Compute `settlement_age_hours` and `window_end_age_days` from
 `generated_at - end`; the source does not claim an unobservable Cost
@@ -2934,12 +2943,15 @@ every returned day lies inside the requested half-open window and computes
 `complete_days` (Task 6, RFC §8.1). With `"None"` the response is a single
 undated aggregate and nothing downstream can prove the window was honored.
 
-Document the assumption alongside the body: the Query API's `timePeriod` is
-documented as covering the requested period, and the `to` bound is sent at UTC
-midnight of the exclusive end day. Rather than depending on that boundary
-semantic, the daily rows are validated locally as `start <= usage_date < end`,
-so any change in API behavior surfaces as a loud parse failure instead of a
-silently wrong total.
+Document the assumption alongside the body: the Query API's `timePeriod.to`
+bound is **inclusive**, so the half-open internal window `[start, end)` is
+translated once at the transport boundary — `from` at `start` UTC midnight,
+`to` at `end - 1 second` (the previous day's `T23:59:59Z`). Sending `to` at
+the exclusive end day's midnight would make the API return that day's rows,
+which the parser rejects as out-of-window. Rather than depending on either
+boundary semantic, the daily rows are still validated locally as
+`start <= usage_date < end`, so any change in API behavior surfaces as a loud
+parse failure instead of a silently wrong total.
 
 Query URL:
 

@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -236,9 +236,13 @@ def test_cost_query_body_shape():
     body = cost_query_body(START, END)
     assert body["type"] == "Usage"
     assert body["timeframe"] == "Custom"
+    # The internal window is half-open [start, end); the Query API's
+    # `timePeriod.to` is *inclusive*, so it is translated to the last second
+    # before the internal end rather than sent at the end day's midnight
+    # (which would make the API return the end day itself).
     assert body["timePeriod"] == {
         "from": "2026-08-01T00:00:00Z",
-        "to": "2026-08-08T00:00:00Z",
+        "to": "2026-08-07T23:59:59Z",
     }
     dataset = body["dataset"]
     assert dataset["granularity"] == "Daily"
@@ -248,6 +252,44 @@ def test_cost_query_body_shape():
     names = [g["name"] for g in dataset["grouping"]]
     assert names == ["ResourceId", "ResourceType", "ServiceName"]
     assert all(g["type"] == "Dimension" for g in dataset["grouping"])
+
+
+def test_cost_query_body_inclusive_to_never_reaches_the_internal_end_day():
+    """The adapter must not ask the API for the exclusive end day.
+
+    `cost_actuals.aggregate_cost_rows` rejects any row whose `UsageDate` is
+    on the internal `end` date, so a request whose inclusive `to` bound
+    landed on that day would turn a correct API response into a fail-closed
+    parse error.
+    """
+    to_value = cost_query_body(START, END)["timePeriod"]["to"]
+    assert to_value.startswith((END - timedelta(days=1)).isoformat())
+    assert to_value.endswith("T23:59:59Z")
+    assert to_value < f"{END.isoformat()}T00:00:00Z"
+
+
+def test_cost_query_body_one_day_window_is_a_single_inclusive_day():
+    body = cost_query_body(date(2026, 8, 1), date(2026, 8, 2))
+    assert body["timePeriod"] == {
+        "from": "2026-08-01T00:00:00Z",
+        "to": "2026-08-01T23:59:59Z",
+    }
+
+
+def test_cost_query_body_inclusive_to_cannot_underflow_below_from():
+    # `start < end` is already required, so the inclusive bound can never
+    # precede `from`; the narrowest legal window is one whole day.
+    body = cost_query_body(date(2026, 1, 1), date(2026, 1, 2))
+    assert body["timePeriod"]["from"] < body["timePeriod"]["to"]
+
+
+def test_cost_query_body_inclusive_to_crosses_month_and_year_boundaries():
+    assert cost_query_body(date(2026, 7, 25), date(2026, 8, 1))["timePeriod"]["to"] == (
+        "2026-07-31T23:59:59Z"
+    )
+    assert cost_query_body(date(2025, 12, 25), date(2026, 1, 1))["timePeriod"]["to"] == (
+        "2025-12-31T23:59:59Z"
+    )
 
 
 def test_cost_query_body_does_not_group_by_usage_date():

@@ -124,6 +124,7 @@ def test_rows_for_same_resource_are_summed() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
     assert (result.total_usd, result.currency, result.unattributed_usd) == (
@@ -500,6 +501,7 @@ def test_pagination_aggregates_rows_across_pages() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
 
@@ -826,6 +828,28 @@ def test_costusd_alias_fixture_parses() -> None:
     )
     assert result.cost_column == "CostUSD"
     assert result.total_usd > 0
+
+
+def test_multi_service_fixture_keeps_one_resource_with_both_service_names() -> None:
+    # Regression for the live probe shape: one storage resource legitimately
+    # carries both its own workload cost line and a security/protection
+    # service cost line for the same day. Both belong to the same ResourceId
+    # total; neither is a conflict.
+    fixture = _load_fixture("cost-query-multi-service.json")
+    rows = rows_from_query_page(fixture)
+    assert rows
+
+    result = aggregate_cost_rows(
+        [fixture],
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+    )
+    assert len(result.resources) == 1
+    resource = result.resources[0]
+    assert resource["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    assert resource["service_name"] is None
+    assert resource["resource_type"] == "microsoft.storage/storageaccounts"
+    assert resource["period_cost_usd"] == result.total_usd
 
 
 def test_aoai_account_fixture_parses_and_rolls_up_by_account() -> None:
@@ -1228,6 +1252,7 @@ def test_empty_first_resource_type_is_backfilled_from_a_later_nonempty_row() -> 
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 10.0,
     }]
 
@@ -1240,11 +1265,124 @@ def test_conflicting_nonempty_resource_type_for_same_resource_is_rejected() -> N
         ])
 
 
-def test_conflicting_nonempty_service_name_for_same_resource_is_rejected() -> None:
-    with pytest.raises(ActualsEvidenceError, match="service_name"):
+# ---------------------------------------------------------------------------
+# Multiple ServiceName values for one resource are a legitimate Cost
+# Management shape (a workload resource also carries security//protection
+# service cost lines), not a conflict. ResourceId stays the aggregation
+# identity; resource_type conflicts stay fail-closed.
+# ---------------------------------------------------------------------------
+
+
+def test_multiple_service_names_for_same_resource_are_accepted_and_summed() -> None:
+    result = aggregate([
+        [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+        [
+            20260801,
+            "microsoft.storage/storageaccounts",
+            1.0,
+            "USD",
+            RID,
+            "Microsoft Defender for Cloud",
+        ],
+    ])
+    assert len(result.resources) == 1
+    resource = result.resources[0]
+    # ResourceId remains the aggregation identity: both cost dimensions
+    # belong to the same resource and must land in the same total.
+    assert resource["period_cost_usd"] == 5.0
+    assert result.total_usd == 5.0
+    assert resource["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    # Honest ambiguity: with more than one observed name there is no single
+    # correct value, so the backward-compatible scalar is null rather than an
+    # arbitrary first-observed pick.
+    assert resource["service_name"] is None
+
+
+def test_service_names_are_sorted_case_insensitively_and_deterministically() -> None:
+    result = aggregate([
+        [20260801, "x", 1.0, "USD", RID, "zeta service"],
+        [20260801, "x", 1.0, "USD", RID, "Alpha Service"],
+        [20260802, "x", 1.0, "USD", RID, "beta service"],
+    ])
+    assert result.resources[0]["service_names"] == [
+        "Alpha Service",
+        "beta service",
+        "zeta service",
+    ]
+
+
+def test_single_service_name_still_populates_scalar_and_list() -> None:
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+    ])
+    assert result.resources[0]["service_name"] == "ACA"
+    assert result.resources[0]["service_names"] == ["ACA"]
+
+
+def test_service_names_dedup_case_variants_keeping_first_display_casing() -> None:
+    result = aggregate([
+        [20260801, "x", 5.0, "USD", RID, "Storage"],
+        [20260802, "x", 5.0, "USD", RID, "STORAGE"],
+    ])
+    # One logical service observed twice is still exactly one name, so the
+    # scalar stays populated and the display casing is the first observed.
+    assert result.resources[0]["service_names"] == ["Storage"]
+    assert result.resources[0]["service_name"] == "Storage"
+
+
+def test_no_observed_service_name_yields_empty_list_and_null_scalar() -> None:
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, ""],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "   "],
+    ])
+    assert result.resources[0]["service_names"] == []
+    assert result.resources[0]["service_name"] is None
+
+
+def test_blank_service_name_rows_do_not_pollute_the_name_list() -> None:
+    result = aggregate([
+        [20260801, "x", 5.0, "USD", RID, ""],
+        [20260802, "x", 5.0, "USD", RID, "Storage"],
+    ])
+    # The blank row's cost is still counted; only the name is absent.
+    assert result.resources[0]["period_cost_usd"] == 10.0
+    assert result.resources[0]["service_names"] == ["Storage"]
+    assert result.resources[0]["service_name"] == "Storage"
+
+
+def test_multiple_service_names_do_not_mutate_the_input_pages() -> None:
+    pages = [page([
+        [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+        [
+            20260802,
+            "microsoft.storage/storageaccounts",
+            1.0,
+            "USD",
+            RID,
+            "Microsoft Defender for Cloud",
+        ],
+    ])]
+    before = deepcopy(pages)
+    aggregate_cost_rows(pages, **WINDOW)
+    assert pages == before
+
+
+def test_conflicting_resource_type_is_still_rejected_with_multiple_services() -> None:
+    # Accepting multiple service names must not weaken the resource-type
+    # identity check: a single ResourceId reporting two types is still a
+    # contract violation.
+    with pytest.raises(ActualsEvidenceError, match="resource_type"):
         aggregate([
-            [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
-            [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "Other"],
+            [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+            [
+                20260802,
+                "microsoft.app/containerapps",
+                1.0,
+                "USD",
+                RID,
+                "Microsoft Defender for Cloud",
+            ],
         ])
 
 
@@ -1260,6 +1398,7 @@ def test_whitespace_only_resource_type_is_treated_as_blank_and_backfilled() -> N
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 10.0,
     }]
 
@@ -1280,6 +1419,7 @@ def test_service_name_differing_only_by_case_is_not_a_conflict() -> None:
         [20260802, "x", 5.0, "USD", RID, "ACA"],
     ])
     assert result.resources[0]["service_name"] == "aca"
+    assert result.resources[0]["service_names"] == ["aca"]
 
 
 # ---------------------------------------------------------------------------

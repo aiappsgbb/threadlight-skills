@@ -49,6 +49,7 @@ verdict-shaped fields here; add them to the reconciliation artifact instead.
         "resource_id": "/subscriptions/.../resourceGroups/rg-pilot-prod/providers/Microsoft.App/containerApps/agent",
         "resource_type": "microsoft.app/containerapps",
         "service_name": "Azure Container Apps",
+        "service_names": ["Azure Container Apps"],
         "period_cost_usd": 87.15
       }
     ],
@@ -110,6 +111,14 @@ Start-inclusive, end-exclusive UTC window: a row is in-window iff
 `usage_date` from every observed `UsageDate` cell and rejecting (not
 dropping) any row outside that range — the Query API's own inclusivity is
 never trusted on its own (RFC §8.1).
+
+The Query API's `timePeriod.to` is **inclusive**, so the half-open window
+recorded here is not the literal request bound: the source adapter
+translates `end` to `end - 1 second` (the previous day's `T23:59:59Z`)
+before querying, so the API is never asked for the exclusive end day at
+all. The parser still re-validates every returned row against
+`start <= usage_date < end` — the translation removes an off-by-one day
+from the request, it does not replace the fail-closed check.
 
 * `start` / `end` — UTC ISO-8601 instants. Both are required to be
   timezone-aware, normalized to an offset of exactly zero (UTC), **and at
@@ -195,16 +204,34 @@ let a row bucket into a day nobody actually wrote in ASCII):
   * `resource_id` — the first-observed raw ID string for that normalized
     key; later rows that differ only by case or a trailing `/` merge into
     the same bucket rather than creating a duplicate resource entry.
-  * `resource_type`, `service_name` — as observed. If the row that first
-    creates a resource's bucket left one of these blank but a **later**
-    row for the same resource reports a nonblank value, the nonblank value
-    backfills it — a resource is never permanently mislabeled blank just
-    because Cost Management happened to return its identifying row before
-    its typed row. If two rows for the same resource report **different,
-    both-nonblank** values for the same field, that is a genuine data
-    conflict and is rejected with `ActualsEvidenceError` naming the field
-    and resource, rather than silently keeping whichever value arrived
-    first.
+  * `resource_type` — as observed. If the row that first creates a
+    resource's bucket left it blank but a **later** row for the same
+    resource reports a nonblank value, the nonblank value backfills it — a
+    resource is never permanently mislabeled blank just because Cost
+    Management happened to return its identifying row before its typed row.
+    If two rows for the same resource report **different, both-nonblank**
+    `resource_type` values, that is a genuine identity conflict (one
+    ResourceId cannot be two ARM types) and is rejected with
+    `ActualsEvidenceError` naming the field and resource, rather than
+    silently keeping whichever value arrived first.
+  * `service_names` — every distinct nonblank `ServiceName` observed for
+    this resource, deduplicated case-insensitively (first-observed display
+    casing is kept) and sorted case-insensitively so the output is
+    deterministic. `[]` when no row ever reported a name. **Multiple names
+    for one resource are normal, not an error**: the same resource can
+    carry its own workload service cost *and* a separate
+    protection/security service cost (for example a storage account billed
+    both under its storage service and under a security service that
+    protects it) on the same day. `ResourceId` remains the sole aggregation
+    identity, so reconciliation and every per-resource total use the
+    `ResourceId` sum across all of its service dimensions — never a
+    per-service split.
+  * `service_name` — the backward-compatible scalar: the sole entry of
+    `service_names` when exactly one name was observed, and `null`
+    otherwise (zero names observed, or several). It is deliberately never
+    an arbitrary first-observed pick, because that would let a reader
+    mistake one cost dimension for the resource's only one. Read
+    `service_names` when the full picture matters.
   * `period_cost_usd` — the resource's summed cost for the window, quantized
     per the [rounding policy](#money-rounding-and-the-accounting-identity)
     below.

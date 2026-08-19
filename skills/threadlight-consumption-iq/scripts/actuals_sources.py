@@ -83,7 +83,7 @@ import json
 import os
 import re
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlsplit
 
@@ -486,8 +486,33 @@ def _utc_midnight(value: date) -> str:
     return f"{value.isoformat()}T00:00:00Z"
 
 
+def _inclusive_utc_end(end: date) -> str:
+    """Render a half-open internal `end` as the Query API's *inclusive* bound.
+
+    The internal CLI/window contract is half-open `[start, end)`, but the
+    Cost Management Query API treats `timePeriod.to` as **inclusive**: a
+    `to` sent at the end day's UTC midnight makes the API return rows dated
+    on that day, which `cost_actuals.aggregate_cost_rows` then rejects as
+    out-of-window (correctly — it validates `start <= UsageDate < end`). The
+    two contracts are reconciled here, at the transport boundary, by sending
+    `end - 1 second`, i.e. the previous day's `T23:59:59Z`. Callers have
+    already been through `_validate_window`, which requires `start < end`,
+    so this can never underflow past `from`: the narrowest legal window is a
+    single whole day.
+    """
+    last_instant = datetime(
+        end.year, end.month, end.day, tzinfo=timezone.utc
+    ) - timedelta(seconds=1)
+    return last_instant.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def cost_query_body(start: date, end: date) -> dict[str, Any]:
     """Build the `2025-03-01` `Usage` Query request body (RFC §8.1, §9.7).
+
+    `start`/`end` are the internal half-open `[start, end)` UTC-day window.
+    `timePeriod.to` is the API's inclusive bound and is therefore translated
+    to `end - 1 second` (see `_inclusive_utc_end`), so the API is never asked
+    for the exclusive end day in the first place.
 
     `UsageDate` is *not* a grouping dimension: `Daily` granularity emits it
     as its own column, and requesting it as a dimension would be a different
@@ -498,7 +523,10 @@ def cost_query_body(start: date, end: date) -> dict[str, Any]:
     return {
         "type": "Usage",
         "timeframe": "Custom",
-        "timePeriod": {"from": _utc_midnight(start), "to": _utc_midnight(end)},
+        "timePeriod": {
+            "from": _utc_midnight(start),
+            "to": _inclusive_utc_end(end),
+        },
         "dataset": {
             "granularity": "Daily",
             "aggregation": {"totalCost": {"name": "PreTaxCost", "function": "Sum"}},

@@ -635,11 +635,25 @@ def aggregate_cost_rows(
     Resource IDs are normalized with `.casefold().rstrip("/")` for grouping
     only; the original, first-observed ID string is retained for reporting.
     A blank resource ID's cost remains in `total_usd` and is reported under
-    `unattributed_usd`, never dropped. A blank `resource_type`/
-    `service_name` on the first-seen row for a resource is backfilled from
-    a later row for the *same* resource that does carry a value; two rows
-    for the same resource that carry *conflicting* non-blank values is a
-    contract violation (raised), never silently first-wins.
+    `unattributed_usd`, never dropped. A blank `resource_type` on the
+    first-seen row for a resource is backfilled from a later row for the
+    *same* resource that does carry a value; two rows for the same resource
+    that carry *conflicting* non-blank `resource_type` values is a contract
+    violation (raised), never silently first-wins — one ResourceId cannot be
+    two ARM types.
+
+    `ServiceName` is *not* treated that way, because it is a cost dimension
+    rather than an identity: the same resource legitimately carries rows for
+    its own workload service and for a separate protection/security service
+    on the same day. Every distinct nonblank name observed for a resource is
+    collected into `service_names` (deduplicated case-insensitively, keeping
+    the first-observed display casing, sorted case-insensitively so the
+    output is deterministic). The backward-compatible scalar `service_name`
+    is that sole name when exactly one was observed, and `None` otherwise —
+    honest ambiguity rather than an arbitrary first pick. Multiplicity never
+    changes the aggregation identity: `ResourceId` alone decides which bucket
+    a row's cost lands in, so a resource's `period_cost_usd` is the sum
+    across all of its service dimensions.
 
     Every USD amount returned (`total_usd`, `unattributed_usd`, and each
     `resources[].period_cost_usd`) is already rounded to the cent with
@@ -745,28 +759,41 @@ def aggregate_cost_rows(
                     {
                         "resource_id": raw_resource_id,
                         "resource_type": observed_resource_type,
-                        "service_name": observed_service_name,
+                        # casefolded name -> first-observed display casing.
+                        # A dict (not a set) so the reported casing is stable
+                        # and the insertion order is reproducible.
+                        "service_names": {},
                         "cost": Decimal("0"),
                     },
                 )
                 bucket["cost"] += cost_value
-                for field, observed in (
-                    ("resource_type", observed_resource_type),
-                    ("service_name", observed_service_name),
-                ):
-                    if not observed:
-                        continue
-                    existing = bucket[field]
-                    if not existing:
+                if observed_service_name:
+                    # Multiple nonblank ServiceName values for one ResourceId
+                    # are a legitimate Cost Management shape, not a conflict:
+                    # the same resource can be billed under its own workload
+                    # service *and* under a separate protection/security
+                    # service on the same day. Both belong to this resource's
+                    # total, so every distinct name is collected and none
+                    # overwrites another. A later row that differs only by
+                    # case is the same name — keep the first display casing.
+                    bucket["service_names"].setdefault(
+                        observed_service_name.casefold(), observed_service_name
+                    )
+                if observed_resource_type:
+                    existing_type = bucket["resource_type"]
+                    if not existing_type:
                         # Backfill: an earlier row for this same resource
                         # carried a blank value; a later row observed a
                         # real one.
-                        bucket[field] = observed
-                    elif existing.casefold() != observed.casefold():
+                        bucket["resource_type"] = observed_resource_type
+                    elif existing_type.casefold() != observed_resource_type.casefold():
+                        # Resource *type* is identity, not a cost dimension:
+                        # one ResourceId cannot be two ARM types, so this
+                        # stays fail-closed.
                         raise ActualsEvidenceError(
-                            f"Cost Management rows disagree on {field} for "
-                            f"resource {raw_resource_id!r}: {existing!r} vs "
-                            f"{observed!r}"
+                            "Cost Management rows disagree on resource_type for "
+                            f"resource {raw_resource_id!r}: {existing_type!r} vs "
+                            f"{observed_resource_type!r}"
                         )
                     # else: same value up to case — keep the first-observed
                     # (or backfilled) display casing; a later row that only
@@ -782,7 +809,18 @@ def aggregate_cost_rows(
         {
             "resource_id": bucket["resource_id"],
             "resource_type": bucket["resource_type"],
-            "service_name": bucket["service_name"],
+            # Exactly one observed name is unambiguous, so the scalar keeps
+            # its v1 meaning. Zero or several names have no single correct
+            # answer, so it is `None` — never an arbitrary first pick that a
+            # reader could mistake for the resource's only cost dimension.
+            "service_name": (
+                next(iter(bucket["service_names"].values()))
+                if len(bucket["service_names"]) == 1
+                else None
+            ),
+            "service_names": sorted(
+                bucket["service_names"].values(), key=str.casefold
+            ),
             "period_cost_usd": float(quantized_resource_costs[key]),
         }
         for key, bucket in resource_totals.items()
