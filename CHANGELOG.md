@@ -100,6 +100,40 @@ field.
   All 31 tests inject a violation and assert the specific rule fires, so the
   guard is proven able to fail rather than being another green check that lies.
 
+- **Cost actuals reconciliation core (PR 3) — pure parsers and a pure
+  reconciliation engine, no Azure calls yet.** Four new stdlib-only modules
+  under `threadlight-consumption-iq`, each independently unit-tested and none
+  wired into `consumption_iq.py`'s CLI: existing commands and the complete
+  Azure monthly cost projection (`specs/cost-manifest.json`) are byte-for-byte
+  unchanged.
+
+  - `value_model.py` parses SPEC § 14's `value_model` policy into a partial
+    policy dict plus every validation error found. It never raises on
+    malformed *content* — a blank Fast-PoC template, a half-answered Full-mode
+    section, or a hostile identifier is a valid design-time state, not a bug —
+    so evidence emission is never blocked by an incomplete policy.
+  - `cost_actuals.py` parses observed Azure Cost Management daily `Usage`
+    Query API evidence into an offline `threadlight-cost-actuals/v1` manifest
+    (schema: `references/cost-actuals-manifest-schema.md`). All money is
+    `Decimal`, refunds (negative costs) are handled without corrupting
+    coverage ratios, the declared day-by-day window is validated against the
+    response, and the cost column is matched against a strict, priority-
+    ordered alias list (`PreTaxCost` → `CostUSD` → `Cost`).
+  - `token_evidence.py` factors the Azure Monitor Cognitive Services token-
+    metric parser (deployment/model/cached-input handling) out of
+    `threadlight-router-bench`'s `metrics.py` into one shared module that
+    router-bench now delegates to, with no behavior change to router-bench.
+  - `reconcile.py` joins the existing forecast, actuals, and § 14 policy into
+    an offline `threadlight-cost-reconciliation/v1` manifest: SPEC/forecast
+    hashes for traceability, a maturity verdict, cost variance, cost-per-
+    interaction, the two distinct coverage measures, and a PAYG/PTU usage
+    driver — with Cost Management's `period_total_usd` as the sole observed
+    money total (token reprice is attribution evidence only, never spend).
+
+  This PR lands the pure evidence core only; the read-only live CLI adapters
+  that call Azure (`actuals`, `reconcile` commands) are **not wired yet** and
+  land in PR 4.
+
 ### Changed
 
 - **`check_pilot_contract.py`'s § 14 value-model enforcement is opt-in** via a
