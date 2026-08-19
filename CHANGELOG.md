@@ -111,6 +111,47 @@ field.
 
 ### Added
 
+- **`threadlight-auto` now carries reconciled cost actuals as an advisory,
+  opt-in subphase — and nothing about the state machine changed.**
+  `references/orchestrator.py`, `STAGES`, and `.threadlight/auto-state.json`'s
+  stage keys are byte-for-byte untouched: there is no `cost_actuals` stage,
+  `cost_projection` still sits between `safe_check` and `invoke`, and the
+  resumption table grew no actuals row. What changed is the guidance an agent
+  reads. Stage 5 always runs `scripts/consumption_iq.py run --all` exactly as
+  before (projection artefacts and exit 2/3/4 semantics unchanged);
+  `--with-actuals` is strictly additive and only appended when an operator
+  explicitly asks on a **resumed, mature** pilot *and* supplies or approves a
+  settled `--start`/`--end` window, with `--subscription`/`--resource-group`
+  derived from the active `azd env` and asserted against `az account show`
+  under per-tenant isolation. A first-time deploy never collects actuals —
+  Cost Management usage data refreshes on its own cadence, so a
+  minutes-old pilot has no settled window — and the orchestrator therefore
+  does not poll, sleep, retry in a loop, or hold Invoke behind billing
+  ingestion. Missing arguments mean the subphase is **skipped with guidance**,
+  never a guessed or partial command. Exit 3 records
+  `cost-reconciliation: degraded-source`, exit 5 records
+  `cost-reconciliation: not-verified` (always returned *after* every artefact
+  is written), exit 0 records `pass` — all three continue to
+  Invoke → Evals → Red-team → Govern. The API shape itself is not speculative:
+  it was probed read-only against an isolated demo subscription
+  (`threadlight-consumption-iq/references/live-actuals-probe.md`); the opt-in
+  is about cost, RBAC breadth, and pilot maturity. `threadlight-production-ready`
+  gains the matching evidence contract: forecast evidence
+  (`COST-005`/`006`/`007`) is always preserved and never reinterpreted by
+  reconciliation; `COST-102`/`COST-103` are opt-in artifact consumers whose
+  absence is `not-verified` (excluded from the raw score, never a `must-fix`);
+  `COST-101` remains the live budget check; `KPI-003` reads the actual cost per
+  successful interaction re-derived from the digest-pinned actuals; the
+  schema/SHA-256/freshness/maturity bar stays strict with anything short of it
+  withheld as `not-verified`; and SPEC section 14 enforcement remains opt-in via
+  `check_pilot_contract.py --require-value-model`, so legacy pilots keep passing
+  until they migrate. Versions: `threadlight-auto` 1.1.0 → 1.2.0;
+  `threadlight-production-ready` SKILL metadata + `production_ready.py::VERSION`
+  0.10.0 → 0.11.0 in lockstep. Guidance is pinned by a new section-scoped
+  contract test (`skills/threadlight-auto/tests/test_cost_actuals_guidance.py`)
+  that also asserts `STAGES`, `STAGE_PROBES`, and the absence of any actuals
+  wiring in `orchestrator.py`. No executable behaviour changed.
+
 - **`threadlight-consumption-iq` can now reconcile a forecast against live
   Azure cost actuals — opt-in only.** Two new commands, `actuals` (read-only
   Cost Management / Azure Monitor / Log Analytics collection for a closed

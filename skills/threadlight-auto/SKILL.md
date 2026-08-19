@@ -8,13 +8,14 @@ description: >
   threadlight-production-ready. Auto-continues at every gate;
   HARD STOPS on tenant assertion failure or quota exhaustion. Resumes from
   `.threadlight/auto-state.json`. Smart-recovers from quota, RBAC race, and
-  ImagePull deploy failures. Wraps existing threadlight-* skills.
+  ImagePull deploy failures. Cost projection always runs; reconciled Azure
+  cost actuals are an opt-in, advisory subphase. Wraps existing threadlight-* skills.
   USE FOR: full-auto pilot drive, one-prompt threadlight, resume failed deploy,
   demo-in-one-session, autopilot, threadlight orchestrator, start from Kratos export.
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -237,13 +238,86 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 | 2 | Local-test (OPTIONAL) | `threadlight-local-test` | `src/agent/main.py` runs via Pattern 0; smoke test passes |
 | 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active`. **In Kratos-export mode** `threadlight-deploy` runs enrich/validate only (no regen) + backfills `use-cases/<x>/evals/` |
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + behavioral gates green |
-| 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. |
+| 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. Reconciled actuals are an opt-in subphase of this stage — see [§ Reconciled actuals](#cost-projection-stage--optional-reconciled-actuals-subphase-opt-in). |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
 | 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `foundry-evals`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
 | 8 | Red-team — Discover (advisory) | `threadlight-redteam` (`scripts/redteam_check.py`) | `docs/redteam-report.md` + `specs/redteam-manifest.json` — AI Red Teaming Agent adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content). Mapped to production-ready pillar 7 (SAFE-101..106). Advisory — never blocks. |
 | 9 | Govern — Protect (advisory) | `threadlight-govern` (`scripts/govern_check.py`) | verifier report + `specs/govern-manifest.json` — wraps `foundry-agt`: policy artefact + in-process middleware at the container boundary. Consumed by production-ready pillar 2 (AGT-001..005) + pillar 7 (RAI-002/003). Advisory — never blocks. |
 | 10 | Production-ready (OPTIONAL, advisory) | `threadlight-production-ready` (file-path CLI) | `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json` — never blocks. Run when the customer asked for a paved-path / architecture-review artifact alongside the demo. Skip for pure throwaway demos. |
 | 11 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
+
+### Cost-projection stage — optional reconciled-actuals subphase (opt-in)
+
+`threadlight-consumption-iq` can also reconcile the **forecast** against
+**observed Azure cost actuals** (`actuals` → `reconcile`, or the combined
+`run --all --with-actuals`). In `threadlight-auto` that capability is an
+**optional subphase of the existing `cost_projection` stage** — it is
+**not a new stage**. `STAGES`, `.threadlight/auto-state.json`'s stage keys, and
+the resumption table are unchanged; there is no `cost_actuals` stage to resume
+from, and nothing about resumability keys off actuals.
+
+**1 — Projection always runs, unchanged.** Stage 5 always executes
+`scripts/consumption_iq.py run --all` exactly as it does today, and always
+produces `docs/cost-projection.md` + `specs/cost-manifest.json`. The
+`--with-actuals` flag is strictly additive: it never replaces, reshapes, or
+defers the projection, and the projection's own exit semantics (2 / 3 / 4
+above) are untouched.
+
+**2 — The default run never collects actuals.** On a **first-time** deploy —
+and on every run where the operator did not ask for actuals — `threadlight-auto`
+runs projection only. This is not caution for its own sake: Azure **Cost
+Management** usage data refreshes on its own cadence (roughly every 4 hours,
+daily granularity, and a window only settles after the fact), so a pilot
+deployed minutes ago cannot have a mature window to reconcile against. The rule
+is therefore mechanical: **do not poll**, do not sleep, do not retry in a
+loop, and never hold Invoke behind billing ingestion. If numbers are not there
+yet, the operator re-runs the subphase later — the chain moves on now.
+
+**3 — Actuals run only on an explicit, scoped request.** Append
+`--with-actuals` only when **all** of these hold on a **resumed, mature**
+pilot:
+
+| Precondition | How it is satisfied |
+|---|---|
+| The operator explicitly asked for reconciled actuals on this run | Stated in the prompt (e.g. "reconcile last month's actuals"); never inferred from a deploy |
+| A **settled** cost window | Operator supplies or approves `--start` / `--end` (`YYYY-MM-DD`, `--end` exclusive) over a closed period. **Never guess** dates and never widen a window on the operator's behalf |
+| Scope | `--subscription` / `--resource-group` derived from the active `azd env` (`azd env get-values`) and asserted against `az account show` before the first query |
+| Tenant isolation | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` active and the tenant + subscription assertion green (Stage 0 rules apply — a mismatch is the usual HARD STOP, not an actuals warning) |
+| Optional evidence | `--monitor-resource-id` / `--workspace-resource-id` (full ARM resource IDs) only when the operator supplied them; absent, token/interaction rows degrade to `not-verified` and the run still proceeds |
+
+If any required argument is missing or unverifiable, **skip the subphase** and
+tell the operator exactly what to supply. Never assemble a partial or guessed
+command; a malformed invocation spends RBAC and money against the wrong scope.
+
+Read-only throughout — `Cost Management Reader`, `Monitoring Reader`,
+`Log Analytics Reader`. Nothing is provisioned, mutated, or torn down.
+
+**4 — Exit semantics of the subphase (all advisory).** Every outcome is recorded
+inside the existing `cost_projection` stage entry of
+`.threadlight/auto-state.json` — no new stage key is introduced, and none of
+these values change a skip/run decision on a later resume.
+
+| Exit | Meaning | What `threadlight-auto` records | Chain |
+|---|---|---|---|
+| **exit 0** | Reconciliation verified | `cost-reconciliation: pass` | continue |
+| **exit 3** | A cost source could not be collected/published | `cost-reconciliation: degraded-source` + the warning verbatim | continue |
+| **exit 5** | Reconciliation is `not-verified` (typically an immature window) | `cost-reconciliation: not-verified` | continue |
+
+Exit 5 is **advisory** and is always returned **after** every artefact is
+**already written** (`specs/cost-actuals-manifest.json`,
+`specs/cost-reconciliation-manifest.json`, the reconciliation report), so the
+evidence needed to close the gap is on disk regardless of the verdict. In every
+case the orchestrator continues to **Invoke → Evals → Red-team → Govern** and
+the closing report carries the recorded status. A degraded or `not-verified`
+reconciliation is a fact to report, never a reason to stop, retry, or wait.
+
+**5 — The API shape is proven, the run is still opt-in.** The Cost Management /
+Monitor / Log Analytics parsing was probed read-only against a real isolated
+demo subscription (`../threadlight-consumption-iq/references/live-actuals-probe.md`,
+sanitized result in
+`../threadlight-consumption-iq/references/fixtures/sample-cost-actuals/live-shape.json`),
+so this path is not speculative. It stays opt-in for the reasons above — cost,
+RBAC breadth, and pilot maturity — not because the shape is in doubt.
 
 ### Per-stage HARD STOPs (in addition to global tenant + quota)
 

@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -241,6 +241,55 @@ about findings, not just emit them.
 | `not-applicable` | Check correctly skipped (e.g., Citadel scoring against an AGT-target deployment) | ✅ (counts as pass for raw, with justification) |
 | `not-verified` | Check could not run (no Azure auth, insufficient RBAC, static-only mode) | ⚪ (excluded from raw score; surfaced in `not_verified[]`) |
 | `waived` | Customer explicitly accepted the gap with documented compensating control | ✅ in `score_with_waivers`, ❌ in `raw_score` |
+
+### Cost evidence — forecast always, reconciled actuals opt-in
+
+The cost pillar reads **two independent evidence classes**, and only one of them
+is ever expected to be there.
+
+**Forecast evidence is always preserved.** `COST-005` (projection artefact
+present + fresh), `COST-006` (unaddressed recommendations) and `COST-007`
+(meter coverage) keep reading `docs/cost-projection.md` +
+`specs/cost-manifest.json` exactly as before. Nothing about reconciliation
+changes, gates, or reinterprets them: a pilot that never collects a single
+actual still scores the full forecast surface, and the projected monthly total
+still lands in the report.
+
+**Reconciled actuals are opt-in evidence.** `COST-102` (observed cost variance)
+and `COST-103` (PAYG/PTU recommendation at observed token volume) are pure
+*consumers* of `specs/cost-reconciliation-manifest.json`, published out-of-band
+by `threadlight-consumption-iq` (`actuals` → `reconcile`). This skill issues no
+Cost Management query of its own for them, and `threadlight-auto` never collects
+actuals by default — a freshly deployed pilot cannot have a settled Cost
+Management window, so the bundle is simply absent until an operator asks for it
+on a mature pilot. Absent evidence is reported as `not-verified`, which is
+excluded from the raw score; it is never a `must-fix` and never a penalty for
+running a young pilot. `COST-101` is unaffected and remains the **live budget**
+check (a budget on the subscription or RG), and `KPI-003` reports the **actual
+cost per successful interaction** re-derived from the digest-pinned
+`specs/cost-actuals-manifest.json` rather than a self-reported figure.
+
+**The bar for trusting that bundle is deliberately strict.** Exact schemas, the
+canonical-JSON **SHA-256** of the actuals + forecast manifests matching
+`actuals_ref` / `forecast_ref`, the raw SPEC bytes matching
+`policy_ref.spec_sha256`, a **fresh** observed window against the declared
+`max_window_end_age_days`, `status` **and** `maturity.status` both `pass`, and
+each relayed verdict agreeing with its own numbers. Anything short of that is
+withheld as `not-verified` — this skill relays verdicts, it never authors,
+upgrades, or repairs one. See
+[`references/pillars/10-cost.md`](references/pillars/10-cost.md).
+
+**A `not-verified` verdict still ships evidence.** `consumption_iq.py reconcile`
+(and `run --all --with-actuals`) returns **exit 5** *after* every artefact is
+written, so the manifests and report an operator needs to close the gap are on
+disk even when the verdict is `not-verified`. Exit 5 is advisory: it does not
+stop `threadlight-auto`, and it does not fail this scorecard.
+
+**Legacy pilots keep passing.** SPEC **section 14** (`value_model`) is what
+anchors the reconciliation tolerances, and its enforcement is itself opt-in:
+`scripts/ci/check_pilot_contract.py` only requires the section when a caller
+passes `--require-value-model`. A legacy pilot with no section 14 keeps passing
+by default until it migrates.
 
 ### MCP supply-chain gate (SUP-010..013)
 

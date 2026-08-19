@@ -11,7 +11,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-EXPECTED = "0.10.0"
+EXPECTED = "0.11.0"
 
 _spec = importlib.util.spec_from_file_location(
     "production_ready", ROOT / "scripts" / "production_ready.py"
