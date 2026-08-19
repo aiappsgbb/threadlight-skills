@@ -36,8 +36,8 @@ def _lower() -> str:
 # Version + routing
 # ---------------------------------------------------------------------------
 
-def test_version_bumped_to_0_3_1():
-    assert 'version: "0.3.1"' in _text()
+def test_version_bumped_to_0_4_0():
+    assert 'version: "0.4.0"' in _text()
 
 
 def test_description_carries_presales_triggers():
@@ -101,3 +101,58 @@ def test_classification_internal_vs_customer():
     low = _lower()
     assert "internal" in low and "customer" in low
     assert "talk track" in low or "how to open" in low
+
+
+# ---------------------------------------------------------------------------
+# Live-actuals discipline
+#
+# These are the promises an operator grants RBAC on the strength of. If the
+# prose that carries them is ever edited away, the reader is left believing
+# something the CLI no longer claims — so pin each one.
+# ---------------------------------------------------------------------------
+
+def test_actuals_are_opt_in_and_the_default_run_is_offline():
+    low = _lower()
+    assert "opt-in" in low, "SKILL.md must say live actuals are opt-in"
+    assert "--with-actuals" in low
+    assert "offline" in low, "the default run must be described as offline"
+
+
+def test_actuals_posture_is_read_only():
+    low = _lower()
+    assert "read-only" in low
+    assert "never mutates infrastructure" in low
+
+
+def test_rbac_table_names_the_three_reader_roles():
+    low = _lower()
+    for role in (
+        "cost management reader",
+        "monitoring reader",
+        "log analytics reader",
+    ):
+        assert role in low, f"RBAC table must name {role!r}"
+
+
+def test_no_write_or_deploy_permission_is_claimed():
+    low = _lower()
+    assert "no write, deploy or bicep-mutation permission" in low
+
+
+def test_reconcile_is_documented_as_making_no_azure_call():
+    low = _lower()
+    assert "no azure call" in low or "no azure calls" in low
+
+
+def test_reconcile_scope_trust_is_stated_not_overclaimed():
+    """Standalone `reconcile` trusts the manifest's scope — it must not claim to verify it."""
+    low = _lower()
+    assert "collection scope" in low, "the report's scope block must be documented"
+    assert "does **not** re-verify" in low or "does not re-verify" in low
+
+
+def test_exit_5_is_advisory_and_lands_after_the_artefacts():
+    low = _lower()
+    assert "exit 5" in low
+    assert "advisory" in low
+    assert "after** every artefact" in low or "after every artefact" in low

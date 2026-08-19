@@ -151,7 +151,12 @@ def test_load_shared_parser_isolated_non_default_module_never_pollutes_state(tmp
     # sys.modules.
     assert sys.path == sys_path_before
     assert set(sys.modules) == sys_modules_before
-    assert "token_evidence" not in sys.modules
+    # The fake never squats the real module's name. (Something else in the
+    # process — e.g. the consumption-iq CLI, which owns `token_evidence.py`
+    # as a sibling — may legitimately have imported the real module already,
+    # so the name itself can be present; what must never happen is the fake
+    # answering to it.)
+    assert sys.modules.get("token_evidence") is not fake
 
     # The default, cached parser still resolves to the real module
     # afterwards — completely unaffected by the nondefault load.

@@ -220,6 +220,26 @@ addressable statuses inside `usage`, each `pass | not-verified`:
 actually consumed (§9.7), so a reader can tell `PreTaxCost` evidence from an
 alias without re-querying.
 
+**`ResourceId` is the sole aggregation identity, and `ServiceName` is a cost
+dimension rather than an identity.** One resource legitimately produces daily
+rows under more than one service — its own workload service plus, for
+example, a separate protection/security service billed against the same
+resource. Every distinct nonblank name observed for a resource is therefore
+recorded in `cost.resources[].service_names` (deduplicated case-insensitively,
+sorted deterministically), and the row costs are summed into that one
+resource's `period_cost_usd`; multiplicity is never a parse error.
+`cost.resources[].service_names` is the canonical field; the convenience
+scalar `cost.resources[].service_name` is the sole name when exactly one
+was observed and `null` otherwise — it is **not** a fully
+backward-compatible substitute for `service_names` (a consumer that only
+ever read `service_name` before multi-service rows existed would now see
+`null` whenever a resource carries more than one), so a reader is never
+handed an arbitrary pick as if it were the resource's only cost dimension.
+Reconciliation attributes and compares on the `ResourceId` total, never on a
+per-service split. `resource_type` is identity, not a dimension: two
+both-nonblank, differing `resource_type` values for one `ResourceId` remain a
+fail-closed error.
+
 `cost.resource_id_coverage_pct` is a **source-quality** measure only: actual
 cost rows carrying a nonblank resource ID divided by total actual cost. It says
 nothing about whether the forecast modeled those resources. The separate,
@@ -345,11 +365,25 @@ searching an array for a matching entry. V1 defines a single driver,
 elements.
 
 The two canonical manifest paths always contain the latest completed window.
-Each successful collection also writes the same payloads under
-`specs/cost-history/<start-date>--<end-date>/<generated-at>/`. History entries
-are immutable; collecting the same window after more charges settle creates a
-new timestamped snapshot rather than overwriting evidence. The canonical files
-are the latest-view contract consumed by other skills.
+Each successful **reconciliation** also writes the same payloads under
+`specs/cost-history/<start-date>--<end-date>/<reconciled-at>/`, where
+`<reconciled-at>` is the reconciliation manifest's own `generated_at`.
+History entries are immutable; collecting the same window after more charges
+settle creates a new timestamped snapshot rather than overwriting evidence,
+and so does re-reconciling already-collected evidence against a refreshed
+forecast or an edited SPEC. The canonical files are the latest-view contract
+consumed by other skills.
+
+The two documents both spell this field `generated_at`, and they mean
+different things — read the actuals' as **`collected_at`** (when Cost
+Management was read) and the reconciliation's as **`reconciled_at`** (when
+that evidence was re-projected). `reconciled_at` may never precede
+`collected_at`; it equals it only on the fast path where fresh evidence is
+reconciled immediately, and is strictly later for every offline
+re-reconciliation. Snapshots are therefore keyed on `reconciled_at`, so one
+collected actuals document appears verbatim in as many snapshots as it has
+verdicts. What binds each snapshot to its exact source is
+`reconciliation.actuals_ref.sha256`, never a matching timestamp.
 
 The canonical reconciliation manifest is the **commit marker**. Publishers
 write the actuals file first and reconciliation last. Consumers accept the pair
@@ -486,10 +520,10 @@ merely from the request the tool believes it sent. V1 therefore queries with
 `dataset.granularity: "Daily"` and requires a `UsageDate` column in every
 returned page. The documented Query API semantics this assumes are stated
 explicitly so a future API change breaks a test rather than a customer report:
-`timePeriod.from` is inclusive, `timePeriod.to` is treated as the end of the
-declared range, and daily granularity emits one row per resource per UTC day.
-The parser does not trust that description on its own — it re-validates every
-row:
+`timePeriod.from` is inclusive, `timePeriod.to` is **also inclusive** (a `to`
+sent at midnight of day D returns rows dated D), and daily granularity emits
+one row per resource per UTC day. The parser does not trust that description
+on its own — it re-validates every row:
 
 - `UsageDate` values are normalized from either the integer/string `YYYYMMDD`
   form or an ISO date string into a UTC date;
@@ -501,10 +535,39 @@ row:
 - `complete_days = (window.end - window.start).days`, computed from the
   declared boundaries, and `window.end <= window.start` is rejected outright.
 
-The request body sends `to` at UTC midnight of the declared end date while the
-parser enforces the end-exclusive rule against observed `UsageDate` values, so
-the artifact's window semantics are guaranteed by validation rather than by an
+The internal window contract stays half-open `[start, end)` everywhere — CLI
+arguments, manifest `window`, and parser validation. Because the API's `to`
+bound is inclusive, the source adapter translates it once, at the transport
+boundary: `from = start` at `T00:00:00Z` and `to = end - 1 second`, rendered
+as the previous day's `T23:59:59Z`. Sending `to` at the end day's midnight
+instead would make the API legitimately return rows dated on the exclusive
+end day, which the parser then rejects as out-of-window — a self-inflicted
+fail-closed error, not a service bug. The parser continues to enforce the
+end-exclusive rule against observed `UsageDate` values regardless, so the
+artifact's window semantics are guaranteed by validation rather than by an
 assumption about the service.
+
+**Battle-tested note (2026-08-19).** A live probe against Query API
+`2025-03-01`, requesting the internal half-open window
+`[2026-08-09, 2026-08-16)`, sent `to=2026-08-16T00:00:00Z` (the exclusive
+end day's midnight, before the translation above existed) and observed a
+returned row stamped `UsageDate = 2026-08-16` — the exclusive end day
+itself. That is a direct, real-response confirmation that `timePeriod.to`
+behaves inclusively on this observed surface, not just the documented
+description quoted above. (No subscription/resource identifiers or cost
+figures are recorded here — only the boundary-inclusivity fact.) This is
+exactly why the adapter sends the previous day's `T23:59:59Z` rather than
+the declared end day's midnight, and why the parser keeps the half-open
+`[start, end)` validation active regardless: per-day rows make the
+translation auditable rather than merely assumed. The manifest's
+`window.observed_usage_dates` / `window.observed_day_count` /
+`window.missing_usage_dates` (`cost-actuals-manifest-schema.md`) are the
+auditable evidence this produces going forward — if a future API response
+ever again includes the exclusive end day, the existing end-exclusive
+check still fails loudly (never silently accepted); if the API instead
+omits a day Cost Management should have billed, that day is not hidden —
+it is recorded in `missing_usage_dates` and surfaced as a warning, not
+silently absorbed into a lower total.
 
 If any required policy field is absent, raw actual collection may still
 succeed, but maturity and unit-economics verdicts are `not-verified`.

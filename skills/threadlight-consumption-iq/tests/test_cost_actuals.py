@@ -34,6 +34,7 @@ Core contract under test:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
@@ -124,6 +125,7 @@ def test_rows_for_same_resource_are_summed() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
     assert (result.total_usd, result.currency, result.unattributed_usd) == (
@@ -500,6 +502,7 @@ def test_pagination_aggregates_rows_across_pages() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
 
@@ -540,13 +543,24 @@ def test_aggregate_cost_rows_never_mutates_the_input_pages() -> None:
 # ---------------------------------------------------------------------------
 
 
+# Full daily coverage for the default 2026-08-01..2026-08-08 (7-day,
+# half-open) window used by `_manifest_kwargs` below, so that a test using
+# the default `cost_pages` observes zero missing days and therefore no
+# missing-usage-date warning by default. Tests that specifically exercise
+# `window.missing_usage_dates` / the missing-day warning override
+# `cost_pages` themselves with a deliberately incomplete set of rows.
+_FULL_WEEK_COST_PAGES = [
+    page([[20260801 + offset, "x", 10.0, "USD", RID, "A"] for offset in range(7)])
+]
+
+
 def _manifest_kwargs(*, start, end, generated_at):
     return dict(
         scope={"subscription_id": "00000000-0000-0000-0000-000000000000"},
         start=start,
         end=end,
         generated_at=generated_at,
-        cost_pages=[page([[20260801, "x", 10.0, "USD", RID, "A"]])],
+        cost_pages=deepcopy(_FULL_WEEK_COST_PAGES),
         token_series=None,
         interaction_counts=None,
         provenance={"query_api_version": "2025-03-01"},
@@ -794,6 +808,147 @@ def test_warnings_and_provenance_are_copied_through() -> None:
 
 
 # ---------------------------------------------------------------------------
+# window.observed_usage_dates / observed_day_count / missing_usage_dates:
+# deterministic day-coverage evidence. A day absent from Cost Management is
+# recorded, never hidden and never treated as a failure — a genuinely
+# zero-cost day and a day Cost Management omitted for some other reason both
+# look identical (no row), so the manifest surfaces the fact rather than
+# guessing at a cause. `status` stays "pass"; only extra/out-of-window rows
+# still raise (covered elsewhere by `test_row_before_window_start_is_rejected
+# _not_dropped` / `test_row_on_window_end_is_rejected_because_end_is_
+# exclusive`).
+# ---------------------------------------------------------------------------
+
+
+def test_full_day_coverage_yields_no_missing_dates_and_no_extra_warning() -> None:
+    manifest = build_actuals_manifest(
+        **_manifest_kwargs(
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+        )
+    )
+    window = manifest["window"]
+    assert window["observed_usage_dates"] == [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+    assert window["observed_day_count"] == 7 == window["complete_days"]
+    assert window["missing_usage_dates"] == []
+    assert manifest["warnings"] == []
+
+
+def test_a_missing_middle_day_is_recorded_and_warned() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [
+        page(
+            [
+                [20260801 + offset, "x", 10.0, "USD", RID, "A"]
+                for offset in range(7)
+                if offset != 3  # 2026-08-04 never gets a row
+            ]
+        )
+    ]
+    manifest = build_actuals_manifest(**kwargs)
+    window = manifest["window"]
+    assert window["observed_day_count"] == 6
+    assert window["missing_usage_dates"] == ["2026-08-04"]
+    assert "2026-08-04" not in window["observed_usage_dates"]
+    assert manifest["status"] == "pass"
+    assert len(manifest["warnings"]) == 1
+    assert re.search(
+        r"Cost Management returned no cost rows for 1 requested day\(s\); "
+        r"treated as zero-cost days",
+        manifest["warnings"][0],
+    )
+
+
+def test_a_missing_final_day_is_recorded_and_warned() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [
+        page(
+            [
+                [20260801 + offset, "x", 10.0, "USD", RID, "A"]
+                for offset in range(6)  # 2026-08-07, the last window day, is absent
+            ]
+        )
+    ]
+    manifest = build_actuals_manifest(**kwargs)
+    window = manifest["window"]
+    assert window["observed_day_count"] == 6
+    assert window["missing_usage_dates"] == ["2026-08-07"]
+    assert manifest["status"] == "pass"
+    assert len(manifest["warnings"]) == 1
+    assert "2026-08-07" in manifest["warnings"][0]
+
+
+def test_zero_row_page_records_all_days_missing_and_still_passes() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([])]  # a valid page, deliberately zero rows
+    manifest = build_actuals_manifest(**kwargs)
+
+    assert manifest["status"] == "pass"
+    window = manifest["window"]
+    assert window["observed_usage_dates"] == []
+    assert window["observed_day_count"] == 0
+    assert window["missing_usage_dates"] == [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+    assert manifest["cost"]["currency"] is None
+    assert manifest["cost"]["period_total_usd"] == 0.0
+    assert manifest["cost"]["resources"] == []
+
+    assert len(manifest["warnings"]) == 1
+    warning = manifest["warnings"][0]
+    assert "7 requested day(s)" in warning
+    # The preview inlined in the warning text is capped; the full list is
+    # always available, uncapped, in `window.missing_usage_dates` above.
+    assert "…" in warning
+    assert "2026-08-01" in warning
+
+
+def test_missing_usage_date_warning_does_not_mutate_caller_warnings() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([[20260801, "x", 10.0, "USD", RID, "A"]])]
+    original_warnings = ["preexisting warning"]
+    kwargs["warnings"] = original_warnings
+
+    manifest = build_actuals_manifest(**kwargs)
+
+    assert original_warnings == ["preexisting warning"]
+    assert manifest["warnings"][0] == "preexisting warning"
+    assert len(manifest["warnings"]) == 2
+    assert "requested day(s)" in manifest["warnings"][1]
+
+
+# ---------------------------------------------------------------------------
 # Sanitized fixtures parse
 # ---------------------------------------------------------------------------
 
@@ -826,6 +981,28 @@ def test_costusd_alias_fixture_parses() -> None:
     )
     assert result.cost_column == "CostUSD"
     assert result.total_usd > 0
+
+
+def test_multi_service_fixture_keeps_one_resource_with_both_service_names() -> None:
+    # Regression for the live probe shape: one storage resource legitimately
+    # carries both its own workload cost line and a security/protection
+    # service cost line for the same day. Both belong to the same ResourceId
+    # total; neither is a conflict.
+    fixture = _load_fixture("cost-query-multi-service.json")
+    rows = rows_from_query_page(fixture)
+    assert rows
+
+    result = aggregate_cost_rows(
+        [fixture],
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+    )
+    assert len(result.resources) == 1
+    resource = result.resources[0]
+    assert resource["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    assert resource["service_name"] is None
+    assert resource["resource_type"] == "microsoft.storage/storageaccounts"
+    assert resource["period_cost_usd"] == result.total_usd
 
 
 def test_aoai_account_fixture_parses_and_rolls_up_by_account() -> None:
@@ -1228,6 +1405,7 @@ def test_empty_first_resource_type_is_backfilled_from_a_later_nonempty_row() -> 
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 10.0,
     }]
 
@@ -1240,11 +1418,124 @@ def test_conflicting_nonempty_resource_type_for_same_resource_is_rejected() -> N
         ])
 
 
-def test_conflicting_nonempty_service_name_for_same_resource_is_rejected() -> None:
-    with pytest.raises(ActualsEvidenceError, match="service_name"):
+# ---------------------------------------------------------------------------
+# Multiple ServiceName values for one resource are a legitimate Cost
+# Management shape (a workload resource also carries security//protection
+# service cost lines), not a conflict. ResourceId stays the aggregation
+# identity; resource_type conflicts stay fail-closed.
+# ---------------------------------------------------------------------------
+
+
+def test_multiple_service_names_for_same_resource_are_accepted_and_summed() -> None:
+    result = aggregate([
+        [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+        [
+            20260801,
+            "microsoft.storage/storageaccounts",
+            1.0,
+            "USD",
+            RID,
+            "Microsoft Defender for Cloud",
+        ],
+    ])
+    assert len(result.resources) == 1
+    resource = result.resources[0]
+    # ResourceId remains the aggregation identity: both cost dimensions
+    # belong to the same resource and must land in the same total.
+    assert resource["period_cost_usd"] == 5.0
+    assert result.total_usd == 5.0
+    assert resource["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    # Honest ambiguity: with more than one observed name there is no single
+    # correct value, so the convenience scalar is null rather than an
+    # arbitrary first-observed pick. `service_names` is the canonical field.
+    assert resource["service_name"] is None
+
+
+def test_service_names_are_sorted_case_insensitively_and_deterministically() -> None:
+    result = aggregate([
+        [20260801, "x", 1.0, "USD", RID, "zeta service"],
+        [20260801, "x", 1.0, "USD", RID, "Alpha Service"],
+        [20260802, "x", 1.0, "USD", RID, "beta service"],
+    ])
+    assert result.resources[0]["service_names"] == [
+        "Alpha Service",
+        "beta service",
+        "zeta service",
+    ]
+
+
+def test_single_service_name_still_populates_scalar_and_list() -> None:
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+    ])
+    assert result.resources[0]["service_name"] == "ACA"
+    assert result.resources[0]["service_names"] == ["ACA"]
+
+
+def test_service_names_dedup_case_variants_keeping_first_display_casing() -> None:
+    result = aggregate([
+        [20260801, "x", 5.0, "USD", RID, "Storage"],
+        [20260802, "x", 5.0, "USD", RID, "STORAGE"],
+    ])
+    # One logical service observed twice is still exactly one name, so the
+    # scalar stays populated and the display casing is the first observed.
+    assert result.resources[0]["service_names"] == ["Storage"]
+    assert result.resources[0]["service_name"] == "Storage"
+
+
+def test_no_observed_service_name_yields_empty_list_and_null_scalar() -> None:
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, ""],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "   "],
+    ])
+    assert result.resources[0]["service_names"] == []
+    assert result.resources[0]["service_name"] is None
+
+
+def test_blank_service_name_rows_do_not_pollute_the_name_list() -> None:
+    result = aggregate([
+        [20260801, "x", 5.0, "USD", RID, ""],
+        [20260802, "x", 5.0, "USD", RID, "Storage"],
+    ])
+    # The blank row's cost is still counted; only the name is absent.
+    assert result.resources[0]["period_cost_usd"] == 10.0
+    assert result.resources[0]["service_names"] == ["Storage"]
+    assert result.resources[0]["service_name"] == "Storage"
+
+
+def test_multiple_service_names_do_not_mutate_the_input_pages() -> None:
+    pages = [page([
+        [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+        [
+            20260802,
+            "microsoft.storage/storageaccounts",
+            1.0,
+            "USD",
+            RID,
+            "Microsoft Defender for Cloud",
+        ],
+    ])]
+    before = deepcopy(pages)
+    aggregate_cost_rows(pages, **WINDOW)
+    assert pages == before
+
+
+def test_conflicting_resource_type_is_still_rejected_with_multiple_services() -> None:
+    # Accepting multiple service names must not weaken the resource-type
+    # identity check: a single ResourceId reporting two types is still a
+    # contract violation.
+    with pytest.raises(ActualsEvidenceError, match="resource_type"):
         aggregate([
-            [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
-            [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "Other"],
+            [20260801, "microsoft.storage/storageaccounts", 4.0, "USD", RID, "Storage"],
+            [
+                20260802,
+                "microsoft.app/containerapps",
+                1.0,
+                "USD",
+                RID,
+                "Microsoft Defender for Cloud",
+            ],
         ])
 
 
@@ -1260,6 +1551,7 @@ def test_whitespace_only_resource_type_is_treated_as_blank_and_backfilled() -> N
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 10.0,
     }]
 
@@ -1280,6 +1572,7 @@ def test_service_name_differing_only_by_case_is_not_a_conflict() -> None:
         [20260802, "x", 5.0, "USD", RID, "ACA"],
     ])
     assert result.resources[0]["service_name"] == "aca"
+    assert result.resources[0]["service_names"] == ["aca"]
 
 
 # ---------------------------------------------------------------------------
@@ -1744,3 +2037,418 @@ def test_no_tables_at_all_is_rejected() -> None:
 def test_non_dict_response_is_rejected() -> None:
     with pytest.raises(ActualsEvidenceError, match="not an object"):
         parse_interaction_counts(["not", "a", "dict"])
+
+
+# ---------------------------------------------------------------------------
+# `live-shape.json` — sanitized shape pinned from a real, read-only Cost
+# Management live probe (see `references/live-actuals-probe.md`). Every
+# identifier, name and dollar amount in the fixture is synthetic; only the
+# *shape* — schema, window semantics, multi-`ServiceName` aggregation, and
+# the `cached_input_tokens: None` mandatory-metrics-only outcome — is real.
+# These tests pin that shape so it can never silently regress, and assert
+# nothing raw ever leaked into the sanitized copy.
+# ---------------------------------------------------------------------------
+
+LIVE_SHAPE_FIXTURE = "live-shape.json"
+LIVE_ACTUALS_PROBE_RUNBOOK = (
+    Path(__file__).resolve().parent.parent
+    / "references"
+    / "live-actuals-probe.md"
+)
+
+# Sanitization is asserted GENERICALLY below, never by naming the raw
+# personal alias/subscription/tenant the live probe actually ran against:
+# doing that would either (a) require committing the very token being
+# forbidden, defeating the point, or (b) require adding it to some other
+# denylist, which just relocates the same problem. Instead every check is
+# structural: every GUID-shaped value is the all-zero GUID, every
+# identity-shaped field (resource/account/model/deployment name) carries
+# only a synthetic `sanitized` marker, and no email/URL/credential-shaped
+# fragment appears anywhere in the fixture or the runbook.
+_ALL_ZERO_GUID = "00000000-0000-0000-0000-000000000000"
+_GUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_URL_RE = re.compile(r"(?i)\bhttps?://\S+")
+# Credential-shaped `key: value` / `key=value` fragments, mirroring the
+# marker set `reconciliation_emitter._scan_for_credentials` refuses at
+# publish time — a bearer credential is never legitimate sanitized evidence.
+_CREDENTIAL_FRAGMENT_RE = re.compile(
+    r"(?i)(api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|"
+    r"bearer[_-]?token|client[_-]?secret|authorization)\s*[:=]\s*\S+"
+)
+# The resource/account/model/deployment name convention every sanitized
+# identity field must follow: a `sanitized` marker somewhere in the name,
+# never a raw/real name (or a person's alias standing in for one).
+_SANITIZED_NAME_RE = re.compile(r"sanitized", re.IGNORECASE)
+# The last path segment of an ARM resource ID is the resource's own name —
+# exactly the field a raw name would leak through.
+_ARM_RESOURCE_NAME_RE = re.compile(r"/subscriptions/[^/]+/.*?/([^/]+)$")
+
+
+def _iter_guids(value: object):
+    """Recursively yield every GUID-shaped substring found anywhere in
+    `value` (dict keys/values, list items, strings) so a stray real
+    subscription/tenant/resource GUID cannot hide in a nested field this
+    test does not otherwise inspect by name."""
+    if isinstance(value, str):
+        yield from _GUID_RE.findall(value)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_guids(key)
+            yield from _iter_guids(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_guids(item)
+
+
+def _iter_identity_names(value: object):
+    """Recursively yield every resource/account name this fixture's shape
+    depends on: the last path segment of every ARM resource ID string, plus
+    every string value found anywhere else in the document. Broad by
+    design — a synthetic name substituted in an unnamed future field must
+    still satisfy the same "sanitized" convention as the ones this test
+    already knows about by name."""
+    if isinstance(value, str):
+        match = _ARM_RESOURCE_NAME_RE.search(value)
+        if match:
+            yield match.group(1)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_identity_names(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_identity_names(item)
+
+
+@pytest.fixture()
+def live_shape() -> dict:
+    return _load_fixture(LIVE_SHAPE_FIXTURE)
+
+
+def test_live_shape_fixture_is_strict_json(live_shape) -> None:
+    # `_load_fixture` already went through `json.loads`; re-serializing and
+    # re-parsing proves the on-disk bytes are canonical strict JSON (no
+    # trailing commas, comments or NaN/Infinity literals a hand-edit could
+    # have introduced) rather than merely "whatever json.loads tolerated".
+    reparsed = json.loads(json.dumps(live_shape))
+    assert reparsed == live_shape
+
+
+def test_live_shape_fixture_file_rejects_non_finite_json_constants() -> None:
+    """`json.loads`'s default `parse_constant` silently ACCEPTS the
+    non-standard `NaN`/`Infinity`/`-Infinity` tokens Python's own
+    `json.dumps` can emit for a raw float, so `_load_fixture`
+    round-tripping cleanly (the test above) does not by itself prove the
+    on-disk bytes are free of them. Read the raw file text directly and
+    pass a `parse_constant` that raises, so a stray non-finite literal in
+    the committed fixture fails this test outright instead of silently
+    round-tripping into a `float('nan')`/`float('inf')` that would then
+    poison every downstream Decimal/money assertion with a NaN it never
+    complains about."""
+    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8")
+
+    def _reject_non_finite(token: str) -> None:
+        raise AssertionError(
+            f"{LIVE_SHAPE_FIXTURE} contains a non-finite JSON constant: {token!r}"
+        )
+
+    parsed = json.loads(raw, parse_constant=_reject_non_finite)
+    assert parsed == json.loads(raw)
+
+
+def test_live_shape_fixture_has_no_unknown_top_level_keys(live_shape) -> None:
+    assert set(live_shape.keys()) == {
+        "schema",
+        "generated_at",
+        "status",
+        "scope",
+        "window",
+        "cost",
+        "usage",
+        "provenance",
+        "warnings",
+    }
+
+
+def test_live_shape_fixture_schema_and_status(live_shape) -> None:
+    assert live_shape["schema"] == "threadlight-cost-actuals/v1"
+    assert live_shape["status"] == "pass"
+
+
+def test_live_shape_fixture_window_is_seven_complete_observed_days(
+    live_shape,
+) -> None:
+    window = live_shape["window"]
+    assert window["start"] == "2026-08-09T00:00:00Z"
+    assert window["end"] == "2026-08-16T00:00:00Z"
+    assert window["complete_days"] == 7
+    assert window["observed_day_count"] == 7
+    assert window["missing_usage_dates"] == []
+    assert window["observed_usage_dates"] == [
+        "2026-08-09",
+        "2026-08-10",
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14",
+        "2026-08-15",
+    ]
+    # Every observed date must fall strictly inside the declared half-open
+    # window (start-inclusive, end-exclusive) — the same invariant
+    # `aggregate_cost_rows` enforces on live rows.
+    start_date = date.fromisoformat(window["start"][:10])
+    end_date = date.fromisoformat(window["end"][:10])
+    for iso_day in window["observed_usage_dates"]:
+        assert start_date <= date.fromisoformat(iso_day) < end_date
+
+
+def test_live_shape_fixture_money_identity_holds_exactly(live_shape) -> None:
+    """`period_total_usd == sum(resources[].period_cost_usd) +
+    unattributed_usd`, compared in `Decimal` (never raw binary `float`
+    addition) per the manifest schema's money-rounding contract."""
+    cost = live_shape["cost"]
+    total = Decimal(str(cost["period_total_usd"]))
+    resource_sum = sum(
+        (Decimal(str(r["period_cost_usd"])) for r in cost["resources"]),
+        start=Decimal("0"),
+    )
+    unattributed = Decimal(str(cost["unattributed_usd"]))
+    assert resource_sum + unattributed == total
+    assert total == Decimal("123.45")
+    assert cost["currency"] == "USD"
+    assert cost["cost_column"] == "PreTaxCost"
+    assert cost["basis"] == "usage-pretax"
+
+
+def test_live_shape_fixture_has_three_resources_one_multi_service(
+    live_shape,
+) -> None:
+    resources = live_shape["cost"]["resources"]
+    assert len(resources) == 3
+
+    multi_service = [r for r in resources if len(r["service_names"]) > 1]
+    assert len(multi_service) == 1
+    storage = multi_service[0]
+    assert storage["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    # `service_name` is the single-name convenience scalar and MUST be
+    # `null` (not an arbitrary first-observed pick) whenever more than one
+    # `ServiceName` was observed for the same `ResourceId` — this is the
+    # exact behavior the live probe's multi-service ResourceId (workload +
+    # Defender) exercised for real.
+    assert storage["service_name"] is None
+
+    single_service = [r for r in resources if len(r["service_names"]) == 1]
+    assert len(single_service) == 2
+    for resource in single_service:
+        assert resource["service_name"] == resource["service_names"][0]
+
+
+def test_live_shape_fixture_interaction_status_zero_is_pass_not_unverified(
+    live_shape,
+) -> None:
+    usage = live_shape["usage"]
+    assert usage["interaction_status"] == "pass"
+    assert usage["total_interactions"] == 0
+    assert usage["successful_interactions"] == 0
+    assert usage["success_predicate_ref"] == "SPEC.md#section-14-value-model"
+
+
+def test_live_shape_fixture_has_one_model_row_with_cache_none(live_shape) -> None:
+    """Confirms the live-observed `CachedInputTokens` outage fix: the
+    mandatory metrics query is Input/Output only, so `cached_input_tokens`
+    is always `None` here — never a manufactured `0` — while
+    `model_attribution_status` still reports `pass` because the mandatory
+    metrics themselves were collected."""
+    usage = live_shape["usage"]
+    assert usage["model_attribution_status"] == "pass"
+    models = usage["models"]
+    assert len(models) == 1
+    row = models[0]
+    assert row["cached_input_tokens"] is None
+    assert row["input_tokens"] == 1000
+    assert row["output_tokens"] == 200
+    assert row["account_resource_id"] == row["resource_id"]
+    # The account identity is synthetic, but it must still be a
+    # well-formed ARM resource ID scoped to the sanitized RG/subscription,
+    # never a bare name.
+    assert row["account_resource_id"].startswith(
+        f"/subscriptions/{_ALL_ZERO_GUID}/resourceGroups/rg-sanitized-ai-pilot/"
+    )
+
+
+def test_live_shape_fixture_warnings_are_empty(live_shape) -> None:
+    assert live_shape["warnings"] == []
+
+
+def test_live_shape_fixture_provenance_mirrors_actuals_provenance_keys(
+    live_shape,
+) -> None:
+    """`live-shape.json`'s `provenance` must carry every key
+    `consumption_iq._actuals_provenance` actually emits — with synthetic
+    values — not only the sanitization notice fields, otherwise this
+    fixture would silently under-represent the real manifest shape it
+    claims to pin."""
+    provenance = live_shape["provenance"]
+    assert provenance["sources"] == [
+        "cost-management-query",
+        "azure-monitor-metrics",
+        "log-analytics-query",
+    ]
+    assert provenance["query_api_version"] == "2025-03-01"
+    assert provenance["subscription_id"] == _ALL_ZERO_GUID
+    assert provenance["resource_group"] == live_shape["scope"]["resource_group"]
+    account_resource_id = live_shape["usage"]["models"][0]["account_resource_id"]
+    assert provenance["monitor_resource_id"] == account_resource_id
+    assert provenance["workspace_resource_id"].startswith(
+        f"/subscriptions/{_ALL_ZERO_GUID}/"
+    )
+    assert provenance["token_source_resource_id"] == account_resource_id
+    assert provenance["interaction_query_issued"] is True
+    assert provenance["window"] == {"start": "2026-08-09", "end": "2026-08-16"}
+    # `collected_at` is the same instant as the document's own
+    # `generated_at`: `_actuals_provenance` derives both from the single
+    # `generated_at` instant `_phase_actuals` computes once and passes to
+    # both `build_actuals_manifest` and `_actuals_provenance`.
+    assert provenance["collected_at"] == live_shape["generated_at"]
+
+
+def test_live_shape_fixture_provenance_declares_sanitization(live_shape) -> None:
+    """The sanitization-only notice fields have no counterpart in
+    `_actuals_provenance` and exist purely so a consumer can never mistake
+    this fixture for real evidence. `shape_observed_at` names the calendar
+    date this shape was captured/committed — a deliberately different fact
+    from `collected_at`/`generated_at` above (the synthetic in-fixture
+    collection instant used to exercise window validation); the two are
+    allowed to differ, and do."""
+    provenance = live_shape["provenance"]
+    assert provenance["sanitized_fixture"] is True
+    assert provenance["values"] == "synthetic"
+    assert provenance["shape_observed_at"]
+    assert provenance["collection_method"]
+
+
+def test_live_shape_fixture_scope_uses_sanitized_placeholders(live_shape) -> None:
+    scope = live_shape["scope"]
+    assert scope["subscription_id"] == _ALL_ZERO_GUID
+    assert scope["resource_group"] == "rg-sanitized-ai-pilot"
+
+
+def test_live_shape_fixture_every_guid_is_all_zero(live_shape) -> None:
+    """Recursively scans the whole document — not just `scope` — because a
+    real subscription/tenant/resource GUID could otherwise hide inside a
+    resource ID, `account_resource_id`, or a future field this test does
+    not name explicitly."""
+    guids = list(_iter_guids(live_shape))
+    assert guids, "expected at least one GUID-shaped value in the fixture"
+    assert all(guid == _ALL_ZERO_GUID for guid in guids), guids
+
+
+def test_live_shape_fixture_has_no_email_url_or_credential_shaped_content(
+    live_shape,
+) -> None:
+    """Generic sanitization guard: scans the whole parsed document for
+    email-, URL-, and credential-shaped content. Deliberately does not
+    name any specific raw token (a person's alias, a real subscription
+    ID, ...) — asserting a raw value is absent by spelling it out here
+    would just relocate the very thing being forbidden into this test
+    file, which defeats the point."""
+    blob = json.dumps(live_shape)
+    assert not _EMAIL_RE.search(blob), "fixture contains an email-shaped string"
+    assert not _URL_RE.search(blob), "fixture contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(blob), (
+        "fixture contains a credential-shaped key: value / key=value fragment"
+    )
+
+
+def test_live_shape_fixture_file_has_no_secret_shaped_content_on_disk() -> None:
+    """Belt-and-braces: scan the raw file bytes too, not only the parsed
+    JSON structure, so anything stashed in whitespace or outside a JSON
+    string literal (e.g. an errant trailing comment) would still be
+    caught."""
+    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8")
+    assert not _EMAIL_RE.search(raw), "fixture file contains an email-shaped string"
+    assert not _URL_RE.search(raw), "fixture file contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(raw), (
+        "fixture file contains a credential-shaped key: value / key=value fragment"
+    )
+
+
+def test_live_shape_fixture_identity_fields_are_synthetic_only(live_shape) -> None:
+    """Every resource-identity-shaped value this fixture's shape depends
+    on — the last path segment of every ARM resource ID, the resource
+    group, and every model/deployment name — must carry a synthetic
+    `sanitized` marker. This is the generic check that catches a raw name
+    (a person's alias, a real resource group, a real account) substituted
+    in place of a synthetic one, without the test ever repeating that raw
+    value to assert its absence."""
+    names = set(_iter_identity_names(live_shape))
+    names.add(live_shape["scope"]["resource_group"])
+    for model in live_shape["usage"]["models"]:
+        names.add(model["model"])
+        names.add(model["deployment"])
+    assert names, "expected at least one identity-shaped name in the fixture"
+    for name in names:
+        assert _SANITIZED_NAME_RE.search(name), (
+            f"identity field {name!r} does not carry a synthetic 'sanitized' marker"
+        )
+
+
+def test_runbook_has_no_email_url_or_credential_shaped_content() -> None:
+    """The runbook prose is scanned with the same generic patterns as the
+    fixture (see `references/live-actuals-probe.md`'s sanitization
+    checklist): it must describe the isolation contract and sanitization
+    procedure generically, and must never repeat a real email, URL, or
+    credential-shaped fragment from the probed subscription."""
+    text = LIVE_ACTUALS_PROBE_RUNBOOK.read_text(encoding="utf-8")
+    assert not _EMAIL_RE.search(text), "runbook contains an email-shaped string"
+    assert not _URL_RE.search(text), "runbook contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(text), (
+        "runbook contains a credential-shaped key: value / key=value fragment"
+    )
+
+
+def test_live_shape_fixture_is_accepted_by_require_reusable_actuals(
+    live_shape,
+) -> None:
+    """The sanitized fixture must be reconciliation-ready, exactly like a
+    real collected manifest: `consumption_iq._require_reusable_actuals`
+    (the single gate `reconcile` / `run --all --with-actuals` calls before
+    trusting an actuals document) must accept it as-is with no
+    `--start`/`--end`/`--subscription`/`--resource-group` cross-check
+    requested (mirrors standalone `reconcile`)."""
+    import consumption_iq  # noqa: E402  (SCRIPTS already on sys.path)
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(start=None, end=None, subscription=None, resource_group=None)
+    # Must not raise.
+    consumption_iq._require_reusable_actuals(live_shape, args)
+
+
+def test_live_shape_fixture_is_accepted_by_require_reusable_actuals_with_matching_scope(
+    live_shape,
+) -> None:
+    import consumption_iq  # noqa: E402
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(
+        start=date(2026, 8, 9),
+        end=date(2026, 8, 16),
+        subscription=_ALL_ZERO_GUID,
+        resource_group="rg-sanitized-ai-pilot",
+    )
+    consumption_iq._require_reusable_actuals(live_shape, args)
+
+
+def test_live_shape_fixture_passes_reconciliation_emitter_actuals_validation(
+    live_shape,
+) -> None:
+    """The stricter, publish-time validator (`_validate_actuals`, used by
+    `emit_actuals_document`/`emit_reconciliation`) must also accept the
+    fixture untouched, including its credential-scan of `provenance` and
+    `warnings` — proving the sanitized notice fields themselves don't trip
+    the credential-shaped-key/value guard."""
+    import reconciliation_emitter as emitter  # noqa: E402
+
+    emitter._validate_actuals(live_shape)

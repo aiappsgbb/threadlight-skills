@@ -1,0 +1,50 @@
+{
+  "id": "subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CostManagement/query/tl-pilot-actuals",
+  "name": "tl-pilot-actuals",
+  "type": "Microsoft.CostManagement/query",
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      { "name": "UsageDate", "type": "Number" },
+      { "name": "ResourceType", "type": "String" },
+      { "name": "PreTaxCost", "type": "Number" },
+      { "name": "Currency", "type": "String" },
+      { "name": "ResourceId", "type": "String" },
+      { "name": "ServiceName", "type": "String" }
+    ],
+    "rows": [
+      [
+        20260801,
+        "microsoft.storage/storageaccounts",
+        0.5,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/pilotstore",
+        "Storage"
+      ],
+      [
+        20260801,
+        "microsoft.storage/storageaccounts",
+        2.0,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/pilotstore",
+        "Microsoft Defender for Cloud"
+      ],
+      [
+        20260802,
+        "microsoft.storage/storageaccounts",
+        0.5,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/pilotstore",
+        "Storage"
+      ],
+      [
+        20260802,
+        "microsoft.storage/storageaccounts",
+        2.0,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Storage/storageAccounts/pilotstore",
+        "Microsoft Defender for Cloud"
+      ]
+    ]
+  }
+}

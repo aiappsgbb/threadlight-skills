@@ -1172,7 +1172,13 @@ git commit -m "feat(consumption-iq): parse SPEC value policy"
 The query is issued with `granularity: "Daily"` and groups by `UsageDate`
 (Task 9), so every page carries a `UsageDate` column and the parser is the
 component that proves the returned rows actually lie inside the requested
-window. Use sanitized Query API responses shaped as:
+window. Note that a single `ResourceId` legitimately appears on several rows
+for the same day under *different* `ServiceName` values (its own workload
+service plus, for example, a separate protection/security service billed
+against it). `ResourceId` alone is the aggregation identity: those rows sum
+into one resource entry, every distinct name is recorded in `service_names`,
+and the multiplicity is never treated as a conflict. Only `resource_type`
+disagreement is fail-closed. Use sanitized Query API responses shaped as:
 
 ```json
 {
@@ -1262,6 +1268,7 @@ def test_rows_for_same_resource_are_summed() -> None:
         "resource_id": RID,
         "resource_type": "microsoft.app/containerapps",
         "service_name": "ACA",
+        "service_names": ["ACA"],
         "period_cost_usd": 15.0,
     }]
     assert (result.total_usd, result.currency, result.unattributed_usd) == (
@@ -1595,12 +1602,14 @@ Window rules (RFC §8.1):
   charges is still a complete day;
 - `end <= start` is rejected;
 - every row must satisfy `start.date() <= usage_date < end.date()`;
-- the request body sends `end` at UTC midnight, and the parser enforces
-  end-exclusivity itself rather than trusting the Query API's own boundary
-  semantics. Document that assumption next to the check: the API is
-  *documented* as inclusive of the period it returns, so the guard exists
-  precisely so a boundary-semantics change surfaces as a loud failure instead
-  of a silently inflated total.
+- the request body sends `to` at `end - 1 second` (the previous day's
+  `T23:59:59Z`) because the Query API's `to` bound is **inclusive**, and the
+  parser enforces end-exclusivity itself rather than trusting the API's
+  boundary semantics. Document that translation next to the check: the API is
+  *documented* as inclusive of the period it returns, so the request is
+  narrowed to match the half-open internal contract *and* the guard still
+  exists, precisely so a boundary-semantics change surfaces as a loud failure
+  instead of a silently inflated total.
 
 Compute `settlement_age_hours` and `window_end_age_days` from
 `generated_at - end`; the source does not claim an unobservable Cost
@@ -2450,6 +2459,9 @@ def reconcile_costs(
     policy_errors: list[str],
     generated_at: str,
     policy_spec_sha256: str,
+    forecast_path: str = FORECAST_PATH,
+    actuals_path: str = ACTUALS_PATH,
+    policy_path: str = POLICY_PATH,
 ) -> dict[str, object]:
     """Return `threadlight-cost-reconciliation/v1`.
 
@@ -2457,6 +2469,11 @@ def reconcile_costs(
     refuses to produce a manifest. Errors are copied to `policy_errors` in the
     output and force `maturity.status` and `unit_economics.status` to
     `not-verified`, but every observed number is still reported.
+
+    The `*_path` arguments are provenance only: they are recorded as
+    `refs.*_ref.path` so the manifest names the documents the caller actually
+    read, and they never affect a hash or a number. They default to the
+    canonical locations, so existing callers are unaffected.
     """
 ```
 
@@ -2680,9 +2697,13 @@ def az_config_dir(monkeypatch, tmp_path: Path) -> str:
 
 def test_cost_query_uses_custom_window_and_daily_grouping() -> None:
     body = cost_query_body(date(2026, 8, 1), date(2026, 8, 8))
+    # `timePeriod.to` is inclusive on the live Query API (§8.1's battle-tested
+    # note), so the request bound is the previous day at 23:59:59, never the
+    # declared exclusive end day's midnight — sending the latter would make
+    # the API legitimately return an extra day that the parser then rejects.
     assert body["timePeriod"] == {
         "from": "2026-08-01T00:00:00Z",
-        "to": "2026-08-08T00:00:00Z",
+        "to": "2026-08-07T23:59:59Z",
     }
     # Daily granularity is what makes the window verifiable downstream: the
     # parser can only check `start <= usage_date < end` if rows carry a date.
@@ -2895,13 +2916,26 @@ Runner = Callable[
 ]
 
 
+def _inclusive_utc_end(end: date) -> str:
+    # The internal CLI/window contract is half-open [start, end), but the
+    # Query API's `timePeriod.to` is *inclusive* (§8.1's battle-tested
+    # note): a `to` sent at the end day's midnight makes the API legitimately
+    # return rows dated on that day, which the parser then rejects as
+    # out-of-window. Send `end - 1 second` — the previous day's
+    # `T23:59:59Z` — so the API is never asked for the exclusive end day.
+    last_instant = datetime(
+        end.year, end.month, end.day, tzinfo=timezone.utc
+    ) - timedelta(seconds=1)
+    return last_instant.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def cost_query_body(start: date, end: date) -> dict[str, object]:
     return {
         "type": "Usage",
         "timeframe": "Custom",
         "timePeriod": {
             "from": f"{start.isoformat()}T00:00:00Z",
-            "to": f"{end.isoformat()}T00:00:00Z",
+            "to": _inclusive_utc_end(end),
         },
         "dataset": {
             "granularity": "Daily",
@@ -2926,12 +2960,15 @@ every returned day lies inside the requested half-open window and computes
 `complete_days` (Task 6, RFC §8.1). With `"None"` the response is a single
 undated aggregate and nothing downstream can prove the window was honored.
 
-Document the assumption alongside the body: the Query API's `timePeriod` is
-documented as covering the requested period, and the `to` bound is sent at UTC
-midnight of the exclusive end day. Rather than depending on that boundary
-semantic, the daily rows are validated locally as `start <= usage_date < end`,
-so any change in API behavior surfaces as a loud parse failure instead of a
-silently wrong total.
+Document the assumption alongside the body: the Query API's `timePeriod.to`
+bound is **inclusive**, so the half-open internal window `[start, end)` is
+translated once at the transport boundary — `from` at `start` UTC midnight,
+`to` at `end - 1 second` (the previous day's `T23:59:59Z`). Sending `to` at
+the exclusive end day's midnight would make the API return that day's rows,
+which the parser rejects as out-of-window. Rather than depending on either
+boundary semantic, the daily rows are still validated locally as
+`start <= usage_date < end`, so any change in API behavior surfaces as a loud
+parse failure instead of a silently wrong total.
 
 Query URL:
 
@@ -3266,7 +3303,15 @@ def canonical_pair_is_complete(
 ```
 
 Write history in the concrete shape
-`specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/{actuals,reconciliation}.json`.
+`specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/{actuals,reconciliation}.json`,
+where the second path component is the **reconciliation** manifest's
+`generated_at` (`reconciled_at`), not the actuals' (`collected_at`). The two
+are equal only when fresh evidence is reconciled immediately; keying on
+`collected_at` would make every offline re-reconciliation of the same
+evidence collide with the first verdict. Validate that `reconciled_at` is at
+or after `collected_at` — never require equality — and let the same actuals
+appear in several snapshots, each bound to its source by
+`actuals_ref.sha256`.
 Write temp files in the destination directory, `flush`, `os.fsync`, then
 `os.replace`. Refuse to replace an existing timestamped history file with a
 different hash. Replace canonical actuals first and canonical reconciliation
@@ -3876,6 +3921,13 @@ of just the actuals manifest (`DEFAULT_ACTUALS_MANIFEST` or `--actuals-manifest`
 it does not write history, because `reconciliation_emitter.emit_reconciliation`
 (Task 10) only writes the atomic actuals+reconciliation history pair once
 both documents exist, which is not yet true when `actuals` runs standalone.
+
+`_phase_reconcile` stamps `reconcile_costs(generated_at=...)` from the CLI's
+own `_utc_now()` — the instant the verdict is COMPUTED (`reconciled_at`) —
+and never copies the actuals manifest's `generated_at` (`collected_at`).
+Copying it would date every re-projection to its evidence and collide in
+immutable history the moment the same actuals are reconciled twice. Tests
+monkeypatch `_utc_now` so both instants stay deterministic and distinct.
 Every test above that stubs `_phase_actuals` also stubs `_emit_actuals` (and
 `_emit_reconciliation`, where reconcile also runs) for exactly this reason:
 without that stub, the real writer would receive the stub's return value —
@@ -4796,6 +4848,9 @@ Expected: PR state `MERGED`; no leftover implementation PR.
 - [ ] Section 14 enforcement is opt-in: legacy pilots without the section still
       pass by default; a present-but-malformed section always fails.
 - [ ] History snapshots are immutable; canonical files point to latest.
+- [ ] Re-reconciling unchanged actuals against a refreshed forecast or an
+      edited SPEC writes a NEW snapshot (keyed by `reconciled_at`) and issues
+      no Azure call — it is never a history conflict.
 - [ ] `COST-101` remains live; `COST-102/103` consume evidence artifacts.
 - [ ] Default Consumption IQ and auto behavior is unchanged.
 - [ ] Full design-to-deploy E2E remains green.

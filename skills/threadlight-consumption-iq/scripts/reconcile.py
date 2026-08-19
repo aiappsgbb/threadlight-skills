@@ -339,6 +339,23 @@ def _require_generated_at(value: object) -> str:
     return value
 
 
+def _require_ref_path(value: object, label: str) -> str:
+    """Require a provenance path a consumer can actually open.
+
+    A blank or non-string path would publish a `*_ref.path` that names
+    nothing, which is worse than the canonical default: the digest beside it
+    would look re-derivable while pointing at no artifact at all. `Path`
+    objects are refused too — the manifest is JSON, and the caller decides
+    how its own paths are spelled (`str(path)`).
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ReconciliationInputError(
+            f"{label} must be a non-empty string naming the artifact this "
+            f"document was read from, got {value!r}"
+        )
+    return value
+
+
 def _require_error_list(value: object) -> list[str]:
     if isinstance(value, str) or not isinstance(value, (list, tuple)):
         raise ReconciliationInputError(
@@ -1716,6 +1733,9 @@ def reconcile_costs(
     policy_errors: list[str],
     generated_at: str,
     policy_spec_sha256: str,
+    forecast_path: str = FORECAST_PATH,
+    actuals_path: str = ACTUALS_PATH,
+    policy_path: str = POLICY_PATH,
 ) -> dict[str, object]:
     """Return one `threadlight-cost-reconciliation/v1` document.
 
@@ -1724,6 +1744,16 @@ def reconcile_costs(
     `policy_errors` in the output and force `maturity.status`,
     `unit_economics.status` and `variance_status` to `not-verified`, but
     every observed number is still reported.
+
+    `forecast_path` / `actuals_path` / `policy_path` are *provenance only*:
+    they are echoed verbatim into `forecast_ref.path`, `actuals_ref.path`
+    and `policy_ref.path` so the manifest names the artifacts the caller
+    actually read. They default to the canonical repo-relative layout, and a
+    caller that resolved its inputs elsewhere (a per-pilot directory, a
+    temporary checkout) must pass what it opened. They never take part in
+    any digest: `forecast_ref.sha256` and `actuals_ref.sha256` hash the
+    documents' bytes, so moving evidence cannot change what a consumer
+    re-derives from it.
 
     Inputs are never mutated: nothing is written back into `forecast`,
     `actuals`, `policy` or `policy_errors`, and every list in the returned
@@ -1738,6 +1768,9 @@ def reconcile_costs(
     _require_mapping(policy, "policy")
     errors = _require_error_list(policy_errors)
     generated_at = _require_generated_at(generated_at)
+    forecast_path = _require_ref_path(forecast_path, "forecast_path")
+    actuals_path = _require_ref_path(actuals_path, "actuals_path")
+    policy_path = _require_ref_path(policy_path, "policy_path")
     if not isinstance(policy_spec_sha256, str):
         raise ReconciliationInputError(
             f"policy_spec_sha256 must be a string, got {policy_spec_sha256!r}"
@@ -1889,10 +1922,10 @@ def reconcile_costs(
         "generated_at": generated_at,
         "status": maturity["status"],
         "variance_status": variance_status,
-        "forecast_ref": {"path": FORECAST_PATH, "sha256": sha256_json(forecast)},
-        "actuals_ref": {"path": ACTUALS_PATH, "sha256": sha256_json(actuals)},
+        "forecast_ref": {"path": forecast_path, "sha256": sha256_json(forecast)},
+        "actuals_ref": {"path": actuals_path, "sha256": sha256_json(actuals)},
         "policy_ref": {
-            "path": POLICY_PATH,
+            "path": policy_path,
             "section": POLICY_SECTION,
             "spec_sha256": policy_spec_sha256,
         },

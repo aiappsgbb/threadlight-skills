@@ -3,20 +3,21 @@ name: threadlight-consumption-iq
 description: >-
   Use after threadlight-safe-check post-deploy and before
   threadlight-production-ready to project per-resource monthly Azure cost at
-  the customer's declared load and compare 2–3 SKUs per resource so the
-  seller/SE picks the cheapest config that still meets constraints. Reads
-  deployed Bicep + SPEC § 12 load_profile, hits the Azure Retail Prices API,
-  emits cost-projection.md + cost-manifest.json. Advisory only. Also a
-  PRE-SALES phased estimate with no deployed pilot (adoption phases, hardening
-  delta, EA/MCA discount → seller one-pager). USE FOR: azure consumption
-  projection, cost projection, post-deploy cost, SKU diff, PAYG vs PTU, AI
-  Search sizing, load profile, cost-manifest.json, retail prices API,
-  pre-sales cost estimate, EA/MCA discount, seller one-pager. DO NOT USE FOR:
-  AOAI-only PAYG-vs-PTU break-even with no pilot (use
-  paygo-ptu-cost-analyzer); live Cost Management actual-cost queries (stay in
-  threadlight-production-ready); Bicep mutation (use threadlight-deploy).
+  the customer's declared load and compare 2–3 SKUs to pick the cheapest
+  that meets constraints. Reads deployed Bicep + SPEC § 12
+  load_profile and the Azure Retail Prices API; emits cost-projection.md +
+  cost-manifest.json. Also a PRE-SALES phased estimate with no pilot (phases,
+  EA/MCA discount, one-pager). Also OPT-IN read-only live actuals:
+  `actuals` / `reconcile` / `run --all --with-actuals` query Cost Management,
+  Monitor and Log Analytics for a window and reconcile them against the
+  forecast; the default projection stays offline. Advisory only. USE FOR:
+  azure consumption projection, post-deploy cost, SKU diff, PAYG vs PTU, load
+  profile, cost-manifest.json, pre-sales estimate, EA/MCA discount, cost
+  actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
+  PAYG-vs-PTU break-even with no pilot (use paygo-ptu-cost-analyzer); Bicep
+  mutation (use threadlight-deploy).
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
 ---
 
 # Threadlight Consumption IQ — post-deploy cost projection + SKU diff
@@ -194,16 +195,121 @@ scripts/consumption_iq.py emit
 # Chained
 scripts/consumption_iq.py run --all
 scripts/consumption_iq.py run --all --pre-deploy   # skip azd env walk; Bicep-only
+
+# Opt-in live actuals (read-only; never reached without these commands/flags)
+scripts/consumption_iq.py actuals \
+  --start 2026-08-01 --end 2026-08-08 \
+  --subscription <sub-id> --resource-group <rg> \
+  --monitor-resource-id /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account> \
+  --workspace-resource-id /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<ws>
+
+scripts/consumption_iq.py reconcile          # local documents only, no Azure calls
+scripts/consumption_iq.py run --all --with-actuals --start 2026-08-01 --end 2026-08-08
 ```
+
+### Live actuals + reconciliation (opt-in)
+
+`run --all` is unchanged and **offline**: it reads Bicep/SPEC and the public
+Retail Prices API and never contacts a customer subscription. Live evidence is
+reached only by naming `actuals` / `reconcile`, or by adding `--with-actuals`.
+
+| Command | Reads Azure? | Writes |
+|---|---|---|
+| `actuals` | yes (read-only) | `specs/cost-actuals-manifest.json` |
+| `reconcile` | **no** — not one call | `specs/cost-reconciliation-manifest.json`, `docs/cost-reconciliation.md`, `specs/cost-history/` |
+| `run --all --with-actuals` | yes (read-only) | forecast artefacts **plus** all of the above |
+
+**What `reconcile` trusts.** `reconcile` re-projects local documents and
+issues **no Azure call at all**, so it takes the scope and window recorded in
+the actuals manifest you point it at as given: it has no
+`--start`/`--end`/`--subscription`/`--resource-group` to compare them
+against, and it does **not** re-verify that the recorded scope is the one you
+meant. It publishes them instead — `docs/cost-reconciliation.md` prints the
+subscription, resource group and window under **Collection scope**, and
+`actuals_ref.sha256` pins the exact evidence bytes — so pick the manifest
+deliberately and read that section. (Under `run --all --with-actuals` those
+flags do exist, and a manifest whose scope or window disagrees with them
+stops the run.) An explicit `--expect-scope` assertion for standalone
+`reconcile` is possible future work, not something the command does today.
+
+**Flags.** `--start` / `--end` are `YYYY-MM-DD` (`--end` exclusive, must be
+after `--start`). `--subscription` defaults to `AZURE_SUBSCRIPTION_ID`,
+`--resource-group` to `AZURE_RESOURCE_GROUP`; if neither is resolvable the
+command exits `2` **before** any projection or network call.
+`--monitor-resource-id` and `--workspace-resource-id` are full **ARM resource
+IDs** — the AI/Cognitive account to read token metrics from, and the Log
+Analytics workspace holding traces. They are never a customer/tenant GUID, and
+no customer GUID is ever required or recorded. Both are optional: without them
+the token and interaction rows degrade to a warning and the cost evidence is
+still collected. Sidecar paths: `--actuals-manifest`,
+`--reconciliation-manifest`, `--reconciliation-report` (`--report` on
+`reconcile`), `--cost-history`. `--pre-deploy` and `--pre-sales` are rejected
+with exit `2` alongside `--with-actuals` — there are no actuals before a
+deployment exists.
+
+**RBAC.** Grant at the narrowest scope that covers the window, and read-only:
+
+| Role | Why |
+|---|---|
+| **Cost Management Reader** | `Microsoft.CostManagement/query` on the subscription or resource group |
+| **Monitoring Reader** | token metrics on the AI/Cognitive account |
+| **Log Analytics Reader** | the interaction/trace query on the workspace |
+
+No write, deploy or Bicep-mutation permission is used or needed — this skill
+is advisory and never mutates infrastructure.
+
+**Tenant isolation.** Run under a per-tenant `AZURE_CONFIG_DIR` and assert
+`az account show` matches the intended tenant *and* subscription before
+invoking `actuals` or `--with-actuals`, so evidence can never be collected
+from the wrong customer.
+
+**What the numbers mean.** Cost Management returns **usage pre-tax amortised
+cost**, not an invoice: taxes, credits, purchases, marketplace charges and
+reservation amortisation policies are out of scope, so an actuals total is a
+usage signal to compare against a forecast, never a billing statement. Usage
+data refreshes roughly every **4 hours** and daily is the finest useful
+granularity, so cadence at most **daily** over a closed window; the CLI issues
+each query once and **never polls or retries in a loop**.
+
+**Exit 5** is advisory: the reconciliation is `not-verified`. It is always
+returned **after** every artefact has been written — the evidence an operator
+needs to close the gap is exactly what an early exit would destroy. It is the
+ordinary outcome of `reconcile` and `run --all --with-actuals` on a pilot
+that is not yet mature.
+
+`actuals` on its own does not normally return 5. A missing token or
+interaction query degrades `usage.interaction_status` /
+`usage.model_attribution_status` to `not-verified`, records a warning, and
+still emits a top-level `status: pass` manifest — so the command returns `0`.
+Evidence that cannot be parsed at all raises instead and surfaces as `3` (or
+`2` for bad local input). Exit 5 stays wired to the actuals verdict because
+the schema permits a `not-verified` document and a supplied or
+extension-produced manifest may carry one.
+
+**Live evidence.** The `cost-actuals-manifest.json` shape above was pinned
+against a real, read-only Cost Management / Monitor / Log Analytics probe
+run against an isolated personal demo subscription — never a customer or
+shared tenant. `references/live-actuals-probe.md` is the exact runbook
+(isolation contract, commands, RBAC, `RAW_EVIDENCE_DIR` handling,
+sanitization checklist, findings); its sanitized result is
+`references/fixtures/sample-cost-actuals/live-shape.json` — synthetic
+identifiers and dollar amounts, real shape. No raw evidence, real
+identifier, or dollar amount from that probe is retained anywhere in this
+repository.
+
+Official references:
+- Cost Management Query API — <https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage>
+- Understand Cost Management data (refresh cadence, what usage cost includes) — <https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data>
 
 ### Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | Artefacts produced |
-| 2 | Missing prerequisite (no SPEC § 12, stale `safe-check`, etc.) |
-| 3 | I/O failure or `Azure-pricing` MCP unavailable AND no fixture fallback for at least one required SKU |
+| 2 | Missing prerequisite (no SPEC § 12, stale `safe-check`, unresolved `--subscription`/`--resource-group`, unreadable or invalid local JSON) |
+| 3 | I/O failure, `Azure-pricing` MCP unavailable AND no fixture fallback for at least one required SKU, or a mandatory cost source could not be collected/published |
 | 4 | `load_profile{}` incomplete after wizard (interactive mode required) |
+| 5 | Advisory: the reconciliation is `not-verified` (returned **after** every artefact is written). `actuals` reaches it only for a `not-verified` manifest, which its own collection path does not normally produce |
 
 Single-file design where possible; stdlib only; `Azure-pricing` MCP via
 subprocess + JSON. Mirrors the dependency posture of
@@ -339,6 +445,19 @@ audience. Never hand the internal variant to a customer.
   emitter golden-file test and CI e2e)
 - `references/fixtures/sample-presales-rollout/` — end-to-end pre-sales
   fixture (3-phase rollout + expected golden estimate + one-pager)
+- `references/cost-actuals-manifest-schema.md` — `specs/cost-actuals-manifest.json`
+  (`threadlight-cost-actuals/v1`) schema
+- `references/cost-reconciliation-manifest-schema.md` — `specs/cost-reconciliation-manifest.json`
+  (`threadlight-cost-reconciliation/v1`) schema
+- `references/live-actuals-probe.md` — the read-only live-shape probe
+  runbook (isolation contract, exact commands, required RBAC,
+  `RAW_EVIDENCE_DIR` handling, sanitization checklist, findings); the
+  procedure behind `references/fixtures/sample-cost-actuals/live-shape.json`
+- `references/fixtures/sample-cost-actuals/` — Cost Management / Log
+  Analytics parser fixtures, including `live-shape.json` (a sanitized
+  `threadlight-cost-actuals/v1` manifest whose shape — not its identifiers
+  or dollar amounts, all synthetic — was pinned from a real read-only probe;
+  see `live-actuals-probe.md`)
 
 ## See also — official Azure Skills
 
