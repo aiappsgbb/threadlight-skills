@@ -17,6 +17,7 @@ Core contract under test:
 """
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -132,6 +133,50 @@ def _error_paths(result: ValueModelResult) -> set[str]:
     return {err.split(":", 1)[0] for err in result.errors}
 
 
+_ALL_LEAF_NAMES = {path.rsplit(".", 1)[1] for path in ALL_REQUIRED_PATHS}
+
+
+def _replace_group_with_scalar(yaml_body: str, group: str, scalar: str) -> str:
+    """Return `yaml_body` with `group:`'s entire block — its header AND
+    every more-indented line beneath it — replaced by one scalar leaf
+    line (`group: scalar`). Locates the block structurally (by indent),
+    so it never depends on hand-transcribing each group's exact field
+    list, which would risk a silently-vacuous test if it went stale."""
+    lines = yaml_body.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == f"{group}:":
+            indent = len(line) - len(line.lstrip())
+            out.append(f"{' ' * indent}{group}: {scalar}\n")
+            i += 1
+            while i < len(lines) and (len(lines[i]) - len(lines[i].lstrip())) > indent:
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    return "".join(out)
+
+
+def _scalar_with_orphaned_children(yaml_body: str, group: str, scalar: str) -> str:
+    """Like `_replace_group_with_scalar`, but instead of DELETING the
+    group's nested children, turns only its header line into a scalar
+    (`group: scalar`) and leaves what used to be its children physically
+    in place beneath it, untouched — reproducing a real hand-edited
+    SPEC.md typo (turning `maturity_policy:` into `maturity_policy: 5`
+    but forgetting to remove what was nested under it)."""
+    lines = yaml_body.splitlines(keepends=True)
+    out: list[str] = []
+    for line in lines:
+        if line.strip() == f"{group}:":
+            indent = len(line) - len(line.lstrip())
+            out.append(f"{' ' * indent}{group}: {scalar}\n")
+        else:
+            out.append(line)
+    return "".join(out)
+
+
 # ---------------------------------------------------------------------------
 # Complete parse — no errors
 # ---------------------------------------------------------------------------
@@ -140,7 +185,7 @@ def _error_paths(result: ValueModelResult) -> set[str]:
 def test_complete_canonical_fixture_parses_with_no_errors():
     result = parse_value_model(_spec(_section(CANONICAL_YAML_BODY)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.is_complete is True
 
     cost = result.policy["cost"]
@@ -176,7 +221,7 @@ def test_matches_shipped_reference_example_verbatim():
     spec_text = REFERENCE_SPEC.read_text(encoding="utf-8")
     result = parse_value_model(spec_text)
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.is_complete is True
     assert result.policy["cost"]["success_event"]["name"] == "return_decision_completed"
     assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == "retail"
@@ -192,7 +237,7 @@ def test_absent_section_is_error_and_empty_policy():
     result = parse_value_model(spec_text)
 
     assert result.policy == {}
-    assert result.errors == ["value_model: SPEC section 14 (Value Model) not found"]
+    assert result.errors == ("value_model: SPEC section 14 (Value Model) not found",)
     assert result.is_complete is False
 
 
@@ -211,7 +256,7 @@ def test_section_15_is_a_hard_boundary():
     spec_text = _spec(_section(CANONICAL_YAML_BODY, after=decoy))
     result = parse_value_model(spec_text)
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
 
@@ -224,7 +269,7 @@ def test_lower_numbered_heading_inside_body_is_not_a_boundary():
     spec_text = _spec(body_with_stray_heading)
     result = parse_value_model(spec_text)
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["baseline"]["max_forecast_variance_pct"] == 0.20
 
 
@@ -326,7 +371,7 @@ def test_comment_only_value_is_treated_as_missing_not_as_text():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ["cost.maturity_policy.min_complete_days: missing"]
+    assert result.errors == ("cost.maturity_policy.min_complete_days: missing",)
     # Every other field in the same group must still survive.
     mp = result.policy["cost"]["maturity_policy"]
     assert mp == {
@@ -369,7 +414,7 @@ def test_min_cost_settlement_age_hours_allows_zero():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["maturity_policy"]["min_cost_settlement_age_hours"] == 0
 
 
@@ -470,7 +515,7 @@ def test_identifier_grammar_accepts_dots_colons_dashes_underscores():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert (
         result.policy["cost"]["success_event"]["trace_attribute"] == "decision.outcome:v1-2_3"
     )
@@ -529,7 +574,7 @@ def test_variance_fields_at_exact_bounds_are_valid():
 
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["baseline"]["max_forecast_variance_pct"] == 1.0
     assert result.policy["cost"]["baseline"]["max_token_volume_variance_pct"] == 0.0
 
@@ -557,7 +602,7 @@ def test_actual_billing_price_basis_accepts_all_four_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == value
 
 
@@ -571,6 +616,21 @@ def test_actual_billing_price_basis_rejects_unlisted_value():
     assert any(e.startswith(f"{path}:") for e in result.errors)
 
 
+def test_actual_billing_price_basis_rejects_usage_pretax_specifically():
+    """`usage-pretax` is the fixed literal for the DIFFERENT
+    `actual_cost_basis` field — pin that it is never conflated with a
+    valid `actual_billing_price_basis` enum member (retail/ea/mca/unknown)."""
+    assert "usage-pretax" not in PRICE_BASES
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "actual_billing_price_basis: retail", "actual_billing_price_basis: usage-pretax"
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.accounting.actual_billing_price_basis"
+    assert any(e.startswith(f"{path}:") for e in result.errors)
+    assert "actual_billing_price_basis" not in result.policy["cost"]["accounting"]
+
+
 @pytest.mark.parametrize("value", ["retail", "ea", "mca"])
 def test_forecast_price_basis_accepts_only_three_values(value):
     yaml_body = CANONICAL_YAML_BODY.replace(
@@ -578,7 +638,7 @@ def test_forecast_price_basis_accepts_only_three_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["accounting"]["forecast_price_basis"] == value
 
 
@@ -602,7 +662,7 @@ def test_allow_basis_mismatch_accepts_strict_lowercase_bool(value, expected):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["accounting"]["allow_basis_mismatch_for_verdict"] is expected
 
 
@@ -627,7 +687,7 @@ def test_scope_policy_accepts_both_values(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.policy["cost"]["accounting"]["scope_policy"] == value
 
 
@@ -682,6 +742,292 @@ def test_unknown_key_inside_a_group_is_an_error_but_siblings_survive():
 
 
 # ---------------------------------------------------------------------------
+# Duplicate keys — fail closed (first value wins, never last-win)
+# ---------------------------------------------------------------------------
+
+
+def test_duplicate_scalar_leaf_key_preserves_first_value_and_errors():
+    """A repeated `min_complete_days:` inside the same mapping must keep
+    the FIRST value (never last-win) and append a `duplicate key` error
+    — the retained value still validates cleanly, but the duplicate
+    itself still makes the overall result incomplete."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "      min_complete_days: 7\n",
+        "      min_complete_days: 7\n      min_complete_days: 999\n",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert "cost.maturity_policy.min_complete_days: duplicate key" in result.errors
+    assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
+    assert result.is_complete is False
+
+
+def test_duplicate_mapping_group_key_preserves_first_group_and_errors():
+    """A second `maturity_policy:` mapping header — with entirely
+    different content — must never merge into or replace the first; the
+    first group's fields survive completely unchanged, the duplicate is
+    reported, and its own (orphaned) children never leak anywhere."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "    success_event:\n",
+        "    maturity_policy:\n      min_complete_days: 999\n    success_event:\n",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert "cost.maturity_policy: duplicate key" in result.errors
+    assert result.policy["cost"]["maturity_policy"] == {
+        "min_complete_days": 7,
+        "min_successful_interactions": 100,
+        "min_cost_settlement_age_hours": 48,
+        "max_window_end_age_days": 14,
+        "min_projection_attribution_coverage_pct": 0.95,
+    }
+    # The duplicate's orphaned `min_complete_days: 999` child must never
+    # surface as a spurious error of its own (e.g. re-validated, or
+    # reparented as a sibling of `maturity_policy` under `cost`).
+    assert not any("999" in e for e in result.errors)
+    assert result.is_complete is False
+
+
+def test_duplicate_list_leaf_key_preserves_first_list_and_errors():
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "      success_values: [approved, denied, escalated]\n",
+        "      success_values: [approved, denied, escalated]\n"
+        "      success_values: [other]\n",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert "cost.success_event.success_values: duplicate key" in result.errors
+    assert result.policy["cost"]["success_event"]["success_values"] == [
+        "approved",
+        "denied",
+        "escalated",
+    ]
+    assert result.is_complete is False
+
+
+def test_duplicate_cost_key_directly_under_value_model_preserves_first_group():
+    """Duplicate detection must work at EVERY level, not just leaves — a
+    second `cost:` mapping header directly under `value_model:` must
+    keep the first `cost:` mapping untouched and be reported relative to
+    `value_model` the same way every other top-level error is (never
+    re-prefixed with `value_model.`)."""
+    yaml_body = CANONICAL_YAML_BODY + "  cost:\n    maturity_policy:\n      min_complete_days: 1\n"
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert "cost: duplicate key" in result.errors
+    assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
+    assert result.is_complete is False
+
+
+# ---------------------------------------------------------------------------
+# Scalar group must not re-parent nested children (parser stack/sentinel)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "group", ["maturity_policy", "success_event", "baseline", "accounting"]
+)
+def test_each_group_scalar_value_reports_expected_mapping_siblings_survive(group):
+    """A direct, minimal `cost: expected a mapping`-family test for every
+    single group — not just `maturity_policy` — proving the branch is
+    exercised for all four, with no children of any kind involved."""
+    yaml_body = _replace_group_with_scalar(CANONICAL_YAML_BODY, group, "5")
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert f"cost.{group}: expected a mapping" in result.errors
+    assert group not in result.policy.get("cost", {})
+    for other in ("maturity_policy", "success_event", "baseline", "accounting"):
+        if other != group:
+            assert other in result.policy["cost"], other
+    assert result.is_complete is False
+
+
+@pytest.mark.parametrize(
+    "group", ["maturity_policy", "success_event", "baseline", "accounting"]
+)
+def test_group_scalar_value_does_not_reparent_orphaned_children_onto_cost(group):
+    """`maturity_policy: 5` (etc.) followed by what used to be its own
+    indented children must report ONLY `cost.<group>: expected a
+    mapping` — the now-orphaned children must never be attached to
+    `cost` as spurious sibling keys (e.g. a bogus
+    `cost.min_complete_days: unknown key`), and every OTHER group must
+    still parse and validate cleanly."""
+    yaml_body = _scalar_with_orphaned_children(CANONICAL_YAML_BODY, group, "5")
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert f"cost.{group}: expected a mapping" in result.errors
+    assert group not in result.policy.get("cost", {})
+    for e in result.errors:
+        if e.startswith("cost."):
+            key_part = e[len("cost."):].split(":", 1)[0]
+            # A reparented child would surface as a BARE leaf name
+            # directly under `cost` — never nested under its real group.
+            assert key_part not in _ALL_LEAF_NAMES, e
+    for other in ("maturity_policy", "success_event", "baseline", "accounting"):
+        if other != group:
+            assert other in result.policy["cost"], other
+
+
+def test_cost_scalar_value_reports_expected_mapping_all_leaves_missing():
+    yaml_body = "value_model:\n  cost: 5\n"
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert "cost: expected a mapping" in result.errors
+    assert result.policy == {}
+    assert result.is_complete is False
+    # Every one of the 16 required leaves must ALSO be reported missing
+    # (pre-existing behavior for a non-mapping group) — but never as a
+    # bogus unknown-key sibling of `cost` itself.
+    assert _error_paths(result) == ALL_REQUIRED_PATHS | {"cost"}
+
+
+# ---------------------------------------------------------------------------
+# Block-style success_values — explicit unsupported error, not "missing"
+# ---------------------------------------------------------------------------
+
+
+def test_block_style_success_values_reports_explicit_unsupported_error():
+    """A block-style (`- item`) list under `success_values:` must
+    produce an EXPLICIT 'block lists are not supported' error — never
+    silently fall through to a generic 'missing' as if the key were
+    simply left blank — while the INLINE flow-list form (`[a, b]`)
+    remains fully supported (proven by every other passing test)."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "      success_values: [approved, denied, escalated]\n",
+        "      success_values:\n"
+        "        - approved\n"
+        "        - denied\n"
+        "        - escalated\n",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.success_event.success_values"
+    matching = [e for e in result.errors if e.startswith(f"{path}:")]
+    assert len(matching) == 1
+    assert "missing" not in matching[0]
+    assert "block" in matching[0].lower()
+    assert "success_values" not in result.policy["cost"]["success_event"]
+    # Siblings in the same group must still parse cleanly.
+    assert result.policy["cost"]["success_event"]["name"] == "return_decision_completed"
+
+
+# ---------------------------------------------------------------------------
+# Strict ASCII numeric syntax — no underscores, no Unicode digits
+# ---------------------------------------------------------------------------
+
+
+def test_integer_field_rejects_underscore_digit_grouping():
+    """Python's own `int("1_00")` happily parses to 100 — this module
+    must reject the underscore digit-grouping syntax outright, never
+    silently accept it via a bare, unguarded `int(raw)` call."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "min_successful_interactions: 100", "min_successful_interactions: 1_00"
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.maturity_policy.min_successful_interactions"
+    assert any(e.startswith(f"{path}:") for e in result.errors)
+    assert "min_successful_interactions" not in result.policy["cost"]["maturity_policy"]
+
+
+def test_integer_field_rejects_unicode_digits():
+    """Python's `int()` also accepts many non-ASCII Unicode decimal
+    digits (e.g. Arabic-Indic) — this module must require pure ASCII
+    `[0-9]` digits only, per `^[+-]?[0-9]+$`."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "min_complete_days: 7", "min_complete_days: \u0667"  # ARABIC-INDIC DIGIT SEVEN
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.maturity_policy.min_complete_days"
+    assert any(e.startswith(f"{path}:") for e in result.errors)
+    assert "min_complete_days" not in result.policy["cost"]["maturity_policy"]
+
+
+def test_float_field_rejects_underscore_digit_grouping():
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "target_cost_per_successful_interaction_usd: 0.18",
+        "target_cost_per_successful_interaction_usd: 0.1_8",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.baseline.target_cost_per_successful_interaction_usd"
+    assert any(e.startswith(f"{path}:") for e in result.errors)
+    assert (
+        "target_cost_per_successful_interaction_usd"
+        not in result.policy["cost"]["baseline"]
+    )
+
+
+def test_float_field_rejects_unicode_digits():
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "max_forecast_variance_pct: 0.20",
+        "max_forecast_variance_pct: 0.\u0662\u0660",  # ARABIC-INDIC DIGITS TWO, ZERO
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.baseline.max_forecast_variance_pct"
+    assert any(e.startswith(f"{path}:") for e in result.errors)
+    assert "max_forecast_variance_pct" not in result.policy["cost"]["baseline"]
+
+
+def test_integer_field_accepts_explicit_ascii_plus_sign():
+    """`^[+-]?[0-9]+$` must still accept a leading `+` — confirms the new
+    ASCII grammar gate isn't accidentally over-strict."""
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "min_cost_settlement_age_hours: 48", "min_cost_settlement_age_hours: +48"
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = "cost.maturity_policy.min_cost_settlement_age_hours"
+    assert not any(e.startswith(f"{path}:") for e in result.errors)
+    assert result.policy["cost"]["maturity_policy"]["min_cost_settlement_age_hours"] == 48
+
+
+# ---------------------------------------------------------------------------
+# Multiple ```yaml fences in section 14 — locate the one with value_model
+# ---------------------------------------------------------------------------
+
+
+def test_earlier_unrelated_fence_is_skipped_in_favor_of_the_value_model_fence():
+    """A decoy ```yaml fence earlier in section 14 that doesn't contain
+    `value_model:` must never be blindly assumed to be THE fence — the
+    parser must keep looking until it finds the one that actually
+    contains the key, rather than reporting a false 'key not found'."""
+    section14 = (
+        "## 14. Value Model\n\n"
+        "```yaml\n"
+        "unrelated_config:\n"
+        "  foo: bar\n"
+        "```\n\n"
+        f"```yaml\n{CANONICAL_YAML_BODY}```\n"
+    )
+    result = parse_value_model(_spec(section14))
+
+    assert result.errors == ()
+    assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
+
+
+def test_two_fences_both_containing_value_model_is_ambiguous_error():
+    """Two separate ```yaml fences in the same section 14, BOTH
+    containing a `value_model:` key, must be flagged as ambiguous — this
+    module must never silently pick "the first one" when the SPEC itself
+    is unclear about which is authoritative."""
+    section14 = (
+        "## 14. Value Model\n\n"
+        f"```yaml\n{CANONICAL_YAML_BODY}```\n\n"
+        f"```yaml\n{CANONICAL_YAML_BODY}```\n"
+    )
+    result = parse_value_model(_spec(section14))
+
+    assert result.policy == {}
+    assert len(result.errors) == 1
+    message = result.errors[0].lower()
+    assert "value_model" in message
+    assert "ambiguous" in message or "duplicate" in message
+
+
+# ---------------------------------------------------------------------------
 # Malicious success_values item — exact error text (KQL-injection fixture)
 # ---------------------------------------------------------------------------
 
@@ -700,8 +1046,15 @@ def test_malicious_success_value_produces_exact_invalid_error_with_index():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
+    # Grammar is uniform `<path>: invalid ...` everywhere in this module —
+    # the colon must follow the exact indexed path immediately, so an
+    # operator can locate `success_values[0]` before ever reading the
+    # message. Checked as two substrings (path, then "invalid") rather
+    # than one exact literal so the assertion doesn't over-pin incidental
+    # wording after the colon.
     assert any(
-        "cost.success_event.success_values[0] invalid" in e for e in result.errors
+        e.startswith("cost.success_event.success_values[0]:") and "invalid" in e
+        for e in result.errors
     )
     assert "success_values" not in result.policy["cost"]["success_event"]
 
@@ -753,7 +1106,7 @@ def test_crlf_line_endings_parse_identically_to_lf():
 
     result = parse_value_model(crlf_text)
 
-    assert result.errors == []
+    assert result.errors == ()
     assert result.is_complete is True
     assert result.policy == parse_value_model(lf_text).policy
 
@@ -812,7 +1165,7 @@ def test_price_bases_used_by_actual_billing_price_basis_accepts_all_four():
             "actual_billing_price_basis: retail", f"actual_billing_price_basis: {value}"
         )
         result = parse_value_model(_spec(_section(yaml_body)))
-        assert result.errors == [], value
+        assert result.errors == (), value
         assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == value
 
 
@@ -902,5 +1255,18 @@ def test_load_value_model_propagates_os_error_reading_a_directory(tmp_path):
 def test_result_is_frozen_dataclass_with_expected_fields():
     result = parse_value_model(_spec(_section(CANONICAL_YAML_BODY)))
     assert isinstance(result, ValueModelResult)
-    with pytest.raises(Exception):
+    # Precise exception type — never a broad `Exception` catch-all — so a
+    # totally unrelated bug that happens to also raise can't masquerade as
+    # "frozen dataclass correctly rejected mutation".
+    with pytest.raises(dataclasses.FrozenInstanceError):
         result.errors = []  # type: ignore[misc]  # frozen — must reject mutation
+
+
+def test_result_errors_is_a_true_immutable_tuple_not_just_a_frozen_attribute():
+    """`@dataclass(frozen=True)` alone only blocks REASSIGNING `.errors` —
+    it does nothing to stop `.errors.append(...)` mutating the list in
+    place. `.errors` must be a `tuple[str, ...]`, which has no `.append`
+    at all, for the error collection to be genuinely immutable."""
+    result = parse_value_model(_spec(_section(CANONICAL_YAML_BODY)))
+    assert isinstance(result.errors, tuple)
+    assert not hasattr(result.errors, "append")

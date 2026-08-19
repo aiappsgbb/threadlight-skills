@@ -57,6 +57,17 @@ from typing import Any, Callable
 # rejected here, before it ever reaches a query string.
 _IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.:-]{0,127}")
 
+# `int()`/`float()` accept far more than plain ASCII digits — underscore
+# digit-grouping (`"1_000"`) and many non-ASCII Unicode decimal digits
+# (e.g. Arabic-Indic `٧` for 7) both parse cleanly as of Python 3. Neither
+# is acceptable input here (this is meant to be strict ASCII YAML scalar
+# grammar, not "whatever Python's numeric literals happen to accept"), so
+# every numeric field is gated by one of these two ASCII-only patterns
+# BEFORE ever calling `int()`/`float()` — never after, since by then the
+# unwanted forms have already been silently normalized away.
+_INT_RE = re.compile(r"[+-]?[0-9]+")
+_FLOAT_RE = re.compile(r"[+-]?(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?")
+
 _COST_BASIS_LITERAL = "usage-pretax"
 
 # Public: the full set of `*_price_basis` values § 14 recognizes anywhere.
@@ -101,12 +112,31 @@ class ValueModelResult:
     """
 
     policy: dict[str, object]
-    errors: list[str]
+    errors: tuple[str, ...]
 
     @property
     def is_complete(self) -> bool:
-        """True only when every required field parsed and validated cleanly."""
+        """True only when `.errors` is entirely empty.
+
+        This is a strictly BROADER contract than "every `REQUIRED_PATHS`
+        leaf is present": ANY validation error at all — an unknown key, a
+        duplicate key, an out-of-range value, an ambiguous/malformed yaml
+        fence, an unsupported block-style list, etc. — makes this False,
+        not only a required leaf that's missing. See `REQUIRED_PATHS`
+        below for the narrower "which leaves must be present" contract.
+        """
         return not self.errors
+
+
+def _relativize_duplicate_path(path: str) -> str:
+    """Strip a leading `value_model.` so a duplicate-key error path uses
+    the same relative-to-`value_model` convention as every other error
+    this module emits (`.policy`'s root already IS `value_model`). A bare
+    `value_model` — the root key itself duplicated — is left as-is,
+    matching this module's existing top-level `value_model: ...` messages.
+    """
+    prefix = "value_model."
+    return path[len(prefix):] if path.startswith(prefix) else path
 
 
 def parse_value_model(spec_text: str) -> ValueModelResult:
@@ -116,14 +146,19 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
     section_text = _extract_section_14(spec_text)
     if section_text is None:
         errors.append("value_model: SPEC section 14 (Value Model) not found")
-        return ValueModelResult(policy={}, errors=errors)
+        return ValueModelResult(policy={}, errors=tuple(errors))
 
     yaml_text, fence_errors = _extract_yaml_block(section_text)
     if yaml_text is None:
         errors.extend(fence_errors)
-        return ValueModelResult(policy={}, errors=errors)
+        return ValueModelResult(policy={}, errors=tuple(errors))
 
-    parsed = _parse_indented_yaml(yaml_text)
+    parsed, duplicate_key_paths = _parse_indented_yaml(yaml_text)
+    # Structural parse-time errors (duplicate keys at any level) are
+    # reported first, before any field-level validation below.
+    errors.extend(
+        f"{_relativize_duplicate_path(path)}: duplicate key" for path in duplicate_key_paths
+    )
     vm = parsed.get("value_model")
     if not isinstance(vm, dict):
         # `value_model:` IS present (guaranteed by `_extract_yaml_block`'s
@@ -132,7 +167,7 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
         # from "key not found": report what's wrong with the body, not that
         # the key is missing.
         errors.append("value_model: expected a mapping")
-        return ValueModelResult(policy={}, errors=errors)
+        return ValueModelResult(policy={}, errors=tuple(errors))
 
     # `.policy`'s root already IS `value_model` (see `ValueModelResult`), so
     # every error path below is relative to it — never re-prefixed with
@@ -167,7 +202,7 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
     if cost_policy:
         policy["cost"] = cost_policy
 
-    return ValueModelResult(policy=policy, errors=errors)
+    return ValueModelResult(policy=policy, errors=tuple(errors))
 
 
 def load_value_model(spec_path: Path) -> ValueModelResult:
@@ -203,24 +238,45 @@ def _extract_section_14(spec_text: str) -> str | None:
 
 
 def _extract_yaml_block(section_text: str) -> tuple[str | None, list[str]]:
-    """Return (yaml_content, errors) for the section's one fenced yaml block.
+    """Return (yaml_content, errors) for section 14's ```yaml fence that
+    actually contains the top-level `value_model:` key.
 
-    Malformed/unterminated/missing is reported as an error, never a raise.
+    Section 14 may contain more than one fenced ```yaml block (e.g. an
+    earlier illustrative/decoy snippet); this scans EVERY fence rather
+    than blindly assuming the first one is authoritative, and picks the
+    one whose content matches `_VALUE_MODEL_KEY`. If more than one fence
+    contains a `value_model:` key, which one is authoritative is
+    genuinely ambiguous in the SPEC itself — that is reported as an error
+    rather than silently picking "the first one". Malformed/unterminated/
+    missing is reported as an error, never a raise.
     """
-    open_m = _OPEN_FENCE.search(section_text)
-    if open_m is None:
+    fences: list[str] = []
+    pos = 0
+    while True:
+        open_m = _OPEN_FENCE.search(section_text, pos)
+        if open_m is None:
+            break
+        after_open = section_text[open_m.end():]
+        close_m = _CLOSE_FENCE.search(after_open)
+        if close_m is None:
+            return None, ["value_model: unterminated ```yaml code fence in SPEC section 14"]
+        fences.append(after_open[: close_m.start()])
+        pos = open_m.end() + close_m.end()
+
+    if not fences:
         return None, ["value_model: no fenced ```yaml code block found in SPEC section 14"]
 
-    after_open = section_text[open_m.end():]
-    close_m = _CLOSE_FENCE.search(after_open)
-    if close_m is None:
-        return None, ["value_model: unterminated ```yaml code fence in SPEC section 14"]
-
-    yaml_content = after_open[: close_m.start()]
-    if not _VALUE_MODEL_KEY.search(yaml_content):
+    candidates = [content for content in fences if _VALUE_MODEL_KEY.search(content)]
+    if not candidates:
         return None, ["value_model: `value_model:` key not found in fenced yaml block"]
+    if len(candidates) > 1:
+        return None, [
+            "value_model: ambiguous — more than one fenced ```yaml code block in SPEC "
+            "section 14 contains a top-level `value_model:` key, and no single block is "
+            "authoritative"
+        ]
 
-    return yaml_content, []
+    return candidates[0], []
 
 
 # ---------------------------------------------------------------------------
@@ -228,16 +284,58 @@ def _extract_yaml_block(section_text: str) -> tuple[str | None, list[str]]:
 # ---------------------------------------------------------------------------
 
 
-def _parse_indented_yaml(text: str) -> dict[str, Any]:
+class _BlockList(list):
+    """Marks a block-style (`- item`) list that this parser's tiny YAML
+    subset never supports — only an inline `[a, b]` flow list is. Kept as
+    a distinct subtype (rather than an ordinary `list`, or silently
+    dropped) so a validator can report an explicit "block lists aren't
+    supported" error instead of either accepting it as if it were the
+    inline form, or treating it as merely missing."""
+
+
+# A container a stack entry points at is either a real, live `dict` being
+# built, or `None` — a throwaway "discard" sentinel for a subtree that is
+# already known to be invalid (an unrecognized duplicate key, or a scalar
+# value that was illegally followed by indented children). Nothing pushed
+# under a `None` container is ever attached to the real tree, and nothing
+# under it is duplicate-checked (there is no legitimate key to compare
+# against in the first place).
+
+
+def _parse_indented_yaml(text: str) -> tuple[dict[str, Any], list[str]]:
     """Parse a tiny YAML subset into a nested dict: mappings, scalar
     leaves, and a flow list (`[a, b, c]`) for `success_values`. Comments
     (full-line `#...` or trailing ` #...`) are stripped and are never
     values. A blank `key:` (no inline value) is a nested mapping only when
     a MORE indented line follows it; otherwise it is a blank leaf (`None`)
     — this is what lets a template's bare `key:  # comment` line mean
-    "not yet filled in" rather than an empty mapping.
+    "not yet filled in" rather than an empty mapping. A block-style `- `
+    list under a blank `key:` is recognized (as a `_BlockList`) rather
+    than silently swallowed as a blank leaf.
+
+    Returns `(root, duplicate_key_paths)`. `duplicate_key_paths` entries
+    are BARE dotted paths (no `: duplicate key` suffix yet) FROM THE TRUE
+    ROOT of `text` (i.e. still prefixed with `value_model.` where
+    applicable) — `parse_value_model` formats and relativizes each one the
+    same way every other error is relativized.
+
+    A repeated key at any level — mapping, scalar, or list — keeps its
+    FIRST value (never last-win) and is reported once as a duplicate; the
+    second occurrence's own value/children are fully discarded, never
+    merged into or reparented alongside the first.
     """
-    entries: list[tuple[int, str, str]] = []
+    # `structural`: every non-blank, non-comment line that is either a
+    # `key: val` mapping line OR a `- item` block-list line — i.e. every
+    # line that can matter to indentation-based nesting. A line that is
+    # neither (no colon, no dash) is structurally invisible, exactly as
+    # before, and never affects adjacency decisions below.
+    structural: list[tuple[int, str]] = []
+    # `entries`: just the mapping lines, each carrying the index of its
+    # own record in `structural` so lookahead can find "the very next
+    # structurally significant line" regardless of how many non-mapping
+    # (comment/blank/garbage) lines were skipped to get there.
+    entries: list[tuple[int, str, str, int]] = []
+
     for raw in text.splitlines():
         line = raw.rstrip()
         stripped = line.strip()
@@ -249,32 +347,87 @@ def _parse_indented_yaml(text: str) -> dict[str, Any]:
         if " #" in content:
             content = content[: content.index(" #")].rstrip()
 
-        if ":" not in content:
-            continue  # not a mapping line — ignore defensively
+        is_dash = content.startswith("-")
+        if ":" not in content and not is_dash:
+            continue  # not a mapping or list line — ignore defensively
+
+        structural.append((indent, content))
+        struct_idx = len(structural) - 1
+        if is_dash:
+            continue  # dash items are only ever consumed as list children
 
         key, _, val = content.partition(":")
-        entries.append((indent, key.strip(), val.strip()))
+        entries.append((indent, key.strip(), val.strip(), struct_idx))
 
     root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
+    duplicate_errors: list[str] = []
+    stack: list[tuple[int, str, dict[str, Any] | None]] = [(-1, "", root)]
 
-    for i, (indent, key, val) in enumerate(entries):
+    for indent, key, val, struct_idx in entries:
         while len(stack) > 1 and indent <= stack[-1][0]:
             stack.pop()
-        parent = stack[-1][1]
+        parent_path, parent = stack[-1][1], stack[-1][2]
+        full_path = f"{parent_path}.{key}" if parent_path else key
+
+        next_struct = structural[struct_idx + 1] if struct_idx + 1 < len(structural) else None
+        follows_more_indented = next_struct is not None and next_struct[0] > indent
+        follows_is_dash = follows_more_indented and next_struct[1].startswith("-")
+
+        if parent is None:
+            # Already inside a discarded (invalid) subtree: never touch a
+            # real dict, and never flag a duplicate for a key that was
+            # never valid to begin with. Still need to keep discarding
+            # transitively so a further-nested line doesn't leak into
+            # some real ancestor dict once this subtree's indent ends.
+            if follows_more_indented and not follows_is_dash:
+                stack.append((indent, full_path, None))
+            continue
+
+        if key in parent:
+            duplicate_errors.append(full_path)
+            if follows_more_indented and not follows_is_dash:
+                stack.append((indent, full_path, None))
+            continue
 
         if val == "":
-            next_is_nested = i + 1 < len(entries) and entries[i + 1][0] > indent
-            if next_is_nested:
+            if follows_more_indented and follows_is_dash:
+                items = _collect_block_list_items(structural, struct_idx, indent)
+                parent[key] = _BlockList(items)
+            elif follows_more_indented:
                 child: dict[str, Any] = {}
                 parent[key] = child
-                stack.append((indent, child))
+                stack.append((indent, full_path, child))
             else:
                 parent[key] = None  # blank leaf — template placeholder
         else:
             parent[key] = _parse_scalar_or_list(val)
+            if follows_more_indented:
+                # e.g. `maturity_policy: 5` illegally followed by indented
+                # children — the scalar value stands, but its children
+                # must never be re-parented onto `parent` (this `key`'s
+                # sibling level) as if they were `parent`'s own keys.
+                stack.append((indent, full_path, None))
 
-    return root
+    return root, duplicate_errors
+
+
+def _collect_block_list_items(
+    structural: list[tuple[int, str]], key_struct_idx: int, key_indent: int
+) -> list[str]:
+    """Collect a block-style `- item` list's values, starting right after
+    `key_struct_idx`, for as long as lines stay more indented than the
+    key AND are themselves dash items."""
+    items: list[str] = []
+    i = key_struct_idx + 1
+    while i < len(structural):
+        line_indent, content = structural[i]
+        if line_indent <= key_indent or not content.startswith("-"):
+            break
+        item_text = content[1:].strip()
+        if item_text:
+            items.append(_unquote(item_text))
+        i += 1
+    return items
 
 
 def _parse_scalar_or_list(val: str) -> Any:
@@ -303,10 +456,12 @@ def _v_int(min_value: int) -> _Validator:
     def validator(raw: Any, path: str) -> tuple[Any, list[str]]:
         if raw is None:
             return None, [f"{path}: missing"]
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
+        # ASCII-only numeric grammar gate: reject BEFORE calling `int()`,
+        # since `int()` itself would otherwise silently accept underscore
+        # digit-grouping and Unicode decimal digits (see `_INT_RE`).
+        if not isinstance(raw, str) or not _INT_RE.fullmatch(raw):
             return None, [f"{path}: expected an integer >= {min_value}, got {raw!r}"]
+        value = int(raw)
         if value < min_value:
             return None, [f"{path}: must be >= {min_value}, got {value}"]
         return value, []
@@ -323,10 +478,13 @@ def _v_float_range(
     def validator(raw: Any, path: str) -> tuple[Any, list[str]]:
         if raw is None:
             return None, [f"{path}: missing"]
-        try:
-            value = float(raw)
-        except (TypeError, ValueError):
+        # Same ASCII-only numeric grammar gate as `_v_int`, applied before
+        # `float()` — this also rejects `"nan"`/`"inf"`/`"-inf"` outright
+        # (none match `_FLOAT_RE`), so the explicit `math.isfinite` check
+        # below is now belt-and-suspenders rather than the sole guard.
+        if not isinstance(raw, str) or not _FLOAT_RE.fullmatch(raw):
             return None, [f"{path}: expected a float, got {raw!r}"]
+        value = float(raw)
         # `float("nan")` / `float("inf")` / `float("-inf")` all parse
         # cleanly but compare False against every bound below (nan) or
         # only some (unbounded-above/-below fields) — so finiteness must
@@ -362,6 +520,17 @@ def _v_identifier(raw: Any, path: str) -> tuple[Any, list[str]]:
 def _v_identifier_list(raw: Any, path: str) -> tuple[Any, list[str]]:
     if raw is None:
         return None, [f"{path}: missing"]
+    if isinstance(raw, _BlockList):
+        # `_BlockList` is a `list` subclass (see its definition), so this
+        # check MUST come before the generic `isinstance(raw, list)` below
+        # — otherwise a block-style list would silently fall through as if
+        # it were an ordinary (supported) list. Only the inline `[a, b]`
+        # flow-list syntax is supported here; report that explicitly
+        # rather than treating a block list as merely missing or invalid.
+        return None, [
+            f"{path}: invalid — block-style (`- item`) lists are not supported, "
+            "use an inline `[a, b]` list"
+        ]
     if not isinstance(raw, list):
         return None, [f"{path}: expected a nonempty list, got {raw!r}"]
     if not raw:
@@ -372,7 +541,7 @@ def _v_identifier_list(raw: Any, path: str) -> tuple[Any, list[str]]:
     for i, item in enumerate(raw):
         if not isinstance(item, str) or not _IDENTIFIER_RE.fullmatch(item):
             errs.append(
-                f"{path}[{i}] invalid: must match identifier grammar "
+                f"{path}[{i}]: invalid — must match identifier grammar "
                 f"^[A-Za-z][A-Za-z0-9_.:-]{{0,127}}$, got {item!r}"
             )
         else:
@@ -452,9 +621,20 @@ _GROUP_FIELDS: dict[str, tuple[tuple[str, _Validator], ...]] = {
     ),
 }
 
-# Public: every dotted `cost.*` path required for `.is_complete` to be True —
-# exactly the 16 leaves in `_GROUP_FIELDS`, derived from it (not hand-copied)
-# so the two can never drift apart.
+# Public: every dotted `cost.*` leaf path this module's fixed v1 schema
+# defines — exactly the 16 leaves in `_GROUP_FIELDS`, derived from it (not
+# hand-copied) so the two can never drift apart.
+#
+# This is NARROWER than `.is_complete`: `REQUIRED_PATHS` enumerates WHICH
+# leaves must be present, but `.is_complete` (on `ValueModelResult`) is
+# `not errors` — False for ANY validation error at all (an unknown key, a
+# duplicate key, an out-of-range value, an ambiguous yaml fence, etc.),
+# not only a `REQUIRED_PATHS` leaf that's missing. Do not treat "every
+# `REQUIRED_PATHS` leaf appears in `.policy`" as equivalent to
+# `.is_complete` — a fully-populated `.policy` can still coexist with a
+# non-empty `.errors` (e.g. one bad UNKNOWN sibling key beside 16 good
+# leaves), so callers that only spot-check `REQUIRED_PATHS` coverage
+# against `.policy` will miss that kind of failure.
 REQUIRED_PATHS: tuple[str, ...] = tuple(
     f"cost.{group}.{field}"
     for group, field_specs in _GROUP_FIELDS.items()
