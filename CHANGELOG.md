@@ -9,6 +9,31 @@ field.
 
 ### Fixed
 
+- **E2E job-start `azd auth login` had zero retry against an external OIDC
+  outage (run #32296600274).** The initial `azd auth login (federated OIDC)`
+  step waited ~47s and then failed with `ClientAssertionCredential: fetching
+  federated token: expected 200 response, got: 503` — every phase in the run
+  was skipped even though it was a design-only dispatch and a prior full run
+  against the exact same client/tenant/federated-credential-provider had
+  already logged in cleanly. GitHub's OIDC token endpoint returned a
+  transient 503, not a config problem. The step now retries the login +
+  `azd auth login --check-status` pair up to 3 times (15s then 30s backoff)
+  — but only when the captured output matches a transient signature (502,
+  503, 504, timeout/timed out, "temporarily unavailable", or azd's own
+  "fetching federated token: expected 200 response, got: 5xx" wrapper). Any
+  other failure — bad client id, wrong tenant, missing federated-credential
+  subject — still fails on attempt 1 with no retry, no `continue-on-error`,
+  and no swallowed output. Client id, tenant id, provider, and the isolated
+  `AZURE_CONFIG_DIR`/`AZD_CONFIG_DIR` dirs are unchanged; `azure/login@v3.0.0`
+  (the separate `az`-side OIDC step) is untouched.
+  `scripts/ci/tests/test_azd_auth_login_retry.py` asserts the bounded
+  3-attempt loop, the transient-signature grep (including a non-transient
+  message negative case), the 15s/30s backoff, `--check-status` gating
+  success, and `continue-on-error` absence — plus a mutation-style
+  behavioural proof that runs the real extracted step script under `bash`
+  against a fake `azd`/`sleep` on `PATH` for the transient-then-succeed,
+  non-transient-immediate-failure, and all-transient-exhausted cases.
+
 - **Full E2E Phase 3 "deploy" timed out on a lingering shell, not a failed
   deployment (run #32290332688).** In the fsi-kyc-aml arm, Phase 3 started at
   19:05:25 and the agent reported the deployment succeeded/active at
