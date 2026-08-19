@@ -2050,17 +2050,41 @@ def test_non_dict_response_is_rejected() -> None:
 # ---------------------------------------------------------------------------
 
 LIVE_SHAPE_FIXTURE = "live-shape.json"
+LIVE_ACTUALS_PROBE_RUNBOOK = (
+    Path(__file__).resolve().parent.parent
+    / "references"
+    / "live-actuals-probe.md"
+)
 
-# Tokens that must never appear in this repository's sanitized live evidence.
-# `fruocco` is the operator alias behind the isolated personal demo
-# subscription the live probe ran against; it names a person, not a shape,
-# and has no business being in committed evidence.
-_FORBIDDEN_RAW_TOKENS = ("fruocco",)
-
+# Sanitization is asserted GENERICALLY below, never by naming the raw
+# personal alias/subscription/tenant the live probe actually ran against:
+# doing that would either (a) require committing the very token being
+# forbidden, defeating the point, or (b) require adding it to some other
+# denylist, which just relocates the same problem. Instead every check is
+# structural: every GUID-shaped value is the all-zero GUID, every
+# identity-shaped field (resource/account/model/deployment name) carries
+# only a synthetic `sanitized` marker, and no email/URL/credential-shaped
+# fragment appears anywhere in the fixture or the runbook.
 _ALL_ZERO_GUID = "00000000-0000-0000-0000-000000000000"
 _GUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_URL_RE = re.compile(r"(?i)\bhttps?://\S+")
+# Credential-shaped `key: value` / `key=value` fragments, mirroring the
+# marker set `reconciliation_emitter._scan_for_credentials` refuses at
+# publish time — a bearer credential is never legitimate sanitized evidence.
+_CREDENTIAL_FRAGMENT_RE = re.compile(
+    r"(?i)(api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|"
+    r"bearer[_-]?token|client[_-]?secret|authorization)\s*[:=]\s*\S+"
+)
+# The resource/account/model/deployment name convention every sanitized
+# identity field must follow: a `sanitized` marker somewhere in the name,
+# never a raw/real name (or a person's alias standing in for one).
+_SANITIZED_NAME_RE = re.compile(r"sanitized", re.IGNORECASE)
+# The last path segment of an ARM resource ID is the resource's own name —
+# exactly the field a raw name would leak through.
+_ARM_RESOURCE_NAME_RE = re.compile(r"/subscriptions/[^/]+/.*?/([^/]+)$")
 
 
 def _iter_guids(value: object):
@@ -2079,6 +2103,25 @@ def _iter_guids(value: object):
             yield from _iter_guids(item)
 
 
+def _iter_identity_names(value: object):
+    """Recursively yield every resource/account name this fixture's shape
+    depends on: the last path segment of every ARM resource ID string, plus
+    every string value found anywhere else in the document. Broad by
+    design — a synthetic name substituted in an unnamed future field must
+    still satisfy the same "sanitized" convention as the ones this test
+    already knows about by name."""
+    if isinstance(value, str):
+        match = _ARM_RESOURCE_NAME_RE.search(value)
+        if match:
+            yield match.group(1)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_identity_names(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_identity_names(item)
+
+
 @pytest.fixture()
 def live_shape() -> dict:
     return _load_fixture(LIVE_SHAPE_FIXTURE)
@@ -2091,6 +2134,28 @@ def test_live_shape_fixture_is_strict_json(live_shape) -> None:
     # have introduced) rather than merely "whatever json.loads tolerated".
     reparsed = json.loads(json.dumps(live_shape))
     assert reparsed == live_shape
+
+
+def test_live_shape_fixture_file_rejects_non_finite_json_constants() -> None:
+    """`json.loads`'s default `parse_constant` silently ACCEPTS the
+    non-standard `NaN`/`Infinity`/`-Infinity` tokens Python's own
+    `json.dumps` can emit for a raw float, so `_load_fixture`
+    round-tripping cleanly (the test above) does not by itself prove the
+    on-disk bytes are free of them. Read the raw file text directly and
+    pass a `parse_constant` that raises, so a stray non-finite literal in
+    the committed fixture fails this test outright instead of silently
+    round-tripping into a `float('nan')`/`float('inf')` that would then
+    poison every downstream Decimal/money assertion with a NaN it never
+    complains about."""
+    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8")
+
+    def _reject_non_finite(token: str) -> None:
+        raise AssertionError(
+            f"{LIVE_SHAPE_FIXTURE} contains a non-finite JSON constant: {token!r}"
+        )
+
+    parsed = json.loads(raw, parse_constant=_reject_non_finite)
+    assert parsed == json.loads(raw)
 
 
 def test_live_shape_fixture_has_no_unknown_top_level_keys(live_shape) -> None:
@@ -2217,12 +2282,51 @@ def test_live_shape_fixture_warnings_are_empty(live_shape) -> None:
     assert live_shape["warnings"] == []
 
 
+def test_live_shape_fixture_provenance_mirrors_actuals_provenance_keys(
+    live_shape,
+) -> None:
+    """`live-shape.json`'s `provenance` must carry every key
+    `consumption_iq._actuals_provenance` actually emits — with synthetic
+    values — not only the sanitization notice fields, otherwise this
+    fixture would silently under-represent the real manifest shape it
+    claims to pin."""
+    provenance = live_shape["provenance"]
+    assert provenance["sources"] == [
+        "cost-management-query",
+        "azure-monitor-metrics",
+        "log-analytics-query",
+    ]
+    assert provenance["query_api_version"] == "2025-03-01"
+    assert provenance["subscription_id"] == _ALL_ZERO_GUID
+    assert provenance["resource_group"] == live_shape["scope"]["resource_group"]
+    account_resource_id = live_shape["usage"]["models"][0]["account_resource_id"]
+    assert provenance["monitor_resource_id"] == account_resource_id
+    assert provenance["workspace_resource_id"].startswith(
+        f"/subscriptions/{_ALL_ZERO_GUID}/"
+    )
+    assert provenance["token_source_resource_id"] == account_resource_id
+    assert provenance["interaction_query_issued"] is True
+    assert provenance["window"] == {"start": "2026-08-09", "end": "2026-08-16"}
+    # `collected_at` is the same instant as the document's own
+    # `generated_at`: `_actuals_provenance` derives both from the single
+    # `generated_at` instant `_phase_actuals` computes once and passes to
+    # both `build_actuals_manifest` and `_actuals_provenance`.
+    assert provenance["collected_at"] == live_shape["generated_at"]
+
+
 def test_live_shape_fixture_provenance_declares_sanitization(live_shape) -> None:
+    """The sanitization-only notice fields have no counterpart in
+    `_actuals_provenance` and exist purely so a consumer can never mistake
+    this fixture for real evidence. `shape_observed_at` names the calendar
+    date this shape was captured/committed — a deliberately different fact
+    from `collected_at`/`generated_at` above (the synthetic in-fixture
+    collection instant used to exercise window validation); the two are
+    allowed to differ, and do."""
     provenance = live_shape["provenance"]
     assert provenance["sanitized_fixture"] is True
     assert provenance["values"] == "synthetic"
     assert provenance["shape_observed_at"]
-    assert provenance["query_api_version"] == "2025-03-01"
+    assert provenance["collection_method"]
 
 
 def test_live_shape_fixture_scope_uses_sanitized_placeholders(live_shape) -> None:
@@ -2241,20 +2345,68 @@ def test_live_shape_fixture_every_guid_is_all_zero(live_shape) -> None:
     assert all(guid == _ALL_ZERO_GUID for guid in guids), guids
 
 
-def test_live_shape_fixture_carries_no_forbidden_raw_tokens(live_shape) -> None:
-    blob = json.dumps(live_shape).lower()
-    for token in _FORBIDDEN_RAW_TOKENS:
-        assert token not in blob
+def test_live_shape_fixture_has_no_email_url_or_credential_shaped_content(
+    live_shape,
+) -> None:
+    """Generic sanitization guard: scans the whole parsed document for
+    email-, URL-, and credential-shaped content. Deliberately does not
+    name any specific raw token (a person's alias, a real subscription
+    ID, ...) — asserting a raw value is absent by spelling it out here
+    would just relocate the very thing being forbidden into this test
+    file, which defeats the point."""
+    blob = json.dumps(live_shape)
+    assert not _EMAIL_RE.search(blob), "fixture contains an email-shaped string"
+    assert not _URL_RE.search(blob), "fixture contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(blob), (
+        "fixture contains a credential-shaped key: value / key=value fragment"
+    )
 
 
-def test_live_shape_fixture_file_carries_no_forbidden_raw_tokens_on_disk() -> None:
+def test_live_shape_fixture_file_has_no_secret_shaped_content_on_disk() -> None:
     """Belt-and-braces: scan the raw file bytes too, not only the parsed
-    JSON structure, so a forbidden token stashed in whitespace or outside
-    a JSON string literal (e.g. an errant trailing comment) would still be
+    JSON structure, so anything stashed in whitespace or outside a JSON
+    string literal (e.g. an errant trailing comment) would still be
     caught."""
-    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8").lower()
-    for token in _FORBIDDEN_RAW_TOKENS:
-        assert token not in raw
+    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8")
+    assert not _EMAIL_RE.search(raw), "fixture file contains an email-shaped string"
+    assert not _URL_RE.search(raw), "fixture file contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(raw), (
+        "fixture file contains a credential-shaped key: value / key=value fragment"
+    )
+
+
+def test_live_shape_fixture_identity_fields_are_synthetic_only(live_shape) -> None:
+    """Every resource-identity-shaped value this fixture's shape depends
+    on — the last path segment of every ARM resource ID, the resource
+    group, and every model/deployment name — must carry a synthetic
+    `sanitized` marker. This is the generic check that catches a raw name
+    (a person's alias, a real resource group, a real account) substituted
+    in place of a synthetic one, without the test ever repeating that raw
+    value to assert its absence."""
+    names = set(_iter_identity_names(live_shape))
+    names.add(live_shape["scope"]["resource_group"])
+    for model in live_shape["usage"]["models"]:
+        names.add(model["model"])
+        names.add(model["deployment"])
+    assert names, "expected at least one identity-shaped name in the fixture"
+    for name in names:
+        assert _SANITIZED_NAME_RE.search(name), (
+            f"identity field {name!r} does not carry a synthetic 'sanitized' marker"
+        )
+
+
+def test_runbook_has_no_email_url_or_credential_shaped_content() -> None:
+    """The runbook prose is scanned with the same generic patterns as the
+    fixture (see `references/live-actuals-probe.md`'s sanitization
+    checklist): it must describe the isolation contract and sanitization
+    procedure generically, and must never repeat a real email, URL, or
+    credential-shaped fragment from the probed subscription."""
+    text = LIVE_ACTUALS_PROBE_RUNBOOK.read_text(encoding="utf-8")
+    assert not _EMAIL_RE.search(text), "runbook contains an email-shaped string"
+    assert not _URL_RE.search(text), "runbook contains a URL"
+    assert not _CREDENTIAL_FRAGMENT_RE.search(text), (
+        "runbook contains a credential-shaped key: value / key=value fragment"
+    )
 
 
 def test_live_shape_fixture_is_accepted_by_require_reusable_actuals(

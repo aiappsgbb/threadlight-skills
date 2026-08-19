@@ -31,27 +31,6 @@ field.
 
 ### Added
 
-- **A second, full-subscription live probe confirmed the `CachedInputTokens`
-  fix above and surfaced one more real shape.** A read-only `actuals` run
-  against a dedicated AI workload resource group (7 complete, fully-observed
-  days; 16 distinct resources; USD `PreTaxCost`) in an isolated personal demo
-  subscription showed `cached_input_tokens: null` with populated
-  `input_tokens`/`output_tokens` throughout — the mandatory-metrics-only
-  query never failed — and showed the same `ResourceId` legitimately
-  carrying more than one `ServiceName` (a storage account billed under both
-  `Storage` and `Microsoft Defender for Cloud`) on 3 of the 16 resources.
-  The second case was already the documented, tested design of
-  `cost.resources[].service_names`/`service_name`; this probe is the first
-  confirmation it occurs on real, unmodified billing data rather than only
-  in a hand-built fixture, so no code change was needed for it. See
-  `skills/threadlight-consumption-iq/references/live-actuals-probe.md` for
-  the full runbook and findings.
-
-## [1.12.0] - 2026-08-18
->>>>>>> b5baa84 (test(consumption-iq): pin sanitized live actuals shape)
-
-### Added
-
 - **`threadlight-consumption-iq` can now reconcile a forecast against live
   Azure cost actuals — opt-in only.** Two new commands, `actuals` (read-only
   Cost Management / Azure Monitor / Log Analytics collection for a closed
@@ -71,17 +50,47 @@ field.
   unchanged, writes no new sidecars, and still never contacts a customer
   subscription. Skill version 0.3.1 → 0.4.0.
 
-- **A sanitized, real live-probe shape now pins the `cost-actuals-manifest.json`
-  fixture.** `references/fixtures/sample-cost-actuals/live-shape.json` is a
-  `threadlight-cost-actuals/v1` manifest whose *shape* — 7 complete/observed
-  days, exact-cents accounting identity, one multi-`ServiceName` resource,
-  one model/token row with `cached_input_tokens: null`, zero interactions
-  recorded as an observed `pass`, zero warnings — was captured from the live
-  probe above; every identifier, name and dollar amount in it is synthetic.
-  `references/live-actuals-probe.md` is the runbook (isolation contract,
-  exact commands, required read-only RBAC, out-of-repo `RAW_EVIDENCE_DIR`
-  handling, sanitization checklist, findings) behind it. No raw evidence
-  from the probed subscription is retained anywhere in this repository.
+- **A second, full-subscription live probe confirmed the `CachedInputTokens`
+  fix above and validated one more real shape, which now pins the
+  `cost-actuals-manifest.json` fixture, sanitized.** A read-only `actuals`
+  run against a dedicated AI workload resource group (7 complete,
+  fully-observed days; 16 distinct resources; USD `PreTaxCost`) in an
+  isolated personal demo subscription showed `cached_input_tokens: null`
+  with populated `input_tokens`/`output_tokens` throughout — the
+  mandatory-metrics-only query never failed — and showed the same
+  `ResourceId` legitimately carrying more than one `ServiceName` (a storage
+  account billed under both `Storage` and `Microsoft Defender for Cloud`) on
+  3 of the 16 resources. The multi-`ServiceName` case was already the
+  documented, tested design of `cost.resources[].service_names`/
+  `service_name`; this probe is the first confirmation it occurs on real,
+  unmodified billing data rather than only in a hand-built fixture, so no
+  code change was needed for that part.
+  `references/fixtures/sample-cost-actuals/live-shape.json` is a
+  `threadlight-cost-actuals/v1` manifest whose *shape* — the same 7
+  complete/observed days, exact-cents accounting identity, one
+  multi-`ServiceName` resource, one model/token row with
+  `cached_input_tokens: null`, zero interactions recorded as an observed
+  `pass`, zero warnings — was captured from this probe; every identifier,
+  name and dollar amount in it is synthetic, and its `provenance` block
+  mirrors every key `_actuals_provenance` emits (sources, API version,
+  scope, monitor/workspace/token-source resource IDs, window,
+  `collected_at`) with zeroed/synthetic values rather than only the
+  sanitization notice fields. `references/live-actuals-probe.md` is the
+  runbook behind it: an isolation contract with *mechanical* tenant/
+  subscription enforcement (compares `az account show`'s `tenantId`/`id`
+  against required `EXPECTED_TENANT_ID`/`AZURE_SUBSCRIPTION_ID` and fails
+  closed before any other command — the runbook itself never calls `az
+  login`/`az account set`), required read-only RBAC naming the exact
+  `--monitor-resource-id`/`--workspace-resource-id` ARM IDs the probe
+  passes, an out-of-repo `RAW_EVIDENCE_DIR` guard checked against both
+  `PILOT_ROOT` and `THREADLIGHT_SKILLS_ROOT` real paths, and a generic
+  sanitization checklist (all-zero GUIDs, synthetic-only names, no email/
+  URL/credential-shaped content). No raw evidence from the probed
+  subscription is retained anywhere in this repository.
+
+## [1.12.0] - 2026-08-18
+
+### Added
 
 - **SPEC § 14 (Value Model) is generated with no numeric defaults.**
   `threadlight-design` emits SPEC § 14 `value_model` with an intentionally

@@ -74,7 +74,23 @@
     ]
   },
   "provenance": {
+    "sources": [
+      "cost-management-query",
+      "azure-monitor-metrics",
+      "log-analytics-query"
+    ],
     "query_api_version": "2025-03-01",
+    "subscription_id": "00000000-0000-0000-0000-000000000000",
+    "resource_group": "rg-sanitized-ai-pilot",
+    "monitor_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+    "workspace_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.OperationalInsights/workspaces/law-sanitized-ai-pilot",
+    "token_source_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+    "interaction_query_issued": true,
+    "window": {
+      "start": "2026-08-09",
+      "end": "2026-08-16"
+    },
+    "collected_at": "2026-08-16T06:00:00Z",
     "sanitized_fixture": true,
     "shape_observed_at": "2026-08-19",
     "values": "synthetic",
