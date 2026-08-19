@@ -11,6 +11,25 @@ field.
 
 ### Added
 
+- **`threadlight-consumption-iq` can now reconcile a forecast against live
+  Azure cost actuals — opt-in only.** Two new commands, `actuals` (read-only
+  Cost Management / Azure Monitor / Log Analytics collection for a closed
+  window) and `reconcile` (a purely local re-projection of an existing
+  forecast against existing actuals), plus a `run --all --with-actuals`
+  chain that does both after the projection. Scope comes from
+  `--subscription`/`--resource-group` (falling back to
+  `AZURE_SUBSCRIPTION_ID`/`AZURE_RESOURCE_GROUP`) and is validated *before*
+  any projection or network call; token metrics and traces are addressed by
+  ARM resource ID (`--monitor-resource-id`, `--workspace-resource-id`), never
+  a customer GUID, and each token row is stamped with its owning account so
+  multi-account PAYG/PTU estates cannot net out against each other. Artefacts
+  (`specs/cost-actuals-manifest.json`,
+  `specs/cost-reconciliation-manifest.json`, `docs/cost-reconciliation.md`,
+  `specs/cost-history/`) are always written before the advisory `exit 5`
+  "not-verified" verdict. The default `run --all` projection is byte-for-byte
+  unchanged, writes no new sidecars, and still never contacts a customer
+  subscription. Skill version 0.3.1 → 0.4.0.
+
 - **SPEC § 14 (Value Model) is generated with no numeric defaults.**
   `threadlight-design` emits SPEC § 14 `value_model` with an intentionally
   blank, no-default shape for field groups `maturity_policy`,
