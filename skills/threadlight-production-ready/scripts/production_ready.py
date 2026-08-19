@@ -4304,11 +4304,21 @@ def _parse_utc_instant(value: Any) -> datetime | None:
 
 
 def _is_finite_number(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    """A JSON number safe to use as a ratio/count — never raises.
+
+    Rejects `bool` (technically an `int`) and any non-numeric type. A JSON
+    integer with hundreds of digits is a legal Python `int` that `float()`
+    cannot represent — `OverflowError`, not a normal comparison — so hostile
+    giant-int evidence is rejected here the same way NaN/infinity are,
+    instead of surfacing as a crash the first time something does arithmetic
+    on it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ArithmeticError, ValueError, TypeError):
+        return False
 
 
 def _is_declared_ratio(value: Any) -> bool:
@@ -4454,12 +4464,17 @@ def _cost_reconciliation_findings(ctx: RepoContext) -> list[Finding]:
     analyzer cannot take it down. That trade must not be one-directional: an
     unexpected JSON shape here would otherwise abort the whole assessment
     before any cost control ran. Same narrowed shape-mismatch family as
-    `_run_pillar`, and the degrade is `not-verified` (these findings are tier-3
-    advisory and can never gate go-live, so there is nothing to fail closed).
+    `_run_pillar`, plus `ArithmeticError` (covers `OverflowError`) as a
+    last-resort net around a hostile 400-digit JSON integer that reaches a
+    numeric conversion `_is_finite_number` did not gate — belt-and-suspenders,
+    since every ratio conversion in this artifact is already gated through it.
+    The degrade is `not-verified` (these findings are tier-3 advisory and can
+    never gate go-live, so there is nothing to fail closed).
     """
     try:
         return _check_cost_reconciliation_static(ctx)
-    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError,
+            ArithmeticError) as exc:
         print(f"[warn] cost reconciliation artifact reader raised "
               f"{type(exc).__name__}: {exc} — reporting not-verified",
               file=sys.stderr)
@@ -4560,6 +4575,31 @@ def _check_cost_103(data: dict) -> Finding:
         return _not_verified("COST-103",
             f"SPEC § 14 declares no usable {_COST_TOKEN_THRESHOLD_FIELD} (expected a ratio "
             "between 0 and 1), so the observed volume has no declared band to sit in.")
+    # Driver threshold integrity: `drivers.payg_ptu.threshold_pct` must be the
+    # *same producer value* as `policy_snapshot.max_token_volume_variance_pct`
+    # — the SPEC-anchored figure every other reconciled control reads its
+    # tolerance from. A driver free to declare its own number independent of
+    # the snapshot could carry a threshold nobody anchored to SPEC § 14 (or
+    # one silently drifted from it), which would make the "declared band" this
+    # finding reports against unfalsifiable. Missing or mismatched is an
+    # internal inconsistency in the artifact, not a variance verdict, so it is
+    # withheld before the band comparison below ever runs.
+    snapshot = data.get("policy_snapshot")
+    snapshot_threshold = (
+        snapshot.get(_COST_TOKEN_THRESHOLD_FIELD) if isinstance(snapshot, dict) else None
+    )
+    if not _is_declared_ratio(snapshot_threshold):
+        return _not_verified("COST-103",
+            f"Internal inconsistency — SPEC § 14 policy_snapshot.{_COST_TOKEN_THRESHOLD_FIELD} "
+            "is missing or is not a usable ratio in [0, 1], so drivers.payg_ptu.threshold_pct "
+            f"has no SPEC-anchored value to verify against. {_COST_RECONCILE_HINT}")
+    if float(snapshot_threshold) != float(threshold):
+        return _not_verified("COST-103",
+            "Internal inconsistency — drivers.payg_ptu.threshold_pct "
+            f"({_fmt_ratio_pct(threshold)}) does not match the SPEC § 14 declared "
+            f"policy_snapshot.{_COST_TOKEN_THRESHOLD_FIELD} ({_fmt_ratio_pct(snapshot_threshold)}); "
+            "the driver threshold is not the same producer value as the policy snapshot it must "
+            f"mirror, so neither figure is trustworthy as the declared band. {_COST_RECONCILE_HINT}")
     forecast_tokens = driver.get("forecast_monthly_tokens")
     observed_tokens = driver.get("observed_monthly_tokens")
     if not _is_finite_number(forecast_tokens) or not _is_finite_number(observed_tokens):

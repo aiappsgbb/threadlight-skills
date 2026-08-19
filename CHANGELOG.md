@@ -9,6 +9,30 @@ field.
 
 ### Fixed
 
+- **`threadlight-production-ready`'s reconciled cost evidence parsing was one
+  hostile JSON integer away from crashing the whole assessment, and
+  COST-103's driver threshold was never checked against the SPEC-anchored
+  policy it claims to represent.** A JSON number hundreds of digits long is a
+  legal Python `int` that `float()` cannot represent (`OverflowError`, not a
+  normal comparison); `_is_finite_number` now catches
+  `OverflowError`/`ArithmeticError` and rejects such a value the same way it
+  already rejects NaN, infinity, bool, and non-numeric input — every ratio
+  conversion COST-102/COST-103 and the staleness loader perform is gated
+  through it, so a giant int in `variance_pct`, `max_forecast_variance_pct`,
+  `observed_volume_variance_pct`, `threshold_pct`, or
+  `max_window_end_age_days` degrades only the affected finding (or the whole
+  bundle, for the staleness gate) to `not-verified`; `_run_pillar` never
+  aborts. Separately, COST-103 now requires
+  `drivers.payg_ptu.threshold_pct` to be the *same producer value* as
+  `policy_snapshot.max_token_volume_variance_pct` — the SPEC § 14 figure every
+  other reconciled control reads its tolerance from. A driver free to declare
+  its own threshold independent of the snapshot could report `pass` against a
+  band nobody anchored to SPEC § 14; a missing or numerically mismatched
+  snapshot value is withheld as `not-verified` naming the internal
+  inconsistency, before the volume-variance-vs-band comparison ever runs. An
+  equal value (including at the declared boundary) still passes as before.
+  COST-102, COST-001…007, scoring and severities are unchanged.
+
 - **`threadlight-production-ready` relayed reconciled cost verdicts without
   checking them against their own numbers, and lost them entirely when the
   cost static analyzer crashed.** COST-102/COST-103 consumed
@@ -16,7 +40,7 @@ field.
   tampered `cost-reconciliation-manifest.json` claiming `pass` on a 400%
   variance against a 5% declared tolerance produced a green cost control —
   and the mirror image raised a `should-fix` alarm nobody could reproduce.
-  Both findings now recompute the expected verdict from the artifact's own
+  Both findings now verify the relayed verdict against the artifact's own
   ratio (`|variance| <= tolerance`, inclusive, magnitude-only so an underspend
   counts) and, on disagreement, withhold it as `not-verified` naming
   `reconciliation verdict contradicts its numeric variance/tolerance`. The

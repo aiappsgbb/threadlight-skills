@@ -89,6 +89,7 @@ def _reconciliation(
     payg_status: str = "pass",
     threshold_field: object = "max_token_volume_variance_pct",
     threshold_pct: object = 0.30,
+    max_token_volume_variance_pct: object = 0.30,
     observed_volume_variance_pct: object = 0.10,
     generated_at: str = RECONCILED_AT,
     drivers: object = None,
@@ -122,7 +123,7 @@ def _reconciliation(
         },
         "policy_snapshot": {
             "max_forecast_variance_pct": max_forecast_variance_pct,
-            "max_token_volume_variance_pct": 0.30,
+            "max_token_volume_variance_pct": max_token_volume_variance_pct,
             "max_window_end_age_days": max_window_end_age_days,
             "min_projection_attribution_coverage_pct": 0.95,
             "actual_billing_price_basis": "retail",
@@ -947,6 +948,113 @@ def test_driver_detail_names_the_token_volume_threshold(tmp_path, monkeypatch) -
     assert "max_forecast_variance_pct" not in detail
 
 
+# --------------------------------------------------------------------------
+# COST-103 driver threshold integrity — threshold_pct must be the same
+# producer value as policy_snapshot.max_token_volume_variance_pct
+# --------------------------------------------------------------------------
+
+
+INTERNAL_INCONSISTENCY_PHRASE = "Internal inconsistency"
+
+
+def test_driver_threshold_mismatched_with_snapshot_cannot_pass(
+    tmp_path, monkeypatch
+) -> None:
+    """A driver free to declare its own threshold independent of the SPEC-
+    anchored snapshot could report `pass` at 99% band width while the SPEC
+    only ever declared 30% — that must never be relayed as evidence."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="pass",
+        threshold_pct=0.99,
+        max_token_volume_variance_pct=0.30,
+        observed_volume_variance_pct=0.10,
+    )
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail
+    assert "99.0%" in found["COST-103"].detail
+    assert "30.0%" in found["COST-103"].detail
+    # An unusable driver verdict never degrades the independent cost verdict.
+    assert found["COST-102"].status == "pass"
+
+
+def test_driver_threshold_equal_to_snapshot_boundary_passes(
+    tmp_path, monkeypatch
+) -> None:
+    """Same producer value on both sides — including a value other than the
+    fixture default — must not be withheld as a mismatch."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="pass",
+        threshold_pct=0.15,
+        max_token_volume_variance_pct=0.15,
+        observed_volume_variance_pct=0.15,
+    )
+    assert _findings(ctx)["COST-103"].status == "pass"
+
+
+def test_driver_threshold_snapshot_missing_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, max_token_volume_variance_pct=None)
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail
+
+
+def test_driver_threshold_snapshot_boolean_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, max_token_volume_variance_pct=True)
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail
+
+
+def test_driver_threshold_snapshot_huge_int_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """A 400-digit JSON integer is a legal `int` but not a usable ratio — the
+    equality check must reject it, never raise `OverflowError`."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, max_token_volume_variance_pct=10**400)
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail
+
+
+def test_driver_threshold_snapshot_out_of_range_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    for bad in (-0.1, 1.5, float("nan"), float("inf"), "0.3"):
+        ctx = _write_bundle(tmp_path, max_token_volume_variance_pct=bad)
+        found = _findings(ctx)
+        assert found["COST-103"].status == "not-verified", bad
+        assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail, bad
+
+
+def test_driver_threshold_malformed_snapshot_block_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """`policy_snapshot` itself is not an object — no producer value at all.
+
+    A non-object `policy_snapshot` also strips `max_window_end_age_days`, so
+    the staleness gate in the loader withholds both findings before either
+    per-finding check ever runs — still `not-verified`, never a crash."""
+    _freeze(monkeypatch)
+    forecast, actuals = _forecast(), _actuals()
+    doc = _reconciliation(forecast, actuals, SPEC_TEXT)
+    doc["policy_snapshot"] = "not an object"
+    ctx = _write_bundle(tmp_path, forecast=forecast, actuals=actuals, reconciliation=doc)
+    _both_not_verified(ctx)
+
+
 def test_driver_verdict_without_token_volumes_is_not_verified(
     tmp_path, monkeypatch
 ) -> None:
@@ -1385,6 +1493,120 @@ def test_loader_leaves_the_artifacts_on_disk_untouched(tmp_path, monkeypatch) ->
     pr._check_cost_reconciliation_static(ctx)
     after = {p.name: p.read_bytes() for p in specs.iterdir()}
     assert before == after
+
+
+# --------------------------------------------------------------------------
+# hostile giant-int / OverflowError robustness — a 400-digit JSON integer is
+# a legal Python `int` that `float()` cannot represent (`OverflowError`, not
+# a normal comparison). Every ratio/count conversion in this module is gated
+# through `_is_finite_number`, which must reject such a value rather than
+# raise — degrading only the affected finding to `not-verified`, never
+# aborting `_run_pillar`.
+# --------------------------------------------------------------------------
+
+
+GIANT_INT = 10**400
+
+
+def test_is_finite_number_never_raises_on_a_giant_int() -> None:
+    assert pr._is_finite_number(GIANT_INT) is False
+    assert pr._is_finite_number(-GIANT_INT) is False
+    assert pr._is_finite_number(float("nan")) is False
+    assert pr._is_finite_number(float("inf")) is False
+    assert pr._is_finite_number(True) is False
+    assert pr._is_finite_number(False) is False
+    assert pr._is_finite_number(None) is False
+    assert pr._is_finite_number("1e400") is False
+    assert pr._is_finite_number(0.5) is True
+    assert pr._is_finite_number(1) is True
+
+
+def test_is_declared_ratio_never_raises_on_a_giant_int() -> None:
+    assert pr._is_declared_ratio(GIANT_INT) is False
+    assert pr._is_declared_ratio(-GIANT_INT) is False
+
+
+def test_fmt_helpers_never_raise_on_a_giant_int() -> None:
+    assert pr._fmt_ratio_pct(GIANT_INT) == "unknown"
+    assert pr._fmt_token_volume(GIANT_INT) == "unknown"
+
+
+def test_giant_variance_pct_degrades_cost102_only(tmp_path, monkeypatch) -> None:
+    _freeze(monkeypatch)
+    _cost102_only_not_verified(_write_bundle(tmp_path, variance_pct=GIANT_INT))
+
+
+def test_giant_forecast_tolerance_degrades_cost102_only(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    _cost102_only_not_verified(
+        _write_bundle(tmp_path, max_forecast_variance_pct=GIANT_INT)
+    )
+
+
+def test_giant_observed_volume_variance_degrades_cost103_only(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    found = _findings(
+        _write_bundle(tmp_path, observed_volume_variance_pct=GIANT_INT)
+    )
+    assert found["COST-103"].status == "not-verified"
+    assert found["COST-102"].status == "pass"
+
+
+def test_giant_driver_threshold_pct_is_not_verified(tmp_path, monkeypatch) -> None:
+    """The driver's own threshold_pct as a 400-digit int — rejected before it
+    ever reaches the snapshot equality check or the band comparison."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, threshold_pct=GIANT_INT)
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert found["COST-102"].status == "pass"
+
+
+def test_giant_snapshot_token_threshold_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, max_token_volume_variance_pct=GIANT_INT)
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert INTERNAL_INCONSISTENCY_PHRASE in found["COST-103"].detail
+
+
+def test_giant_max_window_end_age_days_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    _both_not_verified(_write_bundle(tmp_path, max_window_end_age_days=GIANT_INT))
+
+
+def test_giant_ints_in_every_reconciled_field_never_abort_the_full_run(
+    tmp_path, monkeypatch
+) -> None:
+    """All five hostile fields at once, driven through the real pillar
+    dispatcher (`_run_pillar`) rather than the finding functions directly —
+    the full assessment must complete, degrading only the artifact-driven
+    findings, never raising `OverflowError`/`ArithmeticError` out of the
+    pillar."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_pct=GIANT_INT,
+        max_forecast_variance_pct=GIANT_INT,
+        threshold_pct=GIANT_INT,
+        max_token_volume_variance_pct=GIANT_INT,
+        observed_volume_variance_pct=GIANT_INT,
+        max_window_end_age_days=GIANT_INT,
+    )
+    findings = _cost_pillar(ctx, static_only=True, tiers={0: True})
+    by_id = {f.id: f for f in findings}
+    assert by_id["COST-102"].status == "not-verified"
+    assert by_id["COST-103"].status == "not-verified"
+    # The rest of the pillar still ran to completion (proof nothing aborted).
+    assert "COST-001" in by_id
 
 
 def test_default_time_helper_returns_aware_utc() -> None:

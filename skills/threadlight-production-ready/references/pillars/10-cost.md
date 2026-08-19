@@ -67,13 +67,22 @@ its own numbers — a `pass` on 400% variance against a 5% tolerance, or a
 relayed. This is not a second threshold: the check can only ever withhold a
 decided verdict, never author or upgrade one. A `not-verified` from the
 reconciler stays `not-verified`, and unusable numbers (bool, NaN, infinite,
-non-numeric, missing tolerance) are reported as malformed evidence rather than
-as a contradiction.
+non-numeric, missing tolerance, or a JSON integer hundreds of digits long)
+are reported as malformed evidence rather than as a contradiction — no
+ratio conversion in either finding raises on hostile input.
+
+**Driver threshold integrity (COST-103).** `drivers.payg_ptu.threshold_pct`
+must be the *same producer value* as the SPEC-anchored
+`policy_snapshot.max_token_volume_variance_pct` — a driver free to declare
+its own number independent of the snapshot could carry a band nobody
+anchored to SPEC § 14. Missing, out-of-range, or numerically mismatched is
+withheld as `not-verified` naming the internal inconsistency, before the
+volume-variance-vs-band comparison above ever runs.
 
 | ID | Check | Default status |
 |---|---|---|
 | `COST-102` | Observed cost variance (`totals.variance_pct`) against the SPEC § 14 declared tolerance `policy_snapshot.max_forecast_variance_pct`. The verdict is consumed from the reconciler's `variance_status` — no second threshold is applied here, and no percentage is hardcoded; a `variance_status` that contradicts the artifact's own variance/tolerance is withheld as `not-verified` | `not-verified` without a provable (or self-consistent) artifact; `should-fix` when `variance_status: should-fix` |
-| `COST-103` | PAYG/PTU recommendation still holds at observed **token volume**, read from `drivers.payg_ptu`. Requires `threshold_field: max_token_volume_variance_pct`, a finite `observed_volume_variance_pct` and a `threshold_pct` in [0, 1] — the cost tolerance is never applied to a volume question, no dollar figure appears in this finding, and a driver status its own volume variance does not support is withheld as `not-verified` | `not-verified` without a driver verdict; `should-fix` → rerun PAYG/PTU analysis at observed volume |
+| `COST-103` | PAYG/PTU recommendation still holds at observed **token volume**, read from `drivers.payg_ptu`. Requires `threshold_field: max_token_volume_variance_pct`, a `threshold_pct` in [0, 1] that numerically matches `policy_snapshot.max_token_volume_variance_pct`, and a finite `observed_volume_variance_pct` — the cost tolerance is never applied to a volume question, no dollar figure appears in this finding, and a driver status its own volume variance does not support is withheld as `not-verified` | `not-verified` without a driver verdict; `should-fix` → rerun PAYG/PTU analysis at observed volume |
 
 ## PAYG vs PTU recommendation
 
