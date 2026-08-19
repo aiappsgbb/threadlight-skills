@@ -2450,6 +2450,9 @@ def reconcile_costs(
     policy_errors: list[str],
     generated_at: str,
     policy_spec_sha256: str,
+    forecast_path: str = FORECAST_PATH,
+    actuals_path: str = ACTUALS_PATH,
+    policy_path: str = POLICY_PATH,
 ) -> dict[str, object]:
     """Return `threadlight-cost-reconciliation/v1`.
 
@@ -2457,6 +2460,11 @@ def reconcile_costs(
     refuses to produce a manifest. Errors are copied to `policy_errors` in the
     output and force `maturity.status` and `unit_economics.status` to
     `not-verified`, but every observed number is still reported.
+
+    The `*_path` arguments are provenance only: they are recorded as
+    `refs.*_ref.path` so the manifest names the documents the caller actually
+    read, and they never affect a hash or a number. They default to the
+    canonical locations, so existing callers are unaffected.
     """
 ```
 

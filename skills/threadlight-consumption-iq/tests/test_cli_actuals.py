@@ -36,6 +36,7 @@ SCRIPTS = HERE.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import consumption_iq  # noqa: E402
+import reconciliation_emitter as emitter  # noqa: E402
 from actuals_sources import ActualsSourceError  # noqa: E402
 from cost_actuals import ActualsEvidenceError  # noqa: E402
 from emitter import emit_artefacts  # noqa: E402
@@ -496,11 +497,11 @@ def test_run_all_with_actuals_calls_projection_then_actuals(monkeypatch) -> None
     monkeypatch.setattr(
         consumption_iq,
         "_phase_reconcile",
-        lambda args: calls.append("reconcile") or {"status": "pass"},
+        lambda args, actuals=None: calls.append("reconcile") or {"status": "pass"},
     )
     monkeypatch.setattr(consumption_iq, "_emit_actuals", lambda args, result: None)
     monkeypatch.setattr(
-        consumption_iq, "_emit_reconciliation", lambda args, result: None
+        consumption_iq, "_emit_reconciliation", lambda args, result, actuals=None: None
     )
     rc = consumption_iq.main([
         "run", "--all", "--with-actuals",
@@ -518,13 +519,13 @@ def test_incomplete_maturity_returns_exit_5_after_emit(monkeypatch) -> None:
     monkeypatch.setattr(
         consumption_iq,
         "_phase_reconcile",
-        lambda args: {"status": "not-verified"},
+        lambda args, actuals=None: {"status": "not-verified"},
     )
     monkeypatch.setattr(consumption_iq, "_emit_actuals", lambda args, result: None)
     monkeypatch.setattr(
         consumption_iq,
         "_emit_reconciliation",
-        lambda args, result: emitted.append(result),
+        lambda args, result, actuals=None: emitted.append(result),
     )
     rc = consumption_iq.main([
         "run", "--all", "--with-actuals",
@@ -557,12 +558,14 @@ def test_interaction_query_failure_still_returns_exit_0_for_actuals(monkeypatch)
     ]) == 0
 
 
-def test_interaction_query_failure_returns_exit_5_for_reconcile(monkeypatch) -> None:
+def test_interaction_query_failure_returns_exit_5_for_reconcile(
+    monkeypatch, tmp_path
+) -> None:
     emitted = []
     monkeypatch.setattr(
         consumption_iq,
         "_phase_reconcile",
-        lambda args: {
+        lambda args, actuals=None: {
             "status": "not-verified",
             "unit_economics": {"status": "not-verified"},
         },
@@ -570,9 +573,9 @@ def test_interaction_query_failure_returns_exit_5_for_reconcile(monkeypatch) -> 
     monkeypatch.setattr(
         consumption_iq,
         "_emit_reconciliation",
-        lambda args, result: emitted.append(result),
+        lambda args, result, actuals=None: emitted.append(result),
     )
-    assert consumption_iq.main(["reconcile"]) == 5
+    assert consumption_iq.main(_reconcile_argv(_reconcile_args(tmp_path))) == 5
     # Emit happens first; the non-zero exit only reports the verdict.
     assert emitted and emitted[0]["status"] == "not-verified"
 
@@ -595,7 +598,7 @@ def test_unverified_actuals_status_returns_exit_5_after_emit(monkeypatch) -> Non
     assert emitted
 
 
-def test_incomplete_policy_emits_before_exiting_5(monkeypatch) -> None:
+def test_incomplete_policy_emits_before_exiting_5(monkeypatch, tmp_path) -> None:
     """RFC §12 / Task 5: an incomplete or invalid section 14 is no longer an
     early exit. The policy errors flow into `reconcile_costs`, a
     `not-verified` manifest is written, and only then is 5 returned."""
@@ -608,7 +611,7 @@ def test_incomplete_policy_emits_before_exiting_5(monkeypatch) -> None:
     monkeypatch.setattr(
         consumption_iq,
         "_phase_reconcile",
-        lambda args: {
+        lambda args, actuals=None: {
             "status": "not-verified",
             "policy_errors": ["cost.baseline is missing"],
         },
@@ -616,9 +619,9 @@ def test_incomplete_policy_emits_before_exiting_5(monkeypatch) -> None:
     monkeypatch.setattr(
         consumption_iq,
         "_emit_reconciliation",
-        lambda args, result: emitted.append(result),
+        lambda args, result, actuals=None: emitted.append(result),
     )
-    assert consumption_iq.main(["reconcile"]) == 5
+    assert consumption_iq.main(_reconcile_argv(_reconcile_args(tmp_path))) == 5
     assert emitted[0]["policy_errors"] == ["cost.baseline is missing"]
 
 
@@ -1009,6 +1012,79 @@ def test_emit_actuals_rejects_non_finite_numbers_without_corrupting(tmp_path) ->
     assert [p.name for p in tmp_path.iterdir()] == [destination.name]
 
 
+def test_emit_actuals_delegates_to_the_shared_durable_writer(
+    monkeypatch, tmp_path
+) -> None:
+    """One durable writer, not two.
+
+    A second hand-rolled `open`/`replace` in the CLI is how the standalone
+    half quietly drifts from the pair half — different validation, different
+    fsync discipline, different permissions. `_emit_actuals` must therefore
+    be a thin call into the emitter that already owns that contract.
+    """
+    calls = []
+    monkeypatch.setattr(
+        consumption_iq,
+        "emit_actuals_document",
+        lambda document, path: calls.append((document, path)),
+    )
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    document = _minimal_actuals()
+    returned = consumption_iq._emit_actuals(_emit_args(destination), document)
+
+    assert calls == [(document, destination)]
+    assert returned == destination
+    assert not destination.exists()
+
+
+def test_cli_owns_no_private_artifact_writer() -> None:
+    source = Path(consumption_iq.__file__).read_text(encoding="utf-8")
+    assert "def _write_atomic" not in source
+    assert "def _canonical_text" not in source
+    assert "NamedTemporaryFile" not in source
+
+
+def test_emit_actuals_is_durable_through_the_shared_writer(
+    tmp_path, monkeypatch
+) -> None:
+    """Delegation is only worth anything if the real thing still fsyncs and
+    renames, so exercise the undelegated path end to end."""
+    if os.name == "nt":
+        pytest.skip("directory descriptors do not exist on Windows")
+    events = []
+    real_replace = emitter.os.replace
+    real_fsync_directory = emitter._fsync_directory
+
+    def replace(source, destination):
+        events.append(("publish", str(destination)))
+        return real_replace(source, destination)
+
+    def fsync_directory(path):
+        events.append(("dirsync", str(path)))
+        return real_fsync_directory(path)
+
+    monkeypatch.setattr(emitter.os, "replace", replace)
+    monkeypatch.setattr(emitter, "_fsync_directory", fsync_directory)
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    consumption_iq._emit_actuals(_emit_args(destination), _minimal_actuals())
+
+    assert ("publish", str(destination)) in events
+    assert ("dirsync", str(destination.parent)) in events
+
+
+def test_emit_actuals_rejects_a_symlinked_destination(tmp_path) -> None:
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    target = tmp_path / "elsewhere.json"
+    target.write_text("{}", encoding="utf-8")
+    (specs / "cost-actuals-manifest.json").symlink_to(target)
+    with pytest.raises(EmissionValidationError):
+        consumption_iq._emit_actuals(
+            _emit_args(specs / "cost-actuals-manifest.json"), _minimal_actuals()
+        )
+    assert target.read_text(encoding="utf-8") == "{}"
+
+
 # ---------------------------------------------------------------------------
 # `_phase_reconcile` / `_emit_reconciliation` — offline, hashed, auditable
 # ---------------------------------------------------------------------------
@@ -1049,6 +1125,19 @@ def _reconcile_args(tmp_path: Path, spec_text: str = SPEC_SECTION_14):
     ])
 
 
+def _reconcile_argv(args) -> list[str]:
+    """The same paths `_reconcile_args` parsed, back as an argv for `main`."""
+    return [
+        "reconcile",
+        "--forecast", str(args.forecast),
+        "--actuals-manifest", str(args.actuals_manifest),
+        "--spec", str(args.spec),
+        "--reconciliation-manifest", str(args.reconciliation_manifest),
+        "--report", str(args.report),
+        "--cost-history", str(args.cost_history),
+    ]
+
+
 def test_phase_reconcile_never_calls_a_source(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         consumption_iq,
@@ -1072,6 +1161,23 @@ def test_phase_reconcile_hashes_raw_spec_bytes_and_both_documents(
         Path(args.spec).read_bytes()
     ).hexdigest()
     assert result["forecast_ref"]["sha256"] == sha256_json(_forecast())
+    assert result["actuals_ref"]["sha256"] == sha256_json(_minimal_actuals())
+
+
+def test_phase_reconcile_records_the_paths_it_actually_read(
+    monkeypatch, tmp_path
+) -> None:
+    """Provenance names the files this run opened, not the canonical
+    defaults: a pilot that passes `--actuals-manifest` elsewhere would
+    otherwise publish a reference nobody can resolve."""
+    args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    result = consumption_iq._phase_reconcile(args)
+
+    assert result["forecast_ref"]["path"] == str(args.forecast)
+    assert result["actuals_ref"]["path"] == str(args.actuals_manifest)
+    assert result["policy_ref"]["path"] == str(args.spec)
+    # Still the digests of the bytes, unchanged by where they live.
     assert result["actuals_ref"]["sha256"] == sha256_json(_minimal_actuals())
 
 
@@ -1142,16 +1248,9 @@ def test_reconcile_command_emits_then_reports_the_verdict(
 ) -> None:
     args = _reconcile_args(tmp_path)
     _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
-    rc = consumption_iq.main([
-        "reconcile",
-        "--forecast", str(args.forecast),
-        "--actuals-manifest", str(args.actuals_manifest),
-        "--spec", str(args.spec),
-        "--reconciliation-manifest", str(args.reconciliation_manifest),
-        "--report", str(args.report),
-        "--cost-history", str(args.cost_history),
-    ])
-    assert rc in {0, 5}
+    rc = consumption_iq.main(_reconcile_argv(args))
+    # The fixture is a complete, mature pilot: it must reconcile clean.
+    assert rc == 0
     assert Path(args.reconciliation_manifest).exists()
     assert Path(args.report).exists()
 
@@ -1208,24 +1307,132 @@ def test_reconcile_command_succeeds_twice_over_unchanged_actuals(
         lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
     )
     args = _reconcile_args(tmp_path)
-    argv = [
-        "reconcile",
-        "--forecast", str(args.forecast),
-        "--actuals-manifest", str(args.actuals_manifest),
-        "--spec", str(args.spec),
-        "--reconciliation-manifest", str(args.reconciliation_manifest),
-        "--report", str(args.report),
-        "--cost-history", str(args.cost_history),
-    ]
+    argv = _reconcile_argv(args)
     _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
-    assert consumption_iq.main(argv) in {0, 5}
+    assert consumption_iq.main(argv) == 0
 
     Path(args.forecast).write_text(json.dumps(_forecast(555.0)), encoding="utf-8")
     _pin_now(monkeypatch, datetime(2026, 8, 13, 11, 45, 0, tzinfo=timezone.utc))
-    assert consumption_iq.main(argv) in {0, 5}
+    assert consumption_iq.main(argv) == 0
 
     window = Path(args.cost_history) / "2026-08-01--2026-08-08"
     assert len(list(window.iterdir())) == 2
+
+
+# ---------------------------------------------------------------------------
+# The actuals manifest is read once, and the bytes that were hashed are the
+# bytes that get published
+# ---------------------------------------------------------------------------
+
+
+def _count_actuals_reads(monkeypatch, target: Path) -> list[str]:
+    """Record every read of `target`, however it is spelled."""
+    reads: list[str] = []
+    real_read_text = Path.read_text
+    real_read_bytes = Path.read_bytes
+    resolved = os.path.abspath(target)
+
+    def read_text(self, *args, **kwargs):
+        if os.path.abspath(self) == resolved:
+            reads.append("read_text")
+        return real_read_text(self, *args, **kwargs)
+
+    def read_bytes(self, *args, **kwargs):
+        if os.path.abspath(self) == resolved:
+            reads.append("read_bytes")
+        return real_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    return reads
+
+
+def test_reconcile_command_reads_the_actuals_manifest_exactly_once(
+    monkeypatch, tmp_path
+) -> None:
+    """Hashing one revision and publishing another is an audit hole.
+
+    Reading the evidence twice — once to reconcile, once to emit — leaves a
+    window in which a concurrent collection changes the file underneath the
+    verdict. One read, one in-memory document, one published artefact.
+    """
+    args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    reads = _count_actuals_reads(monkeypatch, Path(args.actuals_manifest))
+    rc = consumption_iq.main(_reconcile_argv(args))
+    assert rc == 0
+    assert reads == ["read_text"]
+
+
+def test_reconcile_publishes_the_evidence_it_hashed(monkeypatch, tmp_path) -> None:
+    """A re-collection landing mid-run must not be able to substitute itself
+    for the evidence the verdict was computed from."""
+    args = _reconcile_args(tmp_path)
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    hashed = _minimal_actuals()
+    real_reconcile_costs = consumption_iq.reconcile_costs
+
+    def reconcile_then_overwrite(*call_args, **kwargs):
+        result = real_reconcile_costs(*call_args, **kwargs)
+        Path(args.actuals_manifest).write_text(
+            json.dumps(_minimal_actuals(status="not-verified")), encoding="utf-8"
+        )
+        return result
+
+    monkeypatch.setattr(consumption_iq, "reconcile_costs", reconcile_then_overwrite)
+    rc = consumption_iq.main(_reconcile_argv(args))
+
+    assert rc == 0
+    published = json.loads(Path(args.actuals_manifest).read_text())
+    assert published == hashed
+    manifest = json.loads(Path(args.reconciliation_manifest).read_text())
+    assert manifest["actuals_ref"]["sha256"] == sha256_json(hashed)
+    snapshot = list(Path(args.cost_history).rglob("actuals.json"))
+    assert len(snapshot) == 1
+    assert json.loads(snapshot[0].read_text()) == hashed
+
+
+def test_run_with_actuals_never_reads_back_the_manifest_it_just_wrote(
+    monkeypatch, tmp_path
+) -> None:
+    """`run --all --with-actuals` already holds the collected document in
+    memory. Reading it back off disk would be both a wasted round trip and a
+    chance to reconcile something other than what was collected."""
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    forecast_path = specs / "cost-manifest.json"
+    forecast_path.write_text(json.dumps(_forecast()), encoding="utf-8")
+    spec_path = _write_spec(tmp_path, SPEC_SECTION_14)
+    actuals_path = specs / "cost-actuals-manifest.json"
+    collected = _minimal_actuals()
+
+    monkeypatch.setattr(consumption_iq, "_run_projection", lambda args: None)
+    monkeypatch.setattr(consumption_iq, "_phase_actuals", lambda args: collected)
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("no Azure call may follow collection"),
+    )
+    _pin_now(monkeypatch, PINNED_RECONCILED_NOW)
+    reads = _count_actuals_reads(monkeypatch, actuals_path)
+
+    rc = consumption_iq.main([
+        "run", "--all", "--with-actuals",
+        "--start", "2026-08-01", "--end", "2026-08-08",
+        "--subscription", SUB, "--resource-group", RG,
+        "--manifest", str(forecast_path),
+        "--spec", str(spec_path),
+        "--actuals-manifest", str(actuals_path),
+        "--reconciliation-manifest", str(specs / "cost-reconciliation-manifest.json"),
+        "--reconciliation-report", str(tmp_path / "docs" / "cost-reconciliation.md"),
+        "--cost-history", str(specs / "cost-history"),
+    ])
+
+    assert rc == 0
+    assert reads == []
+    manifest = json.loads((specs / "cost-reconciliation-manifest.json").read_text())
+    assert manifest["actuals_ref"]["sha256"] == sha256_json(collected)
+    assert manifest["actuals_ref"]["path"] == str(actuals_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1403,13 +1610,13 @@ def test_emitter_failure_returns_exit_3(monkeypatch) -> None:
     ]) == 3
 
 
-def test_io_failure_returns_exit_3(monkeypatch) -> None:
+def test_io_failure_returns_exit_3(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         consumption_iq,
         "_phase_reconcile",
-        lambda args: (_ for _ in ()).throw(OSError("disk full")),
+        lambda args, actuals=None: (_ for _ in ()).throw(OSError("disk full")),
     )
-    assert consumption_iq.main(["reconcile"]) == 3
+    assert consumption_iq.main(_reconcile_argv(_reconcile_args(tmp_path))) == 3
 
 
 def test_missing_local_input_returns_exit_2(tmp_path) -> None:

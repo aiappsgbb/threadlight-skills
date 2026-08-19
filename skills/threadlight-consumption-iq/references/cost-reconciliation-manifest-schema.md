@@ -123,13 +123,22 @@ read the top-level `status`, not `variance_status` alone.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `forecast_ref.path` | `string` | Always `specs/cost-manifest.json`. |
+| `forecast_ref.path` | `string` | The forecast the caller actually read; `specs/cost-manifest.json` unless a path was passed. |
 | `forecast_ref.sha256` | `string` | `sha256_json(forecast)`. |
-| `actuals_ref.path` | `string` | Always `specs/cost-actuals-manifest.json`. |
+| `actuals_ref.path` | `string` | The actuals manifest the caller actually read; `specs/cost-actuals-manifest.json` unless a path was passed. |
 | `actuals_ref.sha256` | `string` | `sha256_json(actuals)`. |
-| `policy_ref.path` | `string` | Always `specs/SPEC.md`. |
+| `policy_ref.path` | `string` | The SPEC the policy was read from; `specs/SPEC.md` unless a path was passed. |
 | `policy_ref.section` | `integer` | Always `14`. |
 | `policy_ref.spec_sha256` | `string` | Caller-supplied SHA-256 of the SPEC commit the policy was read from; echoed **verbatim**, and additionally validated as a 64-character hex digest (see below). |
+
+The three `path` values are **provenance only**. `reconcile_costs` accepts
+`forecast_path` / `actuals_path` / `policy_path` (each defaulting to the
+canonical repo-relative name above) and echoes them verbatim, so a pilot
+whose artifacts live outside the default layout still publishes references a
+reviewer can resolve — the CLI passes exactly the paths it resolved from
+`--forecast` / `--actuals-manifest` / `--spec`. A path must be a non-empty
+string; it never takes part in any digest, so relocating evidence cannot
+change what a consumer re-derives from it.
 
 `sha256_json(document)` = SHA-256 over
 `json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)`.

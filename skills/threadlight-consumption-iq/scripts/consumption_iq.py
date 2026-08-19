@@ -35,10 +35,32 @@ Exit codes:
      for at least one required SKU OR a mandatory cost source could not be
      collected or published
   4  load_profile{} incomplete after wizard (interactive mode required)
-  5  advisory: the reconciliation (or the actuals manifest) is
-     `not-verified`. Always returned AFTER every artefact has been written
-     — the evidence an operator needs to fix the gap is exactly what an
-     early exit would destroy.
+  5  advisory: the reconciliation is `not-verified`. Always returned AFTER
+     every artefact has been written — the evidence an operator needs to
+     fix the gap is exactly what an early exit would destroy.
+
+     This is the ordinary outcome of `reconcile` and of
+     `run --all --with-actuals` on an immature pilot. `actuals` on its own
+     does not normally reach it: `build_actuals_manifest` either returns a
+     `status: pass` manifest — degrading individual usage facts to
+     `interaction_status`/`model_attribution_status: not-verified` and
+     recording a warning — or raises, which surfaces as 3 (evidence
+     unusable) or 2 (bad local input). Exit 5 stays wired to the actuals
+     verdict because the schema permits a `not-verified` document and a
+     future or extension-supplied manifest may carry one; it is not a
+     routine signal for the common optional-evidence gaps.
+
+`reconcile` re-projects LOCAL documents only and issues no Azure call at
+all. It therefore TRUSTS the scope and window recorded in the actuals
+manifest it was pointed at: without `--start`/`--end`/`--subscription`/
+`--resource-group` there is nothing to compare them against, and the
+command does not re-verify that the recorded scope is the one an operator
+meant. What it does instead is publish them — `docs/cost-reconciliation.md`
+prints the collection scope and window under "Collection scope" — so a
+reviewer can see exactly which subscription, resource group and days the
+verdict rests on. (When those flags ARE present, as in
+`run --all --with-actuals`, the manifest's scope and window must match them
+or the run stops.)
 
 Single-file CLI dispatcher; stdlib only. Per-phase logic lives in:
   scripts/discover.py
@@ -64,7 +86,6 @@ import hashlib
 import json
 import os
 import sys
-import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -91,9 +112,9 @@ from recommender import score_and_rank  # noqa: E402
 from reconcile import ReconciliationInputError, reconcile_costs  # noqa: E402
 from reconciliation_emitter import (  # noqa: E402
     ACTUALS_SCHEMA,
-    ARTIFACT_MODE,
     EmissionValidationError,
     HistoryConflictError,
+    emit_actuals_document,
     emit_reconciliation,
 )
 from rollout import load_rollout_profile, RolloutProfileError, has_declared_topology  # noqa: E402
@@ -470,59 +491,18 @@ def _phase_actuals(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
-def _canonical_text(document: dict[str, Any]) -> str:
-    try:
-        return (
-            json.dumps(
-                document,
-                sort_keys=True,
-                indent=2,
-                ensure_ascii=True,
-                allow_nan=False,
-            )
-            + "\n"
-        )
-    except (TypeError, ValueError) as exc:
-        raise EmissionValidationError(f"actuals manifest is not serialisable: {exc}") from exc
-
-
-def _write_atomic(destination: Path, text: str) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        newline="\n",
-        dir=str(destination.parent),
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        delete=False,
-    )
-    staged = Path(handle.name)
-    try:
-        with handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(staged, ARTIFACT_MODE)
-        os.replace(staged, destination)
-    finally:
-        try:
-            staged.unlink()
-        except FileNotFoundError:
-            pass
-
-
 def _emit_actuals(args: argparse.Namespace, document: Any) -> Path:
-    """Publish the actuals manifest atomically. No history — that is the
-    reconciliation emitter's job, and writing it twice would collide."""
-    if not isinstance(document, dict):
-        raise EmissionValidationError("actuals manifest must be a JSON object")
-    if document.get("schema") != ACTUALS_SCHEMA:
-        raise EmissionValidationError(
-            f"actuals manifest schema must be {ACTUALS_SCHEMA!r}, got {document.get('schema')!r}"
-        )
+    """Publish the actuals manifest through the one durable writer.
+
+    Validation, canonical serialization, staging, fsync, mode and the atomic
+    rename all live in `reconciliation_emitter`, so a standalone actuals
+    manifest and the same document published later as half of a canonical
+    pair are byte-identical and equally durable. No history is written here:
+    history is keyed by the reconciliation instant, which this document does
+    not have yet.
+    """
     destination = Path(args.actuals_manifest)
-    _write_atomic(destination, _canonical_text(document))
+    emit_actuals_document(document, destination)
     return destination
 
 
@@ -546,7 +526,19 @@ def _reconciliation_report_path(args: argparse.Namespace) -> Path:
 
 
 def _require_reusable_actuals(document: dict[str, Any], args: argparse.Namespace) -> None:
-    """Reconciliation must never silently compare against the wrong evidence."""
+    """Reconciliation must never silently compare against the wrong evidence.
+
+    The schema, the `pass` status and a well-formed window are always
+    required. The scope and window CROSS-CHECKS below are conditional, and
+    deliberately so: they compare the manifest against what the caller asked
+    for, and standalone `reconcile` asks for nothing — it has no
+    `--start`/`--end`/`--subscription`/`--resource-group`. In that mode the
+    recorded scope and window are trusted as the operator's choice of
+    evidence, and are published in the report ("Collection scope") so a
+    reviewer can see which subscription, resource group and days the verdict
+    rests on. Under `run --all --with-actuals`, where those values exist,
+    a mismatch stops the run.
+    """
     if document.get("schema") != ACTUALS_SCHEMA:
         raise ReconciliationInputError(
             f"actuals manifest schema must be {ACTUALS_SCHEMA!r}, got {document.get('schema')!r}"
@@ -583,12 +575,47 @@ def _require_reusable_actuals(document: dict[str, Any], args: argparse.Namespace
         )
 
 
-def _phase_reconcile(args: argparse.Namespace) -> dict[str, Any]:
-    """Pure re-projection: local documents only, no source is ever contacted."""
-    forecast = _load_json_mapping(_forecast_path(args), "forecast manifest")
-    actuals = _load_json_mapping(Path(args.actuals_manifest), "actuals manifest")
-    _require_reusable_actuals(actuals, args)
-    spec_bytes = Path(args.spec).read_bytes()
+def _load_reconcilable_actuals(args: argparse.Namespace) -> dict[str, Any]:
+    """Read the actuals manifest ONCE and prove it may be reconciled.
+
+    The single read is the contract: hashing one revision of this file and
+    then publishing a later one is an audit hole no consumer could detect,
+    because `actuals_ref.sha256` would still look self-consistent. Callers
+    hold the returned document and pass it to `_phase_reconcile` and
+    `_emit_reconciliation` rather than re-reading the path.
+    """
+    document = _load_json_mapping(Path(args.actuals_manifest), "actuals manifest")
+    _require_reusable_actuals(document, args)
+    return document
+
+
+def _phase_reconcile(
+    args: argparse.Namespace, actuals_document: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """Pure re-projection: local documents only, no source is ever contacted.
+
+    `actuals_document` is the evidence to reconcile. Pass it when the caller
+    already holds it — `run --all --with-actuals` has just collected it, and
+    `reconcile` has just loaded it — so that the bytes that were hashed are
+    the bytes that get published. When omitted, the manifest is read from
+    `args.actuals_manifest` and validated the same way.
+
+    The provenance paths handed to `reconcile_costs` are the paths this call
+    actually resolved, so `*_ref.path` names the artifacts that were read
+    rather than the canonical defaults.
+    """
+    forecast_path = _forecast_path(args)
+    actuals_path = Path(args.actuals_manifest)
+    spec_path = Path(args.spec)
+    forecast = _load_json_mapping(forecast_path, "forecast manifest")
+    if actuals_document is None:
+        actuals = _load_reconcilable_actuals(args)
+    else:
+        if not isinstance(actuals_document, dict):
+            raise ReconciliationInputError("actuals manifest must be a JSON object")
+        _require_reusable_actuals(actuals_document, args)
+        actuals = actuals_document
+    spec_bytes = spec_path.read_bytes()
     policy = _load_policy(args)
     return reconcile_costs(
         forecast,
@@ -602,11 +629,30 @@ def _phase_reconcile(args: argparse.Namespace) -> dict[str, Any]:
         # evidence collide with the first one in immutable history.
         generated_at=_iso_utc(_utc_now()),
         policy_spec_sha256=hashlib.sha256(spec_bytes).hexdigest(),
+        forecast_path=str(forecast_path),
+        actuals_path=str(actuals_path),
+        policy_path=str(spec_path),
     )
 
 
-def _emit_reconciliation(args: argparse.Namespace, reconciliation: dict[str, Any]) -> None:
-    actuals = _load_json_mapping(Path(args.actuals_manifest), "actuals manifest")
+def _emit_reconciliation(
+    args: argparse.Namespace,
+    reconciliation: dict[str, Any],
+    actuals_document: Optional[dict[str, Any]] = None,
+) -> None:
+    """Publish the pair, the report and the history snapshot.
+
+    `actuals_document` must be the same in-memory document the verdict was
+    computed from; re-reading the file here would reopen the window in which
+    a concurrent collection substitutes different evidence for the one this
+    reconciliation hashed. It is loaded only as a convenience when a caller
+    genuinely has nothing in hand.
+    """
+    actuals = (
+        _load_json_mapping(Path(args.actuals_manifest), "actuals manifest")
+        if actuals_document is None
+        else actuals_document
+    )
     emit_reconciliation(
         actuals=actuals,
         reconciliation=reconciliation,
@@ -957,8 +1003,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             actuals = _phase_actuals(args)
             _emit_actuals(args, actuals)
-            reconciliation = _phase_reconcile(args)
-            _emit_reconciliation(args, reconciliation)
+            # The collected document is passed on in memory: it was just
+            # published from these exact bytes, and re-reading it would let a
+            # concurrent writer swap the evidence under the verdict.
+            reconciliation = _phase_reconcile(args, actuals)
+            _emit_reconciliation(args, reconciliation, actuals)
             return _verdict_exit(reconciliation, args)
 
         if args.phase == "actuals":
@@ -967,8 +1016,10 @@ def main(argv: list[str] | None = None) -> int:
             return _verdict_exit(actuals, args)
 
         if args.phase == "reconcile":
-            reconciliation = _phase_reconcile(args)
-            _emit_reconciliation(args, reconciliation)
+            # Read once, reconcile and publish from that one document.
+            actuals = _load_reconcilable_actuals(args)
+            reconciliation = _phase_reconcile(args, actuals)
+            _emit_reconciliation(args, reconciliation, actuals)
             return _verdict_exit(reconciliation, args)
 
         print(f"unknown phase: {args.phase}", file=sys.stderr)

@@ -19,6 +19,19 @@ the destination tree byte-for-byte as it was — a half-written artifact is
 worse than no artifact, because a consumer cannot tell it apart from a
 complete one.
 
+## Two entry points, one writer
+
+`emit_reconciliation` publishes the canonical (actuals, reconciliation)
+pair, its report and its immutable history snapshot.
+`emit_actuals_document` publishes a standalone actuals manifest — evidence
+that has been collected but not yet reconciled — through the same
+validation, the same canonical serialization and the same staged/fsynced/
+renamed write. It writes no history, because history is keyed by the
+reconciliation instant and an unreconciled document has none. Both are here
+rather than in their callers so that a `consumption_iq actuals` artifact and
+the same document published later as half of a pair are byte-identical and
+equally durable.
+
 ## The canonical reconciliation is the commit marker
 
 Publish order is: immutable history first, then canonical actuals, then the
@@ -919,6 +932,42 @@ def emit_reconciliation(
             _publish_history(temp, destination, document, digest)
         for temp, destination in canonical_staged:
             _publish(temp, destination)
+    finally:
+        _cleanup(created)
+
+
+def emit_actuals_document(actuals: dict[str, object], path: Path) -> None:
+    """Publish one standalone actuals manifest, durably.
+
+    This is the `consumption_iq actuals` half of the contract: evidence that
+    has been COLLECTED but not yet reconciled against anything. It goes
+    through the same validation and the same durable write as the pair
+    publisher above — a second, hand-rolled writer is exactly how the two
+    halves drift apart on validation, permissions or fsync discipline, and
+    the drift only ever shows up as unreadable or half-written evidence.
+
+    No history entry is written. History is keyed by the RECONCILIATION
+    instant, and an unreconciled document has none; `emit_reconciliation`
+    snapshots this same document, byte for byte, when a verdict is finally
+    computed from it.
+
+    Raises `EmissionValidationError` for a document or path that must not be
+    published, and `OSError` for a genuine I/O failure. In either case the
+    destination keeps whatever revision it already had. The input document is
+    never mutated.
+    """
+    _validate_actuals(actuals)
+    text = _canonical_json_text(actuals, "actuals")
+
+    destination = _as_path(path, "actuals_path")
+    _validate_destinations([("actuals_path", destination)])
+
+    created: list[Path] = []
+    try:
+        directories: list[Path] = []
+        _mkdir_tracked(destination.parent, directories)
+        _fsync_created_directories(directories)
+        _publish(_stage(destination, text, created), destination)
     finally:
         _cleanup(created)
 

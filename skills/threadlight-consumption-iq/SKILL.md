@@ -216,8 +216,21 @@ reached only by naming `actuals` / `reconcile`, or by adding `--with-actuals`.
 | Command | Reads Azure? | Writes |
 |---|---|---|
 | `actuals` | yes (read-only) | `specs/cost-actuals-manifest.json` |
-| `reconcile` | **no** | `specs/cost-reconciliation-manifest.json`, `docs/cost-reconciliation.md`, `specs/cost-history/` |
+| `reconcile` | **no** — not one call | `specs/cost-reconciliation-manifest.json`, `docs/cost-reconciliation.md`, `specs/cost-history/` |
 | `run --all --with-actuals` | yes (read-only) | forecast artefacts **plus** all of the above |
+
+**What `reconcile` trusts.** `reconcile` re-projects local documents and
+issues **no Azure call at all**, so it takes the scope and window recorded in
+the actuals manifest you point it at as given: it has no
+`--start`/`--end`/`--subscription`/`--resource-group` to compare them
+against, and it does **not** re-verify that the recorded scope is the one you
+meant. It publishes them instead — `docs/cost-reconciliation.md` prints the
+subscription, resource group and window under **Collection scope**, and
+`actuals_ref.sha256` pins the exact evidence bytes — so pick the manifest
+deliberately and read that section. (Under `run --all --with-actuals` those
+flags do exist, and a manifest whose scope or window disagrees with them
+stops the run.) An explicit `--expect-scope` assertion for standalone
+`reconcile` is possible future work, not something the command does today.
 
 **Flags.** `--start` / `--end` are `YYYY-MM-DD` (`--end` exclusive, must be
 after `--start`). `--subscription` defaults to `AZURE_SUBSCRIPTION_ID`,
@@ -258,10 +271,20 @@ data refreshes roughly every **4 hours** and daily is the finest useful
 granularity, so cadence at most **daily** over a closed window; the CLI issues
 each query once and **never polls or retries in a loop**.
 
-**Exit 5** is advisory: the reconciliation (or actuals manifest) is
-`not-verified`. It is always returned **after** every artefact has been
-written — the evidence an operator needs to close the gap is exactly what an
-early exit would destroy.
+**Exit 5** is advisory: the reconciliation is `not-verified`. It is always
+returned **after** every artefact has been written — the evidence an operator
+needs to close the gap is exactly what an early exit would destroy. It is the
+ordinary outcome of `reconcile` and `run --all --with-actuals` on a pilot
+that is not yet mature.
+
+`actuals` on its own does not normally return 5. A missing token or
+interaction query degrades `usage.interaction_status` /
+`usage.model_attribution_status` to `not-verified`, records a warning, and
+still emits a top-level `status: pass` manifest — so the command returns `0`.
+Evidence that cannot be parsed at all raises instead and surfaces as `3` (or
+`2` for bad local input). Exit 5 stays wired to the actuals verdict because
+the schema permits a `not-verified` document and a supplied or
+extension-produced manifest may carry one.
 
 Official references:
 - Cost Management Query API — <https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage>
@@ -275,7 +298,7 @@ Official references:
 | 2 | Missing prerequisite (no SPEC § 12, stale `safe-check`, unresolved `--subscription`/`--resource-group`, unreadable or invalid local JSON) |
 | 3 | I/O failure, `Azure-pricing` MCP unavailable AND no fixture fallback for at least one required SKU, or a mandatory cost source could not be collected/published |
 | 4 | `load_profile{}` incomplete after wizard (interactive mode required) |
-| 5 | Advisory: reconciliation/actuals `not-verified` (returned **after** every artefact is written) |
+| 5 | Advisory: the reconciliation is `not-verified` (returned **after** every artefact is written). `actuals` reaches it only for a `not-verified` manifest, which its own collection path does not normally produce |
 
 Single-file design where possible; stdlib only; `Azure-pricing` MCP via
 subprocess + JSON. Mirrors the dependency posture of

@@ -1596,6 +1596,238 @@ def test_history_snapshot_path_is_derived_only_from_parsed_instants(
 
 
 # ---------------------------------------------------------------------------
+# emit_actuals_document — the standalone half, same durability contract
+# ---------------------------------------------------------------------------
+#
+# `consumption_iq actuals` publishes evidence that no reconciliation has been
+# joined to yet. It is still audit evidence, so it goes through the SAME
+# writer: validated, canonically serialized, staged, fsynced, chmod'd, and
+# renamed into place — never a second hand-rolled writer that could drift.
+
+
+def actuals_only(**overrides):
+    return documents(**overrides)[0]
+
+
+def test_actuals_document_is_written_canonically(tmp_path) -> None:
+    document = actuals_only()
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(document, destination)
+    assert destination.read_text(encoding="utf-8") == (
+        json.dumps(
+            document,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+    assert json.loads(destination.read_text(encoding="utf-8")) == document
+
+
+def test_actuals_document_matches_the_pair_writer_byte_for_byte(
+    tmp_path,
+) -> None:
+    """The standalone document and the same document published as half of a
+    canonical pair must be identical bytes — otherwise `actuals` then
+    `reconcile` would rewrite the evidence and break its own digest."""
+    actuals, reconciliation = documents()
+    emit(tmp_path / "pair", actuals, reconciliation)
+    standalone = tmp_path / "standalone" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(actuals, standalone)
+    assert standalone.read_bytes() == (
+        tmp_path / "pair" / "specs" / "cost-actuals-manifest.json"
+    ).read_bytes()
+
+
+def test_actuals_document_writes_no_history_and_no_report(tmp_path) -> None:
+    """Standalone actuals have not been reconciled, so there is nothing to
+    snapshot: history is keyed by the reconciliation instant."""
+    emitter.emit_actuals_document(
+        actuals_only(), tmp_path / "specs" / "cost-actuals-manifest.json"
+    )
+    assert [
+        str(path.relative_to(tmp_path))
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    ] == ["specs/cost-actuals-manifest.json"]
+
+
+def test_actuals_document_creates_missing_parent_directories(tmp_path) -> None:
+    destination = tmp_path / "deep" / "nested" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(actuals_only(), destination)
+    assert destination.is_file()
+
+
+def test_actuals_document_leaves_no_temp_files(tmp_path) -> None:
+    emitter.emit_actuals_document(
+        actuals_only(), tmp_path / "specs" / "cost-actuals-manifest.json"
+    )
+    assert temp_leftovers(tmp_path) == []
+
+
+@POSIX_ONLY
+def test_actuals_document_is_group_and_world_readable(tmp_path) -> None:
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(actuals_only(), destination)
+    assert stat.S_IMODE(destination.stat().st_mode) == emitter.ARTIFACT_MODE
+
+
+def test_actuals_document_is_fsynced_and_published_by_rename(
+    tmp_path, monkeypatch
+) -> None:
+    """Durability is the whole point of this writer: the staged bytes are
+    fsynced, the directory entry is fsynced, and the artifact appears by an
+    atomic rename — never by writing into the destination in place."""
+    if os.name == "nt":
+        pytest.skip("directory descriptors do not exist on Windows")
+    events = []
+    real_fsync_directory = emitter._fsync_directory
+    real_fsync = emitter.os.fsync
+    real_replace = emitter.os.replace
+
+    def fsync_directory(path):
+        events.append(("dirsync", str(path)))
+        return real_fsync_directory(path)
+
+    def fsync(descriptor):
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            events.append(("filesync", None))
+        return real_fsync(descriptor)
+
+    def replace(source, destination):
+        events.append(("publish", str(destination)))
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(emitter, "_fsync_directory", fsync_directory)
+    monkeypatch.setattr(emitter.os, "fsync", fsync)
+    monkeypatch.setattr(emitter.os, "replace", replace)
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(actuals_only(), destination)
+
+    kinds = [kind for kind, _ in events]
+    publish = kinds.index("publish")
+    assert "filesync" in kinds[:publish]
+    assert ("dirsync", str(tmp_path / "specs")) in events[:publish]
+    assert kinds[-1] == "dirsync"
+    assert events[publish] == ("publish", str(destination))
+
+
+def test_actuals_document_publish_failure_cleans_up_and_writes_nothing(
+    tmp_path, monkeypatch
+) -> None:
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    failing_publish(monkeypatch, "cost-actuals-manifest.json")
+    with pytest.raises(OSError, match="simulated"):
+        emitter.emit_actuals_document(actuals_only(), destination)
+    assert not destination.exists()
+    assert temp_leftovers(tmp_path) == []
+
+
+def test_actuals_document_publish_failure_keeps_the_previous_revision(
+    tmp_path, monkeypatch
+) -> None:
+    destination = tmp_path / "specs" / "cost-actuals-manifest.json"
+    emitter.emit_actuals_document(actuals_only(), destination)
+    before = destination.read_bytes()
+    failing_publish(monkeypatch, "cost-actuals-manifest.json")
+    with pytest.raises(OSError, match="simulated"):
+        emitter.emit_actuals_document(
+            actuals_only(generated_at="2026-08-11T00:00:00Z"), destination
+        )
+    assert destination.read_bytes() == before
+    assert temp_leftovers(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        None,
+        ["not", "a", "mapping"],
+        {},
+        {"schema": "threadlight-cost-actuals/v2"},
+    ],
+)
+def test_actuals_document_rejects_an_unpublishable_document(
+    tmp_path, document
+) -> None:
+    with pytest.raises(emitter.EmissionValidationError):
+        emitter.emit_actuals_document(
+            document, tmp_path / "specs" / "cost-actuals-manifest.json"
+        )
+    assert_nothing_written(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "key", ["schema", "generated_at", "window", "scope", "cost", "status"]
+)
+def test_actuals_document_requires_every_documented_key(tmp_path, key) -> None:
+    document = actuals_only()
+    document.pop(key)
+    with pytest.raises(emitter.EmissionValidationError):
+        emitter.emit_actuals_document(
+            document, tmp_path / "specs" / "cost-actuals-manifest.json"
+        )
+    assert_nothing_written(tmp_path)
+
+
+def test_actuals_document_rejects_non_finite_numbers(tmp_path) -> None:
+    document = actuals_only()
+    document["cost"]["period_total_usd"] = float("nan")
+    with pytest.raises(emitter.EmissionValidationError):
+        emitter.emit_actuals_document(
+            document, tmp_path / "specs" / "cost-actuals-manifest.json"
+        )
+    assert_nothing_written(tmp_path)
+
+
+def test_actuals_document_rejects_a_credential_shaped_value(tmp_path) -> None:
+    document = actuals_only()
+    document["provenance"]["token"] = "eyJhbGciOiJIUzI1NiJ9.abc.def"
+    with pytest.raises(emitter.EmissionValidationError):
+        emitter.emit_actuals_document(
+            document, tmp_path / "specs" / "cost-actuals-manifest.json"
+        )
+    assert_nothing_written(tmp_path)
+
+
+def test_actuals_document_rejects_a_symlinked_destination(tmp_path) -> None:
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    target = tmp_path / "elsewhere.json"
+    target.write_text("{}", encoding="utf-8")
+    (specs / "cost-actuals-manifest.json").symlink_to(target)
+    with pytest.raises(emitter.EmissionValidationError, match="symlink"):
+        emitter.emit_actuals_document(
+            actuals_only(), specs / "cost-actuals-manifest.json"
+        )
+    assert target.read_text(encoding="utf-8") == "{}"
+
+
+def test_actuals_document_rejects_a_symlinked_parent_directory(
+    tmp_path,
+) -> None:
+    real_specs = tmp_path / "real-specs"
+    real_specs.mkdir()
+    (tmp_path / "specs").symlink_to(real_specs, target_is_directory=True)
+    with pytest.raises(emitter.EmissionValidationError, match="symlink"):
+        emitter.emit_actuals_document(
+            actuals_only(), tmp_path / "specs" / "cost-actuals-manifest.json"
+        )
+    assert list(real_specs.iterdir()) == []
+
+
+def test_actuals_document_never_mutates_its_input(tmp_path) -> None:
+    document = actuals_only()
+    snapshot = deepcopy(document)
+    emitter.emit_actuals_document(
+        document, tmp_path / "specs" / "cost-actuals-manifest.json"
+    )
+    assert document == snapshot
+
+
+# ---------------------------------------------------------------------------
 # Determinism and input purity
 # ---------------------------------------------------------------------------
 

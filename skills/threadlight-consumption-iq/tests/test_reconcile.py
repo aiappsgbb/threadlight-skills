@@ -237,7 +237,11 @@ def test_token_reprice_never_substitutes_for_a_missing_total() -> None:
 
 def test_reconcile_costs_takes_no_token_cost_argument() -> None:
     """The type boundary itself is what prevents double counting: there is
-    no parameter through which a token reprice could ever be passed in."""
+    no parameter through which a token reprice could ever be passed in.
+
+    The signature is pinned exactly, so a new parameter has to be added here
+    deliberately — the provenance paths below carry no money and take part
+    in no digest."""
     import inspect
 
     import reconcile
@@ -250,7 +254,11 @@ def test_reconcile_costs_takes_no_token_cost_argument() -> None:
         "policy_errors",
         "generated_at",
         "policy_spec_sha256",
+        "forecast_path",
+        "actuals_path",
+        "policy_path",
     }
+    assert not [name for name in names if "token" in name or "cost_usd" in name]
 
 
 # ---------------------------------------------------------------------------
@@ -1241,6 +1249,93 @@ def test_refs_carry_the_canonical_artifact_paths() -> None:
     assert result["actuals_ref"]["path"] == "specs/cost-actuals-manifest.json"
     assert result["policy_ref"]["path"] == "specs/SPEC.md"
     assert result["policy_ref"]["section"] == 14
+
+
+def test_refs_record_the_paths_the_caller_actually_read() -> None:
+    """Provenance must name the bytes that were read, not a canonical guess.
+
+    A pilot whose artifacts live outside the default layout still gets a
+    re-derivable provenance block: the caller passes the paths it resolved,
+    and they are echoed verbatim.
+    """
+    f, a = forecast(), actuals()
+    result = reconcile_costs(
+        f,
+        a,
+        policy(),
+        policy_errors=[],
+        generated_at=GENERATED,
+        policy_spec_sha256=SPEC_SHA256,
+        forecast_path="pilots/alpha/specs/cost-manifest.json",
+        actuals_path="pilots/alpha/specs/cost-actuals-manifest.json",
+        policy_path="pilots/alpha/specs/SPEC.md",
+    )
+    assert result["forecast_ref"]["path"] == "pilots/alpha/specs/cost-manifest.json"
+    assert (
+        result["actuals_ref"]["path"]
+        == "pilots/alpha/specs/cost-actuals-manifest.json"
+    )
+    assert result["policy_ref"]["path"] == "pilots/alpha/specs/SPEC.md"
+    assert result["policy_ref"]["section"] == 14
+    # The digests pin BYTES, never names: renaming where evidence lives must
+    # not change what a consumer re-derives from it.
+    assert result["forecast_ref"]["sha256"] == sha256_json(f)
+    assert result["actuals_ref"]["sha256"] == sha256_json(a)
+    assert result["policy_ref"]["spec_sha256"] == SPEC_SHA256
+
+
+def test_overriding_the_paths_changes_nothing_but_the_paths() -> None:
+    baseline = run()
+    overridden = reconcile_costs(
+        forecast(),
+        actuals(),
+        policy(),
+        policy_errors=[],
+        generated_at=GENERATED,
+        policy_spec_sha256=SPEC_SHA256,
+        forecast_path="a/forecast.json",
+        actuals_path="a/actuals.json",
+        policy_path="a/SPEC.md",
+    )
+    ref_keys = {"forecast_ref", "actuals_ref", "policy_ref"}
+    assert {k: v for k, v in overridden.items() if k not in ref_keys} == {
+        k: v for k, v in baseline.items() if k not in ref_keys
+    }
+    for key in ref_keys:
+        assert {
+            field: value
+            for field, value in overridden[key].items()
+            if field != "path"
+        } == {
+            field: value
+            for field, value in baseline[key].items()
+            if field != "path"
+        }
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"forecast_path": ""},
+        {"forecast_path": "   "},
+        {"actuals_path": None},
+        {"actuals_path": Path("specs/cost-actuals-manifest.json")},
+        {"policy_path": 14},
+    ],
+)
+def test_a_provenance_path_must_be_a_non_empty_string(override) -> None:
+    """A blank or non-string path would publish a provenance block that names
+    nothing a consumer can open."""
+    with pytest.raises(ReconciliationInputError):
+        reconcile_costs(
+            forecast(),
+            actuals(),
+            policy(),
+            policy_errors=[],
+            generated_at=GENERATED,
+            policy_spec_sha256=SPEC_SHA256,
+            **override,
+        )
 
 
 def test_policy_snapshot_carries_every_threshold_and_basis() -> None:
