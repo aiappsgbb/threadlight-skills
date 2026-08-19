@@ -55,11 +55,16 @@ files can be completed only when the file already on disk still matches.
 `provenance` and `warnings` are the only free-form, operator-populated bags in
 either document; every other field is a typed value produced by the cores.
 Because history is immutable, a token accidentally recorded in one of them
-could never be redacted afterwards, so an obvious credential key
-(`token`, `secret`, `password`, `authorization`, `credential`, `api key`) or a
-credential-shaped `key: value` fragment in a warning fails the emission
-outright. Resource, subscription, tenant and correlation IDs are evidence,
-not secrets, and are deliberately unaffected.
+could never be redacted afterwards, so a provenance key whose full normalized
+spelling names a credential (`token`, `access_token`, `refresh_token`,
+`bearer_token`, `authorization`, `secret`, `client_secret`, `password`,
+`api_key`, ...) or a credential-shaped `key: value`/`Bearer <token>` fragment
+in a warning or provenance value fails the emission outright. The key check
+is an EXACT match on the normalized spelling, not a substring one: legitimate
+provenance keys that merely mention tokens — `token_doc`,
+`token_source_resource_id`, `model_token_count`, `token_metrics` — are
+evidence, not secrets, and publish unaffected, as do resource, subscription,
+tenant and correlation IDs.
 
 ## The report never converts attribution evidence into spend
 
@@ -140,17 +145,33 @@ _RECONCILIATION_REQUIRED_KEYS = (
     "warnings",
 )
 
-# Substring markers for mapping KEYS inside `provenance`. Matched on the
-# casefolded key with `_` and `-` normalized away, so `access_token`,
-# `Access-Token` and `accesstoken` are all caught.
-_CREDENTIAL_KEY_MARKERS = (
-    "token",
-    "secret",
-    "password",
-    "passwd",
-    "authorization",
-    "credential",
-    "apikey",
+# Exact markers for mapping KEYS inside `provenance`, matched against the
+# casefolded key with `_`, `-` and spaces normalized away, so `access_token`,
+# `Access-Token` and `accesstoken` are all caught by the same entry.
+#
+# This is an EXACT match, deliberately not a substring one: both the
+# reconciliation and actuals cores legitimately emit provenance keys that
+# *contain* the substring "token" without naming a credential at all —
+# `token_doc`, `token_source_resource_id`, `model_token_count` and
+# `token_metrics` describe token-volume evidence, not a bearer credential.
+# Flagging any key that merely mentions tokens would refuse that evidence
+# outright, so only a key whose FULL normalized spelling names a credential
+# trips this guard.
+_CREDENTIAL_KEY_MARKERS = frozenset(
+    {
+        "token",
+        "accesstoken",
+        "refreshtoken",
+        "bearertoken",
+        "idtoken",
+        "authorization",
+        "secret",
+        "clientsecret",
+        "password",
+        "passwd",
+        "credential",
+        "apikey",
+    }
 )
 # Credential-shaped fragments inside free-text VALUES (warnings, provenance
 # strings). A bare word is not enough — `max_token_volume_variance_pct` is a
@@ -255,10 +276,13 @@ def _require_digest(reference: object, key: str, label: str) -> str:
     """A reference digest is 64 hex characters and nothing else.
 
     A published artifact whose provenance cannot be re-derived from the bytes
-    it names is not auditable, and history keeps it forever. The reconciliation
-    core deliberately EMITS an unusable anchor (degrading every gated verdict
-    to `not-verified` instead of suppressing observed numbers); refusing to
-    PUBLISH it is a separate, later decision made here.
+    it names is not auditable, and history keeps it forever. This is the
+    strict rule for `forecast_ref.sha256` and `actuals_ref.sha256`, both of
+    which are computed by this module or by the cores from bytes actually
+    published alongside them — an unusable value there is a caller bug, not
+    degraded evidence, so it must never publish. `policy_ref.spec_sha256` is
+    validated separately by `_require_policy_ref`, which does NOT enforce
+    this shape (see that function for why).
     """
     mapping = _require_mapping(reference, label)
     value = mapping.get(key)
@@ -268,6 +292,43 @@ def _require_digest(reference: object, key: str, label: str) -> str:
             f"got {value!r}"
         )
     return value
+
+
+def _require_policy_ref(reference: object, label: str) -> None:
+    """`policy_ref` is validated structurally, never for anchor strength.
+
+    `reconcile.reconcile_costs` deliberately EMITS an unusable
+    `spec_sha256` — a placeholder, a truncated hash, an empty string, or
+    literally `"TBD"` — instead of refusing to produce a manifest, and
+    degrades every threshold-gated verdict (`maturity.status`,
+    `unit_economics.*`, `variance_status`, `drivers.payg_ptu.status`) to
+    `not-verified` so a consumer sees exactly that the anchor could not be
+    re-derived. Refusing to *publish* that degraded-but-genuine evidence
+    would suppress the one artifact a consumer needs to see the warning and
+    the still-good observed numbers, so this validates only the STRUCTURE
+    `reconcile_costs` always emits — `path`, `section` and a string-typed
+    `spec_sha256` — and never the 64-hex shape `_require_digest` enforces
+    for `forecast_ref`/`actuals_ref`.
+    """
+    mapping = _require_mapping(reference, label)
+    _require_keys(mapping, ("path", "section", "spec_sha256"), label)
+    path = mapping.get("path")
+    if not isinstance(path, str) or not path:
+        raise EmissionValidationError(
+            f"{label} path must be a non-empty string, got {path!r}"
+        )
+    section = mapping.get("section")
+    if not isinstance(section, int) or isinstance(section, bool):
+        raise EmissionValidationError(
+            f"{label} section must be an int, got {section!r}"
+        )
+    spec_sha256 = mapping.get("spec_sha256")
+    if not isinstance(spec_sha256, str):
+        raise EmissionValidationError(
+            f"{label} spec_sha256 must be a string (an unusable anchor "
+            "degrades every gated verdict but is still published verbatim), "
+            f"got {spec_sha256!r}"
+        )
 
 
 def _canonical_json_text(document: dict[str, Any], label: str) -> str:
@@ -318,14 +379,11 @@ def _scan_for_credentials(value: object, label: str) -> None:
     """
     if isinstance(value, dict):
         for key, item in value.items():
-            if isinstance(key, str):
-                normalized = _normalized_key(key)
-                for marker in _CREDENTIAL_KEY_MARKERS:
-                    if marker in normalized:
-                        raise EmissionValidationError(
-                            f"{label} carries credential-shaped key {key!r}; "
-                            "immutable history must not record secrets"
-                        )
+            if isinstance(key, str) and _normalized_key(key) in _CREDENTIAL_KEY_MARKERS:
+                raise EmissionValidationError(
+                    f"{label} carries credential-shaped key {key!r}; "
+                    "immutable history must not record secrets"
+                )
             _scan_for_credentials(item, f"{label}.{key}")
         return
     if isinstance(value, (list, tuple)):
@@ -422,9 +480,7 @@ def _validate_reconciliation(
     _require_digest(
         document.get("forecast_ref"), "sha256", "reconciliation forecast_ref"
     )
-    _require_digest(
-        document.get("policy_ref"), "spec_sha256", "reconciliation policy_ref"
-    )
+    _require_policy_ref(document.get("policy_ref"), "reconciliation policy_ref")
     recorded = _require_digest(
         document.get("actuals_ref"), "sha256", "reconciliation actuals_ref"
     )

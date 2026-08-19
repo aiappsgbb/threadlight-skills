@@ -44,7 +44,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import reconciliation_emitter as emitter  # noqa: E402
 from cost_actuals import build_actuals_manifest  # noqa: E402
-from reconcile import reconcile_costs, sha256_json  # noqa: E402
+from reconcile import reconcile_costs  # noqa: E402
 
 
 SUBSCRIPTION = "00000000-0000-0000-0000-000000000000"
@@ -701,14 +701,82 @@ def test_actuals_hash_mismatch_is_rejected(tmp_path) -> None:
     [
         ("forecast_ref", "sha256"),
         ("actuals_ref", "sha256"),
-        ("policy_ref", "spec_sha256"),
     ],
 )
 @pytest.mark.parametrize("bad", [None, "", "deadbeef", 64 * "z", 12345])
 def test_reference_digests_must_be_64_hex(tmp_path, ref, key, bad) -> None:
+    """`forecast_ref.sha256` and `actuals_ref.sha256` are computed by this
+    module or by the cores from bytes actually published alongside them, so
+    an unusable value there is a caller bug, not degraded evidence: it must
+    never publish. `policy_ref.spec_sha256` is exempt from this — see
+    `test_policy_ref_*` below."""
     actuals, reconciliation = documents()
     reconciliation[ref][key] = bad
     with pytest.raises(emitter.EmissionValidationError, match=ref):
+        emit(tmp_path, actuals, reconciliation)
+    assert_nothing_written(tmp_path)
+
+
+@pytest.mark.parametrize("bad", [None, 12345, 3.14, ["not", "a", "string"]])
+def test_policy_ref_spec_sha256_must_be_a_string(tmp_path, bad) -> None:
+    """The core only ever raises for a caller TYPE error (see
+    `reconcile.reconcile_costs`); a non-string `spec_sha256` is exactly that,
+    never degraded evidence, so the emitter refuses to publish it too."""
+    actuals, reconciliation = documents()
+    reconciliation["policy_ref"]["spec_sha256"] = bad
+    with pytest.raises(emitter.EmissionValidationError, match="policy_ref"):
+        emit(tmp_path, actuals, reconciliation)
+    assert_nothing_written(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["", "TBD", "not-a-digest", "deadbeef", 64 * "z"],
+)
+def test_policy_ref_invalid_anchor_still_publishes_degraded_evidence(
+    tmp_path, bad
+) -> None:
+    """An invalid/non-64-hex `policy_ref.spec_sha256` is exactly the shape
+    `reconcile_costs` deliberately EMITS — the core warns and degrades every
+    gated verdict to `not-verified` instead of suppressing the artifact — so
+    the emitter MUST still publish it: refusing would hide the very warning
+    and observed numbers a consumer needs to see."""
+    actuals, reconciliation = documents(spec_sha256=bad)
+    assert reconciliation["status"] == emitter.NOT_VERIFIED
+    assert any("spec_sha256" in warning for warning in reconciliation["warnings"])
+
+    emit(tmp_path, actuals, reconciliation)
+
+    canonical = tmp_path / "specs" / "cost-reconciliation-manifest.json"
+    assert json.loads(canonical.read_text())["policy_ref"]["spec_sha256"] == bad
+    assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
+    assert (snapshot_dir(tmp_path) / "actuals.json").is_file()
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
+
+    report = report_text(tmp_path)
+    assert bad in report
+    policy_section = section(report, "Declared policy")
+    assert "not-verified" in report
+    assert any(
+        "spec_sha256" in warning and warning in report
+        for warning in reconciliation["warnings"]
+    )
+    assert bad in policy_section
+
+
+@pytest.mark.parametrize("key", ["path", "section", "spec_sha256"])
+def test_policy_ref_missing_key_is_rejected(tmp_path, key) -> None:
+    actuals, reconciliation = documents()
+    del reconciliation["policy_ref"][key]
+    with pytest.raises(emitter.EmissionValidationError, match="policy_ref"):
+        emit(tmp_path, actuals, reconciliation)
+    assert_nothing_written(tmp_path)
+
+
+def test_policy_ref_must_be_a_mapping(tmp_path) -> None:
+    actuals, reconciliation = documents()
+    reconciliation["policy_ref"] = "specs/SPEC.md"
+    with pytest.raises(emitter.EmissionValidationError, match="policy_ref"):
         emit(tmp_path, actuals, reconciliation)
     assert_nothing_written(tmp_path)
 
@@ -795,8 +863,12 @@ def test_non_serializable_payload_is_rejected(tmp_path) -> None:
 @pytest.mark.parametrize(
     "provenance",
     [
+        {"query_api_version": "2025-03-01", "token": "abc"},
         {"query_api_version": "2025-03-01", "access_token": "abc"},
-        {"query_api_version": "2025-03-01", "Authorization": "Bearer abc"},
+        {"query_api_version": "2025-03-01", "refresh_token": "abc"},
+        {"query_api_version": "2025-03-01", "bearer_token": "abc"},
+        {"query_api_version": "2025-03-01", "Authorization": "abc"},
+        {"query_api_version": "2025-03-01", "secret": "abc"},
         {"query_api_version": "2025-03-01", "client_secret": "abc"},
         {"query_api_version": "2025-03-01", "password": "abc"},
         {"nested": {"api_key": "abc"}},
@@ -844,20 +916,56 @@ def test_identifiers_and_token_metrics_are_not_treated_as_credentials(
     assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
 
 
+def test_legitimate_token_provenance_keys_are_not_treated_as_credentials(
+    tmp_path,
+) -> None:
+    """`token_doc`, `token_source_resource_id`, `model_token_count` and
+    `token_metrics` are real provenance keys the cores populate to describe
+    TOKEN VOLUME evidence. The credential guard matches a key's full
+    normalized spelling, not any substring, so none of these — despite each
+    containing "token" — may be mistaken for a bearer credential."""
+    actuals, reconciliation = documents(
+        provenance={
+            "query_api_version": "2025-03-01",
+            "token_doc": "specs/cost-manifest.json#tokens",
+            "token_source_resource_id": RID,
+            "model_token_count": 12345,
+            "token_metrics": {"input_tokens": 100, "output_tokens": 50},
+        },
+    )
+    emit(tmp_path, actuals, reconciliation)
+    assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
+    published = json.loads(
+        (tmp_path / "specs" / "cost-actuals-manifest.json").read_text()
+    )
+    assert published["provenance"]["token_doc"] == "specs/cost-manifest.json#tokens"
+    assert published["provenance"]["token_source_resource_id"] == RID
+    assert published["provenance"]["model_token_count"] == 12345
+    assert published["provenance"]["token_metrics"] == {
+        "input_tokens": 100,
+        "output_tokens": 50,
+    }
+
+
 def test_real_reconciliation_warnings_are_never_flagged(tmp_path) -> None:
     """A degraded run emits warnings from the real core (token attribution,
     undefined variance, unusable SPEC anchor). None of them may trip the
-    credential guard."""
+    credential guard, and the emitter MUST still publish: an invalid anchor
+    is evidence the core deliberately emits, not a reason to suppress the
+    artifact."""
     actuals, reconciliation = documents(
         forecast_document=forecast(0.0),
         interaction_counts=None,
         spec_sha256="not-a-digest",
     )
-    reconciliation["policy_ref"]["spec_sha256"] = SPEC_SHA256
-    reconciliation["actuals_ref"]["sha256"] = sha256_json(actuals)
     assert reconciliation["warnings"]
+    assert reconciliation["status"] == emitter.NOT_VERIFIED
     emit(tmp_path, actuals, reconciliation)
     assert (tmp_path / "docs" / "cost-reconciliation.md").is_file()
+    assert (tmp_path / "specs" / "cost-reconciliation-manifest.json").is_file()
+    assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
+    assert (snapshot_dir(tmp_path) / "actuals.json").is_file()
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
 
 
 # ---------------------------------------------------------------------------
