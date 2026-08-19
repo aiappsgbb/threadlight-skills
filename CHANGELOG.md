@@ -9,6 +9,27 @@ field.
 
 ### Fixed
 
+- **Full E2E Phase 3 "deploy" timed out on a lingering shell, not a failed
+  deployment (run #32290332688).** In the fsi-kyc-aml arm, Phase 3 started at
+  19:05:25 and the agent reported the deployment succeeded/active at
+  19:43:11 — teardown afterwards proved the deployment genuinely existed and
+  deleted cleanly. But the phase log showed an async/long-running shell
+  (`Deploy after RBAC grant`) plus polling/read-shell-output calls with no
+  final `Stop shell` cleanup once success was verified, so the step produced
+  no further activity and the job died on its step timeout at 19:50:37 —
+  6+ minutes after the real work was already done. Both workload deploy
+  prompts (`returns-triage`, `fsi-kyc-aml`) now carry an explicit
+  finalization instruction, placed right after `Final state required:` and
+  before the failure-close line so it runs on the success path: wait for
+  every shell command the agent started to exit, then call the `Stop shell`
+  tool on any still-running session (azd up, activation pollers, auth
+  retries, other background/async commands) before sending the final
+  response — scoped to the agent's own tool sessions, never to killing
+  arbitrary system processes. This is a single-variable prompt change only;
+  no workflow timeout, `continue-on-error`, or failure-masking was touched.
+  `scripts/ci/tests/test_workload_deploy_prompt.py` guards the instruction's
+  presence, keyword content, and position in both packs.
+
 - **E2E Skill-tool registry smoke gate false-negatived on a non-skill support
   directory (run #32287231962).** main #116 added `skills/_shared`, a shared
   library (`manifest.py`) with its own `tests/`, but no `SKILL.md`.
