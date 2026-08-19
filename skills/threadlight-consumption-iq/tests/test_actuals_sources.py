@@ -876,7 +876,7 @@ def test_fetch_token_metrics_exact_read_only_argv():
     assert runner.calls[0] == [
         "az", "monitor", "metrics", "list",
         "--resource", MONITOR_ID,
-        "--metrics", "InputTokens", "OutputTokens", "CachedInputTokens",
+        "--metrics", "InputTokens", "OutputTokens",
         "--start-time", "2026-08-01T00:00:00Z",
         "--end-time", "2026-08-08T00:00:00Z",
         "--interval", "PT1H",
@@ -887,6 +887,63 @@ def test_fetch_token_metrics_exact_read_only_argv():
     ]
 
 
+def test_fetch_token_metrics_never_requests_cached_input_tokens():
+    """Regression pin for a live probe against a real
+    `Microsoft.CognitiveServices/accounts` resource: its metric-definition
+    list offers `InputTokens`, `OutputTokens`, and `TotalTokens`, but no
+    `CachedInputTokens` metric, so requesting it raised a `400 BadRequest`
+    that took the whole (mandatory) query down with it — `token_doc` came
+    back `None` and `model_attribution_status` degraded to `not-verified`
+    even though real input/output token evidence was available the whole
+    time. `--metrics` must never include `CachedInputTokens` in this
+    mandatory query again; cached-input evidence collection is deferred
+    (see the module docstring on `fetch_token_metrics`), not requested
+    speculatively alongside evidence that must not be put at risk.
+    """
+    runner = FakeRunner([_cp(json.dumps(_token_doc()))])
+    fetch_token_metrics(MONITOR_ID, SUB, START, END, runner=runner)
+    argv = runner.calls[0]
+    metrics_start = argv.index("--metrics") + 1
+    metrics = argv[metrics_start:argv.index("--start-time")]
+    assert metrics == ["InputTokens", "OutputTokens"]
+    assert "CachedInputTokens" not in argv
+
+
+def test_collect_sources_live_cached_input_tokens_400_degrades_not_aborts():
+    """Live-evidence fixture pin: the exact `400 BadRequest` body a real
+    `Microsoft.CognitiveServices/accounts` resource returned for a
+    `CachedInputTokens` metric request (its metric-definition list offers
+    `InputTokens`, `OutputTokens`, `TotalTokens` — never `CachedInputTokens`).
+    `fetch_token_metrics` no longer asks for that name, so this exact
+    response should never occur in practice again — but this test proves
+    that *even if* the token metrics query failed with precisely this
+    error, `collect_sources` still returns the mandatory Cost Management
+    evidence (`cost_pages`) intact, degrades only `token_doc` to `None`
+    with a distinct warning, and never raises. Optional cache-adjacent
+    metric evidence must never be able to take mandatory input/output
+    token or cost evidence down with it.
+    """
+    bad_request = _cp(
+        "",
+        returncode=1,
+        stderr=(
+            "(BadRequest) The metric names 'CachedInputTokens' are not "
+            "supported. Supported metric names for this resource type: "
+            "InputTokens, OutputTokens, TotalTokens."
+        ),
+    )
+    runner = FakeRunner([_account_ok(), _page_cp(), bad_request])
+    bundle = collect_sources(
+        SUB, RG, START, END, monitor_resource_id=MONITOR_ID, runner=runner
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["token_doc"] is None
+    assert bundle["token_source_resource_id"] is None
+    assert len(bundle["warnings"]) == 1
+    assert "token" in bundle["warnings"][0].casefold()
+    assert "CachedInputTokens" not in runner.calls[-1]
+
+
 def test_fetch_token_metrics_raises_the_record_cap_because_filter_defaults_to_ten():
     """Contract pin, not a style preference.
 
@@ -894,7 +951,7 @@ def test_fetch_token_metrics_raises_the_record_cap_because_filter_defaults_to_te
     to retrieve — valid only if `$filter` is specified. Defaults to 10." This
     query is *always* filtered (`ModelDeploymentName`/`ModelName`), so at the
     default the CLI would return ten timeseries records for a week-long,
-    hourly, three-metric window and the truncation would look exactly like a
+    hourly, two-metric window and the truncation would look exactly like a
     quiet account: a plausible, small, wrong token total.
     """
     runner = FakeRunner([_cp(json.dumps(_token_doc()))])
@@ -963,6 +1020,60 @@ def test_fetch_token_metrics_does_not_parse_the_document():
     raw = {"value": [{"unexpected": "shape"}]}
     runner = FakeRunner([_cp(json.dumps(raw))])
     assert fetch_token_metrics(MONITOR_ID, SUB, START, END, runner=runner) == raw
+
+
+def test_token_evidence_retains_model_rows_with_cached_input_none():
+    """Downstream contract pin for this fix: a document shaped exactly like
+    what `fetch_token_metrics` now produces (only `InputTokens` and
+    `OutputTokens` — no `CachedInputTokens` metric ever requested or
+    observed) must still parse into a full model row, with
+    `cached_input_tokens` staying `None` (never a manufactured `0`) rather
+    than the whole model being dropped or its evidence discarded.
+    `token_evidence.py` is the single source of truth `parse_token_series`
+    owns (see its module docstring); this only pins that deferring the
+    cache-only metric never regresses the mandatory input/output rows it
+    already produces.
+    """
+    from token_evidence import parse_token_series
+
+    doc = {
+        "value": [
+            {
+                "name": {"value": "InputTokens"},
+                "timeseries": [
+                    {
+                        "metadatavalues": [
+                            {"name": {"value": "ModelDeploymentName"}, "value": "gpt-4o"},
+                            {"name": {"value": "ModelName"}, "value": "gpt-4o"},
+                        ],
+                        "data": [{"total": 120}, {"total": 30}],
+                    }
+                ],
+            },
+            {
+                "name": {"value": "OutputTokens"},
+                "timeseries": [
+                    {
+                        "metadatavalues": [
+                            {"name": {"value": "ModelDeploymentName"}, "value": "gpt-4o"},
+                            {"name": {"value": "ModelName"}, "value": "gpt-4o"},
+                        ],
+                        "data": [{"total": 45}],
+                    }
+                ],
+            },
+        ]
+    }
+    rows = parse_token_series(doc)
+    assert rows == [
+        {
+            "deployment": "gpt-4o",
+            "model": "gpt-4o",
+            "input_tokens": 150,
+            "output_tokens": 45,
+            "cached_input_tokens": None,
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------

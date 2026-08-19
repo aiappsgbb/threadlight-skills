@@ -772,11 +772,30 @@ def fetch_token_metrics(
     so an accidental cross-subscription resource ID is a loud error rather
     than token evidence quietly attributed to the wrong account.
 
+    `--metrics` requests only `InputTokens`/`OutputTokens`, deliberately.
+    A live probe against a `Microsoft.CognitiveServices/accounts` resource
+    showed the Metrics API reject `CachedInputTokens` outright — its
+    metric-definition list for that resource offers `InputTokens`,
+    `OutputTokens`, and `TotalTokens`, but no `CachedInputTokens` metric —
+    with a single `400 BadRequest` for the whole request. Because this
+    query used to ask for all three metrics in one call, that one
+    unsupported name took the *mandatory* `InputTokens`/`OutputTokens`
+    evidence down with it: `token_doc` came back `None` and
+    `model_attribution_status` degraded to `not-verified` even though
+    input/output token evidence was available the whole time. Cached-input
+    token evidence is provider/SKU-specific and not reliably discoverable
+    without a capability probe this module does not perform, so it is
+    deferred rather than requested speculatively; `token_evidence.py`
+    already reports `cached_input_tokens: None` (never a manufactured `0`)
+    for any deployment/model pair it never observes cache evidence for, so
+    no downstream caller needs to change to keep working from this
+    request's evidence.
+
     `--top` is not optional here. The command maps to the Azure Monitor
     Metrics `List` API, whose `top` parameter is documented as "the maximum
     number of records to retrieve — valid only if `$filter` is specified.
     Defaults to 10." This query always passes `--filter`, so without an
-    explicit cap a week of hourly, three-metric, multi-deployment series
+    explicit cap a week of hourly, two-metric, multi-deployment series
     comes back truncated to ten records — evidence that parses cleanly and
     undercounts silently.
     """
@@ -793,7 +812,7 @@ def fetch_token_metrics(
     args = [
         "az", "monitor", "metrics", "list",
         "--resource", monitor_resource_id,
-        "--metrics", "InputTokens", "OutputTokens", "CachedInputTokens",
+        "--metrics", "InputTokens", "OutputTokens",
         "--start-time", _utc_midnight(start),
         "--end-time", _utc_midnight(end),
         "--interval", "PT1H",

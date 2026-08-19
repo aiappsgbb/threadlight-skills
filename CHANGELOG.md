@@ -7,6 +7,28 @@ field.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`threadlight-consumption-iq`'s token metrics query could lose mandatory
+  input/output token evidence over an optional cache metric.** A live probe
+  against a real `Microsoft.CognitiveServices/accounts` resource showed
+  `fetch_token_metrics` requesting `InputTokens`, `OutputTokens`, and
+  `CachedInputTokens` in one `az monitor metrics list` call; that resource's
+  metric-definition list offers `InputTokens`/`OutputTokens`/`TotalTokens`
+  only, so the unsupported `CachedInputTokens` name failed the *whole*
+  request with a single `400 BadRequest`. Because the mandatory and optional
+  metrics shared one call, `token_doc` came back `None` and
+  `model_attribution_status` degraded to `not-verified` even though real
+  input/output token evidence was available the whole time. `--metrics` now
+  requests only `InputTokens`/`OutputTokens`; cached-input token evidence is
+  provider/SKU-specific and not reliably discoverable without a capability
+  probe this module does not perform, so collecting it is deferred rather
+  than requested speculatively — `token_evidence.py`'s parser already reports
+  `cached_input_tokens: None` (never a manufactured `0`) for any
+  deployment/model pair it never observes cache evidence for, so no
+  downstream caller needed to change. `scripts/actuals_sources.py`
+  (`fetch_token_metrics`) and its tests only.
+
 ## [1.12.0] - 2026-08-18
 
 ### Added
