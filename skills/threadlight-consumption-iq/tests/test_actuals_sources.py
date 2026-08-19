@@ -766,6 +766,16 @@ def test_resolve_workspace_customer_id_returns_none_without_azure_config_dir(mon
     assert runner.calls == []
 
 
+def test_resolve_workspace_customer_id_accepts_runner_as_second_positional():
+    """Public API contract: `runner` is the second positional parameter.
+
+    This is the exact call shape documented for callers — passing it
+    positionally must work, not just as a keyword.
+    """
+    runner = FakeRunner([_cp(CUSTOMER_ID + "\n")])
+    assert resolve_workspace_customer_id(WORKSPACE_ID, runner) == CUSTOMER_ID
+
+
 # ---------------------------------------------------------------------------
 # Interaction query
 # ---------------------------------------------------------------------------
@@ -874,7 +884,7 @@ def test_collect_sources_call_order_is_context_cost_token_workspace_query():
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID,
         workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL,
+        kql=KQL,
         runner=runner,
     )
     verbs = [" ".join(call[1:4]) for call in runner.calls]
@@ -893,7 +903,7 @@ def test_collect_sources_all_sources_present():
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID,
         workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL,
+        kql=KQL,
         runner=runner,
     )
     assert bundle["token_doc"] == _token_doc()
@@ -923,7 +933,7 @@ def test_collect_sources_distinguishes_workspace_resolution_from_query_failure()
     ])
     resolution_bundle = collect_sources(
         SUB, RG, START, END,
-        workspace_resource_id=WORKSPACE_ID, interaction_kql=KQL, runner=unresolved,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=unresolved,
     )
 
     failed_query = FakeRunner([
@@ -932,7 +942,7 @@ def test_collect_sources_distinguishes_workspace_resolution_from_query_failure()
     ])
     query_bundle = collect_sources(
         SUB, RG, START, END,
-        workspace_resource_id=WORKSPACE_ID, interaction_kql=KQL, runner=failed_query,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=failed_query,
     )
 
     assert len(resolution_bundle["warnings"]) == 1
@@ -954,7 +964,7 @@ def test_collect_sources_warns_once_per_failing_optional_source():
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID,
         workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL,
+        kql=KQL,
         runner=runner,
     )
     assert len(bundle["warnings"]) == 2
@@ -973,7 +983,7 @@ def test_collect_sources_skips_interaction_without_kql():
 
 def test_collect_sources_skips_interaction_without_workspace():
     runner = FakeRunner([_account_ok(), _page_cp()])
-    bundle = collect_sources(SUB, RG, START, END, interaction_kql=KQL, runner=runner)
+    bundle = collect_sources(SUB, RG, START, END, kql=KQL, runner=runner)
     assert bundle["interaction_result"] is None
     assert bundle["warnings"] == []
     assert len(runner.calls) == 2
@@ -995,7 +1005,7 @@ def test_collect_sources_interaction_only():
     ])
     bundle = collect_sources(
         SUB, RG, START, END,
-        workspace_resource_id=WORKSPACE_ID, interaction_kql=KQL, runner=runner,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
     )
     assert bundle["token_doc"] is None
     assert bundle["interaction_result"] == _la_result()
@@ -1009,7 +1019,7 @@ def test_collect_sources_cost_failure_aborts_the_bundle():
         collect_sources(
             SUB, RG, START, END,
             monitor_resource_id=MONITOR_ID, workspace_resource_id=WORKSPACE_ID,
-            interaction_kql=KQL, runner=runner, sleep=SleepSpy(),
+            kql=KQL, runner=runner, sleep=SleepSpy(),
         )
     assert len(runner.calls) == 2
 
@@ -1034,7 +1044,7 @@ def test_collect_sources_issues_only_read_only_commands():
     collect_sources(
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID, workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL, runner=runner,
+        kql=KQL, runner=runner,
     )
     allowed = {
         ("account", "show"),
@@ -1056,7 +1066,7 @@ def test_collect_sources_does_not_mutate_runner_inputs_or_share_state():
     bundle_one = collect_sources(
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID, workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL, runner=runner_one,
+        kql=KQL, runner=runner_one,
     )
     bundle_one["warnings"].append("tampered")
     bundle_one["cost_pages"].clear()
@@ -1065,7 +1075,7 @@ def test_collect_sources_does_not_mutate_runner_inputs_or_share_state():
     bundle_two = collect_sources(
         SUB, RG, START, END,
         monitor_resource_id=MONITOR_ID, workspace_resource_id=WORKSPACE_ID,
-        interaction_kql=KQL, runner=runner_two,
+        kql=KQL, runner=runner_two,
     )
     assert bundle_two["warnings"] == []
     assert bundle_two["cost_pages"] == [_page()]
@@ -1079,6 +1089,36 @@ def test_collect_sources_validates_optional_ids_before_any_call():
             SUB, RG, START, END, monitor_resource_id="not-an-arm-id", runner=runner
         )
     assert runner.calls == []
+
+
+def test_collect_sources_accepts_kql_keyword():
+    """Public API contract: the interaction-query keyword is `kql`.
+
+    This is the exact spec-literal call shape a future CLI issues.
+    """
+    runner = FakeRunner([
+        _account_ok(), _page_cp(), _cp(CUSTOMER_ID), _cp(json.dumps(_la_result())),
+    ])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
+    )
+    assert bundle["interaction_result"] == _la_result()
+
+
+def test_collect_sources_rejects_old_interaction_kql_keyword():
+    """Drift guard: the old `interaction_kql` keyword must no longer work.
+
+    `collect_sources` has exactly one public spelling for the query
+    keyword (`kql`); a caller still using the old name must fail loudly
+    with a `TypeError`, not be silently accepted as an alias.
+    """
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    with pytest.raises(TypeError):
+        collect_sources(
+            SUB, RG, START, END,
+            workspace_resource_id=WORKSPACE_ID, interaction_kql=KQL, runner=runner,
+        )
 
 
 # ---------------------------------------------------------------------------

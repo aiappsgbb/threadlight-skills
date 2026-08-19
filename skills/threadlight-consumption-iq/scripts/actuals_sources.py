@@ -661,7 +661,6 @@ def fetch_token_metrics(
 
 def resolve_workspace_customer_id(
     resource_id: str,
-    *,
     runner: Optional[Runner] = None,
 ) -> Optional[str]:
     """Resolve an ARM workspace ID to the `customerId` GUID the query needs.
@@ -773,7 +772,7 @@ def collect_sources(
     *,
     monitor_resource_id: Optional[str] = None,
     workspace_resource_id: Optional[str] = None,
-    interaction_kql: Optional[str] = None,
+    kql: Optional[str] = None,
     runner: Optional[Runner] = None,
     sleep: Optional[Callable[[float], Any]] = None,
 ) -> dict[str, Any]:
@@ -817,7 +816,7 @@ def collect_sources(
             warnings.append(f"token metrics unavailable: {exc}")
 
     interaction_result: Optional[Any] = None
-    if workspace_resource_id is not None and interaction_kql is not None:
+    if workspace_resource_id is not None and kql is not None:
         customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=run)
         if customer_id is None:
             warnings.append(
@@ -826,7 +825,7 @@ def collect_sources(
             )
         else:
             interaction_result = _query_workspace(
-                customer_id, interaction_kql, runner=run
+                customer_id, kql, runner=run
             )
             if interaction_result is None:
                 warnings.append(
