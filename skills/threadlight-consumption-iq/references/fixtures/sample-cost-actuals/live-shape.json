@@ -1,0 +1,84 @@
+{
+  "schema": "threadlight-cost-actuals/v1",
+  "generated_at": "2026-08-16T06:00:00Z",
+  "status": "pass",
+  "scope": {
+    "subscription_id": "00000000-0000-0000-0000-000000000000",
+    "resource_group": "rg-sanitized-ai-pilot"
+  },
+  "window": {
+    "start": "2026-08-09T00:00:00Z",
+    "end": "2026-08-16T00:00:00Z",
+    "complete_days": 7,
+    "settlement_age_hours": 6,
+    "window_end_age_days": 0,
+    "observed_usage_dates": [
+      "2026-08-09",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-15"
+    ],
+    "observed_day_count": 7,
+    "missing_usage_dates": []
+  },
+  "cost": {
+    "basis": "usage-pretax",
+    "cost_column": "PreTaxCost",
+    "currency": "USD",
+    "period_total_usd": 123.45,
+    "resources": [
+      {
+        "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.App/containerApps/ca-sanitized-agent",
+        "resource_type": "microsoft.app/containerapps",
+        "service_name": "Azure Container Apps",
+        "service_names": ["Azure Container Apps"],
+        "period_cost_usd": 100.0
+      },
+      {
+        "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+        "resource_type": "microsoft.cognitiveservices/accounts",
+        "service_name": "Azure OpenAI",
+        "service_names": ["Azure OpenAI"],
+        "period_cost_usd": 3.45
+      },
+      {
+        "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.Storage/storageAccounts/stsanitizedaipilot",
+        "resource_type": "microsoft.storage/storageaccounts",
+        "service_name": null,
+        "service_names": ["Microsoft Defender for Cloud", "Storage"],
+        "period_cost_usd": 20.0
+      }
+    ],
+    "unattributed_usd": 0.0,
+    "resource_id_coverage_pct": 1.0
+  },
+  "usage": {
+    "interaction_status": "pass",
+    "model_attribution_status": "pass",
+    "total_interactions": 0,
+    "successful_interactions": 0,
+    "success_predicate_ref": "SPEC.md#section-14-value-model",
+    "models": [
+      {
+        "resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+        "account_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+        "deployment": "chat-sanitized",
+        "model": "model-sanitized",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "cached_input_tokens": null
+      }
+    ]
+  },
+  "provenance": {
+    "query_api_version": "2025-03-01",
+    "sanitized_fixture": true,
+    "shape_observed_at": "2026-08-19",
+    "values": "synthetic",
+    "collection_method": "read-only live probe against an isolated, personal demo Azure subscription (see references/live-actuals-probe.md); every identifier, name and monetary amount above is synthetic and does not correspond to the probed subscription, resource group, resources, model or account"
+  },
+  "warnings": []
+}

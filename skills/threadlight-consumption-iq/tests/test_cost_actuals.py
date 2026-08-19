@@ -2037,3 +2037,266 @@ def test_no_tables_at_all_is_rejected() -> None:
 def test_non_dict_response_is_rejected() -> None:
     with pytest.raises(ActualsEvidenceError, match="not an object"):
         parse_interaction_counts(["not", "a", "dict"])
+
+
+# ---------------------------------------------------------------------------
+# `live-shape.json` — sanitized shape pinned from a real, read-only Cost
+# Management live probe (see `references/live-actuals-probe.md`). Every
+# identifier, name and dollar amount in the fixture is synthetic; only the
+# *shape* — schema, window semantics, multi-`ServiceName` aggregation, and
+# the `cached_input_tokens: None` mandatory-metrics-only outcome — is real.
+# These tests pin that shape so it can never silently regress, and assert
+# nothing raw ever leaked into the sanitized copy.
+# ---------------------------------------------------------------------------
+
+LIVE_SHAPE_FIXTURE = "live-shape.json"
+
+# Tokens that must never appear in this repository's sanitized live evidence.
+# `fruocco` is the operator alias behind the isolated personal demo
+# subscription the live probe ran against; it names a person, not a shape,
+# and has no business being in committed evidence.
+_FORBIDDEN_RAW_TOKENS = ("fruocco",)
+
+_ALL_ZERO_GUID = "00000000-0000-0000-0000-000000000000"
+_GUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+
+def _iter_guids(value: object):
+    """Recursively yield every GUID-shaped substring found anywhere in
+    `value` (dict keys/values, list items, strings) so a stray real
+    subscription/tenant/resource GUID cannot hide in a nested field this
+    test does not otherwise inspect by name."""
+    if isinstance(value, str):
+        yield from _GUID_RE.findall(value)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_guids(key)
+            yield from _iter_guids(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_guids(item)
+
+
+@pytest.fixture()
+def live_shape() -> dict:
+    return _load_fixture(LIVE_SHAPE_FIXTURE)
+
+
+def test_live_shape_fixture_is_strict_json(live_shape) -> None:
+    # `_load_fixture` already went through `json.loads`; re-serializing and
+    # re-parsing proves the on-disk bytes are canonical strict JSON (no
+    # trailing commas, comments or NaN/Infinity literals a hand-edit could
+    # have introduced) rather than merely "whatever json.loads tolerated".
+    reparsed = json.loads(json.dumps(live_shape))
+    assert reparsed == live_shape
+
+
+def test_live_shape_fixture_has_no_unknown_top_level_keys(live_shape) -> None:
+    assert set(live_shape.keys()) == {
+        "schema",
+        "generated_at",
+        "status",
+        "scope",
+        "window",
+        "cost",
+        "usage",
+        "provenance",
+        "warnings",
+    }
+
+
+def test_live_shape_fixture_schema_and_status(live_shape) -> None:
+    assert live_shape["schema"] == "threadlight-cost-actuals/v1"
+    assert live_shape["status"] == "pass"
+
+
+def test_live_shape_fixture_window_is_seven_complete_observed_days(
+    live_shape,
+) -> None:
+    window = live_shape["window"]
+    assert window["start"] == "2026-08-09T00:00:00Z"
+    assert window["end"] == "2026-08-16T00:00:00Z"
+    assert window["complete_days"] == 7
+    assert window["observed_day_count"] == 7
+    assert window["missing_usage_dates"] == []
+    assert window["observed_usage_dates"] == [
+        "2026-08-09",
+        "2026-08-10",
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14",
+        "2026-08-15",
+    ]
+    # Every observed date must fall strictly inside the declared half-open
+    # window (start-inclusive, end-exclusive) — the same invariant
+    # `aggregate_cost_rows` enforces on live rows.
+    start_date = date.fromisoformat(window["start"][:10])
+    end_date = date.fromisoformat(window["end"][:10])
+    for iso_day in window["observed_usage_dates"]:
+        assert start_date <= date.fromisoformat(iso_day) < end_date
+
+
+def test_live_shape_fixture_money_identity_holds_exactly(live_shape) -> None:
+    """`period_total_usd == sum(resources[].period_cost_usd) +
+    unattributed_usd`, compared in `Decimal` (never raw binary `float`
+    addition) per the manifest schema's money-rounding contract."""
+    cost = live_shape["cost"]
+    total = Decimal(str(cost["period_total_usd"]))
+    resource_sum = sum(
+        (Decimal(str(r["period_cost_usd"])) for r in cost["resources"]),
+        start=Decimal("0"),
+    )
+    unattributed = Decimal(str(cost["unattributed_usd"]))
+    assert resource_sum + unattributed == total
+    assert total == Decimal("123.45")
+    assert cost["currency"] == "USD"
+    assert cost["cost_column"] == "PreTaxCost"
+    assert cost["basis"] == "usage-pretax"
+
+
+def test_live_shape_fixture_has_three_resources_one_multi_service(
+    live_shape,
+) -> None:
+    resources = live_shape["cost"]["resources"]
+    assert len(resources) == 3
+
+    multi_service = [r for r in resources if len(r["service_names"]) > 1]
+    assert len(multi_service) == 1
+    storage = multi_service[0]
+    assert storage["service_names"] == ["Microsoft Defender for Cloud", "Storage"]
+    # `service_name` is the single-name convenience scalar and MUST be
+    # `null` (not an arbitrary first-observed pick) whenever more than one
+    # `ServiceName` was observed for the same `ResourceId` — this is the
+    # exact behavior the live probe's multi-service ResourceId (workload +
+    # Defender) exercised for real.
+    assert storage["service_name"] is None
+
+    single_service = [r for r in resources if len(r["service_names"]) == 1]
+    assert len(single_service) == 2
+    for resource in single_service:
+        assert resource["service_name"] == resource["service_names"][0]
+
+
+def test_live_shape_fixture_interaction_status_zero_is_pass_not_unverified(
+    live_shape,
+) -> None:
+    usage = live_shape["usage"]
+    assert usage["interaction_status"] == "pass"
+    assert usage["total_interactions"] == 0
+    assert usage["successful_interactions"] == 0
+    assert usage["success_predicate_ref"] == "SPEC.md#section-14-value-model"
+
+
+def test_live_shape_fixture_has_one_model_row_with_cache_none(live_shape) -> None:
+    """Confirms the live-observed `CachedInputTokens` outage fix: the
+    mandatory metrics query is Input/Output only, so `cached_input_tokens`
+    is always `None` here — never a manufactured `0` — while
+    `model_attribution_status` still reports `pass` because the mandatory
+    metrics themselves were collected."""
+    usage = live_shape["usage"]
+    assert usage["model_attribution_status"] == "pass"
+    models = usage["models"]
+    assert len(models) == 1
+    row = models[0]
+    assert row["cached_input_tokens"] is None
+    assert row["input_tokens"] == 1000
+    assert row["output_tokens"] == 200
+    assert row["account_resource_id"] == row["resource_id"]
+    # The account identity is synthetic, but it must still be a
+    # well-formed ARM resource ID scoped to the sanitized RG/subscription,
+    # never a bare name.
+    assert row["account_resource_id"].startswith(
+        f"/subscriptions/{_ALL_ZERO_GUID}/resourceGroups/rg-sanitized-ai-pilot/"
+    )
+
+
+def test_live_shape_fixture_warnings_are_empty(live_shape) -> None:
+    assert live_shape["warnings"] == []
+
+
+def test_live_shape_fixture_provenance_declares_sanitization(live_shape) -> None:
+    provenance = live_shape["provenance"]
+    assert provenance["sanitized_fixture"] is True
+    assert provenance["values"] == "synthetic"
+    assert provenance["shape_observed_at"]
+    assert provenance["query_api_version"] == "2025-03-01"
+
+
+def test_live_shape_fixture_scope_uses_sanitized_placeholders(live_shape) -> None:
+    scope = live_shape["scope"]
+    assert scope["subscription_id"] == _ALL_ZERO_GUID
+    assert scope["resource_group"] == "rg-sanitized-ai-pilot"
+
+
+def test_live_shape_fixture_every_guid_is_all_zero(live_shape) -> None:
+    """Recursively scans the whole document — not just `scope` — because a
+    real subscription/tenant/resource GUID could otherwise hide inside a
+    resource ID, `account_resource_id`, or a future field this test does
+    not name explicitly."""
+    guids = list(_iter_guids(live_shape))
+    assert guids, "expected at least one GUID-shaped value in the fixture"
+    assert all(guid == _ALL_ZERO_GUID for guid in guids), guids
+
+
+def test_live_shape_fixture_carries_no_forbidden_raw_tokens(live_shape) -> None:
+    blob = json.dumps(live_shape).lower()
+    for token in _FORBIDDEN_RAW_TOKENS:
+        assert token not in blob
+
+
+def test_live_shape_fixture_file_carries_no_forbidden_raw_tokens_on_disk() -> None:
+    """Belt-and-braces: scan the raw file bytes too, not only the parsed
+    JSON structure, so a forbidden token stashed in whitespace or outside
+    a JSON string literal (e.g. an errant trailing comment) would still be
+    caught."""
+    raw = (FIXTURES_DIR / LIVE_SHAPE_FIXTURE).read_text(encoding="utf-8").lower()
+    for token in _FORBIDDEN_RAW_TOKENS:
+        assert token not in raw
+
+
+def test_live_shape_fixture_is_accepted_by_require_reusable_actuals(
+    live_shape,
+) -> None:
+    """The sanitized fixture must be reconciliation-ready, exactly like a
+    real collected manifest: `consumption_iq._require_reusable_actuals`
+    (the single gate `reconcile` / `run --all --with-actuals` calls before
+    trusting an actuals document) must accept it as-is with no
+    `--start`/`--end`/`--subscription`/`--resource-group` cross-check
+    requested (mirrors standalone `reconcile`)."""
+    import consumption_iq  # noqa: E402  (SCRIPTS already on sys.path)
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(start=None, end=None, subscription=None, resource_group=None)
+    # Must not raise.
+    consumption_iq._require_reusable_actuals(live_shape, args)
+
+
+def test_live_shape_fixture_is_accepted_by_require_reusable_actuals_with_matching_scope(
+    live_shape,
+) -> None:
+    import consumption_iq  # noqa: E402
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(
+        start=date(2026, 8, 9),
+        end=date(2026, 8, 16),
+        subscription=_ALL_ZERO_GUID,
+        resource_group="rg-sanitized-ai-pilot",
+    )
+    consumption_iq._require_reusable_actuals(live_shape, args)
+
+
+def test_live_shape_fixture_passes_reconciliation_emitter_actuals_validation(
+    live_shape,
+) -> None:
+    """The stricter, publish-time validator (`_validate_actuals`, used by
+    `emit_actuals_document`/`emit_reconciliation`) must also accept the
+    fixture untouched, including its credential-scan of `provenance` and
+    `warnings` — proving the sanitized notice fields themselves don't trip
+    the credential-shaped-key/value guard."""
+    import reconciliation_emitter as emitter  # noqa: E402
+
+    emitter._validate_actuals(live_shape)

@@ -286,6 +286,17 @@ Evidence that cannot be parsed at all raises instead and surfaces as `3` (or
 the schema permits a `not-verified` document and a supplied or
 extension-produced manifest may carry one.
 
+**Live evidence.** The `cost-actuals-manifest.json` shape above was pinned
+against a real, read-only Cost Management / Monitor / Log Analytics probe
+run against an isolated personal demo subscription — never a customer or
+shared tenant. `references/live-actuals-probe.md` is the exact runbook
+(isolation contract, commands, RBAC, `RAW_EVIDENCE_DIR` handling,
+sanitization checklist, findings); its sanitized result is
+`references/fixtures/sample-cost-actuals/live-shape.json` — synthetic
+identifiers and dollar amounts, real shape. No raw evidence, real
+identifier, or dollar amount from that probe is retained anywhere in this
+repository.
+
 Official references:
 - Cost Management Query API — <https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage>
 - Understand Cost Management data (refresh cadence, what usage cost includes) — <https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data>
@@ -434,6 +445,19 @@ audience. Never hand the internal variant to a customer.
   emitter golden-file test and CI e2e)
 - `references/fixtures/sample-presales-rollout/` — end-to-end pre-sales
   fixture (3-phase rollout + expected golden estimate + one-pager)
+- `references/cost-actuals-manifest-schema.md` — `specs/cost-actuals-manifest.json`
+  (`threadlight-cost-actuals/v1`) schema
+- `references/cost-reconciliation-manifest-schema.md` — `specs/cost-reconciliation-manifest.json`
+  (`threadlight-cost-reconciliation/v1`) schema
+- `references/live-actuals-probe.md` — the read-only live-shape probe
+  runbook (isolation contract, exact commands, required RBAC,
+  `RAW_EVIDENCE_DIR` handling, sanitization checklist, findings); the
+  procedure behind `references/fixtures/sample-cost-actuals/live-shape.json`
+- `references/fixtures/sample-cost-actuals/` — Cost Management / Log
+  Analytics parser fixtures, including `live-shape.json` (a sanitized
+  `threadlight-cost-actuals/v1` manifest whose shape — not its identifiers
+  or dollar amounts, all synthetic — was pinned from a real read-only probe;
+  see `live-actuals-probe.md`)
 
 ## See also — official Azure Skills
 
