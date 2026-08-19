@@ -1,0 +1,50 @@
+{
+  "id": "subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CostManagement/query/tl-pilot-actuals",
+  "name": "tl-pilot-actuals",
+  "type": "Microsoft.CostManagement/query",
+  "properties": {
+    "nextLink": "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CostManagement/query?%24skiptoken=sanitized-continuation-token-page-2",
+    "columns": [
+      { "name": "UsageDate", "type": "Number" },
+      { "name": "ResourceType", "type": "String" },
+      { "name": "PreTaxCost", "type": "Number" },
+      { "name": "Currency", "type": "String" },
+      { "name": "ResourceId", "type": "String" },
+      { "name": "ServiceName", "type": "String" }
+    ],
+    "rows": [
+      [
+        20260801,
+        "microsoft.app/containerapps",
+        12.34,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.App/containerApps/agent",
+        "Azure Container Apps"
+      ],
+      [
+        20260801,
+        "microsoft.search/searchservices",
+        3.21,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.Search/searchServices/pilot-search",
+        "Azure Cognitive Search"
+      ],
+      [
+        20260802,
+        "microsoft.app/containerapps",
+        11.98,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.App/containerApps/agent",
+        "Azure Container Apps"
+      ],
+      [
+        20260802,
+        "",
+        0.42,
+        "USD",
+        "",
+        "Bandwidth"
+      ]
+    ]
+  }
+}
