@@ -39,6 +39,19 @@ SPEC_TEXT = (
     "max_forecast_variance_pct: 0.25\n"
 )
 
+# The reconciler's measured unit economics: 130.00 USD over 1200 successful
+# interactions. `status` is the evidence gate, `target_status` the separate
+# comparison against the SPEC § 14 declared target — see
+# threadlight-consumption-iq's `reconcile._unit_economics`. Shared with
+# test_kpi_scorecard, which consumes this block as the KPI-003 cost signal.
+UNIT_ECONOMICS: dict[str, object] = {
+    "status": "pass",
+    "successful_interactions": 1200,
+    "cost_per_successful_interaction_usd": 0.1083,
+    "target_usd": 0.15,
+    "target_status": "pass",
+}
+
 
 def _canonical_hash(data: dict) -> str:
     payload = json.dumps(
@@ -93,6 +106,7 @@ def _reconciliation(
     observed_volume_variance_pct: object = 0.10,
     generated_at: str = RECONCILED_AT,
     drivers: object = None,
+    unit_economics: object = None,
 ) -> dict:
     payg = {
         "status": payg_status,
@@ -136,7 +150,9 @@ def _reconciliation(
             "actual_window_usd": 130.0,
             "variance_pct": variance_pct,
         },
-        "unit_economics": {"status": "pass", "target_status": "pass"},
+        "unit_economics": (
+            unit_economics if unit_economics is not None else dict(UNIT_ECONOMICS)
+        ),
         "coverage": {
             "projection_attribution_coverage_pct": 1.0,
             "source_resource_id_coverage_pct": 1.0,

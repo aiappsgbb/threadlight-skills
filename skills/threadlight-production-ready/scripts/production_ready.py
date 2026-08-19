@@ -752,8 +752,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     # ---- observability — outcome-KPI scorecard (F7)
     # CAF agent observability triad: baselines (latency, cost-per-interaction,
     # success-rate) + deviation alerts live under observability. KPI-001..003
-    # join eval pass-rate + cost-per-interaction + traces into one measurable
-    # outcome view. should-fix / tier-0 (static synthesis, never must-fix).
+    # join eval pass-rate + the measured cost per successful interaction
+    # (reconciled Azure actuals, never the forecast) + traces into one
+    # measurable outcome view. should-fix / tier-0 (static synthesis, never
+    # must-fix).
     "KPI-001": {"title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)", "pillar": "observability", "severity": "should-fix", "tier": 0},
     "KPI-002": {"title": "Deviation alert wired for an outcome KPI baseline", "pillar": "observability", "severity": "should-fix", "tier": 0},
     "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
@@ -3300,12 +3302,18 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
 # measure a real outcome — not just wire traces. `_kpi_signals` joins three
 # already-collected signals into one view:
 #
-#   * eval pass-rate        specs/evals-manifest.json   (threadlight-evals)
-#   * cost-per-interaction  specs/cost-manifest.json    (threadlight-consumption-iq)
-#   * traces emitting       foundry-observability / OTel wiring in infra+src
+#   * eval pass-rate                  specs/evals-manifest.json
+#                                     (threadlight-evals)
+#   * cost per successful interaction specs/cost-reconciliation-manifest.json
+#                                     (threadlight-consumption-iq actuals)
+#   * traces emitting                 foundry-observability / OTel wiring in
+#                                     infra+src
 #
-# plus the declared baseline targets + a deviation-alert resource. Pure file
-# reads; never raises (missing/garbage inputs degrade to None / False).
+# plus the declared baseline targets + a deviation-alert resource. The cost
+# signal is a *measured* unit cost read through the strict reconciliation
+# loader, never the `specs/cost-manifest.json` forecast — see
+# `_read_cost_per_interaction`. Pure file reads; never raises
+# (missing/garbage inputs degrade to None / False).
 
 
 def _kpi_signals(ctx: RepoContext) -> dict:
@@ -3348,6 +3356,8 @@ def _kpi_signals(ctx: RepoContext) -> dict:
         "deviation_alert_present": deviation_alert_present,
         "traces_emit": traces_emit,
         "eval_pass_rate": eval_pass_rate,
+        # Manifest key kept for backward shape; the value is the *measured*
+        # cost per SUCCESSFUL interaction from the reconciled Azure actuals.
         "cost_per_interaction_usd": cost_per_interaction_usd,
     }
 
@@ -3369,26 +3379,67 @@ def _read_eval_pass_rate(ctx: RepoContext) -> float | None:
 
 
 def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
-    """Read cost-per-interaction (USD) from specs/cost-manifest.json. None if
-    absent/garbage. Accepts `cost_per_interaction_usd` or
-    `unit_economics.cost_per_interaction_usd`."""
-    path = ctx.root / "specs" / "cost-manifest.json"
-    raw = _read_text(path)
-    if not raw:
-        return None
+    """The **measured** cost per successful interaction, in USD, or None.
+
+    This is an actual, never a forecast. `specs/cost-manifest.json` is a
+    projection: a cost-per-interaction number in it is what someone *planned*
+    to spend, so it can never satisfy an outcome KPI — a pilot that has not
+    billed a single interaction would otherwise report a green unit cost.
+    (COST-005/006/007 keep consuming that forecast; this signal does not read
+    it at all.)
+
+    The value comes out of `specs/cost-reconciliation-manifest.json` through
+    `_read_cost_reconciliation`, which is the one place that proves the bundle:
+    exact schemas, canonical-JSON digests of the forecast and actuals, the raw
+    `specs/SPEC.md` § 14 anchor, verdict-after-evidence timestamps and today's
+    staleness re-check. No hash, path or ref logic is repeated here, and a
+    `*_ref.path` is never followed.
+
+    On top of the loader, the reconciler's own fail-closed gates must all hold:
+    the envelope `status` and `maturity.status` are `pass`, and
+    `unit_economics.status` is `pass` (its evidence gate: verified collection,
+    complete policy, an observed interaction count, at least one success to
+    divide by). `target_status` must be a decided verdict — `pass` or
+    `should-fix`; `not-verified` there means the § 14 target side was unusable
+    while the measurement side claimed `pass`, which is an internally
+    inconsistent artifact.
+
+    `should-fix` **is** accepted: a unit cost above the declared target is still
+    a measured unit cost, and hiding it would hide exactly the number the
+    overspend is about. KPI-003 reports whether the outcome can be measured;
+    the target gap is the COST findings' verdict to carry, not this one's.
+
+    Never raises.
+    """
     try:
-        data = json.loads(raw)
-    except (ValueError, TypeError):
+        data = _read_cost_reconciliation(ctx)
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError,
+            ArithmeticError) as exc:
+        # The loader is contractually non-raising, but `_kpi_signals` runs
+        # outside every pillar guard: an unexpected artifact shape must degrade
+        # this one signal, not abort the assessment.
+        print(f"[warn] cost reconciliation reader raised {type(exc).__name__}: {exc} "
+              f"— outcome KPI unit cost reported as unmeasured", file=sys.stderr)
         return None
-    if not isinstance(data, dict):
+    if data is None or data.get("_stale_reason"):
         return None
-    for keypath in (("cost_per_interaction_usd",), ("unit_economics", "cost_per_interaction_usd")):
-        node: object = data
-        for key in keypath:
-            node = node.get(key) if isinstance(node, dict) else None
-        if isinstance(node, (int, float)) and not isinstance(node, bool):
-            return float(node)
-    return None
+    maturity = data.get("maturity")
+    maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
+    if data.get("status") != "pass" or maturity_status != "pass":
+        return None
+    unit = data.get("unit_economics")
+    if not isinstance(unit, dict) or unit.get("status") != "pass":
+        return None
+    if unit.get("target_status") not in ("pass", "should-fix"):
+        return None
+    successes = unit.get("successful_interactions")
+    if isinstance(successes, bool) or not isinstance(successes, int) or successes <= 0:
+        # A rate with nothing to divide by is not a measurement.
+        return None
+    cost = unit.get("cost_per_successful_interaction_usd")
+    if not _is_finite_number(cost) or float(cost) < 0:
+        return None
+    return float(cost)
 
 
 def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
@@ -3427,21 +3478,25 @@ def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
     if sig["eval_pass_rate"] is not None:
         have.append("eval pass-rate")
     if sig["cost_per_interaction_usd"] is not None:
-        have.append("cost-per-interaction")
+        have.append("actual cost per successful interaction")
     if sig["traces_emit"]:
         have.append("traces")
     if len(have) == 3:
         out.append(_mk_finding("KPI-003", status="pass",
             detail=(f"Outcome scorecard joinable: eval pass-rate {sig['eval_pass_rate']:.0%}, "
-                    f"cost-per-interaction ${sig['cost_per_interaction_usd']:.4f}, traces emitting.")))
+                    f"actual cost per successful interaction "
+                    f"${sig['cost_per_interaction_usd']:.4f} (reconciled Azure actuals), "
+                    "traces emitting.")))
     elif not have:
         out.append(_mk_finding("KPI-003", status="not-verified",
-            detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq, "
-                   "and foundry-observability to populate the scorecard."))
+            detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq "
+                   "(`actuals` then `reconcile`), and foundry-observability to populate the "
+                   "scorecard."))
     else:
         out.append(_mk_finding("KPI-003", status="should-fix",
             detail=(f"Partial outcome scorecard ({', '.join(have)} present). Join all three "
-                    "(eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.")))
+                    "(eval pass-rate + reconciled cost per successful interaction + traces) "
+                    "for a measurable outcome view.")))
     return out
 
 
@@ -6156,12 +6211,13 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         pr_str = f"{pr_val:.0%}" if isinstance(pr_val, (int, float)) else "not-verified"
         cpi_str = f"${cpi_val:.4f}" if isinstance(cpi_val, (int, float)) else "not-verified"
         out.append("Joins the three signals CAF asks teams to measure as a real outcome "
-                   "(eval quality + unit cost + live telemetry):")
+                   "(eval quality + measured unit cost + live telemetry):")
         out.append("")
         out.append("| KPI signal | Value | Source |")
         out.append("|---|---|---|")
         out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
-        out.append(f"| Cost-per-interaction | {cpi_str} | `specs/cost-manifest.json` (threadlight-consumption-iq) |")
+        out.append(f"| Cost per successful interaction | {cpi_str} | "
+                   "`specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |")
         out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
         out.append("")
         out.append("| Baseline declared | Status |")

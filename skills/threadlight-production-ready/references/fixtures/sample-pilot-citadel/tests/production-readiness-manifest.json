@@ -646,7 +646,7 @@
           "severity": "should-fix",
           "status": "should-fix",
           "tier": 0,
-          "detail": "Partial outcome scorecard (traces present). Join all three (eval pass-rate + cost-per-interaction + traces) for a measurable outcome view.",
+          "detail": "Partial outcome scorecard (traces present). Join all three (eval pass-rate + reconciled cost per successful interaction + traces) for a measurable outcome view.",
           "evidence_refs": [],
           "waiver_id": null
         },

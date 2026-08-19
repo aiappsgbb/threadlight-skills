@@ -151,7 +151,7 @@ flowchart LR
 | `OBS-005` | should-fix | ⚠️ should-fix | No workbook scaffold found |
 | `KPI-001` | should-fix | ⚠️ should-fix | Outcome KPI baseline(s) not declared: cost-per-interaction, success-rate. Declare target latency, cost-per-interaction, and success-rate so deviation can be measured. |
 | `KPI-002` | should-fix | ⚠️ should-fix | No deviation alert wired for a KPI baseline — add a metric/log alert on latency, cost-per-interaction, or success-rate drift (see recipe KPI-002). |
-| `KPI-003` | should-fix | ⚠️ should-fix | Partial outcome scorecard (traces present). Join all three (eval pass-rate + cost-per-interaction + traces) for a measurable outcome view. |
+| `KPI-003` | should-fix | ⚠️ should-fix | Partial outcome scorecard (traces present). Join all three (eval pass-rate + reconciled cost per successful interaction + traces) for a measurable outcome view. |
 | `OBS-101` | must-fix | ❓ not-verified | Skipped — running in --static mode (tier: T1 Reader) |
 | `OBS-102` | must-fix | ❓ not-verified | Skipped — running in --static mode (tier: T2 Monitoring + LA Reader) |
 | `OBS-103` | should-fix | ❓ not-verified | Skipped — running in --static mode (tier: T2 Monitoring + LA Reader) |
@@ -359,12 +359,12 @@ _v1: high-level reminders only. For deep PAYG vs PTU analysis, run `paygo-ptu-co
 
 ## 8. Outcome KPI scorecard
 
-Joins the three signals CAF asks teams to measure as a real outcome (eval quality + unit cost + live telemetry):
+Joins the three signals CAF asks teams to measure as a real outcome (eval quality + measured unit cost + live telemetry):
 
 | KPI signal | Value | Source |
 |---|---|---|
 | Eval pass-rate | not-verified | `specs/evals-manifest.json` (threadlight-evals) |
-| Cost-per-interaction | not-verified | `specs/cost-manifest.json` (threadlight-consumption-iq) |
+| Cost per successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
 | Traces emitting | ✅ yes | foundry-observability / OTel wiring |
 
 | Baseline declared | Status |
