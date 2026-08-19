@@ -17,12 +17,15 @@
 # Re-run this script whenever a Cowork-safe skill changes. The output zip is
 # committed to docs/downloads/ so it ships with the GH Pages site.
 #
-# Currently Cowork-safe: threadlight-design
+# Currently Cowork-safe: threadlight-design, threadlight-qualify
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="${REPO_ROOT}/docs/downloads"
+# Output directory for the published archives. Overridable (COWORK_OUT_DIR) so
+# the CI drift check can build into a throwaway directory and diff the result
+# against the committed docs/downloads/ archives without mutating the worktree.
+OUT_DIR="${COWORK_OUT_DIR:-${REPO_ROOT}/docs/downloads}"
 SRC_DIR="${REPO_ROOT}/skills"
 
 # List of Cowork-safe skill folder names (must match `name:` in each SKILL.md)
@@ -32,6 +35,41 @@ COWORK_SAFE_SKILLS=(
 
 mkdir -p "${OUT_DIR}"
 
+# ---------------------------------------------------------------------------
+# Reproducible archive helper.
+#
+# These zips are committed to docs/downloads/ and gated by a CI drift check, so
+# determinism matters: rebuilding the same source must yield the same archive.
+# Plain `zip` otherwise stamps each member with its filesystem mtime and adds
+# members in readdir order, both of which churn between checkouts and machines.
+#
+# det_zip normalises all of that on a staging tree BEFORE zipping:
+#   * canonical permissions (dirs 755, files 644) — umask-independent;
+#   * one fixed mtime on every entry (a constant DOS timestamp in the archive);
+#   * members added in a stable LC_ALL=C sorted order (files only — parent dirs
+#     are implied on extraction, so no directory entries are stored);
+#   * -X strips the platform "extra fields" (UT timestamps, uid/gid) that churn.
+# Two builds on the same machine are then byte-identical. The CI drift check
+# compares member CONTENT (name + CRC, recursing into the inner runtime zip) so
+# it also stays robust across macOS/Linux `zip` implementations.
+# ---------------------------------------------------------------------------
+COWORK_ZIP_MTIME="202601010000.00"   # touch -t stamp: 2026-01-01T00:00:00
+
+det_zip() {
+  local stage="$1" out="$2"
+  rm -f "${out}"
+  find "${stage}" -type d -exec chmod 755 {} +
+  find "${stage}" -type f -exec chmod 644 {} +
+  find "${stage}" -exec touch -t "${COWORK_ZIP_MTIME}" {} +
+  ( cd "${stage}" \
+      && find . -type f \
+           ! -name '.DS_Store' \
+           ! -path '*/__pycache__/*' \
+           ! -name '*.pyc' \
+      | LC_ALL=C sort \
+      | zip -X --quiet -@ "${out}" )
+}
+
 for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   if [[ ! -f "${SRC_DIR}/${skill}/SKILL.md" ]]; then
     echo "ERROR: ${SRC_DIR}/${skill}/SKILL.md not found — aborting." >&2
@@ -39,16 +77,24 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   fi
 
   zip_path="${OUT_DIR}/${skill}.zip"
-  rm -f "${zip_path}"
 
-  # Flat zip: SKILL.md at the root, references/ as a sibling.
-  # Cowork's installer expects SKILL.md at the top level of the archive.
-  (cd "${SRC_DIR}/${skill}" && zip -r --quiet "${zip_path}" . -x "*.DS_Store" "*/__pycache__/*")
+  # Stage a clean copy (no .DS_Store / __pycache__ / *.pyc), then build a
+  # reproducible FLAT zip: SKILL.md at the root, references/ (+ scripts/ tests/)
+  # as siblings. Cowork's installer expects SKILL.md at the top level of the
+  # archive. The whole-folder member set is the design skill's outer contract.
+  design_stage="${REPO_ROOT}/.cowork-build-tmp/${skill}.$$"
+  rm -rf "${design_stage}"
+  mkdir -p "${design_stage}"
+  cp -R "${SRC_DIR}/${skill}/." "${design_stage}/"
+  find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 
-  # Enforce Cowork per-skill limits
-  skill_md_bytes=$(wc -c < "${SRC_DIR}/${skill}/SKILL.md" | tr -d ' ')
-  companion_count=$(find "${SRC_DIR}/${skill}" -type f ! -name SKILL.md | wc -l | tr -d ' ')
-  companion_bytes=$(find "${SRC_DIR}/${skill}" -type f ! -name SKILL.md -exec wc -c {} + | tail -n1 | awk '{print $1}')
+  det_zip "${design_stage}" "${zip_path}"
+
+  # Enforce Cowork per-skill limits (measured on the staged tree that ships)
+  skill_md_bytes=$(wc -c < "${design_stage}/SKILL.md" | tr -d ' ')
+  companion_count=$(find "${design_stage}" -type f ! -name SKILL.md | wc -l | tr -d ' ')
+  companion_bytes=$(find "${design_stage}" -type f ! -name SKILL.md -exec wc -c {} + | tail -n1 | awk '{print $1}')
 
   echo "✓ ${skill}.zip ($(wc -c < "${zip_path}" | tr -d ' ') bytes)"
   echo "  SKILL.md: ${skill_md_bytes} / 1048576 bytes"
@@ -68,7 +114,117 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   if (( companion_bytes > 10485760 )); then
     echo "  ✗ companion files exceed 10 MB total" >&2; exit 1
   fi
+
+  rm -rf "${design_stage}"
 done
+
+# ---------------------------------------------------------------------------
+# threadlight-qualify — Cowork-safe qualification skill with a vendored runtime.
+#
+# Unlike the design skill (whole-folder zip), qualify ships a curated FLAT zip:
+#   SKILL.md
+#   scripts/qualify.py
+#   references/sizing-manifest.schema.json
+#   references/citadel-sizing.json
+#   vendor/model-catalog.json      (dated model catalog, the only vendored data)
+#   vendor/cost-runtime.zip        (importable cost engine — code only)
+# No tests, fixtures, goldens, or __pycache__ ship. The runtime needs no az /
+# azd / Bicep / Docker / customer credentials — pure stdlib Python.
+# ---------------------------------------------------------------------------
+
+build_qualify_zip() {
+  local skill="threadlight-qualify"
+  local skill_root="${SRC_DIR}/${skill}"
+  local cq_scripts="${SRC_DIR}/threadlight-consumption-iq/scripts"
+  local cq_refs="${SRC_DIR}/threadlight-consumption-iq/references"
+  local zip_path="${OUT_DIR}/${skill}.zip"
+
+  if [[ ! -f "${skill_root}/SKILL.md" ]]; then
+    echo "ERROR: ${skill_root}/SKILL.md not found — aborting." >&2
+    exit 1
+  fi
+
+  # Safe temporary staging under the repo (never /tmp) with guaranteed cleanup.
+  local build_tmp stage rt
+  build_tmp="${REPO_ROOT}/.cowork-build-tmp"
+  stage="${build_tmp}/stage.$$"
+  rt="${build_tmp}/runtime.$$"
+  trap 'rm -rf "${build_tmp}"' RETURN
+  rm -rf "${build_tmp}"
+  mkdir -p "${stage}" "${rt}"
+
+  # --- inner runtime zip: importable cost engine (code only) ---------------
+  mkdir -p "${stage}/vendor"
+  cp "${cq_scripts}/cost_api.py" \
+     "${cq_scripts}/meter_demand.py" \
+     "${cq_scripts}/model_catalog.py" \
+     "${cq_scripts}/emitter.py" \
+     "${cq_scripts}/pricing_client.py" \
+     "${cq_scripts}/discount.py" \
+     "${rt}/"
+  cp -R "${cq_scripts}/projectors" "${rt}/projectors"
+
+  # Stage a zip-importable ``pricing_fixtures`` package so PricingClient can
+  # resolve the dated offline rates via importlib.resources when it runs from
+  # inside cost-runtime.zip (Path(__file__) can't reach the repo tree there).
+  # Single source of truth: references/pricing-fixtures/*.json is copied in a
+  # deterministic (sorted) order; no rate is duplicated or re-typed by hand.
+  local pf_src="${cq_refs}/pricing-fixtures"
+  mkdir -p "${rt}/pricing_fixtures"
+  printf '"""Packaged dated offline pricing fixtures (staged by build-cowork-zips.sh).\n\nThis package only exists inside cost-runtime.zip; the in-repo run reads the\nfilesystem references/pricing-fixtures/ tree instead.\n"""\n' \
+    > "${rt}/pricing_fixtures/__init__.py"
+  while IFS= read -r pf_json; do
+    cp "${pf_json}" "${rt}/pricing_fixtures/$(basename "${pf_json}")"
+  done < <(find "${pf_src}" -maxdepth 1 -type f -name '*.json' | LC_ALL=C sort)
+
+  find "${rt}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  find "${rt}" -name '*.pyc' -delete 2>/dev/null || true
+  # Reproducible inner runtime zip (code + packaged pricing fixtures). Its bytes
+  # must be stable so the OUTER archive that embeds it is stable too.
+  det_zip "${rt}" "${stage}/vendor/cost-runtime.zip"
+
+  # --- outer flat staging: SKILL.md + exactly five companions --------------
+  mkdir -p "${stage}/scripts" "${stage}/references"
+  cp "${skill_root}/SKILL.md" "${stage}/SKILL.md"
+  cp "${skill_root}/scripts/qualify.py" "${stage}/scripts/qualify.py"
+  cp "${skill_root}/references/sizing-manifest.schema.json" "${stage}/references/sizing-manifest.schema.json"
+  cp "${skill_root}/references/citadel-sizing.json" "${stage}/references/citadel-sizing.json"
+  cp "${cq_refs}/model-catalog.json" "${stage}/vendor/model-catalog.json"
+
+  # Reproducible outer archive (embeds the already-deterministic inner zip).
+  det_zip "${stage}" "${zip_path}"
+
+  # --- enforce Cowork limits + the exact-five-companions contract ----------
+  local skill_md_bytes companion_count companion_bytes
+  skill_md_bytes=$(wc -c < "${stage}/SKILL.md" | tr -d ' ')
+  companion_count=$(find "${stage}" -type f ! -name SKILL.md | wc -l | tr -d ' ')
+  companion_bytes=$(find "${stage}" -type f ! -name SKILL.md -exec wc -c {} + | tail -n1 | awk '{print $1}')
+
+  echo "✓ ${skill}.zip ($(wc -c < "${zip_path}" | tr -d ' ') bytes)"
+  echo "  SKILL.md: ${skill_md_bytes} / 1048576 bytes"
+  echo "  companions: ${companion_count} / 20 files, ${companion_bytes} / 10485760 bytes total"
+
+  if ! unzip -l "${zip_path}" | awk '{print $4}' | grep -qx 'SKILL.md'; then
+    echo "  ✗ SKILL.md not at zip root — Cowork will reject this archive" >&2; exit 1
+  fi
+  if (( companion_count != 5 )); then
+    echo "  ✗ expected exactly 5 companions, found ${companion_count}" >&2
+    unzip -l "${zip_path}" >&2
+    exit 1
+  fi
+  # No tests / goldens / fixtures may leak into the package.
+  if unzip -l "${zip_path}" | awk '{print $4}' | grep -Eq '(^|/)tests/|fixtures/|expected/|\.pyc$'; then
+    echo "  ✗ package contains tests/goldens/fixtures — not allowed" >&2; exit 1
+  fi
+  if (( skill_md_bytes > 1048576 )); then
+    echo "  ✗ SKILL.md exceeds 1 MB Cowork limit" >&2; exit 1
+  fi
+  if (( companion_bytes > 10485760 )); then
+    echo "  ✗ companion files exceed 10 MB total" >&2; exit 1
+  fi
+}
+
+build_qualify_zip
 
 echo ""
 echo "Done. Commit ${OUT_DIR}/ to publish on GitHub Pages."

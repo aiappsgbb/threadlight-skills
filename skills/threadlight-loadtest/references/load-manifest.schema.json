@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "load-manifest.schema.json",
+  "title": "threadlight-loadtest manifest",
+  "description": "Emitted by threadlight-loadtest (scripts/loadtest.py) after a budget-capped, guarded load-generation run. Extends the shared envelope from skills/_shared/manifest.py (schema, tool_version, generated_at, freshness, status, findings) with loadtest-specific payload fields. Contains no access tokens, prompts, model responses, request/response payloads, or endpoint secrets — only a boolean 'endpoint_configured', an adapter name, aggregate numeric diagnostics, and a scrubbed adapter error summary (if any). 'spec_update_plan' is present only for a complete run and is omitted entirely (never null) for partial/aborted runs.",
+  "type": "object",
+  "required": [
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings",
+    "profile_name", "endpoint_class", "endpoint_configured", "allow_production",
+    "adapter_name", "budget", "diagnostics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight.load/v1"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "additionalProperties": false,
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+        "source_oldest_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+        }
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Exactly one finding for each of LOAD-001, LOAD-002, LOAD-003 — no duplicates, no missing, no unknown ids.",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"enum": ["LOAD-001", "LOAD-002", "LOAD-003"]},
+          "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+          "detail": {"type": ["string", "null"]}
+        }
+      },
+      "allOf": [
+        {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "LOAD-001"}}}},
+        {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "LOAD-002"}}}},
+        {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "LOAD-003"}}}}
+      ]
+    },
+    "profile_name": {"type": "string", "minLength": 1},
+    "endpoint_class": {"enum": ["non-production", "production"]},
+    "endpoint_configured": {
+      "type": "boolean",
+      "description": "True only when the profile declared BOTH an endpoint URL and a credential reference NAME. The URL, the credential reference, and any secret material are never echoed into the manifest."
+    },
+    "allow_production": {"type": "boolean"},
+    "adapter_name": {
+      "type": ["string", "null"],
+      "description": "Name of the selected load-generation engine ('k6', 'locust', or an injected test adapter's name). Null when no adapter was selected/available."
+    },
+    "budget": {
+      "type": "object",
+      "required": ["ceiling_usd", "projected_usd", "within_ceiling", "projection_source"],
+      "additionalProperties": false,
+      "properties": {
+        "ceiling_usd": {"type": "number", "exclusiveMinimum": 0},
+        "projected_usd": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Projected token cost of the run in USD. Null only when projection_source is 'unavailable'."
+        },
+        "within_ceiling": {
+          "type": ["boolean", "null"],
+          "description": "Whether the projection is within the ceiling. Null only when projection_source is 'unavailable'."
+        },
+        "projection_source": {
+          "enum": ["declared", "derived", "unavailable"],
+          "description": "'declared' = profile's explicit projected_token_cost_usd; 'derived' = deterministically computed from explicit request/rate + token-rate inputs; 'unavailable' = could not be determined without inventing inputs (projected_usd and within_ceiling are null)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"projection_source": {"const": "unavailable"}}},
+          "then": {"properties": {"projected_usd": {"const": null}, "within_ceiling": {"const": null}}},
+          "else": {"properties": {"projected_usd": {"type": "number"}, "within_ceiling": {"type": "boolean"}}}
+        }
+      ]
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "sample_count", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms",
+        "error_rate", "tokens_per_request", "throughput_rps",
+        "cold_start_latency_ms", "time_to_scale_s", "adapter_error"
+      ],
+      "additionalProperties": false,
+      "description": "Aggregate numbers only — never individual request/response bodies, prompts, or completions.",
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 0},
+        "p50_latency_ms": {"type": ["number", "null"], "minimum": 0},
+        "p95_latency_ms": {"type": ["number", "null"], "minimum": 0},
+        "p99_latency_ms": {"type": ["number", "null"], "minimum": 0},
+        "error_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "tokens_per_request": {"type": ["number", "null"], "minimum": 0},
+        "throughput_rps": {"type": ["number", "null"], "minimum": 0},
+        "cold_start_latency_ms": {"type": ["number", "null"], "minimum": 0},
+        "time_to_scale_s": {"type": ["number", "null"], "minimum": 0},
+        "adapter_error": {
+          "type": ["string", "null"],
+          "maxLength": 220,
+          "description": "Scrubbed, truncated summary of an adapter-side failure. Never raw command stdout/stderr."
+        }
+      }
+    },
+    "spec_update_plan": {
+      "type": "object",
+      "description": "Advisory-only patch plan for a COMPLETE run. Never applied automatically — always a proposal for a human to review and apply to SPEC.md. Omitted entirely (never null) for partial/aborted runs.",
+      "required": ["action", "target", "section", "snippet"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {"const": "advisory"},
+        "target": {"type": "string", "minLength": 1},
+        "section": {"type": "string", "minLength": 1},
+        "snippet": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"status": {"const": "complete"}},
+        "required": ["status"]
+      },
+      "then": {},
+      "else": {"not": {"required": ["spec_update_plan"]}}
+    }
+  ]
+}

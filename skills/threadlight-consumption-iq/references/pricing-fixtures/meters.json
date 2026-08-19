@@ -1,0 +1,37 @@
+{
+  "_last_refreshed": "2026-06-12",
+  "_source": "Manual snapshot: Azure AI Foundry / Content Understanding / Document Intelligence / Speech / AI Search semantic ranker / Grounding with Bing pricing pages.",
+  "_schema_version": "1.0",
+  "meters": {
+    "content-understanding-extraction": [
+      {"match": {"tier": "premium"}, "unit_price_usd": 0.03, "unit": "per-page", "quantity_divisor": 1},
+      {"match": {}, "unit_price_usd": 0.01, "unit": "per-page", "quantity_divisor": 1}
+    ],
+    "content-understanding-contextualization": [
+      {"match": {}, "unit_price_usd": 0.006, "unit": "per-item", "quantity_divisor": 1}
+    ],
+    "document-intelligence": [
+      {"match": {"model": "prebuilt-read"}, "unit_price_usd": 0.0015, "unit": "per-page", "quantity_divisor": 1},
+      {"match": {"model": "prebuilt-layout"}, "unit_price_usd": 0.01, "unit": "per-page", "quantity_divisor": 1},
+      {"match": {}, "unit_price_usd": 0.01, "unit": "per-page", "quantity_divisor": 1}
+    ],
+    "speech": [
+      {"match": {"mode": "batch"}, "unit_price_usd": 0.18, "unit": "per-hour", "quantity_divisor": 1},
+      {"match": {}, "unit_price_usd": 1.0, "unit": "per-hour", "quantity_divisor": 1}
+    ],
+    "embeddings": [
+      {"match": {"model": "text-embedding-3-large"}, "unit_price_usd": 0.00013, "unit": "per-1k-tokens", "quantity_divisor": 1000},
+      {"match": {"model": "text-embedding-3-small"}, "unit_price_usd": 0.00002, "unit": "per-1k-tokens", "quantity_divisor": 1000},
+      {"match": {}, "unit_price_usd": 0.0001, "unit": "per-1k-tokens", "quantity_divisor": 1000}
+    ],
+    "search-agentic-retrieval": [
+      {"match": {}, "unit_price_usd": 1.0, "unit": "per-1k-subqueries", "quantity_divisor": 1000}
+    ],
+    "search-semantic-ranker": [
+      {"match": {}, "unit_price_usd": 1.0, "unit": "per-1k-requests", "quantity_divisor": 1000}
+    ],
+    "web-grounding": [
+      {"match": {}, "unit_price_usd": 35.0, "unit": "per-1k-transactions", "quantity_divisor": 1000}
+    ]
+  }
+}

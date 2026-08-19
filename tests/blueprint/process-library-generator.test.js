@@ -38,14 +38,18 @@ const FULL_SKILLS = [
   'threadlight-local-test',
   'threadlight-hitl-patterns',
   'threadlight-event-triggers',
+  'threadlight-connect',
+  'threadlight-ground',
   'threadlight-safe-check',
   'threadlight-redteam',
   'threadlight-govern',
   'threadlight-deploy',
   'threadlight-cicd',
+  'threadlight-loadtest',
   'threadlight-production-ready',
   'threadlight-evals',
   'threadlight-consumption-iq',
+  'threadlight-upgrade',
 ];
 
 const FULL_ARTIFACTS = [
@@ -58,6 +62,8 @@ const FULL_ARTIFACTS = [
   'src/agent/skills/*/cards/*.json',
   'src/triggers/*/',
   'infra/triggers/*.bicep',
+  'specs/connect-manifest.json',
+  'specs/ground-manifest.json',
   'docs/safe-check-post.md',
   'docs/redteam-report.md',
   'specs/redteam-manifest.json',
@@ -65,12 +71,17 @@ const FULL_ARTIFACTS = [
   'azure.yaml',
   'infra/main.bicep',
   '.github/workflows/azd-deploy-prod.yml',
+  'specs/load-manifest.json',
   'docs/production-readiness-report.md',
   'tests/production-readiness-manifest.json',
   'specs/evals-manifest.json',
   'docs/cost-projection.md',
   'specs/cost-manifest.json',
+  'specs/upgrade-manifest.json',
 ];
+
+const ENTRY_SKILL = 'threadlight-qualify';
+const ENTRY_ARTIFACTS = ['qualification/sizing-manifest.json'];
 
 const PREREQUISITES = [
   'github-copilot',
@@ -133,6 +144,10 @@ test('generator adds baseline playbook metadata for a low retail entry', () => {
     assert.strictEqual(playbook.use_when, entry.summary);
     assert.deepStrictEqual(playbook.build_skills, BASE_SKILLS);
     assert.deepStrictEqual(playbook.build_skills, L.deriveSkills(run.output[0]));
+    assert.ok(!playbook.build_skills.includes(ENTRY_SKILL),
+      'qualify is a no-repo entry, never a build/runtime skill');
+    assert.strictEqual(playbook.entry_skill, ENTRY_SKILL);
+    assert.deepStrictEqual(playbook.entry_artifacts, ENTRY_ARTIFACTS);
     assert.deepStrictEqual(playbook.run_skills, []);
     assert.strictEqual(playbook.run_skills_source, 'generated-by-threadlight-design');
     assert.deepStrictEqual(playbook.prerequisites, PREREQUISITES);
@@ -151,11 +166,11 @@ test('generator derives conditional skills and deduplicated artifacts in canonic
     summary: 'Routes regulated financial operations work.',
     use_when: 'When scheduled financial operations require compliance-heavy triage.',
     description: 'A regulated scheduled workflow.',
-    tags: ['scheduled', 'compliance'],
+    tags: ['scheduled', 'compliance', 'high-volume', 'preview'],
     business_constraints: [],
     external_integrations: [{ name: 'Core system' }],
     human_approvals: [{ step: 'Manager approval' }],
-    knowledge_sources: [],
+    knowledge_sources: [{ name: 'Policy library' }],
   };
 
   const run = runGenerator([entry], 'conditional');
@@ -167,8 +182,54 @@ test('generator derives conditional skills and deduplicated artifacts in canonic
     assert.deepStrictEqual(outputEntry.playbook.build_skills, L.deriveSkills(outputEntry));
     assert.deepStrictEqual(outputEntry.playbook.artifacts, FULL_ARTIFACTS);
     assert.strictEqual(new Set(outputEntry.playbook.artifacts).size, outputEntry.playbook.artifacts.length);
+    // qualify is exposed as the no-repo entry, never injected into the arc.
+    assert.ok(!outputEntry.playbook.build_skills.includes(ENTRY_SKILL));
+    assert.strictEqual(outputEntry.playbook.entry_skill, ENTRY_SKILL);
+    assert.deepStrictEqual(outputEntry.playbook.entry_artifacts, ENTRY_ARTIFACTS);
   } finally {
     cleanup(run.workDir);
+  }
+});
+
+test('generator derives each gap-closure leg from its own signal', () => {
+  const baseEntry = {
+    id: 'signal-derivation',
+    name: 'Signal Derivation',
+    industry: 'retail',
+    complexity: 'low',
+    summary: 'Exercises the new gap-closure signals.',
+    description: 'Baseline retail entry plus one signal at a time.',
+    tags: [],
+    business_constraints: [],
+    external_integrations: [],
+    human_approvals: [],
+    knowledge_sources: [],
+  };
+
+  const cases = [
+    ['threadlight-connect', { external_integrations: [{ name: 'ERP' }] }],
+    ['threadlight-ground', { knowledge_sources: [{ name: 'Policy library' }] }],
+    ['threadlight-loadtest', { tags: ['high-volume'] }],
+    ['threadlight-upgrade', { tags: ['preview'] }],
+  ];
+
+  for (const [skill, overrides] of cases) {
+    const run = runGenerator([{ ...baseEntry, ...overrides }], `signal-${skill}`);
+    try {
+      assert.strictEqual(run.result.status, 0, run.result.stderr);
+      const skills = run.output[0].playbook.build_skills;
+      assert.ok(skills.includes(skill), `${skill} should derive from its signal`);
+      // Baseline retail with no signal derives none of the four gap legs.
+      const bare = runGenerator([baseEntry], 'signal-bare');
+      try {
+        assert.ok(!bare.output[0].playbook.build_skills.includes(skill),
+          `${skill} must not derive without its signal`);
+      } finally {
+        cleanup(bare.workDir);
+      }
+    } finally {
+      cleanup(run.workDir);
+    }
   }
 });
 

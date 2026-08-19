@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "connect-manifest.schema.json",
+  "title": "threadlight-connect manifest",
+  "description": "Emitted by threadlight-connect (scripts/connect.py) after an evidence-based mock-to-real integration-swap assessment. Extends the shared envelope from skills/_shared/manifest.py (schema, tool_version, generated_at, freshness, status, findings) with connect-specific payload fields. Contains no credentials, tokens, or customer payloads — evidence is summarized to booleans and role names only.",
+  "type": "object",
+  "required": [
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings",
+    "tool_name", "integration_state", "target_state", "contract", "conformance",
+    "evidence_summary", "apply_plan", "changed_paths", "apply"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight-connect-manifest/v1"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "additionalProperties": false,
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+        "source_oldest_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+        }
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array",
+      "description": "Exactly the four stable live-leg gap-evidence findings, one each, in order: INT-001 (contract conformance), INT-002 (runtime mock->real binding), INT-003 (OBO user-scoped identity), INT-004 (required-role revalidation / apply). IDs are never dynamic — field-level conformance detail lives in conformance.differences.",
+      "minItems": 4,
+      "maxItems": 4,
+      "additionalItems": false,
+      "items": [
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-001"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-002"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-003"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "status"],
+          "properties": {
+            "id": {"const": "INT-004"},
+            "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+            "detail": {}
+          }
+        }
+      ]
+    },
+    "tool_name": {"type": "string", "minLength": 1},
+    "integration_state": {
+      "enum": ["mock", "real-unverified", "real-verified", "real-drift"],
+      "description": "Persisted current state — the state as of the last SUCCESSFUL apply. Never edited on a failed or unverified transition."
+    },
+    "target_state": {
+      "enum": ["mock", "real-unverified", "real-verified", "real-drift"],
+      "description": "The state computed purely from this run's conformance + evidence, independent of whether --apply was passed."
+    },
+    "contract": {"$ref": "data-contract.schema.json"},
+    "conformance": {
+      "type": "object",
+      "required": ["passed", "evaluated", "item_count", "differences"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "boolean"},
+        "evaluated": {
+          "type": "boolean",
+          "description": "False when the captured real response had no items to check. An unevaluated result is insufficient evidence — never a vacuous pass — and targets real-unverified, distinct from real-drift."
+        },
+        "item_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of real records actually checked. 0 means unevaluated (insufficient evidence)."
+        },
+        "differences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "expected", "actual", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "field": {"type": "string"},
+              "expected": {"type": "string", "description": "e.g. 'string|required'"},
+              "actual": {"type": "string", "description": "e.g. 'missing' or an observed type name"},
+              "path": {"type": "string", "description": "e.g. '$.items[0].status'"}
+            }
+          }
+        }
+      }
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": ["obo_present", "obo_user_scoped", "roles_revalidated", "required_roles", "endpoint_configured", "endpoint_verified"],
+      "additionalProperties": false,
+      "description": "Booleans + role names only — never the raw OBO/role evidence payload (which may carry tokens) and never the real endpoint URL (which lives only in mcp-config.json).",
+      "properties": {
+        "obo_present": {"type": "boolean"},
+        "obo_user_scoped": {"type": "boolean"},
+        "roles_revalidated": {"type": "boolean"},
+        "required_roles": {"type": "array", "items": {"type": "string"}},
+        "endpoint_configured": {"type": "boolean", "description": "A validated real endpoint was supplied this run (URL itself is never persisted here)."},
+        "endpoint_verified": {"type": "boolean", "description": "The verified real endpoint binding was persisted by a successful --apply (never true on a dry run)."}
+      }
+    },
+    "apply_plan": {
+      "type": "array",
+      "description": "File-by-file plan. Always populated, even when apply=false (dry run).",
+      "items": {
+        "type": "object",
+        "required": ["path", "action", "description"],
+        "properties": {
+          "path": {"type": "string"},
+          "action": {"enum": ["create", "update"]},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "changed_paths": {
+      "type": "array",
+      "description": "Every path actually written this run. Empty unless apply=true AND target_state == real-verified.",
+      "items": {"type": "string"}
+    },
+    "apply": {"type": "boolean"}
+  }
+}

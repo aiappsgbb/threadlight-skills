@@ -1,0 +1,181 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ground-manifest.schema.json",
+  "title": "threadlight-ground manifest",
+  "description": "Emitted by threadlight-ground (scripts/ground.py) after assessing already-produced ACL/citation/refusal probe evidence. Extends the shared envelope from skills/_shared/manifest.py (schema, tool_version, generated_at, freshness, status, findings) with ground-specific payload fields. Persists only knowledge-source metadata, principal identifiers, document IDs, findings (whose detail is an allowlisted schema of IDs/counts/status/reason-enums only), aggregate telemetry (retrieval_count/subqueries/tokens), and a retrieval-quality baseline REFERENCE (a repo-relative path/id, never content) — never retrieved content, prompts, completions, access tokens, credentials, or customer payloads.",
+  "type": "object",
+  "required": [
+    "schema", "tool_version", "generated_at", "freshness", "status", "findings",
+    "sources", "acl_evidence", "citation_evidence", "refusal_evidence", "telemetry",
+    "retrieval_quality_baseline"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "threadlight.ground/v1"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "additionalProperties": false,
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+        "source_oldest_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+        }
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array",
+      "description": "GRD-001 ACL enforcement, GRD-002 citation grounding, GRD-003 refusal behavior, GRD-004 source freshness/coverage.",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]},
+          "detail": {
+            "type": "object",
+            "description": "Allowlisted structured detail — IDs, counts, status maps, and a controlled reason enum only. Never free-form notes or content.",
+            "required": ["reason"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "enum": [
+                  "no-acl-protected-sources",
+                  "acl-source-uncovered",
+                  "ambiguous-entitlement",
+                  "insufficient-principals",
+                  "missing-entitled-or-unentitled-probe",
+                  "declared-principal-uncovered",
+                  "unauthorized-documents",
+                  "acl-enforced",
+                  "no-citation-required",
+                  "citation-source-uncovered",
+                  "citations-outside-retrieval",
+                  "citations-grounded",
+                  "no-refusal-required",
+                  "refusal-source-uncovered",
+                  "unsupported-query-answered",
+                  "all-unsupported-refused",
+                  "no-knowledge-sources",
+                  "sources-uncovered",
+                  "freshness-unverifiable",
+                  "retrieval-quality-baseline-missing",
+                  "stale-evidence",
+                  "fresh-and-covered"
+                ]
+              },
+              "uncovered_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "stale_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "unverifiable_freshness_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "missing_from_retrieval": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "unsupported_queries_answered": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "leaked_document_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "missing_principals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "worst_source": {"type": "string", "minLength": 1},
+              "coverage_complete": {"type": "boolean"},
+              "by_source": {
+                "type": "object",
+                "additionalProperties": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Sanitized copy of the SPEC knowledge_sources contract — whitelisted fields only.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id", "type", "permission_model", "refresh_cadence",
+          "citation_required", "refuse_when_unsupported"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "minLength": 1},
+          "permission_model": {"type": "string", "minLength": 1},
+          "refresh_cadence": {"type": "string", "minLength": 1},
+          "citation_required": {"type": "boolean"},
+          "refuse_when_unsupported": {"type": "boolean"},
+          "acl_probe_principals": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "acl_evidence": {
+      "type": "array",
+      "description": "Principal identifiers + document IDs only — never retrieved content.",
+      "items": {
+        "type": "object",
+        "required": ["principal", "document_ids", "source_id"],
+        "additionalProperties": false,
+        "properties": {
+          "principal": {"type": ["string", "null"]},
+          "document_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "source_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "citation_evidence": {
+      "type": "array",
+      "description": "Aggregate counts + missing document IDs only — never citation/answer text.",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "citation_count", "retrieved_count", "missing_from_retrieval"],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {"type": ["string", "null"]},
+          "citation_count": {"type": "number", "minimum": 0},
+          "retrieved_count": {"type": "number", "minimum": 0},
+          "missing_from_retrieval": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "refusal_evidence": {
+      "type": "array",
+      "description": "Opaque query_id + refusal boolean only — never the query/prompt/completion text.",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "query_id", "refused"],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {"type": ["string", "null"]},
+          "query_id": {"type": "string", "minLength": 1},
+          "refused": {"type": ["boolean", "null"]}
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "description": "Aggregate retrieval fan-out only — never per-query content.",
+      "required": ["retrieval_count", "subqueries", "tokens"],
+      "additionalProperties": false,
+      "properties": {
+        "retrieval_count": {"type": "number", "minimum": 0},
+        "subqueries": {"type": "number", "minimum": 0},
+        "tokens": {"type": "number", "minimum": 0}
+      }
+    },
+    "retrieval_quality_baseline": {
+      "type": ["string", "null"],
+      "description": "A repo-relative path or id referencing the retrieval-quality baseline artifact (see threadlight-evals) — never its content. No absolute path, no '..' traversal, no URL, no whitespace. Null when no baseline was supplied, which makes GRD-004 not-verified.",
+      "minLength": 1,
+      "pattern": "^(?!.*\\.\\.)(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+    }
+  }
+}

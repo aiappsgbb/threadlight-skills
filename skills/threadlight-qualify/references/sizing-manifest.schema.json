@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight.sizing-manifest/v1",
+  "title": "Threadlight qualification sizing manifest",
+  "description": "Deterministic, no-discovery sizing output produced by threadlight-qualify from a declared interview profile. Contains a normalized load profile, per-stage application sizings (kind=threadlight-application) and the shared Citadel hub sizing (kind=citadel-hub) kept strictly separate, plus an assumptions ledger where every assumption carries a provenance of user-supplied | derived | fixture | live. A pinned generated_at makes the serialized bytes deterministic.",
+  "type": "object",
+  "required": [
+    "schema",
+    "version",
+    "generated_at",
+    "status",
+    "transaction_unit",
+    "load_profile",
+    "sizings",
+    "assumptions"
+  ],
+  "properties": {
+    "schema": {"const": "threadlight.sizing-manifest/v1"},
+    "version": {"type": "string"},
+    "generated_at": {"type": "string", "description": "ISO-8601 UTC timestamp. Pin it for byte-deterministic output."},
+    "status": {"type": "string", "enum": ["complete", "partial"]},
+    "customer_brief": {"type": "string"},
+    "transaction_unit": {"type": "string"},
+    "data_residency": {"type": "string"},
+    "pinned_region": {"type": "string"},
+    "load_profile": {
+      "type": "object",
+      "description": "Normalized monthly load profile derived from the interview.",
+      "required": ["workload_class", "monthly_transactions", "peak_requests_per_second"],
+      "properties": {
+        "workload_class": {"type": "string"},
+        "monthly_transactions": {"type": "number"},
+        "peak_requests_per_second": {"type": "number"},
+        "business_hours_only": {"type": "boolean"},
+        "pages_per_month": {"type": "number"},
+        "embedding_tokens_per_month": {"type": "number"},
+        "pinned_region": {"type": "string"}
+      }
+    },
+    "sizings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["threadlight-application", "citadel-hub"]},
+          "stage": {"type": "string", "enum": ["mvp", "production"]},
+          "monthly_transactions": {"type": "number"},
+          "cost_manifest": {"type": "object", "description": "vNext cost manifest for an application sizing."},
+          "tier": {"type": "string", "description": "Citadel hub tier (pilot | enterprise)."},
+          "monthly_usd_estimate": {"type": "number", "description": "Estate-billed hub cost, separate from application cost."},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "value", "provenance"],
+        "properties": {
+          "field": {"type": "string"},
+          "value": {},
+          "provenance": {"type": "string", "enum": ["user-supplied", "derived", "fixture", "live"]},
+          "basis": {"type": "string"}
+        }
+      }
+    }
+  }
+}

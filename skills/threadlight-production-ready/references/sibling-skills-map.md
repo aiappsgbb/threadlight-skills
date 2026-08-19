@@ -20,6 +20,20 @@ the invocation is expected to flip green.
 | SAFE-101 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after policy hardening via `threadlight-govern` | Jailbreak attack-success-rate above threshold — harden prompt shields + content filter, then re-scan. |
 | SAFE-102 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after tool-authorization hardening via `threadlight-govern` | Prompt-injection (direct/XPIA) ASR above threshold — enable indirect-attack shield + HITL gate, then re-scan. |
 | SAFE-103 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after egress hardening via `threadlight-govern` | Data/prompt exfiltration ASR above threshold — deny egress sinks + block external PII, then re-scan. |
+| INT-001 | `threadlight-connect` | `target` (repo root); re-runs contract conformance and re-emits `specs/connect-manifest.json` | Real integration tool contract conformance — fix schema drift, then re-verify. |
+| INT-002 | `threadlight-connect` | `target` (repo root); `--apply` advances `integration_state` to `real-verified` and re-points `mcp-config.json` | Runtime endpoint still mock — complete the mock→real swap; safe-check G9.7 confirms. |
+| INT-003 | `threadlight-connect` | `target` (repo root); captures OBO user-scoped identity evidence into `specs/connect-manifest.json` | Real integration OBO user-scoped identity evidence — capture the on-behalf-of proof, then re-emit. |
+| INT-004 | `threadlight-connect` | `target` (repo root); revalidates required roles vs the current agent identity into `specs/connect-manifest.json` | Real integration required-role revalidation vs the current identity — revalidate the grant, then re-emit. |
+| GRD-001 | `threadlight-ground` | `target` (repo root); re-captures ACL probes and re-emits `specs/ground-manifest.json` | Knowledge-source ACL enforcement over protected sources. |
+| GRD-002 | `threadlight-ground` | `target` (repo root); re-captures citation evidence | Citations grounded in retrieved context. |
+| GRD-003 | `threadlight-ground` | `target` (repo root); re-captures refusal probes | Refusal behaviour on unsupported queries. |
+| GRD-004 | `threadlight-ground` | `target` (repo root); refreshes sources + baseline reference | Knowledge-source freshness and coverage. |
+| LOAD-001 | `threadlight-loadtest` | `--spec specs/SPEC.md --out specs/load-manifest.json`; retarget non-production endpoint | Production-safety guard on load runs. |
+| LOAD-002 | `threadlight-loadtest` | (same) | Projected load within budget ceiling. |
+| LOAD-003 | `threadlight-loadtest` | (same); declare `slo` thresholds + collect samples | SLO (p95 latency / error rate) under load. |
+| UPG-001 | `threadlight-upgrade` | `--project . --out specs/upgrade-manifest.json` | Model/dependency compatibility matrix currency. |
+| UPG-002 | `threadlight-upgrade` | (same) | Preview / runtime-policy expiry drift. |
+| UPG-003 | `threadlight-upgrade` | (same); restore official version source | Upgrade candidate verification against official source. |
 
 ## Planned but not implemented (placeholders — recipes are `kind: manual` until skill ships)
 

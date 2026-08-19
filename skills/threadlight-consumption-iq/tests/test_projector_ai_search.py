@@ -127,3 +127,40 @@ def test_ai_search_current_config_not_duplicated():
             r = alt["sku"]["extra"]["replicas"]
             p = alt["sku"]["extra"]["partitions"]
             assert not (r == 2 and p == 1), "Current config (S1 2×1) should not be an alternative"
+
+
+# --- serverless (v2) -------------------------------------------------------
+
+def _serverless_sku():
+    return {"name": "serverless", "tier": "serverless", "region": "eastus2", "capacity": None, "extra": {}}
+
+
+class _NoServerlessRate:
+    """Pricing client that has no serverless rate (returns None)."""
+
+    def get_price(self, resource_kind, sku):
+        return {"unit_price_usd": None, "unit": None, "price_source": "fallback"}
+
+
+class _HasServerlessRate:
+    def get_price(self, resource_kind, sku):
+        return {"unit_price_usd": 0.0001, "unit": "per-query", "price_source": "fixture"}
+
+
+def test_ai_search_serverless_unavailable_is_not_priceable():
+    from projectors.ai_search import project
+    result = project(_serverless_sku(), {"ai_search_documents": 1000}, _NoServerlessRate())
+    assert result["monthly_cost_usd"] is None
+    assert result["pricing_status"] == "not-priceable"
+    assert "no guessed rate" in result["reason"].lower()
+
+
+def test_ai_search_serverless_priced_when_rate_available():
+    from projectors.ai_search import project
+    result = project(
+        _serverless_sku(),
+        {"ai_search_documents": 1000, "search_requests_per_month": 50000},
+        _HasServerlessRate(),
+    )
+    assert result["pricing_status"] == "priced"
+    assert result["monthly_cost_usd"] == round(50000 * 0.0001, 4)

@@ -80,3 +80,17 @@ and starts answering customer prompts differently. The post-mortem is
 
 ---
 **v0.4.0 — remediation recipes:** Each must-fix finding above has a step-by-step recipe at `references/remediation-recipes/{FINDING_ID}.md`. See the parent SKILL.md for the 3-phase onboarding flow.
+
+## Live-leg gap evidence (Task 7)
+
+These findings are **advisory, tier-0** evidence propagated from the executable
+threadlight-upgrade leg(s). production-ready reads each same-named finding from the leg's
+shared-envelope manifest under `specs/`. Absent a fresh, **complete** leg
+manifest they stay `not-verified` (verification debt) — an incomplete, stale,
+or `aborted` leg never inflates this pillar's score or readiness, and a
+`must-fix` in the leg's evidence dominates regardless of envelope freshness.
+
+| ID | Verified when the leg reports it (fresh + complete) | Severity |
+|---|---|---|
+| `UPG-001` | `threadlight-upgrade` confirmed the model/dependency compatibility matrix is current | `should-fix` |
+| `UPG-002` | `threadlight-upgrade` addressed preview / runtime-policy expiry drift | `must-fix` |

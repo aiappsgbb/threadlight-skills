@@ -2,6 +2,11 @@
 __pycache__/
 smoke-outputs/
 
+# Transient staging for scripts/build-cowork-zips.sh (cleaned up per run)
+.cowork-build-tmp/
+# Throwaway build dir for scripts/ci/check_cowork_zip_drift.py
+.cowork-drift-tmp/
+
 # Playwright MCP scratch snapshots — local browser-tool state, not source
 .playwright-mcp/
 

@@ -44,6 +44,91 @@ export function skill(
   return deepFreeze(definition);
 }
 
+// Live-leg shared-envelope contracts (skills/_shared/manifest.py). Keyed by the
+// leg's required artifact PATH so the Canvas projector recognizes a new-leg
+// manifest by path and can strictly validate the safe common envelope before it
+// trusts any status. Mirrors the consumer-side trust boundary in
+// threadlight-production-ready (_GAP_LEG_EXPECTED_SCHEMA / _GAP_LEG_REQUIRED_IDS)
+// so both surfaces reject the same forged evidence. `schema` is the per-file
+// identity (connect is hyphen-namespaced; ground/load/upgrade are dotted);
+// `findingIds` is the exact finding-id set the producer emits — one each.
+// `allowedTopLevelKeys` mirrors each producer schema (and production-ready's
+// consumer allowlist) without duplicating the producer-specific nested schema.
+export const LEG_ENVELOPE_CONTRACTS = deepFreeze({
+  "specs/connect-manifest.json": {
+    schema: "threadlight-connect-manifest/v1",
+    findingIds: ["INT-001", "INT-002", "INT-003", "INT-004"],
+    allowedTopLevelKeys: [
+      "schema",
+      "tool_version",
+      "generated_at",
+      "freshness",
+      "status",
+      "findings",
+      "tool_name",
+      "integration_state",
+      "target_state",
+      "contract",
+      "conformance",
+      "evidence_summary",
+      "apply_plan",
+      "changed_paths",
+      "apply",
+    ],
+  },
+  "specs/ground-manifest.json": {
+    schema: "threadlight.ground/v1",
+    findingIds: ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+    allowedTopLevelKeys: [
+      "schema",
+      "tool_version",
+      "generated_at",
+      "freshness",
+      "status",
+      "findings",
+      "sources",
+      "acl_evidence",
+      "citation_evidence",
+      "refusal_evidence",
+      "telemetry",
+      "retrieval_quality_baseline",
+    ],
+  },
+  "specs/load-manifest.json": {
+    schema: "threadlight.load/v1",
+    findingIds: ["LOAD-001", "LOAD-002", "LOAD-003"],
+    allowedTopLevelKeys: [
+      "schema",
+      "tool_version",
+      "generated_at",
+      "freshness",
+      "status",
+      "findings",
+      "profile_name",
+      "endpoint_class",
+      "endpoint_configured",
+      "allow_production",
+      "adapter_name",
+      "budget",
+      "diagnostics",
+      "spec_update_plan",
+    ],
+  },
+  "specs/upgrade-manifest.json": {
+    schema: "threadlight.upgrade/v1",
+    findingIds: ["UPG-001", "UPG-002", "UPG-003"],
+    allowedTopLevelKeys: [
+      "schema",
+      "tool_version",
+      "generated_at",
+      "freshness",
+      "status",
+      "findings",
+      "plan",
+    ],
+  },
+});
+
 export const LIFECYCLE_PHASES = Object.freeze([
   Object.freeze({ id: "design", label: "Design", view: "design" }),
   Object.freeze({
@@ -62,6 +147,20 @@ export const LIFECYCLE_PHASES = Object.freeze([
 ]);
 
 export const SKILL_REGISTRY = Object.freeze([
+  skill(
+    "threadlight-qualify",
+    "design",
+    "Size the engagement",
+    [artifactGroup("qualification/sizing-manifest.json")],
+    {
+      role: "entry",
+      // No-repo entry point: qualification/sizing precedes the repo, so it is
+      // advisory and never gates the Design phase.
+      affectsPhaseStatus: false,
+      completionMode: "artifact-complete",
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-qualify", phase: "design" },
+    },
+  ),
   skill(
     "threadlight-design",
     "design",
@@ -183,6 +282,46 @@ export const SKILL_REGISTRY = Object.freeze([
     },
   ),
   skill(
+    "threadlight-connect",
+    "discover",
+    "Bind real integrations",
+    [artifactGroup("specs/connect-manifest.json")],
+    {
+      // Advisory live leg: manual invocation only, never gates the phase.
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-connect", phase: "discover" },
+    },
+  ),
+  skill(
+    "threadlight-ground",
+    "discover",
+    "Prove grounding & ACLs",
+    [artifactGroup("specs/ground-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-ground", phase: "discover" },
+    },
+  ),
+  skill(
+    "threadlight-loadtest",
+    "discover",
+    "Load-test the pilot",
+    [artifactGroup("specs/load-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-loadtest", phase: "discover" },
+    },
+  ),
+  skill(
     "threadlight-govern",
     "protect-govern",
     "Verify runtime governance",
@@ -199,6 +338,19 @@ export const SKILL_REGISTRY = Object.freeze([
     [artifactGroup("router-bench-out")],
     {
       prerequisiteSkills: ["threadlight-evals"],
+    },
+  ),
+  skill(
+    "threadlight-upgrade",
+    "improve",
+    "Track upgrade drift",
+    [artifactGroup("specs/upgrade-manifest.json")],
+    {
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-upgrade", phase: "improve" },
     },
   ),
   skill(

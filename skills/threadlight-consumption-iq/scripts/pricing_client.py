@@ -34,10 +34,63 @@ from typing import Any
 CACHE_TTL = timedelta(hours=24)
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "references" / "pricing-fixtures"
 _RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices"
+_METERS_FIXTURE = FIXTURES_DIR / "meters.json"
+
+# Name of the zip-importable resource package that carries copies of the dated
+# offline pricing fixtures. It only exists inside the Cowork ``cost-runtime.zip``
+# (staged by ``scripts/build-cowork-zips.sh``); in the repo tree the filesystem
+# ``FIXTURES_DIR`` is used instead and this import simply fails and is ignored.
+_PACKAGED_FIXTURES = "pricing_fixtures"
 
 
 class PricingUnavailableError(RuntimeError):
     """Azure Retail Prices API unavailable AND no fixture fallback for a required SKU."""
+
+
+def _packaged_fixture_text(name: str) -> str | None:
+    """Return the text of a dated fixture packaged in ``pricing_fixtures``.
+
+    Used when running from inside ``cost-runtime.zip``, where ``Path(__file__)``
+    cannot reach the repo ``references/pricing-fixtures`` tree. Returns ``None``
+    when the package (or member) is absent — e.g. every normal in-repo run.
+    """
+    try:
+        from importlib.resources import files
+    except Exception:
+        return None
+    try:
+        resource = files(_PACKAGED_FIXTURES).joinpath(name)
+    except (ModuleNotFoundError, FileNotFoundError, TypeError, ValueError):
+        return None
+    try:
+        if resource.is_file():
+            return resource.read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return None
+    return None
+
+
+def _dated_from_last_refreshed(text: str) -> str | None:
+    """Derive an ISO ``fetched_at`` from a fixture's ``_last_refreshed`` date.
+
+    Zip members carry no filesystem mtime, so packaged fixtures are dated by the
+    ``_last_refreshed`` field they already declare. Returns ``None`` when absent
+    or unparseable (callers surface ``fetched_at=None`` rather than a guess).
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    raw = data.get("_last_refreshed") if isinstance(data, dict) else None
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.isoformat()
 
 
 # NOTE: OData filter lambdas map (resource_kind, sku) to an API filter string.
@@ -85,9 +138,24 @@ _ODATA_FILTERS: dict[str, Any] = {
 
 
 class PricingClient:
-    def __init__(self, cache_path: Path):
+    def __init__(
+        self,
+        cache_path: Path,
+        meters_fixture: Path | None = None,
+        offline: bool | None = None,
+    ):
         self.cache_path = cache_path
+        self.meters_fixture = Path(meters_fixture) if meters_fixture else _METERS_FIXTURE
+        # Offline mode skips the live Retail Prices API entirely and resolves
+        # straight from dated fixtures. Defaults to True when
+        # THREADLIGHT_PRICING_OFFLINE is set (used by the test-suite to
+        # guarantee no network calls); otherwise online as before.
+        if offline is None:
+            offline = bool(os.environ.get("THREADLIGHT_PRICING_OFFLINE"))
+        self.offline = offline
         self._cache: dict[str, Any] = self._load_cache()
+        self._meters_cache: dict[str, Any] | None = None
+        self._meters_fetched: str | None = None
 
     def get_price(
         self,
@@ -100,7 +168,7 @@ class PricingClient:
         if cached and not self._is_stale(cached):
             return cached
 
-        live = self._fetch_live(resource_kind, sku)
+        live = None if self.offline else self._fetch_live(resource_kind, sku)
         if live is not None:
             self._cache[key] = live
             self._save_cache()
@@ -133,6 +201,107 @@ class PricingClient:
                 file=sys.stderr,
             )
         self.get_price(resource_kind, sku)
+
+    # ---------- consumption meters -----------------------------------------
+
+    def get_meter_price(
+        self,
+        meter_kind: str,
+        selector: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a price envelope for a consumption meter.
+
+        Selector-aware: the first fixture entry whose ``match`` is satisfied by
+        ``selector`` (CU tier, DocIntel model, embeddings model, …) wins. When no
+        entry matches — or the fixture is absent — returns ``unit_price_usd=None``
+        with ``price_source='fallback'`` and an ``error``; callers MUST treat this
+        as ``not-priceable`` and never invent a rate.
+        """
+        selector = selector or {}
+        meters = self._load_meters()
+        entries = meters.get(meter_kind)
+        if not entries:
+            return {
+                "unit_price_usd": None,
+                "unit": None,
+                "quantity_divisor": 1,
+                "price_source": "fallback",
+                "fetched_at": self._meters_fetched_at(),
+                "meter_kind": meter_kind,
+                "error": f"no retail rate available for meter {meter_kind!r}",
+            }
+        for entry in entries:
+            if _match_sku(entry.get("match", {}), selector):
+                unit_price = entry.get("unit_price_usd")
+                return {
+                    "unit_price_usd": unit_price,
+                    "unit": entry.get("unit"),
+                    "quantity_divisor": entry.get("quantity_divisor", 1),
+                    "price_source": "fixture" if unit_price is not None else "fallback",
+                    "fetched_at": self._meters_fetched_at(),
+                    "meter_kind": meter_kind,
+                    "raw": entry,
+                    "error": None if unit_price is not None else f"null rate for meter {meter_kind!r}",
+                }
+        return {
+            "unit_price_usd": None,
+            "unit": None,
+            "quantity_divisor": 1,
+            "price_source": "fallback",
+            "fetched_at": self._meters_fetched_at(),
+            "meter_kind": meter_kind,
+            "error": f"no matching retail rate for meter {meter_kind!r} selector={selector}",
+        }
+
+    def _resolve_fixture(
+        self, fixture_path: Path, name: str
+    ) -> tuple[str, str | None] | None:
+        """Resolve a dated pricing fixture, repo filesystem first then package.
+
+        Returns ``(json_text, fetched_at_iso)`` or ``None`` when neither source
+        has the fixture. Repo files are dated by mtime; packaged (zip) resources
+        — which have no filesystem mtime — are dated by their ``_last_refreshed``
+        field. This lets the identical projection run in-repo and from inside the
+        Cowork ``cost-runtime.zip`` (where ``Path(__file__)`` cannot reach the
+        repo tree).
+        """
+        if fixture_path.exists():
+            try:
+                text = fixture_path.read_text(encoding="utf-8")
+            except OSError:
+                return None
+            mtime = datetime.fromtimestamp(
+                fixture_path.stat().st_mtime, tz=timezone.utc
+            ).isoformat()
+            return text, mtime
+        text = _packaged_fixture_text(name)
+        if text is None:
+            return None
+        return text, _dated_from_last_refreshed(text)
+
+    def _load_meters(self) -> dict[str, Any]:
+        if self._meters_cache is not None:
+            return self._meters_cache
+        resolved = self._resolve_fixture(self.meters_fixture, self.meters_fixture.name)
+        if resolved is None:
+            self._meters_cache = {}
+            self._meters_fetched = None
+            return self._meters_cache
+        text, fetched_at = resolved
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, OSError):
+            self._meters_cache = {}
+            self._meters_fetched = None
+            return self._meters_cache
+        self._meters_cache = data.get("meters") or {}
+        self._meters_fetched = fetched_at
+        return self._meters_cache
+
+    def _meters_fetched_at(self) -> str | None:
+        # Ensure the meters fixture has been resolved (also sets _meters_fetched).
+        self._load_meters()
+        return self._meters_fetched
 
     # ---------- internals ---------------------------------------------------
 
@@ -190,12 +359,14 @@ class PricingClient:
         resource_kind: str,
         sku: dict[str, Any],
     ) -> dict[str, Any] | None:
-        fixture_file = FIXTURES_DIR / f"{_slugify(resource_kind)}.json"
-        if not fixture_file.exists():
+        name = f"{_slugify(resource_kind)}.json"
+        resolved = self._resolve_fixture(FIXTURES_DIR / name, name)
+        if resolved is None:
             return None
 
+        text, fetched_at = resolved
         try:
-            data = json.loads(fixture_file.read_text())
+            data = json.loads(text)
         except Exception:
             return None
 
@@ -203,14 +374,11 @@ class PricingClient:
         for entry in skus:
             match_spec = entry.get("match", {})
             if _match_sku(match_spec, sku):
-                mtime = datetime.fromtimestamp(
-                    fixture_file.stat().st_mtime, tz=timezone.utc
-                ).isoformat()
                 return {
                     "unit_price_usd": entry["unit_price_usd"],
                     "unit": entry["unit"],
                     "price_source": "fixture",
-                    "fetched_at": mtime,
+                    "fetched_at": fetched_at,
                     "azure_meter_id": None,
                     "raw": entry,
                 }

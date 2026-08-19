@@ -441,6 +441,36 @@
           <p class="gap-skill"><code>threadlight-cicd</code> &middot; gates the deploy</p>
           <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
         </article>
+
+        <article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove the real endpoint before you trust it.</h3>
+          <p class="gap-skill"><code>threadlight-connect</code> &middot; manual, evidence-gated mock&rarr;real swap</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove the retrieval is safe, not just plausible.</h3>
+          <p class="gap-skill"><code>threadlight-ground</code> &middot; manual ACL / citation / refusal evidence</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+
+        <article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove it holds up &mdash; under a hard budget cap.</h3>
+          <p class="gap-skill"><code>threadlight-loadtest</code> &middot; manual, budget-capped, production-confirmed load evidence</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
       </div>
 
       <div class="read-deeper">
@@ -560,7 +590,7 @@
         <p class="section-lede">The scorecard drives toward one recommended posture: every model call fronted by your APIM hub, the pilot Foundry project onboarded as a private, keyless spoke. Two layers, one audit chain &mdash; built on the platform you already own.</p>
       </div>
 
-      <figure class="target-arch-fig reveal" data-delay="1" aria-labelledby="ta-cap">
+      <figure class="target-arch-fig reveal" data-delay="1" aria-labelledby="ta-cap" tabindex="0">
         <svg class="ta-svg" viewBox="0 0 1080 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Recommended production topology: a caller reaches an APIM Citadel hub applying JWT, rate limiting, content filtering, semantic cache and an immutable ledger, which forwards under an access contract to a private keyless Foundry spoke running the agent with AGT in-process, wired by private endpoints to managed identity, Key Vault, ACR and the model, with a telemetry tap into App Insights and OpenTelemetry.">
           <defs>
             <linearGradient id="ta-hub" x1="0" y1="0" x2="0" y2="1">
@@ -670,7 +700,7 @@
         <p class="section-lede">One prompt generates the pipeline <em>and</em> the runbooks the platform team runs: federated identity, scoped RBAC, no secret in the repo. Every check becomes a gate &mdash; and every gate is a knob you set.</p>
       </div>
 
-      <figure class="pipe-fig reveal" data-delay="1" aria-labelledby="pipe-cap">
+      <figure class="pipe-fig reveal" data-delay="1" aria-labelledby="pipe-cap" tabindex="0">
         <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The generated pipeline: a commit passes an environment approval, then azd provision and azd deploy over OIDC, then three verification gates run in parallel — evaluation, red-team and MCP supply-chain — and only when all pass does the release reach the production spoke.">
           <defs>
             <style>

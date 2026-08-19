@@ -211,6 +211,54 @@ Reference documents, policies, or data the agent needs for reasoning.
 > their domain policies. See the `foundry-iq` skill for index design,
 > document chunking, and Knowledge Agent reasoning levels.
 
+### `knowledge_sources[]` (INPUT CONTRACT for `threadlight-ground`)
+
+> **INPUT CONTRACT for `threadlight-ground`.** Declare every knowledge
+> source the agent grounds answers on as a `knowledge_sources[]` entry —
+> this is the machine-readable companion to the narrative `[Source Name]`
+> blocks above, and it is what `threadlight-ground` sanitizes and assesses
+> ACL/citation/refusal evidence against (`GRD-001..004`). Only the six
+> fields below are ever persisted into `specs/ground-manifest.json`; add
+> `acl_probe_principals` when you already know which principals should be
+> probed for entitled/unentitled access.
+>
+> **Principals and permissions must be *verified*, never *inferred*.**
+> Declaring `permission_model: acl` here is a design intent, not proof —
+> it does not by itself demonstrate that access control is enforced.
+> `threadlight-ground` requires an actual ACL probe run (captured by the
+> operator, e.g. via a manual live handoff) naming real principals and the
+> documents each one received; a source with no such run is reported
+> `not-verified`, never a guessed `pass`. Likewise, do not name a principal
+> "entitled"/"unentitled" here and assume that settles it — supply
+> `expected_entitled` on the probe run itself so classification never
+> relies on a naive name heuristic.
+
+```yaml
+knowledge_sources:
+  - id:                          # unique within this SPEC, e.g. policy-library
+    type:                        # documents | database | search-index | api
+    permission_model:            # acl | public | none | rbac | custom
+    refresh_cadence:             # hourly | daily | weekly | monthly | custom
+    citation_required:           # bool — every answer grounded on this source must cite it
+    refuse_when_unsupported:     # bool — refuse rather than answer when this source can't support the query
+    acl_probe_principals:        # optional — principals threadlight-ground should probe, e.g. [entitled, unentitled]
+```
+
+Example — a policy library requiring ACL enforcement proof, refreshed
+daily, with mandatory citations and mandatory refusal on unsupported
+queries:
+
+```yaml
+knowledge_sources:
+  - id: policy-library
+    type: documents
+    permission_model: acl
+    refresh_cadence: daily
+    citation_required: true
+    refuse_when_unsupported: true
+    acl_probe_principals: [entitled, unentitled]
+```
+
 ---
 
 ## 7b. AI Services & Model Selection
@@ -619,8 +667,15 @@ conflict and asks which wins.
 
 ### `load_profile{}` (consumed by `threadlight-consumption-iq`)
 
-> The `threadlight-consumption-iq` wizard fills this in on first run.
-> Until then, recommendations and projections are not produced.
+> **Seed from qualification when available.** If a
+> `qualification/sizing-manifest.json` exists (produced by `threadlight-qualify`),
+> seed this block directly from its normalized `load_profile` instead of
+> repeating the interview — copy `workload_class`, `peak_requests_per_second`,
+> `business_hours_only`, `pages_per_month`/`storage_gb_year_one`, and the pinned
+> region across, and record the sizing manifest as the provenance. Only fall
+> back to the `threadlight-consumption-iq` wizard when no sizing manifest exists.
+>
+> Until either is run, recommendations and projections are not produced.
 
 ```yaml
 load_profile:

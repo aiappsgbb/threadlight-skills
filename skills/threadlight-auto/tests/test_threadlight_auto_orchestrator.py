@@ -22,6 +22,106 @@ ORCH = REPO / "skills" / "threadlight-auto" / "references" / "orchestrator.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
+def _load_orchestrator():
+    """Load orchestrator.py as a module (with the sys.modules registration the
+    Python 3.14 dataclass + importlib combination requires)."""
+    import importlib.util as _ilu
+
+    spec = _ilu.spec_from_file_location("threadlight_auto_orchestrator", str(ORCH))
+    mod = _ilu.module_from_spec(spec)
+    sys.modules["threadlight_auto_orchestrator"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+orch = _load_orchestrator()
+
+
+def _leg_envelope(schema: str, status: str) -> str:
+    return json.dumps({
+        "schema": schema,
+        "tool_version": "0.1.0",
+        "generated_at": "2026-08-18T10:00:00Z",
+        "freshness": {"valid_for_hours": 24, "source_oldest_at": None},
+        "status": status,
+        "findings": [],
+    })
+
+
+# ---------------------------------------------------------------------------
+# Manual-handoff projection (Task 7): the four live legs are advisory only.
+# pytest-collected; also exercised from main() below for the standalone runner.
+# ---------------------------------------------------------------------------
+
+def test_new_live_legs_are_manual_handoffs_not_auto_stages(tmp_path):
+    decision = orch.decide(tmp_path)
+    handoffs = decision["manual_handoffs"]
+    # Ordered exactly connect -> ground -> loadtest -> upgrade.
+    assert [h["skill"] for h in handoffs] == [
+        "threadlight-connect",
+        "threadlight-ground",
+        "threadlight-loadtest",
+        "threadlight-upgrade",
+    ]
+    # An empty workspace has no leg manifests -> every handoff is 'ready'.
+    assert all(h["status"] == "ready" for h in handoffs)
+    # Each handoff names its skill for a manual, advisory chat invocation.
+    for h in handoffs:
+        assert h["skill"] in h["next_intent"]
+        assert h["manifest"].startswith("specs/")
+    # The live legs are NEVER auto-stages.
+    assert not {"connect", "ground", "loadtest", "upgrade"}.intersection(decision["stages"])
+    assert not {"connect", "ground", "loadtest", "upgrade"}.intersection(orch.STAGES)
+    # `stages` echoes the automatic stage runner exactly.
+    assert decision["stages"] == list(orch.STAGES)
+
+
+def test_manual_handoff_status_reflects_validated_envelope(tmp_path):
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    (specs / "connect-manifest.json").write_text(
+        _leg_envelope("threadlight-connect-manifest/v1", "complete"), encoding="utf-8")
+    (specs / "ground-manifest.json").write_text(
+        _leg_envelope("threadlight.ground/v1", "partial"), encoding="utf-8")
+    (specs / "load-manifest.json").write_text(
+        _leg_envelope("threadlight.load/v1", "aborted"), encoding="utf-8")
+    # An unrecognized / malformed manifest must degrade to 'partial', never 'complete'.
+    (specs / "upgrade-manifest.json").write_text("{ not valid json", encoding="utf-8")
+
+    decision = orch.decide(tmp_path)
+    by_skill = {h["skill"]: h["status"] for h in decision["manual_handoffs"]}
+    assert by_skill == {
+        "threadlight-connect": "complete",
+        "threadlight-ground": "partial",
+        "threadlight-loadtest": "aborted",
+        "threadlight-upgrade": "partial",
+    }
+
+
+def test_invalid_envelope_never_reports_complete(tmp_path):
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    # A dict with status 'complete' but missing required envelope keys is not a
+    # valid envelope -> partial, not complete.
+    (specs / "connect-manifest.json").write_text(
+        json.dumps({"status": "complete"}), encoding="utf-8")
+    decision = orch.decide(tmp_path)
+    connect = next(h for h in decision["manual_handoffs"] if h["skill"] == "threadlight-connect")
+    assert connect["status"] == "partial"
+
+
+def test_live_legs_never_added_to_stage_runner():
+    assert set(orch.MANUAL_HANDOFFS) == {
+        "threadlight-connect", "threadlight-ground",
+        "threadlight-loadtest", "threadlight-upgrade",
+    }
+    assert "connect" not in orch.STAGES
+    assert "ground" not in orch.STAGES
+    assert "loadtest" not in orch.STAGES
+    assert "upgrade" not in orch.STAGES
+    assert orch.STAGE_PROBES.keys() == set(orch.STAGES)
+
+
 def run(workspace: Path) -> dict:
     out = subprocess.run(
         [sys.executable, str(ORCH), "--workspace", str(workspace), "--dry-run", "--output", "json"],
@@ -32,6 +132,41 @@ def run(workspace: Path) -> dict:
     if not out.stdout.strip():
         raise RuntimeError(f"orchestrator emitted no JSON for {workspace}; stderr={out.stderr!r}")
     return json.loads(out.stdout)
+
+
+def _standalone_manual_handoff_checks() -> int:
+    """Manual-handoff assertions for the standalone runner (no pytest fixtures)."""
+    failures = 0
+    with tempfile.TemporaryDirectory(prefix="threadlight-handoffs-") as tmp:
+        ws = Path(tmp)
+        decision = orch.decide(ws)
+        order = [h["skill"] for h in decision["manual_handoffs"]]
+        expected = [
+            "threadlight-connect", "threadlight-ground",
+            "threadlight-loadtest", "threadlight-upgrade",
+        ]
+        if order != expected:
+            print(f"❌ manual_handoffs order: expected {expected}, got {order}")
+            failures += 1
+        elif {"connect", "ground", "loadtest", "upgrade"}.intersection(decision["stages"]):
+            print("❌ live legs leaked into stages")
+            failures += 1
+        else:
+            print("✅ manual handoffs ordered + excluded from stages")
+
+        specs = ws / "specs"
+        specs.mkdir()
+        (specs / "connect-manifest.json").write_text(
+            _leg_envelope("threadlight-connect-manifest/v1", "complete"), encoding="utf-8")
+        (specs / "load-manifest.json").write_text(
+            _leg_envelope("threadlight.load/v1", "aborted"), encoding="utf-8")
+        by_skill = {h["skill"]: h["status"] for h in orch.decide(ws)["manual_handoffs"]}
+        if by_skill["threadlight-connect"] != "complete" or by_skill["threadlight-loadtest"] != "aborted":
+            print(f"❌ manual handoff status mismatch: {by_skill}")
+            failures += 1
+        else:
+            print("✅ manual handoff status reflects envelope")
+    return failures
 
 
 def main() -> int:
@@ -173,6 +308,9 @@ def main() -> int:
             failures += 1
         else:
             print(f"✅ STAGES order: invoke({stages.index('invoke')}) < {leg}({stages.index(leg)})")
+
+    # --- extra: manual-handoff projection (Task 7) ---
+    failures += _standalone_manual_handoff_checks()
 
     print(f"\n=== {len(cases) + 1 - failures}/{len(cases) + 1} passed ===")
     return failures

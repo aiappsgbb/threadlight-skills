@@ -235,7 +235,7 @@ test('runtime policy file declares the supported selectors, compatible combinati
   const policy = loadPolicy();
 
   assert.strictEqual(policy.schema, 'threadlight.runtime-policy/v1');
-  assert.strictEqual(policy.version, 1);
+  assert.strictEqual(policy.version, 2);
 
   assert.deepStrictEqual(policy.selectors.frameworks, [
     'github-copilot-sdk',
@@ -290,6 +290,44 @@ test('runtime policy file declares the supported selectors, compatible combinati
   assert.ok(
     compatibleCombinationKeys.has(tupleKey(policy.default)),
     'compatible_combinations must include the default selector tuple',
+  );
+});
+
+test('runtime policy declares contract ownership, regional constraints, and route lifecycle', () => {
+  const policy = loadPolicy();
+
+  assert.strictEqual(policy.contract_version, '2.0.0');
+  assert.match(policy.last_reviewed, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepStrictEqual(policy.authority, {
+    repository: 'aiappsgbb/threadlight-skills',
+    path: 'skills/threadlight-design/references/runtime-policy.json',
+    cross_repository_consumers: false,
+  });
+  assert.deepStrictEqual(policy.region_policy, {
+    default: 'eastus2',
+    eu_residency: ['swedencentral'],
+    selection_rule: 'Use an EU region only when the complete required resource set is available there.',
+  });
+
+  for (const route of policy.routes) {
+    assert.match(route.decision_date, /^\d{4}-\d{2}-\d{2}$/, `${route.id} must declare decision_date`);
+    const lifecycleMechanisms = ['permanent', 'review_by', 'expiry_condition']
+      .filter((key) => Object.hasOwn(route, key));
+    assert.strictEqual(
+      lifecycleMechanisms.length,
+      1,
+      `${route.id} must declare exactly one lifecycle mechanism`,
+    );
+    if (lifecycleMechanisms[0] === 'permanent') {
+      assert.strictEqual(route.permanent, true, `${route.id} permanent must be true`);
+    }
+  }
+
+  const defaultAgentRoute = policy.routes.find((route) => route.id === 'default-agent');
+  assert.strictEqual(defaultAgentRoute.decision_date, '2026-08-05');
+  assert.strictEqual(
+    defaultAgentRoute.expiry_condition,
+    'Responses works end to end for the generated hosted runtime and every documented channel.',
   );
 });
 

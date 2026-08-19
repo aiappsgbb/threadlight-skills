@@ -77,6 +77,31 @@ PLACEHOLDER_IMAGE_REGEX = re.compile(
 # succeeded and the image is the right one. Trip the gate.
 JOB_EXECUTION_WINDOW = 5
 
+# G9.7 — Integration binding. A system integration whose deployment snapshot
+# declares availability `real` MUST NOT still resolve to the scaffolded mock
+# MCP endpoint. This regex is the ONLY mock signal the binding check trusts —
+# an explicit `mock` token in an endpoint string (url / host / name). It is
+# deliberately conservative: it matches `mock` only as a delimited token
+# (`mock`, `mocked`, `mockserver`, or `mock` bounded by non-alphanumerics such
+# as `mock.example` / `erp-mock` / `local mock`), NEVER as a substring of an
+# unrelated word like `mockingbird` or `smock`. Missing endpoint metadata is
+# *never* treated as a mock (absence of evidence is not evidence of a mock), so
+# the gate only fires on a certain contradiction (declared real + provably-mock
+# endpoint).
+MOCK_ENDPOINT_MARKER = re.compile(
+    r"(?<![A-Za-z0-9])(?:mockserver|mocked|mock)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+
+# Candidate locations for the effective MCP server config, in priority order.
+# threadlight-connect writes `infra/mcp-config.json`; a Foundry agent bundle may
+# instead carry `src/agent/mcp-config.json`; a bare repo may keep it at the root.
+MCP_CONFIG_CANDIDATES = (
+    "infra/mcp-config.json",
+    "src/agent/mcp-config.json",
+    "mcp-config.json",
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -130,6 +155,128 @@ def _load_manifest(path: Path) -> dict[str, Any]:
               file=sys.stderr)
         raise SystemExit(2)
     return data
+
+
+def _endpoint_is_provably_mock(server: Any) -> bool:
+    """True only when a server's declared endpoint metadata EXPLICITLY carries a
+    mock marker.
+
+    Conservative on purpose: inspects the endpoint-shaped fields
+    (``url`` / ``host`` / ``name`` / ``endpoint``) for an explicit ``mock``
+    token and nothing else. A server with no endpoint metadata, or endpoints
+    that carry no mock marker, is never reported as mock — missing metadata is
+    not evidence of a mock.
+    """
+    if not isinstance(server, dict):
+        return False
+    for key in ("url", "host", "name", "endpoint"):
+        val = server.get(key)
+        if isinstance(val, str) and MOCK_ENDPOINT_MARKER.search(val):
+            return True
+    return False
+
+
+def integration_binding_gaps(integrations: Any, mcp_config: Any) -> list[str]:
+    """Report the certain contradiction: a system integration whose deployment
+    snapshot declares ``availability: real`` while its effective MCP server
+    endpoint is provably still the scaffolded mock.
+
+    Pure and total — never raises, never calls the network. The ONLY gap emitted
+    is when ALL of the following hold for an integration:
+
+      * the snapshot declares ``availability == "real"``; and
+      * a matching MCP server exists (keyed by the integration id, or by an
+        explicit ``server`` / ``mcp_server`` reference on the integration); and
+      * that server's endpoint metadata carries an explicit mock marker.
+
+    A mock integration, a real integration with no matching server, and a real
+    integration whose server has no endpoint metadata all produce NO gap — the
+    check never invents a mock from missing config, and never flags unrelated
+    drift.
+    """
+    gaps: list[str] = []
+    if not isinstance(integrations, list):
+        return gaps
+    servers: dict[str, Any] = {}
+    if isinstance(mcp_config, dict):
+        raw = mcp_config.get("servers")
+        if isinstance(raw, dict):
+            servers = raw
+    for integ in integrations:
+        if not isinstance(integ, dict):
+            continue
+        if str(integ.get("availability", "")).strip().lower() != "real":
+            continue
+        integ_id = integ.get("id")
+        if not isinstance(integ_id, str) or not integ_id:
+            continue
+        server_ref = integ.get("server") or integ.get("mcp_server") or integ_id
+        server = servers.get(server_ref)
+        if server is None and server_ref != integ_id:
+            server = servers.get(integ_id)
+        if not _endpoint_is_provably_mock(server):
+            continue
+        gaps.append(
+            f"integration {integ_id} is declared real but runtime endpoint is still mock"
+        )
+    return gaps
+
+
+def _load_effective_mcp_config(repo: Path) -> dict[str, Any]:
+    """Load the effective MCP server config from the first candidate path that
+    parses. Returns ``{}`` when none is present or valid — a missing config
+    contributes no integration-binding gaps."""
+    for rel in MCP_CONFIG_CANDIDATES:
+        path = repo / rel
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+# Directory entries that identify a repo/project ROOT (not the ``specs`` subdir
+# the manifest lives in). Used to resolve the root a manifest belongs to when it
+# sits at a non-default (nested) path and no explicit CLI root was supplied —
+# instead of blindly assuming the manifest is exactly one directory below the
+# root (``manifest_path.parent.parent``).
+_REPO_ROOT_MARKERS = ("azure.yaml", ".git", "infra")
+
+
+def _looks_like_repo_root(path: Path) -> bool:
+    """True when *path* carries a recognizable repo/project-root marker: an
+    ``azure.yaml`` / ``.git`` / ``infra`` entry, or one of the known
+    effective-MCP-config candidates."""
+    for marker in _REPO_ROOT_MARKERS:
+        if (path / marker).exists():
+            return True
+    return any((path / candidate).exists() for candidate in MCP_CONFIG_CANDIDATES)
+
+
+def _repo_root_for_manifest(manifest_path: Path,
+                            explicit_root: Path | None = None) -> Path:
+    """Resolve the repo root a manifest belongs to.
+
+    Prefers an *explicit* root (the CLI's ``Path.cwd()``) whenever one is
+    supplied. Otherwise walks up from the manifest's own directory to the
+    nearest ancestor that looks like a repo root (see
+    :func:`_looks_like_repo_root`) rather than assuming the manifest sits exactly
+    one level below the root. Falls back to the legacy grandparent
+    (``manifest_path.parent.parent``) only when no marker is found up the tree,
+    so the default ``<root>/specs/manifest.json`` layout is unaffected while a
+    nested ``--manifest a/b/specs/manifest.json`` no longer mis-roots.
+    """
+    if explicit_root is not None:
+        return explicit_root
+    start = manifest_path.parent
+    for candidate in (start, *start.parents):
+        if _looks_like_repo_root(candidate):
+            return candidate
+    return manifest_path.parent.parent
 
 
 def _print_active_context() -> None:
@@ -316,7 +463,7 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def phase_postdeploy(manifest_path: Path, out_path: Path,
-                     rg: str | None) -> int:
+                     rg: str | None, repo_root: Path | None = None) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     selectors = {k for k, v in dm.get("module_selectors", {}).items() if v == "yes"}
@@ -777,6 +924,26 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
             job_results.append({"name": job["name"],
                                 "schedule": match["schedule"], "status": "OK"})
 
+    # ------------------------------------------------------------------
+    # G9.7 — Integration binding (integration_binding)
+    # A system integration whose deployment snapshot declares availability
+    # `real` must not still resolve to the scaffolded mock MCP endpoint. This
+    # is a pure, file-only check (deployment_manifest.integrations[] vs the
+    # effective mcp-config.json) folded into the same failure contract as every
+    # other post-deploy gap. It only fires on a certain contradiction, so a
+    # snapshot with no integrations (or all-mock integrations) adds nothing.
+    # ------------------------------------------------------------------
+    integrations = dm.get("integrations", [])
+    resolved_root = _repo_root_for_manifest(manifest_path, repo_root)
+    effective_mcp_config = _load_effective_mcp_config(resolved_root)
+    binding_gaps = integration_binding_gaps(integrations, effective_mcp_config)
+    gaps.extend(binding_gaps)
+    integration_binding_results = {
+        "integrations_declared": len(integrations) if isinstance(integrations, list) else 0,
+        "mcp_config_present": bool(effective_mcp_config),
+        "gaps": binding_gaps,
+    }
+
     payload = {
         "phase": "post-deploy",
         "deployed_at": _utc_now(),
@@ -788,6 +955,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "appin_health": appin_health_results,
         "bot_auth_health": bot_auth_health_results,
         "cosmos_firewall_health": cosmos_firewall_health_results,
+        "integration_binding": integration_binding_results,
         "channels": channel_results,
         "scheduled_jobs": job_results,
         "gaps": gaps,
@@ -889,7 +1057,7 @@ def main() -> int:
     if args.phase == "post-deploy":
         _print_active_context()
         out = out_dir / "postdeploy-manifest.json"
-        return phase_postdeploy(manifest_path, out, args.rg)
+        return phase_postdeploy(manifest_path, out, args.rg, repo_root=repo)
     if args.phase == "design":
         out = out_dir / "safe-check-design-manifest.json"
         return phase_design(manifest_path, out)

@@ -309,17 +309,43 @@
           via <strong>AI Citadel</strong> (the governance hub) and the <strong>Agent Governance Toolkit</strong>.
         </p>
         <p class="lede" style="margin: 12px auto 0; text-align:left; color: var(--ink-3); font-size: .92rem;">
-          Below: the <strong>three named gates</strong> (design → deploy → production-ready) and the
-          <strong>six skills</strong> wired between them. Four more &mdash;
-          <code>threadlight-auto</code> (entry orchestrator),
-          <code>threadlight-consumption-iq</code> (cost forecast),
-          <code>threadlight-cicd</code> (production deploy pipeline) and
-          <code>threadlight-customize</code> (fork &amp; customer onboarding) &mdash; round out the
-          <strong>13-skill library</strong>; they fire on demand, not on every chain.
+          Below are <strong>three named gates</strong> (<code>design</code>, <code>deploy</code>,
+          <code>production-ready</code>), <strong>six supporting skills</strong>
+          (<code>demo-data-factory</code>, <code>local-test</code>, <code>safe-check</code>,
+          <code>hitl-patterns</code>, <code>workspace-ui</code>, <code>event-triggers</code>), and
+          <strong>twelve entry, evidence, and lifecycle legs</strong>
+          (<code>qualify</code>, <code>consumption-iq</code>, <code>evals</code>,
+          <code>govern</code>, <code>redteam</code>, <code>connect</code>, <code>ground</code>,
+          <code>loadtest</code>, <code>cicd</code>, <code>customize</code>, <code>upgrade</code>,
+          <code>router-bench</code>). That is 3 + 6 + 12 = <strong>21 pipeline skills</strong>;
+          <code>threadlight-auto</code> is the orchestrator, bringing the library to
+          a <strong>22-skill library</strong>. Auto runs only its eligible guided and advisory stages;
+          manual, live, and hand-off legs still run on demand.
         </p>
       </div>
 
       <div class="chain-rail" id="chain-rail">
+
+        <!-- 0 — QUALIFY (no-repo entry · runs before design) -->
+        <article class="skill-card reveal" data-step="00" data-skill="threadlight-qualify">
+          <div class="skill-head">
+            <div class="skill-name"><span class="accent">threadlight</span>-qualify</div>
+            <span class="skill-tag is-blue">Cowork-safe</span>
+            <span class="skill-tag is-grey">No-repo entry</span>
+          </div>
+          <p class="skill-purpose">Size and scope the engagement <strong>before any repo exists</strong> &mdash; a declared interview (no Azure, <code>az</code>/<code>azd</code>, Bicep, Docker or credentials) becomes sizing, discovery and an optional ROI. Runs <strong>before</strong> <code>threadlight-design</code>; it is a scoping entry, <strong>not a deployed runtime skill</strong>.</p>
+          <div class="skill-io" aria-label="Inputs and outputs">
+            <div class="io-block"><span class="io-lbl">Inputs</span><span class="io-val">Declared interview &middot; no cloud access</span></div>
+            <div class="io-arrow">→</div>
+            <div class="io-block"><span class="io-lbl">Outputs</span><span class="io-val"><code>sizing.md</code> · <code>sizing-manifest.json</code> · <code>discovery.md</code> · <code>roi.md</code> (optional) · seeds SPEC &sect;12 <code>load_profile</code></span></div>
+          </div>
+          <div class="skill-invoke" tabindex="0"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-qualify to size a claims-triage agent from a discovery call — no repo yet."</span></div>
+          <div class="skill-footer">
+            <span>Cowork-safe scoping before Design &mdash; no repo, no cloud, no credentials.</span>
+            <a class="link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-qualify">Browse the skill →</a>
+            <a class="link" href="./downloads/threadlight-qualify.zip">Download for Cowork (.zip) ↓</a>
+          </div>
+        </article>
 
         <!-- 1 — DESIGN (seller-facing entry) -->
         <article class="skill-card reveal" data-step="01" data-skill="threadlight-design">

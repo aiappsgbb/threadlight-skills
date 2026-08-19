@@ -50,6 +50,104 @@ PREFLIGHT_MARKER = ".threadlight/preflight-passed.json"
 
 FRESHNESS_SECONDS = 24 * 60 * 60
 
+# -----------------------------------------------------------------------------
+# Manual handoffs — the four executable live legs (Task 7)
+# -----------------------------------------------------------------------------
+#
+# These legs are NEVER dispatched by the stage runner and are NEVER added to
+# STAGES. They are visible, manual/advisory recommendations only: the agent (or
+# operator) invokes the named skill in chat, which writes a shared-envelope
+# manifest under specs/. `decide()` surfaces each one's status so the Canvas /
+# CLI can show "ready to run" vs "complete/partial/aborted" without ever taking
+# a live, cost-bearing action automatically. Ordered connect -> ground ->
+# loadtest -> upgrade.
+MANUAL_HANDOFFS = {
+    "threadlight-connect": "specs/connect-manifest.json",
+    "threadlight-ground": "specs/ground-manifest.json",
+    "threadlight-loadtest": "specs/load-manifest.json",
+    "threadlight-upgrade": "specs/upgrade-manifest.json",
+}
+
+_ENVELOPE_STATUSES = frozenset({"complete", "partial", "aborted"})
+_ENVELOPE_REQUIRED_KEYS = frozenset(
+    {"schema", "tool_version", "generated_at", "freshness", "status", "findings"}
+)
+
+# Reuse the canonical shared-envelope validator when this orchestrator is run
+# from the threadlight-skills repo; fall back to a self-contained shape check so
+# a copy dropped into a pilot workspace (without skills/_shared/) still works.
+try:  # pragma: no cover - import wiring
+    _REPO_ROOT = Path(__file__).resolve().parents[3]
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from skills._shared.manifest import validate_envelope as _validate_envelope  # noqa: E402
+except Exception:  # pragma: no cover - standalone fallback
+    _validate_envelope = None
+
+
+def _is_valid_envelope(data: Any) -> bool:
+    """True when *data* is a valid shared-envelope manifest.
+
+    Prefers the canonical validator; otherwise checks the required keys and a
+    recognized status. An unrecognized / malformed manifest is NOT valid, so it
+    can never be surfaced as `complete`.
+    """
+    if not isinstance(data, dict):
+        return False
+    if _validate_envelope is not None:
+        try:
+            _validate_envelope(data)
+            return True
+        except Exception:
+            return False
+    if not _ENVELOPE_REQUIRED_KEYS.issubset(data):
+        return False
+    return data.get("status") in _ENVELOPE_STATUSES
+
+
+def _manifest_handoff_status(workspace: Path, manifest_rel: str) -> str:
+    """Classify a manual-handoff leg strictly from its manifest envelope:
+
+      ready    -> manifest absent (skill not run yet)
+      complete -> a valid, `complete` envelope
+      partial  -> a valid `partial` envelope, OR any invalid/unrecognized
+                  manifest (never surfaced as complete)
+      aborted  -> a valid `aborted` envelope
+    """
+    path = workspace / manifest_rel
+    if not path.exists():
+        return "ready"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return "partial"
+    if not _is_valid_envelope(data):
+        return "partial"
+    status = data.get("status")
+    if status == "complete":
+        return "complete"
+    if status == "aborted":
+        return "aborted"
+    return "partial"
+
+
+def _manual_handoffs(workspace: Path) -> list[dict[str, Any]]:
+    """Ordered manual-handoff recommendations with per-leg status. Advisory and
+    visible only — never dispatched, never a live action."""
+    return [
+        {
+            "skill": skill,
+            "manifest": manifest_rel,
+            "status": _manifest_handoff_status(workspace, manifest_rel),
+            "next_intent": (
+                f"Ask chat to run the {skill} skill manually; it writes "
+                f"{manifest_rel}. Advisory only — no live or cost-bearing action "
+                f"is dispatched automatically."
+            ),
+        }
+        for skill, manifest_rel in MANUAL_HANDOFFS.items()
+    ]
+
 
 @dataclass
 class StageDecision:
@@ -501,7 +599,7 @@ def _read_state(state_path: Path) -> dict[str, Any]:
         return {}
 
 
-def decide(workspace: Path, state_path: Path | None) -> dict[str, Any]:
+def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     state = _read_state(state_path) if state_path else {}
     decisions: list[StageDecision] = []
     for stage in STAGES:
@@ -514,6 +612,8 @@ def decide(workspace: Path, state_path: Path | None) -> dict[str, Any]:
     return {
         "workspace": str(workspace),
         "state_file": str(state_path) if state_path else None,
+        "stages": list(STAGES),
+        "manual_handoffs": _manual_handoffs(workspace),
         "decisions": [
             {
                 "stage": d.name,

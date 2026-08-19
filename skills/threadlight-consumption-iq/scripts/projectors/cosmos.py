@@ -26,13 +26,14 @@ from __future__ import annotations
 
 from typing import Any
 
-# Hardcoded fallback prices — US East 2 baseline.
-# pricing_client is available for live prices but v1 projectors fall through
-# to these constants when the API is unavailable.
-RU_PRICE_PER_HOUR = 0.00008              # provisioned, per RU/s per hour
-AUTOSCALE_RU_PRICE_PER_HOUR = 0.00012   # autoscale, per max-RU/s per hour
-SERVERLESS_RU_PRICE_PER_MILLION = 0.279 # serverless, per million RU consumed
-STORAGE_PRICE_PER_GB_MONTH = 0.25       # transactional storage, per GB/month
+from ._fallback import section as _section
+
+# Fallback prices sourced from the dated projectors/fallback-rates.json — US East 2 baseline.
+_cosmos_rates = _section("cosmos")
+RU_PRICE_PER_HOUR = _cosmos_rates["ru_price_per_hour"]              # provisioned, per RU/s per hour
+AUTOSCALE_RU_PRICE_PER_HOUR = _cosmos_rates["autoscale_ru_price_per_hour"]   # autoscale, per max-RU/s per hour
+SERVERLESS_RU_PRICE_PER_MILLION = _cosmos_rates["serverless_ru_price_per_million"]  # serverless, per million RU consumed
+STORAGE_PRICE_PER_GB_MONTH = _cosmos_rates["storage_price_per_gb_month"]     # transactional storage, per GB/month
 
 AUTOSCALE_UTILIZATION_FACTOR = 0.6      # Microsoft's conservative default
 HOURS_PER_MONTH = 730                   # always-on billing constant

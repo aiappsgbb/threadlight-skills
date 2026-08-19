@@ -22,14 +22,12 @@ from __future__ import annotations
 
 from typing import Any
 
-# Hardcoded fallback prices — see APIM pricing page.
-TIER_PER_UNIT_HOUR: dict[str, float] = {
-    "BasicV2": 0.07,
-    "StandardV2": 0.21,
-    "Premium": 3.83,
-}
+from ._fallback import section as _section
+
+# Fallback prices sourced from the dated projectors/fallback-rates.json.
+TIER_PER_UNIT_HOUR: dict[str, float] = _section("apim")["tier_per_unit_hour"]
 FREE_GRANT_CALLS = 1_000_000
-CONSUMPTION_PRICE_PER_10K = 0.035  # $3.50 per million = $0.035 per 10k
+CONSUMPTION_PRICE_PER_10K = _section("apim")["consumption_price_per_10k"]  # $3.50/M = $0.035/10k
 HOURS_PER_MONTH = 730
 MAX_MONTHLY_REQUESTS = 2_592_000   # ≈ 30d × 24h × 3600s sanity cap
 

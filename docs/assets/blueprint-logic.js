@@ -15,20 +15,25 @@
 
   // Canonical order every derived sequence is filtered through — guarantees a
   // deterministic, sensibly-ordered, de-duplicated arc regardless of input order.
+  // Mirror of scripts/build_process_library.py CANON — keep the two in lockstep.
   var CANON = [
     'threadlight-design',
     'threadlight-demo-data-factory',
     'threadlight-local-test',
     'threadlight-hitl-patterns',
     'threadlight-event-triggers',
+    'threadlight-connect',
+    'threadlight-ground',
     'threadlight-safe-check',
     'threadlight-redteam',
     'threadlight-govern',
     'threadlight-deploy',
     'threadlight-cicd',
+    'threadlight-loadtest',
     'threadlight-production-ready',
     'threadlight-evals',
     'threadlight-consumption-iq',
+    'threadlight-upgrade',
   ];
 
   var REGULATED = ['financial_services', 'healthcare', 'pharmaceutical', 'insurance', 'government'];
@@ -47,12 +52,20 @@
       'threadlight-design': 1, 'threadlight-local-test': 1, 'threadlight-safe-check': 1,
       'threadlight-deploy': 1, 'threadlight-cicd': 1, 'threadlight-evals': 1,
     };
-    if (arr(p.external_integrations).length) need['threadlight-demo-data-factory'] = 1;
+    if (arr(p.external_integrations).length) {
+      need['threadlight-demo-data-factory'] = 1;
+      need['threadlight-connect'] = 1;
+    }
     if (arr(p.human_approvals).length) need['threadlight-hitl-patterns'] = 1;
+    if (arr(p.knowledge_sources).length) need['threadlight-ground'] = 1;
 
     var tags = arr(p.tags).map(function (t) { return String(t).toLowerCase(); });
     if (tags.some(function (t) { return /event|trigger|schedul|webhook|cron|real[- ]?time|stream/.test(t); }))
       need['threadlight-event-triggers'] = 1;
+    if (tags.some(function (t) { return /high[- ]?volume|throughput|scalab|concurren|latency|load[- ]?test|peak[- ]?load|stress[- ]?test|requests?[- ]?per[- ]?second/.test(t); }))
+      need['threadlight-loadtest'] = 1;
+    if (tags.some(function (t) { return /preview|deprecat|migration|version[- ]?drift|compatib|upgrade|end[- ]?of[- ]?life/.test(t); }))
+      need['threadlight-upgrade'] = 1;
 
     if (p.complexity === 'high') {
       need['threadlight-production-ready'] = 1;

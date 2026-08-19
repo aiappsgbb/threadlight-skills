@@ -1,12 +1,13 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the seventeen-skill pilot pipeline.**
+> **Engineering reference for the twenty-two-skill pilot pipeline.**
 > The narrative / pitch version of this material lives in the
 > [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
 > the chain map: what each skill takes in, what it produces, what it
 > depends on, and what fails silently if you skip it.
 
-Threadlight is a **library of seventeen `threadlight-*` skills** that take a
+Threadlight is a **library of twenty-two `threadlight-*` skills** (21 pipeline
+skills + the `threadlight-auto` orchestrator) that take a
 customer engagement from a one-paragraph brief through to a deployed,
 evaluated, observable, **production-ready** Microsoft Foundry hosted agent
 — runnable on the customer's tenant in a single working session, then
@@ -18,7 +19,14 @@ GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 
 > **Runtime-policy authority.**
 > [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
-> is the canonical selector contract. Authority order:
+> is the canonical selector contract — the **vNext (`contract_version` 2.0.0)**
+> policy that is the **local authority for this repository only**
+> (`authority.cross_repository_consumers: false`). It is a Threadlight-design
+> input artefact: `threadlight-design` reads it when resolving the framework /
+> runtime-shape / protocol tuple. It is **not** consumed by any other repository
+> or external runtime, and nothing here changes a runtime outside this repo.
+> Authority
+> order:
 > `runtime-policy.json` → `specs/foundation.md` (the selector authority) →
 > SPEC capability signals (`workflow_model`, `requires_toolbox`,
 > `requires_custom_python_tools`, `requires_file_generation`,
@@ -28,19 +36,32 @@ GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
 > to end.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
-The seventeen skills (alphabetical, but the canonical flow order is given in
+The twenty-two skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
-threadlight-auto                threadlight-govern
-threadlight-cicd                threadlight-hitl-patterns
-threadlight-consumption-iq      threadlight-local-test
-threadlight-customize           threadlight-production-ready
-threadlight-demo-data-factory   threadlight-redteam
-threadlight-deploy              threadlight-router-bench
-threadlight-design              threadlight-safe-check
-threadlight-evals               threadlight-workspace-ui
+threadlight-auto
+threadlight-cicd
+threadlight-connect
+threadlight-consumption-iq
+threadlight-customize
+threadlight-demo-data-factory
+threadlight-deploy
+threadlight-design
+threadlight-evals
 threadlight-event-triggers
+threadlight-govern
+threadlight-ground
+threadlight-hitl-patterns
+threadlight-loadtest
+threadlight-local-test
+threadlight-production-ready
+threadlight-qualify
+threadlight-redteam
+threadlight-router-bench
+threadlight-safe-check
+threadlight-upgrade
+threadlight-workspace-ui
 ```
 
 ---
@@ -52,18 +73,23 @@ skill sounds most exciting.
 
 | You start with… | Entry skill | Then chain into… |
 |---|---|---|
+| **Nothing but a discovery call / no repo yet** — you need to size the workload and check the cost/ROI before committing | `threadlight-qualify` (Cowork-safe; declared interview only — no Azure/`az`/`azd`/Bicep/Docker/credentials — writes `qualification/sizing.md` + `sizing-manifest.json` + `discovery.md` + optional `roi.md`) | `threadlight-design` (seeds SPEC § 12 `load_profile{}` from the sizing manifest). **Not a deployed runtime skill** |
 | Vague brief, no spec yet | `threadlight-design` | demo-data-factory → local-test → deploy |
 | A spec exists but no mock data / no Cosmos seed | `threadlight-demo-data-factory` | local-test → deploy |
 | Spec + data exist, you need a screen-shareable PoC in <30 min | `threadlight-local-test` | (iterate; deploy when ready) |
 | Spec + data exist, ready to ship to a customer sandbox | `threadlight-deploy` | safe-check (post-deploy) |
+| A pilot works against a **mocked** tool and you're ready to point it at a **real** endpoint | `threadlight-connect` (writes `specs/connect-manifest.json` INT-001..004; gates `mock → real` on conformance + OBO + role revalidation; `--apply` + validated `--real-endpoint` to persist) | production-ready (INT-001..004). **Manual hand-off — `threadlight-auto` does not run it** |
 | You inherited an existing deploy and need to know what's broken | `threadlight-safe-check --phase post-deploy` | deploy (re-run) → safe-check |
 | The agent is deployed and you need to **run** quality evals (offline batch + online/continuous on live threads + an A/B champion–challenger gate before a model/prompt swap) | `threadlight-evals` (writes `specs/evals-manifest.json`; delegates invoke+score to `foundry-evals`, wires Foundry Continuous Evaluation → App Insights) | production-ready (pillar 6 EVAL-001..004 verifies the leg ran) |
 | The agent is deployed and you need an **AI Red Teaming** adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content) before sign-off | `threadlight-redteam` (writes `docs/redteam-report.md` + `specs/redteam-manifest.json`; runs the PyRIT-based AI Red Teaming Agent) | production-ready (pillar 7 SAFE-101..106 verifies the scan ran) |
+| The agent grounds answers on a **knowledge source** and you need to prove retrieval is ACL-safe, cited, and honest about what it doesn't know | `threadlight-ground` (writes `specs/ground-manifest.json` GRD-001..004 from caller-supplied ACL / citation / refusal probe evidence; a coordinator — never calls Foundry IQ, never runs a live probe) | production-ready (GRD-001..004). **Manual hand-off — `threadlight-auto` never runs probes** |
 | You need to **govern the agent runtime** — wire AGT policy + in-process middleware at the container boundary and emit a committed verifier report | `threadlight-govern` (writes `specs/govern-manifest.json`; wraps `foundry-agt`) | production-ready (pillar 2 AGT-001..005 + pillar 7 RAI-002/003 verify the artefact) |
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
+| You need **real latency / throughput / error-rate evidence** under a hard budget cap before go-live | `threadlight-loadtest` (writes `specs/load-manifest.json` LOAD-001..003 from one budget-capped k6/locust run; aborts if the projection exceeds `budget_ceiling_usd` or a production endpoint lacks explicit `allow_production`; never installs engines, never loops) | production-ready (LOAD-001..003). **Manual, live, cost-bearing — `threadlight-auto` does not run it** |
 | Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
 | Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `citadel-hub-deploy`) |
 | A CI run finished (green **or** red) and you want to harvest it into grounded learnings, or compare model-router cost/quality before a swap | `threadlight-router-bench` (`learn <run_id>` → learnings digest: phase parity, failure taxonomy, recommendations; optional `bench <candidate> <baseline>` cost/quality scorecard from Azure Monitor token metrics) | (offline IMPROVE leg; feeds design / prompt / model tuning. Reads finished CI runs, writes nothing to prod) |
+| A shipped pilot has been running a while and you want to know what has **drifted** (dependency pins, preview→GA, deprecations) before it breaks | `threadlight-upgrade` (writes `specs/upgrade-manifest.json` UPG-001..003 + one ordered migration plan by comparing the project to a dated `compatibility-matrix.json`; no network calls) | (plan-only lifecycle scan; **no `--apply`, never edits the project** — acting on the plan is manual) |
 | The pilot is proven and you need to **fork Threadlight and onboard it into one specific customer's environment** (landing zones, RBAC, pipelines, governance) — especially the **production onboarding** | `threadlight-customize` (intake gate → customization map → test-in-customer-env runbook → non-coverage boundary; instructions/runbooks, **not** automation) | (manual handoff; SE-led first. `threadlight-auto` does **not** drive it) |
 | SPEC § 8 declares HITL action gates | `threadlight-hitl-patterns` | (paired with `foundry-teams-bot`) |
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
@@ -82,7 +108,30 @@ Per-skill summary in canonical flow order. Authoritative source for each
 skill is the linked `SKILL.md`; this section is a stable surface map and
 should not duplicate skill internals.
 
-### 1. `threadlight-design` ([SKILL.md](skills/threadlight-design/SKILL.md))
+### 1. `threadlight-qualify` ([SKILL.md](skills/threadlight-qualify/SKILL.md))
+
+**Purpose.** The **no-repo entry** — Cowork-safe qualification & sizing that
+runs *before* `threadlight-design`, before any repository exists. Turns a
+declared interview into a deterministic sizing package so a seller can answer
+"what will this cost, at what volume, and is the ROI there?" without touching
+Azure. **Not a deployed runtime skill** — it never becomes part of the agent.
+
+**Inputs.** A declared profile only (customer brief, workload class, volumes,
+tokens/turn, concurrency, region, residency; optional current-cost inputs for
+ROI). No Azure, `az`, `azd`, Bicep, Docker, or customer credentials.
+
+**Outputs.** `qualification/sizing.md`, `qualification/sizing-manifest.json`,
+`qualification/discovery.md`, and (only when both current-cost inputs are
+supplied) `qualification/roi.md`. `threadlight-design` reads the sizing
+manifest to seed SPEC § 12 `load_profile{}` instead of re-running the interview.
+
+**Depends on.** Nothing — it is the entry. Deterministic (a pinned
+`generated_at` yields byte-identical output); a not-priceable line makes the
+manifest `partial` rather than summing an unknown as zero.
+
+---
+
+### 2. `threadlight-design` ([SKILL.md](skills/threadlight-design/SKILL.md))
 
 **Purpose.** Turn a vague brief into a durable SpecKit specification
 (`specs/SPEC.md`) and derive the agent surface (`AGENTS.md` +
@@ -120,7 +169,7 @@ Microsoft Copilot Cowork. Everything below this line needs a real shell.
 
 ---
 
-### 2. `threadlight-demo-data-factory` ([SKILL.md](skills/threadlight-demo-data-factory/SKILL.md))
+### 3. `threadlight-demo-data-factory` ([SKILL.md](skills/threadlight-demo-data-factory/SKILL.md))
 
 **Purpose.** Generate per-domain Faker-style synthetic data plus
 idempotent Cosmos seed / reset scripts so every demo surface — mock MCP,
@@ -148,7 +197,7 @@ workspace UI, eval dataset — reads the same canonical seed.
 
 ---
 
-### 3. `threadlight-local-test` ([SKILL.md](skills/threadlight-local-test/SKILL.md))
+### 4. `threadlight-local-test` ([SKILL.md](skills/threadlight-local-test/SKILL.md))
 
 **Purpose.** Run the designed PoC entirely on the dev box, no `azd up`,
 so iteration on tools / prompts / workspace UI happens in seconds rather
@@ -177,7 +226,7 @@ and the SE just needs a refresh.
 
 ---
 
-### 4. `threadlight-hitl-patterns` ([SKILL.md](skills/threadlight-hitl-patterns/SKILL.md))
+### 5. `threadlight-hitl-patterns` ([SKILL.md](skills/threadlight-hitl-patterns/SKILL.md))
 
 **Purpose.** Generate Teams Adaptive Card 1.5 flows + bot integration
 for the **seven canonical action gates** declared in SPEC § 8
@@ -204,7 +253,7 @@ only in the workspace UI.
 
 ---
 
-### 5. `threadlight-workspace-ui` ([SKILL.md](skills/threadlight-workspace-ui/SKILL.md))
+### 6. `threadlight-workspace-ui` ([SKILL.md](skills/threadlight-workspace-ui/SKILL.md))
 
 **Purpose.** Generate ONE polished, framework-agnostic workspace UI
 reference (case-list / inbox / dashboard / console / kanban / map shape)
@@ -232,7 +281,7 @@ by Easy Auth.
 
 ---
 
-### 6. `threadlight-event-triggers` ([SKILL.md](skills/threadlight-event-triggers/SKILL.md))
+### 7. `threadlight-event-triggers` ([SKILL.md](skills/threadlight-event-triggers/SKILL.md))
 
 **Purpose.** Scaffold non-interactive trigger receivers — **ACA-first**
 (jobs, app HTTP receivers, KEDA-scaled consumers), with Azure Functions
@@ -259,7 +308,33 @@ agent directly.
 
 ---
 
-### 7. `threadlight-deploy` ([SKILL.md](skills/threadlight-deploy/SKILL.md))
+### 8. `threadlight-connect` ([SKILL.md](skills/threadlight-connect/SKILL.md))
+
+**Purpose.** The **CONNECT leg** — the one place in the pipeline that turns a
+**mocked** Foundry tool into a **real** integration, and never on trust. It
+extracts the contract the tool source actually reads, generates conformance
+tests, and gates `mock → real` on three machine-checked facts at once:
+conformance vs a captured real sample, OBO user-scoped evidence, and
+required-role revalidation vs the **current** agent identity. A **manual
+hand-off** — `threadlight-auto` does not run it.
+
+**Inputs.** The tool source + mock sample, a caller-captured real response,
+OBO evidence, role evidence, and (to persist) a validated `--real-endpoint`.
+It never calls the real endpoint itself.
+
+**Outputs.** `specs/connect-manifest.json` with exactly the four findings
+`INT-001..004`. With `--apply` + a verified swap it transactionally updates
+`specs/SPEC.md` + the MCP config (pointing `servers/<tool>.url` at the real
+endpoint, persisted only there) + the manifest together, rolling back on any
+partial failure.
+
+**Depends on.** A scaffolded pilot (`threadlight-design` /
+`threadlight-demo-data-factory`) and `entra-agent-id` for the actual OBO/OAuth
+exchange. Consumed by `production-ready` (INT-001..004).
+
+---
+
+### 9. `threadlight-deploy` ([SKILL.md](skills/threadlight-deploy/SKILL.md))
 
 **Purpose.** Take a designed project and generate everything needed to
 deploy as a Microsoft Foundry Hosted Agent. **One command —
@@ -297,7 +372,7 @@ if mock systems are present. Outputs are validated by
 
 ---
 
-### 8. `threadlight-safe-check` ([SKILL.md](skills/threadlight-safe-check/SKILL.md))
+### 10. `threadlight-safe-check` ([SKILL.md](skills/threadlight-safe-check/SKILL.md))
 
 **Purpose.** The single mandatory completeness gate. **Catches the
 silent failures that `azd up` reports as success.** Three lifecycle
@@ -336,7 +411,29 @@ and after `azd up` — every time.
 
 ---
 
-### 9. `threadlight-evals` ([SKILL.md](skills/threadlight-evals/SKILL.md))
+### 11. `threadlight-ground` ([SKILL.md](skills/threadlight-ground/SKILL.md))
+
+**Purpose.** The **GROUND leg** — turns "the agent cited something" into "the
+citation is provably grounded, access-controlled, and honest about what it
+doesn't know." A **coordinator**, not a retrieval or evaluation engine: it
+never calls Foundry IQ, never issues a query, never runs an evaluator. A
+**manual, live hand-off** — `threadlight-auto` never runs probes.
+
+**Inputs.** The SPEC-derived `knowledge_sources[]` inventory plus
+caller-captured ACL / citation / refusal probe runs (each carrying its own
+`source_id` and, for ACL, an explicit `expected_entitled`).
+
+**Outputs.** `specs/ground-manifest.json` with `GRD-001..004` (ACL, citation,
+refusal, freshness/coverage). A **proven** ACL leak is `must-fix`;
+missing/ambiguous evidence is `not-verified`, never guessed. Persists only IDs
+and allowlisted detail — never content, prompts, completions, or tokens.
+
+**Depends on.** A deployed agent + `foundry-iq` for the retrieval the evidence
+comes from. Consumed by `production-ready` (GRD-001..004).
+
+---
+
+### 12. `threadlight-evals` ([SKILL.md](skills/threadlight-evals/SKILL.md))
 
 **Purpose.** The **Discover** evals leg — the threadlight-owned step that
 *runs* evaluation rather than only scoring whether evals were declared.
@@ -357,7 +454,7 @@ degrading — missing perms surface as `not-verified`, never a crash.
 
 ---
 
-### 10. `threadlight-redteam` ([SKILL.md](skills/threadlight-redteam/SKILL.md))
+### 13. `threadlight-redteam` ([SKILL.md](skills/threadlight-redteam/SKILL.md))
 
 **Purpose.** The **Discover** safety leg — runs the **AI Red Teaming Agent**
 (PyRIT-based) adversarial scan against the live agent. Replaces the static
@@ -375,7 +472,7 @@ un-scanned agent reads as `not-verified` rather than silently green.
 
 ---
 
-### 11. `threadlight-govern` ([SKILL.md](skills/threadlight-govern/SKILL.md))
+### 14. `threadlight-govern` ([SKILL.md](skills/threadlight-govern/SKILL.md))
 
 **Purpose.** The **Protect** leg — wraps `foundry-agt` to make agent-runtime
 governance *executable*. Scaffolds/validates the governance policy artefact,
@@ -394,7 +491,30 @@ artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7
 
 ---
 
-### 12. `threadlight-production-ready` ([SKILL.md](skills/threadlight-production-ready/SKILL.md))
+### 15. `threadlight-loadtest` ([SKILL.md](skills/threadlight-loadtest/SKILL.md))
+
+**Purpose.** The **LOAD leg** — real latency / throughput / error-rate
+evidence instead of a static claim. A **manual, live, cost-bearing** skill:
+every run is gated *before* any load-generation command by a budget ceiling
+and (for production endpoints) an explicit confirmation, and it never installs
+k6/locust, never loops, and never gates a release by itself.
+
+**Inputs.** A load profile (approved minimal shape or a richer live one), a
+mandatory `budget_ceiling_usd`, an `endpoint_class`, and — for a production
+target — `allow_production=True`.
+
+**Outputs.** `specs/load-manifest.json` (`threadlight.load/v1`) with
+`LOAD-001..003` and p50/p95/p99 latency, error rate, tokens/request. A known
+projection over the ceiling **aborts** (`must-fix`); an unknown projection or
+missing engine/endpoint is `partial` / `not-verified`, never a fabricated pass.
+Never persists secrets, payloads, or raw stdout.
+
+**Depends on.** A deployed, invokable endpoint and k6/locust already on
+`PATH`. Consumed by `production-ready` (LOAD-001..003).
+
+---
+
+### 16. `threadlight-production-ready` ([SKILL.md](skills/threadlight-production-ready/SKILL.md))
 
 **Purpose.** **The bridge between a green safe-check and a real customer
 architecture review.** The advisory production-readiness gate. Takes a
@@ -465,7 +585,7 @@ is for your records.
 
 ---
 
-### 13. `threadlight-cicd` ([SKILL.md](skills/threadlight-cicd/SKILL.md))
+### 17. `threadlight-cicd` ([SKILL.md](skills/threadlight-cicd/SKILL.md))
 
 The production-leg companion for the common real-world case where the
 agent **cannot** run `azd up` directly: prod deploys go through a CI/CD
@@ -535,7 +655,7 @@ pipeline orchestrator — this is a manual handoff step.
 
 ---
 
-### 14. `threadlight-customize` ([SKILL.md](skills/threadlight-customize/SKILL.md))
+### 18. `threadlight-customize` ([SKILL.md](skills/threadlight-customize/SKILL.md))
 
 **Purpose.** The final leg: **fork the Threadlight pipeline and onboard it
 into one specific customer's environment** — landing zones, identity, RBAC,
@@ -577,6 +697,30 @@ profile; produces no code generation.
 
 **Not driven by `threadlight-auto`.** Like `threadlight-cicd`, this is a
 human-led manual handoff — `auto` stops at the pilot.
+
+---
+
+### 19. `threadlight-upgrade` ([SKILL.md](skills/threadlight-upgrade/SKILL.md))
+
+**Purpose.** The **UPGRADE leg** — turns "our compatibility matrix says X is
+drifting" into an ordered, file-by-file migration plan. **Plan-only**: a
+coordinator that never calls a package registry, model catalog, or any network
+endpoint, and has **no `--apply` flag at all** — it never edits the project.
+Acting on the plan is a manual, human-reviewed step.
+
+**Inputs.** A normalized `project` description (dependency pins, runtime
+policy, governance profile, model families) compared against a dated
+`references/compatibility-matrix.json` as of `today`; optional fixture-driven
+`source_results` for official-source corroboration (never a live lookup).
+
+**Outputs.** `specs/upgrade-manifest.json` with `UPG-001..003` (dependency
+staleness, preview/expiry drift, source verification) + one ordered,
+de-duplicated migration `plan`. Version comparison is numeric, never lexical;
+an unavailable source never fabricates a `latest_version`.
+
+**Depends on.** Nothing live — reads (optionally, read-only) a
+`pyproject.toml` / `package.json` / runtime-policy fixture. A natural consumer
+is `production-ready` (UPG-001..003) alongside every other leg.
 
 ---
 

@@ -7,6 +7,8 @@ field.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-08-18
+
 ### Added
 
 - **SPEC § 14 (Value Model) is generated with no numeric defaults.**
@@ -19,6 +21,85 @@ field.
   explicit policy for the reference governed example. This changes only
   the generated design artifacts — the complete Azure monthly cost
   projection and the base `full`-mode deploy path are unaffected.
+
+- **The gap-closure flow: five new skills take the pack to 22 (21 pipeline
+  skills + `threadlight-auto`).** Each turns a *static readiness claim* into
+  *leg-verified evidence* `threadlight-production-ready` consumes, or opens the
+  funnel before a repo exists. None is a live/cost-bearing step `threadlight-auto`
+  runs on your behalf.
+
+  - **`threadlight-qualify` — the no-repo / Cowork entry, *before* Design.** A
+    deterministic, declared-interview-only qualification & sizing skill (no
+    Azure, `az`, `azd`, Bicep, Docker, or customer credentials) that emits
+    `qualification/sizing.md` + `sizing-manifest.json` + `discovery.md` +
+    optional `roi.md`, derives MVP and production profiles through the shared
+    cost engine, and seeds SPEC § 12 `load_profile{}` for `threadlight-design`.
+    It is **not a deployed runtime skill**. Ships as a curated Cowork-safe zip.
+  - **`threadlight-connect` — the CONNECT leg (manual).** Evidence-based swap of
+    a scaffolded **mock** Foundry tool for a **real** endpoint, gated on
+    conformance **and** OBO user-scoping **and** required-role revalidation vs
+    the current identity; config writes need `--apply` + a validated
+    `--real-endpoint`. Emits `specs/connect-manifest.json` (INT-001..004).
+  - **`threadlight-ground` — the GROUND leg (manual).** Assesses caller-supplied
+    ACL / citation / refusal probe evidence into `specs/ground-manifest.json`
+    (GRD-001..004) — a proven ACL leak is `must-fix`, missing/ambiguous evidence
+    is `not-verified`, never guessed. A coordinator: it never calls Foundry IQ
+    and never runs a live probe.
+  - **`threadlight-loadtest` — the LOAD leg (manual, live, cost-bearing).** One
+    budget-capped k6/locust run behind a mandatory `budget_ceiling_usd` and an
+    explicit production confirmation; emits `specs/load-manifest.json`
+    (LOAD-001..003) with p50/p95/p99 latency, error-rate, tokens/request. Aborts
+    before any load command when the projection exceeds the ceiling; never
+    installs engines; never loops.
+  - **`threadlight-upgrade` — the UPGRADE leg (plan-only).** Compares a project's
+    dependency pins, runtime policy, governance profile, and model families to a
+    dated `compatibility-matrix.json` and emits `specs/upgrade-manifest.json`
+    (UPG-001..003) + one ordered migration plan. No network calls, **no
+    `--apply`** — it never edits the project.
+
+- **A shared manifest envelope + gap-evidence wiring into the readiness gate.**
+  `threadlight-production-ready` now projects the connect/ground/load/upgrade leg
+  manifests (INT/GRD/LOAD/UPG findings) alongside the existing evals/redteam/
+  govern legs, and `threadlight-safe-check` recognizes an applied `mock → real`
+  integration binding. Negative (`must-fix`) evidence always dominates; a
+  `partial`/stale/aborted leg envelope can never inflate a pillar to `pass`.
+
+- **Cost engine vNext + `COST-007`.** `threadlight-consumption-iq` exposes a
+  stable `cost_api.project_profile` with an explicit **meter-coverage** surface
+  and PTU break-even, backed by a dated model catalog and offline pricing
+  fixtures (no invented rates — an unpriceable line stays `not-priceable` and the
+  manifest goes `partial`). `threadlight-production-ready` adds **`COST-007`**,
+  which reads that meter-coverage surface (`must-fix` on any `not-priceable`
+  line, `not-verified` on incomplete coverage, `pass` when complete and priced)
+  without changing `COST-005`/`COST-006`. `threadlight-qualify` reuses the same
+  cost runtime.
+
+- **Local runtime-policy authority (vNext).**
+  `skills/threadlight-design/references/runtime-policy.json` is recorded as the
+  canonical selector contract (`contract_version` 2.0.0) and is the **local
+  authority for this repository only** (`authority.cross_repository_consumers:
+  false`). It is a `threadlight-design` input artefact; it is **not** consumed by
+  any other repository or external runtime, and nothing here changes a runtime
+  outside this repo. The default tuple stays `github-copilot-sdk` + `agent` + `invocations`.
+
+- **Orchestrator + Lifecycle Canvas coverage.** `threadlight-auto` names the new
+  manual legs as hand-offs it deliberately does **not** drive (qualify, connect,
+  ground, loadtest, upgrade — plus the existing cicd/customize/router-bench), and
+  the optional GitHub Copilot App **Threadlight Lifecycle Canvas** now maps all
+  **22** skills.
+
+- **Generated process library + GitHub Pages + CI.** The
+  `scripts/build_process_library.py` producer now derives `threadlight-connect`
+  from external integrations, `threadlight-ground` from knowledge sources,
+  `threadlight-loadtest` from high-volume/performance signals, and
+  `threadlight-upgrade` from lifecycle/preview signals, exposes
+  `threadlight-qualify` as no-repo **entry metadata** (never in the deployed
+  `build_skills`), and maps every new manifest artifact —
+  `docs/assets/process-library.json` is regenerated only through that producer.
+  The public site (funnel / production / self-improving / index) and the
+  Cowork download for `threadlight-qualify` are published, and the
+  `python-pytest` workflow gains hard-fail gates for the shared-contract suite
+  and the qualify / connect / ground / loadtest / upgrade test suites.
 
 - **A cheap middle tier for the E2E gate: `mode: design-only`.** The E2E
   workflow was all-or-nothing — either a `smoke-only` run that proves nothing

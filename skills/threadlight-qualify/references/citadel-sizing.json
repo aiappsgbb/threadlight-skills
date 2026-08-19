@@ -1,0 +1,24 @@
+{
+  "schema": "threadlight.citadel-sizing/v1",
+  "checked_at": "2026-06-12",
+  "source": "Manual snapshot: AI Citadel Governance Hub reference architecture (APIM AI Gateway + Foundry control plane) sizing tiers, azure.microsoft.com/pricing/details/api-management/ and Azure-Samples/ai-hub-gateway-solution-accelerator citadel-v1.",
+  "notes": "Hub sizing is a shared, estate-billed platform cost — amortised once across every spoke, NOT per application. It is kept separate from per-application (threadlight-application) sizing.",
+  "tiers": {
+    "pilot": {
+      "label": "Pilot hub (single region, developer posture)",
+      "max_monthly_transactions": 500000,
+      "apim_sku": "StandardV2",
+      "apim_units": 1,
+      "monthly_usd_estimate": 700.0,
+      "components": ["APIM StandardV2 x1", "Foundry control plane", "Log Analytics (shared)"]
+    },
+    "enterprise": {
+      "label": "Enterprise hub (multi-region, VNet-injected)",
+      "max_monthly_transactions": 50000000,
+      "apim_sku": "PremiumV2",
+      "apim_units": 2,
+      "monthly_usd_estimate": 5200.0,
+      "components": ["APIM PremiumV2 x2 (multi-region)", "Foundry control plane", "Private endpoints", "Log Analytics (shared)"]
+    }
+  }
+}
