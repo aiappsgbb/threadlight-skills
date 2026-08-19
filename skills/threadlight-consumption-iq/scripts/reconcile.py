@@ -29,12 +29,25 @@ raises, and none of them suppresses the manifest.
 
 `ReconciliationInputError` is reserved for evidence that is structurally
 broken — a non-mapping document, a resource list that is not a list, money
-that is not a finite number, a negative interaction count, a
-`complete_days` that is not a positive integer, a `generated_at` that is not
-canonical UTC ISO-8601. Those are producer/caller bugs that would otherwise
-silently corrupt a money total, so they fail closed and loudly. Validation
-is narrow and explicit at each field; there is no broad `except Exception`
-anywhere in this module.
+that is not a finite number or is too large to represent at cent precision,
+a negative interaction count, a `complete_days` that is not a positive
+integer, a `generated_at` that is not canonical UTC ISO-8601. Those are
+producer/caller bugs that would otherwise silently corrupt a money total, so
+they fail closed and loudly. Validation is narrow and explicit at each
+field; there is no broad `except Exception` anywhere in this module.
+
+## A threshold-gated verdict is only as good as its SPEC anchor
+
+Every status that measures evidence against a SPEC §14 threshold —
+`maturity`'s `policy_complete` check, `unit_economics.status` and
+`target_status`, `variance_status`, and `drivers.payg_ptu.status` — is
+gated by ONE fact, `_policy_is_complete`: the required leaves are present
+and valid, the parser reported no errors, AND `policy_ref.spec_sha256` is a
+64-character digest a consumer can re-derive from the SPEC bytes. A
+threshold nobody can trace back to a published SPEC revision is not a
+declared threshold, so it may not produce a `pass` or a `should-fix`
+anywhere in the artifact. The observed totals, deltas and cost-per-
+interaction inputs that needed no policy to measure are still reported.
 
 ## Money is `Decimal`, and the two coverage measures are different numbers
 
@@ -132,6 +145,12 @@ _AOAI_DEPLOYMENT_RE = re.compile(
     r"^(?P<account>.*/providers/microsoft\.cognitiveservices/accounts/[^/]+)"
     r"/deployments/(?P<deployment>[^/]+)$",
     re.ASCII,
+)
+# The account form of the same ID. Matching it is what PROVES a resource ID's
+# normalized type is Azure OpenAI; an ID that matches neither pattern is some
+# other provider's resource and must never be described as an AOAI account.
+_AOAI_ACCOUNT_RE = re.compile(
+    r"^.*/providers/microsoft\.cognitiveservices/accounts/[^/]+$", re.ASCII
 )
 _AOAI_ACCOUNT_TYPE = "microsoft.cognitiveservices/accounts"
 
@@ -628,6 +647,43 @@ def _missing_policy_paths(
     return sorted(missing)
 
 
+def _anchor_validity(policy_spec_sha256: Optional[str]) -> Optional[bool]:
+    """Tri-state validity of the caller's SPEC audit anchor.
+
+    `None` means "no anchor was supplied" — a standalone `evaluate_maturity`
+    call has none to check and is not penalised for it. `True`/`False` is the
+    answer to "is this a 64-character SHA-256 hex digest a consumer could
+    re-derive from the SPEC bytes?".
+    """
+    if policy_spec_sha256 is None:
+        return None
+    return isinstance(policy_spec_sha256, str) and bool(
+        _SHA256_HEX_RE.fullmatch(policy_spec_sha256)
+    )
+
+
+def _policy_is_complete(
+    missing_paths: list[str],
+    policy_errors: list[str],
+    anchor_valid: Optional[bool],
+) -> bool:
+    """THE definition of "the declared policy can gate a verdict", used by
+    every consumer of that fact.
+
+    Three ways to be the same fact: a required leaf is absent or invalid, the
+    parser reported an error, or the SPEC revision the thresholds came from
+    cannot be re-derived from the recorded anchor. A threshold nobody can
+    trace back to a published SPEC is not a declared threshold, so it may not
+    produce a `pass` or a `should-fix` anywhere in the artifact.
+
+    This function exists so `evaluate_maturity`'s `policy_complete` check,
+    `unit_economics.status`, `variance_status` and `drivers.payg_ptu.status`
+    cannot drift apart into two definitions — a divergence would let one
+    verdict claim `pass` on exactly the evidence another declared unusable.
+    """
+    return not missing_paths and not policy_errors and anchor_valid is not False
+
+
 # ---------------------------------------------------------------------------
 # Observed-evidence readers
 # ---------------------------------------------------------------------------
@@ -722,8 +778,15 @@ def _cost_evidence_reconciles(observed: _Actuals) -> tuple[bool, str]:
     nor a declared `unattributed_usd` there is no breakdown to reconcile at
     all. Both return `True` here and are already `not-verified` elsewhere.
 
-    Returns `(True, "")` or `(False, <reason>)`; never raises on its own —
-    malformed cells already raised in `_Actuals`.
+    Returns `(True, "")` or `(False, <reason>)` for every reconcilable input,
+    but it is NOT a never-raises helper: the two `_quantize` calls below can
+    raise `ReconciliationInputError` when a money magnitude cannot be
+    represented at cent precision. `_Actuals` parses each cell for shape, not
+    for magnitude, so a well-formed but astronomical figure reaches this
+    function intact and fails here — deliberately, since a total nobody can
+    represent must not silently become a reconciled one. Callers, including
+    `_usable_coverage` and therefore a standalone `evaluate_maturity`, must
+    expect that error.
     """
     if observed.period_total_usd is None:
         return True, ""
@@ -1069,7 +1132,9 @@ def evaluate_maturity(
     supplied" (a standalone call has no anchor to check) and does not fail
     anything; a supplied string that is not a 64-character hex digest fails
     `policy_complete`, because a policy whose provenance cannot be pinned to
-    a SPEC revision is not a policy a consumer can re-verify.
+    a SPEC revision is not a policy a consumer can re-verify. That is the
+    same `_policy_is_complete` fact `reconcile_costs` gates unit economics,
+    the cost variance verdict and the PAYG/PTU driver on.
     """
     _require_mapping(actuals, "actuals")
     _require_mapping(policy, "policy")
@@ -1078,15 +1143,11 @@ def evaluate_maturity(
     snapshot = _policy_snapshot(policy)
     missing = _missing_policy_paths(policy, snapshot)
 
-    anchor_valid: Optional[bool] = None
-    if policy_spec_sha256 is not None:
-        anchor_valid = isinstance(policy_spec_sha256, str) and bool(
-            _SHA256_HEX_RE.fullmatch(policy_spec_sha256)
-        )
+    anchor_valid = _anchor_validity(policy_spec_sha256)
 
     checks: list[dict[str, object]] = []
 
-    policy_complete = not missing and not errors and anchor_valid is not False
+    policy_complete = _policy_is_complete(missing, errors, anchor_valid)
     checks.append(
         _check(
             "policy_complete",
@@ -1304,6 +1365,8 @@ def _payg_ptu_driver(
     observed: _Actuals,
     snapshot: dict[str, object],
     warnings: list[str],
+    *,
+    policy_complete: bool,
 ) -> dict[str, object]:
     """Compare observed AOAI TOKEN VOLUME against the volume the sizing
     recommendation assumed.
@@ -1312,6 +1375,12 @@ def _payg_ptu_driver(
     absorb far more volume drift than cost drift before a PAYG/PTU
     recommendation stops holding, so the tolerance is SPEC's separate
     `max_token_volume_variance_pct`, recorded in `threshold_field` for audit.
+
+    Because the verdict rests on that SPEC-declared tolerance, it is gated by
+    the same `policy_complete` fact as every other threshold-gated status: an
+    incomplete, unparsed or unanchored policy leaves `status` `not-verified`
+    while the observed and forecast token volumes — which no policy was
+    needed to measure — are still reported.
     """
     threshold = snapshot[TOKEN_VARIANCE_THRESHOLD_FIELD]
     driver: dict[str, object] = {
@@ -1396,6 +1465,15 @@ def _payg_ptu_driver(
         variance, _RATIO, context="drivers.payg_ptu.observed_volume_variance_pct"
     )
     driver["observed_volume_variance_pct"] = float(quantized)
+
+    if not policy_complete:
+        driver["detail"] = (
+            "SPEC section 14 is incomplete, did not parse cleanly, or is not "
+            "anchored to a re-derivable SPEC digest, so its declared "
+            f"{TOKEN_VARIANCE_THRESHOLD_FIELD} cannot gate a verdict; the "
+            "measured volumes are reported unchanged"
+        )
+        return driver
 
     if threshold is None:
         driver["detail"] = (
@@ -1488,8 +1566,29 @@ def _forecast_deployment_tokens(
     return total
 
 
-def _row_account(row: dict[str, Any], label: str) -> Optional[str]:
-    """The AOAI account an observed token row belongs to, if it says.
+class _RowIdentity:
+    """What one observed token row says about which resource it came from.
+
+    `account` is the resource the row's costs roll up to (an AOAI account
+    when the ID is an AOAI one, otherwise whatever resource the ID names).
+    `is_aoai` records whether the ID's NORMALIZED TYPE actually proves that —
+    a warning must never call a storage account an "Azure OpenAI account".
+    `deployment` is the deployment leaf the ID itself carries, which is the
+    row's second, independent statement of the deployment name.
+    """
+
+    __slots__ = ("account", "is_aoai", "deployment")
+
+    def __init__(
+        self, account: str, is_aoai: bool, deployment: Optional[str]
+    ) -> None:
+        self.account = account
+        self.is_aoai = is_aoai
+        self.deployment = deployment
+
+
+def _row_identity(row: dict[str, Any], label: str) -> Optional[_RowIdentity]:
+    """The resource an observed token row belongs to, if it says.
 
     `resource_id` (a deployment or an account) is preferred; an
     `account_resource_id` from a collector that could only attribute to the
@@ -1504,8 +1603,24 @@ def _row_account(row: dict[str, Any], label: str) -> Optional[str]:
         if normalized is None:
             continue
         aoai = _AOAI_DEPLOYMENT_RE.match(normalized)
-        return aoai.group("account") if aoai is not None else normalized
+        if aoai is not None:
+            return _RowIdentity(
+                aoai.group("account"), True, aoai.group("deployment")
+            )
+        return _RowIdentity(
+            normalized, _AOAI_ACCOUNT_RE.match(normalized) is not None, None
+        )
     return None
+
+
+def _account_phrase(identity: _RowIdentity) -> str:
+    """How a warning may describe this row's account. Only an ID whose
+    normalized type is `microsoft.cognitiveservices/accounts` earns the
+    Azure OpenAI wording; anything else is named neutrally so the artifact
+    never asserts a resource kind the evidence does not show."""
+    return (
+        "Azure OpenAI account" if identity.is_aoai else "resource account"
+    )
 
 
 def _observed_deployment_tokens(
@@ -1537,28 +1652,36 @@ def _observed_deployment_tokens(
     for index, row in enumerate(observed.models):
         label = f"actuals.usage.models[{index}]"
         name = _normalize_type(row.get("deployment"), f"{label}.deployment")
-        account = _row_account(row, label)
-        if not name and account is not None:
+        identity = _row_identity(row, label)
+        leaf = identity.deployment if identity is not None else None
+        if name and leaf is not None and name != leaf:
+            # The row states its deployment twice and the two statements
+            # disagree, so it identifies no deployment at all. Counting it
+            # under either name would attribute one deployment's traffic to
+            # another on evidence the row itself contradicts.
+            if name in every_name or leaf in every_name:
+                _warn(
+                    warnings,
+                    "drivers.payg_ptu: an observed token row contradicts "
+                    f"itself — it declares deployment {name!r} but its "
+                    f"resource identifier names deployment {leaf!r}; it is "
+                    "excluded from observed volume",
+                )
+            continue
+        if not name and leaf is not None:
             # A row identified only by a deployment resource ID still names a
             # deployment; read the leaf rather than discarding the row.
-            normalized = _normalize_id(row.get("resource_id"), f"{label}.resource_id")
-            aoai = (
-                _AOAI_DEPLOYMENT_RE.match(normalized)
-                if normalized is not None
-                else None
-            )
-            if aoai is not None:
-                name = aoai.group("deployment")
+            name = leaf
         if not name or name not in every_name:
             continue
-        if account is not None:
-            if name not in names_by_account.get(account, set()):
+        if identity is not None:
+            if name not in names_by_account.get(identity.account, set()):
                 _warn(
                     warnings,
                     "drivers.payg_ptu: an observed token row for deployment "
-                    f"{name!r} belongs to Azure OpenAI account {account!r}, "
-                    "which carries no PAYG/PTU recommendation; it is excluded "
-                    "from observed volume",
+                    f"{name!r} belongs to {_account_phrase(identity)} "
+                    f"{identity.account!r}, which carries no PAYG/PTU "
+                    "recommendation; it is excluded from observed volume",
                 )
                 continue
         elif not single_account:
@@ -1632,13 +1755,20 @@ def reconcile_costs(
             warnings,
             f"policy_ref: spec_sha256 {policy_spec_sha256!r} is not a "
             "64-character SHA-256 hex digest, so the SPEC revision this "
-            "policy was read from cannot be re-derived; maturity is not "
-            "verified",
+            "policy was read from cannot be re-derived; maturity, unit "
+            "economics, the cost variance verdict and the PAYG/PTU driver "
+            "are not verified",
         )
     observed = _Actuals(actuals)
     snapshot = _policy_snapshot(policy, warnings)
     missing_paths = _missing_policy_paths(policy, snapshot)
-    policy_complete = not missing_paths and not errors
+    # ONE definition, shared with `evaluate_maturity`: an unusable anchor is
+    # an incomplete policy, so every threshold-gated verdict below degrades
+    # together instead of one of them claiming a `pass` the maturity block
+    # already declared unprovable.
+    policy_complete = _policy_is_complete(
+        missing_paths, errors, _anchor_validity(policy_spec_sha256)
+    )
 
     days = observed.complete_days
 
@@ -1745,10 +1875,14 @@ def reconcile_costs(
 
     # --- variance verdict (RFC §9.5) --------------------------------------
     variance_status = _variance_status(
-        variance_pct_dec, snapshot, policy_errors=errors, warnings=warnings
+        variance_pct_dec, snapshot, policy_complete=policy_complete, warnings=warnings
     )
 
-    drivers = {"payg_ptu": _payg_ptu_driver(forecast, observed, snapshot, warnings)}
+    drivers = {
+        "payg_ptu": _payg_ptu_driver(
+            forecast, observed, snapshot, warnings, policy_complete=policy_complete
+        )
+    }
 
     return {
         "schema": SCHEMA,
@@ -1966,14 +2100,18 @@ def _variance_status(
     variance_pct: Optional[Decimal],
     snapshot: dict[str, object],
     *,
-    policy_errors: list[str],
+    policy_complete: bool,
     warnings: list[str],
 ) -> str:
     """Verdict the cost variance, or explain why it cannot be verdicted.
 
     This is deliberately NARROWER than the overall maturity verdict: a
-    missing interaction count degrades unit economics, not the cost
-    comparison, so `variance_status` does not inherit `maturity.status`.
+    missing interaction count or thin attribution coverage degrades unit
+    economics and coverage, not the cost comparison, so `variance_status`
+    does not inherit `maturity.status`. What it does inherit is
+    `policy_complete` — the tolerance it measures against is a SPEC-declared
+    number, so a policy that is incomplete, did not parse, or cannot be
+    traced to a re-derivable SPEC revision leaves nothing to verdict against.
     Consumers that need the full evidence gate read the top-level `status`
     as well — see the schema reference.
     """
@@ -1982,11 +2120,12 @@ def _variance_status(
     if not comparable:
         _warn(warnings, f"variance_status is not-verified: {reason}")
         return NOT_VERIFIED
-    if policy_errors:
+    if not policy_complete:
         _warn(
             warnings,
-            "variance_status is not-verified: SPEC section 14 did not parse "
-            "cleanly, so its declared tolerance cannot gate a verdict",
+            "variance_status is not-verified: SPEC section 14 is incomplete, "
+            "did not parse cleanly, or is not anchored to a re-derivable SPEC "
+            "digest, so its declared tolerance cannot gate a verdict",
         )
         return NOT_VERIFIED
     if variance_pct is None or threshold is None:

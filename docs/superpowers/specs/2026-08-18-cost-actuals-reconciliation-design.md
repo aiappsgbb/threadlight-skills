@@ -577,8 +577,11 @@ variance_pct =
     variance_window_usd / forecast_window_usd
 ```
 
-If `forecast_window_usd` is zero, `variance_pct` is null and the manifest
-records an explicit reason. It is never infinity, zero, or omitted silently.
+If `forecast_window_usd` is zero — or negative, or otherwise unusable as a
+baseline — `variance_pct` is null and the manifest records an explicit
+reason. It is never infinity, zero, or omitted silently. A negative baseline
+is excluded on purpose: dividing by it would flip the sign of the ratio, so
+an overspend would read as an underspend.
 
 ### 9.3 Unit economics
 

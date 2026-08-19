@@ -716,8 +716,8 @@ value_model:
       success_values: []                 # >= 1 restricted identifier
     baseline:
       target_cost_per_successful_interaction_usd:  # float > 0
-      max_forecast_variance_pct:         # float >= 0; cost variance only
-      max_token_volume_variance_pct:     # float >= 0; token volume only
+      max_forecast_variance_pct:         # float in [0, 1]; cost variance only
+      max_token_volume_variance_pct:     # float in [0, 1]; token volume only
     accounting:
       actual_cost_basis: usage-pretax    # v1 literal; metric/source, not a price basis
       actual_billing_price_basis:        # retail | ea | mca | unknown
@@ -1855,7 +1855,7 @@ def test_missing_expected_column_is_rejected() -> None:
 Implement in `cost_actuals.py`:
 
 ```python
-IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
+_KQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
 
 
 def build_success_kql(
@@ -1945,6 +1945,10 @@ AOAI_ACCOUNT = (
 )
 AOAI_DEPLOYMENT = AOAI_ACCOUNT + "/deployments/chat"
 GENERATED = "2026-08-10T00:00:00Z"
+# A real 64-character SHA-256 hex digest. A placeholder here would fail the
+# `policy_complete` anchor check and make every threshold-gated verdict
+# `not-verified`, so the fixture could never exercise a `pass`.
+SPEC_SHA256 = "a" * 64
 
 
 def forecast(total=300.0):
@@ -2034,7 +2038,7 @@ def run(f=None, a=None, p=None, errors=None):
         p or policy(),
         policy_errors=errors or [],
         generated_at=GENERATED,
-        policy_spec_sha256="spec-hash",
+        policy_spec_sha256=SPEC_SHA256,
     )
 
 
@@ -2325,7 +2329,7 @@ def test_forecast_and_actual_hashes_are_recorded() -> None:
     result = run(f=f, a=a)
     assert result["forecast_ref"]["sha256"] == sha256_json(f)
     assert result["actuals_ref"]["sha256"] == sha256_json(a)
-    assert result["policy_ref"]["spec_sha256"] == "spec-hash"
+    assert result["policy_ref"]["spec_sha256"] == SPEC_SHA256
     assert result["policy_snapshot"]["max_forecast_variance_pct"] == 0.20
     assert result["policy_snapshot"]["max_token_volume_variance_pct"] == 0.25
     assert result["policy_snapshot"]["min_projection_attribution_coverage_pct"] == 0.95

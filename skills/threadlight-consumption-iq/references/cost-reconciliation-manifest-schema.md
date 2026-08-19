@@ -81,8 +81,10 @@ unchanged so the artifact stays byte-reproducible for a fixed set of inputs.
 * **`variance_status`** is deliberately **narrower**. It answers only *"is
   the observed cost within SPEC's declared tolerance of the forecast?"* and
   depends on four things: price bases are comparable, `variance_pct` was
-  computable, `max_forecast_variance_pct` was declared, and the policy
-  parsed cleanly.
+  computable, `max_forecast_variance_pct` was declared, and the policy is
+  **complete and anchored** (the shared `policy_complete` fact below — the
+  §14 leaves are present and valid, nothing failed to parse, and
+  `policy_ref.spec_sha256` is a re-derivable digest).
 
 They are separate because a missing **interaction count** invalidates unit
 economics without invalidating the cost comparison — the Cost Management
@@ -123,8 +125,33 @@ already-collected actuals with no new Azure calls.
 `policy_ref.spec_sha256` exists so a consumer can re-hash `specs/SPEC.md` and
 prove which revision of section 14 gated this verdict. A placeholder, a
 truncated hash, or any string that is not 64 hex characters (either case)
-cannot serve that purpose, so it fails the `policy_complete` maturity check
-and adds a `warnings` entry.
+cannot serve that purpose.
+
+An unusable anchor makes **every threshold-gated verdict in the artifact
+non-authoritative**, not just the maturity check. A threshold nobody can
+trace back to a published SPEC revision is not a declared threshold, so it
+may not produce a `pass` or a `should-fix` anywhere. Concretely, all of
+these degrade together:
+
+| Field | With an unusable anchor |
+| --- | --- |
+| `maturity.checks[policy_complete].status` | `fail` |
+| `maturity.status` / top-level `status` | `not-verified` |
+| `unit_economics.status` | `not-verified` |
+| `unit_economics.target_status` | `not-verified` |
+| `variance_status` | `not-verified` |
+| `drivers.payg_ptu.status` | `not-verified` |
+
+This is one fact with one definition, evaluated once and shared by all of
+them: *the required §14 leaves are present and valid, the parser reported no
+errors, and the anchor is re-derivable*. There is no second, looser
+definition anywhere, so one verdict can never claim `pass` on exactly the
+evidence another declared unprovable.
+
+What survives is every number that needed **no policy** to measure:
+`totals.*`, `variance_pct`, `unit_economics.successful_interactions` and
+`target_usd`, and `drivers.payg_ptu`'s forecast/observed token volumes and
+`observed_volume_variance_pct`. Those are observations, not verdicts.
 
 It does **not** raise, and it is **not** rewritten: the string the caller
 supplied is echoed verbatim so the artifact shows exactly what it was handed,
@@ -230,7 +257,8 @@ has no parameter through which a token cost could be passed, and when
 `status` is `pass` only when **all** of:
 
 1. `actuals.status == "pass"`,
-2. the policy is complete **and** `policy_errors` is empty,
+2. the policy is complete, parsed cleanly **and** is anchored to a
+   re-derivable SPEC digest (the shared `policy_complete` fact),
 3. `actuals.usage.interaction_status == "pass"`,
 4. `successful_interactions > 0` (a divide-by-zero guard, not a threshold),
 5. `actual_window_usd` is available.
@@ -435,7 +463,19 @@ raising — this function returns a verdict, it never refuses to.
 
 `policy_spec_sha256` is likewise optional: `policy_spec_sha256_valid` is
 `null` for a standalone call with no anchor to check, `false` only when a
-supplied anchor is not a 64-character hex digest.
+supplied anchor is not a 64-character hex digest. A standalone call with no
+anchor is therefore the **only** case in which an unanchored policy still
+produces a verdict — and it is honest, because nothing was claimed: no
+`policy_ref` block is emitted, so no consumer is told the thresholds came
+from a provable SPEC revision. `reconcile_costs` always supplies an anchor
+and always emits that block, so it has no such case. Passing a placeholder
+here is not the same as passing nothing: a supplied-but-unusable anchor
+fails `policy_complete` exactly as it does in a full reconciliation.
+
+Standalone calls are not raise-free. `evaluate_maturity` reaches the cost
+accounting-identity check, which quantizes the breakdown total, so money
+whose magnitude cannot be represented at cent precision raises
+`ReconciliationInputError` from here too (see **Errors** below).
 
 ### Price basis comparability
 
@@ -492,6 +532,42 @@ account it really belongs to; neither is a token volume a PTU sizing
 decision may rest on. With exactly one account implicated, a bare deployment
 name is unambiguous and is counted as before.
 
+A warning names the row's account as an **"Azure OpenAI account"** only when
+the normalized resource ID proves it — its type segment is
+`microsoft.cognitiveservices/accounts`. Any other resource (a storage
+account mis-tagged into a model row, for example) is called a **"resource
+account"**, so the artifact never asserts a resource kind the evidence does
+not show and never sends a reader looking for an AOAI resource that does not
+exist.
+
+### A row that contradicts itself is never counted
+
+A row may state its deployment **twice**: once as the bare `deployment` leaf
+name, and again as the deployment leaf inside its `resource_id`. When both
+are present they are cross-checked. If they disagree, the row identifies no
+deployment at all: it is excluded from observed volume and a warning names
+both claims. Counting it under either name would attribute one deployment's
+traffic to another on evidence the row itself contradicts — and the
+dangerous case is arithmetic, not cosmetic, since a high-volume
+contradictory row summed under a recommended name inflates
+`observed_monthly_tokens` and can flip a `should-fix` into a `pass`.
+
+The cross-check excludes disagreement only. A row that states the same
+deployment twice is exactly as usable as one that states it once, and an
+`account_resource_id` (or an account-scoped `resource_id`) carries no
+deployment leaf, so there is nothing to contradict and the row's
+`deployment` field stands.
+
+### The verdict is gated by the SPEC anchor too
+
+`status` is `not-verified` whenever the shared `policy_complete` fact is
+false — an incomplete or unparsed §14, or an anchor that is not a
+re-derivable digest — because `max_token_volume_variance_pct` is a
+SPEC-declared threshold like any other. The measured
+`forecast_monthly_tokens`, `observed_monthly_tokens` and
+`observed_volume_variance_pct` are still reported: no policy was needed to
+observe them.
+
 **This block never contains a dollar figure and never reads a cost
 threshold.** A PTU sizing recommendation is a function of *token throughput*,
 not of spend, and a workload can absorb far more volume drift than cost
@@ -511,9 +587,10 @@ ambiguous matching, a forecast resource with no `monthly_cost_usd`, an
 invalid policy value that was ignored, an undefined `variance_pct`, a price
 basis mismatch, actual cost rows that do not reconcile to
 `period_total_usd`, a SPEC anchor that is not a digest, a token row that
-cannot be attributed to one Azure OpenAI account. Warnings never change a
-status on their own; they explain one that was already degraded. Entries are
-de-duplicated and ordered by first occurrence.
+cannot be attributed to one recommended account, a token row whose
+`deployment` field contradicts its own resource identifier. Warnings never
+change a status on their own; they explain one that was already degraded.
+Entries are de-duplicated and ordered by first occurrence.
 
 ## Precision and rounding
 
@@ -541,11 +618,19 @@ zero is normalized to `0.00`.
 `ReconciliationInputError` is raised **only** for structurally broken
 evidence: a non-mapping document, a resource list that is not a list, a
 non-mapping list entry, money that is not a finite number (including
-`NaN`/`Infinity`/`bool`), a negative or non-integer interaction count, a
+`NaN`/`Infinity`/`bool`), money whose magnitude cannot be represented at the
+required precision, a negative or non-integer interaction count, a
 `complete_days` that is present but not a positive integer, an
 out-of-range source coverage, a malformed `generated_at`, or a
 `policy_errors` that is not a list of strings. These are producer or caller
 bugs that would otherwise silently corrupt a money total.
+
+The magnitude case is worth calling out because it is raised **late**: field
+parsing checks a cell's *shape*, so a well-formed but astronomical figure
+survives it and fails at the quantize step instead. The cost
+accounting-identity check is one of those steps, which is why a standalone
+`evaluate_maturity` call — not just `reconcile_costs` — can raise. A total
+nobody can represent must not silently become a reconciled one.
 
 Everything else **degrades to `not-verified` and is still emitted**: an
 incomplete or invalid policy, an absent interaction count, an absent token

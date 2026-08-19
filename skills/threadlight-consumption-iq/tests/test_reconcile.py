@@ -1584,13 +1584,312 @@ def test_a_real_digest_is_accepted_in_either_case(good: str) -> None:
 
 def test_standalone_maturity_has_no_anchor_to_check() -> None:
     """`evaluate_maturity` is documented as a function of actuals + policy;
-    an anchor it was never given is `null`, not a failure."""
+    an anchor it was never given is `null`, not a failure.
+
+    This is the ONLY case in which an unanchored policy still verdicts: a
+    standalone caller is asking "is this evidence mature?", not publishing an
+    artifact whose provenance a third party must be able to re-derive.
+    `reconcile_costs` always supplies an anchor, so it can never reach here.
+    """
     verdict = evaluate_maturity(
         actuals(), policy(), projection_attribution_coverage_pct=1.0
     )
     entry = next(e for e in verdict["checks"] if e["id"] == "policy_complete")
     assert entry["actual"]["policy_spec_sha256_valid"] is None
     assert verdict["status"] == "pass"
+
+
+def test_standalone_maturity_rejects_a_supplied_placeholder_anchor() -> None:
+    """Supplying an anchor is opting in to having it checked: `None` means
+    "not supplied", it is not a way to spell "do not check"."""
+    verdict = evaluate_maturity(
+        actuals(),
+        policy(),
+        projection_attribution_coverage_pct=1.0,
+        policy_spec_sha256=BAD_ANCHOR,
+    )
+    entry = next(e for e in verdict["checks"] if e["id"] == "policy_complete")
+    assert entry["actual"]["policy_spec_sha256_valid"] is False
+    assert entry["status"] == "not-verified"
+    assert verdict["status"] == "not-verified"
+
+
+# ---------------------------------------------------------------------------
+# An unusable anchor makes every DERIVED verdict non-authoritative
+#
+# `policy_ref.spec_sha256` is what lets a consumer re-derive which SPEC
+# revision declared the thresholds a verdict was rendered against. When it is
+# not a re-derivable digest, every verdict those thresholds gated is
+# unprovable — not just the `policy_complete` check. Observed numbers are
+# still reported: they are evidence, and the anchor says nothing about them.
+# ---------------------------------------------------------------------------
+
+
+BAD_ANCHOR = "spec-hash"
+
+
+def run_anchored(anchor, f=None, a=None, p=None, errors=None):
+    return reconcile_costs(
+        f or forecast(),
+        a or actuals(),
+        policy() if p is None else p,
+        policy_errors=errors or [],
+        generated_at=GENERATED,
+        policy_spec_sha256=anchor,
+    )
+
+
+def test_invalid_anchor_makes_unit_economics_non_authoritative() -> None:
+    result = run_anchored(BAD_ANCHOR)
+    assert result["unit_economics"]["status"] == "not-verified"
+    assert result["unit_economics"]["target_status"] == "not-verified"
+    # The observed count and the declared target are still reported: an
+    # unprovable provenance does not un-observe an interaction.
+    assert result["unit_economics"]["successful_interactions"] == 100
+    assert result["unit_economics"]["target_usd"] == 1.0
+
+
+def test_invalid_anchor_makes_the_cost_variance_verdict_non_authoritative() -> None:
+    result = run_anchored(BAD_ANCHOR)
+    assert result["variance_status"] == "not-verified"
+    # Every number the verdict would have been read off is still emitted.
+    assert result["totals"]["forecast_window_usd"] == 70.0
+    assert result["totals"]["actual_window_usd"] == 70.0
+    assert result["totals"]["variance_window_usd"] == 0.0
+    assert result["totals"]["variance_pct"] == 0.0
+
+
+def test_invalid_anchor_makes_the_payg_ptu_driver_non_authoritative() -> None:
+    """The driver's verdict rests on SPEC's declared
+    `max_token_volume_variance_pct`, so it degrades with the policy that
+    declared it — while the token volumes it measured stand."""
+    result = run_anchored(BAD_ANCHOR, f=aoai_forecast(), a=aoai_actuals())
+    driver = result["drivers"]["payg_ptu"]
+    assert driver["status"] == "not-verified"
+    assert driver["forecast_monthly_tokens"] == 90000
+    assert driver["observed_monthly_tokens"] == 90000.0
+    assert driver["observed_volume_variance_pct"] == 0.0
+    assert driver["threshold_pct"] == 0.25
+    assert "anchored" in driver["detail"]
+
+
+def test_invalid_anchor_never_yields_a_should_fix_anywhere() -> None:
+    """`should-fix` asserts a declared threshold was breached. Without a
+    re-derivable anchor there is no provable declaration to breach."""
+    f = aoai_forecast()
+    f["totals"]["monthly_cost_current_usd"] = 100.0
+    a = aoai_actuals(input_tokens=30000, output_tokens=3000)
+    a["cost"]["period_total_usd"] = 500.0
+    a["cost"]["resources"][0]["period_cost_usd"] = 500.0
+    result = run_anchored(BAD_ANCHOR, f=f, a=a)
+    assert result["variance_status"] == "not-verified"
+    assert result["unit_economics"]["target_status"] == "not-verified"
+    assert result["drivers"]["payg_ptu"]["status"] == "not-verified"
+    # ... and the same evidence under a real anchor does report the breaches.
+    verified = run_anchored(SPEC_SHA256, f=f, a=a)
+    assert verified["variance_status"] == "should-fix"
+    assert verified["unit_economics"]["target_status"] == "should-fix"
+    assert verified["drivers"]["payg_ptu"]["status"] == "should-fix"
+
+
+def test_a_valid_anchor_leaves_every_derived_verdict_authoritative() -> None:
+    """The gate is the anchor's validity and nothing else: identical evidence
+    with a real digest verdicts exactly as before."""
+    assert run()["status"] == "pass"
+    result = run(f=aoai_forecast(), a=aoai_actuals())
+    assert result["variance_status"] == "pass"
+    assert result["unit_economics"]["status"] == "pass"
+    assert result["unit_economics"]["target_status"] == "pass"
+    assert result["drivers"]["payg_ptu"]["status"] == "pass"
+
+
+def test_one_policy_complete_definition_gates_every_derived_verdict() -> None:
+    """Missing leaves, parse errors and an unusable anchor are three ways to
+    be the same fact — "the declared policy cannot gate a verdict" — and all
+    three degrade the same four statuses. A verdict that stayed `pass` under
+    one but not the others would mean two definitions were in play."""
+    incomplete = policy()
+    del incomplete["cost"]["maturity_policy"]["min_complete_days"]
+    cases = {
+        "unusable anchor": run_anchored(
+            BAD_ANCHOR, f=aoai_forecast(), a=aoai_actuals()
+        ),
+        "parse errors": run_anchored(
+            SPEC_SHA256,
+            f=aoai_forecast(),
+            a=aoai_actuals(),
+            errors=["cost.baseline: bad"],
+        ),
+        "missing leaf": run_anchored(
+            SPEC_SHA256, f=aoai_forecast(), a=aoai_actuals(), p=incomplete
+        ),
+    }
+    for label, result in cases.items():
+        assert result["status"] == "not-verified", label
+        assert check(result, "policy_complete")["status"] == "not-verified", label
+        assert result["unit_economics"]["status"] == "not-verified", label
+        assert result["unit_economics"]["target_status"] == "not-verified", label
+        assert result["variance_status"] == "not-verified", label
+        assert result["drivers"]["payg_ptu"]["status"] == "not-verified", label
+
+
+def test_invalid_anchor_still_emits_the_full_manifest() -> None:
+    result = run_anchored(BAD_ANCHOR)
+    assert result["policy_ref"]["spec_sha256"] == BAD_ANCHOR
+    assert result["policy_snapshot"]["max_forecast_variance_pct"] == 0.20
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 1.0
+    assert json.loads(json.dumps(result)) == result
+
+
+# ---------------------------------------------------------------------------
+# The accounting-identity check is not a never-raises helper
+# ---------------------------------------------------------------------------
+
+
+def test_cost_identity_check_raises_on_unquantizable_money() -> None:
+    """`_cost_evidence_reconciles` quantizes the breakdown it compares, so a
+    magnitude that cannot be represented at cent precision fails closed there
+    — it does not silently report "reconciles". Reached through a standalone
+    `evaluate_maturity`, which quantizes nothing else first."""
+    a = actuals()
+    a["cost"]["resources"][0]["period_cost_usd"] = 1e100
+    a["cost"]["period_total_usd"] = 1e100
+    with pytest.raises(ReconciliationInputError, match="breakdown total"):
+        evaluate_maturity(a, policy(), projection_attribution_coverage_pct=1.0)
+
+
+# ---------------------------------------------------------------------------
+# `drivers.payg_ptu` — a row that contradicts itself is never counted
+#
+# A token row may declare a bare `deployment` leaf name AND a full
+# `resource_id`. When the resource ID carries its own deployment leaf, the two
+# are the same claim stated twice; if they disagree, the row does not identify
+# a deployment at all.
+# ---------------------------------------------------------------------------
+
+
+AOAI_DEPLOYMENT_EMBED = AOAI_ACCOUNT + "/deployments/embed"
+
+
+def test_token_row_contradicting_its_own_resource_id_is_excluded() -> None:
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT_EMBED
+    result = run(f=aoai_forecast(), a=a)
+    driver = result["drivers"]["payg_ptu"]
+    assert driver["status"] == "not-verified"
+    assert driver["observed_monthly_tokens"] is None
+    assert any(
+        "drivers.payg_ptu" in warning and "contradicts itself" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_contradictory_token_row_never_inflates_observed_volume() -> None:
+    """The dangerous shape: one honest row plus one self-contradictory row
+    whose volume would swamp it. The contradictory row is dropped, never
+    added to the deployment its `deployment` field happened to name."""
+    a = aoai_actuals()
+    a["usage"]["models"] = [
+        {
+            "deployment": "chat",
+            "model": "gpt-5.4",
+            "resource_id": AOAI_DEPLOYMENT,
+            "input_tokens": 19000,
+            "output_tokens": 2000,
+        },
+        {
+            "deployment": "chat",
+            "model": "gpt-5.4",
+            "resource_id": AOAI_DEPLOYMENT_EMBED,
+            "input_tokens": 500000,
+            "output_tokens": 500000,
+        },
+    ]
+    driver = run(f=aoai_forecast(), a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["observed_monthly_tokens"] == 90000.0
+
+
+def test_token_row_whose_resource_id_leaf_agrees_is_counted() -> None:
+    """The cross-check only excludes DISAGREEMENT: a row that states the same
+    deployment twice is exactly as usable as one that states it once."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT
+    result = run(f=aoai_forecast(), a=a)
+    assert result["drivers"]["payg_ptu"]["observed_monthly_tokens"] == 90000.0
+    assert not any("contradicts itself" in w for w in result["warnings"])
+
+
+def test_account_scoped_identifier_has_no_leaf_to_contradict() -> None:
+    """An account resource ID names no deployment, so there is nothing to
+    cross-check and the row's `deployment` stands."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["account_resource_id"] = AOAI_ACCOUNT
+    result = run(f=aoai_forecast(), a=a)
+    assert result["drivers"]["payg_ptu"]["observed_monthly_tokens"] == 90000.0
+    assert not any("contradicts itself" in w for w in result["warnings"])
+
+
+def test_contradictory_row_is_excluded_even_when_its_leaf_is_recommended() -> None:
+    """Mirror image: the resource ID names the recommended deployment while
+    the `deployment` field names another. Neither claim is usable."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["deployment"] = "embed"
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT
+    result = run(f=aoai_forecast(), a=a)
+    assert result["drivers"]["payg_ptu"]["status"] == "not-verified"
+    assert result["drivers"]["payg_ptu"]["observed_monthly_tokens"] is None
+    assert any("contradicts itself" in w for w in result["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# `drivers.payg_ptu` — a warning never claims a resource is Azure OpenAI
+# ---------------------------------------------------------------------------
+
+
+def test_a_storage_row_identifier_is_never_called_an_azure_openai_account() -> None:
+    """A row identifier whose normalized type is not
+    `microsoft.cognitiveservices/accounts` is described neutrally. Calling a
+    storage account an "Azure OpenAI account" would send a reader looking for
+    an AOAI resource that does not exist."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = STORAGE_RID
+    result = run(f=aoai_forecast(), a=a)
+    assert result["drivers"]["payg_ptu"]["status"] == "not-verified"
+    excluded = [
+        warning
+        for warning in result["warnings"]
+        if "drivers.payg_ptu" in warning and "storageaccounts" in warning
+    ]
+    assert excluded
+    assert all("resource account" in warning for warning in excluded)
+    assert all("Azure OpenAI account" not in warning for warning in excluded)
+
+
+def test_an_unimplicated_aoai_row_is_still_named_as_azure_openai() -> None:
+    """The neutral wording is not a blanket downgrade: an identifier whose
+    normalized type DOES prove Azure OpenAI is still named as one."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT_2
+    result = run(f=aoai_forecast(), a=a)
+    warning = next(
+        w
+        for w in result["warnings"]
+        if "drivers.payg_ptu" in w and "aoai2" in w
+    )
+    assert "Azure OpenAI account" in warning
+
+
+def test_an_aoai_account_identifier_is_named_as_azure_openai() -> None:
+    a = aoai_actuals()
+    a["usage"]["models"][0]["account_resource_id"] = AOAI_ACCOUNT_2
+    result = run(f=aoai_forecast(), a=a)
+    warning = next(
+        w
+        for w in result["warnings"]
+        if "drivers.payg_ptu" in w and "aoai2" in w
+    )
+    assert "Azure OpenAI account" in warning
 
 
 # ---------------------------------------------------------------------------
