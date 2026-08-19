@@ -85,7 +85,7 @@ import re
 import subprocess
 from datetime import date, datetime
 from typing import Any, Callable, Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 
 class ActualsSourceError(RuntimeError):
@@ -104,6 +104,10 @@ COST_API_VERSION = "2025-03-01"
 
 ARM_HOST = "management.azure.com"
 
+# The only query parameter Cost Management may add to a `nextLink`: an
+# opaque continuation cursor.
+_SKIPTOKEN_KEY = "$skiptoken"
+
 # Bounded exponential backoff for observed 429/5xx only (RFC §11.1). The
 # `Retry-After` header is deliberately not read: `az rest` does not surface
 # response headers, so honoring it would be a fiction only a fake could test.
@@ -116,6 +120,19 @@ MAX_COST_PAGES = 50
 
 # Bounded so a multi-megabyte CLI error cannot flood a log or a report.
 MAX_STDERR_CHARS = 400
+
+# Transient classification reads a *prefix* of each stream. A throttling or
+# gateway banner is the first thing `az` prints; scanning an unbounded blob
+# for three digits only adds CPU burn on every attempt of every retry.
+MAX_CLASSIFY_CHARS = 8000
+
+# `az monitor metrics list` maps to the Metrics `List` REST API, whose `top`
+# parameter documents: "the maximum number of records to retrieve — valid
+# only if `$filter` is specified. Defaults to 10." This query is always
+# filtered, so leaving `top` unset silently truncates a week of hourly,
+# multi-metric, multi-deployment series to ten records — which looks exactly
+# like a quiet account rather than like missing evidence.
+TOKEN_METRICS_MAX_RECORDS = "10000"
 
 _DEFAULT_TIMEOUT_SECONDS = 120
 
@@ -150,7 +167,16 @@ _BODY_MARKERS = ("PreTaxCost", "granularity", "timePeriod", "grouping", "totalCo
 # read. Recognized codes and their canonical phrasings are matched; anything
 # unrecognized is treated as non-transient and surfaces immediately rather
 # than burning three sleeps on a permission error.
-_TRANSIENT_STATUS_RE = re.compile(r"(?<!\d)(429|500|502|503|504)(?!\d)", re.ASCII)
+#
+# The boundaries exclude letters, digits *and* hyphens on both sides so a
+# status code is only recognized as a standalone token. Error prose is full
+# of identifiers that merely contain these digits — a correlation GUID
+# `b429ff31-...`, a deployment named `aoai-500-prod`, an operation id
+# `8503abcd` — and retrying those costs three sleeps and three more
+# authenticated calls before surfacing the same permanent error.
+_TRANSIENT_STATUS_RE = re.compile(
+    r"(?<![0-9A-Za-z\-])(?:429|500|502|503|504)(?![0-9A-Za-z\-])", re.ASCII
+)
 _TRANSIENT_PHRASES = (
     "too many requests",
     "toomanyrequests",
@@ -355,13 +381,23 @@ def _sanitize_stderr(text: object, *, scrub: tuple[str, ...] = ()) -> str:
     return cleaned
 
 
-def _is_transient(stderr: object) -> bool:
-    if not isinstance(stderr, str) or not stderr:
-        return False
-    lowered = stderr.casefold()
-    if _TRANSIENT_STATUS_RE.search(stderr):
-        return True
-    return any(phrase in lowered for phrase in _TRANSIENT_PHRASES)
+def _is_transient(*streams: object) -> bool:
+    """Classify a failure from a bounded prefix of stderr *and* stdout.
+
+    `az` does not put its failure text on one predictable stream — some
+    error paths print the service response to stdout and only a summary to
+    stderr — so both are inspected, each bounded to `MAX_CLASSIFY_CHARS`.
+    """
+    for stream in streams:
+        if not isinstance(stream, str) or not stream:
+            continue
+        head = stream[:MAX_CLASSIFY_CHARS]
+        if _TRANSIENT_STATUS_RE.search(head):
+            return True
+        lowered = head.casefold()
+        if any(phrase in lowered for phrase in _TRANSIENT_PHRASES):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +534,16 @@ def _validate_next_link(
     resource_group: str,
     seen: set[str],
 ) -> str:
-    """Validate a service-supplied pagination URL before authenticating to it."""
+    """Validate a service-supplied pagination URL before authenticating to it.
+
+    The query string is validated too, not just the host and path: a
+    `nextLink` is a *continuation* of the request we issued, so it must
+    carry the same pinned `api-version` and add nothing but the opaque
+    `$skiptoken`. A link that quietly downgrades the API version or bolts on
+    an extra parameter changes the shape of the evidence mid-pagination —
+    the remaining pages would still parse, and the total would still be
+    wrong.
+    """
     if not isinstance(link, str) or isinstance(link, bool) or not link.strip():
         raise ActualsSourceError("Cost Management nextLink is not a usable URL")
     if link in seen:
@@ -515,7 +560,43 @@ def _validate_next_link(
         raise ActualsSourceError(
             "Cost Management nextLink leaves the requested scope or endpoint"
         )
+    _validate_next_link_query(parts.query)
     return link
+
+
+def _validate_next_link_query(query: str) -> None:
+    """Require exactly the pinned API version, plus at most a `$skiptoken`."""
+    # `keep_blank_values` so `?$skiptoken=` is seen and rejected rather than
+    # silently dropped and treated as "no skiptoken at all".
+    fields = parse_qs(query, keep_blank_values=True, strict_parsing=False)
+
+    versions = fields.pop("api-version", None)
+    if versions != [COST_API_VERSION]:
+        raise ActualsSourceError(
+            "Cost Management nextLink does not carry the pinned api-version"
+        )
+
+    skiptokens = fields.pop(_SKIPTOKEN_KEY, None)
+    if skiptokens is not None and (
+        len(skiptokens) != 1 or not skiptokens[0].strip()
+    ):
+        raise ActualsSourceError("Cost Management nextLink has an unusable skiptoken")
+    if fields:
+        raise ActualsSourceError(
+            "Cost Management nextLink carries unexpected query parameters"
+        )
+
+
+def _validate_max_pages(value: object) -> int:
+    """A positive `int` page ceiling — `bool` is not a page count.
+
+    Validated before any `az` call so a caller passing `0` (or `True`,
+    which is an `int` in Python and would otherwise mean "one page") fails
+    on its own terms rather than after an authenticated round trip.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ActualsSourceError("max_pages must be a positive integer")
+    return value
 
 
 def fetch_cost_pages(
@@ -533,12 +614,49 @@ def fetch_cost_pages(
     Mandatory evidence: any failure raises `ActualsSourceError` rather than
     returning a short page list, because a silently truncated page set is a
     silently wrong total.
+
+    Identity is asserted here rather than left to the caller. This is a
+    public entry point, and a version that trusts its caller to have run
+    `assert_azure_context` first is one direct call away from billing data
+    for whatever subscription happens to be active in the ambient login.
+    """
+    _, pages = _assert_and_fetch_cost_pages(
+        subscription_id,
+        resource_group,
+        start,
+        end,
+        runner=runner,
+        sleep=sleep,
+        max_pages=max_pages,
+    )
+    return pages
+
+
+def _assert_and_fetch_cost_pages(
+    subscription_id: str,
+    resource_group: str,
+    start: date,
+    end: date,
+    *,
+    runner: Optional[Runner],
+    sleep: Optional[Callable[[float], Any]],
+    max_pages: int,
+) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Assert identity, then paginate — returning both.
+
+    `collect_sources` needs the asserted context in its bundle *and* must
+    not pay for a second `az account show` to get it, so the assertion
+    happens exactly once, here, and its result is handed back rather than
+    re-derived.
     """
     _require_azure_config_dir()
     subscription_id = _validate_subscription_id(subscription_id)
     resource_group = _validate_resource_group(resource_group)
+    max_pages = _validate_max_pages(max_pages)
     body = json.dumps(cost_query_body(start, end), separators=(",", ":"), sort_keys=True)
     run = _resolve_runner(runner)
+
+    context = assert_azure_context(subscription_id, runner=run)
 
     url = _cost_query_url(subscription_id, resource_group)
     seen: set[str] = set()
@@ -552,7 +670,7 @@ def fetch_cost_pages(
         properties = page.get("properties")
         next_link = properties.get("nextLink") if isinstance(properties, dict) else None
         if next_link is None:
-            return pages
+            return context, pages
         if len(pages) >= max_pages:
             raise ActualsSourceError(
                 f"Cost Management pagination exceeded {max_pages} pages"
@@ -588,7 +706,7 @@ def _fetch_cost_page(
             return _load_json_object(completed.stdout, context="Cost Management query")
 
         detail = _sanitize_stderr(completed.stderr, scrub=(body,))
-        if not _is_transient(completed.stderr):
+        if not _is_transient(completed.stderr, completed.stdout):
             raise ActualsSourceError(f"Cost Management query failed: {detail}")
         if attempt == attempts - 1:
             raise ActualsSourceError(
@@ -625,6 +743,14 @@ def fetch_token_metrics(
     came from. The resource must live in the subscription being reconciled,
     so an accidental cross-subscription resource ID is a loud error rather
     than token evidence quietly attributed to the wrong account.
+
+    `--top` is not optional here. The command maps to the Azure Monitor
+    Metrics `List` API, whose `top` parameter is documented as "the maximum
+    number of records to retrieve — valid only if `$filter` is specified.
+    Defaults to 10." This query always passes `--filter`, so without an
+    explicit cap a week of hourly, three-metric, multi-deployment series
+    comes back truncated to ten records — evidence that parses cleanly and
+    undercounts silently.
     """
     _require_azure_config_dir()
     subscription_id = _validate_subscription_id(subscription_id)
@@ -645,6 +771,7 @@ def fetch_token_metrics(
         "--interval", "PT1H",
         "--aggregation", "Total",
         "--filter", "ModelDeploymentName eq '*' and ModelName eq '*'",
+        "--top", TOKEN_METRICS_MAX_RECORDS,
         "-o", "json",
     ]
     completed = _invoke(_resolve_runner(runner), args, context="token metrics query")
@@ -755,9 +882,138 @@ def _query_workspace(
     if getattr(completed, "returncode", 1) != 0:
         return None
     try:
-        return _load_json(getattr(completed, "stdout", None), context="interaction query")
+        doc = _load_json(getattr(completed, "stdout", None), context="interaction query")
+        return _normalize_log_analytics_result(doc)
     except ActualsSourceError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Log Analytics CLI shape normalization
+# ---------------------------------------------------------------------------
+
+#: The CLI tags every flattened row with the table it came from.
+_TABLE_NAME_KEY = "TableName"
+
+#: The `summarize` projection `build_success_kql` emits. Used only to
+#: canonicalize an *empty* result, where the CLI's flattening leaves no row
+#: to recover column names from.
+_INTERACTION_SUMMARY_COLUMNS = ("total_interactions", "successful_interactions")
+
+#: Every cell the CLI emits is `str(value)`, so the canonical document
+#: declares its columns as strings rather than inventing a Kusto type.
+_CLI_COLUMN_TYPE = "string"
+
+
+def _normalize_log_analytics_result(doc: object) -> dict[str, Any]:
+    """Convert `az monitor log-analytics query -o json` output into the
+    canonical `{"tables": [{"name", "columns", "rows"}]}` document that
+    `cost_actuals.parse_interaction_counts` accepts.
+
+    The CLI does not print the service's `tables[]` response. The
+    `log-analytics` extension overrides the command's output: in
+    `Azure/azure-cli-extensions`,
+    `src/log-analytics/azext_loganalytics/custom.py`, `Query._output` walks
+    `result['tables']` and, for each row of each table, emits one
+    `OrderedDict` whose first key is `TableName` and whose remaining keys
+    are the column names mapped to `str(value)`. Every table is concatenated
+    into a single flat list, so what reaches stdout is
+    `[{"TableName": ..., "<column>": "<stringified cell>", ...}, ...]`.
+
+    `parse_interaction_counts` parses the *service* shape and explicitly
+    refuses a list of dicts, so the raw CLI list can never be evidence.
+    Normalizing here — the one place that knows which CLI produced these
+    bytes — is what lets that parser stay pure and offline-testable.
+
+    Rules:
+
+    - a `dict` that already carries a non-empty `tables` list is returned
+      untouched (defensive: a future CLI, or an `az rest` transport, may
+      return the service shape directly);
+    - an empty list is the flattening of a `summarize` that matched
+      nothing. There are no rows to recover column names from, so it
+      canonicalizes to a `PrimaryResult` table declaring this query's two
+      summary columns with zero rows — a *real observation of zero*, which
+      the parser reads as `(0, 0)`;
+    - otherwise rows are grouped by `TableName`, preserving first-seen
+      column order (excluding the tag) and first-seen table order;
+    - anything malformed or ambiguous raises rather than guessing: a row
+      that is not an object, a missing/blank/non-string `TableName`, a row
+      with no columns at all, duplicate column names differing only in
+      case, or rows of the same table disagreeing on their column set.
+      Interaction evidence is optional, so the caller turns that into a
+      skipped source and a warning — never into a wrong number.
+    """
+    if isinstance(doc, dict):
+        tables = doc.get("tables")
+        if not isinstance(tables, list) or not tables:
+            raise ActualsSourceError(
+                "interaction query returned an object that is not a tables document"
+            )
+        return doc
+
+    if not isinstance(doc, list):
+        raise ActualsSourceError("interaction query returned an unrecognized document")
+
+    if not doc:
+        return {
+            "tables": [
+                {
+                    "name": "PrimaryResult",
+                    "columns": [
+                        {"name": name, "type": _CLI_COLUMN_TYPE}
+                        for name in _INTERACTION_SUMMARY_COLUMNS
+                    ],
+                    "rows": [],
+                }
+            ]
+        }
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for entry in doc:
+        if not isinstance(entry, dict):
+            raise ActualsSourceError(
+                "interaction query returned a row that is not an object"
+            )
+        name = entry.get(_TABLE_NAME_KEY)
+        if not isinstance(name, str) or not name.strip():
+            raise ActualsSourceError(
+                "interaction query returned a row without a usable TableName"
+            )
+
+        columns = [key for key in entry if key != _TABLE_NAME_KEY]
+        if not columns:
+            raise ActualsSourceError(
+                "interaction query returned a row with no columns"
+            )
+        folded = [key.casefold() for key in columns]
+        if len(set(folded)) != len(folded):
+            raise ActualsSourceError(
+                "interaction query returned duplicate column names in one row"
+            )
+
+        bucket = grouped.setdefault(name, {"columns": columns, "folded": folded, "rows": []})
+        if set(folded) != set(bucket["folded"]):
+            raise ActualsSourceError(
+                "interaction query returned rows with inconsistent columns for "
+                "the same table"
+            )
+        cells = {key.casefold(): value for key, value in entry.items()}
+        bucket["rows"].append([cells[key] for key in bucket["folded"]])
+
+    return {
+        "tables": [
+            {
+                "name": name,
+                "columns": [
+                    {"name": column, "type": _CLI_COLUMN_TYPE}
+                    for column in table["columns"]
+                ],
+                "rows": table["rows"],
+            }
+            for name, table in grouped.items()
+        ]
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -778,11 +1034,27 @@ def collect_sources(
 ) -> dict[str, Any]:
     """Collect every read-only source into one raw evidence bundle.
 
-    Order is deliberate: identity is asserted before any query is issued,
-    the mandatory Cost Management pages come next (a failure aborts the whole
-    bundle), and only then are the optional token and interaction sources
-    attempted. Optional failures append a distinct warning and leave their
-    slot `None` — the cost pages already collected are always retained.
+    Order is deliberate: identity is asserted before any query is issued (by
+    `fetch_cost_pages` itself — exactly once, not twice), the mandatory Cost
+    Management pages come next (a failure aborts the whole bundle), and only
+    then are the optional token and interaction sources attempted. Optional
+    failures append a distinct warning and leave their slot `None` — the
+    cost pages already collected are always retained.
+
+    That retention is the point, and it extends to *input* validation: a
+    malformed or out-of-scope `monitor_resource_id` / `workspace_resource_id`
+    is a caller mistake about attribution evidence, so it degrades to a
+    warning inside the optional branch instead of aborting a total that has
+    already been fetched successfully.
+
+    Both optional resources are additionally required to live in the
+    subscription being reconciled. A foreign Azure Monitor account would
+    attribute another system's tokens to this bundle, and a foreign
+    workspace would divide this scope's cost by another system's interaction
+    count — both produce a plausible number that is quietly about two
+    unrelated systems. The scope rule lives here, in the bundle that knows
+    what "the reconciled subscription" means;
+    `resolve_workspace_customer_id` stays a generic helper.
 
     `token_source_resource_id` is recorded only when the token query
     actually succeeded, so Task 11 can bind the token series to the account
@@ -793,21 +1065,27 @@ def collect_sources(
     subscription_id = _validate_subscription_id(subscription_id)
     resource_group = _validate_resource_group(resource_group)
     start, end = _validate_window(start, end)
-    if monitor_resource_id is not None:
-        _parse_resource_id(monitor_resource_id)
 
     run = _resolve_runner(runner)
     warnings: list[str] = []
 
-    context = assert_azure_context(subscription_id, runner=run)
-    cost_pages = fetch_cost_pages(
-        subscription_id, resource_group, start, end, runner=run, sleep=sleep
+    context, cost_pages = _assert_and_fetch_cost_pages(
+        subscription_id,
+        resource_group,
+        start,
+        end,
+        runner=run,
+        sleep=sleep,
+        max_pages=MAX_COST_PAGES,
     )
 
     token_doc: Optional[dict[str, Any]] = None
     token_source_resource_id: Optional[str] = None
     if monitor_resource_id is not None:
         try:
+            _require_same_subscription(
+                monitor_resource_id, subscription_id, label="token metrics resource"
+            )
             token_doc = fetch_token_metrics(
                 monitor_resource_id, subscription_id, start, end, runner=run
             )
@@ -817,21 +1095,30 @@ def collect_sources(
 
     interaction_result: Optional[Any] = None
     if workspace_resource_id is not None and kql is not None:
-        customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=run)
-        if customer_id is None:
-            warnings.append(
-                "workspace identity could not be resolved from the supplied "
-                "ARM resource id; interaction evidence skipped"
+        try:
+            _require_same_subscription(
+                workspace_resource_id, subscription_id, label="workspace"
             )
+            if not _usable_kql(kql):
+                raise ActualsSourceError("interaction query is not a usable KQL string")
+        except ActualsSourceError as exc:
+            warnings.append(f"interaction evidence skipped (workspace): {exc}")
         else:
-            interaction_result = _query_workspace(
-                customer_id, kql, runner=run
-            )
-            if interaction_result is None:
+            customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=run)
+            if customer_id is None:
                 warnings.append(
-                    "interaction query returned no usable result; interaction "
-                    "evidence skipped"
+                    "workspace identity could not be resolved from the supplied "
+                    "ARM resource id; interaction evidence skipped"
                 )
+            else:
+                interaction_result = _query_workspace(
+                    customer_id, kql, runner=run
+                )
+                if interaction_result is None:
+                    warnings.append(
+                        "interaction query returned no usable result; interaction "
+                        "evidence skipped"
+                    )
 
     return {
         "subscription_id": subscription_id,
@@ -844,3 +1131,18 @@ def collect_sources(
         "interaction_result": interaction_result,
         "warnings": warnings,
     }
+
+
+def _require_same_subscription(
+    resource_id: object,
+    subscription_id: str,
+    *,
+    label: str,
+) -> dict[str, Any]:
+    """Parse an optional ARM resource id and pin it to the reconciled scope."""
+    parsed = _parse_resource_id(resource_id)
+    if parsed["subscription_id"].casefold() != subscription_id.casefold():
+        raise ActualsSourceError(
+            f"{label} lives in a different subscription than the reconciled scope"
+        )
+    return parsed

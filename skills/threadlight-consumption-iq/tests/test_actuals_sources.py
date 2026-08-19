@@ -54,6 +54,12 @@ from actuals_sources import (  # noqa: E402
     resolve_workspace_customer_id,
 )
 
+# The *real* downstream parser, imported deliberately: the normalization this
+# module performs is only correct if the shape it emits is the shape the
+# production parser accepts. Re-implementing that check here would test a
+# copy of the contract instead of the contract.
+from cost_actuals import parse_interaction_counts  # noqa: E402
+
 SUB = "11111111-2222-3333-4444-555555555555"
 OTHER_SUB = "99999999-8888-7777-6666-555555555555"
 TENANT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -104,17 +110,34 @@ def _cp(stdout="", *, returncode=0, stderr=""):
 
 
 class FakeRunner:
-    """Records every argv it is handed and replays queued responses."""
+    """Records every argv it is handed and replays queued responses.
 
-    def __init__(self, responses=None, *, default=None):
+    `auto_account` answers the `az account show` identity assertion without
+    consuming a queued response. `fetch_cost_pages` asserts identity itself
+    (a public caller must not be able to skip it), so without this every
+    cost test would have to interleave an account response into its queue
+    and re-index every argv assertion. The call is still *recorded* — it is
+    simply excluded from `query_calls`, which is what the cost tests reason
+    about.
+    """
+
+    def __init__(self, responses=None, *, default=None, auto_account=None):
         self.responses = list(responses or [])
         self.default = default
+        self.auto_account = auto_account
         self.calls: list[list[str]] = []
+
+    @property
+    def query_calls(self):
+        """Every recorded call except the `az account show` assertion."""
+        return [call for call in self.calls if call[1:3] != ["account", "show"]]
 
     def __call__(self, args):
         assert isinstance(args, list), "runner must receive an argv list"
         assert all(isinstance(a, str) for a in args), "argv entries must be str"
         self.calls.append(list(args))
+        if self.auto_account is not None and args[1:3] == ["account", "show"]:
+            return self.auto_account
         if self.responses:
             nxt = self.responses.pop(0)
         elif self.default is not None:
@@ -160,6 +183,11 @@ def _page_cp(rows=None, *, next_link=None):
 
 def _token_doc():
     return {"value": [{"name": {"value": "InputTokens"}, "timeseries": []}]}
+
+
+def _cost_runner(responses=None, *, default=None):
+    """A runner for `fetch_cost_pages`, which asserts identity itself."""
+    return FakeRunner(responses, default=default, auto_account=_account_ok())
 
 
 # ---------------------------------------------------------------------------
@@ -320,10 +348,10 @@ def test_assert_azure_context_validates_subscription_before_calling():
 # ---------------------------------------------------------------------------
 
 def test_fetch_cost_pages_builds_read_only_az_rest_argv():
-    runner = FakeRunner([_page_cp()])
+    runner = _cost_runner([_page_cp()])
     pages = fetch_cost_pages(SUB, RG, START, END, runner=runner)
     assert len(pages) == 1
-    argv = runner.calls[0]
+    argv = runner.query_calls[0]
     assert argv[:5] == ["az", "rest", "--method", "post", "--url"]
     assert argv[5] == COST_URL
     assert argv[6] == "--body"
@@ -332,26 +360,78 @@ def test_fetch_cost_pages_builds_read_only_az_rest_argv():
 
 
 def test_fetch_cost_pages_url_carries_explicit_subscription_and_api_version():
-    runner = FakeRunner([_page_cp()])
+    runner = _cost_runner([_page_cp()])
     fetch_cost_pages(SUB, RG, START, END, runner=runner)
-    url = runner.calls[0][5]
+    url = runner.query_calls[0][5]
     assert url.startswith(f"https://management.azure.com/subscriptions/{SUB}/")
     assert url.endswith(f"api-version={COST_API_VERSION}")
     assert "Microsoft.CostManagement/query" in url
 
 
 def test_fetch_cost_pages_returns_parsed_page_documents():
-    runner = FakeRunner([_page_cp(rows=[[2.25, 20260802, "/r/b"]])])
+    runner = _cost_runner([_page_cp(rows=[[2.25, 20260802, "/r/b"]])])
     pages = fetch_cost_pages(SUB, RG, START, END, runner=runner)
     assert pages[0]["properties"]["rows"] == [[2.25, 20260802, "/r/b"]]
 
 
 def test_fetch_cost_pages_requires_azure_config_dir(monkeypatch):
     monkeypatch.delenv("AZURE_CONFIG_DIR", raising=False)
-    runner = FakeRunner([_page_cp()])
+    runner = _cost_runner([_page_cp()])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
     assert runner.calls == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_cost_pages — identity assertion is its own responsibility
+#
+# The mandatory cost query must never be issuable without proving the ambient
+# `az` login is the requested subscription. A public entry point that relies
+# on its caller to have asserted first is one direct call away from querying
+# whatever subscription happens to be active.
+# ---------------------------------------------------------------------------
+
+def test_fetch_cost_pages_asserts_azure_context_before_querying():
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    pages = fetch_cost_pages(SUB, RG, START, END, runner=runner)
+    assert len(pages) == 1
+    assert runner.calls[0] == [
+        "az", "account", "show", "--query", "{id:id,tenantId:tenantId}", "-o", "json"
+    ]
+    assert runner.calls[1][:2] == ["az", "rest"]
+
+
+def test_fetch_cost_pages_refuses_when_active_subscription_differs():
+    runner = FakeRunner([_account_ok(OTHER_SUB)], default=_page_cp())
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner)
+    assert len(runner.calls) == 1
+
+
+def test_fetch_cost_pages_refuses_when_identity_command_fails():
+    runner = FakeRunner(
+        [_cp("", returncode=1, stderr="Please run 'az login'")], default=_page_cp()
+    )
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner)
+    assert len(runner.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# fetch_cost_pages — max_pages is caller input, validated before any call
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad", [0, -1, True, False, 1.5, "3", None, 2 ** 70 * 1.0])
+def test_fetch_cost_pages_rejects_unusable_max_pages_before_calling(bad):
+    runner = _cost_runner(default=_page_cp())
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner, max_pages=bad)
+    assert runner.calls == []
+
+
+def test_fetch_cost_pages_accepts_an_explicit_positive_max_pages():
+    runner = _cost_runner([_page_cp(next_link=_next_link()), _page_cp()])
+    assert len(fetch_cost_pages(SUB, RG, START, END, runner=runner, max_pages=2)) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +454,7 @@ def test_fetch_cost_pages_requires_azure_config_dir(monkeypatch):
     ],
 )
 def test_fetch_cost_pages_rejects_unsafe_subscription(bad_sub):
-    runner = FakeRunner(default=_page_cp())
+    runner = _cost_runner(default=_page_cp())
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(bad_sub, RG, START, END, runner=runner)
     assert runner.calls == []
@@ -399,22 +479,22 @@ def test_fetch_cost_pages_rejects_unsafe_subscription(bad_sub):
     ],
 )
 def test_fetch_cost_pages_rejects_unsafe_resource_group(bad_rg):
-    runner = FakeRunner(default=_page_cp())
+    runner = _cost_runner(default=_page_cp())
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, bad_rg, START, END, runner=runner)
     assert runner.calls == []
 
 
 def test_fetch_cost_pages_accepts_conventional_azure_names():
-    runner = FakeRunner(default=_page_cp())
+    runner = _cost_runner(default=_page_cp())
     for good in ("rg-threadlight_pilot", "RG.Prod(1)", "a", "r" * 90):
         runner.calls.clear()
         fetch_cost_pages(SUB, good, START, END, runner=runner)
-        assert runner.calls[0][5].split("/resourceGroups/")[1].startswith(good)
+        assert runner.query_calls[0][5].split("/resourceGroups/")[1].startswith(good)
 
 
 def test_fetch_cost_pages_rejects_bad_window_before_calling():
-    runner = FakeRunner(default=_page_cp())
+    runner = _cost_runner(default=_page_cp())
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, END, START, runner=runner)
     assert runner.calls == []
@@ -426,20 +506,20 @@ def test_fetch_cost_pages_rejects_bad_window_before_calling():
 
 @pytest.mark.parametrize("stdout", ["", "   ", "\n"])
 def test_fetch_cost_pages_rejects_empty_response(stdout):
-    runner = FakeRunner([_cp(stdout)])
+    runner = _cost_runner([_cp(stdout)])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
 
 
 def test_fetch_cost_pages_rejects_malformed_json():
-    runner = FakeRunner([_cp("{not json")])
+    runner = _cost_runner([_cp("{not json")])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
 
 
 @pytest.mark.parametrize("payload", ["[]", '"text"', "null", "3"])
 def test_fetch_cost_pages_rejects_non_object_page(payload):
-    runner = FakeRunner([_cp(payload)])
+    runner = _cost_runner([_cp(payload)])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
 
@@ -458,26 +538,26 @@ def _next_link(skiptoken="abc"):
 
 def test_fetch_cost_pages_follows_next_link_with_same_body():
     link = _next_link()
-    runner = FakeRunner([
+    runner = _cost_runner([
         _page_cp(next_link=link),
         _page_cp(rows=[[3.0, 20260803, "/r/c"]]),
     ])
     pages = fetch_cost_pages(SUB, RG, START, END, runner=runner)
     assert len(pages) == 2
-    assert runner.calls[1][5] == link
-    assert runner.calls[0][7] == runner.calls[1][7]
-    assert runner.calls[1][:4] == ["az", "rest", "--method", "post"]
+    assert runner.query_calls[1][5] == link
+    assert runner.query_calls[0][7] == runner.query_calls[1][7]
+    assert runner.query_calls[1][:4] == ["az", "rest", "--method", "post"]
 
 
 def test_fetch_cost_pages_follows_case_insensitive_resourcegroups_segment():
     link = _next_link().replace("/resourceGroups/", "/resourcegroups/")
-    runner = FakeRunner([_page_cp(next_link=link), _page_cp()])
+    runner = _cost_runner([_page_cp(next_link=link), _page_cp()])
     assert len(fetch_cost_pages(SUB, RG, START, END, runner=runner)) == 2
 
 
 def test_fetch_cost_pages_rejects_repeated_next_link():
     link = _next_link()
-    runner = FakeRunner([
+    runner = _cost_runner([
         _page_cp(next_link=link),
         _page_cp(next_link=link),
         _page_cp(),
@@ -516,32 +596,70 @@ def test_fetch_cost_pages_rejects_repeated_next_link():
 )
 def test_fetch_cost_pages_rejects_untrustworthy_next_link(link):
     hostile = link.format(sub=SUB, rg=RG, other=OTHER_SUB)
-    runner = FakeRunner([_page_cp(next_link=hostile), _page_cp()])
+    runner = _cost_runner([_page_cp(next_link=hostile), _page_cp()])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
-    assert len(runner.calls) == 1
+    assert len(runner.query_calls) == 1
 
 
 @pytest.mark.parametrize("link", [123, {"url": "x"}, ["x"], True])
 def test_fetch_cost_pages_rejects_non_string_next_link(link):
-    runner = FakeRunner([_page_cp(next_link=link), _page_cp()])
+    runner = _cost_runner([_page_cp(next_link=link), _page_cp()])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
 
 
+# `nextLink` is a *continuation* of the request we issued, so its query
+# string must continue it too: the same pinned API version, and nothing new
+# except the opaque `$skiptoken`. A link that quietly downgrades the API
+# version or bolts on an extra parameter would change the shape of the
+# evidence mid-pagination — the pages would still parse and the total would
+# still be wrong.
+@pytest.mark.parametrize(
+    "query",
+    [
+        "",
+        "$skiptoken=abc",
+        "api-version=2023-03-01&$skiptoken=abc",
+        f"api-version={COST_API_VERSION}&api-version=2023-03-01&$skiptoken=abc",
+        f"api-version={COST_API_VERSION}&$skiptoken=abc&$expand=meta",
+        f"api-version={COST_API_VERSION}&$top=5",
+        f"api-version={COST_API_VERSION}&$skiptoken=abc&$skiptoken=def",
+        f"api-version={COST_API_VERSION}&$skiptoken=",
+        f"api-version={COST_API_VERSION}%20&$skiptoken=abc",
+        f"API-VERSION={COST_API_VERSION}&$skiptoken=abc",
+    ],
+)
+def test_fetch_cost_pages_rejects_next_link_with_unexpected_query(query):
+    hostile = (
+        f"https://management.azure.com/subscriptions/{SUB}/resourceGroups/{RG}"
+        f"/providers/Microsoft.CostManagement/query"
+        + (f"?{query}" if query else "")
+    )
+    runner = _cost_runner([_page_cp(next_link=hostile), _page_cp()])
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner)
+    assert len(runner.query_calls) == 1
+
+
+def test_fetch_cost_pages_accepts_next_link_with_only_the_skiptoken_added():
+    runner = _cost_runner([_page_cp(next_link=_next_link("opaque-token")), _page_cp()])
+    assert len(fetch_cost_pages(SUB, RG, START, END, runner=runner)) == 2
+
+
 def test_fetch_cost_pages_stops_on_absent_or_null_next_link():
-    runner = FakeRunner([_cp(json.dumps({"properties": {"nextLink": None, "rows": []}}))])
+    runner = _cost_runner([_cp(json.dumps({"properties": {"nextLink": None, "rows": []}}))])
     pages = fetch_cost_pages(SUB, RG, START, END, runner=runner)
     assert len(pages) == 1
-    assert len(runner.calls) == 1
+    assert len(runner.query_calls) == 1
 
 
 def test_fetch_cost_pages_bounds_total_pages():
     responses = [_page_cp(next_link=_next_link(f"tok{i}")) for i in range(200)]
-    runner = FakeRunner(responses)
+    runner = _cost_runner(responses)
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner)
-    assert len(runner.calls) < 200
+    assert len(runner.query_calls) < 200
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +672,7 @@ _SERVER_ERR = "Internal Server Error (503)"
 
 def test_fetch_cost_pages_retries_throttling_with_bounded_delays():
     sleeper = SleepSpy()
-    runner = FakeRunner([
+    runner = _cost_runner([
         _cp("", returncode=1, stderr=_THROTTLED),
         _cp("", returncode=1, stderr=_THROTTLED),
         _page_cp(),
@@ -562,16 +680,16 @@ def test_fetch_cost_pages_retries_throttling_with_bounded_delays():
     pages = fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
     assert len(pages) == 1
     assert sleeper.delays == [2, 4]
-    assert len(runner.calls) == 3
+    assert len(runner.query_calls) == 3
 
 
 def test_fetch_cost_pages_exhausts_retries_then_raises():
     sleeper = SleepSpy()
-    runner = FakeRunner(default=_cp("", returncode=1, stderr=_THROTTLED))
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=_THROTTLED))
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
     assert sleeper.delays == [2, 4, 8]
-    assert len(runner.calls) == 4
+    assert len(runner.query_calls) == 4
 
 
 @pytest.mark.parametrize(
@@ -581,7 +699,7 @@ def test_fetch_cost_pages_exhausts_retries_then_raises():
 )
 def test_fetch_cost_pages_treats_5xx_and_429_as_transient(stderr):
     sleeper = SleepSpy()
-    runner = FakeRunner([_cp("", returncode=1, stderr=stderr), _page_cp()])
+    runner = _cost_runner([_cp("", returncode=1, stderr=stderr), _page_cp()])
     fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
     assert sleeper.delays == [2]
 
@@ -593,20 +711,92 @@ def test_fetch_cost_pages_treats_5xx_and_429_as_transient(stderr):
 )
 def test_fetch_cost_pages_does_not_retry_non_transient_failures(stderr):
     sleeper = SleepSpy()
-    runner = FakeRunner(default=_cp("", returncode=1, stderr=stderr))
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=stderr))
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
     assert sleeper.delays == []
-    assert len(runner.calls) == 1
+    assert len(runner.query_calls) == 1
+
+
+# `az rest` reports failures as formatted prose, so a status code can only be
+# *recognized* in text — and text is full of identifiers that merely contain
+# those three digits. A correlation GUID beginning `b429ff31`, a deployment
+# named `aoai-500-prod`, or an operation id `8503...` are permanent-failure
+# noise, and retrying them burns three sleeps (and three more authenticated
+# calls) before surfacing the same error a caller could already act on.
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "(429) Too Many Requests - please retry",
+        "HTTP 503",
+        "The remote server returned 500.",
+        "status: 502, message: Bad Gateway",
+        "[504] gateway timeout",
+        "Error 429: throughput limit reached",
+    ],
+)
+def test_fetch_cost_pages_recognizes_standalone_status_tokens(stderr):
+    sleeper = SleepSpy()
+    runner = _cost_runner([_cp("", returncode=1, stderr=stderr), _page_cp()])
+    fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
+    assert sleeper.delays == [2]
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "(403) Forbidden: correlation id b429ff31-9c0e-4f39-9f27-0d5f2f1c7a11",
+        "(404) ResourceNotFound: resource 'aoai-500-prod' was not found",
+        "(400) BadRequest: deployment 'gpt-4o-429' is not provisioned",
+        "(403) AuthorizationFailed for account aoai500prod",
+        "(404) NotFound: operation id 8503abcd was not found",
+        "(400) BadRequest: unknown dimension 'ResourceId500'",
+        "(403) Forbidden: rg-pilot-502-eu is not accessible",
+    ],
+)
+def test_fetch_cost_pages_does_not_retry_identifiers_containing_status_digits(stderr):
+    sleeper = SleepSpy()
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=stderr))
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
+    assert sleeper.delays == []
+    assert len(runner.query_calls) == 1
+
+
+def test_fetch_cost_pages_classifies_a_status_reported_on_stdout():
+    """`az` does not consistently put its failure text on stderr."""
+    sleeper = SleepSpy()
+    runner = _cost_runner([
+        _cp("(429) Too Many Requests", returncode=1, stderr=""),
+        _page_cp(),
+    ])
+    fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
+    assert sleeper.delays == [2]
+
+
+def test_fetch_cost_pages_classification_scan_is_bounded():
+    """A multi-megabyte failure payload is not scanned end to end.
+
+    Classification exists to catch a throttling banner, which arrives at the
+    top of the output; scanning an unbounded blob for three digits is how a
+    pathological error message turns into CPU burn on every attempt.
+    """
+    sleeper = SleepSpy()
+    buried = "AuthorizationFailed " + ("x" * 200_000) + " (429) Too Many Requests"
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=buried))
+    with pytest.raises(ActualsSourceError):
+        fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=sleeper)
+    assert sleeper.delays == []
+    assert len(runner.query_calls) == 1
 
 
 def test_fetch_cost_pages_retry_reuses_identical_body():
-    runner = FakeRunner([
+    runner = _cost_runner([
         _cp("", returncode=1, stderr=_THROTTLED),
         _page_cp(),
     ])
     fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=SleepSpy())
-    assert runner.calls[0] == runner.calls[1]
+    assert runner.query_calls[0] == runner.query_calls[1]
 
 
 def test_fetch_cost_pages_error_message_is_bounded_and_scrubbed():
@@ -616,7 +806,7 @@ def test_fetch_cost_pages_error_message_is_bounded_and_scrubbed():
         + json.dumps(cost_query_body(START, END))
         + " AuthorizationFailed " + ("x" * 5000)
     )
-    runner = FakeRunner(default=_cp("", returncode=1, stderr=noisy))
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=noisy))
     with pytest.raises(ActualsSourceError) as excinfo:
         fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=SleepSpy())
     message = str(excinfo.value)
@@ -628,7 +818,7 @@ def test_fetch_cost_pages_error_message_is_bounded_and_scrubbed():
 
 
 def test_fetch_cost_pages_surfaces_runner_exceptions_as_source_error():
-    runner = FakeRunner([FileNotFoundError("az not installed")])
+    runner = _cost_runner([FileNotFoundError("az not installed")])
     with pytest.raises(ActualsSourceError):
         fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=SleepSpy())
 
@@ -650,8 +840,27 @@ def test_fetch_token_metrics_exact_read_only_argv():
         "--interval", "PT1H",
         "--aggregation", "Total",
         "--filter", "ModelDeploymentName eq '*' and ModelName eq '*'",
+        "--top", "10000",
         "-o", "json",
     ]
+
+
+def test_fetch_token_metrics_raises_the_record_cap_because_filter_defaults_to_ten():
+    """Contract pin, not a style preference.
+
+    The Metrics `List` API documents `top` as "the maximum number of records
+    to retrieve — valid only if `$filter` is specified. Defaults to 10." This
+    query is *always* filtered (`ModelDeploymentName`/`ModelName`), so at the
+    default the CLI would return ten timeseries records for a week-long,
+    hourly, three-metric window and the truncation would look exactly like a
+    quiet account: a plausible, small, wrong token total.
+    """
+    runner = FakeRunner([_cp(json.dumps(_token_doc()))])
+    fetch_token_metrics(MONITOR_ID, SUB, START, END, runner=runner)
+    argv = runner.calls[0]
+    assert "--filter" in argv, "the cap only applies to a filtered query"
+    assert argv[argv.index("--top") + 1] == "10000"
+
 
 
 @pytest.mark.parametrize(
@@ -778,16 +987,67 @@ def test_resolve_workspace_customer_id_accepts_runner_as_second_positional():
 
 # ---------------------------------------------------------------------------
 # Interaction query
+#
+# `az monitor log-analytics query -o json` does NOT print the service's
+# `tables[]` document. The CLI extension flattens it: `Query._output` in
+# Azure/azure-cli-extensions `src/log-analytics/azext_loganalytics/custom.py`
+# walks `result['tables']`, and for every row emits one `OrderedDict` whose
+# first key is `TableName` and whose remaining keys are the column names
+# mapped to `str(value)` — every cell stringified, every table concatenated
+# into a single flat list.
+#
+# `cost_actuals.parse_interaction_counts` parses the *service* shape
+# (`tables[].columns[]/rows[]`) and explicitly refuses a list of dicts, so
+# the raw CLI list can never reach it. Normalizing here — at the one place
+# that knows which CLI produced the bytes — is what keeps the parser pure.
 # ---------------------------------------------------------------------------
 
-def _la_result():
-    return [{"total_interactions": 120, "successful_interactions": 118}]
+def _la_result(total="120", successful="113"):
+    """Exactly what the CLI prints for the one-row `summarize` query."""
+    return [
+        {
+            "TableName": "PrimaryResult",
+            "total_interactions": total,
+            "successful_interactions": successful,
+        }
+    ]
+
+
+def _la_normalized(total="120", successful="113"):
+    """The canonical `tables[]` document `parse_interaction_counts` accepts."""
+    return {
+        "tables": [
+            {
+                "name": "PrimaryResult",
+                "columns": [
+                    {"name": "total_interactions", "type": "string"},
+                    {"name": "successful_interactions", "type": "string"},
+                ],
+                "rows": [[total, successful]],
+            }
+        ]
+    }
+
+
+def _empty_normalized():
+    return {
+        "tables": [
+            {
+                "name": "PrimaryResult",
+                "columns": [
+                    {"name": "total_interactions", "type": "string"},
+                    {"name": "successful_interactions", "type": "string"},
+                ],
+                "rows": [],
+            }
+        ]
+    }
 
 
 def test_fetch_interaction_result_resolves_then_queries():
     runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(_la_result()))])
     result = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
-    assert result == _la_result()
+    assert result == _la_normalized()
     assert runner.calls[0][:5] == [
         "az", "monitor", "log-analytics", "workspace", "show"
     ]
@@ -850,6 +1110,142 @@ def test_no_public_function_accepts_a_customer_id_parameter():
 
 
 # ---------------------------------------------------------------------------
+# Interaction query — CLI shape normalization
+#
+# These are the integration tests that matter: the *real* flattened CLI
+# document goes in one end and `cost_actuals.parse_interaction_counts` — the
+# actual production parser, not a restatement of it — consumes what comes
+# out. Asserting a hand-written canonical dict here would only prove this
+# file agrees with itself.
+# ---------------------------------------------------------------------------
+
+def test_fetch_interaction_result_output_feeds_the_real_parser():
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(_la_result()))])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    assert parse_interaction_counts(doc) == (120, 113)
+
+
+def test_empty_cli_result_parses_as_an_observed_zero():
+    """`[]` is what the flattening prints for a `summarize` that matched
+    nothing — a real observation of zero, not a missing query."""
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp("[]")])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    assert doc == _empty_normalized()
+    assert parse_interaction_counts(doc) == (0, 0)
+
+
+def test_collect_sources_interaction_result_feeds_the_real_parser():
+    runner = FakeRunner([
+        _account_ok(), _page_cp(), _cp(CUSTOMER_ID), _cp(json.dumps(_la_result())),
+    ])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
+    )
+    assert parse_interaction_counts(bundle["interaction_result"]) == (120, 113)
+
+
+def test_raw_cli_list_would_not_parse_without_normalization():
+    """Guard for the regression this fixes: the parser rejects the raw
+    CLI list outright, so an un-normalized bundle is not 'slightly off' —
+    it fails at the point of use, after the evidence was collected."""
+    with pytest.raises(Exception):
+        parse_interaction_counts(_la_result())
+
+
+def test_normalized_result_is_never_a_list():
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(_la_result()))])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    assert isinstance(doc, dict) and isinstance(doc["tables"], list)
+
+
+def test_normalization_preserves_first_seen_column_order():
+    rows = [
+        {"TableName": "PrimaryResult", "b_col": "2", "a_col": "1"},
+        {"TableName": "PrimaryResult", "a_col": "3", "b_col": "4"},
+    ]
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(rows))])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    table = doc["tables"][0]
+    assert [c["name"] for c in table["columns"]] == ["b_col", "a_col"]
+    assert table["rows"] == [["2", "1"], ["4", "3"]]
+
+
+def test_normalization_groups_rows_by_table_name():
+    rows = [
+        {"TableName": "PrimaryResult", "total_interactions": "1"},
+        {"TableName": "Other", "x": "9"},
+        {"TableName": "PrimaryResult", "total_interactions": "2"},
+    ]
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(rows))])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    assert [t["name"] for t in doc["tables"]] == ["PrimaryResult", "Other"]
+    assert doc["tables"][0]["rows"] == [["1"], ["2"]]
+    assert doc["tables"][1]["rows"] == [["9"]]
+
+
+def test_normalization_accepts_an_already_canonical_tables_document():
+    """Defensive: a future CLI (or `az rest` against the query API) that
+    returns the service shape must pass through untouched, not be mangled."""
+    raw = _la_normalized()
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(raw))])
+    doc = fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner)
+    assert doc == raw
+    assert parse_interaction_counts(doc) == (120, 113)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # rows of the same table disagreeing on their column set: which row
+        # is authoritative is unknowable, so it is not evidence
+        [
+            {"TableName": "PrimaryResult", "total_interactions": "1"},
+            {"TableName": "PrimaryResult", "successful_interactions": "1"},
+        ],
+        # duplicate columns that differ only in case
+        [{"TableName": "PrimaryResult", "Total": "1", "total": "2"}],
+        # no TableName tag at all — not the CLI's shape
+        [{"total_interactions": "1", "successful_interactions": "1"}],
+        [{"TableName": "", "total_interactions": "1"}],
+        [{"TableName": "   ", "total_interactions": "1"}],
+        [{"TableName": 7, "total_interactions": "1"}],
+        # a tag and nothing else: a row with no columns
+        [{"TableName": "PrimaryResult"}],
+        # not a list of objects
+        ["PrimaryResult"],
+        [3],
+        [[["total_interactions", "1"]]],
+        [None],
+        # object shapes that are not a `tables[]` document either
+        {"error": {"code": "BadArgumentError"}},
+        {"tables": []},
+        {"tables": "PrimaryResult"},
+        {},
+        "PrimaryResult",
+        7,
+    ],
+)
+def test_malformed_or_ambiguous_cli_result_degrades_to_none(payload):
+    runner = FakeRunner([_cp(CUSTOMER_ID), _cp(json.dumps(payload))])
+    assert fetch_interaction_result(WORKSPACE_ID, KQL, runner=runner) is None
+
+
+def test_collect_sources_warns_when_the_cli_result_cannot_be_normalized():
+    runner = FakeRunner([
+        _account_ok(), _page_cp(), _cp(CUSTOMER_ID),
+        _cp(json.dumps([{"total_interactions": "1"}])),
+    ])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
+    )
+    assert bundle["interaction_result"] is None
+    assert bundle["cost_pages"] == [_page()]
+    assert len(bundle["warnings"]) == 1
+
+
+# ---------------------------------------------------------------------------
 # collect_sources
 # ---------------------------------------------------------------------------
 
@@ -908,7 +1304,7 @@ def test_collect_sources_all_sources_present():
     )
     assert bundle["token_doc"] == _token_doc()
     assert bundle["token_source_resource_id"] == MONITOR_ID
-    assert bundle["interaction_result"] == _la_result()
+    assert bundle["interaction_result"] == _la_normalized()
     assert bundle["warnings"] == []
 
 
@@ -1008,7 +1404,7 @@ def test_collect_sources_interaction_only():
         workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
     )
     assert bundle["token_doc"] is None
-    assert bundle["interaction_result"] == _la_result()
+    assert bundle["interaction_result"] == _la_normalized()
 
 
 def test_collect_sources_cost_failure_aborts_the_bundle():
@@ -1082,13 +1478,166 @@ def test_collect_sources_does_not_mutate_runner_inputs_or_share_state():
     assert runner_one.calls == runner_two.calls
 
 
-def test_collect_sources_validates_optional_ids_before_any_call():
-    runner = FakeRunner(default=_account_ok())
-    with pytest.raises(ActualsSourceError):
-        collect_sources(
-            SUB, RG, START, END, monitor_resource_id="not-an-arm-id", runner=runner
-        )
-    assert runner.calls == []
+# ---------------------------------------------------------------------------
+# collect_sources — an optional source can never take the mandatory one down
+#
+# A malformed or out-of-scope *optional* resource id is a caller mistake
+# about attribution evidence. Aborting the whole bundle over it throws away
+# the authoritative Cost Management total the operator actually asked for —
+# a total that was already fetched successfully.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "bad_monitor_id",
+    [
+        "not-an-arm-id",
+        "",
+        "aoai-threadlight",
+        f"/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.X/accounts/a b",
+        f"/subscriptions/{SUB}/resourceGroups/{RG}/providers/../accounts/x",
+        f"/subscriptions/not-a-guid/resourceGroups/{RG}/providers/Microsoft.X/accounts/a",
+        "https://management.azure.com" + MONITOR_ID,
+        7,
+    ],
+)
+def test_collect_sources_degrades_malformed_monitor_id_to_a_warning(bad_monitor_id):
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END, monitor_resource_id=bad_monitor_id, runner=runner
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["token_doc"] is None
+    assert bundle["token_source_resource_id"] is None
+    assert len(bundle["warnings"]) == 1
+    assert "token" in bundle["warnings"][0].casefold()
+    assert len(runner.calls) == 2, "no metrics call may be issued"
+
+
+def test_collect_sources_degrades_foreign_subscription_monitor_id():
+    """Scope enforcement, not just well-formedness: a resource in another
+    subscription would attribute someone else's tokens to this bundle."""
+    foreign = MONITOR_ID.replace(SUB, OTHER_SUB)
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END, monitor_resource_id=foreign, runner=runner
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["token_doc"] is None
+    assert len(bundle["warnings"]) == 1
+    assert len(runner.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "bad_workspace_id",
+    [
+        "law-threadlight",
+        "",
+        CUSTOMER_ID,
+        f"/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.X/workspaces/a;b",
+        7,
+    ],
+)
+def test_collect_sources_degrades_malformed_workspace_id_without_resolving(
+    bad_workspace_id,
+):
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=bad_workspace_id, kql=KQL, runner=runner,
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["interaction_result"] is None
+    assert len(bundle["warnings"]) == 1
+    assert "workspace" in bundle["warnings"][0].casefold()
+    assert len(runner.calls) == 2, "no workspace/query call may be issued"
+
+
+@pytest.mark.parametrize("bad_kql", ["", "   ", "\x00", "kql\x00drop", 7, [], {}])
+def test_collect_sources_skips_unusable_kql_before_resolving_the_workspace(bad_kql):
+    """A blank or non-string query is a caller bug. Spending an Azure round
+    trip to resolve a workspace we will never query makes that bug look
+    like a service failure."""
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=WORKSPACE_ID, kql=bad_kql, runner=runner,
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["interaction_result"] is None
+    assert len(bundle["warnings"]) == 1
+    assert len(runner.calls) == 2, "no workspace/query call may be issued"
+
+
+def test_collect_sources_refuses_a_workspace_in_another_subscription():
+    """The interaction count is divided into the reconciled scope's cost;
+    counting a foreign workspace's traces would silently produce a
+    cost-per-interaction for two unrelated systems."""
+    foreign = WORKSPACE_ID.replace(SUB, OTHER_SUB)
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        workspace_resource_id=foreign, kql=KQL, runner=runner,
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert bundle["interaction_result"] is None
+    assert len(bundle["warnings"]) == 1
+    assert len(runner.calls) == 2, "a foreign workspace must never be queried"
+
+
+def test_collect_sources_scope_warnings_are_distinct_per_source():
+    foreign_monitor = MONITOR_ID.replace(SUB, OTHER_SUB)
+    foreign_workspace = WORKSPACE_ID.replace(SUB, OTHER_SUB)
+    runner = FakeRunner([_account_ok(), _page_cp()])
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        monitor_resource_id=foreign_monitor,
+        workspace_resource_id=foreign_workspace,
+        kql=KQL,
+        runner=runner,
+    )
+    assert bundle["cost_pages"] == [_page()]
+    assert len(bundle["warnings"]) == 2
+    assert len(set(bundle["warnings"])) == 2
+    assert len(runner.calls) == 2
+
+
+def test_resolve_workspace_customer_id_stays_subscription_agnostic():
+    """The scope rule belongs to the bundle, not to the generic helper:
+    `resolve_workspace_customer_id` has no notion of a reconciled
+    subscription and must keep resolving any well-formed workspace id."""
+    import inspect
+
+    foreign = WORKSPACE_ID.replace(SUB, OTHER_SUB)
+    runner = FakeRunner([_cp(CUSTOMER_ID)])
+    assert resolve_workspace_customer_id(foreign, runner=runner) == CUSTOMER_ID
+    params = inspect.signature(resolve_workspace_customer_id).parameters
+    assert "subscription_id" not in params
+
+
+def test_collect_sources_still_validates_mandatory_scope_before_any_call():
+    for bad_kwargs in ({"subscription_id": "not-a-guid"}, {"resource_group": "rg name"}):
+        runner = FakeRunner(default=_account_ok())
+        kwargs = {"subscription_id": SUB, "resource_group": RG, **bad_kwargs}
+        with pytest.raises(ActualsSourceError):
+            collect_sources(
+                kwargs["subscription_id"], kwargs["resource_group"],
+                START, END, runner=runner,
+            )
+        assert runner.calls == []
+
+
+def test_collect_sources_asserts_identity_exactly_once():
+    """`fetch_cost_pages` asserts identity itself; the bundle must not
+    duplicate the round trip just to keep its own copy of the context."""
+    runner = _collect_runner()
+    bundle = collect_sources(
+        SUB, RG, START, END,
+        monitor_resource_id=MONITOR_ID, workspace_resource_id=WORKSPACE_ID,
+        kql=KQL, runner=runner,
+    )
+    account_calls = [c for c in runner.calls if c[1:3] == ["account", "show"]]
+    assert len(account_calls) == 1
+    assert bundle["azure_context"] == {"subscription_id": SUB, "tenant_id": TENANT}
 
 
 def test_collect_sources_accepts_kql_keyword():
@@ -1103,7 +1652,7 @@ def test_collect_sources_accepts_kql_keyword():
         SUB, RG, START, END,
         workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
     )
-    assert bundle["interaction_result"] == _la_result()
+    assert bundle["interaction_result"] == _la_normalized()
 
 
 def test_collect_sources_rejects_old_interaction_kql_keyword():
@@ -1163,3 +1712,60 @@ def test_default_runner_maps_timeout_to_source_error(monkeypatch):
     monkeypatch.setattr(actuals_sources.subprocess, "run", _fake_run)
     with pytest.raises(ActualsSourceError):
         assert_azure_context(SUB)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(13, "Permission denied"),
+        PermissionError("az is not executable"),
+        BlockingIOError("resource temporarily unavailable"),
+    ],
+)
+def test_default_runner_maps_os_errors_to_source_error(monkeypatch, error):
+    """A CLI that cannot be executed is a source failure, not a stack trace
+    escaping the module boundary as some unrelated exception type."""
+
+    def _fake_run(args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(actuals_sources.subprocess, "run", _fake_run)
+    with pytest.raises(ActualsSourceError):
+        assert_azure_context(SUB)
+
+
+@pytest.mark.parametrize("failure", ["timeout", "oserror"])
+def test_default_runner_errors_carry_no_command_line_or_body(monkeypatch, failure):
+    """`TimeoutExpired`/`OSError` render the failing command — which for the
+    cost query is the request body — so the message must be built here, not
+    borrowed from the exception."""
+    body = json.dumps(cost_query_body(START, END))
+    argv = ["az", "rest", "--method", "post", "--body", body]
+
+    def _fake_run(args, **kwargs):
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=1)
+        raise OSError(13, f"Permission denied while running {' '.join(argv)}")
+
+    monkeypatch.setattr(actuals_sources.subprocess, "run", _fake_run)
+    with pytest.raises(ActualsSourceError) as excinfo:
+        assert_azure_context(SUB)
+    message = str(excinfo.value)
+    assert "PreTaxCost" not in message
+    assert "--body" not in message
+    assert body not in message
+
+
+def test_sanitized_errors_use_one_redaction_placeholder():
+    """Two spellings of "we removed something" in the same message is a
+    reader asking which one meant a credential."""
+    token = "eyJhbGciOiJIUzI1NiJ9.c2VjcmV0LXBheWxvYWQ.c2ln"
+    noisy = f"(403) AuthorizationFailed Authorization: Bearer {token}"
+    runner = _cost_runner(default=_cp("", returncode=1, stderr=noisy))
+    with pytest.raises(ActualsSourceError) as excinfo:
+        fetch_cost_pages(SUB, RG, START, END, runner=runner, sleep=SleepSpy())
+    message = str(excinfo.value)
+    assert token not in message
+    assert "eyJ" not in message
+    assert "[redacted]" in message
+    assert "*" not in message
