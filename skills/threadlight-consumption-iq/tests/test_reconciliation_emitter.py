@@ -32,12 +32,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import sys
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+
+POSIX_ONLY = pytest.mark.skipif(
+    os.name == "nt", reason="POSIX permission bits do not exist on Windows"
+)
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -349,12 +355,117 @@ def test_unparseable_history_entry_is_a_conflict_not_an_overwrite(
 
 
 # ---------------------------------------------------------------------------
+# Immutable history is created, never replaced — including under a race
+# ---------------------------------------------------------------------------
+
+
+def racing_history_writer(monkeypatch, entry, payload):
+    """Let a competing publisher win the race for `entry`.
+
+    The emitter checks whether a history entry exists BEFORE it stages any
+    payload, so a concurrent publisher that creates the same entry in between
+    is exactly the window that a blind `os.replace` would silently overwrite.
+    Staging is the last hook that still runs inside that window.
+    """
+    real_stage = emitter._stage
+
+    def stage(destination, text, created):
+        temp = real_stage(destination, text, created)
+        if Path(destination) == entry and not entry.exists():
+            entry.parent.mkdir(parents=True, exist_ok=True)
+            entry.write_bytes(payload)
+        return temp
+
+    monkeypatch.setattr(emitter, "_stage", stage)
+
+
+def test_history_entry_created_after_the_check_is_never_overwritten(
+    tmp_path, monkeypatch
+) -> None:
+    """A concurrent publisher's DIFFERENT payload wins the create; this call
+    must lose loudly rather than replace evidence it did not write."""
+    winner_actuals, _ = documents()
+    loser_actuals, loser_reconciliation = documents(total=99.0)
+    entry = snapshot_dir(tmp_path) / "actuals.json"
+    winner_bytes = json.dumps(winner_actuals, sort_keys=True).encode("utf-8")
+    racing_history_writer(monkeypatch, entry, winner_bytes)
+
+    with pytest.raises(emitter.HistoryConflictError):
+        emit(tmp_path, loser_actuals, loser_reconciliation)
+
+    assert entry.read_bytes() == winner_bytes
+
+
+def test_history_entry_created_after_the_check_is_idempotent(
+    tmp_path, monkeypatch
+) -> None:
+    """The same payload from a concurrent publisher is not a conflict — but
+    the bytes already on disk are still left exactly as they were found."""
+    actuals, reconciliation = documents()
+    entry = snapshot_dir(tmp_path) / "actuals.json"
+    winner_bytes = json.dumps(actuals, sort_keys=True).encode("utf-8")
+    racing_history_writer(monkeypatch, entry, winner_bytes)
+
+    emit(tmp_path, actuals, reconciliation)
+
+    assert entry.read_bytes() == winner_bytes
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
+    assert emitter.canonical_pair_is_complete(
+        tmp_path / "specs" / "cost-actuals-manifest.json",
+        tmp_path / "specs" / "cost-reconciliation-manifest.json",
+    )
+
+
+def test_history_entries_are_created_by_link_never_by_replace(
+    tmp_path, monkeypatch
+) -> None:
+    """`os.replace` overwrites unconditionally, so it can never be the call
+    that puts an immutable entry in place."""
+    replaced = []
+    real_replace = emitter.os.replace
+
+    def replace(source, destination):
+        replaced.append(Path(destination).name)
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(emitter.os, "replace", replace)
+    emit(tmp_path)
+    assert "actuals.json" not in replaced
+    assert "reconciliation.json" not in replaced
+    assert (snapshot_dir(tmp_path) / "actuals.json").is_file()
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
+
+
+def test_history_link_failure_is_reported_as_an_io_error(
+    tmp_path, monkeypatch
+) -> None:
+    """`os.link` exists on Windows but can fail on filesystems that have no
+    hard links. That must surface as a legible I/O failure, not as a
+    HistoryConflictError claiming somebody else's evidence is in the way."""
+
+    def link(source, destination, **kwargs):
+        raise OSError(1, "operation not permitted")
+
+    monkeypatch.setattr(emitter.os, "link", link)
+    with pytest.raises(OSError, match="hard link"):
+        emit(tmp_path)
+    assert not (tmp_path / "specs" / "cost-actuals-manifest.json").exists()
+
+
+# ---------------------------------------------------------------------------
 # Partial-write phases — the commit marker never lies
 # ---------------------------------------------------------------------------
 
 
-def failing_replace(monkeypatch, marker):
+def failing_publish(monkeypatch, marker):
+    """Fail the publish of whichever destination ends with `marker`.
+
+    Both publish primitives are patched: canonical artifacts are replaced,
+    immutable history entries are LINKED (never replaced), so a helper that
+    only knew about `os.replace` could no longer reach the history phases.
+    """
     real_replace = emitter.os.replace
+    real_link = emitter.os.link
     calls = []
 
     def replace(source, destination):
@@ -363,7 +474,14 @@ def failing_replace(monkeypatch, marker):
             raise OSError("simulated replace failure")
         return real_replace(source, destination)
 
+    def link(source, destination):
+        calls.append(str(destination))
+        if str(destination).endswith(marker):
+            raise OSError("simulated link failure")
+        return real_link(source, destination)
+
     monkeypatch.setattr(emitter.os, "replace", replace)
+    monkeypatch.setattr(emitter.os, "link", link)
     return calls
 
 
@@ -376,7 +494,7 @@ def test_partial_write_cannot_publish_a_false_completed_pair(
     old_reconciliation = reconciliation_path.read_bytes()
     actuals, reconciliation = documents("2026-08-11T00:00:00Z")
 
-    failing_replace(monkeypatch, "cost-reconciliation-manifest.json")
+    failing_publish(monkeypatch, "cost-reconciliation-manifest.json")
     with pytest.raises(OSError, match="simulated"):
         emit(tmp_path, actuals, reconciliation)
 
@@ -398,7 +516,7 @@ def test_report_failure_also_leaves_the_pair_incomplete(
     reconciliation_path = tmp_path / "specs" / "cost-reconciliation-manifest.json"
     actuals, reconciliation = documents("2026-08-11T00:00:00Z")
 
-    failing_replace(monkeypatch, "cost-reconciliation.md")
+    failing_publish(monkeypatch, "cost-reconciliation.md")
     with pytest.raises(OSError, match="simulated"):
         emit(tmp_path, actuals, reconciliation)
 
@@ -421,7 +539,7 @@ def test_canonical_actuals_failure_keeps_the_previous_published_pair(
     before = (actuals_path.read_bytes(), reconciliation_path.read_bytes())
     actuals, reconciliation = documents("2026-08-11T00:00:00Z")
 
-    failing_replace(monkeypatch, "cost-actuals-manifest.json")
+    failing_publish(monkeypatch, "cost-actuals-manifest.json")
     with pytest.raises(OSError, match="simulated"):
         emit(tmp_path, actuals, reconciliation)
 
@@ -436,7 +554,7 @@ def test_history_failure_publishes_no_canonical_file(
     tmp_path, monkeypatch
 ) -> None:
     actuals, reconciliation = documents()
-    failing_replace(monkeypatch, "actuals.json")
+    failing_publish(monkeypatch, "actuals.json")
     with pytest.raises(OSError, match="simulated"):
         emit(tmp_path, actuals, reconciliation)
     assert not (tmp_path / "specs" / "cost-actuals-manifest.json").exists()
@@ -459,7 +577,7 @@ def test_every_failed_publish_phase_cleans_up_its_temp_files(
     tmp_path, monkeypatch, marker
 ) -> None:
     actuals, reconciliation = documents()
-    failing_replace(monkeypatch, marker)
+    failing_publish(monkeypatch, marker)
     with pytest.raises(OSError, match="simulated"):
         emit(tmp_path, actuals, reconciliation)
     assert temp_leftovers(tmp_path) == []
@@ -475,38 +593,51 @@ def test_publish_order_is_history_then_actuals_report_reconciliation_last(
 ) -> None:
     events = []
     real_replace = emitter.os.replace
+    real_link = emitter.os.link
     real_fsync = emitter.os.fsync
 
     def replace(source, destination):
-        events.append(("replace", Path(destination).name))
+        events.append(("publish", Path(destination).name))
         return real_replace(source, destination)
 
+    def link(source, destination):
+        events.append(("publish", Path(destination).name))
+        return real_link(source, destination)
+
     def fsync(descriptor):
-        events.append(("fsync", None))
+        kind = (
+            "dirsync"
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode)
+            else "fsync"
+        )
+        events.append((kind, None))
         return real_fsync(descriptor)
 
     monkeypatch.setattr(emitter.os, "replace", replace)
+    monkeypatch.setattr(emitter.os, "link", link)
     monkeypatch.setattr(emitter.os, "fsync", fsync)
     emit(tmp_path)
 
-    replaces = [name for kind, name in events if kind == "replace"]
-    assert replaces == [
+    publishes = [name for kind, name in events if kind == "publish"]
+    assert publishes == [
         "actuals.json",
         "reconciliation.json",
         "cost-actuals-manifest.json",
         "cost-reconciliation.md",
         "cost-reconciliation-manifest.json",
     ]
-    first_replace = next(
-        index for index, event in enumerate(events) if event[0] == "replace"
+    first_publish = next(
+        index for index, event in enumerate(events) if event[0] == "publish"
     )
     # Every staged temp file is fsynced before anything is published, and the
-    # parent directory is fsynced immediately after each replace.
-    assert [event[0] for event in events[:first_replace]] == ["fsync"] * 5
+    # parent directory is fsynced immediately after each publish.
+    before = [event[0] for event in events[:first_publish]]
+    assert before.count("fsync") == 5
+    assert "publish" not in before
     for index, event in enumerate(events):
-        if event[0] == "replace":
-            assert events[index + 1][0] == "fsync"
-    assert events[-1][0] == "fsync"
+        if event[0] == "publish":
+            assert events[index + 1][0] == "dirsync"
+    assert events[-1][0] == "dirsync"
 
 
 # ---------------------------------------------------------------------------
@@ -898,6 +1029,60 @@ def test_credential_shaped_warning_value_is_rejected(tmp_path, warning) -> None:
     assert_nothing_written(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "warning",
+    [
+        "token: eyJhbGciOiJIUzI1NiJ9",
+        "token=eyJhbGciOiJIUzI1NiJ9",
+        "Token : eyJhbGciOiJIUzI1NiJ9",
+        "captured token   =   abc123",
+        "https://acct.blob.core.windows.net/c?sv=2025-01-01&sig=Ab%2FcD3",
+        "https://acct.blob.core.windows.net/c?SIG=Ab%2FcD3",
+        "DefaultEndpointsProtocol=https;AccountKey=Zm9vYmFyYmF6;",
+        "accountkey = Zm9vYmFyYmF6",
+        "AccountKey=Zm9vYmFyYmF6",
+    ],
+)
+def test_assignment_shaped_credentials_in_values_are_rejected(
+    tmp_path, warning
+) -> None:
+    """A bare `token`/`sig`/`accountkey` immediately followed by an
+    assignment is the exact shape of a leaked bearer token, a SAS query
+    signature and a storage connection string. History is immutable, so any
+    of them must fail the emission rather than be published forever."""
+    actuals, reconciliation = documents(warnings=[warning])
+    with pytest.raises(emitter.EmissionValidationError, match="credential"):
+        emit(tmp_path, actuals, reconciliation)
+    assert_nothing_written(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "warning",
+    [
+        "max_token_volume_variance_pct was not declared",
+        "token volume evidence was not collected for this window",
+        "input_tokens: 1200 and output_tokens: 300 were observed",
+        "model_token_count: 12345 came from Azure Monitor",
+        "design=hub-and-spoke was recorded by the operator",
+        "the assignment of tokens to resources is incomplete",
+        "token_metrics doc: specs/cost-manifest.json#tokens",
+        "no design=x, sizing=y or config=z evidence was collected",
+    ],
+)
+def test_token_volume_prose_and_threshold_fields_still_publish(
+    tmp_path, warning
+) -> None:
+    """The reconciliation core's own warnings discuss token VOLUME, and
+    `max_token_volume_variance_pct` is a declared threshold name. A guard
+    that refused those would suppress the evidence it exists to protect."""
+    actuals, reconciliation = documents(warnings=[warning])
+    emit(tmp_path, actuals, reconciliation)
+    published = json.loads(
+        (tmp_path / "specs" / "cost-actuals-manifest.json").read_text()
+    )
+    assert warning in published["warnings"]
+
+
 def test_identifiers_and_token_metrics_are_not_treated_as_credentials(
     tmp_path,
 ) -> None:
@@ -983,6 +1168,246 @@ def test_destination_paths_must_be_distinct(tmp_path) -> None:
             report_path=tmp_path / "specs" / "cost-actuals-manifest.json",
         )
     assert_nothing_written(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "COST-ACTUALS-MANIFEST.JSON",
+        "Cost-Actuals-Manifest.json",
+        "cost-actuals-MANIFEST.json",
+    ],
+)
+def test_case_only_alias_destinations_are_rejected(tmp_path, alias) -> None:
+    """On a case-insensitive operator filesystem (macOS, Windows) these two
+    spellings are ONE file, so publishing both would silently overwrite one
+    artifact with another. The identity is normalized conservatively, so the
+    pair is refused on every platform rather than only where it happens to
+    collide."""
+    actuals, reconciliation = documents()
+    with pytest.raises(emitter.EmissionValidationError, match="distinct"):
+        emit(
+            tmp_path,
+            actuals,
+            reconciliation,
+            reconciliation_path=tmp_path / "specs" / alias,
+        )
+    assert_nothing_written(tmp_path)
+
+
+def test_case_only_alias_of_a_history_entry_is_rejected(tmp_path) -> None:
+    actuals, reconciliation = documents()
+    aliased = (
+        tmp_path
+        / "specs"
+        / "COST-HISTORY"
+        / "2026-08-01--2026-08-08"
+        / "2026-08-10T000000Z"
+        / "actuals.json"
+    )
+    with pytest.raises(emitter.EmissionValidationError, match="distinct"):
+        emit(tmp_path, actuals, reconciliation, actuals_path=aliased)
+    assert_nothing_written(tmp_path)
+
+
+def test_alias_through_a_symlinked_ancestor_is_rejected(tmp_path) -> None:
+    """Neither path is itself a symlink and neither parent is, so only
+    resolving the whole path reveals that both name the same file."""
+    actuals, reconciliation = documents()
+    real = tmp_path / "real"
+    (real / "docs").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(real, target_is_directory=True)
+    with pytest.raises(emitter.EmissionValidationError, match="distinct"):
+        emit(
+            tmp_path,
+            actuals,
+            reconciliation,
+            report_path=real / "docs" / "shared.md",
+            actuals_path=tmp_path / "link" / "docs" / "shared.md",
+        )
+    assert list((real / "docs").iterdir()) == []
+
+
+def test_distinct_paths_that_merely_share_a_prefix_still_publish(
+    tmp_path,
+) -> None:
+    """The conservative identity must not collapse genuinely different
+    files: a normalization that over-matches would refuse valid emissions."""
+    emit(
+        tmp_path,
+        report_path=tmp_path / "docs" / "cost-reconciliation.md",
+        actuals_path=tmp_path / "specs" / "cost-actuals-manifest.json",
+        reconciliation_path=tmp_path / "specs" / "cost-actuals-manifest2.json",
+        history_root=tmp_path / "specs" / "cost-history",
+    )
+    assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
+    assert (tmp_path / "specs" / "cost-actuals-manifest2.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Platform durability — directory fsync, permissions, cleanup
+# ---------------------------------------------------------------------------
+
+
+class WindowsOs:
+    """`os` as it looks on Windows: everything real except `name`.
+
+    Setting the real `os.name` is not an option — `pathlib` reads it at call
+    time to pick `WindowsPath`, which cannot be instantiated on POSIX — so
+    the emitter's own module-level `os` reference is swapped for this proxy.
+    Every call it makes still reaches the real `os`; only `os.name` lies, and
+    that is exactly the branch under test.
+    """
+
+    name = "nt"
+
+    def __init__(self, directories):
+        self._directories = directories
+
+    def open(self, path, flags, *args, **kwargs):
+        if os.path.isdir(path):
+            self._directories.append(str(path))
+        return os.open(path, flags, *args, **kwargs)
+
+    def __getattr__(self, attribute):
+        return getattr(os, attribute)
+
+
+def windows_os(monkeypatch):
+    directories = []
+    monkeypatch.setattr(emitter, "os", WindowsOs(directories))
+    return directories
+
+
+def test_directory_fsync_is_a_no_op_on_windows(tmp_path, monkeypatch) -> None:
+    """Windows has no file descriptor for a directory, so `os.open` on one
+    raises `PermissionError`. The guard must come BEFORE the open, not around
+    it, so no descriptor is ever requested."""
+    directories = windows_os(monkeypatch)
+    emitter._fsync_directory(tmp_path)
+    assert directories == []
+
+
+def test_emission_never_opens_a_directory_on_windows(
+    tmp_path, monkeypatch
+) -> None:
+    """A mid-publish `PermissionError` would abort AFTER some artifacts were
+    already renamed into place — the one failure mode this module exists to
+    prevent. On Windows the whole emission must simply complete."""
+    directories = windows_os(monkeypatch)
+    emit(tmp_path)
+    assert directories == []
+    assert (tmp_path / "specs" / "cost-actuals-manifest.json").is_file()
+    assert (tmp_path / "specs" / "cost-reconciliation-manifest.json").is_file()
+    assert (tmp_path / "docs" / "cost-reconciliation.md").is_file()
+    assert (snapshot_dir(tmp_path) / "actuals.json").is_file()
+    assert (snapshot_dir(tmp_path) / "reconciliation.json").is_file()
+    assert emitter.canonical_pair_is_complete(
+        tmp_path / "specs" / "cost-actuals-manifest.json",
+        tmp_path / "specs" / "cost-reconciliation-manifest.json",
+    )
+
+
+def test_newly_created_directories_are_fsynced_before_the_first_publish(
+    tmp_path, monkeypatch
+) -> None:
+    """A directory entry that is not fsynced can vanish in a crash, taking
+    the artifact inside it with it. Every directory this call creates is
+    persisted BEFORE the first rename, so no directory fsync can fail after
+    a canonical file is already visible."""
+    if os.name == "nt":
+        pytest.skip("directory descriptors do not exist on Windows")
+    events = []
+    real_fsync_directory = emitter._fsync_directory
+    real_replace = emitter.os.replace
+    real_link = emitter.os.link
+
+    def fsync_directory(path):
+        events.append(("dirsync", str(path)))
+        return real_fsync_directory(path)
+
+    def replace(source, destination):
+        events.append(("publish", str(destination)))
+        return real_replace(source, destination)
+
+    def link(source, destination):
+        events.append(("publish", str(destination)))
+        return real_link(source, destination)
+
+    monkeypatch.setattr(emitter, "_fsync_directory", fsync_directory)
+    monkeypatch.setattr(emitter.os, "replace", replace)
+    monkeypatch.setattr(emitter.os, "link", link)
+    emit(tmp_path)
+
+    first_publish = next(
+        index for index, event in enumerate(events) if event[0] == "publish"
+    )
+    synced_first = {path for kind, path in events[:first_publish]}
+    for created in (
+        tmp_path / "specs",
+        tmp_path / "docs",
+        tmp_path / "specs" / "cost-history",
+        tmp_path / "specs" / "cost-history" / "2026-08-01--2026-08-08",
+        snapshot_dir(tmp_path),
+    ):
+        assert str(created) in synced_first
+
+
+ARTIFACTS = (
+    "docs/cost-reconciliation.md",
+    "specs/cost-actuals-manifest.json",
+    "specs/cost-reconciliation-manifest.json",
+    "specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/actuals.json",
+    (
+        "specs/cost-history/2026-08-01--2026-08-08/2026-08-10T000000Z/"
+        "reconciliation.json"
+    ),
+)
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("relative", ARTIFACTS)
+def test_published_artifacts_are_group_and_world_readable(
+    tmp_path, relative
+) -> None:
+    """`tempfile` stages at 0600, and a published artifact that inherits that
+    mode is unreadable to the CI job, the reviewer and every downstream tool
+    that consumes this evidence."""
+    emit(tmp_path)
+    assert stat.S_IMODE((tmp_path / relative).stat().st_mode) == 0o644
+    assert stat.S_IMODE((tmp_path / relative).stat().st_mode) == (
+        emitter.ARTIFACT_MODE
+    )
+
+
+def test_cleanup_never_masks_the_original_failure(
+    tmp_path, monkeypatch
+) -> None:
+    """If unlinking a temp file also fails, the caller must still see WHY the
+    publish failed, not a secondary bookkeeping error."""
+    actuals, reconciliation = documents()
+    failing_publish(monkeypatch, "cost-reconciliation-manifest.json")
+
+    def unlink(path):
+        raise PermissionError("cleanup is not permitted")
+
+    monkeypatch.setattr(emitter.os, "unlink", unlink)
+    with pytest.raises(OSError, match="simulated"):
+        emit(tmp_path, actuals, reconciliation)
+
+
+def test_cleanup_failure_does_not_break_a_successful_emission(
+    tmp_path, monkeypatch
+) -> None:
+    def unlink(path):
+        raise PermissionError("cleanup is not permitted")
+
+    monkeypatch.setattr(emitter.os, "unlink", unlink)
+    emit(tmp_path)
+    assert emitter.canonical_pair_is_complete(
+        tmp_path / "specs" / "cost-actuals-manifest.json",
+        tmp_path / "specs" / "cost-reconciliation-manifest.json",
+    )
 
 
 def test_symlinked_destination_file_is_rejected(tmp_path) -> None:
@@ -1367,3 +1792,75 @@ def test_header_states_window_source_and_statuses(tmp_path) -> None:
     assert GENERATED in header
     assert "usage-pretax" in header
     assert "`pass`" in header
+
+
+# ---------------------------------------------------------------------------
+# Code spans survive backticks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "plain",
+        "with `one` backtick pair",
+        "``double``",
+        "```triple```",
+        "`leading",
+        "trailing`",
+        "`",
+        "``",
+        "",
+        "   ",
+    ],
+)
+def test_code_span_is_a_closed_span_for_any_backtick_content(value) -> None:
+    """A code span cannot be escaped from the inside — a backslash is literal
+    there — so a backtick in the content must be fenced by a LONGER run of
+    backticks, not escaped. Otherwise the span closes early and the rest of
+    the table row is parsed as Markdown."""
+    rendered = emitter._code(value)
+    fence = rendered[: len(rendered) - len(rendered.lstrip("`"))]
+    assert fence, f"{rendered!r} is not a code span"
+    assert rendered.endswith(fence)
+    body = rendered[len(fence): len(rendered) - len(fence)]
+    assert fence not in body
+    assert "\\`" not in rendered
+    for run in ("`" * length for length in range(1, 6)):
+        if run in body:
+            assert len(run) < len(fence)
+
+
+@pytest.mark.parametrize("value", ["`a`", "a`b", "``", "", " "])
+def test_code_span_content_is_recoverable(value) -> None:
+    """Whatever the fence length, the original text is still there to read —
+    padded by at most one space on each side, per CommonMark's stripping
+    rule."""
+    rendered = emitter._code(value)
+    fence = rendered[: len(rendered) - len(rendered.lstrip("`"))]
+    body = rendered[len(fence): len(rendered) - len(fence)]
+    assert value.strip() in body
+
+
+def test_pipes_inside_a_code_span_are_still_escaped_for_the_table() -> None:
+    """GFM resolves `\\|` before inline parsing, so an unescaped pipe breaks
+    the cell even inside a code span."""
+    assert "\\|" in emitter._code("a|b")
+
+
+def test_backticked_provenance_key_cannot_break_out_of_its_cell(
+    tmp_path,
+) -> None:
+    actuals, reconciliation = documents(
+        provenance={
+            "query_api_version": "2025-03-01",
+            "``odd`key``": "value",
+        }
+    )
+    emit(tmp_path, actuals, reconciliation)
+    provenance = section(report_text(tmp_path), "Provenance")
+    row = next(
+        line for line in provenance.splitlines() if "odd" in line
+    )
+    assert row.count("|") == 3
+    assert "\\`" not in row

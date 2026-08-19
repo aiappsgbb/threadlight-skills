@@ -23,9 +23,37 @@ complete one.
 
 Publish order is: immutable history first, then canonical actuals, then the
 report, then the canonical reconciliation LAST. Each file is written to a
-named temp file in its own destination directory, flushed, `os.fsync`ed and
-closed before any `os.replace` runs, and each destination directory is
-`os.fsync`ed after its replace so the rename itself survives a crash.
+named temp file in its own destination directory, flushed, `os.fsync`ed,
+`chmod`ed to `ARTIFACT_MODE` and closed before any publish runs, and each
+destination directory is `os.fsync`ed after its publish so the rename itself
+survives a crash. Every directory this call has to CREATE is fsynced before
+the first publish, so no directory-durability failure can happen after a
+canonical file is already visible.
+
+## Durability is bounded by the platform, and says so
+
+On POSIX, both halves hold: the bytes are fsynced, and the directory entry
+that names them is fsynced too. On Windows there is no file descriptor for a
+directory, so `_fsync_directory` is a documented no-op — attempting the
+`os.open` would raise `PermissionError` mid-publish, which is precisely the
+half-published outcome this module exists to prevent. The file fsync and the
+atomic `os.replace` are retained there in full; only directory-ENTRY
+durability is weaker, meaning a crash immediately after a rename can lose the
+rename itself. `canonical_pair_is_complete` still reads that outcome
+correctly, because a lost rename is indistinguishable from a rename that
+never happened.
+
+## Destination identity is normalized conservatively
+
+Two destinations that differ only in case, or that reach the same file
+through a symlinked ancestor, are ONE file on a case-insensitive operator
+filesystem (macOS, Windows) — and publishing both would silently overwrite
+one artifact with another. Every report/actuals/reconciliation/history path
+is therefore reduced to `os.path.realpath(os.path.abspath(path)).casefold()`
+and checked for collisions BEFORE any directory is created or byte written.
+The casefold is deliberately conservative: it refuses a case-only alias even
+on a case-sensitive filesystem where it would technically be safe, because a
+tree published on Linux is routinely reviewed on macOS.
 
 This module deliberately does **not** claim cross-file atomicity — POSIX
 offers none for a multi-file publish. It claims something weaker and
@@ -49,6 +77,16 @@ path. Re-emitting an identical payload is a no-op (idempotent), a different
 payload for the same window and instant raises `HistoryConflictError` rather
 than overwriting evidence, and a snapshot interrupted after one of its two
 files can be completed only when the file already on disk still matches.
+
+A history entry is put in place with `os.link`, never `os.replace`. That is
+the whole difference between "immutable" and "immutable unless two publishers
+race": the existence check necessarily happens before the payload is staged,
+and `os.replace` would happily overwrite an entry a concurrent publisher
+created inside that window. `os.link` fails with `FileExistsError` instead,
+and the loser then re-reads the entry that actually won — identical payload
+is idempotent, a different one is a `HistoryConflictError`. `os.link` exists
+on Windows; a filesystem that cannot provide hard links surfaces as a legible
+`OSError` rather than as a false conflict.
 
 ## Credential-shaped free-form evidence is refused
 
@@ -91,6 +129,14 @@ RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1"
 
 HISTORY_ACTUALS_NAME = "actuals.json"
 HISTORY_RECONCILIATION_NAME = "reconciliation.json"
+
+# Fixed mode for every published artifact. `tempfile` stages at 0600, and an
+# artifact that inherited that mode would be unreadable to the CI job, the
+# reviewer and every downstream tool that consumes this evidence — while
+# still being world-readable is harmless, because nothing here may contain a
+# secret (see the credential guard below). Set explicitly rather than left to
+# the process umask so the published tree is reproducible.
+ARTIFACT_MODE = 0o644
 
 PASS = "pass"
 NOT_VERIFIED = "not-verified"
@@ -178,9 +224,20 @@ _CREDENTIAL_KEY_MARKERS = frozenset(
 # legitimate threshold name and reconcile's own warnings discuss token volume
 # — so a marker only trips the guard when it is immediately followed by an
 # assignment, or when it introduces a bearer credential.
+#
+# The bare `token`, `sig` and `accountkey` alternatives carry a
+# `(?<![A-Za-z0-9])` lookbehind rather than `\b`, so `_token=` and `&sig=`
+# are caught while `design=` (which contains "sig") is not, and they require
+# the assignment to follow IMMEDIATELY: `token: <value>` is a leaked bearer
+# credential, `token volume` and `input_tokens: 1200` are evidence. `sig=`
+# and `AccountKey=` are the two Azure spellings that carry a secret in a URL
+# or a connection string, and neither has a legitimate prose form.
 _CREDENTIAL_VALUE_RE = re.compile(
     r"(?:access[ _-]?token|refresh[ _-]?token|id[ _-]?token|client[ _-]?secret"
     r"|secret|password|passwd|authorization|api[ _-]?key)\s*[:=]\s*\S"
+    r"|(?<![A-Za-z0-9])token\s*[:=]\s*\S"
+    r"|(?<![A-Za-z0-9])sig\s*=\s*\S"
+    r"|(?<![A-Za-z0-9])account[ _-]?key\s*=\s*\S"
     r"|bearer\s+[A-Za-z0-9._~+/-]{8,}",
     re.IGNORECASE | re.ASCII,
 )
@@ -191,6 +248,8 @@ _CREDENTIAL_VALUE_RE = re.compile(
 # these documents is snake_case, so escaping it would make the report unreadable
 # without making it any safer.
 _MARKDOWN_ESCAPE_RE = re.compile(r"([\\`*\[\]<>#|~])")
+# Longest run of backticks in a value decides how long its code fence must be.
+_BACKTICK_RUN_RE = re.compile(r"`+")
 
 
 class HistoryConflictError(RuntimeError):
@@ -510,6 +569,23 @@ def _as_path(value: object, label: str) -> Path:
     )
 
 
+def _canonical_identity(path: Path) -> str:
+    """One conservative spelling of "which file is this?".
+
+    `abspath` removes `.`/`..` and the process CWD, `realpath` resolves every
+    symlinked ancestor (a symlink two levels up is not caught by
+    `_reject_symlink`, which only inspects the path and its parent), and
+    `casefold` collapses spellings that differ only in case — which are the
+    SAME file on macOS and Windows.
+
+    Deliberately conservative in both directions it can be: it resolves more
+    than strictly necessary on a case-sensitive filesystem, because refusing
+    an emission is recoverable and silently overwriting one artifact with
+    another is not.
+    """
+    return os.path.realpath(os.path.abspath(path)).casefold()
+
+
 def _reject_symlink(path: Path, label: str) -> None:
     if path.is_symlink():
         raise EmissionValidationError(
@@ -523,10 +599,11 @@ def _validate_destinations(destinations: list[tuple[str, Path]]) -> None:
     for label, path in destinations:
         _reject_symlink(path, label)
         _reject_symlink(path.parent, f"{label} parent directory")
-        key = os.path.abspath(path)
+        key = _canonical_identity(path)
         if key in seen:
             raise EmissionValidationError(
-                f"{label} and {seen[key]} must be distinct paths, both are {path}"
+                f"{label} and {seen[key]} must be distinct paths, both resolve "
+                f"to the same file as {path}"
             )
         seen[key] = label
 
@@ -539,10 +616,14 @@ def _validate_destinations(destinations: list[tuple[str, Path]]) -> None:
 def _stage(destination: Path, text: str, created: list[Path]) -> Path:
     """Write `text` to a named temp file in the destination's own directory.
 
-    Same directory, so the later `os.replace` is a rename within one
-    filesystem and cannot fail with a cross-device error after the caller was
-    told the payload was durable. The temp path is recorded before the write
-    begins, so cleanup can find it even if the write itself fails.
+    Same directory, so the later `os.replace`/`os.link` is a rename or link
+    within one filesystem and cannot fail with a cross-device error after the
+    caller was told the payload was durable. The temp path is recorded before
+    the write begins, so cleanup can find it even if the write itself fails.
+
+    The mode is set on the STAGED file, not after publishing: `os.replace`
+    carries the inode's mode with it and `os.link` shares the inode outright,
+    so the artifact is readable from the instant it becomes visible.
     """
     handle = tempfile.NamedTemporaryFile(
         mode="w",
@@ -559,11 +640,27 @@ def _stage(destination: Path, text: str, created: list[Path]) -> Path:
         handle.write(text)
         handle.flush()
         os.fsync(handle.fileno())
+    # Path form, not the file-descriptor form: `os.chmod` accepts an fd only
+    # where `os.fchmod` exists, so passing one would raise `TypeError` on
+    # Windows. By path it is portable — Windows simply maps the write bits
+    # onto its read-only flag.
+    os.chmod(temp, ARTIFACT_MODE)
     return temp
 
 
 def _fsync_directory(path: Path) -> None:
-    """Persist the rename itself, not just the bytes it points at."""
+    """Persist the rename itself, not just the bytes it points at.
+
+    Windows has no file descriptor for a directory: `os.open` on one raises
+    `PermissionError`. The guard is therefore in front of the `os.open`, not
+    wrapped around it — a mid-publish exception here would abort AFTER some
+    artifacts were already renamed into place, which is exactly the
+    half-published state this module exists to prevent. The file fsync and
+    the atomic replace are unaffected on Windows; only directory-entry
+    durability is weaker there (see the module docstring).
+    """
+    if os.name == "nt":
+        return
     descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)
@@ -571,8 +668,73 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _mkdir_tracked(directory: Path, created: list[Path]) -> None:
+    """Create `directory` and record every level this call actually created.
+
+    Only the newly created levels need their own durability treatment; a
+    directory that already existed was already durable.
+    """
+    missing: list[Path] = []
+    probe = directory
+    while not probe.exists():
+        missing.append(probe)
+        if probe.parent == probe:
+            break
+        probe = probe.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    for path in reversed(missing):
+        if path not in created:
+            created.append(path)
+
+
+def _fsync_created_directories(created: list[Path]) -> None:
+    """Persist every directory this call created, before anything publishes.
+
+    A directory entry that was never fsynced can vanish in a crash, taking
+    the artifact inside it with it. This runs BEFORE the first publish on
+    purpose: a directory fsync that failed afterwards would leave a canonical
+    file already visible, and this module's whole contract is that a partial
+    publish can never look complete.
+    """
+    ordered: list[Path] = []
+    for directory in created:
+        for candidate in (directory.parent, directory):
+            if candidate not in ordered:
+                ordered.append(candidate)
+    for directory in ordered:
+        _fsync_directory(directory)
+
+
 def _publish(temp: Path, destination: Path) -> None:
     os.replace(temp, destination)
+    _fsync_directory(destination.parent)
+
+
+def _publish_history(
+    temp: Path, destination: Path, document: dict[str, Any], digest: str
+) -> None:
+    """Create an immutable history entry, or prove the one there is identical.
+
+    `os.link` is the point: it CREATES, and fails when the name is already
+    taken. `os.replace` would overwrite an entry that a concurrent publisher
+    created after this call's existence check — a window that is small but
+    entirely real, and the only way to lose collected evidence here.
+    """
+    try:
+        os.link(temp, destination)
+    except FileExistsError:
+        if _history_entry_state(destination, document, digest):
+            return
+        raise HistoryConflictError(
+            f"history entry {destination} was created and then removed by "
+            "another publisher while this snapshot was being written; "
+            "re-run the emission rather than racing for the same entry"
+        ) from None
+    except OSError as exc:
+        raise OSError(
+            f"could not create history entry {destination} as a hard link "
+            f"from {temp}: {exc}"
+        ) from exc
     _fsync_directory(destination.parent)
 
 
@@ -582,11 +744,16 @@ def _cleanup(created: list[Path]) -> None:
     A temp file that was already renamed into place is gone, and every other
     file in these directories belongs to somebody else — a concurrent
     publisher's staged temp file included.
+
+    Every `OSError` is suppressed. This runs in a `finally`, so an exception
+    raised here would REPLACE the failure that actually aborted the publish,
+    and a leftover dotfile is a far smaller problem than an operator being
+    told the wrong reason their emission failed.
     """
     for temp in created:
         try:
             os.unlink(temp)
-        except FileNotFoundError:
+        except OSError:
             continue
 
 
@@ -680,33 +847,49 @@ def emit_reconciliation(
     )
 
     # Both history entries are checked before either is written, so a
-    # conflicting snapshot aborts with nothing written at all.
+    # conflicting snapshot aborts with nothing written at all. The check is
+    # necessarily racy on its own — `_publish_history` closes that window by
+    # CREATING each entry rather than replacing it.
     actuals_digest = _canonical_digest(actuals, "actuals")
     reconciliation_digest = _canonical_digest(reconciliation, "reconciliation")
-    pending: list[tuple[Path, str]] = []
+    pending: list[tuple[Path, str, dict[str, Any], str]] = []
     if not _history_entry_state(history_actuals, actuals, actuals_digest):
-        pending.append((history_actuals, actuals_text))
+        pending.append((history_actuals, actuals_text, actuals, actuals_digest))
     if not _history_entry_state(
         history_reconciliation, reconciliation, reconciliation_digest
     ):
-        pending.append((history_reconciliation, reconciliation_text))
+        pending.append(
+            (
+                history_reconciliation,
+                reconciliation_text,
+                reconciliation,
+                reconciliation_digest,
+            )
+        )
 
     created: list[Path] = []
     try:
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        directories: list[Path] = []
+        _mkdir_tracked(snapshot_dir, directories)
         for destination in (actuals_path, report_path, reconciliation_path):
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            _mkdir_tracked(destination.parent, directories)
+        _fsync_created_directories(directories)
 
-        staged = [
+        history_staged = [
+            (_stage(destination, text, created), destination, document, digest)
+            for destination, text, document, digest in pending
+        ]
+        canonical_staged = [
             (_stage(destination, text, created), destination)
-            for destination, text in [
-                *pending,
+            for destination, text in (
                 (actuals_path, actuals_text),
                 (report_path, report_text),
                 (reconciliation_path, reconciliation_text),
-            ]
+            )
         ]
-        for temp, destination in staged:
+        for temp, destination, document, digest in history_staged:
+            _publish_history(temp, destination, document, digest)
+        for temp, destination in canonical_staged:
             _publish(temp, destination)
     finally:
         _cleanup(created)
@@ -787,8 +970,29 @@ def _escape(value: object) -> str:
 
 
 def _code(value: object) -> str:
-    """Render a validated enum/identifier as a code span."""
-    return f"`{_escape(value)}`"
+    """Render a value as a code span that cannot be closed from the inside.
+
+    A backslash is LITERAL inside a code span, so a backtick in the content
+    cannot be escaped — it has to be fenced by a longer run of backticks
+    (CommonMark §6.1). Escaping it instead, as this used to, emitted a
+    visible `\\` and let the span close early, so the rest of the table row
+    was re-parsed as Markdown.
+
+    `|` is the one character that still needs escaping here: GFM resolves the
+    table-cell `\\|` escape BEFORE inline parsing, so an unescaped pipe splits
+    the row even inside code. Everything else is inert inside a code span.
+    """
+    text = value if isinstance(value, str) else repr(value)
+    text = text.replace("\r", " ").replace("\n", " ").replace("|", "\\|")
+    longest = max(
+        (len(run.group()) for run in _BACKTICK_RUN_RE.finditer(text)), default=0
+    )
+    fence = "`" * (longest + 1)
+    # CommonMark strips one leading and one trailing space back off, so this
+    # padding separates the fence from the content without changing it.
+    if not text.strip(" ") or text.startswith("`") or text.endswith("`"):
+        text = f" {text} "
+    return f"{fence}{text}{fence}"
 
 
 def _is_number(value: object) -> bool:
@@ -1224,7 +1428,7 @@ def _render_policy(reconciliation: dict[str, Any]) -> str:
     for key in sorted(snapshot):
         value = snapshot[key]
         rendered = NOT_MEASURED if value is None else _compact(value)
-        lines.append(f"| `{_escape(key)}` | {rendered} |")
+        lines.append(f"| {_code(key)} | {rendered} |")
     lines += ["", "### Policy errors", ""]
     if errors:
         lines.append(
@@ -1294,5 +1498,5 @@ def _key_value_rows(mapping: dict[str, Any]) -> list[str]:
         return ["None recorded."]
     rows = ["| Key | Value |", "| --- | --- |"]
     for key in sorted(mapping, key=str):
-        rows.append(f"| `{_escape(key)}` | {_compact(mapping[key])} |")
+        rows.append(f"| {_code(key)} | {_compact(mapping[key])} |")
     return rows
