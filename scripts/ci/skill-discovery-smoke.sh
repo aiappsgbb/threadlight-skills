@@ -12,14 +12,51 @@
 # catalog as `[{name, ...}, ...]` or `[name, ...]`. We parse the last
 # non-empty event and diff against the on-disk skills/ directory listing.
 #
+# Expected set: every immediate `skills/<name>/SKILL.md`, NOT every
+# immediate `skills/<name>/` directory. A directory under skills/ without
+# a SKILL.md (e.g. a shared support library with its own tests/) is not a
+# skill and Copilot correctly never registers it -- expecting it anyway is
+# a false-negative regression in this gate, not a real discovery failure
+# (see run #32287231962, caused by the generic support dir skills/_shared
+# added in main #116). An underscore-prefixed directory that *does* have a
+# SKILL.md is still a real skill and must still be expected.
+#
 # This takes the model out of the assertion path entirely: ~10s,
 # deterministic, no prompt formatting variance.
 #
 # Usage: scripts/ci/skill-discovery-smoke.sh
 # Exits 0 if every skill is present in the registry; 1 otherwise.
+#
+# Testing: set THREADLIGHT_DISCOVERY_EXPECTED_ONLY=1 to print the computed
+# expected skill names (one per line) and exit 0 immediately, before any
+# jq/copilot/timeout requirement check, network call, or output directory
+# is touched. This lets scripts/ci/tests/test_skill_discovery_smoke.py
+# assert the expected-set computation with only bash -- no jq, no copilot,
+# no network.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+
+# --- Expected: every immediate skills/<name>/SKILL.md ----------------------
+RAW_NAMES=()
+while IFS= read -r -d '' skill_md; do
+  RAW_NAMES+=("$(basename "$(dirname "$skill_md")")")
+done < <(find skills -mindepth 2 -maxdepth 2 -name SKILL.md -print0)
+
+if [[ ${#RAW_NAMES[@]} -gt 0 ]]; then
+  mapfile -t EXPECTED < <(printf '%s\n' "${RAW_NAMES[@]}" | sort)
+else
+  EXPECTED=()
+fi
+[[ ${#EXPECTED[@]} -gt 0 ]] || { echo "::error::No skills/<name>/SKILL.md found" >&2; exit 1; }
+
+# --- List-only mode: for tests, no external dependencies -------------------
+if [[ "${THREADLIGHT_DISCOVERY_EXPECTED_ONLY:-}" == "1" ]]; then
+  printf '%s\n' "${EXPECTED[@]}"
+  exit 0
+fi
+
+echo "Expecting ${#EXPECTED[@]} skills under skills/: ${EXPECTED[*]}"
 
 # --- Requirements ----------------------------------------------------------
 for cmd in jq copilot; do
@@ -37,11 +74,6 @@ else
   echo "::error::Need 'timeout' (Linux) or 'gtimeout' (macOS via 'brew install coreutils')" >&2
   exit 1
 fi
-
-# --- Expected: every directory under skills/ -------------------------------
-mapfile -t EXPECTED < <(find skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
-[[ ${#EXPECTED[@]} -gt 0 ]] || { echo "::error::No skill directories under skills/" >&2; exit 1; }
-echo "Expecting ${#EXPECTED[@]} skills under skills/: ${EXPECTED[*]}"
 
 # --- One Copilot call → save JSONL for artifact upload ---------------------
 mkdir -p smoke-outputs

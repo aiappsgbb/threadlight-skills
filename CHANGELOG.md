@@ -9,6 +9,28 @@ field.
 
 ### Fixed
 
+- **E2E Skill-tool registry smoke gate false-negatived on a non-skill support
+  directory (run #32287231962).** main #116 added `skills/_shared`, a shared
+  library (`manifest.py`) with its own `tests/`, but no `SKILL.md`.
+  `scripts/ci/skill-discovery-smoke.sh` computed its expected skill set from
+  every immediate `skills/<name>/` directory, so it expected `_shared` to be
+  registered in the Copilot CLI's Skill-tool catalog — but Copilot correctly
+  never registers a directory without a `SKILL.md`, so the smoke check
+  reported it as a missing skill and failed the manually-dispatched E2E
+  workflow. The check was never actually broken; the expectation was wrong.
+  The expected set is now every immediate `skills/<name>/SKILL.md` instead of
+  every immediate `skills/<name>/` directory: no hardcoded `_shared`
+  exception, no reliance on underscore-prefixed naming, no hardcoded skill
+  count — a real underscore-named skill directory with its own `SKILL.md`
+  still counts, and any genuine missing skill still fails the diff. The
+  script also gained a `THREADLIGHT_DISCOVERY_EXPECTED_ONLY=1` list-only mode
+  that prints the computed expected set and exits before the
+  `jq`/`copilot`/`timeout` requirement checks, the Copilot CLI call, or any
+  output directory — letting
+  `scripts/ci/tests/test_skill_discovery_smoke.py` assert the expected-set
+  computation with bash alone, no `jq`, `copilot`, or network access
+  required.
+
 - **`threadlight-production-ready`'s outcome-KPI unit cost was a self-report,
   not a measurement.** KPI-003's "actual cost per successful interaction" was
   relayed straight out of `unit_economics` in

@@ -403,16 +403,20 @@ jobs:
           echo "===== Installed plugins ====="
           copilot plugin list 2>&1 | head -20
 
-      # Fail-fast gate: asserts every directory under skills/ is registered
-      # in the Copilot CLI's Skill-tool catalog. Catches the silent loader-
-      # drop regression first observed in run #26772059599, where the agent
-      # fell back to Read on SKILL.md when skill(<name>) returned
-      # "Skill not found", masking the failure as "success".
+      # Fail-fast gate: asserts every skill under skills/ (every immediate
+      # skills/<name>/SKILL.md) is registered in the Copilot CLI's
+      # Skill-tool catalog. Catches the silent loader-drop regression first
+      # observed in run #26772059599, where the agent fell back to Read on
+      # SKILL.md when skill(<name>) returned "Skill not found", masking the
+      # failure as "success".
       #
       # Protocol: `copilot --output-format json` emits JSONL on stdout
       # including `session.skills_loaded` events whose `data.skills` is
       # the registered catalog. The smoke script parses the last non-empty
-      # event and diffs against `find skills/ -mindepth 1 -maxdepth 1`.
+      # event and diffs against every immediate `skills/<name>/SKILL.md`
+      # (not every immediate `skills/<name>/` directory -- a support
+      # directory without a SKILL.md, e.g. skills/_shared, is not a skill
+      # and Copilot correctly never registers it; see run #32287231962).
       # No model assertions, no per-skill ECHO prompts — ~30s, deterministic,
       # no output-formatting variance under Foundry routing.
       - name: Smoke-check Skill-tool discovery
