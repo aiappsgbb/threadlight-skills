@@ -824,7 +824,7 @@ def aggregate_cost_rows(
 # `build_success_kql` must satisfy, so no dynamic content (quotes,
 # pipes, whitespace, `|`, parens) can ever inject an arbitrary KQL
 # fragment into the fixed query shape below.
-IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
+_KQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
 
 _SUCCESS_KQL_TEMPLATE = (
     "AppTraces\n"
@@ -840,13 +840,13 @@ _SUCCESS_KQL_TEMPLATE = (
 
 
 def _validate_identifier(value: object, label: str) -> str:
-    """Return `value` unchanged if it is a `str` matching `IDENTIFIER`;
-    raise `ActualsEvidenceError` naming the offending value otherwise. This
-    is the sole gate standing between a caller-declared SPEC identifier
-    (event name, trace attribute, success value) and the fixed
-    `_SUCCESS_KQL_TEMPLATE` — nothing that fails this check is ever
-    interpolated into a query string."""
-    if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
+    """Return `value` unchanged if it is a `str` matching
+    `_KQL_IDENTIFIER_RE`; raise `ActualsEvidenceError` naming the offending
+    value otherwise. This is the sole gate standing between a
+    caller-declared SPEC identifier (event name, trace attribute, success
+    value) and the fixed `_SUCCESS_KQL_TEMPLATE` — nothing that fails this
+    check is ever interpolated into a query string."""
+    if not isinstance(value, str) or not _KQL_IDENTIFIER_RE.fullmatch(value):
         raise ActualsEvidenceError(
             f"{label} is not a safe identifier for a Log Analytics query: "
             f"{value!r}"
@@ -868,6 +868,25 @@ def _parse_iso_instant(value: object, label: str) -> datetime:
     return _require_utc(parsed, label)
 
 
+def _require_second_precision(value: datetime, label: str, *, raw: object) -> None:
+    """Reject a `datetime` carrying a non-zero microsecond component.
+
+    `build_success_kql` renders `TimeGenerated` boundaries at second
+    precision only (`_iso_utc` has no `%f`); silently truncating a
+    sub-second `start`/`end` would render a query window subtly different
+    from the one the caller declared — including, in the worst case,
+    truncating two distinct sub-second instants down to the *same*
+    rendered second and collapsing an apparently non-empty window into a
+    falsely zero-width one. Never truncate: fail closed instead, before the
+    `end > start` comparison or any rendering is attempted.
+    """
+    if value.microsecond != 0:
+        raise ActualsEvidenceError(
+            f"{label} has sub-second precision, which is unsupported by "
+            f"this second-precision KQL renderer: {raw!r}"
+        )
+
+
 def build_success_kql(
     start_iso: str,
     end_iso: str,
@@ -880,19 +899,29 @@ def build_success_kql(
     `start_iso`/`end_iso` are parsed as timezone-aware UTC instants (any
     valid ISO 8601 form, including a trailing `Z`) and *reserialized* from
     the parsed `datetime` — the caller's original text is never passed
-    through verbatim into the query. `end_iso` must denote an instant after
-    `start_iso`.
+    through verbatim into the query. The rendered `datetime(...)` literals
+    are second-precision only (`_iso_utc`'s `%Y-%m-%dT%H:%M:%SZ` has no
+    `%f`), so a `start`/`end` carrying a non-zero microsecond component is
+    rejected outright — `ActualsEvidenceError` naming the sub-second
+    precision as unsupported — rather than silently truncated, which could
+    shift a declared boundary earlier/later than requested or even collapse
+    an apparently non-empty sub-second-wide window into a falsely
+    zero-width one once rendered. This check runs before the `end > start`
+    comparison and before any rendering is attempted. `end_iso` must denote
+    an instant after `start_iso`.
 
     `event_name`, `trace_attribute`, and every entry of `success_values`
-    must match `IDENTIFIER`; anything else raises `ActualsEvidenceError`
-    naming the offending value, and the value is never interpolated into
-    the query. This is a fixed-shape query builder, not general KQL
-    construction: there is no way to reach the `union`/pipe/quote syntax
-    that would let a value escape the `AppTraces`/`Message`/`Properties`
-    shape below.
+    must match `_KQL_IDENTIFIER_RE`; anything else raises
+    `ActualsEvidenceError` naming the offending value, and the value is
+    never interpolated into the query. This is a fixed-shape query builder,
+    not general KQL construction: there is no way to reach the
+    `union`/pipe/quote syntax that would let a value escape the
+    `AppTraces`/`Message`/`Properties` shape below.
     """
     start = _parse_iso_instant(start_iso, "start")
     end = _parse_iso_instant(end_iso, "end")
+    _require_second_precision(start, "start", raw=start_iso)
+    _require_second_precision(end, "end", raw=end_iso)
     if end <= start:
         raise ActualsEvidenceError(
             f"end must be after start (start={start_iso!r}, end={end_iso!r})"

@@ -1510,6 +1510,21 @@ def test_success_kql_requires_non_empty_success_values() -> None:
         )
 
 
+def test_success_kql_rejects_bare_str_success_values() -> None:
+    # A bare `str` is iterable character-by-character and must never be
+    # accepted where a `list[str]` of identifiers is required — silently
+    # iterating "approved" as its individual characters would be a
+    # confusing, wrong-shape failure far from this check.
+    with pytest.raises(ActualsEvidenceError, match="success_values"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            "approved",
+        )
+
+
 def test_success_kql_rejects_end_not_after_start() -> None:
     with pytest.raises(ActualsEvidenceError, match="end must be after start"):
         build_success_kql(
@@ -1555,6 +1570,66 @@ def test_success_kql_rejects_naive_or_non_utc_timestamps() -> None:
         )
 
 
+def test_success_kql_rejects_fractional_start_rather_than_truncating() -> None:
+    # `build_success_kql` renders `TimeGenerated` at second precision only
+    # (`_iso_utc`'s `%Y-%m-%dT%H:%M:%SZ` has no `%f`). Silently truncating a
+    # sub-second `start` would shift the query window's true lower bound
+    # earlier than what the caller declared, so a fractional instant must be
+    # rejected outright rather than rendered as if it were exact.
+    with pytest.raises(ActualsEvidenceError, match="sub-second"):
+        build_success_kql(
+            "2026-08-01T00:00:00.500000Z",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+def test_success_kql_rejects_fractional_end_rather_than_truncating() -> None:
+    with pytest.raises(ActualsEvidenceError, match="sub-second"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00.123456Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+def test_success_kql_rejects_fractional_window_that_would_collapse_to_empty() -> None:
+    # `start` and `end` are a genuine `end > start` instant pair (900ms
+    # apart) but would truncate to the *same* second
+    # (`00:00:00Z`/`00:00:00Z`), silently collapsing an apparently
+    # sub-second-wide window into a zero-width one. The sub-second check
+    # must fire on `microsecond != 0` alone, before the `end > start`
+    # comparison or any rendering is attempted, so this is rejected for
+    # being fractional at all — never truncated into a false "same second"
+    # window.
+    with pytest.raises(ActualsEvidenceError, match="sub-second"):
+        build_success_kql(
+            "2026-08-01T00:00:00.100000Z",
+            "2026-08-01T00:00:00.900000Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+def test_success_kql_still_renders_exact_second_timestamps() -> None:
+    # Whole-second instants (microsecond == 0) are unaffected by the new
+    # sub-second guard and still render exactly as before.
+    query = build_success_kql(
+        "2026-08-01T00:00:00Z",
+        "2026-08-08T00:00:00Z",
+        "return_decision_completed",
+        "decision.outcome",
+        ["approved"],
+    )
+    assert "datetime(2026-08-01T00:00:00Z)" in query
+    assert "datetime(2026-08-08T00:00:00Z)" in query
+
+
 # ---------------------------------------------------------------------------
 # parse_interaction_counts: safe Log Analytics tables/columns/rows parsing
 # ---------------------------------------------------------------------------
@@ -1597,6 +1672,16 @@ def test_interaction_counts_without_named_primary_result_uses_sole_table() -> No
     unnamed = deepcopy(LOG_ANALYTICS_RESPONSE)
     del unnamed["tables"][0]["name"]
     assert parse_interaction_counts(unnamed) == (120, 113)
+
+
+def test_interaction_counts_reject_duplicate_column_names() -> None:
+    duplicated = deepcopy(LOG_ANALYTICS_RESPONSE)
+    duplicated["tables"][0]["columns"].append(
+        {"name": "Total_Interactions", "type": "long"}
+    )
+    duplicated["tables"][0]["rows"] = [[120, 113, 120]]
+    with pytest.raises(ActualsEvidenceError, match="duplicate column"):
+        parse_interaction_counts(duplicated)
 
 
 def test_empty_result_set_is_zero_interactions_not_unverified() -> None:

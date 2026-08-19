@@ -1,16 +1,20 @@
 """
 Shared, pure parser for Azure Monitor Cognitive Services token-metric
 evidence (`az monitor metrics list` on `InputTokens`/`OutputTokens`
-[/`CachedInputTokens`]) — the single source of truth `cost_actuals.py`
-(`threadlight-consumption-iq`) and `metrics.py`
-(`threadlight-router-bench`) both build on.
+[/`CachedInputTokens`]) — the single source of truth `metrics.py`
+(`threadlight-router-bench`) builds on today. `cost_actuals.py`
+(`threadlight-consumption-iq`) does not import this module directly yet;
+the planned `actuals_sources.py` (joining Cost Management evidence from
+`cost_actuals.py` with this module's token evidence into one reconciled
+source) is what will bring token-metric evidence into
+`threadlight-consumption-iq` when it lands.
 
 ## One source of truth, not two copies
 
-`threadlight-router-bench` imports this module by repository-relative path
-(see `metrics.py`'s `_load_shared_parser`) rather than vendoring its own
-copy, because the two skills are always installed together from the same
-plugin and are never independently versioned — this repository is the
+`threadlight-router-bench` loads this module by repository-relative file
+path (see `metrics.py`'s `_load_shared_parser`) rather than vendoring its
+own copy, because the two skills are always installed together from the
+same plugin and are never independently versioned — this repository is the
 deployment unit. A divergent copy of this parser would let router-bench and
 consumption-iq silently disagree about the exact same Azure Monitor
 payload.
@@ -121,6 +125,114 @@ def _sum_totals(data_points: Any, *, metric_name: str) -> int:
     return total
 
 
+def _require_list(value: Any, label: str) -> list:
+    """Return `value` unchanged if it is a `list`; raise `TokenEvidenceError`
+    naming `label` otherwise. `value`/`timeseries`/`data`/`metadatavalues`
+    are always list-shaped in a well-formed `az monitor metrics list`
+    response — a document that reports one of them as e.g. a `dict` or a
+    bare string is malformed evidence, and parsing it must fail loudly
+    rather than silently degrade to an empty result (which would make a
+    caller under-count usage without any indication why)."""
+    if not isinstance(value, list):
+        raise TokenEvidenceError(f"token metrics {label} must be a list, got {value!r}")
+    return value
+
+
+def _parse_buckets(
+    doc: dict[str, Any],
+) -> tuple[dict[tuple[str, str], dict[str, object]], dict[tuple[str, str], set[str]]]:
+    """Shared bucketing pass behind both `parse_token_series` and
+    `parse_token_metrics`. Returns `(buckets, axes_seen)`: `buckets` maps
+    `(deployment, model)` to the same row shape `parse_token_series`
+    returns, and `axes_seen` maps that same key to the set of `{"input",
+    "output", "cached_input"}` axes actually observed for it — the latter
+    is what lets `parse_token_metrics` tell a model that only ever reported
+    `CachedInputTokens` (no real input/output evidence at all) apart from
+    one that genuinely observed a zero input/output total, without
+    exposing this internal bookkeeping on the public row dicts themselves.
+    """
+    if not isinstance(doc, dict):
+        raise TokenEvidenceError("token metrics document must be a mapping")
+    metrics = _require_list(doc.get("value", []), "'value'")
+
+    buckets: dict[tuple[str, str], dict[str, object]] = {}
+    axes_seen: dict[tuple[str, str], set[str]] = {}
+
+    for metric in metrics:
+        if not isinstance(metric, dict):
+            raise TokenEvidenceError(
+                f"token metrics 'value' entries must be objects, got {metric!r}"
+            )
+        name_obj = metric.get("name")
+        metric_name = name_obj.get("value") if isinstance(name_obj, dict) else None
+        if not isinstance(metric_name, str):
+            continue
+        axis = _axis_for(metric_name)
+        if axis is None:
+            continue  # unrecognized metric: ignored, never guessed at
+
+        timeseries = _require_list(
+            metric.get("timeseries", []), f"{metric_name!r} 'timeseries'"
+        )
+        for series in timeseries:
+            if not isinstance(series, dict):
+                raise TokenEvidenceError(
+                    f"{metric_name} timeseries entries must be objects, "
+                    f"got {series!r}"
+                )
+            metadatavalues = _require_list(
+                series.get("metadatavalues", []),
+                f"{metric_name!r} 'metadatavalues'",
+            )
+            dims: dict[str, object] = {}
+            for entry in metadatavalues:
+                if not isinstance(entry, dict):
+                    raise TokenEvidenceError(
+                        f"{metric_name} metadatavalues entries must be "
+                        f"objects, got {entry!r}"
+                    )
+                dims[_dim_name(entry)] = entry.get("value")
+
+            deployment_raw = dims.get("modeldeploymentname")
+            model_raw = dims.get("modelname")
+
+            deployment = (
+                str(deployment_raw)
+                if isinstance(deployment_raw, str) and deployment_raw
+                else "unknown"
+            )
+            if isinstance(model_raw, str) and model_raw:
+                model = model_raw
+            elif isinstance(deployment_raw, str) and deployment_raw:
+                model = str(deployment_raw)
+            else:
+                model = "unknown"
+
+            key = (deployment, model)
+            row = buckets.setdefault(
+                key,
+                {
+                    "deployment": deployment,
+                    "model": model,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cached_input_tokens": None,
+                },
+            )
+            axes_seen.setdefault(key, set()).add(axis)
+
+            data = _require_list(series.get("data", []), f"{metric_name!r} 'data'")
+            total = _sum_totals(data, metric_name=metric_name)
+            if axis == "input":
+                row["input_tokens"] = row["input_tokens"] + total
+            elif axis == "output":
+                row["output_tokens"] = row["output_tokens"] + total
+            else:
+                row["cached_input_tokens"] = (row["cached_input_tokens"] or 0) + total
+
+    return buckets, axes_seen
+
+
 def parse_token_series(doc: dict[str, Any]) -> list[dict[str, object]]:
     """Parse an `az monitor metrics list` document into one row per distinct
     (deployment, model) pair actually observed, aggregating every timeseries
@@ -140,75 +252,28 @@ def parse_token_series(doc: dict[str, Any]) -> list[dict[str, object]]:
     `parse_token_metrics` does) is what lets a caller tell a spillover
     deployment apart from the primary one for the same model.
 
-    Output is sorted by `(deployment, model)` for a deterministic,
-    diff-friendly result — Azure Monitor's own JSON ordering is not a
-    contract this module should depend on or expose.
+    `value`/`timeseries`/`data`/`metadatavalues` must each actually be a
+    list (with dict entries, where entries are expected) wherever present;
+    a malformed document raises `TokenEvidenceError` naming the offending
+    field rather than silently degrading to an empty/partial result.
+
+    Output is sorted by `(deployment, model)`, casefolded, for a
+    deterministic, diff-friendly result — Azure Monitor's own JSON ordering
+    is not a contract this module should depend on or expose. The
+    *original*, non-casefolded `(deployment, model)` is used as a
+    tiebreaker so two rows that only differ in casing (e.g. `"Router"` vs
+    `"router"`) still sort deterministically instead of falling back to
+    whatever order they happened to appear in the source document.
     """
-    if not isinstance(doc, dict):
-        raise TokenEvidenceError("token metrics document must be a mapping")
-    metrics = doc.get("value", [])
-    if not isinstance(metrics, list):
-        raise TokenEvidenceError("token metrics 'value' must be a list")
-
-    buckets: dict[tuple[str, str], dict[str, object]] = {}
-
-    for metric in metrics:
-        if not isinstance(metric, dict):
-            continue
-        name_obj = metric.get("name")
-        metric_name = name_obj.get("value") if isinstance(name_obj, dict) else None
-        if not isinstance(metric_name, str):
-            continue
-        axis = _axis_for(metric_name)
-        if axis is None:
-            continue  # unrecognized metric: ignored, never guessed at
-
-        for series in metric.get("timeseries", []) or []:
-            if not isinstance(series, dict):
-                continue
-            dims: dict[str, object] = {}
-            for entry in series.get("metadatavalues", []) or []:
-                if not isinstance(entry, dict):
-                    continue
-                dims[_dim_name(entry)] = entry.get("value")
-
-            deployment_raw = dims.get("modeldeploymentname")
-            model_raw = dims.get("modelname")
-
-            deployment = (
-                str(deployment_raw)
-                if isinstance(deployment_raw, str) and deployment_raw
-                else "unknown"
-            )
-            if isinstance(model_raw, str) and model_raw:
-                model = model_raw
-            elif isinstance(deployment_raw, str) and deployment_raw:
-                model = str(deployment_raw)
-            else:
-                model = "unknown"
-
-            row = buckets.setdefault(
-                (deployment, model),
-                {
-                    "deployment": deployment,
-                    "model": model,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_input_tokens": None,
-                },
-            )
-
-            total = _sum_totals(series.get("data", []), metric_name=metric_name)
-            if axis == "input":
-                row["input_tokens"] = row["input_tokens"] + total
-            elif axis == "output":
-                row["output_tokens"] = row["output_tokens"] + total
-            else:
-                row["cached_input_tokens"] = (row["cached_input_tokens"] or 0) + total
-
+    buckets, _axes_seen = _parse_buckets(doc)
     return sorted(
         buckets.values(),
-        key=lambda row: (str(row["deployment"]).casefold(), str(row["model"]).casefold()),
+        key=lambda row: (
+            str(row["deployment"]).casefold(),
+            str(row["model"]).casefold(),
+            str(row["deployment"]),
+            str(row["model"]),
+        ),
     )
 
 
@@ -219,9 +284,22 @@ def parse_token_metrics(doc: dict[str, Any]) -> dict[str, dict[str, int]]:
     the pre-refactor `threadlight-router-bench` `parse_metrics` produced —
     `parse_token_series`'s richer per-deployment rows are new, additive
     evidence, not a replacement for this contract.
+
+    A (deployment, model) pair that was observed *only* via
+    `CachedInputTokens`-family evidence (no `InputTokens`/`OutputTokens`
+    metric ever reported for it) is skipped here — the pre-refactor parser
+    never recognized cached-input metrics at all, so it would never have
+    produced an entry for such a model, and this collapse must stay exactly
+    backward compatible rather than manufacturing a phantom
+    `{"input": 0, "output": 0}` row out of cached-only evidence. A pair that
+    did report input/output (even a genuinely observed zero total) is still
+    included; only zero axes observed at all is a phantom.
     """
+    buckets, axes_seen = _parse_buckets(doc)
     usage: dict[str, dict[str, int]] = {}
-    for row in parse_token_series(doc):
+    for key, row in buckets.items():
+        if not (axes_seen.get(key, set()) & {"input", "output"}):
+            continue  # cached-only evidence: no phantom zero model
         model = str(row["model"])
         slot = usage.setdefault(model, {"input": 0, "output": 0})
         slot["input"] += int(row["input_tokens"])

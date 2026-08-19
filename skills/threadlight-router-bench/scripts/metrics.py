@@ -16,9 +16,9 @@ the run's start/end window to attribute usage correctly.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,40 +35,74 @@ _shared_parser: Any = None
 
 
 def _load_shared_parser(scripts_dir: Path = CONSUMPTION_SCRIPTS) -> Any:
-    """Import `token_evidence` from `scripts_dir` and return the module.
+    """Load `token_evidence.py` from `scripts_dir` and return the module.
+
+    Loaded in isolation via `importlib.util.spec_from_file_location` +
+    `module_from_spec`/`exec_module` — never `sys.path` — so this never
+    depends on (or perturbs) the interpreter's global import machinery.
+    The freshly executed module is also never registered under the
+    `token_evidence` name (or any other name) in `sys.modules`: doing so
+    would risk a real `import token_evidence` elsewhere in the process
+    silently picking up whichever `scripts_dir` happened to load last (a
+    filename-collision hazard), or a nondefault call here silently
+    overwriting/reusing an already-cached entry instead of loading its own
+    module fresh — exactly the failure this replaces (the previous
+    implementation used `sys.path.insert` + `import token_evidence`, so a
+    nondefault load after the default one was already cached would return
+    the *same* cached module rather than the nondefault directory's own
+    file).
 
     Raises `ImportError` naming `threadlight-consumption-iq` explicitly
-    (rather than letting a bare `ModuleNotFoundError` leak through) when
-    `token_evidence.py` is not present under `scripts_dir` — the sibling
-    skill from the same plugin install is genuinely missing, and that must
-    fail loudly and by name rather than silently falling back to a
-    duplicated/reimplemented parser.
+    (rather than letting a bare `ModuleNotFoundError`/`FileNotFoundError`
+    leak through) when `token_evidence.py` is not present under
+    `scripts_dir` — the sibling skill from the same plugin install is
+    genuinely missing, and that must fail loudly and by name rather than
+    silently falling back to a duplicated/reimplemented parser. This check
+    runs before any import machinery touches `scripts_dir` at all.
 
     Only the default `scripts_dir=CONSUMPTION_SCRIPTS` resolution is cached
     at module scope (see `_shared_parser` below): calling this with an
-    explicit, non-default `scripts_dir` (as a test proving the absent-sibling
-    error does) never touches or poisons that cache, `sys.path`, or
-    `sys.modules` beyond the one clean `is_file()` check that raises before
-    any import is attempted.
+    explicit, non-default `scripts_dir` (as a test proving both the
+    absent-sibling error and isolated-module loading does) never touches or
+    poisons that cache, `sys.path`, or `sys.modules`.
     """
     global _shared_parser
-    if scripts_dir == CONSUMPTION_SCRIPTS and _shared_parser is not None:
+    is_default = scripts_dir == CONSUMPTION_SCRIPTS
+    if is_default and _shared_parser is not None:
         return _shared_parser
 
-    if not (scripts_dir / "token_evidence.py").is_file():
+    module_path = scripts_dir / "token_evidence.py"
+    if not module_path.is_file():
         raise ImportError(
             "threadlight-router-bench requires the sibling skill "
             "threadlight-consumption-iq from the same plugin install; "
             f"token_evidence.py not found under {scripts_dir}"
         )
 
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    import token_evidence as module  # noqa: E402
+    # A name derived from the module's own resolved path (never the bare
+    # `"token_evidence"`) is used only as the spec's label; it is not
+    # inserted into `sys.modules`, so it cannot collide with — or be
+    # shadowed by — any other module of the same base filename loaded
+    # elsewhere in the process.
+    spec = importlib.util.spec_from_file_location(
+        f"_shared_token_evidence[{module_path}]", module_path
+    )
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        raise ImportError(f"could not load token_evidence.py from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
 
-    if scripts_dir == CONSUMPTION_SCRIPTS:
+    if is_default:
         _shared_parser = module
     return module
+
+
+# Bound once at import time from the default sibling module so callers can
+# catch it as `metrics.TokenEvidenceError` without also importing
+# `token_evidence` themselves — a stable re-export, not a duplicated
+# definition (there is exactly one `TokenEvidenceError` class; this name is
+# an alias for it, not a lookalike).
+TokenEvidenceError = _load_shared_parser().TokenEvidenceError
 
 
 def parse_metrics(doc: dict[str, Any]) -> dict[str, dict[str, int]]:
