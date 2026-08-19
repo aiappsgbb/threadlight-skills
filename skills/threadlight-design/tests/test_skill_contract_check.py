@@ -467,3 +467,79 @@ def test_evaluate_does_not_write_to_the_target(tmp_path):
     scc.evaluate(str(tmp_path))
     after = {p: p.stat().st_mtime_ns for p in tmp_path.rglob("*") if p.is_file()}
     assert before == after
+
+
+def test_speckit_template_declares_section_14_value_model():
+    """The canonical SpecKit template must ship the § 14 value-model contract.
+
+    This pins the template shape that `scripts/ci/check_pilot_contract.py`'s
+    `VALUE_MODEL_MARKERS` validates against, and the schema documented in
+    `references/value-model-schema.md`. The template is a *blank* contract —
+    every numeric/decision leaf must stay a bare YAML key (a comment, not a
+    value) so no pilot inherits an invented number.
+    """
+    template = (
+        TEST_DIR.parent / "references" / "speckit-template.md"
+    ).read_text(encoding="utf-8")
+
+    assert "## 14. Value Model" in template
+
+    # Structural markers the design->deploy checker keys off (VALUE_MODEL_MARKERS).
+    for marker in (
+        "value_model:",
+        "maturity_policy:",
+        "success_event:",
+        "baseline:",
+        "accounting:",
+    ):
+        assert marker in template, f"section 14 must declare `{marker}`"
+
+    # Section 14 is the last section in the template body (there is no
+    # `## 15.`), so slicing to end-of-file is safe and sidesteps the nested
+    # ```yaml fence inside the outer ```markdown wrapper.
+    section = template[template.index("## 14. Value Model"):]
+
+    required_fields = (
+        "min_complete_days",
+        "min_successful_interactions",
+        "min_cost_settlement_age_hours",
+        "max_window_end_age_days",
+        "min_projection_attribution_coverage_pct",
+        "name",
+        "trace_attribute",
+        "success_values",
+        "target_cost_per_successful_interaction_usd",
+        "max_forecast_variance_pct",
+        "max_token_volume_variance_pct",
+        "actual_cost_basis",
+        "actual_billing_price_basis",
+        "forecast_price_basis",
+        "allow_basis_mismatch_for_verdict",
+        "scope_policy",
+    )
+    for field in required_fields:
+        assert field in section, f"section 14 must declare field `{field}`"
+
+    # The template is a *blank* shape: every numeric/decision field is a bare
+    # `key:` (optionally followed only by a trailing comment), never a
+    # populated value like `7` or `0.95` copied from the reference example.
+    numeric_fields = (
+        "min_complete_days",
+        "min_successful_interactions",
+        "min_cost_settlement_age_hours",
+        "max_window_end_age_days",
+        "min_projection_attribution_coverage_pct",
+        "target_cost_per_successful_interaction_usd",
+        "max_forecast_variance_pct",
+        "max_token_volume_variance_pct",
+    )
+    for line in section.splitlines():
+        stripped = line.strip()
+        for field in numeric_fields:
+            if not stripped.startswith(f"{field}:"):
+                continue
+            remainder = stripped[len(f"{field}:"):].split("#", 1)[0].strip()
+            assert remainder == "", (
+                f"template field `{field}` must stay blank (comment only, "
+                f"no invented value), found: {stripped!r}"
+            )

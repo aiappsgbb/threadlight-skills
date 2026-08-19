@@ -682,4 +682,76 @@ load_profile:
 ### Dependencies
 - [Dependency 1 — external system, team, or timeline]
 - [Dependency 2]
+
+---
+
+## 14. Value Model
+
+> **INPUT CONTRACT for the design → deploy cost-actuals reconciliation
+> contract.** See `references/value-model-schema.md` for the full
+> field-by-field schema, bounds, and rationale. This section is a **blank
+> shape** — every field below is a bare YAML key, at most followed by a
+> comment describing its type/bounds. Comments are not values: never invent
+> a number to fill a placeholder. Copy the *shape* below, never the worked
+> numbers from `examples/returns-triage-governed/specs/SPEC.md § 14` —
+> those are specific to that pilot's return-triage economics and would be a
+> fabricated default for any other pilot.
+>
+> **Full mode**: ask the operator for each `maturity_policy`, `success_event`,
+> `baseline`, and `accounting` field explicitly. A field the operator cannot
+> answer yet stays blank and gets a row in § 13 Open Questions with
+> `Source: open-question` — not a guessed number.
+>
+> **Fast-PoC mode**: emit this section's shape verbatim (every leaf blank)
+> and leave the source open in § 13 — unlike § 12's `target_posture`, this
+> section has no silent default. An incomplete `maturity_policy` yields a
+> `not-verified` cost verdict downstream, but the projection and actuals
+> evidence artifacts are still produced and written; only the pass/fail
+> verdict is withheld until the policy is satisfied.
+
+```yaml
+value_model:
+  cost:
+    maturity_policy:
+      min_complete_days:                       # int >= 1
+      min_successful_interactions:              # int >= 1
+      min_cost_settlement_age_hours:            # int >= 0
+      max_window_end_age_days:                  # int >= 1
+      min_projection_attribution_coverage_pct:  # float, (0, 1] — this is
+                                                 # PROJECTION attribution
+                                                 # coverage, not actual
+                                                 # resource-id coverage; only
+                                                 # projection coverage is
+                                                 # policy-gated here
+    success_event:
+      name:              # identifier: ^[A-Za-z][A-Za-z0-9_.:-]{0,127}$
+      trace_attribute:    # identifier: ^[A-Za-z][A-Za-z0-9_.:-]{0,127}$
+      success_values: []  # nonempty list of the same identifier grammar
+    baseline:
+      target_cost_per_successful_interaction_usd:  # float > 0
+      max_forecast_variance_pct:                   # float >= 0 — COST variance only
+      max_token_volume_variance_pct:                # float >= 0 — TOKEN VOLUME
+                                                     # variance only; a distinct
+                                                     # threshold from cost variance
+    accounting:
+      actual_cost_basis: usage-pretax    # literal; a metric/source, not a price basis
+      actual_billing_price_basis:        # retail | ea | mca | unknown
+      forecast_price_basis:              # retail | ea | mca
+      allow_basis_mismatch_for_verdict:  # bool
+      scope_policy:                      # dedicated_resource_group | tagged_allocation
+```
+
+> **Why `success_event.name` / `trace_attribute` / `success_values` are
+> restricted to `^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`**: these identifiers are
+> compiled into a fixed AppTraces KQL query by the reconciliation code — the
+> code never builds arbitrary KQL from operator input. Anything outside this
+> grammar is rejected before it reaches the query string, not sanitized
+> inside it.
+>
+> **Why `actual_billing_price_basis` is a required, explicit operator
+> declaration and not derived**: the Cost Management Query API returns
+> actual spend without telling you which price basis (retail / EA / MCA)
+> produced it. The operator must state it. `unknown` is a valid but
+> conservative choice — it is always treated as a basis mismatch against
+> `forecast_price_basis` unless `allow_basis_mismatch_for_verdict: true`.
 ```
