@@ -11,11 +11,12 @@ field.
 
 - **SPEC § 14 (Value Model) is generated with no numeric defaults.** The
   design→deploy scaffolding now emits an explicit `value_model` block instead
-  of silently defaulting fields like refund thresholds or escalation ceilings,
-  so the value model is a reviewable, explicit policy rather than an implicit
-  guess. `examples/returns-triage-governed/specs/SPEC.md` § 14 carries that
+  of emitting with an intentionally blank, no-default shape for the §14 field
+  groups (maturity policy, success event, cost baselines, accounting) unless
+  values are explicitly supplied and agreed upon. This makes the value model
+  a reviewable, explicit policy rather than an implicit guess. `examples/returns-triage-governed/specs/SPEC.md` § 14 carries that
   explicit policy for the reference governed example. This changes only the
-  generated design artifacts — the complete Azure Foundry projection and the
+  generated design artifacts — the complete Azure monthly cost projection and the
   base `full`-mode deploy path are unaffected.
 
 - **A cheap middle tier for the E2E gate: `mode: design-only`.** The E2E
