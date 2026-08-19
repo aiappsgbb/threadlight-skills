@@ -12,12 +12,19 @@ already-collected signals into one measurable outcome view:
 
 The cost signal is an **actual**, never a forecast. It is read only out of the
 reconciliation artifact bundle, through the same strict loader COST-102/COST-103
-use (`_read_cost_reconciliation`): schemas, canonical-JSON digests of the
+use (`_read_cost_reconciliation_bundle`): schemas, canonical-JSON digests of the
 forecast and actuals, the raw `specs/SPEC.md` anchor, verdict-after-evidence
 timestamps and today's staleness re-check. `specs/cost-manifest.json` is a
 projection — a cost-per-interaction number in it is a *plan*, so it can never
 satisfy KPI-003 on its own. (COST-005/006/007 keep consuming that forecast; this
 leg does not.)
+
+It is also a *re-derived* actual: the relayed
+`unit_economics.cost_per_successful_interaction_usd` is only reported when it
+matches `actuals.cost.period_total_usd / actuals.usage.successful_interactions`
+recomputed at the reconciler's own precision, out of the digest-pinned actuals
+document. A reconciliation that quotes a unit cost (or a success count) its own
+canonical evidence does not support is withheld, not relayed.
 
 It emits three should-fix, tier-0 findings under the observability pillar
 (KPI-001 baselines declared, KPI-002 deviation alert wired, KPI-003 scorecard
@@ -224,6 +231,17 @@ def test_kpi_finding_ids_in_catalog() -> None:
         assert meta["tier"] == 0, f"{fid} must be tier 0 (static)"
 
 
+def test_kpi003_title_names_the_actual_unit_cost() -> None:
+    """The catalog title is what the uplift list and report tables echo.
+
+    KPI-003's cost input is a measured actual per *successful* interaction, so
+    a title reading "cost/interaction" understates what it takes to pass and
+    reads like the forecast KPI-001 asks teams to declare.
+    """
+    title = pr.FINDING_CATALOG["KPI-003"]["title"]
+    assert "actual cost/successful interaction" in title, title
+
+
 # ---------------------------------------------------------------------------
 # _check_kpi_static
 # ---------------------------------------------------------------------------
@@ -375,6 +393,8 @@ def test_target_should_fix_still_reports_the_actual_cost(tmp_path, monkeypatch) 
         tmp_path,
         src_text=_OBS_SRC,
         evals=_evals_manifest(0.97),
+        # $1080.00 over 1200 successes = $0.90 — an overspend the actuals back.
+        actuals=_actuals(period_total_usd=1080.0),
         unit_economics=_unit(
             target_status="should-fix",
             cost_per_successful_interaction_usd=0.9,
@@ -435,6 +455,7 @@ def test_zero_cost_with_successes_is_a_valid_measurement(tmp_path, monkeypatch) 
         tmp_path,
         src_text=_OBS_SRC,
         evals=_evals_manifest(0.97),
+        actuals=_actuals(period_total_usd=0.0),
         unit_economics=_unit(cost_per_successful_interaction_usd=0.0),
     )
     assert pr._read_cost_per_interaction(ctx) == 0.0
@@ -488,6 +509,190 @@ def test_reader_never_raises_on_hostile_shapes(tmp_path, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# The unit cost is re-derived from the DIGEST-PINNED actuals
+# ---------------------------------------------------------------------------
+#
+# `unit_economics` is a self-report: the reconciliation states its own unit
+# cost and its own success count in the same block, so those two agreeing with
+# each other proves nothing. The canonical numbers live in
+# `cost-actuals-manifest.json`, which the loader has already pinned by
+# canonical-JSON digest — editing it in place invalidates the whole bundle, and
+# restating it honestly re-chains the digest and moves the measurement. So the
+# unit cost is only reported when it is re-derivable from that document.
+
+
+def test_relayed_unit_cost_must_match_the_pinned_actuals(tmp_path, monkeypatch) -> None:
+    """A reconciliation quoting a unit cost its own actuals deny is withheld.
+
+    $130.00 over 1200 successes is $0.1083. A block claiming $0.05 — internally
+    consistent, hash-valid bundle, every reconciler gate `pass` — is a number
+    nothing in the evidence supports, so KPI-003 must not relay it.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+        unit_economics=_unit(cost_per_successful_interaction_usd=0.05),
+    )
+    assert pr._read_cost_per_interaction(ctx) is None
+    assert pr._kpi_signals(ctx)["cost_per_interaction_usd"] is None
+    f = _by_id(pr._check_kpi_static(ctx))
+    assert f["KPI-003"].status != "pass"
+    assert "0.05" not in f["KPI-003"].detail, \
+        "a contradicted unit cost must never be relayed into the report"
+
+
+def test_relayed_success_count_must_match_the_pinned_actuals(
+    tmp_path, monkeypatch
+) -> None:
+    """Halving the divisor doubles the unit cost — both self-reported.
+
+    $130.00 over *600* successes really is $0.2167, so this block is perfectly
+    self-consistent. The actuals observed 1200, and that is the count the
+    reconciler divided by, so the pair is still a fabrication.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        unit_economics=_unit(
+            successful_interactions=600,
+            cost_per_successful_interaction_usd=0.2167,
+        ),
+    )
+    assert pr._read_cost_per_interaction(ctx) is None
+
+
+def test_restated_actual_total_moves_the_measurement(tmp_path, monkeypatch) -> None:
+    """Re-chaining the actuals digest is honest — and changes the answer."""
+    _freeze(monkeypatch)
+    # Same reconciliation numbers, actuals restated to $260.00: 260/1200 is
+    # $0.2167, so the relayed $0.1083 no longer holds.
+    stale_claim = _kpi_ctx(tmp_path / "stale-claim", actuals=_actuals(period_total_usd=260.0))
+    assert pr._read_cost_per_interaction(stale_claim) is None
+    # Restated end-to-end, the new unit cost is measured again.
+    restated = _kpi_ctx(
+        tmp_path / "restated",
+        actuals=_actuals(period_total_usd=260.0),
+        unit_economics=_unit(cost_per_successful_interaction_usd=0.2167),
+    )
+    value = pr._read_cost_per_interaction(restated)
+    assert value is not None and abs(value - 0.2167) < 1e-9
+
+
+def test_in_place_actuals_edit_is_rejected_by_the_loader(tmp_path, monkeypatch) -> None:
+    """The cheap attack — edit the actuals to fit the claim — never loads."""
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(tmp_path, unit_economics=_unit(cost_per_successful_interaction_usd=0.05))
+    actuals = _actuals()
+    actuals["cost"]["period_total_usd"] = 60.0  # 60/1200 = 0.05 — but unhashed
+    (tmp_path / "specs" / "cost-actuals-manifest.json").write_text(
+        json.dumps(actuals), encoding="utf-8")
+    assert pr._read_cost_reconciliation(ctx) is None, "digest must reject the edit"
+    assert pr._read_cost_per_interaction(ctx) is None
+
+
+def test_unusable_actual_total_is_not_a_measurement(tmp_path, monkeypatch) -> None:
+    _freeze(monkeypatch)
+    for i, bad in enumerate(
+            (None, "130.00", float("nan"), float("inf"), -1.0, True, 10 ** 400)):
+        ctx = _kpi_ctx(tmp_path / f"total-{i}", actuals=_actuals(period_total_usd=bad))
+        assert pr._read_cost_per_interaction(ctx) is None, f"accepted total {bad!r}"
+
+
+def test_unobserved_interaction_count_is_not_a_measurement(
+    tmp_path, monkeypatch
+) -> None:
+    """`usage.interaction_status` is the actuals' own gate on the divisor."""
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(tmp_path, actuals=_actuals(interaction_status="not-verified"))
+    assert pr._read_cost_per_interaction(ctx) is None
+
+
+def test_unusable_actual_success_count_is_not_a_measurement(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    for i, bad in enumerate((None, 0, -5, 1.5, "1200", True, {"n": 1200})):
+        ctx = _kpi_ctx(tmp_path / f"count-{i}",
+                       actuals=_actuals(successful_interactions=bad))
+        assert pr._read_cost_per_interaction(ctx) is None, f"accepted count {bad!r}"
+
+
+def test_recompute_rounds_half_up_like_the_reconciler(tmp_path, monkeypatch) -> None:
+    """$0.25 over 1000 successes is exactly $0.00025 — a rounding tie.
+
+    `reconcile._rate` quantizes to 4 dp with ROUND_HALF_UP, so the reconciler
+    publishes $0.0003. Banker's rounding would publish $0.0002; accepting that
+    here would mean the recompute silently disagreed with the producer on every
+    tie. Both directions are pinned.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path / "half-up",
+        actuals=_actuals(period_total_usd=0.25, successful_interactions=1000),
+        unit_economics=_unit(
+            successful_interactions=1000, cost_per_successful_interaction_usd=0.0003),
+    )
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 0.0003) < 1e-12
+
+    half_even = _kpi_ctx(
+        tmp_path / "half-even",
+        actuals=_actuals(period_total_usd=0.25, successful_interactions=1000),
+        unit_economics=_unit(
+            successful_interactions=1000, cost_per_successful_interaction_usd=0.0002),
+    )
+    assert pr._read_cost_per_interaction(half_even) is None
+
+
+def test_last_place_rounding_difference_is_not_a_contradiction(
+    tmp_path, monkeypatch
+) -> None:
+    """$130.00/1200 is $0.108333…; $0.10833 is the same measurement.
+
+    The gate exists to catch fabricated numbers, not to re-litigate the last
+    published digit — anything inside half of the 4-dp step is accepted.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(tmp_path, unit_economics=_unit(
+        cost_per_successful_interaction_usd=0.10833))
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 0.10833) < 1e-12
+
+
+def test_sub_cent_actual_total_matches_the_reconciler(tmp_path, monkeypatch) -> None:
+    """The reconciler normalizes the period total to cents before dividing.
+
+    `reconcile` quantizes `period_total_usd` to CENT precision, so $10.005 over
+    a single success is published as $10.0100. Re-deriving only from the raw
+    total would call the producer's own arithmetic a contradiction.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        actuals=_actuals(period_total_usd=10.005, successful_interactions=1),
+        unit_economics=_unit(
+            successful_interactions=1, cost_per_successful_interaction_usd=10.01),
+    )
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 10.01) < 1e-9
+
+
+def test_contradiction_warns_without_dumping_the_artifact(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A withheld number must be explained — briefly, and on stderr."""
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(tmp_path, unit_economics=_unit(
+        cost_per_successful_interaction_usd=0.05))
+    assert pr._read_cost_per_interaction(ctx) is None
+    err = capsys.readouterr().err
+    assert "[warn]" in err
+    assert len(err) < 500, "the warning must be bounded, not an artifact dump"
+
+
+# ---------------------------------------------------------------------------
 # _kpi_signals join helper
 # ---------------------------------------------------------------------------
 
@@ -526,16 +731,23 @@ def test_kpi_signals_never_raises_on_garbage() -> None:
 # Report rendering
 # ---------------------------------------------------------------------------
 
-def test_report_renders_outcome_kpi_section() -> None:
-    scorecard = {
-        "latency_declared": True,
-        "cost_per_interaction_declared": True,
-        "success_rate_declared": True,
-        "deviation_alert_present": False,
-        "traces_emit": True,
-        "eval_pass_rate": 0.97,
-        "cost_per_interaction_usd": 0.1083,
-    }
+def test_report_renders_outcome_kpi_section(tmp_path, monkeypatch) -> None:
+    """Render the section from a REAL joined scorecard, not a hand-built dict.
+
+    A literal scorecard here would keep rendering happily after
+    `_kpi_signals` stopped producing that shape (or that number). This drives
+    the section from the same bundle the assessment does, so the value in the
+    report is the value the loader actually re-derived from the pinned actuals.
+    """
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    scorecard = pr._kpi_signals(ctx)
+    assert abs(scorecard["cost_per_interaction_usd"] - 0.1083) < 1e-9
     manifest = {
         "checked_at": "2025-01-01T00:00:00+00:00",
         "mode": "static",
@@ -563,11 +775,38 @@ def test_report_renders_outcome_kpi_section() -> None:
     assert "97" in md            # pass-rate %
     assert "0.1083" in md        # measured cost per successful interaction
     # the source row names the reconciled actuals, never the forecast
-    assert "| Cost per successful interaction |" in md
+    assert "| Actual cost / successful interaction |" in md
     assert "`specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals)" in md
     kpi_section = md.split("## 8. Outcome KPI scorecard", 1)[1].split("\n## ", 1)[0]
     assert "specs/cost-manifest.json" not in kpi_section, \
         "the KPI scorecard must not claim the forecast manifest as its cost source"
+
+
+def test_report_renders_a_withheld_unit_cost_as_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """A contradicted unit cost leaves a gap in the report, never a number."""
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(tmp_path, src_text=_OBS_SRC, evals=_evals_manifest(0.97),
+                   unit_economics=_unit(cost_per_successful_interaction_usd=0.05))
+    scorecard = pr._kpi_signals(ctx)
+    assert scorecard["cost_per_interaction_usd"] is None
+    manifest = {
+        "checked_at": "2025-01-01T00:00:00+00:00", "mode": "static",
+        "agt_profile": "none", "go_live_recommendation": "ready",
+        "would_fail_hard_gate": False, "include_experimental": False,
+        "verification_coverage": {"verified": 1, "total_scoreable": 1, "percent": 100},
+        "verification_debt": {"total": 0, "by_pillar": {}},
+        "score": {"raw_percent": 100, "with_waivers_percent": 100},
+        "permission_tiers": {"0": True}, "warnings": [], "safe_check_reference": {},
+        "pillars": [], "evidence_register": [], "evidence_freshness": {},
+        "waivers": [], "not_verified_count": 0, "kpi_scorecard": scorecard,
+    }
+    md = pr._render_report(manifest, {"declared": "x", "detected": None, "resolved": "x"},
+                           {}, [], {}, [])
+    kpi_section = md.split("## 8. Outcome KPI scorecard", 1)[1].split("\n## ", 1)[0]
+    assert "0.05" not in kpi_section
+    assert "not-verified" in kpi_section
 
 
 if __name__ == "__main__":

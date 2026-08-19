@@ -137,7 +137,7 @@ flowchart LR
 | `OBS-005` | should-fix | ⚠️ should-fix | No workbook scaffold found |
 | `KPI-001` | should-fix | ⚠️ should-fix | Outcome KPI baseline(s) not declared: cost-per-interaction. Declare target latency, cost-per-interaction, and success-rate so deviation can be measured. |
 | `KPI-002` | should-fix | ⚠️ should-fix | No deviation alert wired for a KPI baseline — add a metric/log alert on latency, cost-per-interaction, or success-rate drift (see recipe KPI-002). |
-| `KPI-003` | should-fix | ⚠️ should-fix | Partial outcome scorecard (traces present). Join all three (eval pass-rate + reconciled cost per successful interaction + traces) for a measurable outcome view. |
+| `KPI-003` | should-fix | ⚠️ should-fix | Partial outcome scorecard (traces present). Join all three (eval pass-rate + actual cost per successful interaction + traces) for a measurable outcome view. |
 | `OBS-101` | must-fix | ❓ not-verified | Skipped — running in --static mode (tier: T1 Reader) |
 | `OBS-102` | must-fix | ❓ not-verified | Skipped — running in --static mode (tier: T2 Monitoring + LA Reader) |
 | `OBS-103` | should-fix | ❓ not-verified | Skipped — running in --static mode (tier: T2 Monitoring + LA Reader) |
@@ -300,7 +300,7 @@ flowchart LR
 11. **IAM-009** — Agent identity lifecycle (expiry/review) is declared. See: `foundry-hosted-agents`, `azure-tenant-isolation`
 12. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `foundry-observability`
 13. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `foundry-observability`
-14. **KPI-003** — Outcome scorecard joins eval pass-rate + cost/interaction + traces. See: `foundry-observability`
+14. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `foundry-observability`
 15. **MDL-002** — Deprecation plan referenced in SPEC. See: `foundry-skill-catalog`, `foundry-evals`
 16. **MDL-003** — Model upgrade canary process documented. See: `foundry-skill-catalog`, `foundry-evals`
 17. **MDL-005** — Fallback model strategy documented. See: `foundry-skill-catalog`, `foundry-evals`
@@ -335,7 +335,7 @@ Joins the three signals CAF asks teams to measure as a real outcome (eval qualit
 | KPI signal | Value | Source |
 |---|---|---|
 | Eval pass-rate | not-verified | `specs/evals-manifest.json` (threadlight-evals) |
-| Cost per successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
+| Actual cost / successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
 | Traces emitting | ✅ yes | foundry-observability / OTel wiring |
 
 | Baseline declared | Status |

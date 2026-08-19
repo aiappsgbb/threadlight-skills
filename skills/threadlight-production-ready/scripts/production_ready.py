@@ -35,6 +35,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -758,7 +759,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     # must-fix).
     "KPI-001": {"title": "Outcome KPI baselines declared (latency, cost/interaction, success-rate)", "pillar": "observability", "severity": "should-fix", "tier": 0},
     "KPI-002": {"title": "Deviation alert wired for an outcome KPI baseline", "pillar": "observability", "severity": "should-fix", "tier": 0},
-    "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
+    "KPI-003": {"title": "Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces", "pillar": "observability", "severity": "should-fix", "tier": 0},
 
     # ---- continuous-evals
     "EVAL-001": {"title": "SPEC sec 9 declares eval scenarios", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
@@ -3311,9 +3312,9 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
 #
 # plus the declared baseline targets + a deviation-alert resource. The cost
 # signal is a *measured* unit cost read through the strict reconciliation
-# loader, never the `specs/cost-manifest.json` forecast — see
-# `_read_cost_per_interaction`. Pure file reads; never raises
-# (missing/garbage inputs degrade to None / False).
+# loader and re-derived from the digest-pinned actuals, never the
+# `specs/cost-manifest.json` forecast — see `_read_cost_per_interaction`. Pure
+# file reads; never raises (missing/garbage inputs degrade to None / False).
 
 
 def _kpi_signals(ctx: RepoContext) -> dict:
@@ -3378,6 +3379,86 @@ def _read_eval_pass_rate(ctx: RepoContext) -> float | None:
     return None
 
 
+# The reconciler publishes the unit cost at `reconcile._RATE` precision with
+# ROUND_HALF_UP, after normalizing the period total to cents (`reconcile._CENT`).
+# Both steps are mirrored below. The tolerance is half of the published step:
+# a disagreement smaller than that is the last digit of a rounding convention,
+# not a fabricated number, and re-litigating it would withhold real evidence.
+_COST_UNIT_RATE_EXPONENT = Decimal("0.0001")
+_COST_UNIT_CENT_EXPONENT = Decimal("0.01")
+_COST_UNIT_RATE_TOLERANCE = Decimal("0.00005")
+
+
+def _withhold_unit_cost(reason: str) -> None:
+    """Explain a withheld unit cost on stderr, in one bounded line.
+
+    The artifact is attacker-controlled evidence: the message names the two
+    numbers that disagree at fixed precision and nothing else, so a hostile
+    manifest cannot turn a warning into a log flood.
+    """
+    print(f"[warn] outcome KPI unit cost withheld — {reason[:240]}", file=sys.stderr)
+    return None
+
+
+def _expected_unit_cost(actuals: dict, claimed_successes: int) -> list[Decimal] | None:
+    """Re-derive cost/successful-interaction from the pinned actuals.
+
+    Returns the acceptable values for the reconciler's published unit cost, or
+    None when the canonical evidence cannot support one at all (the count was
+    never observed, the total is unusable, or the reconciliation divided by a
+    different number of successes than the actuals recorded).
+
+    Two candidates are returned because `reconcile` quantizes the period total
+    to cents *before* dividing: for a sub-cent total the cent-normalized result
+    is the one the producer actually published, while the raw division is the
+    arithmetically exact one. Either is a faithful reading of the same
+    evidence, and only a value matching neither is a contradiction.
+    """
+    cost_block = actuals.get("cost")
+    usage = actuals.get("usage")
+    if not isinstance(cost_block, dict) or not isinstance(usage, dict):
+        return _withhold_unit_cost("the pinned actuals carry no cost/usage evidence")
+    if usage.get("interaction_status") != "pass":
+        return _withhold_unit_cost(
+            "the pinned actuals did not verify their interaction count "
+            f"(usage.interaction_status={_short(usage.get('interaction_status'))})")
+    observed = usage.get("successful_interactions")
+    if isinstance(observed, bool) or not isinstance(observed, int) or observed <= 0:
+        return _withhold_unit_cost(
+            "the pinned actuals record no positive successful-interaction count "
+            f"({_short(observed)})")
+    if observed != claimed_successes:
+        return _withhold_unit_cost(
+            f"reconciliation divided by {claimed_successes} success(es) but the "
+            f"digest-pinned actuals observed {observed}")
+    total = cost_block.get("period_total_usd")
+    if not _is_finite_number(total) or float(total) < 0:
+        return _withhold_unit_cost(
+            f"the pinned actuals carry no usable period total ({_short(total)})")
+
+    try:
+        raw = Decimal(str(float(total)))
+        divisor = Decimal(observed)
+        candidates = [
+            (raw / divisor).quantize(_COST_UNIT_RATE_EXPONENT, rounding=ROUND_HALF_UP),
+            (raw.quantize(_COST_UNIT_CENT_EXPONENT, rounding=ROUND_HALF_UP) / divisor)
+            .quantize(_COST_UNIT_RATE_EXPONENT, rounding=ROUND_HALF_UP),
+        ]
+    except (ArithmeticError, ValueError):
+        # Not representable at the published precision — the reconciler raises
+        # on exactly this input, so no artifact it produced can contain it.
+        return _withhold_unit_cost(
+            "the pinned actual total is not representable at the reconciler's "
+            "published precision")
+    return candidates
+
+
+def _short(value: object, limit: int = 48) -> str:
+    """A repr bounded for a log line — hostile evidence never sets its length."""
+    text = repr(value)
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     """The **measured** cost per successful interaction, in USD, or None.
 
@@ -3389,11 +3470,11 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     it at all.)
 
     The value comes out of `specs/cost-reconciliation-manifest.json` through
-    `_read_cost_reconciliation`, which is the one place that proves the bundle:
-    exact schemas, canonical-JSON digests of the forecast and actuals, the raw
-    `specs/SPEC.md` § 14 anchor, verdict-after-evidence timestamps and today's
-    staleness re-check. No hash, path or ref logic is repeated here, and a
-    `*_ref.path` is never followed.
+    `_read_cost_reconciliation_bundle`, which is the one place that proves the
+    bundle: exact schemas, canonical-JSON digests of the forecast and actuals,
+    the raw `specs/SPEC.md` § 14 anchor, verdict-after-evidence timestamps and
+    today's staleness re-check. No hash, path or ref logic is repeated here,
+    and a `*_ref.path` is never followed.
 
     On top of the loader, the reconciler's own fail-closed gates must all hold:
     the envelope `status` and `maturity.status` are `pass`, and
@@ -3409,10 +3490,20 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     overspend is about. KPI-003 reports whether the outcome can be measured;
     the target gap is the COST findings' verdict to carry, not this one's.
 
+    Finally — and this is what makes the number evidence rather than a claim —
+    the relayed unit cost is RE-DERIVED from the digest-pinned actuals. Both
+    numbers in `unit_economics` are self-reported in one block, so their
+    agreeing with each other proves nothing; the canonical
+    `cost.period_total_usd` and `usage.successful_interactions` live in
+    `cost-actuals-manifest.json`, which cannot be edited without breaking the
+    bundle. A quoted unit cost, or success count, that the pinned actuals do
+    not support is withheld with a bounded warning — never relayed, never
+    "corrected" into a number this module made up.
+
     Never raises.
     """
     try:
-        data = _read_cost_reconciliation(ctx)
+        bundle = _read_cost_reconciliation_bundle(ctx)
     except (AttributeError, TypeError, KeyError, ValueError, IndexError,
             ArithmeticError) as exc:
         # The loader is contractually non-raising, but `_kpi_signals` runs
@@ -3421,7 +3512,10 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
         print(f"[warn] cost reconciliation reader raised {type(exc).__name__}: {exc} "
               f"— outcome KPI unit cost reported as unmeasured", file=sys.stderr)
         return None
-    if data is None or data.get("_stale_reason"):
+    if bundle is None:
+        return None
+    data, actuals, _forecast = bundle
+    if data.get("_stale_reason"):
         return None
     maturity = data.get("maturity")
     maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
@@ -3439,6 +3533,17 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     cost = unit.get("cost_per_successful_interaction_usd")
     if not _is_finite_number(cost) or float(cost) < 0:
         return None
+
+    expected = _expected_unit_cost(actuals, successes)
+    if expected is None:
+        return None
+    reported = Decimal(str(float(cost)))
+    if all(abs(reported - candidate) > _COST_UNIT_RATE_TOLERANCE
+           for candidate in expected):
+        return _withhold_unit_cost(
+            f"reconciliation reports ${float(cost):.4f} per successful interaction, "
+            f"but the digest-pinned actuals re-derive "
+            f"${float(min(expected)):.4f} over {successes} success(es)")
     return float(cost)
 
 
@@ -3495,7 +3600,7 @@ def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
     else:
         out.append(_mk_finding("KPI-003", status="should-fix",
             detail=(f"Partial outcome scorecard ({', '.join(have)} present). Join all three "
-                    "(eval pass-rate + reconciled cost per successful interaction + traces) "
+                    "(eval pass-rate + actual cost per successful interaction + traces) "
                     "for a measurable outcome view.")))
     return out
 
@@ -4420,14 +4525,26 @@ def _cost_window_staleness(actuals: dict, reconciliation: dict) -> str | None:
     return None
 
 
-def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
-    """Load specs/cost-reconciliation-manifest.json only if it is still provable.
+def _read_cost_reconciliation_bundle(
+    ctx: RepoContext,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Load and prove the whole reconciliation bundle, or None.
 
-    Returns the parsed document, or None when it is absent, unparseable, of the
-    wrong schema, or no longer bound to the forecast/actuals/SPEC it was
-    computed from. A loaded document carries `_stale_reason` — None when the
-    evidence is still fresh, otherwise a sentence naming why it is not; a
-    caller must never report a `pass` on a document with a reason set.
+    Returns `(reconciliation, actuals, forecast)` — every document the digests
+    in `cost-reconciliation-manifest.json` pin, each read exactly once — or
+    None when the bundle is absent, unparseable, of the wrong schema, or no
+    longer bound to the forecast/actuals/SPEC it was computed from. The
+    returned reconciliation carries `_stale_reason`: None when the evidence is
+    still fresh, otherwise a sentence naming why it is not; a caller must never
+    report a `pass` on a document with a reason set.
+
+    The actuals are handed back because they are the *canonical* evidence: a
+    consumer that needs to re-derive a number (KPI-003's unit cost) must read
+    it from the document the digest pinned, not from the reconciliation's own
+    restatement of it. Handing it back here means no caller re-reads or
+    re-hashes it, so there is exactly one place that decides what "proved"
+    means. Nothing is cached between calls — staleness is re-evaluated against
+    the clock on every read.
 
     Only the canonical `specs/` filenames are ever read. `*_ref.path` is
     provenance the reconciler echoed verbatim from its caller; following it
@@ -4478,7 +4595,19 @@ def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
         return None
 
     data["_stale_reason"] = _cost_window_staleness(actuals, data)
-    return data
+    return data, actuals, forecast
+
+
+def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
+    """The reconciliation document alone, for callers that relay its verdicts.
+
+    Thin wrapper over `_read_cost_reconciliation_bundle` — same proofs, same
+    `_stale_reason` contract, same None-on-anything-unprovable behaviour.
+    COST-102/COST-103 never re-derive a number, so the pinned actuals and
+    forecast are of no use to them. Never raises.
+    """
+    bundle = _read_cost_reconciliation_bundle(ctx)
+    return None if bundle is None else bundle[0]
 
 
 def _cost_reconciliation_unverified(detail: str) -> list[Finding]:
@@ -6216,7 +6345,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append("| KPI signal | Value | Source |")
         out.append("|---|---|---|")
         out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
-        out.append(f"| Cost per successful interaction | {cpi_str} | "
+        out.append(f"| Actual cost / successful interaction | {cpi_str} | "
                    "`specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |")
         out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
         out.append("")

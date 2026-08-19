@@ -9,6 +9,40 @@ field.
 
 ### Fixed
 
+- **`threadlight-production-ready`'s outcome-KPI unit cost was a self-report,
+  not a measurement.** KPI-003's "actual cost per successful interaction" was
+  relayed straight out of `unit_economics` in
+  `specs/cost-reconciliation-manifest.json` — but that block states *both* the
+  unit cost and the success count it divided by, so the two agreeing with each
+  other proved nothing. A reconciliation quoting `$0.05` over evidence that
+  reads `$130.00 / 1200 successes` passed every gate and printed a green
+  $0.05 unit cost into the customer-facing report. The number is now
+  re-derived from the *digest-pinned* actuals the loader already proves:
+  `cost.period_total_usd / usage.successful_interactions` out of
+  `specs/cost-actuals-manifest.json`, whose canonical-JSON digest means an
+  in-place edit invalidates the whole bundle and an honest restatement
+  re-chains the digest and moves the measurement. The relayed value is
+  reported only when the pinned actuals verified their interaction count
+  (`usage.interaction_status == pass`), recorded a positive success count that
+  equals the one the reconciliation divided by, carry a finite non-negative
+  period total, and produce that unit cost when recomputed at the reconciler's
+  own precision (cent-normalized total, `ROUND_HALF_UP` to 4 dp, matching
+  `reconcile._rate`; a disagreement within half of that last step is a
+  rounding convention and is accepted). A contradiction is withheld — KPI-003
+  degrades to `should-fix`/`not-verified` with one bounded `[warn]` line, and
+  the report renders `not-verified` rather than a number nobody can reproduce.
+  This module still never authors a figure of its own: a withheld unit cost is
+  never replaced by the recomputed one. Internally, the strict loader is now
+  `_read_cost_reconciliation_bundle`, returning the `(reconciliation, actuals,
+  forecast)` triple it already read and proved once;
+  `_read_cost_reconciliation` remains the wrapper COST-102/COST-103 use, with
+  identical proofs, the same `_stale_reason` contract and no cross-run caching,
+  so staleness is still re-evaluated against the clock on every read.
+  KPI-003's catalog title, report row and uplift wording now read `actual
+  cost/successful interaction`; its ID, `should-fix` severity and tier-0
+  classification are unchanged, and KPI-001/KPI-002, COST-102/COST-103 and
+  scoring are untouched.
+
 - **`threadlight-production-ready`'s reconciled cost evidence parsing was one
   hostile JSON integer away from crashing the whole assessment, and
   COST-103's driver threshold was never checked against the SPEC-anchored

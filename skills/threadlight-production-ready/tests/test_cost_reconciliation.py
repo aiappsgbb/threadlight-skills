@@ -69,7 +69,25 @@ def _forecast() -> dict:
     }
 
 
-def _actuals(*, window_end: str = WINDOW_END, generated_at: str = COLLECTED_AT) -> dict:
+def _actuals(
+    *,
+    window_end: str = WINDOW_END,
+    generated_at: str = COLLECTED_AT,
+    period_total_usd: object = 130.0,
+    interaction_status: object = "pass",
+    successful_interactions: object = 1200,
+) -> dict:
+    """The collected Azure actuals — the canonical, digest-pinned cost evidence.
+
+    `cost.period_total_usd` and `usage.successful_interactions` are the two
+    numbers the reconciler divides to obtain
+    `unit_economics.cost_per_successful_interaction_usd`, and they are the two
+    the KPI scorecard re-derives that unit cost from (see
+    `_read_cost_per_interaction`). They are overridable here so a test can
+    restate the observed cost/usage and have `_write_bundle` re-chain the
+    `actuals_ref` digest, rather than tampering with a document the loader
+    would then reject outright.
+    """
     return {
         "schema": "threadlight-cost-actuals/v1",
         "generated_at": generated_at,
@@ -82,8 +100,11 @@ def _actuals(*, window_end: str = WINDOW_END, generated_at: str = COLLECTED_AT) 
             "settlement_age_hours": 48,
             "window_end_age_days": 0,
         },
-        "cost": {"basis": "usage-pretax", "period_total_usd": 130.0},
-        "usage": {"interaction_status": "pass", "successful_interactions": 1200},
+        "cost": {"basis": "usage-pretax", "period_total_usd": period_total_usd},
+        "usage": {
+            "interaction_status": interaction_status,
+            "successful_interactions": successful_interactions,
+        },
         "warnings": [],
     }
 
@@ -614,6 +635,56 @@ def test_stale_loader_still_returns_the_document_with_a_reason(
     data = pr._read_cost_reconciliation(ctx)
     assert isinstance(data, dict)
     assert data.get("_stale_reason")
+
+
+# ---------------------------------------------------------------------------
+# The bundle loader — all three proved documents, read once
+# ---------------------------------------------------------------------------
+
+
+def test_bundle_loader_returns_all_three_proved_documents(
+    tmp_path, monkeypatch
+) -> None:
+    """The digests prove forecast AND actuals, so callers may read both.
+
+    `_read_cost_reconciliation` returns only the verdict document, which is all
+    COST-102/COST-103 need. A consumer that must re-derive a number (KPI-003's
+    unit cost) needs the canonical actuals the digest already pinned — handing
+    it back here means it is never re-read, re-hashed or re-proved elsewhere.
+    """
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    bundle = pr._read_cost_reconciliation_bundle(ctx)
+    assert bundle is not None
+    reconciliation, actuals, forecast = bundle
+    assert reconciliation["schema"] == pr._COST_RECONCILIATION_SCHEMA
+    assert actuals == _actuals()
+    assert forecast == _forecast()
+    assert reconciliation.get("_stale_reason") is None
+
+
+def test_bundle_loader_and_wrapper_agree(tmp_path, monkeypatch) -> None:
+    """`_read_cost_reconciliation` stays the wrapper it always was."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    bundle = pr._read_cost_reconciliation_bundle(ctx)
+    assert bundle is not None
+    assert pr._read_cost_reconciliation(ctx) == bundle[0]
+
+    # ...and every rejection is a rejection on both.
+    bad = _write_bundle(tmp_path / "tampered", actuals=_actuals(period_total_usd=999.0),
+                        reconciliation=_reconciliation(
+                            _forecast(), _actuals(), SPEC_TEXT))
+    assert pr._read_cost_reconciliation_bundle(bad) is None
+    assert pr._read_cost_reconciliation(bad) is None
+
+
+def test_bundle_loader_carries_the_stale_reason(tmp_path, monkeypatch) -> None:
+    ctx = _write_bundle(tmp_path, max_window_end_age_days=3)
+    _freeze(monkeypatch, NOW + timedelta(days=30))
+    bundle = pr._read_cost_reconciliation_bundle(ctx)
+    assert bundle is not None
+    assert bundle[0].get("_stale_reason")
 
 
 def test_window_end_age_exactly_at_the_declared_limit_is_accepted(
