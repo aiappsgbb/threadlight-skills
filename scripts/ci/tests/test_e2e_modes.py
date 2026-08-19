@@ -163,6 +163,24 @@ def test_the_gate_step_actually_invokes_the_contract_checker():
     assert "--stage deploy" not in body, (
         "design-only never deploys, so deployment-posture.md cannot exist yet"
     )
+    # The SPEC §14 value-model contract check is opt-in on the checker (for
+    # legacy-project compatibility), so the design-only gate must explicitly
+    # ask for it or a missing/defaulted value model would go unchecked in
+    # the one tier that actually runs the checker against real output.
+    assert "--require-value-model" in body, (
+        "design-only gate must pass --require-value-model or the §14 "
+        "value-model contract goes unenforced in the cheap tier"
+    )
+
+
+def test_require_value_model_is_not_leaked_into_other_checker_uses():
+    """The stricter flag is a design-only-gate decision, not a global one."""
+    contents = WORKFLOW.read_text(encoding="utf-8")
+    assert contents.count("check_pilot_contract.py") == 1, (
+        "expected exactly one checker invocation in this workflow (the "
+        "design-only gate); if a second one was added, --require-value-model "
+        "must not silently apply to it too"
+    )
 
 
 def test_the_referenced_contract_checker_exists():
