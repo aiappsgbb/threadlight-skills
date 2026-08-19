@@ -1,0 +1,34 @@
+{
+  "id": "subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CostManagement/query/tl-pilot-actuals-costusd",
+  "name": "tl-pilot-actuals-costusd",
+  "type": "Microsoft.CostManagement/query",
+  "properties": {
+    "nextLink": null,
+    "columns": [
+      { "name": "UsageDate", "type": "Number" },
+      { "name": "ResourceType", "type": "String" },
+      { "name": "CostUSD", "type": "Number" },
+      { "name": "Currency", "type": "String" },
+      { "name": "ResourceId", "type": "String" },
+      { "name": "ServiceName", "type": "String" }
+    ],
+    "rows": [
+      [
+        20260801,
+        "microsoft.documentdb/databaseaccounts",
+        6.75,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.DocumentDB/databaseAccounts/pilot-cosmos",
+        "Azure Cosmos DB"
+      ],
+      [
+        20260802,
+        "microsoft.documentdb/databaseaccounts",
+        6.90,
+        "USD",
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-pilot/providers/Microsoft.DocumentDB/databaseAccounts/pilot-cosmos",
+        "Azure Cosmos DB"
+      ]
+    ]
+  }
+}
