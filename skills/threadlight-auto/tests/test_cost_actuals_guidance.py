@@ -20,6 +20,32 @@ So the decision this file protects is *documentation-shaped on purpose*:
 Both halves are asserted against the *section* that owns the topic rather than
 against the whole file, so a stray mention of "opt-in" three screens away in an
 unrelated table cannot satisfy the contract.
+
+A follow-up pass (still Task 15) closes four documentation-accuracy gaps that
+the first draft got wrong or left implicit, all without touching
+`orchestrator.py` or `consumption_iq.py`:
+
+  1. The `cost_projection` stage's resumability *skip* (a fresh forecast is
+     reused) is orthogonal to the actuals subphase: an explicit operator
+     request must still run `actuals` → `reconcile` even when the projection
+     itself is skipped — never conflate "skip re-running the forecast" with
+     "skip the reconciliation nobody asked to skip."
+  2. `run --all --with-actuals` is one process; an exit 3 from it must be
+     disambiguated by the *exact* stderr prefix `consumption_iq.py` prints,
+     never assumed from the exit code alone, and a projection-side pricing
+     failure must never be conflated with a reconciliation-side evidence
+     failure.
+  3. The CLI validates every `--with-actuals` precondition **before** it runs
+     the projection at all (`_resolve_scope_or_exit`); a malformed combined
+     invocation therefore exits 2 for the whole process and produces *no*
+     cost-projection artefacts on that call. The old "additive, never defers
+     the projection" claim was wrong on its face — the fix is prevalidation
+     plus an immediate fallback re-run of the plain command, not a claim that
+     the flag can't interfere.
+  4. `KPI-003` reads `specs/cost-reconciliation-manifest.json` but never
+     relays its self-reported figure — the number is re-derived from the
+     digest-pinned `specs/cost-actuals-manifest.json`. Both facts must be
+     true of the *same* paragraph, not scattered across the section.
 """
 
 from __future__ import annotations
@@ -32,8 +58,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 AUTO_SKILL = REPO / "skills" / "threadlight-auto" / "SKILL.md"
 ORCHESTRATOR = REPO / "skills" / "threadlight-auto" / "references" / "orchestrator.py"
+STATE_SCHEMA = REPO / "skills" / "threadlight-auto" / "references" / "state-schema.md"
 PROD_SKILL = REPO / "skills" / "threadlight-production-ready" / "SKILL.md"
 PROD_SCRIPT = REPO / "skills" / "threadlight-production-ready" / "scripts" / "production_ready.py"
+CONSUMPTION_IQ = (
+    REPO / "skills" / "threadlight-consumption-iq" / "scripts" / "consumption_iq.py"
+)
 
 AUTO_VERSION = "1.2.0"
 PROD_VERSION = "0.11.0"
@@ -89,6 +119,21 @@ def _missing(body: str, phrases: tuple[str, ...]) -> list[str]:
     return [p for p in phrases if p.casefold() not in low]
 
 
+def _paragraph_mentioning(body: str, needle: str) -> str:
+    """The one blank-line-delimited paragraph in `body` that contains `needle`.
+
+    Paragraph-scoped rather than sentence-scoped (splitting on `.` is brittle
+    against markdown abbreviations, decimals and code spans) — this still
+    forces two claims to live next to each other instead of being satisfied by
+    a stray, unrelated mention elsewhere in a long section.
+    """
+    paragraphs = body.split("\n\n")
+    hits = [p for p in paragraphs if needle in p]
+    assert hits, f"no paragraph mentions {needle!r}"
+    assert len(hits) == 1, f"{len(hits)} paragraphs mention {needle!r}; expected 1"
+    return hits[0]
+
+
 def _actuals_section() -> str:
     return _section(AUTO_SKILL, "actuals")
 
@@ -131,6 +176,33 @@ def test_projection_still_runs_exactly_as_today() -> None:
     # The stage table still names the plain projection command.
     stages = _section(AUTO_SKILL, "Sub-stages")
     assert "`scripts/consumption_iq.py run --all`" in stages
+
+
+def test_actuals_precondition_failure_prevalidates_and_falls_back_to_plain_run() -> None:
+    """Task 15 pt.3: the CLI validates the actuals scope *before* it runs the
+    projection at all (`_resolve_scope_or_exit`), so one malformed combined
+    invocation exits 2 for the whole process and writes no cost-projection
+    artefacts on that call. The guidance must prevalidate first and fall back
+    to the plain command — it must never claim the flag simply "can't defer"
+    the projection, because a malformed one demonstrably does."""
+    body = _actuals_section()
+    missing = _missing(
+        body,
+        (
+            "_resolve_scope_or_exit",
+            "before it runs the projection",
+            "no cost-projection artefacts",
+            "run --all",
+        ),
+    )
+    assert not missing, f"prevalidate/fallback guidance missing: {missing}"
+    low = body.casefold()
+    assert "exit 2" in low
+    assert "prevalidat" in low
+    # The disproven "additive, therefore cannot possibly interfere" claim must
+    # not survive in an unqualified form.
+    for overclaim in ("never defers the projection", "can never defer", "cannot possibly interfere"):
+        assert overclaim not in low, f"guidance still makes the disproven claim: {overclaim!r}"
 
 
 def test_default_first_deploy_never_collects_actuals() -> None:
@@ -180,6 +252,55 @@ def test_exit_semantics_are_documented_and_advisory() -> None:
     assert not missing, f"exit-code guidance missing: {missing}"
 
 
+def test_exit3_is_disambiguated_by_exact_stderr_prefixes_from_the_cli() -> None:
+    """Task 15 pt.2: `run --all --with-actuals` is one process, so exit 3 alone
+    cannot tell the agent whether the *projection* step failed (pricing) or the
+    *actuals/reconciliation* step failed (evidence). The docs must inspect the
+    stderr prefix `consumption_iq.py` actually prints — asserted here as an
+    exact `print(f"...")` snippet read back out of the source, so the guidance
+    cannot silently drift from the code that emits the message — and must
+    never conflate the two states."""
+    src = CONSUMPTION_IQ.read_text(encoding="utf-8")
+    exact_prints = (
+        'print(f"pricing unavailable: {exc}", file=sys.stderr)',
+        'print(f"cost evidence unavailable: {exc}", file=sys.stderr)',
+        'print(f"cost evidence unusable: {exc}", file=sys.stderr)',
+        'print(f"token evidence unusable: {exc}", file=sys.stderr)',
+        'print(f"cost history conflict: {exc}", file=sys.stderr)',
+        'print(f"artefact rejected before publication: {exc}", file=sys.stderr)',
+    )
+    for snippet in exact_prints:
+        assert snippet in src, (
+            f"consumption_iq.py no longer prints {snippet!r} — "
+            "update this test AND the SKILL.md disambiguation table together"
+        )
+
+    body = _actuals_section()
+    missing = _missing(
+        body,
+        (
+            "pricing unavailable:",
+            "cost evidence unavailable:",
+            "cost evidence unusable:",
+            "token evidence unusable:",
+            "cost history conflict:",
+            "artefact rejected before publication:",
+            "cost-projection: degraded-no-pricing",
+            "cost-reconciliation: degraded-source",
+        ),
+    )
+    assert not missing, f"exit-3 disambiguation table missing: {missing}"
+
+    low = body.casefold()
+    # A guessed prefix that does not match the CLI must never be documented.
+    assert "actuals source unavailable:" not in low
+    # The pricing (projection-side) failure must never be recorded as a
+    # reconciliation-side status, and vice versa — assert the two states are
+    # not glued into a single sentence/value.
+    assert "pricing unavailable: cost-reconciliation" not in low
+    assert "cost evidence unavailable: cost-projection" not in low
+
+
 def test_guidance_never_tells_the_agent_to_wait_for_billing_ingestion() -> None:
     body = _actuals_section().casefold()
     forbidden = (
@@ -217,6 +338,31 @@ def test_actuals_are_a_subphase_not_a_stage() -> None:
     assert "actuals" not in resumption.casefold()
 
 
+def test_explicit_actuals_still_run_when_the_projection_stage_is_skipped() -> None:
+    """Task 15 pt.1: `_check_cost_projection`'s resumability `skip` decision
+    means "the fresh forecast is reused, don't re-run `run --all`" — it says
+    nothing about the actuals subphase. An explicit operator request (rule 3)
+    must still run `actuals` → `reconcile` on a resumed run even though the
+    projection step itself was skipped; the two decisions are orthogonal and
+    must never be conflated."""
+    body = _actuals_section()
+    missing = _missing(
+        body,
+        (
+            "_check_cost_projection",
+            "still runs the subphase",
+            "scripts/consumption_iq.py actuals",
+            "scripts/consumption_iq.py reconcile",
+            "nothing left to re-project",
+        ),
+    )
+    assert not missing, f"skip-vs-subphase disambiguation missing: {missing}"
+    # The resumption table (a different section) must still carry no actuals
+    # row — this new guidance lives only in the actuals section.
+    resumption = _section(AUTO_SKILL, "Resumption")
+    assert "actuals" not in resumption.casefold()
+
+
 # ---------------------------------------------------------------------------
 # 2. the state machine is untouched
 # ---------------------------------------------------------------------------
@@ -235,9 +381,27 @@ def test_cost_projection_still_sits_between_safe_check_and_invoke() -> None:
 
 
 def test_orchestrator_source_has_no_actuals_wiring() -> None:
+    """Task 15 pt.6: ban the actuals-wiring tokens specifically, not the
+    generic word "reconcile" — banning a common English word makes this test
+    brittle against unrelated future prose (e.g. a resumability comment about
+    "reconciling" state) without adding any real protection, since the
+    concrete tokens below are what an actual wiring regression would add."""
     src = ORCHESTRATOR.read_text(encoding="utf-8").casefold()
-    for token in ("--with-actuals", "with_actuals", "cost_actuals", "cost-actuals", "reconcile"):
+    for token in ("--with-actuals", "with_actuals", "cost_actuals", "cost-actuals", "cost-reconciliation"):
         assert token not in src, f"orchestrator.py grew actuals wiring: {token!r}"
+
+
+def test_state_schema_documents_cost_projection_fields_the_orchestrator_reads() -> None:
+    """Task 15 pt.5: `_check_cost_projection` reads `cost_projection.last_deploy_at`
+    and `cost_projection.passed_at` straight out of `.threadlight/auto-state.json`
+    — that's real, not invented, and state-schema.md should say so. It
+    deliberately does NOT assert a fixed shape for the agent-written
+    `cost-reconciliation` sub-status: that key is written by guidance
+    (SKILL.md), never read by the orchestrator, and documenting it here would
+    invent a schema the code does not actually enforce."""
+    schema = STATE_SCHEMA.read_text(encoding="utf-8")
+    for token in ("cost_projection", "last_deploy_at", "passed_at"):
+        assert token in schema, f"state-schema.md missing {token!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +432,27 @@ def test_production_ready_documents_forecast_always_actuals_opt_in() -> None:
     assert "always" in low, "forecast evidence must be described as always preserved"
     for word in ("sha-256", "fresh", "maturity"):
         assert word in low, f"strictness guidance missing: {word!r}"
+
+
+def test_kpi003_reads_reconciliation_but_rederives_against_pinned_actuals() -> None:
+    """Task 15 pt.4: KPI-003 reads `specs/cost-reconciliation-manifest.json`,
+    but the number it reports is never that document's self-reported figure —
+    it is re-derived from the digest-pinned `specs/cost-actuals-manifest.json`
+    (see `production_ready.py::_read_cost_per_interaction`). Both halves of
+    that claim must live in the same paragraph, not be scattered across the
+    section where one could be true without the other."""
+    body = _section(PROD_SKILL, "Cost evidence")
+    paragraph = _paragraph_mentioning(body, "KPI-003")
+    missing = _missing(
+        paragraph,
+        (
+            "specs/cost-reconciliation-manifest.json",
+            "re-derived",
+            "digest-pinned",
+            "specs/cost-actuals-manifest.json",
+        ),
+    )
+    assert not missing, f"KPI-003 read-vs-rederive wording imprecise: {missing}"
 
 
 def test_production_ready_legacy_pilots_keep_passing() -> None:
