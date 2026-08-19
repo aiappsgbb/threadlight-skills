@@ -829,7 +829,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "COST-006": {"title": "Unaddressed cost recommendations in specs/cost-manifest.json", "pillar": "cost", "severity": "should-fix", "tier": 0},
     "COST-007": {"title": "Cost manifest meter coverage — every detected meter priced or flagged", "pillar": "cost", "severity": "must-fix", "tier": 0},
     "COST-101": {"title": "Live budget alert wired on target RG", "pillar": "cost", "severity": "must-fix", "tier": 3},
-    "COST-102": {"title": "Live actuals vs forecast within 20%", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
+    # The cost tolerance is per-workload SPEC § 14 policy
+    # (`policy_snapshot.max_forecast_variance_pct`), so the catalog title must
+    # not bake in the one example value used across fixtures and docs.
+    "COST-102": {"title": "Live actuals vs forecast within declared tolerance", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-103": {"title": "PAYG vs PTU recommendation matches observed usage", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-104": {"title": "No orphaned resources in target RG", "pillar": "cost", "severity": "should-fix", "tier": 3, "experimental": True},
     "COST-105": {"title": "Resource tags applied as per strategy", "pillar": "cost", "severity": "should-fix", "tier": 3},
@@ -4221,6 +4224,317 @@ def _check_supply_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None
 
 # ---- pillar 10: cost ------------------------------------------------------
 
+# COST-102 / COST-103 consume the reconciliation artifact published by
+# `threadlight-consumption-iq` (`reconcile.py` + `reconciliation_emitter.py`).
+# This module is a *consumer*: it never recomputes variance, never applies a
+# second threshold, never re-evaluates maturity and never talks to Azure. It
+# verifies that the bundle it was handed is internally consistent — exact
+# schemas, re-derivable digests, ordered timestamps, and evidence that is still
+# fresh on today's clock — and then reports the verdicts the reconciler already
+# computed. Anything else is `not-verified`; nothing here can emit `must-fix`.
+
+_COST_RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1"
+_COST_ACTUALS_SCHEMA = "threadlight-cost-actuals/v1"
+_COST_TOKEN_THRESHOLD_FIELD = "max_token_volume_variance_pct"
+_COST_RECONCILE_HINT = (
+    "Run `threadlight-consumption-iq actuals` to collect Cost Management evidence, "
+    "then `reconcile` to republish specs/cost-reconciliation-manifest.json."
+)
+_HEX64_RE = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _cost_reconciliation_now() -> datetime:
+    """Current instant used for the artifact staleness re-check.
+
+    Split out so the staleness gate is injectable: evidence that was mature the
+    day it was reconciled goes stale on the wall clock, and tests must be able
+    to move that clock without moving the artifact.
+    """
+    return datetime.now(timezone.utc)
+
+
+def _canonical_json_sha256(data: Any) -> str | None:
+    """SHA-256 over the reconciler's canonical JSON serialization.
+
+    Must match `reconcile.sha256_json` exactly (sort_keys / compact separators /
+    ensure_ascii), so key order, whitespace and host encoding cannot change the
+    digest of semantically identical evidence.
+    """
+    try:
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _read_cost_artifact(path: Path) -> dict | None:
+    """Read one JSON object; absent, undecodable or non-object evidence is None."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        # ValueError covers UnicodeDecodeError: non-UTF-8 bytes on an artifact
+        # are unusable evidence, never a crash.
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_utc_instant(value: Any) -> datetime | None:
+    """Parse an ISO-8601 instant that is explicitly UTC; else None."""
+    if not isinstance(value, str) or not value:
+        return None
+    text = value[:-1] + "+00:00" if value[-1] in "Zz" else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        # A naive stamp is an assumption, not an instant; a non-zero offset is
+        # not what the producing schemas emit.
+        return None
+    return parsed
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _is_declared_ratio(value: Any) -> bool:
+    """A SPEC-declared tolerance: a finite number in [0, 1]."""
+    return _is_finite_number(value) and 0.0 <= float(value) <= 1.0
+
+
+def _fmt_ratio_pct(value: Any) -> str:
+    return f"{float(value) * 100:.1f}%" if _is_finite_number(value) else "unknown"
+
+
+def _fmt_token_volume(value: Any) -> str:
+    return f"{float(value):,.0f}" if _is_finite_number(value) else "unknown"
+
+
+def _cost_forecast_schema_ok(forecast: dict) -> bool:
+    try:
+        return tuple(int(x) for x in str(forecast.get("schema_version", "")).split(".")) >= (1, 0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _cost_window_staleness(actuals: dict, reconciliation: dict) -> str | None:
+    """Re-check the observed window against *today*, not against reconcile time.
+
+    `maturity.window_end_age_days` was evaluated when the artifact was written.
+    A pilot that stops collecting keeps that verdict on disk forever, so the
+    same declared maximum is re-applied here to the current clock.
+    """
+    window = actuals.get("window")
+    window_end = _parse_utc_instant(window.get("end")) if isinstance(window, dict) else None
+    snapshot = reconciliation.get("policy_snapshot")
+    max_age = snapshot.get("max_window_end_age_days") if isinstance(snapshot, dict) else None
+    if window_end is None:
+        return "the actuals window end is missing or is not a UTC instant"
+    if not _is_finite_number(max_age) or float(max_age) < 0:
+        return "SPEC § 14 declares no usable max_window_end_age_days to age the evidence against"
+    age_days = (_cost_reconciliation_now() - window_end).total_seconds() / 86400.0
+    if age_days < 0:
+        return "the actuals window ends in the future relative to the current clock"
+    if age_days > float(max_age):
+        return (f"the observed cost window closed {age_days:.1f} day(s) ago, beyond the "
+                f"declared {float(max_age):g}-day maximum")
+    return None
+
+
+def _read_cost_reconciliation(ctx: RepoContext) -> dict[str, Any] | None:
+    """Load specs/cost-reconciliation-manifest.json only if it is still provable.
+
+    Returns the parsed document, or None when it is absent, unparseable, of the
+    wrong schema, or no longer bound to the forecast/actuals/SPEC it was
+    computed from. A loaded document carries `_stale_reason` — None when the
+    evidence is still fresh, otherwise a sentence naming why it is not; a
+    caller must never report a `pass` on a document with a reason set.
+
+    Only the canonical `specs/` filenames are ever read. `*_ref.path` is
+    provenance the reconciler echoed verbatim from its caller; following it
+    would let an artifact choose which bytes get hashed (and reach outside the
+    repository), which is exactly the property the digests exist to remove.
+    Never raises.
+    """
+    specs = ctx.root / "specs"
+    data = _read_cost_artifact(specs / "cost-reconciliation-manifest.json")
+    if data is None or data.get("schema") != _COST_RECONCILIATION_SCHEMA:
+        return None
+    actuals = _read_cost_artifact(specs / "cost-actuals-manifest.json")
+    if actuals is None or actuals.get("schema") != _COST_ACTUALS_SCHEMA:
+        return None
+    forecast = _read_cost_artifact(specs / "cost-manifest.json")
+    if forecast is None or not _cost_forecast_schema_ok(forecast):
+        return None
+
+    for ref_key, document in (("actuals_ref", actuals), ("forecast_ref", forecast)):
+        ref = data.get(ref_key)
+        if not isinstance(ref, dict):
+            return None
+        digest = ref.get("sha256")
+        if not isinstance(digest, str):
+            return None
+        if _canonical_json_sha256(document) != digest.lower():
+            return None
+
+    policy_ref = data.get("policy_ref")
+    if not isinstance(policy_ref, dict):
+        return None
+    anchor = policy_ref.get("spec_sha256")
+    if not isinstance(anchor, str) or not _HEX64_RE.fullmatch(anchor):
+        # A placeholder or truncated anchor cannot prove which SPEC revision
+        # gated the verdict, so no threshold in the artifact is a declared one.
+        return None
+    try:
+        spec_bytes = (specs / "SPEC.md").read_bytes()
+    except OSError:
+        return None
+    if hashlib.sha256(spec_bytes).hexdigest() != anchor.lower():
+        return None
+
+    reconciled_at = _parse_utc_instant(data.get("generated_at"))
+    collected_at = _parse_utc_instant(actuals.get("generated_at"))
+    if reconciled_at is None or collected_at is None or reconciled_at < collected_at:
+        # A verdict cannot predate the evidence it judges.
+        return None
+
+    data["_stale_reason"] = _cost_window_staleness(actuals, data)
+    return data
+
+
+def _cost_reconciliation_unverified(detail: str) -> list[Finding]:
+    return [_mk_finding(fid, status="not-verified", detail=detail)
+            for fid in ("COST-102", "COST-103")]
+
+
+def _check_cost_reconciliation_static(ctx: RepoContext) -> list[Finding]:
+    """Emit exactly COST-102 and COST-103 from the reconciliation artifact."""
+    data = _read_cost_reconciliation(ctx)
+    if data is None:
+        return _cost_reconciliation_unverified(
+            "No provable specs/cost-reconciliation-manifest.json — absent, unparseable, "
+            "wrong schema, or no longer matching the forecast / actuals / SPEC § 14 "
+            f"digests it was reconciled from. {_COST_RECONCILE_HINT}")
+    stale_reason = data.get("_stale_reason")
+    if stale_reason:
+        return _cost_reconciliation_unverified(
+            f"Reconciled cost evidence is stale — {stale_reason}. {_COST_RECONCILE_HINT}")
+    maturity = data.get("maturity")
+    maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
+    if data.get("status") != "pass" or maturity_status != "pass":
+        # `status` mirrors `maturity.status`; either not passing (or the two
+        # disagreeing) means the reconciler's own fail-closed evidence gate did
+        # not hold, so no verdict inside the artifact is actionable.
+        return _cost_reconciliation_unverified(
+            f"Reconciliation reports status={data.get('status')!r} / "
+            f"maturity={maturity_status!r} — its fail-closed maturity gate has not passed, "
+            f"so its verdicts are not actionable. {_COST_RECONCILE_HINT}")
+    return [_check_cost_102(data), _check_cost_103(data)]
+
+
+def _check_cost_102(data: dict) -> Finding:
+    """Relay the reconciler's cost-variance verdict; never re-threshold it."""
+    totals = data.get("totals")
+    variance = totals.get("variance_pct") if isinstance(totals, dict) else None
+    if not isinstance(totals, dict) or not (variance is None or _is_finite_number(variance)):
+        return _not_verified("COST-102",
+            "Reconciliation totals.variance_pct is malformed — a cost variance that is not "
+            f"a finite number is not evidence. {_COST_RECONCILE_HINT}")
+    snapshot = data.get("policy_snapshot")
+    tolerance = snapshot.get("max_forecast_variance_pct") if isinstance(snapshot, dict) else None
+    if not _is_declared_ratio(tolerance):
+        return _not_verified("COST-102",
+            "SPEC § 14 declares no usable max_forecast_variance_pct (expected a ratio between "
+            "0 and 1), so there is no declared tolerance to report against.")
+    status = data.get("variance_status")
+    if status == "not-verified":
+        return _not_verified("COST-102",
+            "Reconciliation reports variance_status=not-verified — the observed and forecast "
+            "sides were not comparable (for example an incomparable price basis). "
+            f"{_COST_RECONCILE_HINT}")
+    if status not in ("pass", "should-fix"):
+        return _not_verified("COST-102",
+            f"Reconciliation reports an unrecognized variance_status={status!r}; only the "
+            "reconciler may decide this verdict.")
+    if variance is None:
+        return _not_verified("COST-102",
+            f"Reconciliation reports variance_status={status!r} with no computable "
+            "totals.variance_pct (a zero, negative or unknown forecast baseline), so the "
+            "tolerance comparison it claims cannot be shown.")
+    observed = _fmt_ratio_pct(variance)
+    declared = _fmt_ratio_pct(tolerance)
+    if status == "pass":
+        return _mk_finding("COST-102", status="pass",
+            detail=(f"Observed cost variance {observed} is within the SPEC § 14 declared "
+                    f"tolerance {declared} (policy_snapshot.max_forecast_variance_pct), per "
+                    "specs/cost-reconciliation-manifest.json."))
+    return _mk_finding("COST-102", status="should-fix",
+        detail=(f"Observed cost variance {observed} exceeds the SPEC § 14 declared tolerance "
+                f"{declared} (policy_snapshot.max_forecast_variance_pct). Review "
+                "docs/cost-reconciliation-report.md, then re-project or re-baseline with "
+                "threadlight-consumption-iq."))
+
+
+def _check_cost_103(data: dict) -> Finding:
+    """Relay the reconciler's PAYG/PTU driver verdict — a token-volume question.
+
+    The tolerance is `max_token_volume_variance_pct`, never the cost tolerance:
+    a workload absorbs far more volume drift than cost drift before a reserved
+    capacity recommendation stops holding. No dollar figure belongs here.
+    """
+    drivers = data.get("drivers")
+    driver = drivers.get("payg_ptu") if isinstance(drivers, dict) else None
+    if not isinstance(driver, dict):
+        return _not_verified("COST-103",
+            "Reconciliation carries no drivers.payg_ptu block, so no PAYG/PTU recommendation "
+            f"was evaluated against observed volume. {_COST_RECONCILE_HINT}")
+    if driver.get("threshold_field") != _COST_TOKEN_THRESHOLD_FIELD:
+        return _not_verified("COST-103",
+            f"drivers.payg_ptu does not declare threshold_field={_COST_TOKEN_THRESHOLD_FIELD!r}; "
+            "a PAYG/PTU verdict measured against any other threshold applies the wrong unit.")
+    status = driver.get("status")
+    if status == "not-verified":
+        return _not_verified("COST-103",
+            "Reconciliation reports drivers.payg_ptu status=not-verified — no explicit PAYG/PTU "
+            "recommendation, or no attributable observed token volume for it. A reserved "
+            "capacity decision is never inferred.")
+    if status not in ("pass", "should-fix"):
+        return _not_verified("COST-103",
+            f"Reconciliation reports an unrecognized drivers.payg_ptu status={status!r}; only "
+            "the reconciler may decide this verdict.")
+    threshold = driver.get("threshold_pct")
+    if not _is_declared_ratio(threshold):
+        return _not_verified("COST-103",
+            f"SPEC § 14 declares no usable {_COST_TOKEN_THRESHOLD_FIELD} (expected a ratio "
+            "between 0 and 1), so the observed volume has no declared band to sit in.")
+    forecast_tokens = driver.get("forecast_monthly_tokens")
+    observed_tokens = driver.get("observed_monthly_tokens")
+    if not _is_finite_number(forecast_tokens) or not _is_finite_number(observed_tokens):
+        return _not_verified("COST-103",
+            "Reconciliation reports a PAYG/PTU verdict without finite forecast and observed "
+            f"monthly token volumes to support it. {_COST_RECONCILE_HINT}")
+    volumes = (f"observed {_fmt_token_volume(observed_tokens)} vs forecast "
+               f"{_fmt_token_volume(forecast_tokens)} monthly tokens")
+    band = f"{_fmt_ratio_pct(threshold)} ({_COST_TOKEN_THRESHOLD_FIELD})"
+    if status == "pass":
+        return _mk_finding("COST-103", status="pass",
+            detail=(f"PAYG/PTU recommendation still holds at observed volume: {volumes}, inside "
+                    f"the SPEC § 14 declared band {band}."))
+    return _mk_finding("COST-103", status="should-fix",
+        detail=(f"Observed token volume left the declared band {band}: {volumes}. Rerun the "
+                "PAYG/PTU analysis at observed volume with threadlight-consumption-iq — the "
+                "reserved capacity decision needs the full sizing model, not a variance ratio."))
+
+
 def _check_cost_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
@@ -4349,6 +4663,10 @@ def _check_cost_static(ctx: RepoContext) -> list[Finding]:
     # A v1 manifest with no meter_coverage key is treated as not-verified (the
     # vNext projection has not been run), so COST-005/006 outcomes are untouched.
     out.append(_check_cost_007(manifest_data))
+
+    # COST-102 / COST-103 — reconciled actuals vs forecast. Artifact-driven, so
+    # they are produced here exactly once and never by the live probe below.
+    out.extend(_check_cost_reconciliation_static(ctx))
     return out
 
 
@@ -4387,7 +4705,7 @@ def _check_cost_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, 
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
     if not tiers.get(3) or not sub or not rg:
-        for fid in ("COST-101", "COST-102", "COST-103", "COST-104", "COST-105"):
+        for fid in ("COST-101", "COST-104", "COST-105"):
             findings.append(_not_verified(fid, "Tier 3 Cost Management Reader unavailable"))
         return findings, evidence
     budgets = _az_json("consumption", "budget", "list", "--resource-group", rg, "--subscription", sub)
@@ -4403,8 +4721,9 @@ def _check_cost_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, 
             status="pass" if budgets else "must-fix",
             detail=f"{len(budgets)} budget(s) wired" if budgets else "No budget alerts wired",
             evidence_refs=["E-COST-101"]))
-    for fid in ("COST-102", "COST-103"):
-        findings.append(_not_verified(fid, "PAYG vs PTU usage analysis not implemented in v1 — see paygo-ptu-cost-analyzer"))
+    # COST-102 / COST-103 are artifact-driven and emitted once by
+    # `_check_cost_reconciliation_static`; the live probe adds no Cost
+    # Management query for them and must not restate them here.
     # COST-104 orphaned check skipped
     findings.append(_not_verified("COST-104", "Orphaned resource detection not implemented in v1"))
     # COST-105 tags applied (compare bicep vs deployed)
