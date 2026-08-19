@@ -13,7 +13,7 @@ Core contract under test:
     `.errors`, and `.policy` carries whatever DID parse and validate.
   - Only `load_value_model`'s file I/O may raise (FileNotFoundError, etc).
   - Every error message begins with the exact dotted path of the field it
-    concerns, e.g. `value_model.cost.baseline.max_forecast_variance_pct`.
+    concerns, e.g. `cost.baseline.max_forecast_variance_pct`.
 """
 from __future__ import annotations
 
@@ -28,7 +28,13 @@ sys.path.insert(0, str(SCRIPTS))
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REFERENCE_SPEC = REPO_ROOT / "examples/returns-triage-governed/specs/SPEC.md"
 
-from value_model import ValueModelResult, load_value_model, parse_value_model  # noqa: E402
+from value_model import (  # noqa: E402
+    PRICE_BASES,
+    REQUIRED_PATHS,
+    ValueModelResult,
+    load_value_model,
+    parse_value_model,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -94,22 +100,22 @@ value_model:
 """
 
 ALL_REQUIRED_PATHS = {
-    "value_model.cost.maturity_policy.min_complete_days",
-    "value_model.cost.maturity_policy.min_successful_interactions",
-    "value_model.cost.maturity_policy.min_cost_settlement_age_hours",
-    "value_model.cost.maturity_policy.max_window_end_age_days",
-    "value_model.cost.maturity_policy.min_projection_attribution_coverage_pct",
-    "value_model.cost.success_event.name",
-    "value_model.cost.success_event.trace_attribute",
-    "value_model.cost.success_event.success_values",
-    "value_model.cost.baseline.target_cost_per_successful_interaction_usd",
-    "value_model.cost.baseline.max_forecast_variance_pct",
-    "value_model.cost.baseline.max_token_volume_variance_pct",
-    "value_model.cost.accounting.actual_cost_basis",
-    "value_model.cost.accounting.actual_billing_price_basis",
-    "value_model.cost.accounting.forecast_price_basis",
-    "value_model.cost.accounting.allow_basis_mismatch_for_verdict",
-    "value_model.cost.accounting.scope_policy",
+    "cost.maturity_policy.min_complete_days",
+    "cost.maturity_policy.min_successful_interactions",
+    "cost.maturity_policy.min_cost_settlement_age_hours",
+    "cost.maturity_policy.max_window_end_age_days",
+    "cost.maturity_policy.min_projection_attribution_coverage_pct",
+    "cost.success_event.name",
+    "cost.success_event.trace_attribute",
+    "cost.success_event.success_values",
+    "cost.baseline.target_cost_per_successful_interaction_usd",
+    "cost.baseline.max_forecast_variance_pct",
+    "cost.baseline.max_token_volume_variance_pct",
+    "cost.accounting.actual_cost_basis",
+    "cost.accounting.actual_billing_price_basis",
+    "cost.accounting.forecast_price_basis",
+    "cost.accounting.allow_basis_mismatch_for_verdict",
+    "cost.accounting.scope_policy",
 }
 
 
@@ -262,7 +268,7 @@ def test_fence_without_value_model_key_is_error():
 # ---------------------------------------------------------------------------
 
 
-_SUCCESS_VALUES_PATH = "value_model.cost.success_event.success_values"
+_SUCCESS_VALUES_PATH = "cost.success_event.success_values"
 
 
 def _assert_missing_or_explicit_empty_list(err: str) -> None:
@@ -284,7 +290,7 @@ def test_blank_template_reports_every_required_path_missing():
     literal parses and validates cleanly."""
     result = parse_value_model(_spec(_section(BLANK_TEMPLATE_YAML_BODY)))
 
-    literal_path = "value_model.cost.accounting.actual_cost_basis"
+    literal_path = "cost.accounting.actual_cost_basis"
     expected_paths = ALL_REQUIRED_PATHS - {literal_path}
 
     assert result.is_complete is False
@@ -320,7 +326,7 @@ def test_comment_only_value_is_treated_as_missing_not_as_text():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert result.errors == ["value_model.cost.maturity_policy.min_complete_days: missing"]
+    assert result.errors == ["cost.maturity_policy.min_complete_days: missing"]
     # Every other field in the same group must still survive.
     mp = result.policy["cost"]["maturity_policy"]
     assert mp == {
@@ -352,7 +358,7 @@ def test_maturity_policy_int_fields_reject_less_than_one(field, bad_value):
     result = parse_value_model(_spec(_section(yaml_body)))
 
     assert any(
-        e.startswith(f"value_model.cost.maturity_policy.{field}:") for e in result.errors
+        e.startswith(f"cost.maturity_policy.{field}:") for e in result.errors
     )
     assert field not in result.policy["cost"]["maturity_policy"]
 
@@ -373,7 +379,7 @@ def test_min_cost_settlement_age_hours_rejects_negative():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.maturity_policy.min_cost_settlement_age_hours"
+    path = "cost.maturity_policy.min_cost_settlement_age_hours"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "min_cost_settlement_age_hours" not in result.policy["cost"]["maturity_policy"]
 
@@ -390,7 +396,7 @@ def test_projection_attribution_coverage_bounds(bad_value, should_pass):
     if should_pass:
         assert result.policy["cost"]["maturity_policy"][field] == float(bad_value)
     else:
-        path = f"value_model.cost.maturity_policy.{field}"
+        path = f"cost.maturity_policy.{field}"
         assert any(e.startswith(f"{path}:") for e in result.errors)
         assert field not in result.policy["cost"]["maturity_policy"]
 
@@ -401,7 +407,7 @@ def test_bool_used_for_int_field_is_rejected_not_coerced():
     yaml_body = CANONICAL_YAML_BODY.replace("min_complete_days: 7", "min_complete_days: true")
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.maturity_policy.min_complete_days"
+    path = "cost.maturity_policy.min_complete_days"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "min_complete_days" not in result.policy["cost"]["maturity_policy"]
 
@@ -417,7 +423,7 @@ def test_success_values_empty_list_is_invalid():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.success_event.success_values"
+    path = "cost.success_event.success_values"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     se = result.policy["cost"]["success_event"]
     assert se == {"name": "return_decision_completed", "trace_attribute": "decision.outcome"}
@@ -441,7 +447,7 @@ def test_malicious_identifier_becomes_validation_error_not_raise(field, maliciou
     # Must not raise.
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = f"value_model.cost.success_event.{field}"
+    path = f"cost.success_event.{field}"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert field not in result.policy["cost"]["success_event"]
 
@@ -453,7 +459,7 @@ def test_malicious_identifier_inside_success_values_item_is_rejected():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.success_event.success_values"
+    path = "cost.success_event.success_values"
     assert any(e.startswith(f"{path}") for e in result.errors)
     assert "success_values" not in result.policy["cost"]["success_event"]
 
@@ -482,7 +488,7 @@ def test_target_cost_must_be_greater_than_zero():
             f"target_cost_per_successful_interaction_usd: {bad}",
         )
         result = parse_value_model(_spec(_section(yaml_body)))
-        path = "value_model.cost.baseline.target_cost_per_successful_interaction_usd"
+        path = "cost.baseline.target_cost_per_successful_interaction_usd"
         assert any(e.startswith(f"{path}:") for e in result.errors), bad
         assert "target_cost_per_successful_interaction_usd" not in result.policy["cost"]["baseline"]
 
@@ -494,7 +500,7 @@ def test_max_forecast_variance_pct_rejects_out_of_bounds_including_over_one(bad_
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.baseline.max_forecast_variance_pct"
+    path = "cost.baseline.max_forecast_variance_pct"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "max_forecast_variance_pct" not in result.policy["cost"]["baseline"]
     # The independent token-volume threshold must be unaffected.
@@ -509,7 +515,7 @@ def test_max_token_volume_variance_pct_is_an_independent_threshold():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.baseline.max_token_volume_variance_pct"
+    path = "cost.baseline.max_token_volume_variance_pct"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "max_token_volume_variance_pct" not in result.policy["cost"]["baseline"]
     # The cost-variance field survives unchanged — never substituted.
@@ -539,7 +545,7 @@ def test_actual_cost_basis_is_a_fixed_literal():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.accounting.actual_cost_basis"
+    path = "cost.accounting.actual_cost_basis"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "actual_cost_basis" not in result.policy["cost"]["accounting"]
 
@@ -561,7 +567,7 @@ def test_actual_billing_price_basis_rejects_unlisted_value():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.accounting.actual_billing_price_basis"
+    path = "cost.accounting.actual_billing_price_basis"
     assert any(e.startswith(f"{path}:") for e in result.errors)
 
 
@@ -584,7 +590,7 @@ def test_forecast_price_basis_rejects_unknown_unlike_billing_basis():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.accounting.forecast_price_basis"
+    path = "cost.accounting.forecast_price_basis"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "forecast_price_basis" not in result.policy["cost"]["accounting"]
 
@@ -609,7 +615,7 @@ def test_allow_basis_mismatch_rejects_non_strict_bool_spellings(value):
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.accounting.allow_basis_mismatch_for_verdict"
+    path = "cost.accounting.allow_basis_mismatch_for_verdict"
     assert any(e.startswith(f"{path}:") for e in result.errors)
     assert "allow_basis_mismatch_for_verdict" not in result.policy["cost"]["accounting"]
 
@@ -631,7 +637,7 @@ def test_scope_policy_rejects_unlisted_value():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    path = "value_model.cost.accounting.scope_policy"
+    path = "cost.accounting.scope_policy"
     assert any(e.startswith(f"{path}:") for e in result.errors)
 
 
@@ -646,7 +652,7 @@ def test_unknown_key_directly_under_value_model_is_an_error():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert "value_model.extra_top_level_key: unknown key" in result.errors
+    assert "extra_top_level_key: unknown key" in result.errors
     # The rest of the (valid) policy must still survive.
     assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
@@ -658,7 +664,7 @@ def test_unknown_key_directly_under_cost_is_an_error():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert "value_model.cost.unexpected_group: unknown key" in result.errors
+    assert "cost.unexpected_group: unknown key" in result.errors
     assert result.policy["cost"]["maturity_policy"]["min_complete_days"] == 7
 
 
@@ -669,10 +675,158 @@ def test_unknown_key_inside_a_group_is_an_error_but_siblings_survive():
     )
     result = parse_value_model(_spec(_section(yaml_body)))
 
-    assert "value_model.cost.accounting.surprise_field: unknown key" in result.errors
+    assert "cost.accounting.surprise_field: unknown key" in result.errors
     accounting = result.policy["cost"]["accounting"]
     assert accounting["actual_cost_basis"] == "usage-pretax"
     assert accounting["scope_policy"] == "dedicated_resource_group"
+
+
+# ---------------------------------------------------------------------------
+# Malicious success_values item — exact error text (KQL-injection fixture)
+# ---------------------------------------------------------------------------
+
+# A real KQL-injection attempt: close the string literal, `union` in another
+# table, then reopen a dummy comparison. `_v_identifier_list` must reject
+# this outright (it never matches the identifier grammar) and the exact
+# error text must name the offending index so an operator/reviewer can spot
+# it immediately, even though the grammar detail may be appended after it.
+_ATTACK_FIXTURE = 'approved") | union AppRequests | where ("x" == "x'
+
+
+def test_malicious_success_value_produces_exact_invalid_error_with_index():
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "success_values: [approved, denied, escalated]",
+        f"success_values: [{_ATTACK_FIXTURE}]",
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert any(
+        "cost.success_event.success_values[0] invalid" in e for e in result.errors
+    )
+    assert "success_values" not in result.policy["cost"]["success_event"]
+
+
+# ---------------------------------------------------------------------------
+# Non-finite numerics (nan / NaN / inf / -inf) rejected before bounds
+# ---------------------------------------------------------------------------
+
+# (group, field, canonical-value) for every numeric leaf — both integer and
+# float field classes — so nan/inf rejection is proven across the whole
+# numeric surface, not just one validator.
+_NUMERIC_FIELDS = [
+    ("maturity_policy", "min_complete_days", "7"),
+    ("maturity_policy", "min_successful_interactions", "100"),
+    ("maturity_policy", "min_cost_settlement_age_hours", "48"),
+    ("maturity_policy", "max_window_end_age_days", "14"),
+    ("maturity_policy", "min_projection_attribution_coverage_pct", "0.95"),
+    ("baseline", "target_cost_per_successful_interaction_usd", "0.18"),
+    ("baseline", "max_forecast_variance_pct", "0.20"),
+    ("baseline", "max_token_volume_variance_pct", "0.25"),
+]
+
+
+@pytest.mark.parametrize("non_finite", ["nan", "NaN", "inf", "-inf"])
+@pytest.mark.parametrize("group,field,original", _NUMERIC_FIELDS)
+def test_numeric_fields_reject_every_non_finite_value(group, field, original, non_finite):
+    """Every numeric field — int or float — must reject nan/NaN/inf/-inf,
+    and the rejected value must never be retained in `.policy` (nan/inf
+    otherwise compare False against every bound, silently passing)."""
+    yaml_body = CANONICAL_YAML_BODY.replace(f"{field}: {original}", f"{field}: {non_finite}")
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    path = f"cost.{group}.{field}"
+    assert any(e.startswith(f"{path}:") for e in result.errors), (group, field, non_finite)
+    assert field not in result.policy["cost"][group]
+
+
+# ---------------------------------------------------------------------------
+# CRLF support
+# ---------------------------------------------------------------------------
+
+
+def test_crlf_line_endings_parse_identically_to_lf():
+    """The section heading, fence markers, and `value_model:` key regexes
+    must all accept `\\r?\\n` — a SPEC.md saved/edited on Windows must parse
+    exactly like its LF counterpart, not lose the whole section."""
+    lf_text = _spec(_section(CANONICAL_YAML_BODY))
+    crlf_text = lf_text.replace("\n", "\r\n")
+
+    result = parse_value_model(crlf_text)
+
+    assert result.errors == []
+    assert result.is_complete is True
+    assert result.policy == parse_value_model(lf_text).policy
+
+
+# ---------------------------------------------------------------------------
+# `value_model:` present but not a mapping (key presence vs. mapping body)
+# ---------------------------------------------------------------------------
+
+
+def test_value_model_scalar_value_reports_expected_mapping_not_key_missing():
+    """`value_model: 5` — the key IS present, its body just isn't a
+    mapping. The parser must not conflate this with the key being absent
+    entirely (a wholly different, `not found`-style error)."""
+    spec_text = _spec("## 14. Value Model\n\n```yaml\nvalue_model: 5\n```\n")
+    result = parse_value_model(spec_text)
+
+    assert result.policy == {}
+    assert len(result.errors) == 1
+    message = result.errors[0].lower()
+    assert "expected a mapping" in message
+    assert "not found" not in message
+    assert "missing" not in message
+
+
+# ---------------------------------------------------------------------------
+# Public constants — REQUIRED_PATHS / PRICE_BASES
+# ---------------------------------------------------------------------------
+
+
+def test_required_paths_is_a_tuple_of_exactly_the_sixteen_cost_paths():
+    assert isinstance(REQUIRED_PATHS, tuple)
+    assert len(REQUIRED_PATHS) == 16
+    assert len(set(REQUIRED_PATHS)) == 16  # no duplicates
+    assert set(REQUIRED_PATHS) == ALL_REQUIRED_PATHS
+
+
+def test_required_paths_are_all_actually_required_by_the_blank_template():
+    """Every path in REQUIRED_PATHS must be exactly the set of paths the
+    fully-blank template reports as missing — proving the constant isn't
+    just decorative, it maps onto the actual required-field contract."""
+    fully_blank = BLANK_TEMPLATE_YAML_BODY.replace(
+        "actual_cost_basis: usage-pretax", "actual_cost_basis:"
+    )
+    result = parse_value_model(_spec(_section(fully_blank)))
+
+    assert _error_paths(result) == set(REQUIRED_PATHS)
+
+
+def test_price_bases_constant_is_pinned():
+    assert PRICE_BASES == ("retail", "ea", "mca", "unknown")
+
+
+def test_price_bases_used_by_actual_billing_price_basis_accepts_all_four():
+    for value in PRICE_BASES:
+        yaml_body = CANONICAL_YAML_BODY.replace(
+            "actual_billing_price_basis: retail", f"actual_billing_price_basis: {value}"
+        )
+        result = parse_value_model(_spec(_section(yaml_body)))
+        assert result.errors == [], value
+        assert result.policy["cost"]["accounting"]["actual_billing_price_basis"] == value
+
+
+def test_forecast_price_basis_excludes_unknown_though_it_is_in_price_bases():
+    """`forecast_price_basis`'s internal enum may exclude `unknown` even
+    though it's a member of the public `PRICE_BASES` tuple — the two enums
+    are deliberately not the same set."""
+    assert "unknown" in PRICE_BASES
+    yaml_body = CANONICAL_YAML_BODY.replace(
+        "forecast_price_basis: retail", "forecast_price_basis: unknown"
+    )
+    result = parse_value_model(_spec(_section(yaml_body)))
+
+    assert any(e.startswith("cost.accounting.forecast_price_basis:") for e in result.errors)
 
 
 # ---------------------------------------------------------------------------

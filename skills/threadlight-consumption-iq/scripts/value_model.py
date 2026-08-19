@@ -42,6 +42,7 @@ the schema is presence.
 from __future__ import annotations
 
 import dataclasses
+import math
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -57,8 +58,14 @@ from typing import Any, Callable
 _IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.:-]{0,127}")
 
 _COST_BASIS_LITERAL = "usage-pretax"
-_BILLING_BASIS_VALUES = ("retail", "ea", "mca", "unknown")
-_FORECAST_BASIS_VALUES = ("retail", "ea", "mca")
+
+# Public: the full set of `*_price_basis` values § 14 recognizes anywhere.
+# `forecast_price_basis` deliberately narrows this (see `_FORECAST_BASIS_VALUES`
+# below) — `unknown` is a valid ACTUAL billing basis (we genuinely may not
+# know which billing agreement priced an actual) but never a valid FORECAST
+# basis (a forecast is always computed against one specific, known basis).
+PRICE_BASES: tuple[str, ...] = ("retail", "ea", "mca", "unknown")
+_FORECAST_BASIS_VALUES = tuple(basis for basis in PRICE_BASES if basis != "unknown")
 _SCOPE_POLICY_VALUES = ("dedicated_resource_group", "tagged_allocation")
 
 # Matches any top-level numbered SPEC heading, including lettered
@@ -66,9 +73,17 @@ _SCOPE_POLICY_VALUES = ("dedicated_resource_group", "tagged_allocation")
 _TOP_LEVEL_HEADING = re.compile(r"^##[ \t]+(\d+)[.\w]*\.", re.MULTILINE)
 _SECTION_14_START = re.compile(r"^##[ \t]+14\.(?=[ \t]|$)[^\n]*$", re.MULTILINE)
 
-_OPEN_FENCE = re.compile(r"```yaml[ \t]*\n")
+# `\r?\n` throughout so a SPEC.md saved with CRLF line endings (e.g. edited
+# on Windows) parses identically to its LF counterpart instead of silently
+# failing to find the fence or key.
+_OPEN_FENCE = re.compile(r"```yaml[ \t]*\r?\n")
 _CLOSE_FENCE = re.compile(r"```")
-_VALUE_MODEL_KEY = re.compile(r"^[ \t]*value_model:[ \t]*(#.*)?$", re.MULTILINE)
+# Only detects PRESENCE of the `value_model:` key — deliberately not
+# anchored to a blank/comment-only tail — so a scalar body (`value_model: 5`)
+# is still recognized as "key found, not a mapping" rather than being
+# misreported as "key not found" (see the mapping check in
+# `parse_value_model`, which is what actually tells those two cases apart).
+_VALUE_MODEL_KEY = re.compile(r"^[ \t]*value_model:", re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------
@@ -111,21 +126,35 @@ def parse_value_model(spec_text: str) -> ValueModelResult:
     parsed = _parse_indented_yaml(yaml_text)
     vm = parsed.get("value_model")
     if not isinstance(vm, dict):
-        errors.append("value_model: expected a mapping under `value_model:`")
+        # `value_model:` IS present (guaranteed by `_extract_yaml_block`'s
+        # `_VALUE_MODEL_KEY` check above) — it just isn't a mapping (a bare
+        # blank leaf, or an inline scalar like `value_model: 5`). Distinct
+        # from "key not found": report what's wrong with the body, not that
+        # the key is missing.
+        errors.append("value_model: expected a mapping")
         return ValueModelResult(policy={}, errors=errors)
 
+    # `.policy`'s root already IS `value_model` (see `ValueModelResult`), so
+    # every error path below is relative to it — never re-prefixed with
+    # `value_model.`.
     for key in vm:
         if key != "cost":
-            errors.append(f"value_model.{key}: unknown key")
+            # Strict fixed v1 schema, deliberately: § 14 has no
+            # forward-compatibility contract, so an unrecognized key is
+            # always an error here, never silently ignored or passed
+            # through (unlike e.g. `load_profile_wizard.py`'s wizard,
+            # which does preserve unknown keys for forward-compat).
+            errors.append(f"{key}: unknown key")
 
     cost = vm.get("cost")
     if cost is not None and not isinstance(cost, dict):
-        errors.append("value_model.cost: expected a mapping")
+        errors.append("cost: expected a mapping")
         cost = None
     elif isinstance(cost, dict):
         for key in cost:
             if key not in _GROUP_FIELDS:
-                errors.append(f"value_model.cost.{key}: unknown key")
+                # Same deliberate strict-schema rule as above, one level down.
+                errors.append(f"cost.{key}: unknown key")
 
     cost_policy: dict[str, Any] = {}
     for group, field_specs in _GROUP_FIELDS.items():
@@ -298,6 +327,13 @@ def _v_float_range(
             value = float(raw)
         except (TypeError, ValueError):
             return None, [f"{path}: expected a float, got {raw!r}"]
+        # `float("nan")` / `float("inf")` / `float("-inf")` all parse
+        # cleanly but compare False against every bound below (nan) or
+        # only some (unbounded-above/-below fields) — so finiteness must
+        # be checked explicitly, before any bounds comparison, or a
+        # non-finite value can silently slip through as "valid".
+        if not math.isfinite(value):
+            return None, [f"{path}: must be a finite number, got {raw!r}"]
         if low_exclusive and value <= low:
             return None, [f"{path}: must be > {low}, got {value}"]
         if not low_exclusive and value < low:
@@ -336,7 +372,7 @@ def _v_identifier_list(raw: Any, path: str) -> tuple[Any, list[str]]:
     for i, item in enumerate(raw):
         if not isinstance(item, str) or not _IDENTIFIER_RE.fullmatch(item):
             errs.append(
-                f"{path}[{i}]: must match identifier grammar "
+                f"{path}[{i}] invalid: must match identifier grammar "
                 f"^[A-Za-z][A-Za-z0-9_.:-]{{0,127}}$, got {item!r}"
             )
         else:
@@ -409,12 +445,21 @@ _GROUP_FIELDS: dict[str, tuple[tuple[str, _Validator], ...]] = {
     ),
     "accounting": (
         ("actual_cost_basis", _v_literal(_COST_BASIS_LITERAL)),
-        ("actual_billing_price_basis", _v_enum(_BILLING_BASIS_VALUES)),
+        ("actual_billing_price_basis", _v_enum(PRICE_BASES)),
         ("forecast_price_basis", _v_enum(_FORECAST_BASIS_VALUES)),
         ("allow_basis_mismatch_for_verdict", _v_bool_strict),
         ("scope_policy", _v_enum(_SCOPE_POLICY_VALUES)),
     ),
 }
+
+# Public: every dotted `cost.*` path required for `.is_complete` to be True —
+# exactly the 16 leaves in `_GROUP_FIELDS`, derived from it (not hand-copied)
+# so the two can never drift apart.
+REQUIRED_PATHS: tuple[str, ...] = tuple(
+    f"cost.{group}.{field}"
+    for group, field_specs in _GROUP_FIELDS.items()
+    for field, _ in field_specs
+)
 
 
 def _validate_group(
@@ -428,7 +473,7 @@ def _validate_group(
     Appends every problem to `errors` (missing/invalid/unknown-key) and
     returns only the fields that parsed and validated cleanly.
     """
-    path_prefix = f"value_model.cost.{group_name}"
+    path_prefix = f"cost.{group_name}"
 
     if group_raw is not None and not isinstance(group_raw, dict):
         errors.append(f"{path_prefix}: expected a mapping")
@@ -438,6 +483,9 @@ def _validate_group(
     if isinstance(group_raw, dict):
         for key in group_raw:
             if key not in known_fields:
+                # Strict fixed v1 schema, deliberately (same rationale as
+                # the top-level and `cost.*` unknown-key checks above): no
+                # forward-compatibility passthrough for § 14.
                 errors.append(f"{path_prefix}.{key}: unknown key")
 
     result: dict[str, Any] = {}
