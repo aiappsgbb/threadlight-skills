@@ -2052,11 +2052,11 @@ def _unit_economics(
     """Cost per successful interaction, and the two independent verdicts.
 
     `status` is an EVIDENCE gate: `pass` only when the actuals collection is
-    verified, the declared policy is complete and error-free, the
-    interaction count was actually observed, and there is at least one
-    success to divide by (a divide-by-zero guard, not a threshold). Token
-    metrics are attribution evidence and are deliberately not part of this
-    gate.
+    verified, the declared policy is complete and error-free, the SPEC anchor
+    is a valid re-derivable digest, the interaction count was actually
+    observed, and there is at least one success to divide by (a divide-by-zero
+    guard, not a threshold). Token metrics are attribution evidence and are
+    deliberately not part of this gate.
 
     `target_status` is a separate COMPARISON against SPEC's declared target,
     evaluated only when `status` is `pass`.

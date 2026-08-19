@@ -135,7 +135,7 @@ these degrade together:
 
 | Field | With an unusable anchor |
 | --- | --- |
-| `maturity.checks[policy_complete].status` | `fail` |
+| `maturity.checks[policy_complete].status` | `not-verified` |
 | `maturity.status` / top-level `status` | `not-verified` |
 | `unit_economics.status` | `not-verified` |
 | `unit_economics.target_status` | `not-verified` |
@@ -545,10 +545,11 @@ exist.
 A row may state its deployment **twice**: once as the bare `deployment` leaf
 name, and again as the deployment leaf inside its `resource_id`. When both
 are present they are cross-checked. If they disagree, the row identifies no
-deployment at all: it is excluded from observed volume and a warning names
-both claims. Counting it under either name would attribute one deployment's
-traffic to another on evidence the row itself contradicts — and the
-dangerous case is arithmetic, not cosmetic, since a high-volume
+deployment at all: it is excluded from observed volume. A warning names both
+claims, but only when the contradictory deployment is relevant to a
+recommendation. Counting it under either name would attribute one
+deployment's traffic to another on evidence the row itself contradicts — and
+the dangerous case is arithmetic, not cosmetic, since a high-volume
 contradictory row summed under a recommended name inflates
 `observed_monthly_tokens` and can flip a `should-fix` into a `pass`.
 

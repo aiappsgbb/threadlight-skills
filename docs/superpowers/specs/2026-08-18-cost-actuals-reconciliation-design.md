@@ -305,8 +305,11 @@ forcing an arbitrary composite key.
 (`pass | not-verified`; it mirrors `maturity.status`). `variance_status` is a
 separate, narrower verdict: `pass | should-fix | not-verified`, computed by
 comparing `totals.variance_pct` against the SPEC-declared
-`policy_snapshot.max_forecast_variance_pct`. It is `not-verified` whenever
-`status`/`maturity.status` is `not-verified`, or when price bases mismatch
+`policy_snapshot.max_forecast_variance_pct`. It is deliberately NOT tied to the
+overall maturity verdict — missing interaction evidence degrades unit economics
+and interaction-count maturity, not cost variance verdicts. `variance_status` is
+`not-verified` only when the declared SPEC policy is incomplete, the anchor is
+not a re-derivable digest, a baseline is invalid, or when price bases mismatch
 without an explicit SPEC opt-in (§9.5). `threadlight-production-ready`'s
 `COST-102` consumes `variance_status` directly; it does not hardcode any
 percentage threshold of its own.
