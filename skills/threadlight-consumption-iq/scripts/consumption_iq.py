@@ -421,9 +421,14 @@ def _actuals_provenance(
     args: argparse.Namespace,
     bundle: dict[str, Any],
     generated_at: datetime,
-    kql: Optional[str],
 ) -> dict[str, Any]:
-    """Names, identifiers and a timestamp — never a document, never a secret."""
+    """Names, identifiers and a timestamp — never a document, never a secret.
+
+    `token_query_issued` / `interaction_query_issued` are read straight from
+    the bundle `collect_sources` returned — never re-derived from whether a
+    `kql` string happened to be built, which would misreport an omitted
+    resource id, a scope failure, or an unresolved workspace as "issued".
+    """
     sources = ["cost-management-query"]
     if bundle.get("token_doc") is not None:
         sources.append("azure-monitor-metrics")
@@ -437,7 +442,8 @@ def _actuals_provenance(
         "monitor_resource_id": getattr(args, "monitor_resource_id", None),
         "workspace_resource_id": getattr(args, "workspace_resource_id", None),
         "token_source_resource_id": bundle.get("token_source_resource_id"),
-        "interaction_query_issued": kql is not None,
+        "token_query_issued": bool(bundle.get("token_query_issued", False)),
+        "interaction_query_issued": bool(bundle.get("interaction_query_issued", False)),
         "window": {"start": args.start.isoformat(), "end": args.end.isoformat()},
         "collected_at": _iso_utc(generated_at),
     }
@@ -486,7 +492,7 @@ def _phase_actuals(args: argparse.Namespace) -> dict[str, Any]:
         cost_pages=list(bundle.get("cost_pages") or []),
         token_series=token_series,
         interaction_counts=interaction_counts,
-        provenance=_actuals_provenance(args, bundle, generated_at, kql),
+        provenance=_actuals_provenance(args, bundle, generated_at),
         warnings=warnings,
     )
 

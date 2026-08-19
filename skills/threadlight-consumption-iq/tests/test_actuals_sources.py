@@ -939,8 +939,15 @@ def test_collect_sources_live_cached_input_tokens_400_degrades_not_aborts():
     assert bundle["cost_pages"] == [_page()]
     assert bundle["token_doc"] is None
     assert bundle["token_source_resource_id"] is None
-    assert len(bundle["warnings"]) == 1
-    assert "token" in bundle["warnings"][0].casefold()
+    assert bundle["token_query_issued"] is True
+    # No workspace id was supplied either, so a second, distinct warning
+    # names that omission — never confused with the token failure above.
+    assert len(bundle["warnings"]) == 2
+    assert any("token" in w.casefold() for w in bundle["warnings"])
+    assert any(
+        "workspace resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
     assert "CachedInputTokens" not in runner.calls[-1]
 
 
@@ -1394,8 +1401,13 @@ def test_collect_sources_warns_when_the_cli_result_cannot_be_normalized():
         workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
     )
     assert bundle["interaction_result"] is None
+    assert bundle["interaction_query_issued"] is True
     assert bundle["cost_pages"] == [_page()]
-    assert len(bundle["warnings"]) == 1
+    # No monitor id was supplied either, so a second, distinct warning
+    # names that omission — never confused with the interaction failure.
+    assert len(bundle["warnings"]) == 2
+    assert any("token" in w.casefold() for w in bundle["warnings"])
+    assert any("interaction" in w.casefold() for w in bundle["warnings"])
 
 
 # ---------------------------------------------------------------------------
@@ -1419,8 +1431,21 @@ def test_collect_sources_cost_only_bundle():
     assert bundle["cost_pages"] == [_page()]
     assert bundle["token_doc"] is None
     assert bundle["token_source_resource_id"] is None
+    assert bundle["token_query_issued"] is False
     assert bundle["interaction_result"] is None
-    assert bundle["warnings"] == []
+    assert bundle["interaction_query_issued"] is False
+    # Neither optional resource id was supplied: each degrades to its own
+    # honest, distinct omission warning — never a silently empty list.
+    assert len(bundle["warnings"]) == 2
+    assert len(set(bundle["warnings"])) == 2
+    assert any(
+        "monitor resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
+    assert any(
+        "workspace resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
     assert bundle["window"] == {"start": "2026-08-01", "end": "2026-08-08"}
     assert bundle["subscription_id"] == SUB
     assert bundle["resource_group"] == RG
@@ -1457,7 +1482,9 @@ def test_collect_sources_all_sources_present():
     )
     assert bundle["token_doc"] == _token_doc()
     assert bundle["token_source_resource_id"] == MONITOR_ID
+    assert bundle["token_query_issued"] is True
     assert bundle["interaction_result"] == _la_normalized()
+    assert bundle["interaction_query_issued"] is True
     assert bundle["warnings"] == []
 
 
@@ -1471,9 +1498,19 @@ def test_collect_sources_records_token_source_only_when_query_succeeds():
     )
     assert bundle["token_doc"] is None
     assert bundle["token_source_resource_id"] is None
+    # The metrics command was actually dispatched and failed — `issued`
+    # must stay honestly True, never collapse to the same False a caller
+    # omission would report.
+    assert bundle["token_query_issued"] is True
     assert bundle["cost_pages"] == [_page()]
-    assert len(bundle["warnings"]) == 1
-    assert "token" in bundle["warnings"][0].casefold()
+    # No workspace id was supplied either, so a second, distinct warning
+    # names that omission.
+    assert len(bundle["warnings"]) == 2
+    assert any("token" in w.casefold() for w in bundle["warnings"])
+    assert any(
+        "workspace resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
 
 
 def test_collect_sources_distinguishes_workspace_resolution_from_query_failure():
@@ -1494,11 +1531,17 @@ def test_collect_sources_distinguishes_workspace_resolution_from_query_failure()
         workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=failed_query,
     )
 
-    assert len(resolution_bundle["warnings"]) == 1
-    assert len(query_bundle["warnings"]) == 1
+    # No monitor id was supplied in either case, so both bundles also carry
+    # the token-omission warning alongside their interaction-specific one.
+    assert len(resolution_bundle["warnings"]) == 2
+    assert len(query_bundle["warnings"]) == 2
     assert resolution_bundle["warnings"] != query_bundle["warnings"]
     assert resolution_bundle["interaction_result"] is None
     assert query_bundle["interaction_result"] is None
+    # Resolution never even reached the query command; the failed-query
+    # case actually dispatched it. `issued` must tell those apart.
+    assert resolution_bundle["interaction_query_issued"] is False
+    assert query_bundle["interaction_query_issued"] is True
     assert resolution_bundle["cost_pages"] == [_page()]
     assert query_bundle["cost_pages"] == [_page()]
 
@@ -1518,6 +1561,8 @@ def test_collect_sources_warns_once_per_failing_optional_source():
     )
     assert len(bundle["warnings"]) == 2
     assert len(set(bundle["warnings"])) == 2
+    assert bundle["token_query_issued"] is True
+    assert bundle["interaction_query_issued"] is False
 
 
 def test_collect_sources_skips_interaction_without_kql():
@@ -1526,7 +1571,12 @@ def test_collect_sources_skips_interaction_without_kql():
         SUB, RG, START, END, workspace_resource_id=WORKSPACE_ID, runner=runner
     )
     assert bundle["interaction_result"] is None
-    assert bundle["warnings"] == []
+    assert bundle["interaction_query_issued"] is False
+    # No monitor id was supplied, so exactly the monitor-omission warning
+    # fires; a missing `kql` alone (workspace present) is not restated
+    # here — the caller-side policy gap already explains it.
+    assert len(bundle["warnings"]) == 1
+    assert "monitor resource id not supplied" in bundle["warnings"][0].casefold()
     assert len(runner.calls) == 2
 
 
@@ -1534,7 +1584,17 @@ def test_collect_sources_skips_interaction_without_workspace():
     runner = FakeRunner([_account_ok(), _page_cp()])
     bundle = collect_sources(SUB, RG, START, END, kql=KQL, runner=runner)
     assert bundle["interaction_result"] is None
-    assert bundle["warnings"] == []
+    assert bundle["interaction_query_issued"] is False
+    # Both optional resources were omitted: one warning per source.
+    assert len(bundle["warnings"]) == 2
+    assert any(
+        "monitor resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
+    assert any(
+        "workspace resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
     assert len(runner.calls) == 2
 
 
@@ -1544,8 +1604,11 @@ def test_collect_sources_token_only():
         SUB, RG, START, END, monitor_resource_id=MONITOR_ID, runner=runner
     )
     assert bundle["token_doc"] == _token_doc()
+    assert bundle["token_query_issued"] is True
     assert bundle["interaction_result"] is None
-    assert bundle["warnings"] == []
+    assert bundle["interaction_query_issued"] is False
+    assert len(bundle["warnings"]) == 1
+    assert "workspace resource id not supplied" in bundle["warnings"][0].casefold()
 
 
 def test_collect_sources_interaction_only():
@@ -1557,7 +1620,11 @@ def test_collect_sources_interaction_only():
         workspace_resource_id=WORKSPACE_ID, kql=KQL, runner=runner,
     )
     assert bundle["token_doc"] is None
+    assert bundle["token_query_issued"] is False
     assert bundle["interaction_result"] == _la_normalized()
+    assert bundle["interaction_query_issued"] is True
+    assert len(bundle["warnings"]) == 1
+    assert "monitor resource id not supplied" in bundle["warnings"][0].casefold()
 
 
 def test_collect_sources_cost_failure_aborts_the_bundle():
@@ -1661,8 +1728,15 @@ def test_collect_sources_degrades_malformed_monitor_id_to_a_warning(bad_monitor_
     assert bundle["cost_pages"] == [_page()]
     assert bundle["token_doc"] is None
     assert bundle["token_source_resource_id"] is None
-    assert len(bundle["warnings"]) == 1
-    assert "token" in bundle["warnings"][0].casefold()
+    assert bundle["token_query_issued"] is False
+    # No workspace id was supplied either, so a second, distinct warning
+    # names that omission alongside the malformed-monitor-id one.
+    assert len(bundle["warnings"]) == 2
+    assert any("token" in w.casefold() for w in bundle["warnings"])
+    assert any(
+        "workspace resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
     assert len(runner.calls) == 2, "no metrics call may be issued"
 
 
@@ -1676,7 +1750,8 @@ def test_collect_sources_degrades_foreign_subscription_monitor_id():
     )
     assert bundle["cost_pages"] == [_page()]
     assert bundle["token_doc"] is None
-    assert len(bundle["warnings"]) == 1
+    assert bundle["token_query_issued"] is False
+    assert len(bundle["warnings"]) == 2
     assert len(runner.calls) == 2
 
 
@@ -1700,8 +1775,15 @@ def test_collect_sources_degrades_malformed_workspace_id_without_resolving(
     )
     assert bundle["cost_pages"] == [_page()]
     assert bundle["interaction_result"] is None
-    assert len(bundle["warnings"]) == 1
-    assert "workspace" in bundle["warnings"][0].casefold()
+    assert bundle["interaction_query_issued"] is False
+    # No monitor id was supplied either, so a second, distinct warning
+    # names that omission alongside the malformed-workspace-id one.
+    assert len(bundle["warnings"]) == 2
+    assert any("workspace" in w.casefold() for w in bundle["warnings"])
+    assert any(
+        "monitor resource id not supplied" in w.casefold()
+        for w in bundle["warnings"]
+    )
     assert len(runner.calls) == 2, "no workspace/query call may be issued"
 
 
@@ -1717,7 +1799,10 @@ def test_collect_sources_skips_unusable_kql_before_resolving_the_workspace(bad_k
     )
     assert bundle["cost_pages"] == [_page()]
     assert bundle["interaction_result"] is None
-    assert len(bundle["warnings"]) == 1
+    assert bundle["interaction_query_issued"] is False
+    # No monitor id was supplied either, so a second, distinct warning
+    # names that omission alongside the unusable-kql one.
+    assert len(bundle["warnings"]) == 2
     assert len(runner.calls) == 2, "no workspace/query call may be issued"
 
 
@@ -1733,7 +1818,8 @@ def test_collect_sources_refuses_a_workspace_in_another_subscription():
     )
     assert bundle["cost_pages"] == [_page()]
     assert bundle["interaction_result"] is None
-    assert len(bundle["warnings"]) == 1
+    assert bundle["interaction_query_issued"] is False
+    assert len(bundle["warnings"]) == 2
     assert len(runner.calls) == 2, "a foreign workspace must never be queried"
 
 

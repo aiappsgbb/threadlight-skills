@@ -877,6 +877,43 @@ def _usable_kql(kql: object) -> bool:
     return isinstance(kql, str) and bool(kql.strip()) and "\x00" not in kql
 
 
+def _resolve_and_query_interaction(
+    workspace_resource_id: str,
+    kql: object,
+    *,
+    runner: Optional[Runner] = None,
+) -> tuple[Optional[Any], bool, Optional[str]]:
+    """Internal: resolve a workspace and run its interaction query, honestly.
+
+    Returns `(result, query_issued, warning)`. `query_issued` is True only
+    once the `az monitor log-analytics query` command is actually
+    dispatched — never for an unusable KQL string or a workspace whose
+    `customerId` could not be resolved, both of which stop *before* that
+    command is ever built.
+
+    This is the one place that knows the resolve-then-query mechanics;
+    `fetch_interaction_result` (the public surface) discards the status and
+    keeps its historical `Optional[Any]` return, while `collect_sources`
+    needs the status to report `interaction_query_issued` honestly — never
+    re-derived from whether a `kql` string merely happened to be supplied.
+    """
+    if not _usable_kql(kql):
+        return None, False, None
+    customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=runner)
+    if customer_id is None:
+        return None, False, (
+            "workspace identity could not be resolved from the supplied "
+            "ARM resource id; interaction evidence skipped"
+        )
+    result = _query_workspace(customer_id, kql, runner=runner)
+    if result is None:
+        return None, True, (
+            "interaction query returned no usable result; interaction "
+            "evidence skipped"
+        )
+    return result, True, None
+
+
 def fetch_interaction_result(
     workspace_resource_id: str,
     kql: str,
@@ -895,12 +932,10 @@ def fetch_interaction_result(
     trip to discover it would only make that bug look like a service
     failure.
     """
-    if not _usable_kql(kql):
-        return None
-    customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=runner)
-    if customer_id is None:
-        return None
-    return _query_workspace(customer_id, kql, runner=runner)
+    result, _issued, _warning = _resolve_and_query_interaction(
+        workspace_resource_id, kql, runner=runner
+    )
+    return result
 
 
 def _query_workspace(
@@ -1067,6 +1102,36 @@ def _normalize_log_analytics_result(doc: object) -> dict[str, Any]:
 # Bundle
 # ---------------------------------------------------------------------------
 
+def _resolve_and_fetch_token_metrics(
+    monitor_resource_id: str,
+    subscription_id: str,
+    start: date,
+    end: date,
+    *,
+    runner: Optional[Runner] = None,
+) -> tuple[Optional[dict[str, Any]], bool, Optional[str]]:
+    """Internal: validate scope, then fetch token metrics, honestly.
+
+    Returns `(token_doc, query_issued, warning)`. `query_issued` is True
+    only once the `az monitor metrics list` command is actually dispatched
+    — never for a malformed or foreign-subscription resource id, both of
+    which are caught before any call is made.
+    """
+    try:
+        _require_same_subscription(
+            monitor_resource_id, subscription_id, label="token metrics resource"
+        )
+    except ActualsSourceError as exc:
+        return None, False, f"token metrics unavailable: {exc}"
+    try:
+        token_doc = fetch_token_metrics(
+            monitor_resource_id, subscription_id, start, end, runner=runner
+        )
+    except ActualsSourceError as exc:
+        return None, True, f"token metrics unavailable: {exc}"
+    return token_doc, True, None
+
+
 def collect_sources(
     subscription_id: str,
     resource_group: str,
@@ -1092,7 +1157,10 @@ def collect_sources(
     malformed or out-of-scope `monitor_resource_id` / `workspace_resource_id`
     is a caller mistake about attribution evidence, so it degrades to a
     warning inside the optional branch instead of aborting a total that has
-    already been fetched successfully.
+    already been fetched successfully. An omitted (`None`) resource id is
+    reported the same honest way: a distinct warning names exactly which
+    evidence was never verified because no id was supplied, rather than
+    silently leaving the caller to infer that from an empty `warnings` list.
 
     Both optional resources are additionally required to live in the
     subscription being reconciled. A foreign Azure Monitor account would
@@ -1107,6 +1175,16 @@ def collect_sources(
     actually succeeded, so Task 11 can bind the token series to the account
     identity it came from (PAYG vs PTU) without re-deriving it, and never
     attributes a series to a resource that produced nothing.
+
+    `token_query_issued` / `interaction_query_issued` report whether the
+    corresponding Azure query command was actually dispatched — `True` even
+    when that command failed, `False` when the resource id was omitted,
+    malformed, out of scope, or (for interaction evidence) the workspace
+    could not be resolved before any query was built. Callers must never
+    approximate `interaction_query_issued` from whether `kql` happened to be
+    non-`None`: a caller-side KQL build failure and an omitted workspace id
+    are both `False`, but a supplied, in-scope workspace with a query that
+    ran and simply returned nothing usable is `True`.
     """
     _require_azure_config_dir()
     subscription_id = _validate_subscription_id(subscription_id)
@@ -1128,20 +1206,34 @@ def collect_sources(
 
     token_doc: Optional[dict[str, Any]] = None
     token_source_resource_id: Optional[str] = None
-    if monitor_resource_id is not None:
-        try:
-            _require_same_subscription(
-                monitor_resource_id, subscription_id, label="token metrics resource"
-            )
-            token_doc = fetch_token_metrics(
-                monitor_resource_id, subscription_id, start, end, runner=run
-            )
+    token_query_issued = False
+    if monitor_resource_id is None:
+        warnings.append(
+            "model token attribution not verified because monitor resource "
+            "id not supplied"
+        )
+    else:
+        token_doc, token_query_issued, token_warning = _resolve_and_fetch_token_metrics(
+            monitor_resource_id, subscription_id, start, end, runner=run,
+        )
+        if token_doc is not None:
             token_source_resource_id = monitor_resource_id
-        except ActualsSourceError as exc:
-            warnings.append(f"token metrics unavailable: {exc}")
+        if token_warning is not None:
+            warnings.append(token_warning)
 
     interaction_result: Optional[Any] = None
-    if workspace_resource_id is not None and kql is not None:
+    interaction_query_issued = False
+    if workspace_resource_id is None:
+        warnings.append(
+            "interaction evidence not verified because workspace resource "
+            "id not supplied"
+        )
+    elif kql is None:
+        # No query to run — a caller-level policy gap (missing/rejected
+        # SPEC success_event) already explains this, and this bundle must
+        # not restate it in different, potentially confusing words.
+        pass
+    else:
         try:
             _require_same_subscription(
                 workspace_resource_id, subscription_id, label="workspace"
@@ -1151,21 +1243,11 @@ def collect_sources(
         except ActualsSourceError as exc:
             warnings.append(f"interaction evidence skipped (workspace): {exc}")
         else:
-            customer_id = resolve_workspace_customer_id(workspace_resource_id, runner=run)
-            if customer_id is None:
-                warnings.append(
-                    "workspace identity could not be resolved from the supplied "
-                    "ARM resource id; interaction evidence skipped"
-                )
-            else:
-                interaction_result = _query_workspace(
-                    customer_id, kql, runner=run
-                )
-                if interaction_result is None:
-                    warnings.append(
-                        "interaction query returned no usable result; interaction "
-                        "evidence skipped"
-                    )
+            interaction_result, interaction_query_issued, interaction_warning = (
+                _resolve_and_query_interaction(workspace_resource_id, kql, runner=run)
+            )
+            if interaction_warning is not None:
+                warnings.append(interaction_warning)
 
     return {
         "subscription_id": subscription_id,
@@ -1175,7 +1257,9 @@ def collect_sources(
         "cost_pages": cost_pages,
         "token_doc": token_doc,
         "token_source_resource_id": token_source_resource_id,
+        "token_query_issued": token_query_issued,
         "interaction_result": interaction_result,
+        "interaction_query_issued": interaction_query_issued,
         "warnings": warnings,
     }
 

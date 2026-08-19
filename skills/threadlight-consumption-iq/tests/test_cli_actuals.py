@@ -187,7 +187,9 @@ def _bundle(**overrides: object) -> dict[str, object]:
         "cost_pages": [_cost_page()],
         "token_doc": _token_doc(),
         "token_source_resource_id": AOAI_ACCOUNT,
+        "token_query_issued": True,
         "interaction_result": _interaction_doc(),
+        "interaction_query_issued": True,
         "warnings": [],
     }
     bundle.update(overrides)
@@ -878,12 +880,66 @@ def test_phase_actuals_provenance_is_safe_evidence_only(monkeypatch, tmp_path) -
     assert provenance["workspace_resource_id"] == WORKSPACE_ID
     assert provenance["collected_at"] == PINNED_GENERATED_AT
     assert provenance["window"] == {"start": "2026-08-01", "end": "2026-08-08"}
+    # Issued flags are read straight off the bundle the Azure boundary
+    # returned — never re-derived from whether a `kql` string was passed.
+    assert provenance["token_query_issued"] is True
+    assert provenance["interaction_query_issued"] is True
 
     # No raw evidence document, token value or credential material may travel
     # into a committed artifact.
     serialized = json.dumps(provenance)
     for leaked in ("PreTaxCost", "rows", "columns", "tenantId", "InputTokens", "1200"):
         assert leaked not in serialized
+
+
+def test_phase_actuals_cost_only_omits_both_optional_ids_honestly(
+    monkeypatch, tmp_path
+) -> None:
+    """When neither `--monitor-resource-id` nor `--workspace-resource-id` is
+    supplied, the mandatory Cost Management evidence still yields a `pass`
+    manifest, but both optional rows must degrade to an honest
+    `not-verified` alongside the two distinct omission warnings
+    `collect_sources` appends — never a silent, unexplained absence."""
+    collector = _FakeCollector(
+        _bundle(
+            token_doc=None,
+            token_source_resource_id=None,
+            token_query_issued=False,
+            interaction_result=None,
+            interaction_query_issued=False,
+            warnings=[
+                "model token attribution not verified because monitor "
+                "resource id not supplied",
+                "interaction evidence not verified because workspace "
+                "resource id not supplied",
+            ],
+        )
+    )
+    monkeypatch.setattr(consumption_iq, "collect_sources", collector)
+    _pin_now(monkeypatch)
+    document = consumption_iq._phase_actuals(
+        _actuals_args(tmp_path, _write_spec(tmp_path))
+    )
+
+    assert document["status"] == "pass"
+    assert document["cost"]["period_total_usd"] == 12.5
+    assert document["usage"]["interaction_status"] == "not-verified"
+    assert document["usage"]["model_attribution_status"] == "not-verified"
+    assert document["usage"]["total_interactions"] is None
+    assert document["usage"]["models"] == []
+
+    assert any(
+        "monitor resource id not supplied" in warning.casefold()
+        for warning in document["warnings"]
+    )
+    assert any(
+        "workspace resource id not supplied" in warning.casefold()
+        for warning in document["warnings"]
+    )
+
+    provenance = document["provenance"]
+    assert provenance["token_query_issued"] is False
+    assert provenance["interaction_query_issued"] is False
 
 
 def test_phase_actuals_propagates_a_cost_source_failure(monkeypatch, tmp_path) -> None:

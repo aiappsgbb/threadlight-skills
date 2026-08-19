@@ -85,6 +85,7 @@
     "monitor_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
     "workspace_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.OperationalInsights/workspaces/law-sanitized-ai-pilot",
     "token_source_resource_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sanitized-ai-pilot/providers/Microsoft.CognitiveServices/accounts/aoai-sanitized-account",
+    "token_query_issued": true,
     "interaction_query_issued": true,
     "window": {
       "start": "2026-08-09",

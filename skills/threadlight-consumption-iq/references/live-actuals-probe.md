@@ -225,7 +225,8 @@ from it touched this repository. **No item is optional.**
 - [x] `provenance` mirrors every key `consumption_iq._actuals_provenance`
       actually emits — `sources`, `query_api_version`, `subscription_id`,
       `resource_group`, `monitor_resource_id`, `workspace_resource_id`,
-      `token_source_resource_id`, `interaction_query_issued`, `window`
+      `token_source_resource_id`, `token_query_issued`,
+      `interaction_query_issued`, `window`
       (`{start, end}`), `collected_at` — with synthetic/zeroed values,
       *plus* an explicit sanitization notice (`sanitized_fixture: true`,
       `shape_observed_at`, `values: "synthetic"`) so no consumer can
