@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "tool": "threadlight-production-ready",
-  "tool_version": "0.8.0",
-  "checked_at": "2026-07-07T13:13:36Z",
+  "tool_version": "0.11.0",
+  "checked_at": "2026-08-19T18:09:24Z",
   "mode": "static",
   "agt_profile": "none",
   "posture": {
@@ -11,30 +11,30 @@
     "resolved": "citadel-spoke"
   },
   "score": {
-    "raw_percent": 31,
-    "with_waivers_percent": 31
+    "raw_percent": 29,
+    "with_waivers_percent": 29
   },
   "verification_coverage": {
-    "verified": 81,
-    "total_scoreable": 157,
-    "percent": 51
+    "verified": 85,
+    "total_scoreable": 170,
+    "percent": 50
   },
   "verification_debt": {
-    "total": 58,
+    "total": 67,
     "by_pillar": {
       "network-posture": 5,
-      "agent-governance": 2,
-      "identity-access": 6,
+      "agent-governance": 3,
+      "identity-access": 3,
       "secrets": 7,
       "observability": 5,
       "continuous-evals": 2,
-      "responsible-ai": 1,
+      "responsible-ai": 4,
       "hitl-audit": 2,
-      "supply-chain": 7,
-      "cost": 3,
-      "reliability": 3,
+      "supply-chain": 6,
+      "cost": 5,
+      "reliability": 7,
       "sre-handover": 9,
-      "model-lifecycle": 6
+      "model-lifecycle": 9
     }
   },
   "go_live_recommendation": "not_ready",
@@ -175,18 +175,18 @@
       "title": "2. Agent governance (AGT)",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 71,
-      "score_with_waivers": 71,
-      "verification_debt": 2,
+      "score_raw": 57,
+      "score_with_waivers": 57,
+      "verification_debt": 3,
       "findings": [
         {
           "id": "AGT-001",
-          "title": "AGT middleware imported in src/",
+          "title": "AGT policy is schema-valid (lints clean)",
           "pillar": "agent-governance",
           "severity": "must-fix",
           "status": "not-verified",
           "tier": 0,
-          "detail": "threadlight-govern manifest (verdict: partial, 0.0d old): middleware_wired_at_boundary=not-verified",
+          "detail": "threadlight-govern manifest (verdict: partial, 43.2d old): capability 'policy_schema_valid' not reported",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -197,7 +197,7 @@
           "severity": "must-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "threadlight-govern manifest (verdict: partial, 0.0d old): policy_artefact_present=pass",
+          "detail": "threadlight-govern manifest (verdict: partial, 43.2d old): policy_artefact_present=pass",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -208,29 +208,29 @@
           "severity": "should-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "threadlight-govern manifest (verdict: partial, 0.0d old): asi_reference_present=pass",
+          "detail": "threadlight-govern manifest (verdict: partial, 43.2d old): asi_reference_present=pass",
           "evidence_refs": [],
           "waiver_id": null
         },
         {
           "id": "AGT-004",
-          "title": "AGT version pinned (not floating)",
+          "title": "AGT policy ruleset version pinned",
           "pillar": "agent-governance",
           "severity": "should-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "threadlight-govern manifest (verdict: partial, 0.0d old): policy_versioned=pass",
+          "detail": "threadlight-govern manifest (verdict: partial, 43.2d old): policy_versioned=pass",
           "evidence_refs": [],
           "waiver_id": null
         },
         {
           "id": "AGT-005",
-          "title": "AGT policy covers tool calls + prompt shields",
+          "title": "AGT governance gate runs in CI",
           "pillar": "agent-governance",
-          "severity": "must-fix",
-          "status": "pass",
+          "severity": "should-fix",
+          "status": "not-verified",
           "tier": 0,
-          "detail": "threadlight-govern manifest (verdict: partial, 0.0d old): rai_policy_present=pass",
+          "detail": "threadlight-govern manifest (verdict: partial, 43.2d old): capability 'ci_gate_present' not reported",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -263,9 +263,9 @@
       "title": "3. Identity and access",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 29,
-      "score_with_waivers": 29,
-      "verification_debt": 6,
+      "score_raw": 40,
+      "score_with_waivers": 40,
+      "verification_debt": 3,
       "findings": [
         {
           "id": "IAM-001",
@@ -327,9 +327,9 @@
           "title": "Agent identity is passwordless (managed/federated)",
           "pillar": "identity-access",
           "severity": "must-fix",
-          "status": "not-verified",
+          "status": "not-applicable",
           "tier": 0,
-          "detail": "agent_identity producer unavailable",
+          "detail": "No agent/workload identity declared in this repo.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -338,9 +338,9 @@
           "title": "Agent identity declares a responsible owner",
           "pillar": "identity-access",
           "severity": "should-fix",
-          "status": "not-verified",
+          "status": "not-applicable",
           "tier": 0,
-          "detail": "agent_identity producer unavailable",
+          "detail": "No agent/workload identity declared in this repo.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -349,9 +349,9 @@
           "title": "Agent identity scope is least-privilege",
           "pillar": "identity-access",
           "severity": "must-fix",
-          "status": "not-verified",
+          "status": "not-applicable",
           "tier": 0,
-          "detail": "agent_identity producer unavailable",
+          "detail": "No agent/workload identity declared in this repo.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -360,9 +360,20 @@
           "title": "Agent identity lifecycle (expiry/review) is declared",
           "pillar": "identity-access",
           "severity": "should-fix",
+          "status": "not-applicable",
+          "tier": 0,
+          "detail": "No agent/workload identity declared in this repo.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GRD-001",
+          "title": "Knowledge-source ACL enforcement proven on protected sources",
+          "pillar": "identity-access",
+          "severity": "must-fix",
           "status": "not-verified",
           "tier": 0,
-          "detail": "agent_identity producer unavailable",
+          "detail": "Run the producing leg to create specs/ground-manifest.json.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -813,9 +824,9 @@
       "title": "7. Responsible AI",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 60,
-      "score_with_waivers": 60,
-      "verification_debt": 1,
+      "score_raw": 42,
+      "score_with_waivers": 42,
+      "verification_debt": 4,
       "findings": [
         {
           "id": "RAI-001",
@@ -830,12 +841,12 @@
         },
         {
           "id": "RAI-002",
-          "title": "AGT RAI policy section present",
+          "title": "AGT policy constrains sensitive actions",
           "pillar": "responsible-ai",
           "severity": "must-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "threadlight-govern manifest: rai_policy_present=pass",
+          "detail": "AGT policy constrains sensitive actions",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -846,7 +857,7 @@
           "severity": "must-fix",
           "status": "pass",
           "tier": 0,
-          "detail": "threadlight-govern manifest: RAI block declares prompt shields",
+          "detail": "Prompt shields configured",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -884,6 +895,39 @@
           "waiver_id": null
         },
         {
+          "id": "GRD-002",
+          "title": "Answer citations grounded in retrieved context",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/ground-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GRD-003",
+          "title": "Refusal behaviour holds on unsupported queries",
+          "pillar": "responsible-ai",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/ground-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "GRD-004",
+          "title": "Knowledge-source freshness and coverage verified",
+          "pillar": "responsible-ai",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/ground-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
           "id": "RAI-101",
           "title": "Content filter resource present in target",
           "pillar": "responsible-ai",
@@ -901,8 +945,8 @@
       "title": "8. HITL and audit",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 32,
-      "score_with_waivers": 32,
+      "score_raw": 47,
+      "score_with_waivers": 47,
       "verification_debt": 2,
       "findings": [
         {
@@ -961,6 +1005,28 @@
           "waiver_id": null
         },
         {
+          "id": "HITL-006",
+          "title": "Skill contracts declare a substantive idempotency statement",
+          "pillar": "hitl-audit",
+          "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "4 skill contract(s) declare a substantive idempotency statement",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "HITL-007",
+          "title": "SPEC sec 8 declares the resume trigger and rehydrated state",
+          "pillar": "hitl-audit",
+          "severity": "should-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "SPEC sec 8 names a resume trigger and the state it rehydrates",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
           "id": "HITL-101",
           "title": "Audit storage account / table exists",
           "pillar": "hitl-audit",
@@ -989,9 +1055,9 @@
       "title": "9. Supply chain",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 26,
-      "score_with_waivers": 26,
-      "verification_debt": 7,
+      "score_raw": 30,
+      "score_with_waivers": 30,
+      "verification_debt": 6,
       "findings": [
         {
           "id": "SUP-001",
@@ -1097,9 +1163,9 @@
           "title": "MCP servers pinned to an exact version or image digest",
           "pillar": "supply-chain",
           "severity": "must-fix",
-          "status": "not-verified",
+          "status": "must-fix",
           "tier": 0,
-          "detail": "mcp_sbom producer unavailable",
+          "detail": "Pin every MCP server to an exact version or image digest: returns-triage-mock",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1108,9 +1174,9 @@
           "title": "MCP servers resolve from a known registry or source",
           "pillar": "supply-chain",
           "severity": "should-fix",
-          "status": "not-verified",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "mcp_sbom producer unavailable",
+          "detail": "Resolve these MCP servers from a known registry/source: returns-triage-mock",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1119,9 +1185,9 @@
           "title": "mcp-lock.json committed and free of undocumented drift",
           "pillar": "supply-chain",
           "severity": "must-fix",
-          "status": "not-verified",
+          "status": "should-fix",
           "tier": 0,
-          "detail": "mcp_sbom producer unavailable",
+          "detail": "Commit an mcp-lock.json (run mcp_sbom.py --update-lock) so server/tool drift is reviewable.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1130,9 +1196,42 @@
           "title": "MCP server credentials are not committed inline",
           "pillar": "supply-chain",
           "severity": "must-fix",
+          "status": "pass",
+          "tier": 0,
+          "detail": "No MCP server commits credentials inline.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "INT-001",
+          "title": "Real integration tool contract conformance verified (connect leg)",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
           "status": "not-verified",
           "tier": 0,
-          "detail": "mcp_sbom producer unavailable",
+          "detail": "Run the producing leg to create specs/connect-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "INT-002",
+          "title": "Runtime endpoint bound to a real (non-mock) integration server",
+          "pillar": "supply-chain",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/connect-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "UPG-003",
+          "title": "Upgrade sources verified against the official channel",
+          "pillar": "supply-chain",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/upgrade-manifest.json.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1176,9 +1275,9 @@
       "title": "10. Cost",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 21,
-      "score_with_waivers": 21,
-      "verification_debt": 3,
+      "score_raw": 17,
+      "score_with_waivers": 17,
+      "verification_debt": 5,
       "findings": [
         {
           "id": "COST-001",
@@ -1247,6 +1346,28 @@
           "waiver_id": null
         },
         {
+          "id": "COST-007",
+          "title": "Cost manifest meter coverage \u2014 every detected meter priced or flagged",
+          "pillar": "cost",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "No vNext meter_coverage in specs/cost-manifest.json \u2014 run threadlight-consumption-iq (cost_api) to project meter coverage.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "LOAD-002",
+          "title": "Projected load stays within the budget ceiling",
+          "pillar": "cost",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/load-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
           "id": "COST-101",
           "title": "Live budget alert wired on target RG",
           "pillar": "cost",
@@ -1275,9 +1396,9 @@
       "title": "11. Reliability",
       "status_raw": "red",
       "status_with_waivers": "red",
-      "score_raw": 8,
-      "score_with_waivers": 8,
-      "verification_debt": 3,
+      "score_raw": 5,
+      "score_with_waivers": 5,
+      "verification_debt": 7,
       "findings": [
         {
           "id": "REL-001",
@@ -1353,6 +1474,50 @@
           "status": "must-fix",
           "tier": 0,
           "detail": "No restore-drill artefact found under docs/, evidence/. Run `azqr restore-drill` (or your equivalent) and commit the report.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "INT-003",
+          "title": "Real integration exercised through user-scoped identity (OBO) evidence",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/connect-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "INT-004",
+          "title": "Real integration authorized by required-role revalidation vs current identity",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/connect-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "LOAD-001",
+          "title": "Load test honored the production-safety guard",
+          "pillar": "reliability",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/load-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "LOAD-003",
+          "title": "SLO thresholds (p95 latency / error rate) held under load",
+          "pillar": "reliability",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/load-manifest.json.",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1561,18 +1726,18 @@
       "title": "13. Model lifecycle",
       "status_raw": "amber",
       "status_with_waivers": "amber",
-      "score_raw": 43,
-      "score_with_waivers": 43,
-      "verification_debt": 6,
+      "score_raw": 33,
+      "score_with_waivers": 33,
+      "verification_debt": 9,
       "findings": [
         {
           "id": "MDL-001",
           "title": "Model deployments pinned to specific version",
           "pillar": "model-lifecycle",
           "severity": "must-fix",
-          "status": "pass",
+          "status": "not-verified",
           "tier": 0,
-          "detail": "All 1 model deployment(s) pinned: []",
+          "detail": "1 model deployment(s) set model/version via ARM parameters or expressions ([\"[format('{0}/{1}', variables('foundryAccountName'), parameters('deployments')[copyIndex()].name)]\"]) \u2014 pin not statically resolvable; verified at deploy by live check MDL-101",
           "evidence_refs": [],
           "waiver_id": null
         },
@@ -1687,6 +1852,28 @@
           "waiver_id": null
         },
         {
+          "id": "UPG-001",
+          "title": "Model/dependency compatibility matrix is current",
+          "pillar": "model-lifecycle",
+          "severity": "should-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/upgrade-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
+          "id": "UPG-002",
+          "title": "Preview / runtime-policy expiry drift addressed",
+          "pillar": "model-lifecycle",
+          "severity": "must-fix",
+          "status": "not-verified",
+          "tier": 0,
+          "detail": "Run the producing leg to create specs/upgrade-manifest.json.",
+          "evidence_refs": [],
+          "waiver_id": null
+        },
+        {
           "id": "MDL-101",
           "title": "Live deployments use pinned version (not `latest`)",
           "pillar": "model-lifecycle",
@@ -1764,7 +1951,7 @@
     "threshold_hours": 24
   },
   "waivers": [],
-  "not_verified_count": 76,
+  "not_verified_count": 85,
   "kpi_scorecard": {
     "latency_declared": true,
     "cost_per_interaction_declared": false,

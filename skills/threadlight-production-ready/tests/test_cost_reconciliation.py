@@ -17,12 +17,15 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT = TEST_DIR.parent / "scripts" / "production_ready.py"
+REPO_ROOT = TEST_DIR.parent.parent.parent
 
 sys.path.insert(0, str(SCRIPT.parent))
 import production_ready as pr  # noqa: E402
@@ -288,6 +291,142 @@ def test_catalog_entries_declare_tolerance_without_a_hardcoded_number() -> None:
     for meta in (cost102, cost103):
         assert "20%" not in meta["title"]
         assert "20" not in meta["title"]
+
+
+# --------------------------------------------------------------------------
+# committed exemplar pairing — COST-102/COST-103 wording must not drift
+# --------------------------------------------------------------------------
+
+# COST-102/COST-103 are `experimental: True` (see FINDING_CATALOG above), so
+# `_render_manifest` filters them out of the scored JSON manifest by default —
+# they never appear under `pillars[].findings` there. The markdown report
+# renders from the *unfiltered* pillar findings, though, so both findings do
+# show up in it twice: once in the "5. Pillar deep-dives" table (with a
+# " (tier: ...)" suffix appended for any tier > 0 finding) and once in the
+# "10. Appendix / What was not verified" table (no suffix, raw `f.detail`).
+# This test derives ground truth by constructing a real `RepoContext` for
+# each fixture and calling `_check_cost_reconciliation_static` directly —
+# the same function `main()` calls — rather than trusting either committed
+# artifact, then asserts both rendered rows match that ground truth exactly.
+_ROW_RE_TMPL = (
+    r"^\|\s*`{fid}`\s*\|\s*[^|]+?\s*\|\s*[^|]+?\s*\|\s*(.+?)\s*\|\s*$")
+
+
+def _row_detail(text: str, fid: str) -> str | None:
+    r"""Last matching `| \`{fid}\` | ... | ... | detail |` row's detail column."""
+    pattern = re.compile(_ROW_RE_TMPL.format(fid=re.escape(fid)))
+    detail: str | None = None
+    for line in text.splitlines():
+        m = pattern.match(line)
+        if m:
+            detail = m.group(1)
+    return detail
+
+
+def _tracked_files() -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True)
+    return result.stdout.splitlines()
+
+
+def _tracked_production_readiness_pairs() -> list[tuple[Path, Path]]:
+    """Every TRACKED production-readiness manifest, paired with its sibling report.
+
+    Derived from `git ls-files` — not a hand-maintained list — so a newly
+    committed exemplar is picked up automatically, and one that is gitignored
+    (like `sample-pilot`'s own pair, which the fixture regenerates on every
+    run and never commits) drops out on its own. There is no per-pair
+    "if missing, skip" escape hatch: every manifest this derivation finds
+    MUST have its sibling report tracked too, or the derivation itself raises
+    — a manifest without its report (or vice versa) is a broken pair, not a
+    skippable one.
+    """
+    tracked = _tracked_files()
+    tracked_set = set(tracked)
+    manifests = sorted(
+        p for p in tracked
+        if p.endswith("production-readiness-manifest.json")
+        or p.endswith("production-readiness.json"))
+    pairs: list[tuple[Path, Path]] = []
+    for rel_manifest in manifests:
+        manifest_path = REPO_ROOT / rel_manifest
+        # tests/production-readiness-manifest.json -> docs/production-readiness-report.md
+        # specs/production-readiness.json          -> docs/production-readiness-report.md
+        fixture_root = manifest_path.parent.parent
+        rel_report = (fixture_root / "docs" / "production-readiness-report.md").relative_to(REPO_ROOT).as_posix()
+        assert rel_report in tracked_set, (
+            f"{rel_manifest} is a tracked production-readiness manifest but its sibling "
+            f"report {rel_report} is not tracked — a manifest/report exemplar pair must be "
+            "committed or dropped together, never half of one.")
+        pairs.append((manifest_path, fixture_root / "docs" / "production-readiness-report.md"))
+    return pairs
+
+
+def test_committed_cost_reconciliation_fixtures_match_current_generation() -> None:
+    """Every TRACKED manifest/report pair must show today's COST-102/COST-103 wording.
+
+    None of the three committed exemplars (`examples/returns-triage-governed`,
+    `sample-pilot-broken`, `sample-pilot-citadel`) ship a
+    `specs/cost-reconciliation-manifest.json`, so `_check_cost_reconciliation_static`
+    always degrades both findings to `not-verified` with the "No provable
+    specs/cost-reconciliation-manifest.json ..." detail for all three — never
+    the retired "Skipped — running in --static mode" static-tier stub. This
+    would have caught the exemplars going stale when the artifact-driven
+    rewrite landed without failing any other test.
+    """
+    pairs = _tracked_production_readiness_pairs()
+    assert len(pairs) == 3, (
+        f"expected exactly 3 tracked production-readiness exemplar pairs, found "
+        f"{len(pairs)}: {[str(m) for m, _ in pairs]} — update this test if the set of "
+        "committed exemplars has intentionally changed.")
+    checked = 0
+    for manifest_path, report_path in pairs:
+        assert manifest_path.exists(), f"tracked manifest missing on disk: {manifest_path}"
+        assert report_path.exists(), f"tracked report missing on disk: {report_path}"
+        fixture_root = manifest_path.parent.parent
+        ctx = pr.RepoContext.from_repo(fixture_root, {})
+        ground_truth = {f.id: f for f in pr._check_cost_reconciliation_static(ctx)}
+        report_text = report_path.read_text(encoding="utf-8")
+
+        # `title` never appears in the report for a not-verified finding (the
+        # numbered gap list only lists must-fix/should-fix rows), so the
+        # catalog itself is the only place these two are ever stated to a
+        # reader — pin it here too, not just in the dedicated catalog test
+        # above, so this test alone fails if either drifts.
+        assert pr.FINDING_CATALOG["COST-102"]["title"] == (
+            "Live actuals vs forecast within declared tolerance")
+        assert pr.FINDING_CATALOG["COST-103"]["title"] == (
+            "PAYG vs PTU recommendation matches observed usage")
+
+        for fid in ("COST-102", "COST-103"):
+            checked += 1
+            finding = ground_truth[fid]
+            assert finding.status == "not-verified", (
+                f"{fixture_root}: expected {fid} not-verified (no reconciliation artifact "
+                f"is committed in this fixture), got {finding.status!r}")
+            assert "No provable specs/cost-reconciliation-manifest.json" in finding.detail
+            assert "Skipped" not in finding.detail, (
+                f"{fixture_root}: {fid} regressed to the retired static-mode skip stub")
+
+            main_table_text = report_text.split("## 10. Appendix", 1)[0]
+            appendix_text = report_text.split("## 10. Appendix", 1)[1]
+
+            main_detail = _row_detail(main_table_text, fid)
+            assert main_detail is not None, (
+                f"no {fid} row in the pillar deep-dives table of {report_path}")
+            tier_label = pr.TIER_TO_LABEL[pr.FINDING_CATALOG[fid]["tier"]]
+            assert main_detail == f"{finding.detail} (tier: {tier_label})", (
+                f"{report_path} pillar-deep-dive {fid} detail drifted from live "
+                f"generation:\n  report: {main_detail!r}\n  live:   "
+                f"{finding.detail + f' (tier: {tier_label})'!r}")
+
+            appendix_detail = _row_detail(appendix_text, fid)
+            assert appendix_detail is not None, (
+                f"no {fid} row in the appendix 'What was not verified' table of {report_path}")
+            assert appendix_detail == finding.detail, (
+                f"{report_path} appendix {fid} detail drifted from live generation:\n"
+                f"  report: {appendix_detail!r}\n  live:   {finding.detail!r}")
+    assert checked == len(pairs) * 2, "every pair must yield both COST-102 and COST-103"
 
 
 # --------------------------------------------------------------------------
