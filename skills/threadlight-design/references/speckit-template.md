@@ -671,6 +671,20 @@ load_profile:
 > posture were not collected; using neutral demo defaults. Override later
 > in SPEC § 1 / § 11f / § 13._
 
+> **Also add this row to the table above whenever § 14 ships blank** —
+> always in Fast-PoC mode, and in Full mode whenever the operator has not
+> yet confirmed `success_event` and the cost/variance thresholds. This is
+> not a silent default (`Default used? no`): § 14 has no defaults at all,
+> so leaving it blank is always the honest, correct state; this row is what
+> makes that state auditable rather than merely implicit.
+>
+> | § 14.value_model | not collected | open-question | no | yes |
+>
+> **Full mode's job is to ask the operator to state and confirm
+> `success_event` and every `baseline`/`maturity_policy`/`accounting`
+> threshold explicitly, or to explicitly defer them here** — never to
+> arbitrarily derive a number or event name just to avoid this row.
+
 ### Assumptions
 - [Assumption 1 — something taken as given]
 - [Assumption 2]
@@ -682,4 +696,101 @@ load_profile:
 ### Dependencies
 - [Dependency 1 — external system, team, or timeline]
 - [Dependency 2]
+
+---
+
+## 14. Value Model
+
+> **INPUT CONTRACT for the design → deploy cost-actuals reconciliation
+> contract.** See `references/value-model-schema.md` for the full
+> field-by-field schema, bounds, and rationale. This section is a **blank
+> shape** — every field below is a bare YAML key, at most followed by a
+> comment describing its type/bounds. Comments are not values: never invent
+> a number to fill a placeholder. Copy the *shape* below, never the worked
+> numbers from `examples/returns-triage-governed/specs/SPEC.md § 14` —
+> those are specific to that pilot's return-triage economics and would be a
+> fabricated default for any other pilot.
+>
+> **Full mode**: ask the operator to state and confirm each `maturity_policy`,
+> `success_event`, `baseline`, and `accounting` field explicitly.
+> `success_event` (`name` / `trace_attribute` / `success_values`) is always
+> **operator-confirmed** in Full mode — never inferred from a BR-XXX business
+> rule or guessed from the process description. A field the operator cannot
+> answer yet stays blank and gets a row in § 13 Open Questions with
+> `Source: open-question` — not a guessed number.
+>
+> **Fast-PoC mode**: emit this section's shape verbatim (every leaf blank,
+> `success_event` included) and leave the source open in § 13 — unlike
+> § 12's `target_posture`, this section has no silent default. An incomplete
+> `maturity_policy` yields a `not-verified` cost verdict downstream, but the
+> projection and actuals evidence artifacts are still produced and written;
+> only the pass/fail verdict is withheld until the policy is satisfied.
+
+```yaml
+value_model:
+  cost:
+    maturity_policy:
+      min_complete_days:                       # int >= 1
+      min_successful_interactions:              # int >= 1
+      min_cost_settlement_age_hours:            # int >= 0
+      max_window_end_age_days:                  # int >= 1
+      min_projection_attribution_coverage_pct:  # float, (0, 1] — this is
+                                                 # PROJECTION attribution
+                                                 # coverage, not actual
+                                                 # resource-id coverage; only
+                                                 # projection coverage is
+                                                 # policy-gated here
+    success_event:
+      name:              # identifier: ^[A-Za-z][A-Za-z0-9_.:-]{0,127}$
+                          # operator-confirmed in Full mode; never inferred
+      trace_attribute:    # identifier: ^[A-Za-z][A-Za-z0-9_.:-]{0,127}$
+                          # operator-confirmed in Full mode; never inferred
+      success_values: []  # nonempty list of the same identifier grammar;
+                          # operator-confirmed in Full mode; never inferred
+    baseline:
+      target_cost_per_successful_interaction_usd:  # float > 0; USD per
+                                                     # successful interaction
+                                                     # (as defined by
+                                                     # success_event); no
+                                                     # default
+      max_forecast_variance_pct:                   # float, fractional [0, 1]
+                                                     # (0.20 = 20%); no default;
+                                                     # values > 1 are invalid —
+                                                     # COST variance only
+      max_token_volume_variance_pct:                # float, fractional [0, 1]
+                                                     # (0.20 = 20%); no default;
+                                                     # values > 1 are invalid —
+                                                     # TOKEN VOLUME variance
+                                                     # only; a distinct
+                                                     # threshold from cost
+                                                     # variance
+    accounting:
+      actual_cost_basis: usage-pretax    # literal; a metric/source, not a price basis
+      actual_billing_price_basis:        # retail | ea | mca | unknown
+      forecast_price_basis:              # retail | ea | mca
+      allow_basis_mismatch_for_verdict:  # bool
+      scope_policy:                      # dedicated_resource_group | tagged_allocation
+```
+
+> **Why `success_event.name` / `trace_attribute` / `success_values` are
+> restricted to `^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`**: these identifiers are
+> compiled into a fixed AppTraces KQL query by the reconciliation code — the
+> code never builds arbitrary KQL from operator input. Anything outside this
+> grammar is rejected before it reaches the query string, not sanitized
+> inside it. All three fields are **operator-confirmed** in Full mode and
+> blank/open-question in Fast-PoC — never derived from a business rule or
+> invented to look complete.
+>
+> **Why `max_forecast_variance_pct` / `max_token_volume_variance_pct` are
+> fractional, not percentage integers**: `0.20` means 20%. Both fields are
+> bounded to `[0, 1]`; a value greater than `1` (for example `20`, meant as
+> "20 percent") is invalid and must be rejected, never silently
+> reinterpreted. Neither field has a default.
+>
+> **Why `actual_billing_price_basis` is a required, explicit operator
+> declaration and not derived**: the Cost Management Query API returns
+> actual spend without telling you which price basis (retail / EA / MCA)
+> produced it. The operator must state it. `unknown` is a valid but
+> conservative choice — it is always treated as a basis mismatch against
+> `forecast_price_basis` unless `allow_basis_mismatch_for_verdict: true`.
 ```

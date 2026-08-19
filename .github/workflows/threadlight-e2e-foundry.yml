@@ -691,7 +691,8 @@ jobs:
             "$PILOT_DIR" \
             --stage design \
             --stage pattern0 \
-            --profile fast-poc
+            --profile fast-poc \
+            --require-value-model
 
       - name: "[design-only] Run summary"
         if: always() && inputs.mode == 'design-only'

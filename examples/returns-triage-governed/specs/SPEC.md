@@ -647,3 +647,38 @@ workflow_model: agent
   spoke (see § 11b).
 - Foundry project + `gpt-5.4` capacity in the EU data boundary.
 - `az acr build` (docker daemon unavailable locally — see runtime probe).
+
+---
+
+## 14. Value Model
+
+`actual_billing_price_basis: retail` is a decision for this pilot: it equals
+`forecast_price_basis`, so RFC §9.5's basis-mismatch rule does not fire and
+the variance verdict stays `pass`-eligible. A real EA or MCA customer would
+declare `ea`/`mca` here instead and accept `not-verified` unless it also sets
+`allow_basis_mismatch_for_verdict: true`.
+
+```yaml
+value_model:
+  cost:
+    maturity_policy:
+      min_complete_days: 7
+      min_successful_interactions: 100
+      min_cost_settlement_age_hours: 48
+      max_window_end_age_days: 14
+      min_projection_attribution_coverage_pct: 0.95
+    success_event:
+      name: return_decision_completed
+      trace_attribute: decision.outcome
+      success_values: [approved, denied, escalated]
+    baseline:
+      target_cost_per_successful_interaction_usd: 0.18
+      max_forecast_variance_pct: 0.20
+      max_token_volume_variance_pct: 0.25
+    accounting:
+      actual_cost_basis: usage-pretax
+      actual_billing_price_basis: retail
+      forecast_price_basis: retail
+      allow_basis_mismatch_for_verdict: false
+      scope_policy: dedicated_resource_group
+```

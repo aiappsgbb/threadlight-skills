@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.11.0"
+  version: "1.12.0"
 ---
 
 # Threadlight Design
@@ -635,12 +635,31 @@ Must include all sections from the template:
 11f. **Deployment Posture** — `deployment_target: demo-sandbox | customer-pilot | production-bound` plus posture overrides (networking, replicas, retention, model_pinning) and a `deferred_decisions:` list. **INPUT CONTRACT for `threadlight-deploy` Phase 1.5**: when populated, Phase 1.5 takes Path 1 (proceed with matching posture defaults, no operator prompt); when absent, Phase 1.5 asks the operator once. Pre-populated by Step 1.5 of this skill (Full mode); left empty by Fast-PoC.
 12. **Production Readiness** — target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner, pricing plan, model list, waivers, Defender/Policy floor. Includes a **`load_profile{}`** sub-block (consumed by `threadlight-consumption-iq` wizard to produce cost projections and SKU recommendations — see `references/speckit-template.md § 12`).
 13. **Assumptions & Open Questions** — what's given, what needs stakeholder input
+14. **Value Model** — `value_model.cost.{maturity_policy, success_event, baseline, accounting}`, the cost-actuals reconciliation contract. **INPUT CONTRACT for the design → deploy value-model shape check**, enforced by the repo's own CI — `scripts/ci/check_pilot_contract.py`'s `VALUE_MODEL_MARKERS` (opt-in via `--require-value-model`) is a repo-side CI script, not a plugin-local runtime dependency of this skill. See `references/speckit-template.md § 14` for the blank shape and `references/value-model-schema.md` for the field-by-field schema, bounds, and rationale. *Required (as a blank shape, never omitted) for every process; always generated, never silently defaulted.*
+
+> **§ 14 has no defaults — this is deliberate, unlike every other section
+> above.** Copy the template's blank shape verbatim; never copy the worked
+> numbers from `examples/returns-triage-governed/specs/SPEC.md § 14` into a
+> different pilot. **Full mode**: ask the operator for each
+> `maturity_policy` / `success_event` / `baseline` / `accounting` field; a
+> field the operator can't answer yet stays blank and gets a § 13 Open
+> Questions row (`Source: open-question`) instead of a guessed number.
+> **Fast-PoC mode**: emit the shape verbatim with every leaf blank and leave
+> the source open in § 13 — do not silently default any § 14 field the way
+> § 12's `target_posture` defaults. An incomplete `maturity_policy` yields a
+> `not-verified` cost verdict downstream, not a missing section; the
+> projection/actuals evidence artifacts are still produced and written
+> either way.
 
 > **The abstract / pure-coding split.** Sections **5b, 7b, 8 (action gate), 8b, 9 (KPI table),
-> 10b, 11b, 11c, 11d** are **input contracts** — each one is consumed mechanically by a
-> downstream pure-coding skill. If a section is empty/missing, the corresponding
-> downstream skill cannot generate working code. Always populate them at least minimally;
-> use defaults from this skill's references when the user can't articulate them yet.
+> 10b, 11b, 11c, 11d, 14** are **input contracts** — each one is consumed mechanically by a
+> downstream pure-coding skill (or, for § 14, by the repo-side CI shape check). If a section
+> is empty/missing, the corresponding downstream consumer cannot generate working code (or,
+> for § 14, cannot validate the shape). Always populate them at least minimally; use defaults
+> from this skill's references when the user can't articulate them yet.
+> **§ 14 is the one exception to "populate at least minimally with defaults":**
+> its blank shape (not a guessed value) is the minimally-populated form —
+> see the callout above.
 
 #### Generating Evaluation Scenarios (§ 9)
 
@@ -2055,6 +2074,7 @@ must catch its own mistakes.
 - [ ] **Workspace streaming endpoint exists** — `POST /api/invoke-stream` SSE endpoint present in `src/workspace/main.py`. Frontend uses `ReadableStream` progressive rendering with tool-call status badges. Fallback to `/api/invoke` on error.
 - [ ] No hardcoded secrets, API keys, or personal data in any file
 - [ ] Assumptions in spec § 13 are flagged clearly (especially fast-PoC defaults)
+- [ ] **SPEC § 14 Value Model has the correct structural shape** — `## 14. Value Model` heading present, with `value_model:` / `maturity_policy:` / `success_event:` / `baseline:` / `accounting:` all present under `value_model.cost`, matching `references/speckit-template.md § 14` (see `references/value-model-schema.md` for the full field list). **No numeric or decision field was invented** — every `maturity_policy`/`success_event`/`baseline`/`accounting` leaf is either blank (Fast-PoC, or Full with an unanswered § 13 open question) or an explicit, operator-provided value; `success_event.name`/`trace_attribute`/`success_values` in particular must be **operator-confirmed** in Full mode, never inferred from a BR-XXX business rule or invented to look complete; never a value copied from `examples/returns-triage-governed/specs/SPEC.md § 14` or otherwise guessed to look "complete".
 
 **If any check fails:** fix it before presenting the output to the user. Do not
 ask the user to fix generated content — that's the skill's responsibility.
@@ -2079,7 +2099,8 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | File | Purpose | Status |
 |------|---------|--------|
 | `scripts/skill_contract_check.py` | Static contract linter for the generated `src/agent/skills/` (12 checks, SKC-001…SKC-012) — run by Step 8 auto-review | ✅ Included |
-| `references/speckit-template.md` | Template for SpecKit specification documents (12 sections + abstract-vs-pure-coding contracts) | ✅ Included |
+| `references/speckit-template.md` | Template for SpecKit specification documents (14 sections + abstract-vs-pure-coding contracts) | ✅ Included |
+| `references/value-model-schema.md` | Field-by-field schema, bounds, and rationale for SPEC § 14's `value_model:` cost-actuals reconciliation contract (no defaults) | ✅ Included |
 | `references/process-traits.md` | Composable trait catalog for process pattern detection | ✅ Included |
 | `references/experience-template.md` | Bespoke cinematic `experience.html` design discipline + paradigm catalog | ✅ Included |
 | `references/demo-deck-template.md` | Cinematic `demo-deck.html` talk-deck kit-of-parts (slide grammar, CSS tokens, JS controller, brandmark substitute, MS 4-color SVG, 18-symbol icon library, rejection anti-patterns) | ✅ Included |

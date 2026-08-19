@@ -9,6 +9,17 @@ field.
 
 ### Added
 
+- **SPEC § 14 (Value Model) is generated with no numeric defaults.**
+  `threadlight-design` emits SPEC § 14 `value_model` with an intentionally
+  blank, no-default shape for field groups `maturity_policy`,
+  `success_event`, `baseline`, `accounting`, unless values are explicitly
+  supplied and agreed upon. This makes the value model a reviewable,
+  explicit policy rather than an implicit guess.
+  `examples/returns-triage-governed/specs/SPEC.md` § 14 carries that
+  explicit policy for the reference governed example. This changes only
+  the generated design artifacts — the complete Azure monthly cost
+  projection and the base `full`-mode deploy path are unaffected.
+
 - **A cheap middle tier for the E2E gate: `mode: design-only`.** The E2E
   workflow was all-or-nothing — either a `smoke-only` run that proves nothing
   beyond skill discovery, or a full run that spends ~$1 and 45-60 minutes
@@ -90,6 +101,16 @@ field.
   guard is proven able to fail rather than being another green check that lies.
 
 ### Changed
+
+- **`check_pilot_contract.py`'s § 14 value-model enforcement is opt-in** via a
+  new `--require-value-model` flag rather than the default, so pilot projects
+  that predate the value-model contract keep passing unmodified — a legacy
+  compatibility affordance, not a global tightening of the checker. The
+  `design-only` E2E gate is the one caller that opts in: it now passes
+  `--require-value-model` alongside its existing `--stage design --stage
+  pattern0 --profile fast-poc` args, so the cheap tier validates the value
+  model against real generated output. `full` and `smoke-only` step bodies are
+  byte-for-byte unchanged; no runtime Azure provisioning behavior changed.
 
 - `python-pytest.yml` now installs `packaging` explicitly instead of relying on
   it arriving as a transitive dependency of pytest — the same implicit-pin

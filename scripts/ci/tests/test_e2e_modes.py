@@ -163,6 +163,43 @@ def test_the_gate_step_actually_invokes_the_contract_checker():
     assert "--stage deploy" not in body, (
         "design-only never deploys, so deployment-posture.md cannot exist yet"
     )
+    # The SPEC §14 value-model contract check is opt-in on the checker (for
+    # legacy-project compatibility), so the design-only gate must explicitly
+    # ask for it or a missing/defaulted value model would go unchecked in
+    # the one tier that actually runs the checker against real output.
+    assert "--require-value-model" in body, (
+        "design-only gate must pass --require-value-model or the §14 "
+        "value-model contract goes unenforced in the cheap tier"
+    )
+
+
+def test_require_value_model_is_not_leaked_into_other_checker_uses():
+    """The stricter flag is a design-only-gate decision, not a global one.
+
+    This asserts on step semantics (which step's `run` body carries the
+    flag, and under which `if:`) rather than a raw text count of
+    `check_pilot_contract.py` in the workflow file. A text count would stay
+    green if a second, legitimate checker invocation were added elsewhere
+    without the flag — that's not leakage. It would also stay green if the
+    flag were copied onto a step whose condition is broader than
+    design-only, which *is* leakage this test must catch.
+    """
+    steps = load_steps()
+    leaked = [
+        s.get("name", s.get("uses", "?"))
+        for s in steps
+        if "--require-value-model" in s.get("run", "")
+    ]
+    assert leaked == [GATE_STEP], (
+        "--require-value-model must appear in exactly one step's `run` "
+        f"body, the design-only gate ({GATE_STEP!r}); found it in: {leaked}"
+    )
+    gate = next(s for s in steps if s.get("name") == GATE_STEP)
+    assert gate.get("if") == "inputs.mode == 'design-only'", (
+        "the design-only gate's `if:` changed; --require-value-model must "
+        "stay pinned to `inputs.mode == 'design-only'` or the stricter "
+        "check silently widens to other tiers"
+    )
 
 
 def test_the_referenced_contract_checker_exists():
