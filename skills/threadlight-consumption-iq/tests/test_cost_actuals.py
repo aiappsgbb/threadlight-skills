@@ -273,6 +273,46 @@ def test_giant_unattributed_cost_also_raises_actuals_error() -> None:
         aggregate([[20260801, "", "1e300", "USD", "", "Tax"]])
 
 
+# A Python int of this magnitude is deliberately computed once at module
+# scope and reused across the tests below: `Decimal(10**1_000_000)`
+# involves rendering roughly a million decimal digits, which is not free,
+# and every test below only needs to exercise the same value.
+_GIANT_INT_COST = 10**1_000_000
+
+
+@pytest.mark.parametrize(
+    "raw", ["1E+1000000", _GIANT_INT_COST], ids=["exponent-string", "python-int"]
+)
+def test_pathological_cost_magnitude_raises_actuals_error_in_aggregate(raw) -> None:
+    # A quoted "1E+1000000" or a comparably huge Python int both have an
+    # exponent so large that even the ambient Decimal context's own Emax
+    # (999999 by default) cannot represent them: unlike "1e300" (rejected
+    # only later, at cent-quantization), a value this extreme overflows on
+    # *any* arithmetic — including the plain abs() aggregate_cost_rows
+    # performs on every parsed cost cell. `pytest.raises` here also proves
+    # no raw `decimal.Overflow`/`decimal.InvalidOperation` escapes instead:
+    # a leaked decimal exception is a different type than
+    # `ActualsEvidenceError` and would fail this test uncaught.
+    with pytest.raises(ActualsEvidenceError, match="cost value magnitude"):
+        aggregate([[20260801, "x", raw, "USD", RID, "A"]])
+
+
+@pytest.mark.parametrize(
+    "raw", ["1E+1000000", _GIANT_INT_COST], ids=["exponent-string", "python-int"]
+)
+def test_pathological_cost_magnitude_raises_actuals_error_in_manifest(raw) -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([[20260801, "x", raw, "USD", RID, "A"]])]
+    # Same no-raw-decimal-exception guarantee as the aggregate-path test
+    # above, but through the full `build_actuals_manifest` entry point.
+    with pytest.raises(ActualsEvidenceError, match="cost value magnitude"):
+        build_actuals_manifest(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Money strings: reject underscore digit separators and any non-ASCII
 # numeric syntax before Decimal() ever sees the string; only plain ASCII

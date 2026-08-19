@@ -68,7 +68,7 @@ import math
 import re
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, getcontext
 from typing import NamedTuple, Optional
 
 
@@ -268,6 +268,47 @@ def rows_from_query_page(page: dict[str, object]) -> list[dict[str, object]]:
     return rows
 
 
+def _reject_pathological_cost_magnitude(value: Decimal, raw: object) -> None:
+    """Guard against a `Decimal` whose exponent is so large that *any*
+    further arithmetic on it — even a sign-only `abs()`, let alone the
+    `+=` accumulation `aggregate_cost_rows` does per row — raises a raw
+    `decimal.Overflow` (an `ArithmeticError` subclass) instead of the
+    `ActualsEvidenceError` this module's callers were promised.
+
+    `Decimal("1e300")` is deliberately *not* rejected here: it is a
+    plausible (if absurd) money string, parses fine, and only becomes
+    unrepresentable once `_quantize_usd` tries to round it to the cent
+    (~302 significant digits, far past the default 28-digit context
+    precision) — that failure is reported there, with its own
+    "not representable at 2 decimal places" message. This guard instead
+    catches the much more extreme case where the value's exponent
+    (`value.adjusted()`) is close enough to the ambient context's `Emax`
+    that the context itself cannot represent the value at all: a quoted
+    `"1E+1000000"` cell or a `10**1000000`-magnitude Python `int` land
+    here, both with an adjusted exponent within a few dozen of `Emax`
+    (999999 by default), and `abs()`/`+` on such a `Decimal` overflow
+    immediately — before `_quantize_usd`, and often before the value even
+    reaches an accumulator. The margin below (`prec + 16`) is generous
+    headroom for the exponent creep that repeated addition of many rows
+    or the two extra digits of cent-quantization can introduce, so a
+    value that clears this check is guaranteed safe for every arithmetic
+    operation this module performs on it, not merely for construction.
+    """
+    ctx = getcontext()
+    if value.adjusted() > ctx.Emax - (ctx.prec + 16):
+        # Never format `raw` itself here: for a pathological `int` (e.g.
+        # `10**1000000`) or an equally huge string, `repr(raw)` requires
+        # rendering millions of digits, which for a Python `int` raises its
+        # own `ValueError` (`int_max_str_digits`) before this
+        # `ActualsEvidenceError` can even be constructed — trading one
+        # leaking exception for another. Describe the magnitude instead,
+        # via the already-bounded `Decimal.adjusted()` exponent.
+        raise ActualsEvidenceError(
+            "cost value magnitude is too large to process safely: "
+            f"a {type(raw).__name__} with order of magnitude 1E+{value.adjusted()}"
+        )
+
+
 def _parse_cost_value(raw: object) -> Decimal:
     """Parse one cost cell into `Decimal`. Rejects `bool` (an `int`
     subclass), non-finite floats, and anything that does not represent a
@@ -279,16 +320,26 @@ def _parse_cost_value(raw: object) -> Decimal:
     syntaxes that `Decimal()` would otherwise silently accept. This does
     not reject `1e300`-style values with a huge exponent — those are
     syntactically valid money strings and are only unrepresentable once
-    quantized to the cent; see `_quantize_usd` for that failure mode.
+    quantized to the cent; see `_quantize_usd` for that failure mode. A
+    far more extreme magnitude (an exponent near the ambient `Decimal`
+    context's `Emax`, e.g. `"1E+1000000"` or a `10**1000000`-sized `int`)
+    is rejected here instead, via `_reject_pathological_cost_magnitude`,
+    because such a value overflows on *any* arithmetic — including the
+    plain `abs()` and `+=` accumulation callers perform on the value this
+    function returns — not merely at cent-quantization time.
     """
     if isinstance(raw, bool):
         raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
     if isinstance(raw, int):
-        return Decimal(raw)
+        value = Decimal(raw)
+        _reject_pathological_cost_magnitude(value, raw)
+        return value
     if isinstance(raw, float):
         if not math.isfinite(raw):
             raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
-        return Decimal(str(raw))
+        value = Decimal(str(raw))
+        _reject_pathological_cost_magnitude(value, raw)
+        return value
     if isinstance(raw, str):
         candidate = raw.strip()
         if not _ASCII_MONEY_RE.fullmatch(candidate):
@@ -301,6 +352,7 @@ def _parse_cost_value(raw: object) -> Decimal:
             ) from exc
         if not value.is_finite():
             raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
+        _reject_pathological_cost_magnitude(value, raw)
         return value
     raise ActualsEvidenceError(f"cost value is not numeric: {raw!r}")
 
@@ -341,9 +393,16 @@ def _require_utc_midnight(value: object, label: str) -> datetime:
 _CENT = Decimal("0.01")
 
 # Sentinel bucket key for the unattributed total in the largest-remainder
-# candidate list (never collides with a normalized `.casefold().rstrip("/")`
-# resource key, since those are always non-empty after the blank/whitespace
-# check in `aggregate_cost_rows`).
+# candidate list. This never collides with a real, normalized
+# `.casefold().rstrip("/")` resource key — not because
+# `aggregate_cost_rows`'s blank/whitespace check on the *raw* resource ID
+# guarantees a non-empty normalized key (it doesn't: a resource ID of only
+# slashes, e.g. `"///"`, passes that whitespace check but still normalizes
+# to `""` via `.rstrip("/")`), but because `aggregate_cost_rows` only ever
+# inserts a key into `resource_totals` when the normalized key is truthy
+# (`if resource_key:`); a resource ID that normalizes to `""` is instead
+# folded into `unattributed`, so `resource_totals` itself can never contain
+# this sentinel as a real key.
 _UNATTRIBUTED_KEY = ""
 
 
@@ -380,7 +439,7 @@ def _quantize_usd(value: Decimal, *, context: str) -> Decimal:
     """
     try:
         quantized = value.quantize(_CENT, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ArithmeticError) as exc:
+    except ArithmeticError as exc:
         raise ActualsEvidenceError(
             f"cost value could not be rounded to the cent ({context}): "
             f"{value!r} is not representable at 2 decimal places under the "
@@ -458,7 +517,7 @@ def _reconcile_quantized_costs(
             sum((bucket["cost"] for bucket in resource_totals.values()), Decimal("0"))
             + unattributed_raw
         )
-    except (InvalidOperation, ArithmeticError) as exc:
+    except ArithmeticError as exc:
         raise ActualsEvidenceError(
             f"cost values could not be summed to a period total: {exc}"
         ) from exc
@@ -481,7 +540,7 @@ def _reconcile_quantized_costs(
             sum(quantized_resources.values(), Decimal("0")) + quantized_unattributed
         )
         residual_cents = int(residual / _CENT)
-    except (InvalidOperation, ArithmeticError) as exc:
+    except ArithmeticError as exc:
         raise ActualsEvidenceError(
             f"cost rounding residual could not be computed: {exc}"
         ) from exc

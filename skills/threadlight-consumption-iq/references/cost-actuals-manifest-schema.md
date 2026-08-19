@@ -268,9 +268,12 @@ exception type a caller was never told to expect.
 
 Because each resource bucket and `unattributed_usd` are quantized
 **independently**, their sum can differ from the total (computed once,
-directly, from the exact unrounded grand sum) by more than a cent whenever
-the input contains many sub-cent values such as `0.005`-per-row half-cent
-charges. To guarantee `period_total_usd == sum(resources[].period_cost_usd)
+directly, from the exact unrounded grand sum) by more than a single cent —
+the gap grows with the number of buckets carrying a half-cent-or-larger
+rounding remainder, not just with how many rows feed any one bucket, so
+e.g. 100 resources each carrying an independent `0.005` remainder can
+leave a 50-cent gap, not merely a one-cent gap. To guarantee
+`period_total_usd == sum(resources[].period_cost_usd)
 + unattributed_usd` **exactly**, any such residual is distributed one cent
 at a time across *every* resource bucket plus `unattributed_usd` using the
 largest-remainder method, never dumped onto a single arbitrary bucket:
