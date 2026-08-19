@@ -58,6 +58,10 @@ STORAGE_RID = (
     "Microsoft.Storage/storageAccounts/unmodeled"
 )
 GENERATED = "2026-08-10T00:00:00Z"
+# A real 64-hex SHA-256 digest: `policy_ref.spec_sha256` is an audit anchor a
+# consumer re-derives from the SPEC bytes, so a placeholder string is not a
+# usable fixture for the code path that validates it.
+SPEC_SHA256 = hashlib.sha256(b"# SPEC section 14\n").hexdigest()
 
 
 def forecast(total=300.0):
@@ -147,7 +151,7 @@ def run(f=None, a=None, p=None, errors=None):
         policy() if p is None else p,
         policy_errors=errors or [],
         generated_at=GENERATED,
-        policy_spec_sha256="spec-hash",
+        policy_spec_sha256=SPEC_SHA256,
     )
 
 
@@ -648,6 +652,168 @@ def test_forecast_resource_without_a_monthly_cost_is_treated_as_zero() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The actual-cost accounting identity gates coverage
+#
+# `projection_attribution_coverage_pct` divides one part of the cost evidence
+# by another. If the per-resource rows do not add back up to the authoritative
+# `period_total_usd`, that ratio is computed over evidence that contradicts
+# itself, and its most dangerous possible value is a confident `1.0`. So the
+# identity is checked FIRST: every observed number is still reported, but
+# coverage becomes `null` rather than a number nobody can trust.
+# ---------------------------------------------------------------------------
+
+
+def ten_row_actuals(row_cost=10.0, total=1000.0):
+    """Ten rows that do NOT add up to the declared period total."""
+    a = actuals(total=total)
+    a["cost"]["resources"] = [
+        {
+            "resource_id": f"{RID}-{index}",
+            "resource_type": "Microsoft.App/containerApps",
+            "service_name": "Azure Container Apps",
+            "period_cost_usd": row_cost,
+        }
+        for index in range(10)
+    ]
+    return a
+
+
+def test_inconsistent_cost_rows_never_report_full_coverage() -> None:
+    """Ten rows summing to $100 against a declared $1000 total. Every row is
+    matched by the unique-type fallback... which is exactly the shape that
+    would otherwise emit `1.0`: 100% of the rows, 10% of the bill."""
+    result = run(a=ten_row_actuals())
+    assert result["coverage"]["projection_attribution_coverage_pct"] is None
+
+
+def test_inconsistent_cost_rows_preserve_every_numeric_total() -> None:
+    """Fail closed on the *ratio*, never on the money. The observed totals are
+    still what Cost Management said they were."""
+    result = run(a=ten_row_actuals())
+    assert result["totals"]["actual_window_usd"] == 1000.0
+    assert result["totals"]["actual_monthly_run_rate_usd"] == pytest.approx(4285.71)
+    assert result["totals"]["variance_window_usd"] == 930.0
+    assert result["coverage"]["unmodeled_actual_usd"] == 100.0
+    assert result["coverage"]["source_resource_id_coverage_pct"] == 1.0
+
+
+def test_inconsistent_cost_rows_warn_explicitly() -> None:
+    result = run(a=ten_row_actuals())
+    assert any(
+        "actual cost rows do not reconcile to period_total_usd" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_inconsistent_cost_rows_degrade_the_coverage_check() -> None:
+    entry = check(run(a=ten_row_actuals()), "projection_attribution_coverage")
+    assert entry["status"] == "not-verified"
+    assert entry["actual"] is None
+    assert "actual cost rows do not reconcile to period_total_usd" in entry["detail"]
+    assert run(a=ten_row_actuals())["maturity"]["status"] == "not-verified"
+
+
+def test_sub_cent_row_rounding_still_reconciles() -> None:
+    """The identity is evaluated on the cent-quantized SUM, not on a sum of
+    per-row cent roundings, so half-cent rows that genuinely add up are not
+    reported as contradictory evidence."""
+    a = actuals(total=0.01)
+    a["cost"]["resources"] = [
+        {
+            "resource_id": f"{RID}-{index}",
+            "resource_type": "Microsoft.App/containerApps",
+            "service_name": "Azure Container Apps",
+            "period_cost_usd": 0.005,
+        }
+        for index in range(2)
+    ]
+    result = run(a=a)
+    assert result["coverage"]["projection_attribution_coverage_pct"] is not None
+    assert not any(
+        "do not reconcile" in warning for warning in result["warnings"]
+    )
+
+
+def test_refund_rows_that_reconcile_are_not_flagged() -> None:
+    a = actuals()
+    a["cost"]["period_total_usd"] = 60.0
+    a["cost"]["resources"].append({
+        "resource_id": STORAGE_RID,
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "service_name": "Storage",
+        "period_cost_usd": -10.0,
+    })
+    result = run(a=a)
+    assert result["coverage"]["projection_attribution_coverage_pct"] == 0.875
+    assert not any("do not reconcile" in w for w in result["warnings"])
+
+
+def test_refund_row_that_breaks_the_identity_voids_coverage() -> None:
+    """A refund row that the declared total does not account for is exactly
+    the case where gross-absolute coverage looks healthiest and is least
+    trustworthy."""
+    a = actuals()
+    a["cost"]["resources"].append({
+        "resource_id": STORAGE_RID,
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "service_name": "Storage",
+        "period_cost_usd": -10.0,
+    })
+    result = run(a=a)
+    assert result["totals"]["actual_window_usd"] == 70.0
+    assert result["coverage"]["projection_attribution_coverage_pct"] is None
+    assert any("do not reconcile" in w for w in result["warnings"])
+
+
+def test_unattributed_participates_in_the_identity() -> None:
+    """Rows alone are $70 short of the $77 total; the $7 of unattributed spend
+    is what closes it, so the identity must include that term."""
+    a = actuals()
+    a["cost"]["period_total_usd"] = 77.0
+    a["cost"]["unattributed_usd"] = 7.0
+    assert run(a=a)["coverage"]["projection_attribution_coverage_pct"] is not None
+
+    a["cost"]["unattributed_usd"] = 0.0
+    result = run(a=a)
+    assert result["coverage"]["projection_attribution_coverage_pct"] is None
+    assert any("do not reconcile" in w for w in result["warnings"])
+
+
+def test_absent_period_total_is_not_an_identity_mismatch() -> None:
+    """An absent total is absent evidence — already `not-verified` through
+    `actuals_status` — not evidence that contradicts itself."""
+    a = actuals()
+    a["cost"]["period_total_usd"] = None
+    result = run(a=a)
+    assert not any("do not reconcile" in w for w in result["warnings"])
+
+
+def test_absent_row_breakdown_is_not_an_identity_mismatch() -> None:
+    """Cost Management may return a period total with no per-resource
+    breakdown at all. That is missing evidence, and coverage already reflects
+    it without inventing a contradiction."""
+    a = actuals()
+    del a["cost"]["resources"]
+    del a["cost"]["unattributed_usd"]
+    result = run(a=a)
+    assert result["totals"]["actual_window_usd"] == 70.0
+    assert not any("do not reconcile" in w for w in result["warnings"])
+
+
+def test_malformed_row_cost_still_raises_rather_than_degrading() -> None:
+    a = ten_row_actuals()
+    a["cost"]["resources"][3]["period_cost_usd"] = "abc"
+    with pytest.raises(ReconciliationInputError):
+        run(a=a)
+
+
+def test_identity_warning_is_emitted_once() -> None:
+    result = run(a=ten_row_actuals())
+    matching = [w for w in result["warnings"] if "do not reconcile" in w]
+    assert len(matching) == 1
+
+
+# ---------------------------------------------------------------------------
 # RFC §10 — maturity, one check at a time
 # ---------------------------------------------------------------------------
 
@@ -811,6 +977,76 @@ def test_evaluate_maturity_does_not_mutate_its_inputs() -> None:
     before = (deepcopy(a), deepcopy(p))
     evaluate_maturity(a, p, projection_attribution_coverage_pct=1.0)
     assert (a, p) == before
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        True,
+        False,
+        42,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        -0.1,
+        1.01,
+        "1.0",
+        [],
+        {},
+    ],
+)
+def test_invalid_projection_coverage_is_not_verified_never_raises(bad: object) -> None:
+    """Coverage is a ratio in `[0, 1]`. A bool, a percentage expressed as
+    `42`, a NaN, or an out-of-range value is unusable evidence: the check
+    degrades to `not-verified` and reports `null`, because the alternative is
+    either an exception that suppresses the whole artifact or a `pass` gated
+    on a number that is not a share of anything."""
+    verdict = evaluate_maturity(
+        actuals(), policy(), projection_attribution_coverage_pct=bad
+    )
+    entry = next(
+        e for e in verdict["checks"] if e["id"] == "projection_attribution_coverage"
+    )
+    assert entry["status"] == "not-verified"
+    assert entry["actual"] is None
+    assert "not a ratio" in entry["detail"]
+    assert verdict["status"] == "not-verified"
+
+
+def test_invalid_projection_coverage_keeps_the_verdict_json_serializable() -> None:
+    """A NaN that reached `actual` would serialize as bare `NaN`, which is not
+    valid JSON — the artifact must stay loadable by any consumer."""
+    verdict = evaluate_maturity(
+        actuals(), policy(), projection_attribution_coverage_pct=float("nan")
+    )
+    assert json.loads(json.dumps(verdict))["status"] == "not-verified"
+
+
+@pytest.mark.parametrize("boundary", [0.0, 1.0, 0, 1])
+def test_valid_projection_coverage_boundaries_are_accepted(boundary: float) -> None:
+    verdict = evaluate_maturity(
+        actuals(), policy(), projection_attribution_coverage_pct=boundary
+    )
+    entry = next(
+        e for e in verdict["checks"] if e["id"] == "projection_attribution_coverage"
+    )
+    assert entry["actual"] == boundary
+    assert entry["status"] == ("pass" if boundary >= 0.95 else "not-verified")
+
+
+def test_evaluate_maturity_flags_inconsistent_cost_evidence_on_its_own() -> None:
+    """The identity is a property of the actuals document, so a standalone
+    maturity call fails closed on it too — a caller cannot restore a `pass` by
+    passing a coverage number that was computed elsewhere."""
+    verdict = evaluate_maturity(
+        ten_row_actuals(), policy(), projection_attribution_coverage_pct=1.0
+    )
+    entry = next(
+        e for e in verdict["checks"] if e["id"] == "projection_attribution_coverage"
+    )
+    assert entry["status"] == "not-verified"
+    assert entry["actual"] is None
+    assert "actual cost rows do not reconcile to period_total_usd" in entry["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -993,7 +1229,7 @@ def test_forecast_and_actual_hashes_are_recorded() -> None:
     result = run(f=f, a=a)
     assert result["forecast_ref"]["sha256"] == sha256_json(f)
     assert result["actuals_ref"]["sha256"] == sha256_json(a)
-    assert result["policy_ref"]["spec_sha256"] == "spec-hash"
+    assert result["policy_ref"]["spec_sha256"] == SPEC_SHA256
     assert result["policy_snapshot"]["max_forecast_variance_pct"] == 0.20
     assert result["policy_snapshot"]["max_token_volume_variance_pct"] == 0.25
     assert result["policy_snapshot"]["min_projection_attribution_coverage_pct"] == 0.95
@@ -1177,6 +1413,205 @@ def test_payg_ptu_driver_ptu_to_payg_is_also_considered() -> None:
 
 
 # ---------------------------------------------------------------------------
+# `drivers.payg_ptu` — a bare deployment name is not an identity
+#
+# `deployment` in a token row is a LEAF name: two Azure OpenAI accounts can
+# each own a deployment called `chat`. Summing them because the strings match
+# would inflate the observed volume of whichever account the recommendation
+# was actually about.
+# ---------------------------------------------------------------------------
+
+
+AOAI_ACCOUNT_2 = AOAI_ACCOUNT.replace("aoai1", "aoai2")
+AOAI_DEPLOYMENT_2 = AOAI_ACCOUNT_2 + "/deployments/chat"
+
+
+def two_account_aoai_forecast():
+    f = aoai_forecast()
+    f["resources"].append({
+        "resource_id": AOAI_DEPLOYMENT_2,
+        "resource_kind": "Microsoft.CognitiveServices/accounts/deployments",
+        "monthly_units_consumed": {"input_tokens": 80000, "output_tokens": 10000},
+    })
+    f["recommendations"].append({
+        "resource_id": AOAI_DEPLOYMENT_2,
+        "current_sku": {"tier": "PAYG"},
+        "recommended_sku": {"tier": "PTU"},
+    })
+    return f
+
+
+def test_payg_ptu_driver_single_account_bare_row_is_unchanged() -> None:
+    """One implicated account: a bare deployment name is unambiguous, so the
+    existing behaviour is preserved exactly."""
+    driver = run(f=aoai_forecast(), a=aoai_actuals())["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["observed_monthly_tokens"] == 90000.0
+
+
+def test_payg_ptu_driver_ignores_a_token_row_from_another_account() -> None:
+    """Same deployment name, different account: that traffic belongs to a
+    resource the recommendation never covered."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT_2
+    driver = run(f=aoai_forecast(), a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "not-verified"
+    assert driver["observed_monthly_tokens"] is None
+
+
+def test_payg_ptu_driver_accepts_a_matching_row_identifier() -> None:
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = AOAI_DEPLOYMENT
+    driver = run(f=aoai_forecast(), a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["observed_monthly_tokens"] == 90000.0
+
+
+def test_payg_ptu_driver_accepts_an_account_scoped_row_identifier() -> None:
+    """A collector that can only attribute to the billed account still
+    identifies the row well enough to be included."""
+    a = aoai_actuals()
+    a["usage"]["models"][0]["account_resource_id"] = AOAI_ACCOUNT
+    driver = run(f=aoai_forecast(), a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["observed_monthly_tokens"] == 90000.0
+
+
+def test_payg_ptu_driver_refuses_to_sum_a_bare_name_across_two_accounts() -> None:
+    """Two accounts are implicated and the only observed row says just
+    `chat`. Attributing it — to either account, or to both — invents a fact
+    the evidence does not contain."""
+    driver = run(f=two_account_aoai_forecast(), a=aoai_actuals())["drivers"]["payg_ptu"]
+    assert driver["status"] == "not-verified"
+    assert driver["observed_monthly_tokens"] is None
+    assert driver["observed_volume_variance_pct"] is None
+    # The forecast side is still reported: it was never ambiguous.
+    assert driver["forecast_monthly_tokens"] == 180000
+
+
+def test_payg_ptu_driver_warns_when_a_bare_name_spans_two_accounts() -> None:
+    result = run(f=two_account_aoai_forecast(), a=aoai_actuals())
+    assert any(
+        "account" in warning and "drivers.payg_ptu" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_payg_ptu_driver_sums_identified_rows_across_two_accounts() -> None:
+    """Ambiguity is about missing identity, not about account count: once
+    every row says which account it came from, both are summed."""
+    a = aoai_actuals()
+    a["usage"]["models"] = [
+        {
+            "deployment": "chat",
+            "model": "gpt-5.4",
+            "resource_id": AOAI_DEPLOYMENT,
+            "input_tokens": 19000,
+            "output_tokens": 2000,
+        },
+        {
+            "deployment": "chat",
+            "model": "gpt-5.4",
+            "resource_id": AOAI_DEPLOYMENT_2,
+            "input_tokens": 19000,
+            "output_tokens": 2000,
+        },
+    ]
+    driver = run(f=two_account_aoai_forecast(), a=a)["drivers"]["payg_ptu"]
+    assert driver["status"] == "pass"
+    assert driver["forecast_monthly_tokens"] == 180000
+    assert driver["observed_monthly_tokens"] == 180000.0
+
+
+def test_payg_ptu_driver_rejects_a_malformed_row_identifier() -> None:
+    a = aoai_actuals()
+    a["usage"]["models"][0]["resource_id"] = 17
+    with pytest.raises(ReconciliationInputError):
+        run(f=aoai_forecast(), a=a)
+
+
+# ---------------------------------------------------------------------------
+# `policy_ref.spec_sha256` — the audit anchor
+# ---------------------------------------------------------------------------
+
+
+def test_placeholder_spec_anchor_is_retained_but_fails_closed() -> None:
+    """A malformed anchor is caller/input evidence, but this module always
+    emits: the string is echoed verbatim (a consumer must be able to see what
+    it was given), every observed number stands, and the verdict degrades."""
+    result = reconcile_costs(
+        forecast(), actuals(), policy(),
+        policy_errors=[],
+        generated_at=GENERATED,
+        policy_spec_sha256="spec-hash",
+    )
+    assert result["policy_ref"]["spec_sha256"] == "spec-hash"
+    assert result["totals"]["actual_window_usd"] == 70.0
+    assert result["status"] == "not-verified"
+    entry = check(result, "policy_complete")
+    assert entry["status"] == "not-verified"
+    assert entry["actual"]["policy_spec_sha256_valid"] is False
+    assert entry["actual"]["missing_paths"] == []
+    assert any("spec_sha256" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["", "spec-hash", "a" * 63, "a" * 65, "g" * 64, " " + "a" * 63, "a" * 64 + " "],
+)
+def test_non_digest_spec_anchors_are_all_rejected(bad: str) -> None:
+    result = reconcile_costs(
+        forecast(), actuals(), policy(),
+        policy_errors=[],
+        generated_at=GENERATED,
+        policy_spec_sha256=bad,
+    )
+    assert result["status"] == "not-verified"
+    assert check(result, "policy_complete")["actual"]["policy_spec_sha256_valid"] is False
+
+
+@pytest.mark.parametrize("good", [SPEC_SHA256, SPEC_SHA256.upper()])
+def test_a_real_digest_is_accepted_in_either_case(good: str) -> None:
+    result = reconcile_costs(
+        forecast(), actuals(), policy(),
+        policy_errors=[],
+        generated_at=GENERATED,
+        policy_spec_sha256=good,
+    )
+    assert result["status"] == "pass"
+    assert check(result, "policy_complete")["actual"]["policy_spec_sha256_valid"] is True
+
+
+def test_standalone_maturity_has_no_anchor_to_check() -> None:
+    """`evaluate_maturity` is documented as a function of actuals + policy;
+    an anchor it was never given is `null`, not a failure."""
+    verdict = evaluate_maturity(
+        actuals(), policy(), projection_attribution_coverage_pct=1.0
+    )
+    entry = next(e for e in verdict["checks"] if e["id"] == "policy_complete")
+    assert entry["actual"]["policy_spec_sha256_valid"] is None
+    assert verdict["status"] == "pass"
+
+
+# ---------------------------------------------------------------------------
+# A negative forecast baseline has no percentage
+# ---------------------------------------------------------------------------
+
+
+def test_negative_forecast_total_yields_null_variance_pct() -> None:
+    """Dividing by a negative baseline inverts the sign: $70 observed against
+    a -$70 projection would report -2.0 — "200% under budget" — for a
+    workload that came in over. The numbers are kept; the ratio is not."""
+    result = run(f=forecast(-300.0))
+    assert result["totals"]["forecast_monthly_usd"] == -300.0
+    assert result["totals"]["forecast_window_usd"] == -70.0
+    assert result["totals"]["variance_window_usd"] == 140.0
+    assert result["totals"]["variance_pct"] is None
+    assert result["variance_status"] == "not-verified"
+    assert any("negative" in warning for warning in result["warnings"])
+
+
+# ---------------------------------------------------------------------------
 # Always-emit contract, purity and strict shapes
 # ---------------------------------------------------------------------------
 
@@ -1262,7 +1697,7 @@ def test_inputs_are_never_mutated() -> None:
         f, a, p,
         policy_errors=errors,
         generated_at=GENERATED,
-        policy_spec_sha256="spec-hash",
+        policy_spec_sha256=SPEC_SHA256,
     )
     assert (f, a, p, errors) == before
 
@@ -1289,7 +1724,7 @@ def test_generated_at_must_be_utc_iso_with_a_z_suffix() -> None:
                 forecast(), actuals(), policy(),
                 policy_errors=[],
                 generated_at=bad,
-                policy_spec_sha256="spec-hash",
+                policy_spec_sha256=SPEC_SHA256,
             )
 
 
@@ -1314,7 +1749,7 @@ def test_policy_errors_must_be_a_list_of_str() -> None:
                 forecast(), actuals(), policy(),
                 policy_errors=bad,
                 generated_at=GENERATED,
-                policy_spec_sha256="spec-hash",
+                policy_spec_sha256=SPEC_SHA256,
             )
 
 

@@ -101,7 +101,7 @@ read the top-level `status`, not `variance_status` alone.
 | `actuals_ref.sha256` | `string` | `sha256_json(actuals)`. |
 | `policy_ref.path` | `string` | Always `specs/SPEC.md`. |
 | `policy_ref.section` | `integer` | Always `14`. |
-| `policy_ref.spec_sha256` | `string` | Caller-supplied hash of the SPEC commit the policy was read from; echoed verbatim. |
+| `policy_ref.spec_sha256` | `string` | Caller-supplied SHA-256 of the SPEC commit the policy was read from; echoed **verbatim**, and additionally validated as a 64-character hex digest (see below). |
 
 `sha256_json(document)` = SHA-256 over
 `json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)`.
@@ -117,6 +117,19 @@ the observed bill did not change. That invalidation is intentional: a
 reconciliation is only meaningful against the exact forecast it was computed
 from. It is also cheap to resolve, since `reconcile` re-runs offline over
 already-collected actuals with no new Azure calls.
+
+### The SPEC anchor must be a real digest
+
+`policy_ref.spec_sha256` exists so a consumer can re-hash `specs/SPEC.md` and
+prove which revision of section 14 gated this verdict. A placeholder, a
+truncated hash, or any string that is not 64 hex characters (either case)
+cannot serve that purpose, so it fails the `policy_complete` maturity check
+and adds a `warnings` entry.
+
+It does **not** raise, and it is **not** rewritten: the string the caller
+supplied is echoed verbatim so the artifact shows exactly what it was handed,
+and every observed number is still emitted. A non-`string` value *does* raise
+`ReconciliationInputError` — that is a caller type error, not evidence.
 
 Recording all three refs makes the verdict **auditable at a commit**: given
 the repository at a commit and the recorded hashes, a reviewer can prove
@@ -166,14 +179,24 @@ full**, with every observed number intact.
 | `variance_window_usd` | `number` \| `null` | `actual_window_usd - forecast_window_usd` |
 | `variance_pct` | `number` \| `null` | `variance_window_usd / forecast_window_usd` |
 
-A 30-day month is the single normalization constant in both directions, so
-`monthly -> window -> monthly` round-trips exactly.
+A 30-day month is the single normalization constant in both directions.
+`monthly -> window -> monthly` therefore recovers the same value
+*arithmetically*, but not necessarily the same **serialized** figure: each
+leg is quantized to cents on the way out, and two cent roundings can leave
+up to $0.01 of drift (e.g. `$100.00` over a 7-day window serializes as
+`$23.33`, whose run rate serializes as `$99.99`). Intermediate values keep
+full precision, so the drift never compounds beyond that single cent — but
+a consumer comparing `actual_monthly_run_rate_usd` against a monthly
+forecast should not expect bit-exact equality.
 
 `variance_pct` is `null` — never `0`, never infinity — when
-`forecast_window_usd` is `0.00` or unknown, with an explanatory entry in
-`warnings`. A percentage against a zero baseline is undefined, and emitting
-`0` would read as "on target" for a workload that was never projected at
-all.
+`forecast_window_usd` is `0.00`, **negative**, or unknown, with an
+explanatory entry in `warnings`. A percentage against a zero baseline is
+undefined, and emitting `0` would read as "on target" for a workload that
+was never projected at all. A *negative* baseline is worse than undefined:
+dividing by it inverts the sign, so a genuine overspend would report as a
+large negative "under budget" percentage. The signed dollar figures are
+retained in both cases and are the honest reading.
 
 Refunds and credits stay **signed**: a negative `actual_window_usd` produces
 a negative run rate and a negative variance. Clipping at zero would hide a
@@ -290,7 +313,9 @@ Each forecast group and each actual resource is used **at most once**, so no
 dollar is counted twice across `matched_resources`, `unmodeled_resources`
 and `forecast_not_observed_resources`. `matched_resources[].actual_window_usd`
 plus `unmodeled_actual_usd` plus `actuals.cost.unattributed_usd` reconciles
-back to `totals.actual_window_usd`.
+back to `totals.actual_window_usd` — **provided the actuals themselves
+reconcile**, which is checked explicitly (see the accounting identity gate
+below).
 
 ### Why coverage uses gross absolute cost
 
@@ -301,6 +326,42 @@ projection_attribution_coverage_pct
 ```
 
 bounded to `[0, 1]`, and `null` when the denominator is `0`.
+
+### Coverage is gated on the actual-cost accounting identity
+
+Before that ratio is reported at all, the actuals must add up:
+
+```
+round_cents(sum(actuals.cost.resources[].period_cost_usd)
+            + actuals.cost.unattributed_usd)
+    == round_cents(actuals.cost.period_total_usd)
+```
+
+If they disagree, `projection_attribution_coverage_pct` is `null`, the
+`projection_attribution_coverage` maturity check is `not-verified`, and a
+`warnings` entry says `actual cost rows do not reconcile to
+period_total_usd`. **Every money total is still emitted unchanged** — the
+numbers are the evidence of the contradiction, and suppressing them would
+destroy it.
+
+The reason is that the coverage denominator is built from the row
+breakdown while the rest of the artifact is built from `period_total_usd`.
+When those two disagree, a *high* coverage number is the most dangerous
+possible output: ten $10 rows against a $1,000 total would report `1.0`,
+"the projection explains the entire bill", while explaining 1% of it. A
+coverage ratio computed over rows that do not describe the bill is not a
+conservative estimate — it is unrelated to the question.
+
+Quantization is applied to the **aggregate**, not per row, so genuine
+sub-cent rows (two $0.005 rows summing to $0.01) reconcile. Absence is not
+contradiction: no `period_total_usd`, or neither a `resources` breakdown nor
+an `unattributed_usd`, leaves the identity unevaluated rather than failed.
+A signed refund row participates in the identity like any other row.
+
+The value is also validated as a number in `[0, 1]`: a `bool`, a `NaN` or
+infinity, a string, or an out-of-range ratio degrades the check to
+`not-verified` with an explanatory `detail` rather than raising or reaching
+the artifact (bare `NaN` is not valid JSON).
 
 **Absolute, not net**, on both sides. A refund on an *unmodeled* resource
 shrinks a net denominator, which would push coverage upward — potentially
@@ -345,7 +406,7 @@ human-readable sentence.
 
 | `id` | Passes when | `actual` |
 | --- | --- | --- |
-| `policy_complete` | Every `REQUIRED_PATHS` leaf of §14 is present and valid, and `policy_errors` is empty | `{missing_paths, policy_error_count}` |
+| `policy_complete` | Every `REQUIRED_PATHS` leaf of §14 is present and valid, `policy_errors` is empty, and the SPEC anchor is a real digest | `{missing_paths, policy_error_count, policy_spec_sha256_valid}` |
 | `actuals_status` | `actuals.status == "pass"` **and** `cost.period_total_usd` is present | `actuals.status` |
 | `complete_days` | `complete_days >= min_complete_days` | `integer` \| `null` |
 | `successful_interactions` | `interaction_status == "pass"` and count `>= min_successful_interactions` | observed count \| `null` |
@@ -363,11 +424,18 @@ already validated their content and this module never builds a query from
 them.
 
 `evaluate_maturity(actuals, policy, *, policy_errors=(),
-projection_attribution_coverage_pct=None)` is callable standalone. The
-coverage argument is passed in because projection coverage is a property of
-the forecast/actuals **join**, not of the actuals document alone; omitting
-it leaves that one check `not-verified`, so a standalone call fails closed
-rather than treating unknown coverage as complete.
+projection_attribution_coverage_pct=None, policy_spec_sha256=None)` is
+callable standalone. The coverage argument is passed in because projection
+coverage is a property of the forecast/actuals **join**, not of the actuals
+document alone; omitting it leaves that one check `not-verified`, so a
+standalone call fails closed rather than treating unknown coverage as
+complete. A supplied coverage value is validated (numeric, finite, in
+`[0, 1]`, not a `bool`) and an unusable one degrades the check instead of
+raising — this function returns a verdict, it never refuses to.
+
+`policy_spec_sha256` is likewise optional: `policy_spec_sha256_valid` is
+`null` for a standalone call with no anchor to check, `false` only when a
+supplied anchor is not a 64-character hex digest.
 
 ### Price basis comparability
 
@@ -406,6 +474,24 @@ Observed tokens are read from `actuals.usage.models` rows whose `deployment`
 matches the recommended deployment name, and only when
 `model_attribution_status == "pass"`.
 
+### Observed token rows are scoped to the recommended account
+
+`deployment` is a **leaf name**, and two Azure OpenAI accounts can each own
+a `chat`. Recommendations are therefore grouped by their parent account, and
+a row is only counted for an account it demonstrably belongs to. A row may
+carry an optional `resource_id` (a deployment or account resource ID) or
+`account_resource_id`; when present it decides the row's account, a row
+belonging to an unimplicated account is excluded with a warning, and rows
+identified this way are summed across every implicated account.
+
+When the recommendation implicates **more than one account** and a
+name-matching row carries no identifier at all, the driver is
+`not-verified` with a warning. Summing such a row would attribute one
+account's traffic to another, and silently dropping it would understate the
+account it really belongs to; neither is a token volume a PTU sizing
+decision may rest on. With exactly one account implicated, a bare deployment
+name is unambiguous and is counted as before.
+
 **This block never contains a dollar figure and never reads a cost
 threshold.** A PTU sizing recommendation is a function of *token throughput*,
 not of spend, and a workload can absorb far more volume drift than cost
@@ -423,9 +509,11 @@ decision needs the full sizing model, not a variance ratio.
 `array[string]`, always present, possibly empty. Non-fatal observations —
 ambiguous matching, a forecast resource with no `monthly_cost_usd`, an
 invalid policy value that was ignored, an undefined `variance_pct`, a price
-basis mismatch. Warnings never change a status on their own; they explain
-one that was already degraded. Entries are de-duplicated and ordered by
-first occurrence.
+basis mismatch, actual cost rows that do not reconcile to
+`period_total_usd`, a SPEC anchor that is not a digest, a token row that
+cannot be attributed to one Azure OpenAI account. Warnings never change a
+status on their own; they explain one that was already degraded. Entries are
+de-duplicated and ordered by first occurrence.
 
 ## Precision and rounding
 
@@ -438,8 +526,10 @@ first occurrence.
 All money arithmetic uses `decimal.Decimal`, parsed from `str(value)` so the
 serialized decimal — not a binary float's error tail — is what gets
 rounded. Rounding happens **once, at serialization**; intermediate values
-keep full precision so a chain of window/monthly conversions does not
-accumulate drift.
+keep full precision, so drift never accumulates across a chain of
+window/monthly conversions *within* one computation. It can still appear
+**between** two serialized figures that each rounded independently: see the
+$0.01 `monthly -> window -> monthly` drift noted under `totals`.
 
 `ROUND_HALF_UP` (ties away from zero) is the accounting convention, and
 Python's built-in `round()` is never used: it applies banker's rounding to

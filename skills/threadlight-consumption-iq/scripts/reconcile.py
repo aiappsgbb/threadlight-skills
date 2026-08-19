@@ -137,6 +137,12 @@ _AOAI_ACCOUNT_TYPE = "microsoft.cognitiveservices/accounts"
 
 _PTU_TIERS = frozenset({"payg", "ptu"})
 
+# A SPEC audit anchor is a SHA-256 digest and nothing else: 64 hex characters.
+# Case is accepted in either direction because `hexdigest()` spellings differ
+# between producers, but a placeholder or truncated string is not an anchor a
+# consumer can re-derive from the SPEC bytes.
+_SHA256_HEX_RE = re.compile(r"[0-9a-fA-F]{64}", re.ASCII)
+
 
 class ReconciliationInputError(RuntimeError):
     """Structurally broken evidence, never a policy or coverage shortfall."""
@@ -655,15 +661,32 @@ class _Actuals:
         self.period_total_usd = _optional_money(
             cost, "period_total_usd", "actuals.cost.period_total_usd"
         )
-        self.unattributed_usd = _optional_money(
+        unattributed = _optional_money(
             cost, "unattributed_usd", "actuals.cost.unattributed_usd"
-        ) or Decimal(0)
+        )
+        # An ABSENT `unattributed_usd` and a declared `0.00` are the same
+        # number but different evidence: only the second one asserts that
+        # nothing was left unattributed, and the accounting identity below
+        # needs to tell them apart. `is None` rather than `or Decimal(0)`,
+        # which would also swallow a declared zero.
+        self.unattributed_declared = unattributed is not None
+        self.unattributed_usd = Decimal(0) if unattributed is None else unattributed
         self.source_coverage_pct = _optional_unit_ratio(
             cost, "resource_id_coverage_pct", "actuals.cost.resource_id_coverage_pct"
         )
+        self.resources_declared = cost.get("resources") is not None
         self.resources = _require_list_of_mappings(
             cost, "resources", "actuals.cost.resources"
         )
+        # Parsed once, here, so a malformed cell fails closed before any
+        # consumer of this document (including a standalone maturity call)
+        # can compute a ratio over it.
+        self.resources_total = Decimal(0)
+        for index, resource in enumerate(self.resources):
+            self.resources_total += _parse_money(
+                resource.get("period_cost_usd"),
+                f"actuals.cost.resources[{index}].period_cost_usd",
+            )
         self.interaction_status = _optional_str(
             usage, "interaction_status", "actuals.usage.interaction_status"
         )
@@ -681,6 +704,82 @@ class _Actuals:
         self.models = _require_list_of_mappings(
             usage, "models", "actuals.usage.models"
         )
+
+
+COST_IDENTITY_FAILURE = "actual cost rows do not reconcile to period_total_usd"
+
+
+def _cost_evidence_reconciles(observed: _Actuals) -> tuple[bool, str]:
+    """Does the per-resource breakdown add back up to the declared total?
+
+    `sum(resources[].period_cost_usd) + unattributed_usd` must equal
+    `cost.period_total_usd`, compared at CENT precision on the aggregate — not
+    on a sum of per-row cent roundings, which would flag half-cent rows that
+    genuinely do add up (see the schema reference on double rounding).
+
+    Absent evidence is not contradictory evidence: with no `period_total_usd`
+    there is nothing to reconcile against, and with neither a resource list
+    nor a declared `unattributed_usd` there is no breakdown to reconcile at
+    all. Both return `True` here and are already `not-verified` elsewhere.
+
+    Returns `(True, "")` or `(False, <reason>)`; never raises on its own —
+    malformed cells already raised in `_Actuals`.
+    """
+    if observed.period_total_usd is None:
+        return True, ""
+    if not observed.resources_declared and not observed.unattributed_declared:
+        return True, ""
+    breakdown = _quantize(
+        observed.resources_total + observed.unattributed_usd,
+        _CENT,
+        context="actuals.cost breakdown total",
+    )
+    declared = _quantize(
+        observed.period_total_usd, _CENT, context="actuals.cost.period_total_usd"
+    )
+    if breakdown == declared:
+        return True, ""
+    return False, (
+        f"{COST_IDENTITY_FAILURE}: resource rows plus unattributed spend sum "
+        f"to {breakdown} while the declared period total is {declared}"
+    )
+
+
+def _usable_coverage(
+    raw: object, observed: _Actuals
+) -> tuple[Optional[float], str]:
+    """Return `(coverage, "")` when the value may gate a verdict, or
+    `(None, <reason>)` when it may not.
+
+    Two independent ways coverage stops being usable, checked in that order:
+
+    1. The cost evidence contradicts itself. Coverage divides one part of that
+       evidence by another, so its most dangerous possible value is a
+       confident `1.0` computed over rows that do not add up to the bill.
+    2. The value is not a ratio in `[0, 1]`. `True` (an `int` subclass), a
+       percentage passed as `42`, a NaN, or a negative share are all rejected
+       to `None` rather than raised on: an exception here would suppress an
+       entire artifact over one bad ratio, and a NaN that reached `actual`
+       would serialize as bare `NaN`, which is not valid JSON.
+    """
+    reconciles, reason = _cost_evidence_reconciles(observed)
+    if not reconciles:
+        return None, (
+            f"coverage cannot be trusted because {reason}; it is reported as "
+            "null rather than as a share of a total that does not hold"
+        )
+    if raw is None:
+        return None, ""
+    invalid = (
+        f"projection_attribution_coverage_pct {raw!r} is not a ratio in "
+        "[0, 1], so it cannot gate a verdict and is reported as null"
+    )
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None, invalid
+    value = float(raw)
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        return None, invalid
+    return value, ""
 
 
 def _normalize_id(raw: object, label: str) -> Optional[str]:
@@ -941,6 +1040,7 @@ def evaluate_maturity(
     *,
     policy_errors: Iterable[str] = (),
     projection_attribution_coverage_pct: Optional[float] = None,
+    policy_spec_sha256: Optional[str] = None,
 ) -> dict[str, object]:
     """Evaluate every named maturity check and the overall verdict.
 
@@ -960,7 +1060,16 @@ def evaluate_maturity(
     it is a property of the forecast/actuals JOIN, not of the actuals
     document alone. Omitting it leaves that one check `not-verified` — a
     standalone maturity call therefore fails closed rather than silently
-    treating unknown coverage as complete.
+    treating unknown coverage as complete. A supplied value that is not a
+    ratio in `[0, 1]`, or one computed over cost rows that do not add up to
+    `period_total_usd`, is treated exactly like an absent one and explained
+    in that check's `detail`; neither raises.
+
+    `policy_spec_sha256` is the caller's SPEC audit anchor. `None` means "not
+    supplied" (a standalone call has no anchor to check) and does not fail
+    anything; a supplied string that is not a 64-character hex digest fails
+    `policy_complete`, because a policy whose provenance cannot be pinned to
+    a SPEC revision is not a policy a consumer can re-verify.
     """
     _require_mapping(actuals, "actuals")
     _require_mapping(policy, "policy")
@@ -969,28 +1078,35 @@ def evaluate_maturity(
     snapshot = _policy_snapshot(policy)
     missing = _missing_policy_paths(policy, snapshot)
 
-    if projection_attribution_coverage_pct is not None and not isinstance(
-        projection_attribution_coverage_pct, (int, float)
-    ):
-        raise ReconciliationInputError(
-            "projection_attribution_coverage_pct must be a number or None, got "
-            f"{projection_attribution_coverage_pct!r}"
+    anchor_valid: Optional[bool] = None
+    if policy_spec_sha256 is not None:
+        anchor_valid = isinstance(policy_spec_sha256, str) and bool(
+            _SHA256_HEX_RE.fullmatch(policy_spec_sha256)
         )
 
     checks: list[dict[str, object]] = []
 
-    policy_complete = not missing and not errors
+    policy_complete = not missing and not errors and anchor_valid is not False
     checks.append(
         _check(
             "policy_complete",
             PASS if policy_complete else NOT_VERIFIED,
-            {"missing_paths": missing, "policy_error_count": len(errors)},
-            {"missing_paths": [], "policy_error_count": 0},
-            "SPEC section 14 value_model parsed cleanly and declares every "
-            "required leaf"
+            {
+                "missing_paths": missing,
+                "policy_error_count": len(errors),
+                "policy_spec_sha256_valid": anchor_valid,
+            },
+            {
+                "missing_paths": [],
+                "policy_error_count": 0,
+                "policy_spec_sha256_valid": True,
+            },
+            "SPEC section 14 value_model parsed cleanly, declares every "
+            "required leaf, and is anchored to a re-derivable SPEC digest"
             if policy_complete
-            else "SPEC section 14 value_model is incomplete or did not parse "
-            "cleanly; thresholds cannot gate a verdict",
+            else "SPEC section 14 value_model is incomplete, did not parse "
+            "cleanly, or is not anchored to a re-derivable SPEC digest; "
+            "thresholds cannot gate a verdict",
         )
     )
 
@@ -1075,18 +1191,32 @@ def evaluate_maturity(
         )
     )
 
-    checks.append(
-        _threshold_check(
-            "projection_attribution_coverage",
-            projection_attribution_coverage_pct,
-            snapshot["min_projection_attribution_coverage_pct"],
-            at_most=False,
-            detail_pass="the projection explains at least the declared minimum "
-            "share of observed spend",
-            detail_fail="too little observed spend maps onto a projected "
-            "resource, or coverage could not be computed",
-        )
+    coverage_value, coverage_reason = _usable_coverage(
+        projection_attribution_coverage_pct, observed
     )
+    if coverage_reason:
+        checks.append(
+            _check(
+                "projection_attribution_coverage",
+                NOT_VERIFIED,
+                None,
+                snapshot["min_projection_attribution_coverage_pct"],
+                coverage_reason,
+            )
+        )
+    else:
+        checks.append(
+            _threshold_check(
+                "projection_attribution_coverage",
+                coverage_value,
+                snapshot["min_projection_attribution_coverage_pct"],
+                at_most=False,
+                detail_pass="the projection explains at least the declared minimum "
+                "share of observed spend",
+                detail_fail="too little observed spend maps onto a projected "
+                "resource, or coverage could not be computed",
+            )
+        )
 
     basis_ok = (
         observed.cost_basis == COST_BASIS_LITERAL
@@ -1194,14 +1324,19 @@ def _payg_ptu_driver(
         "detail": "",
     }
 
-    deployment_ids = _payg_ptu_deployment_ids(forecast)
-    if not deployment_ids:
+    accounts = _payg_ptu_accounts(forecast)
+    if not accounts:
         driver["detail"] = (
             "no explicit PAYG-to-PTU or PTU-to-PAYG recommendation for an "
             "Azure OpenAI deployment is present in the forecast"
         )
         return driver
 
+    deployment_ids = sorted(
+        deployment_id
+        for account_deployments in accounts.values()
+        for deployment_id in account_deployments
+    )
     forecast_tokens = _forecast_deployment_tokens(forecast, deployment_ids)
     driver["forecast_monthly_tokens"] = forecast_tokens
 
@@ -1212,10 +1347,16 @@ def _payg_ptu_driver(
         )
         return driver
 
-    deployment_names = {
-        deployment_id.rsplit("/", 1)[-1] for deployment_id in deployment_ids
-    }
-    observed_tokens = _observed_deployment_tokens(observed, deployment_names)
+    observed_tokens, ambiguous = _observed_deployment_tokens(
+        observed, accounts, warnings
+    )
+    if ambiguous:
+        driver["detail"] = (
+            "the recommendation spans more than one Azure OpenAI account and "
+            "an observed token row carries only a bare deployment name, so "
+            "observed volume cannot be attributed to a specific account"
+        )
+        return driver
     if observed_tokens is None:
         driver["detail"] = (
             "no observed token row is attributed to the recommended "
@@ -1224,7 +1365,8 @@ def _payg_ptu_driver(
         _warn(
             warnings,
             "drivers.payg_ptu: no observed token row matches the recommended "
-            "deployment names; the driver is not verified",
+            "deployments in their own Azure OpenAI account; the driver is not "
+            "verified",
         )
         return driver
 
@@ -1279,12 +1421,18 @@ def _payg_ptu_driver(
     return driver
 
 
-def _payg_ptu_deployment_ids(forecast: dict[str, Any]) -> list[str]:
-    """Normalized AOAI deployment IDs carrying an explicit PAYG<->PTU
-    recommendation. Anything else — a same-tier recommendation, a non-AOAI
-    resource, a tier this driver does not model — is ignored rather than
-    inferred."""
-    deployment_ids: list[str] = []
+def _payg_ptu_accounts(forecast: dict[str, Any]) -> dict[str, list[str]]:
+    """Recommended AOAI deployments, GROUPED BY their parent account.
+
+    Anything else — a same-tier recommendation, a non-AOAI resource, a tier
+    this driver does not model — is ignored rather than inferred.
+
+    The grouping is the point: `deployment` in an observed token row is a leaf
+    name, and two accounts can each own a `chat`. Keeping the account each
+    recommended deployment belongs to is what lets the observed side refuse
+    to add up names that only look alike (RFC §9.4).
+    """
+    accounts: dict[str, list[str]] = {}
     for index, recommendation in enumerate(
         _require_list_of_mappings(
             forecast, "recommendations", "forecast.recommendations"
@@ -1304,11 +1452,15 @@ def _payg_ptu_deployment_ids(forecast: dict[str, Any]) -> list[str]:
         normalized = _normalize_id(
             recommendation.get("resource_id"), f"{label}.resource_id"
         )
-        if normalized is None or _AOAI_DEPLOYMENT_RE.match(normalized) is None:
+        if normalized is None:
             continue
-        if normalized not in deployment_ids:
-            deployment_ids.append(normalized)
-    return sorted(deployment_ids)
+        aoai = _AOAI_DEPLOYMENT_RE.match(normalized)
+        if aoai is None:
+            continue
+        deployments = accounts.setdefault(aoai.group("account"), [])
+        if normalized not in deployments:
+            deployments.append(normalized)
+    return {account: sorted(accounts[account]) for account in sorted(accounts)}
 
 
 def _forecast_deployment_tokens(
@@ -1336,23 +1488,96 @@ def _forecast_deployment_tokens(
     return total
 
 
+def _row_account(row: dict[str, Any], label: str) -> Optional[str]:
+    """The AOAI account an observed token row belongs to, if it says.
+
+    `resource_id` (a deployment or an account) is preferred; an
+    `account_resource_id` from a collector that could only attribute to the
+    billed account is accepted too. Absent identity returns `None` — a fact
+    about the row, not an error.
+    """
+    for key in ("resource_id", "account_resource_id"):
+        raw = row.get(key)
+        if raw is None:
+            continue
+        normalized = _normalize_id(raw, f"{label}.{key}")
+        if normalized is None:
+            continue
+        aoai = _AOAI_DEPLOYMENT_RE.match(normalized)
+        return aoai.group("account") if aoai is not None else normalized
+    return None
+
+
 def _observed_deployment_tokens(
-    observed: _Actuals, deployment_names: set[str]
-) -> Optional[int]:
+    observed: _Actuals, accounts: dict[str, list[str]], warnings: list[str]
+) -> tuple[Optional[int], bool]:
+    """Observed tokens for the recommended deployments, and whether the
+    attribution was ambiguous.
+
+    Returns `(tokens, ambiguous)`. A row is counted when it names a
+    recommended deployment AND either identifies its own account (which must
+    be one of the recommended accounts) or the recommendation implicates
+    exactly one account, which makes the bare name unambiguous. When more
+    than one account is implicated and a matching row carries no identity,
+    the whole driver is ambiguous: summing it would attribute one account's
+    traffic to another, and dropping it would understate the account it
+    really belongs to.
+    """
+    names_by_account = {
+        account: {
+            deployment_id.rsplit("/", 1)[-1] for deployment_id in deployment_ids
+        }
+        for account, deployment_ids in accounts.items()
+    }
+    every_name = set().union(*names_by_account.values()) if names_by_account else set()
+    single_account = len(accounts) == 1
+
     total = 0
     matched = False
     for index, row in enumerate(observed.models):
         label = f"actuals.usage.models[{index}]"
         name = _normalize_type(row.get("deployment"), f"{label}.deployment")
-        if not name or name not in deployment_names:
+        account = _row_account(row, label)
+        if not name and account is not None:
+            # A row identified only by a deployment resource ID still names a
+            # deployment; read the leaf rather than discarding the row.
+            normalized = _normalize_id(row.get("resource_id"), f"{label}.resource_id")
+            aoai = (
+                _AOAI_DEPLOYMENT_RE.match(normalized)
+                if normalized is not None
+                else None
+            )
+            if aoai is not None:
+                name = aoai.group("deployment")
+        if not name or name not in every_name:
             continue
+        if account is not None:
+            if name not in names_by_account.get(account, set()):
+                _warn(
+                    warnings,
+                    "drivers.payg_ptu: an observed token row for deployment "
+                    f"{name!r} belongs to Azure OpenAI account {account!r}, "
+                    "which carries no PAYG/PTU recommendation; it is excluded "
+                    "from observed volume",
+                )
+                continue
+        elif not single_account:
+            _warn(
+                warnings,
+                "drivers.payg_ptu: the PAYG/PTU recommendation spans "
+                f"{len(accounts)} Azure OpenAI accounts and an observed token "
+                f"row names only deployment {name!r} with no account or "
+                "resource identifier; the driver is not verified rather than "
+                "summing rows across accounts",
+            )
+            return None, True
         matched = True
         for axis in ("input_tokens", "output_tokens"):
             raw = row.get(axis)
             if raw is None:
                 continue
             total += _require_token_count(raw, f"{label}.{axis}")
-    return total if matched else None
+    return (total if matched else None), False
 
 
 # ---------------------------------------------------------------------------
@@ -1396,6 +1621,20 @@ def reconcile_costs(
         )
 
     warnings: list[str] = []
+    # A malformed anchor is caller evidence, not policy content, but this
+    # module always emits: the string is echoed verbatim so a consumer can see
+    # exactly what it was handed, and the verdict degrades through
+    # `policy_complete` (see `evaluate_maturity`). Raising here would suppress
+    # an artifact whose observed numbers are perfectly good; returning a
+    # silent `pass` would claim a provenance nobody can re-derive.
+    if _SHA256_HEX_RE.fullmatch(policy_spec_sha256) is None:
+        _warn(
+            warnings,
+            f"policy_ref: spec_sha256 {policy_spec_sha256!r} is not a "
+            "64-character SHA-256 hex digest, so the SPEC revision this "
+            "policy was read from cannot be re-derived; maturity is not "
+            "verified",
+        )
     observed = _Actuals(actuals)
     snapshot = _policy_snapshot(policy, warnings)
     missing_paths = _missing_policy_paths(policy, snapshot)
@@ -1449,6 +1688,17 @@ def reconcile_costs(
                 "0.00; a percentage against a zero baseline is undefined, "
                 "never zero or infinite",
             )
+        elif forecast_window_dec < 0:
+            # Dividing by a negative baseline flips the sign of the ratio: an
+            # overspend would report as a large negative "under budget"
+            # percentage. The signed dollar amounts above are still exact and
+            # are the honest way to read this case.
+            _warn(
+                warnings,
+                "totals: variance_pct is null because forecast_window_usd is "
+                "negative; a percentage against a negative baseline inverts "
+                "the sign of the variance and would read as its opposite",
+            )
         else:
             variance_pct_dec = _quantize(
                 variance_dec / forecast_window_dec, _RATIO, context="variance_pct"
@@ -1482,6 +1732,7 @@ def reconcile_costs(
         projection_attribution_coverage_pct=coverage[
             "projection_attribution_coverage_pct"
         ],
+        policy_spec_sha256=policy_spec_sha256,
     )
 
     # --- unit economics (RFC §9.3) ----------------------------------------
@@ -1630,6 +1881,19 @@ def _coverage(
         )
     else:
         projection_coverage = None
+
+    # Gate the RATIO, never the money. If the rows and the declared total
+    # disagree, the numerator and denominator above come from evidence that
+    # contradicts itself, and the most dangerous number it can produce is a
+    # confident `1.0`. Every dollar below is still reported exactly as
+    # observed; only the share is withdrawn.
+    reconciles, reason = _cost_evidence_reconciles(observed)
+    if not reconciles:
+        projection_coverage = None
+        _warn(
+            warnings,
+            f"coverage: projection_attribution_coverage_pct is null because {reason}",
+        )
 
     return {
         "projection_attribution_coverage_pct": projection_coverage,
