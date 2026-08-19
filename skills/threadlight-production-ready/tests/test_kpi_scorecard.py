@@ -46,13 +46,16 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent
 SKILL_DIR = TEST_DIR.parent
+REPO_ROOT = SKILL_DIR.parent.parent
 SCRIPT = SKILL_DIR / "scripts" / "production_ready.py"
 
 sys.path.insert(0, str(SCRIPT.parent))
@@ -679,6 +682,43 @@ def test_sub_cent_actual_total_matches_the_reconciler(tmp_path, monkeypatch) -> 
     assert value is not None and abs(value - 10.01) < 1e-9
 
 
+def test_sub_cent_division_accepts_only_the_producer_formula(
+    tmp_path, monkeypatch
+) -> None:
+    """$0.005 over 2 successes: cent-normalize first, *then* divide.
+
+    Cent-normalizing $0.005 (ROUND_HALF_UP, 2 dp) gives $0.01; dividing that by
+    2 successes and quantizing to 4 dp gives $0.0050 — the only value
+    `reconcile` can ever publish for this input. Dividing the raw,
+    un-quantized $0.005 by 2 gives $0.0025, which is arithmetically exact but
+    not a formula the reconciler runs, so it must be rejected rather than
+    accepted as an alternate reading of the same evidence.
+    """
+    _freeze(monkeypatch)
+    actuals = _actuals(period_total_usd=0.005, successful_interactions=2)
+
+    expected = pr._expected_unit_cost(actuals, 2)
+    assert expected is not None
+    assert expected == Decimal("0.0050")
+
+    accepted = _kpi_ctx(
+        tmp_path / "accepted",
+        actuals=actuals,
+        unit_economics=_unit(
+            successful_interactions=2, cost_per_successful_interaction_usd=0.005),
+    )
+    value = pr._read_cost_per_interaction(accepted)
+    assert value is not None and abs(value - 0.005) < 1e-9
+
+    rejected = _kpi_ctx(
+        tmp_path / "rejected",
+        actuals=actuals,
+        unit_economics=_unit(
+            successful_interactions=2, cost_per_successful_interaction_usd=0.0025),
+    )
+    assert pr._read_cost_per_interaction(rejected) is None
+
+
 def test_contradiction_warns_without_dumping_the_artifact(
     tmp_path, monkeypatch, capsys
 ) -> None:
@@ -807,6 +847,90 @@ def test_report_renders_a_withheld_unit_cost_as_not_verified(
     kpi_section = md.split("## 8. Outcome KPI scorecard", 1)[1].split("\n## ", 1)[0]
     assert "0.05" not in kpi_section
     assert "not-verified" in kpi_section
+
+
+# ---------------------------------------------------------------------------
+# Committed exemplar pairing — KPI-003 wording must not drift
+# ---------------------------------------------------------------------------
+
+# Every tracked (non-gitignored) manifest/report pair this repo ships as a
+# worked example. `sample-pilot`'s own pair is excluded on purpose: its
+# `.gitignore` marks it regenerate-on-run, so a clean checkout never has it on
+# disk and asserting on it here would make the suite depend on local state.
+_KPI003_FIXTURE_PAIRS = [
+    (REPO_ROOT / "examples" / "returns-triage-governed" / "specs" / "production-readiness.json",
+     REPO_ROOT / "examples" / "returns-triage-governed" / "docs" / "production-readiness-report.md"),
+    (SKILL_DIR / "references" / "fixtures" / "sample-pilot-broken" / "tests"
+     / "production-readiness-manifest.json",
+     SKILL_DIR / "references" / "fixtures" / "sample-pilot-broken" / "docs"
+     / "production-readiness-report.md"),
+    (SKILL_DIR / "references" / "fixtures" / "sample-pilot-citadel" / "tests"
+     / "production-readiness-manifest.json",
+     SKILL_DIR / "references" / "fixtures" / "sample-pilot-citadel" / "docs"
+     / "production-readiness-report.md"),
+]
+
+# `| \`KPI-003\` | <severity> | <status> | <detail> |` — the pillar findings table.
+_KPI003_ROW_RE = re.compile(
+    r"^\|\s*`KPI-003`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$")
+# `N. **KPI-003** — <title>. See: ...` — the not-yet-passing recipe gap list.
+_KPI003_LIST_RE = re.compile(
+    r"^\d+\.\s+\*\*KPI-003\*\*\s+—\s+(.+?)\.\s+See:\s+.+$")
+
+
+def _kpi003_finding_from_manifest(path: Path) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for pillar in data.get("pillars", []):
+        for finding in pillar.get("findings", []):
+            if finding.get("id") == "KPI-003":
+                return finding
+    raise AssertionError(f"no KPI-003 finding in {path}")
+
+
+def _kpi003_report_lines(path: Path) -> tuple[str | None, str | None]:
+    """Return the report's (title, detail) as stated for KPI-003, if present."""
+    row_detail: str | None = None
+    list_title: str | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = _KPI003_ROW_RE.match(line)
+        if row:
+            row_detail = row.group(3)
+        item = _KPI003_LIST_RE.match(line)
+        if item:
+            list_title = item.group(1)
+    return list_title, row_detail
+
+
+def test_committed_kpi003_fixtures_match_current_wording_and_their_own_report() -> None:
+    """Committed manifest/report pairs must state KPI-003 the same way `pr` does.
+
+    `KPI-003`'s title is a fixed string in `FINDING_CATALOG`; a manifest whose
+    title has drifted from it — or from the title/detail its own paired
+    markdown report shows for the same finding — would be teaching a reviewer
+    the wrong contract for the outcome-KPI scorecard. This is what would have
+    caught the exemplars going stale after the unit-cost wording changed
+    without failing any other test.
+    """
+    checked = 0
+    for manifest_path, report_path in _KPI003_FIXTURE_PAIRS:
+        if not manifest_path.exists() or not report_path.exists():
+            continue
+        checked += 1
+        finding = _kpi003_finding_from_manifest(manifest_path)
+        assert finding["title"] == pr.FINDING_CATALOG["KPI-003"]["title"], (
+            f"{manifest_path} KPI-003 title drifted from FINDING_CATALOG: "
+            f"{finding['title']!r}")
+
+        report_title, report_detail = _kpi003_report_lines(report_path)
+        assert report_title is not None, f"no KPI-003 gap-list entry in {report_path}"
+        assert report_detail is not None, f"no KPI-003 findings-table row in {report_path}"
+        assert report_title == finding["title"], (
+            f"{report_path} KPI-003 title does not match its manifest "
+            f"{manifest_path}")
+        assert report_detail == finding["detail"], (
+            f"{report_path} KPI-003 detail does not match its manifest "
+            f"{manifest_path}")
+    assert checked >= 2, "expected at least the broken/citadel exemplars to be checked"
 
 
 if __name__ == "__main__":

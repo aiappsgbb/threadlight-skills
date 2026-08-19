@@ -3400,19 +3400,22 @@ def _withhold_unit_cost(reason: str) -> None:
     return None
 
 
-def _expected_unit_cost(actuals: dict, claimed_successes: int) -> list[Decimal] | None:
+def _expected_unit_cost(actuals: dict, claimed_successes: int) -> Decimal | None:
     """Re-derive cost/successful-interaction from the pinned actuals.
 
-    Returns the acceptable values for the reconciler's published unit cost, or
+    Returns the one value the reconciler's published unit cost must match, or
     None when the canonical evidence cannot support one at all (the count was
     never observed, the total is unusable, or the reconciliation divided by a
     different number of successes than the actuals recorded).
 
-    Two candidates are returned because `reconcile` quantizes the period total
-    to cents *before* dividing: for a sub-cent total the cent-normalized result
-    is the one the producer actually published, while the raw division is the
-    arithmetically exact one. Either is a faithful reading of the same
-    evidence, and only a value matching neither is a contradiction.
+    `reconcile` quantizes the period total to cents (ROUND_HALF_UP) *before*
+    dividing by the success count, then quantizes the quotient to 4 dp
+    (ROUND_HALF_UP) — that exact two-step formula is mirrored here, and only
+    it. The raw, un-quantized division is not a candidate: it is the
+    arithmetically exact figure, but it is never what the producer actually
+    published, so accepting it as an alternative would let a value the
+    reconciler could never emit pass as a faithful reading of the same
+    evidence.
     """
     cost_block = actuals.get("cost")
     usage = actuals.get("usage")
@@ -3439,18 +3442,16 @@ def _expected_unit_cost(actuals: dict, claimed_successes: int) -> list[Decimal] 
     try:
         raw = Decimal(str(float(total)))
         divisor = Decimal(observed)
-        candidates = [
-            (raw / divisor).quantize(_COST_UNIT_RATE_EXPONENT, rounding=ROUND_HALF_UP),
-            (raw.quantize(_COST_UNIT_CENT_EXPONENT, rounding=ROUND_HALF_UP) / divisor)
-            .quantize(_COST_UNIT_RATE_EXPONENT, rounding=ROUND_HALF_UP),
-        ]
+        cent_normalized = raw.quantize(_COST_UNIT_CENT_EXPONENT, rounding=ROUND_HALF_UP)
+        expected = (cent_normalized / divisor).quantize(
+            _COST_UNIT_RATE_EXPONENT, rounding=ROUND_HALF_UP)
     except (ArithmeticError, ValueError):
         # Not representable at the published precision — the reconciler raises
         # on exactly this input, so no artifact it produced can contain it.
         return _withhold_unit_cost(
             "the pinned actual total is not representable at the reconciler's "
             "published precision")
-    return candidates
+    return expected
 
 
 def _short(value: object, limit: int = 48) -> str:
@@ -3538,12 +3539,11 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     if expected is None:
         return None
     reported = Decimal(str(float(cost)))
-    if all(abs(reported - candidate) > _COST_UNIT_RATE_TOLERANCE
-           for candidate in expected):
+    if abs(reported - expected) > _COST_UNIT_RATE_TOLERANCE:
         return _withhold_unit_cost(
             f"reconciliation reports ${float(cost):.4f} per successful interaction, "
             f"but the digest-pinned actuals re-derive "
-            f"${float(min(expected)):.4f} over {successes} success(es)")
+            f"${float(expected):.4f} over {successes} success(es)")
     return float(cost)
 
 

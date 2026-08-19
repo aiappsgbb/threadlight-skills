@@ -643,12 +643,12 @@
         },
         {
           "id": "KPI-003",
-          "title": "Outcome scorecard joins eval pass-rate + cost/interaction + traces",
+          "title": "Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces",
           "pillar": "observability",
           "severity": "should-fix",
           "status": "should-fix",
           "tier": 0,
-          "detail": "Partial outcome scorecard (traces present). Join all three (eval pass-rate + reconciled cost per successful interaction + traces) for a measurable outcome view.",
+          "detail": "Partial outcome scorecard (traces present). Join all three (eval pass-rate + actual cost per successful interaction + traces) for a measurable outcome view.",
           "evidence_refs": [],
           "waiver_id": null
         },
