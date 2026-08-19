@@ -68,7 +68,7 @@ import math
 import re
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import NamedTuple, Optional
 
 
@@ -84,21 +84,33 @@ class ActualsEvidenceError(RuntimeError):
 # casefolded).
 COST_COLUMN_PRIORITY = ("pretaxcost", "costusd", "cost")
 
-_YYYYMMDD_RE = re.compile(r"\d{8}")
-_ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# `re.ASCII` is required, not cosmetic: without it Python's `\d` also
+# matches non-ASCII decimal digits (e.g. Arabic-Indic, fullwidth), and
+# `int()`/`date.fromisoformat()` both happily parse those too, so a
+# YYYYMMDD/ISO-date `UsageDate` cell carrying Unicode digits would
+# otherwise be silently accepted as if it were the plain-ASCII form.
+_YYYYMMDD_RE = re.compile(r"\d{8}", re.ASCII)
+_ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 
 
 def select_cost_column(names: list[str]) -> str:
     """Return the casefolded name of the single cost column to use.
 
-    `names` must already be casefolded. Exactly one column is used. If
-    several of the accepted names are present, the highest-priority one
-    wins and the chosen name is recorded in the manifest as
-    `cost.cost_column` so a reader can tell which contract the numbers came
-    from. If none is present this is an error, never a zero.
+    `names` may carry any original casing — every entry is casefolded
+    internally before matching, so a caller never needs to pre-casefold
+    its own list first (this module's own `_parse_page` already does that,
+    but that is an implementation detail, not a contract this public
+    function should require of every caller). The *return value* is always
+    the casefolded key (e.g. `"pretaxcost"`), never the original casing;
+    the original-cased name actually observed is recorded separately, at
+    the call site, as `cost.cost_column` in the manifest. Exactly one
+    column is used. If several of the accepted names are present, the
+    highest-priority one wins. If none is present this is an error, never
+    a zero.
     """
+    casefolded_names = [name.casefold() for name in names]
     for candidate in COST_COLUMN_PRIORITY:
-        if candidate in names:
+        if candidate in casefolded_names:
             return candidate
     raise ActualsEvidenceError(
         "Cost Management response has no cost column "
@@ -141,6 +153,31 @@ def normalize_usage_date(value: object) -> date:
             raise ActualsEvidenceError(
                 f"UsageDate is not a date: {value!r}"
             ) from exc
+        # A datetime `UsageDate` cell must denote an unambiguous UTC
+        # calendar day: naive (no offset) or non-UTC-offset datetimes are
+        # rejected outright rather than reinterpreted as a "local-date
+        # bucket" (silently treating a wall-clock time in some other zone
+        # as if it were the UTC date is exactly the off-by-one that would
+        # masquerade as a clean total), and a non-midnight UTC time is
+        # rejected rather than truncated to a date, because Cost
+        # Management's `Usage` Query API only ever reports whole UTC days
+        # — a non-midnight timestamp is evidence of a caller/response bug,
+        # not a sub-day observation to bucket.
+        if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+            raise ActualsEvidenceError(
+                f"UsageDate is not a date: {value!r} (datetime must be UTC, "
+                "offset zero)"
+            )
+        if (parsed.hour, parsed.minute, parsed.second, parsed.microsecond) != (
+            0,
+            0,
+            0,
+            0,
+        ):
+            raise ActualsEvidenceError(
+                f"UsageDate is not a date: {value!r} (datetime must be "
+                "exact UTC midnight)"
+            )
         return parsed.date()
 
     raise ActualsEvidenceError(f"UsageDate is not a date: {value!r}")
@@ -241,6 +278,11 @@ def _parse_cost_value(raw: object) -> Decimal:
 
 
 def _require_utc(value: object, label: str) -> datetime:
+    """Require a timezone-aware UTC instant. Does not require midnight —
+    `generated_at` is a real point-in-time timestamp (a pipeline can finish
+    at any minute) and must never be forced onto a calendar-day boundary.
+    Window boundaries additionally require midnight; see
+    `_require_utc_midnight`."""
     if not isinstance(value, datetime) or value.tzinfo is None:
         raise ActualsEvidenceError(
             f"{label} must be a timezone-aware UTC datetime, got {value!r}"
@@ -252,13 +294,109 @@ def _require_utc(value: object, label: str) -> datetime:
     return value
 
 
+def _require_utc_midnight(value: object, label: str) -> datetime:
+    """Require a timezone-aware UTC instant that also lands exactly on a
+    UTC calendar-day boundary (`00:00:00.000000`). `start`/`end` gate the
+    daily-granularity Cost Management window (RFC §8.1): a non-midnight
+    boundary would make `complete_days = (end - start).days` silently
+    truncate a fractional day rather than reporting an exact whole-day
+    count, so it is rejected outright rather than accepted and rounded."""
+    value = _require_utc(value, label)
+    if (value.hour, value.minute, value.second, value.microsecond) != (0, 0, 0, 0):
+        raise ActualsEvidenceError(
+            f"{label} must be exact UTC midnight (00:00:00), got "
+            f"{value.isoformat()}"
+        )
+    return value
+
+
+_CENT = Decimal("0.01")
+
+
+def _quantize_usd(value: Decimal) -> Decimal:
+    """Round one USD amount to the cent with `ROUND_HALF_UP` (ties away
+    from zero) — the accounting-standard rounding, and never Python's
+    `round()` on a `float`. `round()` operates on the *binary* float
+    already parsed from the caller's number, which frequently is not the
+    exact decimal the caller intended (`float(2.675)` is actually
+    `2.67499999999999982236...`), so `round(2.675, 2) == 2.67` even though
+    the intended value is a true half-cent tie that must round up to
+    `2.68`. Every caller of this function must pass a `Decimal` built from
+    the caller's original string/exact representation (as
+    `_parse_cost_value` already does), never a `Decimal` re-derived from an
+    already-rounded `float`.
+    """
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def _reconcile_quantized_costs(
+    resource_totals: dict[str, dict[str, object]],
+    unattributed_raw: Decimal,
+) -> tuple[dict[str, Decimal], Decimal, Decimal]:
+    """Quantize every resource bucket and `unattributed` to the cent, and
+    guarantee the *displayed* parts sum exactly to the *displayed* total —
+    the accounting identity `period_total_usd == sum(period_cost_usd) +
+    unattributed_usd` must hold exactly at the cent after serialization,
+    with no cent ever dropped or fabricated.
+
+    The grand total is quantized once, directly from the exact (unrounded)
+    Decimal sum of every raw part — never by re-summing already-rounded
+    parts, which would compound rounding error across many rows. Each part
+    is *also* independently quantized, because each part is itself a
+    displayed manifest field. Independently-rounded parts are not
+    guaranteed to sum to the independently-rounded total: three rows of
+    exactly `0.005` sum to a raw `0.015` (which quantizes to `0.02`), but
+    each `0.005` part quantizes to `0.01` on its own (summing those parts
+    gives `0.03`). Whenever the two disagree, the (always-exact, since
+    every value here is already cent-quantized) residual is added to the
+    largest-absolute-value resource bucket — ties are broken
+    deterministically by the same `.casefold().rstrip("/")` resource-key
+    ordering the manifest already sorts `cost.resources[]` by (the
+    lexically smallest normalized key wins), so the adjustment target is
+    reproducible run to run and documented, not an arbitrary
+    dict-iteration artifact. `unattributed` only ever absorbs the residual
+    when there are no resource buckets at all — in that case
+    `unattributed` is the *only* remaining part, so it is already trivially
+    equal to the total and this branch never actually changes a value; it
+    exists purely so the policy is total and well-defined (e.g. for a
+    future multi-bucket `unattributed`), not because it is reachable
+    today.
+    """
+    raw_total = (
+        sum((bucket["cost"] for bucket in resource_totals.values()), Decimal("0"))
+        + unattributed_raw
+    )
+    quantized_total = _quantize_usd(raw_total)
+
+    quantized_resources = {
+        key: _quantize_usd(bucket["cost"]) for key, bucket in resource_totals.items()
+    }
+    quantized_unattributed = _quantize_usd(unattributed_raw)
+
+    residual = quantized_total - (
+        sum(quantized_resources.values(), Decimal("0")) + quantized_unattributed
+    )
+
+    if residual != 0:
+        if quantized_resources:
+            target_key = max(
+                sorted(quantized_resources),
+                key=lambda key: abs(quantized_resources[key]),
+            )
+            quantized_resources[target_key] += residual
+        else:
+            quantized_unattributed += residual
+
+    return quantized_resources, quantized_unattributed, quantized_total
+
+
 class CostAggregate(NamedTuple):
     resources: list[dict[str, object]]
     total_usd: float
     currency: Optional[str]
     unattributed_usd: float
     cost_column: str  # original-cased name actually used
-    usage_dates: set  # distinct in-window `date`s observed
+    usage_dates: set[date]  # distinct in-window `date`s observed
     resource_id_coverage_pct: Optional[float]
 
 
@@ -270,22 +408,54 @@ def aggregate_cost_rows(
 ) -> CostAggregate:
     """Aggregate paged Query API rows and validate the daily window.
 
-    Raises `ActualsEvidenceError` when `start`/`end` are not timezone-aware
-    UTC datetimes, when `end <= start`, when any page's columns/rows are
-    malformed, when any row's `UsageDate` is unparseable, when a row falls
-    outside `start.date() <= usage_date < end.date()`, when rows report
-    more than one currency, or when pages disagree on which cost column to
-    use. Out-of-window rows are never silently dropped: a response that
-    disagrees with the request is a contract violation, and dropping rows
-    would quietly understate the period total.
+    Raises `ActualsEvidenceError` when `pages` is empty (there is no
+    evidence to aggregate at all — a caller that could not fetch even one
+    page must not silently report a zero-cost period; see below for the
+    *different*, allowed case of a present page with zero rows), when
+    `start`/`end` are not timezone-aware UTC datetimes at exact UTC
+    midnight, when `end <= start`, when any page's columns/rows are
+    malformed, when any row's `UsageDate` is unparseable or not a valid
+    UTC-midnight date, when a row falls outside
+    `start.date() <= usage_date < end.date()`, when rows report a
+    non-`USD` currency or more than one currency (v1 is USD-only — see
+    `cost-actuals-manifest-schema.md`), or when pages disagree on which
+    cost column to use. Out-of-window rows are never silently dropped: a
+    response that disagrees with the request is a contract violation, and
+    dropping rows would quietly understate the period total.
+
+    A *present* page with valid columns and zero rows is different from no
+    pages at all: it is accepted as a genuinely observed zero for that
+    page. Because currency is only ever learned from an actual row, a
+    zero-row response never observes a currency at all — `currency` stays
+    `None` rather than being fabricated as `"USD"` just because that is
+    the only value v1 accepts.
 
     Resource IDs are normalized with `.casefold().rstrip("/")` for grouping
     only; the original, first-observed ID string is retained for reporting.
     A blank resource ID's cost remains in `total_usd` and is reported under
-    `unattributed_usd`, never dropped.
+    `unattributed_usd`, never dropped. A blank `resource_type`/
+    `service_name` on the first-seen row for a resource is backfilled from
+    a later row for the *same* resource that does carry a value; two rows
+    for the same resource that carry *conflicting* non-blank values is a
+    contract violation (raised), never silently first-wins.
+
+    Every USD amount returned (`total_usd`, `unattributed_usd`, and each
+    `resources[].period_cost_usd`) is already rounded to the cent with
+    `decimal.ROUND_HALF_UP` and reconciled so the parts sum exactly to the
+    total — see `_reconcile_quantized_costs` for the residual-allocation
+    policy. Python's `round()` on a `float` is never used for money: it
+    operates on an already-imprecise binary float, not true decimal
+    half-up (e.g. `round(2.675, 2) == 2.67`, not the correct `2.68`).
     """
-    start = _require_utc(start, "start")
-    end = _require_utc(end, "end")
+    if not pages:
+        raise ActualsEvidenceError(
+            "Cost Management evidence has no Cost Management pages at all "
+            "(0 pages) — this is not the same as a page with zero rows, "
+            "which is a genuinely observed zero and is accepted"
+        )
+
+    start = _require_utc_midnight(start, "start")
+    end = _require_utc_midnight(end, "end")
     if end <= start:
         raise ActualsEvidenceError(
             f"window end must be after start (start={start.isoformat()}, "
@@ -331,6 +501,12 @@ def aggregate_cost_rows(
                 raise ActualsEvidenceError("Cost Management row is missing Currency")
             normalized_currency = raw_currency.strip()
             if currency is None:
+                if normalized_currency.casefold() != "usd":
+                    raise ActualsEvidenceError(
+                        "Cost Management currency must be USD — schema "
+                        "threadlight-cost-actuals/v1 is USD-only, got "
+                        f"{normalized_currency!r}"
+                    )
                 currency = normalized_currency
             elif normalized_currency.casefold() != currency.casefold():
                 raise ActualsEvidenceError(
@@ -345,6 +521,12 @@ def aggregate_cost_rows(
             raw_resource_id = row.get("resourceid")
             resource_type = row.get("resourcetype")
             service_name = row.get("servicename")
+            observed_resource_type = (
+                resource_type if isinstance(resource_type, str) else ""
+            )
+            observed_service_name = (
+                service_name if isinstance(service_name, str) else ""
+            )
 
             resource_key = None
             if isinstance(raw_resource_id, str) and raw_resource_id.strip():
@@ -356,30 +538,45 @@ def aggregate_cost_rows(
                     resource_key,
                     {
                         "resource_id": raw_resource_id,
-                        "resource_type": resource_type
-                        if isinstance(resource_type, str)
-                        else "",
-                        "service_name": service_name
-                        if isinstance(service_name, str)
-                        else "",
+                        "resource_type": observed_resource_type,
+                        "service_name": observed_service_name,
                         "cost": Decimal("0"),
                     },
                 )
                 bucket["cost"] += cost_value
+                for field, observed in (
+                    ("resource_type", observed_resource_type),
+                    ("service_name", observed_service_name),
+                ):
+                    if not observed:
+                        continue
+                    existing = bucket[field]
+                    if not existing:
+                        # Backfill: an earlier row for this same resource
+                        # carried a blank value; a later row observed a
+                        # real one.
+                        bucket[field] = observed
+                    elif existing != observed:
+                        raise ActualsEvidenceError(
+                            f"Cost Management rows disagree on {field} for "
+                            f"resource {raw_resource_id!r}: {existing!r} vs "
+                            f"{observed!r}"
+                        )
             else:
                 unattributed += cost_value
 
+    quantized_resource_costs, quantized_unattributed, quantized_total = (
+        _reconcile_quantized_costs(resource_totals, unattributed)
+    )
     resources = [
         {
             "resource_id": bucket["resource_id"],
             "resource_type": bucket["resource_type"],
             "service_name": bucket["service_name"],
-            "period_cost_usd": float(bucket["cost"]),
+            "period_cost_usd": float(quantized_resource_costs[key]),
         }
-        for bucket in resource_totals.values()
+        for key, bucket in resource_totals.items()
     ]
-    total = sum((bucket["cost"] for bucket in resource_totals.values()), Decimal("0"))
-    total += unattributed
 
     coverage: Optional[float] = None
     if gross_abs_total > 0:
@@ -387,9 +584,9 @@ def aggregate_cost_rows(
 
     return CostAggregate(
         resources=resources,
-        total_usd=float(total),
+        total_usd=float(quantized_total),
         currency=currency,
-        unattributed_usd=float(unattributed),
+        unattributed_usd=float(quantized_unattributed),
         cost_column=cost_original or "",
         usage_dates=usage_dates,
         resource_id_coverage_pct=coverage,
@@ -502,12 +699,16 @@ def build_actuals_manifest(
             "basis": "usage-pretax",
             "cost_column": aggregate.cost_column,
             "currency": aggregate.currency,
-            "period_total_usd": round(aggregate.total_usd, 2),
-            "resources": [
-                {**resource, "period_cost_usd": round(resource["period_cost_usd"], 2)}
-                for resource in resources_sorted
-            ],
-            "unattributed_usd": round(aggregate.unattributed_usd, 2),
+            # Already cent-quantized with Decimal `ROUND_HALF_UP` and
+            # residual-reconciled in `aggregate_cost_rows` /
+            # `_reconcile_quantized_costs` so the parts sum exactly to the
+            # total. Re-rounding a float here with Python's `round()` is
+            # exactly the banker's-rounding-on-binary-floats bug this
+            # module must avoid, so these values are passed through
+            # untouched.
+            "period_total_usd": aggregate.total_usd,
+            "resources": resources_sorted,
+            "unattributed_usd": aggregate.unattributed_usd,
             "resource_id_coverage_pct": aggregate.resource_id_coverage_pct,
         },
         "usage": {

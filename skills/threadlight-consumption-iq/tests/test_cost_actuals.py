@@ -37,6 +37,7 @@ import json
 import sys
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -53,9 +54,11 @@ FIXTURES_DIR = (
 
 from cost_actuals import (  # noqa: E402
     ActualsEvidenceError,
+    CostAggregate,
     aggregate_cost_rows,
     build_actuals_manifest,
     rows_from_query_page,
+    select_cost_column,
 )
 
 
@@ -709,3 +712,360 @@ def test_aoai_account_fixture_parses_and_rolls_up_by_account() -> None:
     assert len(resource_ids) == 2
     for resource in result.resources:
         assert resource["resource_type"] == "microsoft.cognitiveservices/accounts"
+
+
+# ---------------------------------------------------------------------------
+# Accounting-safe money: Decimal ROUND_HALF_UP, never Python round(float)
+# ---------------------------------------------------------------------------
+
+
+def test_money_rounds_with_decimal_round_half_up_not_python_round() -> None:
+    # float(2.675) is actually 2.67499999999999982236..., so Python's
+    # round(2.675, 2) gives 2.67 (a binary-float artifact, not true
+    # half-up). Decimal(str(2.675)) recovers the exact "2.675" the caller
+    # intended, and ROUND_HALF_UP correctly rounds the true tie up to 2.68.
+    result = aggregate([[20260801, "x", 2.675, "USD", RID, "A"]])
+    assert result.resources[0]["period_cost_usd"] == 2.68
+    assert result.total_usd == 2.68
+    assert round(2.675, 2) == 2.67  # sanity: this is exactly the trap
+
+
+# ---------------------------------------------------------------------------
+# Accounting identity: period_total_usd == sum(resources) + unattributed,
+# exactly at the cent, even with half-cent rows and refunds
+# ---------------------------------------------------------------------------
+
+
+def test_several_half_cent_resource_rows_reconcile_exactly_after_quantization() -> None:
+    rid_a, rid_b, rid_c = RID + "/a", RID + "/b", RID + "/c"
+    result = aggregate([
+        [20260801, "x", 0.005, "USD", rid_a, "A"],
+        [20260801, "x", 0.005, "USD", rid_b, "A"],
+        [20260801, "x", 0.005, "USD", rid_c, "A"],
+    ])
+    parts_sum = sum(
+        (Decimal(str(r["period_cost_usd"])) for r in result.resources), Decimal("0")
+    ) + Decimal(str(result.unattributed_usd))
+    assert parts_sum == Decimal(str(result.total_usd))
+    assert Decimal(str(result.total_usd)) == Decimal("0.02")
+    # Deterministic tie-break: the lexicographically smallest normalized
+    # resource key absorbs the residual (all three are tied at 0.01).
+    by_id = {r["resource_id"]: r["period_cost_usd"] for r in result.resources}
+    assert by_id == {rid_a: 0.0, rid_b: 0.01, rid_c: 0.01}
+
+
+def test_half_cent_reconciliation_with_a_resource_and_unattributed_refund() -> None:
+    rid_b = RID + "/b"
+    result = aggregate([
+        [20260801, "x", 10.005, "USD", RID, "A"],
+        [20260801, "x", -0.005, "USD", rid_b, "B"],
+        [20260801, "", -0.005, "USD", "", "Refund"],
+    ])
+    parts_sum = sum(
+        (Decimal(str(r["period_cost_usd"])) for r in result.resources), Decimal("0")
+    ) + Decimal(str(result.unattributed_usd))
+    assert parts_sum == Decimal(str(result.total_usd))
+    assert Decimal(str(result.total_usd)) == Decimal("10.00")
+    # The residual is added to the largest-*absolute*-value resource
+    # bucket (RID at 10.01), never to unattributed, since resources exist.
+    by_id = {r["resource_id"]: r["period_cost_usd"] for r in result.resources}
+    assert by_id[RID] == 10.02
+    assert by_id[rid_b] == -0.01
+    assert result.unattributed_usd == -0.01
+
+
+def test_all_unattributed_half_cent_rows_still_reconcile_exactly() -> None:
+    result = aggregate([
+        [20260801, "", 0.005, "USD", "", "Tax"],
+        [20260802, "", 0.005, "USD", "", "Tax"],
+        [20260803, "", 0.005, "USD", "", "Tax"],
+    ])
+    assert result.resources == []
+    assert Decimal(str(result.total_usd)) == Decimal(str(result.unattributed_usd))
+    assert Decimal(str(result.total_usd)) == Decimal("0.02")
+
+
+def test_manifest_accounting_identity_holds_exactly_after_serialization() -> None:
+    rid_a, rid_b, rid_c = RID + "/a", RID + "/b", RID + "/c"
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = [page([
+        [20260801, "x", 0.005, "USD", rid_a, "A"],
+        [20260801, "x", 0.005, "USD", rid_b, "A"],
+        [20260801, "x", -10.005, "USD", rid_c, "A"],
+        [20260801, "", 5.005, "USD", "", "Tax"],
+    ])]
+    manifest = build_actuals_manifest(**kwargs)
+    serialized = json.loads(json.dumps(manifest))
+    cost = serialized["cost"]
+    resources_sum = sum(Decimal(str(r["period_cost_usd"])) for r in cost["resources"])
+    unattributed = Decimal(str(cost["unattributed_usd"]))
+    total = Decimal(str(cost["period_total_usd"]))
+    assert total == resources_sum + unattributed
+
+
+# ---------------------------------------------------------------------------
+# UsageDate: strict UTC-midnight datetimes, ASCII-only digits
+# ---------------------------------------------------------------------------
+
+
+def test_naive_iso_datetime_usage_date_is_rejected_not_bucketed_locally() -> None:
+    with pytest.raises(ActualsEvidenceError, match="UTC"):
+        aggregate([["2026-08-01T00:00:00", "x", 1.0, "USD", RID, "A"]])
+
+
+def test_non_utc_offset_iso_datetime_usage_date_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="UTC"):
+        aggregate([["2026-08-01T00:00:00+05:00", "x", 1.0, "USD", RID, "A"]])
+
+
+def test_non_midnight_utc_iso_datetime_usage_date_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="midnight"):
+        aggregate([["2026-08-01T13:45:00Z", "x", 1.0, "USD", RID, "A"]])
+
+
+def test_utc_midnight_z_iso_datetime_usage_date_is_still_accepted() -> None:
+    result = aggregate([["2026-08-01T00:00:00Z", "x", 1.0, "USD", RID, "A"]])
+    assert result.usage_dates == {date(2026, 8, 1)}
+
+
+def test_utc_midnight_explicit_offset_iso_datetime_usage_date_is_accepted() -> None:
+    result = aggregate([["2026-08-01T00:00:00+00:00", "x", 1.0, "USD", RID, "A"]])
+    assert result.usage_dates == {date(2026, 8, 1)}
+
+
+def test_unicode_digits_in_yyyymmdd_usage_date_are_rejected() -> None:
+    # "٢٠٢٦٠٨٠١" is 20260801 spelled with Arabic-Indic digits. Python's
+    # `\d` (without re.ASCII) and `int()` both silently accept these, so
+    # this must be explicitly rejected rather than parsed as the plain
+    # ASCII form.
+    with pytest.raises(ActualsEvidenceError, match="UsageDate is not a date"):
+        aggregate([["٢٠٢٦٠٨٠١", "x", 1.0, "USD", RID, "A"]])
+
+
+def test_unicode_digits_in_iso_date_usage_date_are_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="UsageDate is not a date"):
+        aggregate([["٢٠٢٦-٠٨-٠١", "x", 1.0, "USD", RID, "A"]])
+
+
+# ---------------------------------------------------------------------------
+# Window start/end: UTC and exact midnight, so complete_days is exact
+# ---------------------------------------------------------------------------
+
+
+def test_non_midnight_start_datetime_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="midnight"):
+        aggregate_cost_rows(
+            [page([[20260801, "x", 1.0, "USD", RID, "A"]])],
+            start=datetime(2026, 8, 1, 13, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        )
+
+
+def test_non_midnight_end_datetime_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="midnight"):
+        aggregate_cost_rows(
+            [page([[20260801, "x", 1.0, "USD", RID, "A"]])],
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, 0, 0, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_generated_at_is_not_required_to_be_midnight() -> None:
+    # generated_at is a real point-in-time timestamp, not a window
+    # boundary — it must never be forced onto a calendar-day boundary.
+    manifest = build_actuals_manifest(
+        **_manifest_kwargs(
+            start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 8, 10, 14, 32, 0, tzinfo=timezone.utc),
+        )
+    )
+    assert manifest["window"]["settlement_age_hours"] == 62
+
+
+# ---------------------------------------------------------------------------
+# Empty cost_pages fails; a present page with zero rows is an observed zero
+# ---------------------------------------------------------------------------
+
+
+def test_empty_cost_pages_list_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="no Cost Management pages"):
+        aggregate_cost_rows([], **WINDOW)
+
+
+def test_build_actuals_manifest_rejects_empty_cost_pages() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["cost_pages"] = []
+    with pytest.raises(ActualsEvidenceError, match="no Cost Management pages"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_single_valid_page_with_zero_rows_is_an_observed_zero_not_an_error() -> None:
+    result = aggregate([])
+    assert result.total_usd == 0.0
+    assert result.resources == []
+    assert result.unattributed_usd == 0.0
+    assert result.usage_dates == set()
+    assert result.cost_column == "PreTaxCost"
+    # No rows means currency was never actually observed: it must not be
+    # fabricated as "USD" just because that is the only currency v1 accepts.
+    assert result.currency is None
+
+
+# ---------------------------------------------------------------------------
+# v1 is USD-only: a consistent non-USD currency is still rejected
+# ---------------------------------------------------------------------------
+
+
+def test_non_usd_currency_is_rejected_even_when_internally_consistent() -> None:
+    with pytest.raises(ActualsEvidenceError, match="USD"):
+        aggregate([
+            [20260801, "x", 1.0, "EUR", RID, "A"],
+            [20260802, "x", 1.0, "EUR", RID, "A"],
+        ])
+
+
+def test_non_usd_currency_error_names_schema_as_usd_only() -> None:
+    with pytest.raises(ActualsEvidenceError, match="USD-only"):
+        aggregate([[20260801, "x", 1.0, "GBP", RID, "A"]])
+
+
+# ---------------------------------------------------------------------------
+# resource_type/service_name backfill vs. conflict
+# ---------------------------------------------------------------------------
+
+
+def test_empty_first_resource_type_is_backfilled_from_a_later_nonempty_row() -> None:
+    result = aggregate([
+        [20260801, "", 5.0, "USD", RID, ""],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+    ])
+    assert result.resources == [{
+        "resource_id": RID,
+        "resource_type": "microsoft.app/containerapps",
+        "service_name": "ACA",
+        "period_cost_usd": 10.0,
+    }]
+
+
+def test_conflicting_nonempty_resource_type_for_same_resource_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="resource_type"):
+        aggregate([
+            [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+            [20260802, "microsoft.storage/accounts", 5.0, "USD", RID, "ACA"],
+        ])
+
+
+def test_conflicting_nonempty_service_name_for_same_resource_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="service_name"):
+        aggregate([
+            [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+            [20260802, "microsoft.app/containerapps", 5.0, "USD", RID, "Other"],
+        ])
+
+
+# ---------------------------------------------------------------------------
+# select_cost_column accepts raw (uncasefolded) casing
+# ---------------------------------------------------------------------------
+
+
+def test_select_cost_column_accepts_raw_original_casing() -> None:
+    assert select_cost_column(["PreTaxCost", "Currency", "ResourceId"]) == "pretaxcost"
+    assert select_cost_column(["ResourceId", "COSTUSD"]) == "costusd"
+
+
+# ---------------------------------------------------------------------------
+# interaction_counts / token_series: cheap extra validation coverage
+# ---------------------------------------------------------------------------
+
+
+def test_bool_interaction_counts_are_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["interaction_counts"] = (True, False)
+    with pytest.raises(ActualsEvidenceError, match="interaction_counts"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_negative_interaction_counts_are_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["interaction_counts"] = (-1, 0)
+    with pytest.raises(ActualsEvidenceError, match="interaction_counts"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_successful_interactions_exceeding_total_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["interaction_counts"] = (3, 5)
+    with pytest.raises(ActualsEvidenceError, match="cannot exceed"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_non_list_token_series_is_rejected() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    kwargs["token_series"] = {"deployment": "gpt4o"}
+    with pytest.raises(ActualsEvidenceError, match="token_series must be a list"):
+        build_actuals_manifest(**kwargs)
+
+
+def test_token_series_nested_structures_are_deep_copied() -> None:
+    kwargs = _manifest_kwargs(
+        start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 8, 8, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
+    )
+    nested = [{"deployment": "gpt4o", "tags": {"env": "pilot"}}]
+    kwargs["token_series"] = nested
+    manifest = build_actuals_manifest(**kwargs)
+    manifest["usage"]["models"][0]["tags"]["env"] = "mutated"
+    assert nested[0]["tags"]["env"] == "pilot"
+
+
+# ---------------------------------------------------------------------------
+# Resource ID case/trailing-slash merge
+# ---------------------------------------------------------------------------
+
+
+def test_resource_id_case_and_trailing_slash_variants_merge_into_one_bucket() -> None:
+    result = aggregate([
+        [20260801, "microsoft.app/containerapps", 5.0, "USD", RID, "ACA"],
+        [20260802, "microsoft.app/containerapps", 5.0, "USD", RID.upper() + "/", "ACA"],
+    ])
+    assert len(result.resources) == 1
+    assert result.resources[0]["resource_id"] == RID  # first-observed casing retained
+    assert result.resources[0]["period_cost_usd"] == 10.0
+
+
+# ---------------------------------------------------------------------------
+# CostAggregate.usage_dates is typed as set[date]
+# ---------------------------------------------------------------------------
+
+
+def test_cost_aggregate_usage_dates_is_typed_as_set_of_date() -> None:
+    from typing import get_type_hints
+
+    hints = get_type_hints(CostAggregate)
+    assert hints["usage_dates"] == set[date]
