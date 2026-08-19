@@ -4231,7 +4231,12 @@ def _check_supply_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None
 # verifies that the bundle it was handed is internally consistent — exact
 # schemas, re-derivable digests, ordered timestamps, and evidence that is still
 # fresh on today's clock — and then reports the verdicts the reconciler already
-# computed. Anything else is `not-verified`; nothing here can emit `must-fix`.
+# computed, withholding any verdict the artifact's own numbers contradict.
+# Anything else is `not-verified`; nothing here can emit `must-fix`.
+#
+# They are emitted from `_run_pillar` before the cost static analyzer runs, so
+# an ARM shape that analyzer cannot parse no longer takes this artifact-only
+# evidence down with it.
 
 _COST_RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1"
 _COST_ACTUALS_SCHEMA = "threadlight-cost-actuals/v1"
@@ -4441,6 +4446,28 @@ def _check_cost_reconciliation_static(ctx: RepoContext) -> list[Finding]:
     return [_check_cost_102(data), _check_cost_103(data)]
 
 
+def _cost_reconciliation_findings(ctx: RepoContext) -> list[Finding]:
+    """COST-102/COST-103 with a last-resort guard around the artifact reader.
+
+    `_check_cost_reconciliation_static` is contractually non-raising, but it now
+    runs OUTSIDE the pillar-level fail-closed guard so that the cost static
+    analyzer cannot take it down. That trade must not be one-directional: an
+    unexpected JSON shape here would otherwise abort the whole assessment
+    before any cost control ran. Same narrowed shape-mismatch family as
+    `_run_pillar`, and the degrade is `not-verified` (these findings are tier-3
+    advisory and can never gate go-live, so there is nothing to fail closed).
+    """
+    try:
+        return _check_cost_reconciliation_static(ctx)
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as exc:
+        print(f"[warn] cost reconciliation artifact reader raised "
+              f"{type(exc).__name__}: {exc} — reporting not-verified",
+              file=sys.stderr)
+        return _cost_reconciliation_unverified(
+            f"The reconciliation artifact could not be read ({type(exc).__name__}: {exc}), "
+            f"so its verdicts are not evidence. {_COST_RECONCILE_HINT}")
+
+
 def _check_cost_102(data: dict) -> Finding:
     """Relay the reconciler's cost-variance verdict; never re-threshold it."""
     totals = data.get("totals")
@@ -4472,6 +4499,23 @@ def _check_cost_102(data: dict) -> Finding:
             "tolerance comparison it claims cannot be shown.")
     observed = _fmt_ratio_pct(variance)
     declared = _fmt_ratio_pct(tolerance)
+    expected = "pass" if abs(float(variance)) <= float(tolerance) else "should-fix"
+    if status != expected:
+        # The verdict is still consumed, never recomputed — this does not
+        # re-threshold anything, it only refuses to *relay* a verdict the
+        # artifact's own numbers contradict. Reporting `pass` on a 400%
+        # overspend because a field says so would launder a broken (or
+        # tampered) reconciler into a green cost control, and relaying the
+        # mirror-image `should-fix` would raise a false alarm on evidence
+        # nobody can reproduce. Withholding is the only safe direction: this
+        # can only ever turn a decided verdict into `not-verified`.
+        return _not_verified("COST-102",
+            f"Withheld — the reconciliation verdict contradicts its numeric variance/tolerance: "
+            f"it reports variance_status={status!r} while observed cost variance {observed} is "
+            f"{'within' if expected == 'pass' else 'outside'} the SPEC § 14 declared tolerance "
+            f"{declared} (policy_snapshot.max_forecast_variance_pct), which supports "
+            f"{expected!r}. The artifact is internally inconsistent, so neither verdict is "
+            f"evidence. {_COST_RECONCILE_HINT}")
     if status == "pass":
         return _mk_finding("COST-102", status="pass",
             detail=(f"Observed cost variance {observed} is within the SPEC § 14 declared "
@@ -4522,9 +4566,26 @@ def _check_cost_103(data: dict) -> Finding:
         return _not_verified("COST-103",
             "Reconciliation reports a PAYG/PTU verdict without finite forecast and observed "
             f"monthly token volumes to support it. {_COST_RECONCILE_HINT}")
+    volume_variance = driver.get("observed_volume_variance_pct")
+    if not _is_finite_number(volume_variance):
+        return _not_verified("COST-103",
+            "drivers.payg_ptu carries no finite observed_volume_variance_pct, so the verdict "
+            f"cannot be shown to sit inside (or outside) its declared band. {_COST_RECONCILE_HINT}")
     volumes = (f"observed {_fmt_token_volume(observed_tokens)} vs forecast "
-               f"{_fmt_token_volume(forecast_tokens)} monthly tokens")
+               f"{_fmt_token_volume(forecast_tokens)} monthly tokens "
+               f"({_fmt_ratio_pct(volume_variance)} volume variance)")
     band = f"{_fmt_ratio_pct(threshold)} ({_COST_TOKEN_THRESHOLD_FIELD})"
+    expected = "pass" if abs(float(volume_variance)) <= float(threshold) else "should-fix"
+    if status != expected:
+        # Same withholding rule as COST-102, on the volume axis: a driver
+        # verdict that its own observed_volume_variance_pct does not support is
+        # not evidence in either direction, and a reserved-capacity decision is
+        # far too expensive to take from a self-contradicting artifact.
+        return _not_verified("COST-103",
+            f"Withheld — the reconciliation verdict contradicts its numeric variance/tolerance: "
+            f"drivers.payg_ptu reports status={status!r} while {volumes} is "
+            f"{'inside' if expected == 'pass' else 'outside'} the SPEC § 14 declared band "
+            f"{band}, which supports {expected!r}. {_COST_RECONCILE_HINT}")
     if status == "pass":
         return _mk_finding("COST-103", status="pass",
             detail=(f"PAYG/PTU recommendation still holds at observed volume: {volumes}, inside "
@@ -4663,10 +4724,6 @@ def _check_cost_static(ctx: RepoContext) -> list[Finding]:
     # A v1 manifest with no meter_coverage key is treated as not-verified (the
     # vNext projection has not been run), so COST-005/006 outcomes are untouched.
     out.append(_check_cost_007(manifest_data))
-
-    # COST-102 / COST-103 — reconciled actuals vs forecast. Artifact-driven, so
-    # they are produced here exactly once and never by the live probe below.
-    out.extend(_check_cost_reconciliation_static(ctx))
     return out
 
 
@@ -4722,8 +4779,8 @@ def _check_cost_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, 
             detail=f"{len(budgets)} budget(s) wired" if budgets else "No budget alerts wired",
             evidence_refs=["E-COST-101"]))
     # COST-102 / COST-103 are artifact-driven and emitted once by
-    # `_check_cost_reconciliation_static`; the live probe adds no Cost
-    # Management query for them and must not restate them here.
+    # `_run_pillar` (ahead of the cost static analyzer); the live probe adds no
+    # Cost Management query for them and must not restate them here.
     # COST-104 orphaned check skipped
     findings.append(_not_verified("COST-104", "Orphaned resource detection not implemented in v1"))
     # COST-105 tags applied (compare bicep vs deployed)
@@ -5373,6 +5430,17 @@ def _run_pillar(
     ctx.resolved_posture = resolved_posture
     findings: list[Finding] = []
     evidence: list[EvidenceEntry] = []
+    # COST-102 / COST-103 are artifact-driven: they read
+    # specs/cost-reconciliation-manifest.json and never touch the Bicep/ARM
+    # graph the cost static analyzer walks. Emitting them BEFORE that analyzer
+    # runs keeps their existence independent of it — an ARM shape the analyzer
+    # cannot parse used to take the reconciliation verdicts down with it, so
+    # the report silently lost two findings instead of reporting the evidence
+    # it actually had. They are produced exactly once here (never by
+    # `_check_cost_static`, never by the live probe), so the later fail-closed
+    # sweep and the static-mode filler both dedup against them.
+    if pillar == "cost":
+        findings.extend(_cost_reconciliation_findings(ctx))
     # Each pillar's static signature varies slightly; handle uniformly
     try:
         if pillar == "network-posture":

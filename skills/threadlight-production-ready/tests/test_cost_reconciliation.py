@@ -89,12 +89,13 @@ def _reconciliation(
     payg_status: str = "pass",
     threshold_field: object = "max_token_volume_variance_pct",
     threshold_pct: object = 0.30,
+    observed_volume_variance_pct: object = 0.10,
     generated_at: str = RECONCILED_AT,
     drivers: object = None,
 ) -> dict:
     payg = {
         "status": payg_status,
-        "observed_volume_variance_pct": 0.10,
+        "observed_volume_variance_pct": observed_volume_variance_pct,
         "forecast_monthly_tokens": 1000000,
         "observed_monthly_tokens": 1100000,
         "threshold_field": threshold_field,
@@ -698,6 +699,171 @@ def test_out_of_range_tolerance_is_not_verified(tmp_path, monkeypatch) -> None:
 
 
 # --------------------------------------------------------------------------
+# COST-102 verdict integrity — the relayed verdict must match its own numbers
+# --------------------------------------------------------------------------
+
+
+CONTRADICTION_PHRASE = "reconciliation verdict contradicts its numeric variance/tolerance"
+
+
+def test_forged_pass_far_outside_the_declared_tolerance_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """A `pass` on 400% variance against a 5% tolerance is not a verdict this
+    consumer may relay — the artifact contradicts itself, so it is unusable."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="pass",
+        variance_pct=4.0,
+        max_forecast_variance_pct=0.05,
+    )
+    found = _findings(ctx)
+    assert found["COST-102"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-102"].detail
+    assert "400.0%" in found["COST-102"].detail
+    assert "5.0%" in found["COST-102"].detail
+    # An unusable cost verdict never degrades the independent volume verdict.
+    assert found["COST-103"].status == "pass"
+
+
+def test_forged_should_fix_inside_the_declared_tolerance_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """The contradiction gate is symmetric: a `should-fix` that its own numbers
+    do not support is just as untrustworthy as a forged `pass`."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="should-fix",
+        variance_pct=0.01,
+        max_forecast_variance_pct=0.25,
+    )
+    found = _findings(ctx)
+    assert found["COST-102"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-102"].detail
+
+
+def test_variance_exactly_at_the_declared_tolerance_is_a_pass(
+    tmp_path, monkeypatch
+) -> None:
+    """`<=` — the declared tolerance is inclusive, matching the reconciler."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="pass",
+        variance_pct=0.25,
+        max_forecast_variance_pct=0.25,
+    )
+    assert _findings(ctx)["COST-102"].status == "pass"
+
+
+def test_should_fix_exactly_at_the_declared_tolerance_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="should-fix",
+        variance_pct=0.25,
+        max_forecast_variance_pct=0.25,
+    )
+    found = _findings(ctx)
+    assert found["COST-102"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-102"].detail
+
+
+def test_variance_just_outside_the_declared_tolerance_must_be_should_fix(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="should-fix",
+        variance_pct=0.2501,
+        max_forecast_variance_pct=0.25,
+    )
+    assert _findings(ctx)["COST-102"].status == "should-fix"
+    forged = _write_bundle(
+        tmp_path / "forged",
+        variance_status="pass",
+        variance_pct=0.2501,
+        max_forecast_variance_pct=0.25,
+    )
+    assert _findings(forged)["COST-102"].status == "not-verified"
+
+
+def test_underspend_is_measured_by_magnitude_not_sign(tmp_path, monkeypatch) -> None:
+    """A workload that costs 60% *less* than forecast has left the declared band
+    just as much as one that costs 60% more — the model was wrong either way."""
+    _freeze(monkeypatch)
+    inside = _write_bundle(
+        tmp_path,
+        variance_status="pass",
+        variance_pct=-0.10,
+        max_forecast_variance_pct=0.25,
+    )
+    assert _findings(inside)["COST-102"].status == "pass"
+    outside = _write_bundle(
+        tmp_path / "outside",
+        variance_status="should-fix",
+        variance_pct=-0.60,
+        max_forecast_variance_pct=0.25,
+    )
+    assert _findings(outside)["COST-102"].status == "should-fix"
+    forged = _write_bundle(
+        tmp_path / "forged",
+        variance_status="pass",
+        variance_pct=-0.60,
+        max_forecast_variance_pct=0.25,
+    )
+    found = _findings(forged)
+    assert found["COST-102"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-102"].detail
+
+
+def test_not_verified_variance_status_is_never_reclassified(
+    tmp_path, monkeypatch
+) -> None:
+    """The consistency gate only ever *withholds* a verdict. A reconciler that
+    already declined to decide stays declined, whatever the numbers say."""
+    _freeze(monkeypatch)
+    for variance in (0.01, 4.0):
+        ctx = _write_bundle(
+            tmp_path,
+            variance_status="not-verified",
+            variance_pct=variance,
+            max_forecast_variance_pct=0.25,
+        )
+        found = _findings(ctx)
+        assert found["COST-102"].status == "not-verified", variance
+        assert CONTRADICTION_PHRASE not in found["COST-102"].detail
+
+
+def test_contradiction_gate_never_fires_on_unusable_numbers(
+    tmp_path, monkeypatch
+) -> None:
+    """A bool / NaN / infinite / string variance is malformed evidence, and a
+    missing tolerance is no policy — those are reported as such, never as a
+    contradiction (and never crash the comparison)."""
+    _freeze(monkeypatch)
+    for variance in (True, float("nan"), float("inf"), "12%"):
+        ctx = _write_bundle(tmp_path, variance_status="pass", variance_pct=variance)
+        found = _findings(ctx)
+        assert found["COST-102"].status == "not-verified", variance
+        assert CONTRADICTION_PHRASE not in found["COST-102"].detail
+    ctx = _write_bundle(
+        tmp_path,
+        variance_status="pass",
+        variance_pct=4.0,
+        max_forecast_variance_pct=None,
+    )
+    found = _findings(ctx)
+    assert found["COST-102"].status == "not-verified"
+    assert CONTRADICTION_PHRASE not in found["COST-102"].detail
+
+
+# --------------------------------------------------------------------------
 # COST-103 — PAYG/PTU driver
 # --------------------------------------------------------------------------
 
@@ -706,7 +872,11 @@ def test_driver_should_fix_asks_for_a_rerun_at_observed_volume(
     tmp_path, monkeypatch
 ) -> None:
     _freeze(monkeypatch)
-    found = _findings(_write_bundle(tmp_path, payg_status="should-fix"))
+    found = _findings(
+        _write_bundle(
+            tmp_path, payg_status="should-fix", observed_volume_variance_pct=0.55
+        )
+    )
     assert found["COST-103"].status == "should-fix"
     assert "rerun" in found["COST-103"].detail.lower()
     assert "observed volume" in found["COST-103"].detail.lower()
@@ -793,8 +963,155 @@ def test_driver_verdict_without_token_volumes_is_not_verified(
 
 
 # --------------------------------------------------------------------------
-# integration: static emits once, live emits neither
+# COST-103 verdict integrity — the driver verdict must match its own numbers
 # --------------------------------------------------------------------------
+
+
+def test_driver_forged_pass_outside_the_declared_band_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="pass",
+        observed_volume_variance_pct=0.80,
+        threshold_pct=0.30,
+    )
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-103"].detail
+    assert "80.0%" in found["COST-103"].detail
+    assert "30.0%" in found["COST-103"].detail
+    # The cost verdict is separate evidence and survives the driver degrade.
+    assert found["COST-102"].status == "pass"
+
+
+def test_driver_forged_should_fix_inside_the_declared_band_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="should-fix",
+        observed_volume_variance_pct=0.10,
+        threshold_pct=0.30,
+    )
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert CONTRADICTION_PHRASE in found["COST-103"].detail
+
+
+def test_driver_volume_variance_exactly_at_the_band_is_a_pass(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="pass",
+        observed_volume_variance_pct=0.30,
+        threshold_pct=0.30,
+    )
+    assert _findings(ctx)["COST-103"].status == "pass"
+    forged = _write_bundle(
+        tmp_path / "forged",
+        payg_status="should-fix",
+        observed_volume_variance_pct=0.30,
+        threshold_pct=0.30,
+    )
+    assert _findings(forged)["COST-103"].status == "not-verified"
+
+
+def test_driver_volume_shortfall_is_measured_by_magnitude(
+    tmp_path, monkeypatch
+) -> None:
+    """Half the forecast volume invalidates a reserved-capacity recommendation
+    as surely as double it does."""
+    _freeze(monkeypatch)
+    inside = _write_bundle(
+        tmp_path,
+        payg_status="pass",
+        observed_volume_variance_pct=-0.20,
+        threshold_pct=0.30,
+    )
+    assert _findings(inside)["COST-103"].status == "pass"
+    outside = _write_bundle(
+        tmp_path / "outside",
+        payg_status="should-fix",
+        observed_volume_variance_pct=-0.50,
+        threshold_pct=0.30,
+    )
+    assert _findings(outside)["COST-103"].status == "should-fix"
+    forged = _write_bundle(
+        tmp_path / "forged",
+        payg_status="pass",
+        observed_volume_variance_pct=-0.50,
+        threshold_pct=0.30,
+    )
+    assert _findings(forged)["COST-103"].status == "not-verified"
+
+
+def test_driver_without_a_usable_observed_volume_variance_is_not_verified(
+    tmp_path, monkeypatch
+) -> None:
+    """Without the ratio the verdict claims to sit inside, nothing can be shown
+    — and the missing number is reported as missing, not as a contradiction."""
+    _freeze(monkeypatch)
+    forecast, actuals = _forecast(), _actuals()
+    for bad in (None, "10%", float("nan"), float("inf"), True):
+        doc = _reconciliation(
+            forecast, actuals, SPEC_TEXT, observed_volume_variance_pct=bad
+        )
+        ctx = _write_bundle(
+            tmp_path, forecast=forecast, actuals=actuals, reconciliation=doc
+        )
+        found = _findings(ctx)
+        assert found["COST-103"].status == "not-verified", bad
+        assert CONTRADICTION_PHRASE not in found["COST-103"].detail, bad
+
+
+def test_driver_not_verified_status_is_never_reclassified(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(
+        tmp_path,
+        payg_status="not-verified",
+        observed_volume_variance_pct=0.80,
+        threshold_pct=0.30,
+    )
+    found = _findings(ctx)
+    assert found["COST-103"].status == "not-verified"
+    assert CONTRADICTION_PHRASE not in found["COST-103"].detail
+
+
+def test_driver_detail_reports_the_observed_volume_variance(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    passing = _findings(_write_bundle(tmp_path))["COST-103"].detail
+    assert "10.0%" in passing
+    drifting = _findings(
+        _write_bundle(
+            tmp_path / "drift",
+            payg_status="should-fix",
+            observed_volume_variance_pct=0.55,
+        )
+    )["COST-103"].detail
+    assert "55.0%" in drifting
+
+
+# --------------------------------------------------------------------------
+# integration: the pillar emits each finding exactly once, live emits neither
+# --------------------------------------------------------------------------
+
+
+def _cost_pillar(ctx, *, static_only: bool, tiers: dict) -> list:
+    findings, _evidence = pr._run_pillar(
+        "cost", ctx, static_only=static_only, tiers=tiers,
+        sub="sub-1", rg="rg-pilot", resolved_posture="", agt_profile="none",
+        quick=False,
+    )
+    return findings
 
 
 def test_static_cost_pillar_emits_each_finding_exactly_once(
@@ -802,9 +1119,20 @@ def test_static_cost_pillar_emits_each_finding_exactly_once(
 ) -> None:
     _freeze(monkeypatch)
     ctx = _write_bundle(tmp_path)
-    ids = [f.id for f in pr._check_cost_static(ctx)]
+    ids = [f.id for f in _cost_pillar(ctx, static_only=True, tiers={0: True})]
     assert ids.count("COST-102") == 1
     assert ids.count("COST-103") == 1
+
+
+def test_cost_static_analyzer_no_longer_emits_the_reconciliation_findings(
+    tmp_path, monkeypatch
+) -> None:
+    """They are produced by `_run_pillar` ahead of the ARM-shape analyzer, so
+    the analyzer itself must not restate them (that would double-count)."""
+    _freeze(monkeypatch)
+    ids = [f.id for f in pr._check_cost_static(_write_bundle(tmp_path))]
+    assert "COST-102" not in ids
+    assert "COST-103" not in ids
 
 
 def test_live_probe_emits_neither_reconciliation_finding(tmp_path, monkeypatch) -> None:
@@ -827,12 +1155,139 @@ def test_combined_static_and_live_carry_exactly_one_of_each(
     _freeze(monkeypatch)
     ctx = _write_bundle(tmp_path)
     monkeypatch.setattr(pr, "_az_json", lambda *args: [])
-    for tiers in ({3: True}, {3: False}):
-        live, _ = pr._check_cost_live(ctx, tiers, "sub-1", "rg-pilot")
-        ids = [f.id for f in pr._check_cost_static(ctx)] + [f.id for f in live]
+    for tiers in ({0: True, 3: True}, {0: True, 3: False}):
+        ids = [f.id for f in _cost_pillar(ctx, static_only=False, tiers=tiers)]
         assert ids.count("COST-102") == 1
         assert ids.count("COST-103") == 1
         assert ids.count("COST-101") == 1
+
+
+def test_quick_mode_still_carries_exactly_one_of_each(tmp_path, monkeypatch) -> None:
+    """`--quick` truncates the *live* leg; the artifact-driven findings are not
+    part of it, so they are neither dropped nor duplicated."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    monkeypatch.setattr(pr, "_az_json", lambda *args: [])
+    findings, _ = pr._run_pillar(
+        "cost", ctx, static_only=False, tiers={0: True, 3: True},
+        sub="sub-1", rg="rg-pilot", resolved_posture="", agt_profile="none",
+        quick=True,
+    )
+    ids = [f.id for f in findings]
+    assert ids.count("COST-102") == 1
+    assert ids.count("COST-103") == 1
+    by_id = {f.id: f for f in findings}
+    assert by_id["COST-102"].status == "pass"
+    assert by_id["COST-103"].status == "pass"
+
+
+# --------------------------------------------------------------------------
+# the reconciliation findings survive a crashing cost static analyzer
+# --------------------------------------------------------------------------
+
+
+def _break_cost_static(monkeypatch) -> None:
+    """Induce a caught JSON-shape error inside `_check_cost_static`, at a point
+    it already reaches before it ever produced COST-102/103."""
+
+    def _boom(_manifest_data):
+        raise TypeError("'str' object is not subscriptable")
+
+    monkeypatch.setattr(pr, "_check_cost_007", _boom)
+
+
+def test_reconciliation_findings_survive_a_crashing_cost_static_analyzer(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    _break_cost_static(monkeypatch)
+    findings = _cost_pillar(ctx, static_only=True, tiers={0: True})
+    ids = [f.id for f in findings]
+    assert ids.count("COST-102") == 1
+    assert ids.count("COST-103") == 1
+    by_id = {f.id: f for f in findings}
+    # Statuses still come from the artifact, not from the crash.
+    assert by_id["COST-102"].status == "pass"
+    assert by_id["COST-103"].status == "pass"
+    assert "TypeError" not in by_id["COST-102"].detail
+    assert "TypeError" not in by_id["COST-103"].detail
+
+
+def test_a_crashing_cost_static_analyzer_still_fails_tier0_closed(
+    tmp_path, monkeypatch
+) -> None:
+    """The reconciliation findings surviving must not weaken the fail-closed
+    sweep: every tier-0 cost control still degrades to a gating must-fix."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    _break_cost_static(monkeypatch)
+    findings = _cost_pillar(ctx, static_only=True, tiers={0: True})
+    tier0 = [f for f in findings if f.pillar == "cost" and f.tier == 0]
+    assert tier0
+    assert all(f.status == "must-fix" for f in tier0), [
+        (f.id, f.status) for f in tier0
+    ]
+    assert any("TypeError" in f.detail for f in tier0)
+    assert pr._hard_gate_would_fail(findings) is True
+
+
+def test_reconciliation_findings_survive_the_crash_on_the_live_path(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    monkeypatch.setattr(pr, "_az_json", lambda *args: [])
+    _break_cost_static(monkeypatch)
+    for tiers in ({0: True, 3: True}, {0: True, 3: False}):
+        findings = _cost_pillar(ctx, static_only=False, tiers=tiers)
+        ids = [f.id for f in findings]
+        assert ids.count("COST-102") == 1, tiers
+        assert ids.count("COST-103") == 1, tiers
+        assert ids.count("COST-101") == 1, tiers
+        by_id = {f.id: f for f in findings}
+        assert by_id["COST-102"].status == "pass", tiers
+        assert by_id["COST-103"].status == "pass", tiers
+
+
+def test_crash_survivors_report_the_artifact_verdict_not_a_default(
+    tmp_path, monkeypatch
+) -> None:
+    """With an unusable bundle the surviving findings are `not-verified` with
+    the artifact's own reason — the crash never authors their verdict."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path, status="not-verified", maturity="not-verified")
+    _break_cost_static(monkeypatch)
+    by_id = {f.id: f for f in _cost_pillar(ctx, static_only=True, tiers={0: True})}
+    assert by_id["COST-102"].status == "not-verified"
+    assert by_id["COST-103"].status == "not-verified"
+    assert "maturity" in by_id["COST-102"].detail
+
+
+def test_a_raising_artifact_reader_never_aborts_the_cost_pillar(
+    tmp_path, monkeypatch
+) -> None:
+    """The reader runs outside the pillar-level guard now, so it carries its
+    own: an unexpected shape degrades these two to `not-verified` and every
+    other cost control still runs."""
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+
+    def _boom(_ctx):
+        raise TypeError("'int' object is not iterable")
+
+    monkeypatch.setattr(pr, "_check_cost_reconciliation_static", _boom)
+    findings = _cost_pillar(ctx, static_only=True, tiers={0: True})
+    by_id = {f.id: f for f in findings}
+    ids = [f.id for f in findings]
+    assert ids.count("COST-102") == 1
+    assert ids.count("COST-103") == 1
+    assert by_id["COST-102"].status == "not-verified"
+    assert by_id["COST-103"].status == "not-verified"
+    assert "TypeError" in by_id["COST-102"].detail
+    # The static analyzer still ran: COST-001 carries a real verdict, not the
+    # fail-closed sweep's crash text.
+    assert by_id["COST-001"].status == "pass"
 
 
 def test_cost_007_meter_coverage_is_unaffected(tmp_path, monkeypatch) -> None:
@@ -842,7 +1297,7 @@ def test_cost_007_meter_coverage_is_unaffected(tmp_path, monkeypatch) -> None:
     forecast["meter_coverage"] = {"status": "complete"}
     forecast["resources"] = [{"logical_name": "aca", "pricing_status": "priced"}]
     ctx = _write_bundle(tmp_path, forecast=forecast)
-    by_id = {f.id: f for f in pr._check_cost_static(ctx)}
+    by_id = {f.id: f for f in _cost_pillar(ctx, static_only=True, tiers={0: True})}
     assert by_id["COST-007"].status == "pass"
     assert by_id["COST-102"].status == "pass"
 
@@ -852,7 +1307,9 @@ def test_cost_007_meter_coverage_is_unaffected(tmp_path, monkeypatch) -> None:
         {"logical_name": "aca", "pricing_status": "not-priceable"}
     ]
     ctx_bad = _write_bundle(tmp_path / "bad", forecast=forecast_bad)
-    by_id_bad = {f.id: f for f in pr._check_cost_static(ctx_bad)}
+    by_id_bad = {
+        f.id: f for f in _cost_pillar(ctx_bad, static_only=True, tiers={0: True})
+    }
     assert by_id_bad["COST-007"].status == "must-fix"
     assert by_id_bad["COST-102"].status == "pass"
 

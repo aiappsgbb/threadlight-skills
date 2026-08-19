@@ -9,6 +9,28 @@ field.
 
 ### Fixed
 
+- **`threadlight-production-ready` relayed reconciled cost verdicts without
+  checking them against their own numbers, and lost them entirely when the
+  cost static analyzer crashed.** COST-102/COST-103 consumed
+  `variance_status` / `drivers.payg_ptu.status` verbatim, so a broken or
+  tampered `cost-reconciliation-manifest.json` claiming `pass` on a 400%
+  variance against a 5% declared tolerance produced a green cost control —
+  and the mirror image raised a `should-fix` alarm nobody could reproduce.
+  Both findings now recompute the expected verdict from the artifact's own
+  ratio (`|variance| <= tolerance`, inclusive, magnitude-only so an underspend
+  counts) and, on disagreement, withhold it as `not-verified` naming
+  `reconciliation verdict contradicts its numeric variance/tolerance`. The
+  gate can only ever withhold a decided verdict, never author or upgrade one:
+  a reconciler `not-verified` stays `not-verified`, and unusable numbers stay
+  malformed-evidence. COST-103 additionally requires a finite
+  `observed_volume_variance_pct` and reports it in the finding. Separately,
+  the two findings are now emitted by `_run_pillar` *before* the Bicep/ARM
+  cost static analyzer, so an ARM shape that analyzer cannot parse no longer
+  deletes artifact-only evidence from the report — the tier-0 fail-closed
+  sweep still fires, the live leg still adds COST-101/104/105 only, and
+  static/live/quick each carry exactly one COST-102 and one COST-103.
+  COST-001…007, scoring and severities are unchanged.
+
 - **`threadlight-consumption-iq`'s token metrics query could lose mandatory
   input/output token evidence over an optional cache metric.** A live probe
   against a real `Microsoft.CognitiveServices/accounts` resource showed

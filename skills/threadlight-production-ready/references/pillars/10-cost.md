@@ -32,8 +32,13 @@
 published by `threadlight-consumption-iq` (`actuals` → `reconcile`). They add
 no Cost Management query of their own: production-ready reads
 `specs/cost-reconciliation-manifest.json` and reports the verdicts the
-reconciler already computed. Both are emitted exactly once, from the static
-pass, in every mode.
+reconciler already computed. Both are emitted exactly once, in every mode.
+
+They are emitted by the pillar runner **before** the Bicep/ARM cost static
+analyzer runs, so their existence does not depend on it: when that analyzer
+hits an ARM shape it cannot parse and the pillar fails closed, the tier-0 cost
+controls still degrade to a gating `must-fix` while these two keep reporting
+the artifact evidence that was actually available.
 
 The bundle is only trusted when all of the following still hold at assess
 time — otherwise both findings are `not-verified`, never `pass`:
@@ -49,12 +54,26 @@ time — otherwise both findings are `not-verified`, never `pass`:
   not predate the evidence;
 - the observed window is still fresh **today** against the declared
   `policy_snapshot.max_window_end_age_days`;
-- top-level `status` **and** `maturity.status` are `pass`.
+- top-level `status` **and** `maturity.status` are `pass`;
+- each relayed verdict agrees with its own numbers (below).
+
+**Verdict integrity.** A `pass` / `should-fix` is only relayed when the
+artifact's own ratio supports it: `|variance| <= tolerance` ⇒ `pass`, else
+`should-fix` (inclusive at the boundary, magnitude only — a 60% *underspend*
+has left the band as surely as a 60% overspend). A verdict that contradicts
+its own numbers — a `pass` on 400% variance against a 5% tolerance, or a
+`should-fix` from well inside the band — is withheld as `not-verified` with
+`reconciliation verdict contradicts its numeric variance/tolerance`, never
+relayed. This is not a second threshold: the check can only ever withhold a
+decided verdict, never author or upgrade one. A `not-verified` from the
+reconciler stays `not-verified`, and unusable numbers (bool, NaN, infinite,
+non-numeric, missing tolerance) are reported as malformed evidence rather than
+as a contradiction.
 
 | ID | Check | Default status |
 |---|---|---|
-| `COST-102` | Observed cost variance (`totals.variance_pct`) against the SPEC § 14 declared tolerance `policy_snapshot.max_forecast_variance_pct`. The verdict is consumed from the reconciler's `variance_status` — no second threshold is applied here, and no percentage is hardcoded | `not-verified` without a provable artifact; `should-fix` when `variance_status: should-fix` |
-| `COST-103` | PAYG/PTU recommendation still holds at observed **token volume**, read from `drivers.payg_ptu`. Requires `threshold_field: max_token_volume_variance_pct` — the cost tolerance is never applied to a volume question, and no dollar figure appears in this finding | `not-verified` without a driver verdict; `should-fix` → rerun PAYG/PTU analysis at observed volume |
+| `COST-102` | Observed cost variance (`totals.variance_pct`) against the SPEC § 14 declared tolerance `policy_snapshot.max_forecast_variance_pct`. The verdict is consumed from the reconciler's `variance_status` — no second threshold is applied here, and no percentage is hardcoded; a `variance_status` that contradicts the artifact's own variance/tolerance is withheld as `not-verified` | `not-verified` without a provable (or self-consistent) artifact; `should-fix` when `variance_status: should-fix` |
+| `COST-103` | PAYG/PTU recommendation still holds at observed **token volume**, read from `drivers.payg_ptu`. Requires `threshold_field: max_token_volume_variance_pct`, a finite `observed_volume_variance_pct` and a `threshold_pct` in [0, 1] — the cost tolerance is never applied to a volume question, no dollar figure appears in this finding, and a driver status its own volume variance does not support is withheld as `not-verified` | `not-verified` without a driver verdict; `should-fix` → rerun PAYG/PTU analysis at observed volume |
 
 ## PAYG vs PTU recommendation
 
