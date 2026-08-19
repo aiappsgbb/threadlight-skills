@@ -3,6 +3,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 FIXTURES = Path(__file__).resolve().parent.parent / "references" / "fixtures"
@@ -10,6 +12,15 @@ FIXTURES = Path(__file__).resolve().parent.parent / "references" / "fixtures"
 import prices as prices_mod  # noqa: E402
 import metrics as metrics_mod  # noqa: E402
 import score as score_mod  # noqa: E402
+
+# `token_evidence.py` lives in the sibling `threadlight-consumption-iq` skill
+# and is the actual implementation `metrics_mod.parse_metrics` delegates to
+# (see `metrics_mod._load_shared_parser`). Importing it directly here lets
+# these tests exercise `parse_token_series`'s richer per-deployment rows
+# (deployment preserved separately from model, cached-input evidence) that
+# `parse_metrics`'s collapsed `{model: {input, output}}` view cannot express.
+sys.path.insert(0, str(metrics_mod.CONSUMPTION_SCRIPTS))
+import token_evidence as token_evidence_mod  # noqa: E402
 
 
 # ---- prices.py ----
@@ -51,6 +62,168 @@ def test_parse_metrics_lowercase_dimension_keys():
     ]}
     usage = metrics_mod.parse_metrics(doc)
     assert usage["gpt-5.4"] == {"input": 150, "output": 10}
+
+
+def test_parse_metrics_missing_totals_treated_as_zero():
+    # A data point with no 'total' key (no data for that interval) must
+    # contribute zero, not be dropped or raise.
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{}, {"total": 50.0}]}]},
+    ]}
+    usage = metrics_mod.parse_metrics(doc)
+    assert usage["gpt-5.4"] == {"input": 50, "output": 0}
+
+
+def test_parse_metrics_ignores_unknown_metric_names():
+    doc = {"value": [
+        {"name": {"value": "RequestCount"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 999.0}]}]},
+    ]}
+    assert metrics_mod.parse_metrics(doc) == {}
+
+
+def test_parse_metrics_sums_multiple_timeseries_for_same_model():
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 100.0}]},
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 25.0}]},
+        ]},
+    ]}
+    usage = metrics_mod.parse_metrics(doc)
+    assert usage["gpt-5.4"] == {"input": 125, "output": 0}
+
+
+def test_load_shared_parser_raises_named_error_when_sibling_skill_is_absent(tmp_path):
+    # Calling the helper directly with a non-default, absent scripts_dir
+    # must raise before touching sys.path/sys.modules or the module-level
+    # cache — no reload, no monkeypatching of module globals, no poisoning
+    # of state other tests depend on.
+    with pytest.raises(ImportError, match="threadlight-consumption-iq"):
+        metrics_mod._load_shared_parser(scripts_dir=tmp_path / "absent")
+    # The real, cached parser must still resolve normally afterwards.
+    assert metrics_mod.parse_metrics({"value": []}) == {}
+
+
+# ---- token_evidence.py (shared parser) ----
+
+def test_parse_token_series_preserves_deployment_separately_from_model():
+    # A spillover deployment routed to the same model must not be merged
+    # into the primary deployment's row.
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [
+                {"name": {"value": "modeldeploymentname"}, "value": "model-router"},
+                {"name": {"value": "modelname"}, "value": "gpt-5.4"},
+            ], "data": [{"total": 100.0}]},
+            {"metadatavalues": [
+                {"name": {"value": "modeldeploymentname"}, "value": "spillover-router"},
+                {"name": {"value": "modelname"}, "value": "gpt-5.4"},
+            ], "data": [{"total": 40.0}]},
+        ]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    assert len(series) == 2
+    by_deployment = {row["deployment"]: row for row in series}
+    assert by_deployment["model-router"]["input_tokens"] == 100
+    assert by_deployment["spillover-router"]["input_tokens"] == 40
+    assert all(row["model"] == "gpt-5.4" for row in series)
+
+
+def test_parse_token_series_model_fallback_chain():
+    # No ModelName dimension at all: falls back to the deployment name, then
+    # "unknown" if neither dimension is present.
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [
+                {"name": {"value": "modeldeploymentname"}, "value": "model-router"},
+            ], "data": [{"total": 5.0}]},
+            {"metadatavalues": [], "data": [{"total": 1.0}]},
+        ]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    by_deployment = {row["deployment"]: row for row in series}
+    assert by_deployment["model-router"]["model"] == "model-router"
+    assert by_deployment["unknown"]["model"] == "unknown"
+
+
+def test_parse_token_series_missing_cached_input_is_none_not_zero():
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 100.0}]}]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    assert series[0]["cached_input_tokens"] is None
+
+
+def test_parse_token_series_observed_zero_cached_input_is_not_none():
+    doc = {"value": [
+        {"name": {"value": "CachedInputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 0.0}]}]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    assert series[0]["cached_input_tokens"] == 0
+
+
+def test_parse_token_series_aggregates_cached_input_across_timeseries():
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 100.0}]}]},
+        {"name": {"value": "cachedprompttokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 10.0}]},
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": 5.0}]},
+        ]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    assert series[0]["cached_input_tokens"] == 15
+
+
+@pytest.mark.parametrize("bad_total", [True, -1.0, 10.5])
+def test_parse_token_series_rejects_bad_totals(bad_total):
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [{"name": {"value": "modelname"}, "value": "gpt-5.4"}],
+             "data": [{"total": bad_total}]}]},
+    ]}
+    with pytest.raises(token_evidence_mod.TokenEvidenceError):
+        token_evidence_mod.parse_token_series(doc)
+
+
+def test_parse_token_series_is_stably_sorted():
+    doc = {"value": [
+        {"name": {"value": "InputTokens"}, "timeseries": [
+            {"metadatavalues": [
+                {"name": {"value": "modeldeploymentname"}, "value": "router-b"},
+                {"name": {"value": "modelname"}, "value": "gpt-5.5"},
+            ], "data": [{"total": 1.0}]},
+            {"metadatavalues": [
+                {"name": {"value": "modeldeploymentname"}, "value": "router-a"},
+                {"name": {"value": "modelname"}, "value": "gpt-5.4"},
+            ], "data": [{"total": 1.0}]},
+        ]},
+    ]}
+    series = token_evidence_mod.parse_token_series(doc)
+    assert [row["deployment"] for row in series] == ["router-a", "router-b"]
+
+
+def test_parse_token_metrics_matches_router_fixture_exactly():
+    # parse_token_metrics must produce identical output to the pre-refactor
+    # router-bench parser (the same values metrics_mod.parse_metrics asserts
+    # in test_parse_metrics_aggregates_by_model above).
+    doc = json.loads((FIXTURES / "az-metrics-modelrouter.json").read_text())
+    usage = token_evidence_mod.parse_token_metrics(doc)
+    assert usage["gpt-5.4"] == {"input": 7048336, "output": 111473}
+    assert usage["gpt-5.5"] == {"input": 313389, "output": 13201}
+    assert "gpt-5.4-mini" not in usage
 
 
 # ---- score.py ----

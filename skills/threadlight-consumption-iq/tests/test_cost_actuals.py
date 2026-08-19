@@ -57,6 +57,8 @@ from cost_actuals import (  # noqa: E402
     CostAggregate,
     aggregate_cost_rows,
     build_actuals_manifest,
+    build_success_kql,
+    parse_interaction_counts,
     rows_from_query_page,
     select_cost_column,
 )
@@ -1436,3 +1438,224 @@ def test_cost_aggregate_usage_dates_is_typed_as_set_of_date() -> None:
 
     hints = get_type_hints(CostAggregate)
     assert hints["usage_dates"] == set[date]
+
+
+# ---------------------------------------------------------------------------
+# build_success_kql: safe AppTraces KQL construction (RFC §8.2)
+# ---------------------------------------------------------------------------
+
+
+def test_success_kql_targets_the_workspace_table_not_app_insights() -> None:
+    query = build_success_kql(
+        "2026-08-01T00:00:00Z",
+        "2026-08-08T00:00:00Z",
+        "return_decision_completed",
+        "decision.outcome",
+        ["approved", "denied", "escalated"],
+    )
+    assert query.startswith("AppTraces\n")
+    assert "TimeGenerated >= datetime(2026-08-01T00:00:00Z)" in query
+    assert "TimeGenerated < datetime(2026-08-08T00:00:00Z)" in query
+    assert 'Message == "return_decision_completed"' in query
+    assert 'Properties["decision.outcome"]' in query
+    assert '"approved", "denied", "escalated"' in query
+    assert "union" not in query.casefold()
+    # The App Insights classic surface (traces/timestamp/customDimensions)
+    # must never leak into a workspace query.
+    for forbidden in ("traces\n", "timestamp", "customDimensions"):
+        assert forbidden not in query
+
+
+def test_success_kql_rejects_arbitrary_fragment() -> None:
+    with pytest.raises(ActualsEvidenceError, match="identifier"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00Z",
+            'event") | union AppRequests',
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+def test_success_kql_rejects_unsafe_trace_attribute() -> None:
+    with pytest.raises(ActualsEvidenceError, match="identifier"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            'outcome"] | union AppRequests //',
+            ["approved"],
+        )
+
+
+def test_success_kql_rejects_unsafe_success_value() -> None:
+    with pytest.raises(ActualsEvidenceError, match="identifier"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ['approved") | union AppRequests //'],
+        )
+
+
+def test_success_kql_requires_non_empty_success_values() -> None:
+    with pytest.raises(ActualsEvidenceError, match="success_values"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            [],
+        )
+
+
+def test_success_kql_rejects_end_not_after_start() -> None:
+    with pytest.raises(ActualsEvidenceError, match="end must be after start"):
+        build_success_kql(
+            "2026-08-08T00:00:00Z",
+            "2026-08-01T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+def test_success_kql_reserializes_parsed_timestamps_not_raw_text() -> None:
+    # A non-canonical-but-valid ISO form is reparsed and reserialized to the
+    # fixed `YYYY-MM-DDTHH:MM:SSZ` shape, never passed through verbatim.
+    query = build_success_kql(
+        "2026-08-01T00:00:00+00:00",
+        "2026-08-08T00:00:00+00:00",
+        "return_decision_completed",
+        "decision.outcome",
+        ["approved"],
+    )
+    assert "datetime(2026-08-01T00:00:00Z)" in query
+    assert "datetime(2026-08-08T00:00:00Z)" in query
+    assert "+00:00" not in query
+
+
+def test_success_kql_rejects_naive_or_non_utc_timestamps() -> None:
+    with pytest.raises(ActualsEvidenceError, match="start"):
+        build_success_kql(
+            "2026-08-01T00:00:00",
+            "2026-08-08T00:00:00Z",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+    with pytest.raises(ActualsEvidenceError, match="end"):
+        build_success_kql(
+            "2026-08-01T00:00:00Z",
+            "2026-08-08T02:00:00+02:00",
+            "return_decision_completed",
+            "decision.outcome",
+            ["approved"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# parse_interaction_counts: safe Log Analytics tables/columns/rows parsing
+# ---------------------------------------------------------------------------
+
+LOG_ANALYTICS_RESPONSE = {
+    "tables": [
+        {
+            "name": "PrimaryResult",
+            "columns": [
+                {"name": "total_interactions", "type": "long"},
+                {"name": "successful_interactions", "type": "long"},
+            ],
+            "rows": [[120, 113]],
+        }
+    ]
+}
+
+
+def test_interaction_counts_parse_the_apptraces_response_shape() -> None:
+    """`az monitor log-analytics query` returns tables/columns/rows, not a
+    list of dicts. Pin the real shape so the parser is not written against
+    an imagined one."""
+    assert parse_interaction_counts(LOG_ANALYTICS_RESPONSE) == (120, 113)
+
+
+def test_interaction_counts_map_columns_by_name_not_position() -> None:
+    swapped = deepcopy(LOG_ANALYTICS_RESPONSE)
+    swapped["tables"][0]["columns"].reverse()
+    swapped["tables"][0]["rows"] = [[113, 120]]
+    assert parse_interaction_counts(swapped) == (120, 113)
+
+
+def test_interaction_counts_accept_stringified_longs() -> None:
+    stringy = deepcopy(LOG_ANALYTICS_RESPONSE)
+    stringy["tables"][0]["rows"] = [["120", "113"]]
+    assert parse_interaction_counts(stringy) == (120, 113)
+
+
+def test_interaction_counts_without_named_primary_result_uses_sole_table() -> None:
+    unnamed = deepcopy(LOG_ANALYTICS_RESPONSE)
+    del unnamed["tables"][0]["name"]
+    assert parse_interaction_counts(unnamed) == (120, 113)
+
+
+def test_empty_result_set_is_zero_interactions_not_unverified() -> None:
+    """An empty `summarize` result is a real observation of zero, distinct
+    from never having run the query (which yields `None` counts and
+    `interaction_status: not-verified` upstream)."""
+    empty = deepcopy(LOG_ANALYTICS_RESPONSE)
+    empty["tables"][0]["rows"] = []
+    assert parse_interaction_counts(empty) == (0, 0)
+
+
+def test_missing_expected_column_is_rejected() -> None:
+    broken = deepcopy(LOG_ANALYTICS_RESPONSE)
+    broken["tables"][0]["columns"] = [{"name": "total_interactions", "type": "long"}]
+    broken["tables"][0]["rows"] = [[120]]
+    with pytest.raises(ActualsEvidenceError, match="successful_interactions"):
+        parse_interaction_counts(broken)
+
+
+def test_multiple_ambiguous_tables_without_primary_result_are_rejected() -> None:
+    ambiguous = {
+        "tables": [
+            {"name": "Table0", "columns": LOG_ANALYTICS_RESPONSE["tables"][0]["columns"],
+             "rows": [[120, 113]]},
+            {"name": "Table1", "columns": LOG_ANALYTICS_RESPONSE["tables"][0]["columns"],
+             "rows": [[1, 1]]},
+        ]
+    }
+    with pytest.raises(ActualsEvidenceError, match="multiple tables"):
+        parse_interaction_counts(ambiguous)
+
+
+def test_multiple_rows_are_rejected_as_malformed() -> None:
+    malformed = deepcopy(LOG_ANALYTICS_RESPONSE)
+    malformed["tables"][0]["rows"] = [[120, 113], [1, 1]]
+    with pytest.raises(ActualsEvidenceError, match="exactly one row"):
+        parse_interaction_counts(malformed)
+
+
+def test_successful_exceeding_total_is_rejected() -> None:
+    invalid = deepcopy(LOG_ANALYTICS_RESPONSE)
+    invalid["tables"][0]["rows"] = [[10, 20]]
+    with pytest.raises(ActualsEvidenceError, match="cannot exceed"):
+        parse_interaction_counts(invalid)
+
+
+@pytest.mark.parametrize("bad_value", [True, -1, "abc", 1.5, None])
+def test_non_integer_or_negative_counts_are_rejected(bad_value) -> None:
+    invalid = deepcopy(LOG_ANALYTICS_RESPONSE)
+    invalid["tables"][0]["rows"] = [[bad_value, 0]]
+    with pytest.raises(ActualsEvidenceError, match="total_interactions"):
+        parse_interaction_counts(invalid)
+
+
+def test_no_tables_at_all_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="no tables"):
+        parse_interaction_counts({"tables": []})
+
+
+def test_non_dict_response_is_rejected() -> None:
+    with pytest.raises(ActualsEvidenceError, match="not an object"):
+        parse_interaction_counts(["not", "a", "dict"])

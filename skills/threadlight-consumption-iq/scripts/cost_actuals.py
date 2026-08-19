@@ -803,6 +803,247 @@ def aggregate_cost_rows(
     )
 
 
+# ---------------------------------------------------------------------------
+# Log Analytics interaction-count evidence (RFC §8.2)
+#
+# The transport (Task 9) is `az monitor log-analytics query --workspace
+# <customerId>` — the *Log Analytics workspace* query surface. That surface's
+# table/column names (`AppTraces`, `TimeGenerated`, `Message`, `Properties`)
+# are fixed and must never be confused with the differently-named
+# *Application Insights* classic surface (`traces`, `timestamp`, `message`,
+# `customDimensions`, reached only via `az monitor app-insights query` or the
+# App Insights resource-scoped API): those names simply do not resolve
+# against a workspace and the query fails. Any future App Insights transport
+# would be a new, explicitly named adapter, never a silent column rename
+# here.
+# ---------------------------------------------------------------------------
+
+# Deliberately conservative: a leading letter, then up to 127 more
+# letters/digits/`_`/`.`/`:`/`-`. This is not a general KQL/identifier
+# grammar — it is the narrow allowlist every value interpolated into
+# `build_success_kql` must satisfy, so no dynamic content (quotes,
+# pipes, whitespace, `|`, parens) can ever inject an arbitrary KQL
+# fragment into the fixed query shape below.
+IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
+
+_SUCCESS_KQL_TEMPLATE = (
+    "AppTraces\n"
+    "| where TimeGenerated >= datetime({start})\n"
+    "    and TimeGenerated < datetime({end})\n"
+    '| where Message == "{event_name}"\n'
+    '| extend outcome = tostring(Properties["{trace_attribute}"])\n'
+    "| summarize total_interactions=count(),\n"
+    "            successful_interactions=countif(\n"
+    "                outcome in ({success_values})\n"
+    "            )"
+)
+
+
+def _validate_identifier(value: object, label: str) -> str:
+    """Return `value` unchanged if it is a `str` matching `IDENTIFIER`;
+    raise `ActualsEvidenceError` naming the offending value otherwise. This
+    is the sole gate standing between a caller-declared SPEC identifier
+    (event name, trace attribute, success value) and the fixed
+    `_SUCCESS_KQL_TEMPLATE` — nothing that fails this check is ever
+    interpolated into a query string."""
+    if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
+        raise ActualsEvidenceError(
+            f"{label} is not a safe identifier for a Log Analytics query: "
+            f"{value!r}"
+        )
+    return value
+
+
+def _parse_iso_instant(value: object, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise ActualsEvidenceError(
+            f"{label} must be an ISO 8601 UTC datetime string, got {value!r}"
+        )
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ActualsEvidenceError(
+            f"{label} is not a parsable ISO 8601 datetime: {value!r}"
+        ) from exc
+    return _require_utc(parsed, label)
+
+
+def build_success_kql(
+    start_iso: str,
+    end_iso: str,
+    event_name: str,
+    trace_attribute: str,
+    success_values: list[str],
+) -> str:
+    """Build the fixed `AppTraces` success-count KQL query (RFC §8.2).
+
+    `start_iso`/`end_iso` are parsed as timezone-aware UTC instants (any
+    valid ISO 8601 form, including a trailing `Z`) and *reserialized* from
+    the parsed `datetime` — the caller's original text is never passed
+    through verbatim into the query. `end_iso` must denote an instant after
+    `start_iso`.
+
+    `event_name`, `trace_attribute`, and every entry of `success_values`
+    must match `IDENTIFIER`; anything else raises `ActualsEvidenceError`
+    naming the offending value, and the value is never interpolated into
+    the query. This is a fixed-shape query builder, not general KQL
+    construction: there is no way to reach the `union`/pipe/quote syntax
+    that would let a value escape the `AppTraces`/`Message`/`Properties`
+    shape below.
+    """
+    start = _parse_iso_instant(start_iso, "start")
+    end = _parse_iso_instant(end_iso, "end")
+    if end <= start:
+        raise ActualsEvidenceError(
+            f"end must be after start (start={start_iso!r}, end={end_iso!r})"
+        )
+
+    event_name = _validate_identifier(event_name, "event_name")
+    trace_attribute = _validate_identifier(trace_attribute, "trace_attribute")
+
+    if not isinstance(success_values, list) or not success_values:
+        raise ActualsEvidenceError(
+            "success_values must be a non-empty list of identifiers"
+        )
+    validated_values = [
+        _validate_identifier(value, "success_values entry")
+        for value in success_values
+    ]
+
+    return _SUCCESS_KQL_TEMPLATE.format(
+        start=_iso_utc(start),
+        end=_iso_utc(end),
+        event_name=event_name,
+        trace_attribute=trace_attribute,
+        success_values=", ".join(f'"{value}"' for value in validated_values),
+    )
+
+
+def _parse_interaction_count(value: object, label: str) -> int:
+    """Accept a Log Analytics `long` cell as either a real `int` or a
+    stringified ASCII integer (`az monitor log-analytics query` can
+    serialize `long` columns as JSON strings). `bool` (an `int` subclass in
+    Python), negative values, and anything else non-integral are rejected
+    rather than silently coerced or truncated."""
+    if isinstance(value, bool):
+        raise ActualsEvidenceError(
+            f"{label} must be a non-negative integer, got {value!r}"
+        )
+    if isinstance(value, int):
+        candidate = value
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip(), re.ASCII):
+        candidate = int(value.strip())
+    else:
+        raise ActualsEvidenceError(
+            f"{label} must be a non-negative integer, got {value!r}"
+        )
+    if candidate < 0:
+        raise ActualsEvidenceError(
+            f"{label} must be a non-negative integer, got {value!r}"
+        )
+    return candidate
+
+
+def parse_interaction_counts(doc: object) -> tuple[int, int]:
+    """Parse `az monitor log-analytics query`'s `tables[].columns[]/rows[]`
+    response shape (never a list of dicts) into `(total_interactions,
+    successful_interactions)`.
+
+    Columns are mapped by casefolded *name*, never position — a response
+    with `total_interactions`/`successful_interactions` swapped in column
+    order still parses correctly. When several tables are present, the one
+    named `PrimaryResult` (case-insensitive) is used; with exactly one table
+    and no such name it is used directly; anything more ambiguous than that
+    (multiple tables, none/several named `PrimaryResult`) raises rather than
+    guessing.
+
+    A well-formed *empty* result set (`rows == []`) is a real, observed zero
+    and returns `(0, 0)` — this is different from never having run the
+    query at all, which the caller represents as `interaction_counts=None`
+    upstream (`not-verified`, `null` counts). Any other row count (more than
+    one row) is ambiguous for a single `summarize` result and is rejected.
+    """
+    if not isinstance(doc, dict):
+        raise ActualsEvidenceError("Log Analytics response is not an object")
+
+    tables = doc.get("tables")
+    if not isinstance(tables, list) or not tables:
+        raise ActualsEvidenceError("Log Analytics response has no tables")
+    if any(not isinstance(table, dict) for table in tables):
+        raise ActualsEvidenceError("Log Analytics tables are malformed")
+
+    named_primary = [
+        table
+        for table in tables
+        if isinstance(table.get("name"), str)
+        and table["name"].casefold() == "primaryresult"
+    ]
+    if named_primary:
+        if len(named_primary) > 1:
+            raise ActualsEvidenceError(
+                "Log Analytics response has more than one PrimaryResult table"
+            )
+        primary = named_primary[0]
+    elif len(tables) == 1:
+        primary = tables[0]
+    else:
+        raise ActualsEvidenceError(
+            "Log Analytics response has multiple tables and none is named "
+            "PrimaryResult"
+        )
+
+    columns = primary.get("columns")
+    rows = primary.get("rows")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        raise ActualsEvidenceError(
+            "Log Analytics table has no columns/rows"
+        )
+    if any(
+        not isinstance(col, dict) or not isinstance(col.get("name"), str)
+        for col in columns
+    ):
+        raise ActualsEvidenceError("Log Analytics columns are malformed")
+
+    names = [str(col["name"]).casefold() for col in columns]
+    if len(names) != len(set(names)):
+        raise ActualsEvidenceError(
+            "Log Analytics columns contain duplicate column name(s)"
+        )
+
+    for required in ("total_interactions", "successful_interactions"):
+        if required not in names:
+            raise ActualsEvidenceError(
+                f"Log Analytics response is missing expected column: "
+                f"{required}"
+            )
+
+    if not rows:
+        return (0, 0)
+    if len(rows) != 1:
+        raise ActualsEvidenceError(
+            "Log Analytics response must summarize to exactly one row, got "
+            f"{len(rows)}"
+        )
+
+    row = rows[0]
+    if not isinstance(row, list) or len(row) != len(names):
+        raise ActualsEvidenceError("Log Analytics row does not match columns")
+    row_map = {names[index]: value for index, value in enumerate(row)}
+
+    total = _parse_interaction_count(
+        row_map["total_interactions"], "total_interactions"
+    )
+    successful = _parse_interaction_count(
+        row_map["successful_interactions"], "successful_interactions"
+    )
+    if successful > total:
+        raise ActualsEvidenceError(
+            "successful_interactions cannot exceed total_interactions "
+            f"(successful={successful}, total={total})"
+        )
+    return (total, successful)
+
+
 def build_actuals_manifest(
     *,
     scope: dict[str, object],
