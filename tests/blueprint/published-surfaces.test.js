@@ -214,6 +214,12 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   const productionReadyIntro = productionReadyLines.slice(0, 120).join('\n');
   const framingQuestions = productionReadyLines.slice(170, 186).join('\n');
   const customerOverrides = productionReadyLines.slice(998, 1009).join('\n');
+  const reportSectionsBlock = productionReady.match(
+    /### `docs\/production-readiness-report\.md`[\s\S]*?The report is the customer-facing artefact\./,
+  )[0];
+  const readinessNotBlock = productionReady.match(
+    /## What this skill is NOT[\s\S]*?## Out of scope for v0\.5\.0/,
+  )[0];
   const reportTemplate = read('skills/threadlight-production-ready/references/report-template.md');
   const handoffChecklist = read('skills/threadlight-production-ready/references/handoff-checklist.md');
   const handoffCurrentSection = handoffChecklist.split('\n').slice(65, 70).join('\n');
@@ -248,6 +254,19 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(reportTemplate, /Variance vs forecast: `\{reconciliation_variance\}`\./);
   assert.match(reportTemplate, /Unallocated cost: `\$\{unallocated_cost\}` USD\./);
   assert.match(reportTemplate, /KPI-003/);
+  assert.match(reportSectionsBlock, /7\. \*\*Cost evidence and unit economics\*\*/);
+  assert.match(reportSectionsBlock, /8\. \*\*Eval summary\*\*/);
+  assert.doesNotMatch(reportSectionsBlock, /7\. \*\*Cost projection\*\*/);
+  assert.doesNotMatch(reportSectionsBlock, /8\. \*\*Outcome KPI scorecard\*\*/);
+  assert.match(readinessNotBlock, /consumes reconciled actuals from[\s\S]{0,40}threadlight-consumption-iq/i);
+  assert.match(
+    readinessNotBlock,
+    /deeper PAYG-vs-PTU analysis, run `paygo-ptu-cost-analyzer`/i,
+  );
+  assert.doesNotMatch(
+    readinessNotBlock,
+    /surfaces PAYG-vs-PTU recommendations from[\s\S]{0,60}`paygo-ptu-cost-analyzer` outputs/i,
+  );
 
   assert.match(handoffChecklist, /SPEC (?:§|section) 14/i);
   assert.match(

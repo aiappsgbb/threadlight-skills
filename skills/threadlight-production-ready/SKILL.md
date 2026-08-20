@@ -685,8 +685,8 @@ single "Oldest evidence" bullet only when staleness is flagged.
 4. **Pillar scorecard** — 13-row table with score per pillar, plus the residency sub-section under pillar 1.
 5. **Pillar deep-dives** — one block per pillar with all findings, evidence references, remediation links.
 6. **Uplift plan** — ordered next steps. Each step links to the awesome-gbb skill that fixes it.
-7. **Cost projection** — current usage → forecast under target SLA; PAYG vs PTU recommendation; idle-resource sweep.
-8. **Outcome KPI scorecard** — joins the three signals CAF asks teams to measure as a real outcome: eval pass-rate (`specs/evals-manifest.json`), actual cost/successful interaction (`specs/cost-reconciliation-manifest.json` — reconciled actuals from threadlight-consumption-iq, re-derived from the digest-pinned `cost-actuals-manifest.json` before it is reported), and live traces (foundry-observability wiring), plus the declared baselines (latency / cost-per-interaction / success-rate) and whether a deviation alert is wired. Scored as `KPI-001..003` under pillar 5.
+7. **Cost evidence and unit economics** — forecast source, reconciled Azure actuals, PAYG vs PTU recommendation at observed token volume, and idle-resource sweep.
+8. **Eval summary** — latest `foundry-evals` run output, trend, and freshness window.
 9. **Residual risk register + RACI + rollout/rollback/cutover** — the "what's left after waivers, who owns it, how do we land in production safely?" trio.
 10. **Appendix** — glossary, reference architecture diagram, evidence register (table), waiver register (table), assumptions list.
 
@@ -1188,8 +1188,9 @@ field-test protocols without claiming field execution.
 - **Not a substitute for `foundry-evals`.** The eval summary pillar reads
   the latest eval-runs output; it does not run new evals.
 - **Not a cost model.** The cost pillar checks for budget/anomaly
-  presence and surfaces PAYG-vs-PTU recommendations from
-  `paygo-ptu-cost-analyzer` outputs; it does not compute Azure pricing.
+  presence and consumes reconciled actuals from
+  `threadlight-consumption-iq`; it does not compute Azure pricing. For
+  deeper PAYG-vs-PTU analysis, run `paygo-ptu-cost-analyzer`.
 - **Not Citadel-specific.** Citadel is the recommended posture, not the
   default detection result. See "Posture target resolution".
 - **Not cross-tenant.** v1 assumes single-tenant pilots.
