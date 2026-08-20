@@ -198,11 +198,14 @@ def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
     for list_field in ("must_fix", "should_fix", "not_verified"):
         _validate_optional_string_list(path.name, data, list_field)
     capabilities = data["capabilities"]
-    invalid_names = set(capabilities) - _GOVERN_CAPABILITIES
-    if invalid_names:
-        raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(invalid_names)}")
-    for capability_name, capability in capabilities.items():
-        _validate_capability(path.name, capability_name, capability)
+    missing = _GOVERN_CAPABILITIES - set(capabilities)
+    extras = set(capabilities) - _GOVERN_CAPABILITIES
+    if missing:
+        raise EvidenceGateError(f"{path.name} missing capabilities: {sorted(missing)}")
+    if extras:
+        raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(extras)}")
+    for capability_name in sorted(_GOVERN_CAPABILITIES):
+        _validate_capability(path.name, capability_name, capabilities[capability_name])
 
 
 def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:

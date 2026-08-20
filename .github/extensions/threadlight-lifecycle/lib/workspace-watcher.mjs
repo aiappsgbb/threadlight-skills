@@ -36,12 +36,30 @@ export async function watchWorkspace(
   const watchers = new Map();
   let timer = null;
 
+  function isIgnorableAzureError(error) {
+    return (
+      error?.code === "ENOENT" ||
+      error?.code === "ENOTDIR" ||
+      error?.code === "EACCES" ||
+      error?.code === "EPERM"
+    );
+  }
+
   async function attachRoots() {
     for (const root of WATCH_ROOTS) {
       const target = path.join(workspace, root);
-      const attached = await attachTarget(target, {
-        rejectSymlinks: root === ".azure",
-      });
+      let attached;
+      try {
+        attached = await attachTarget(target, {
+          rejectSymlinks: root === ".azure",
+          requireDirectory: root === ".azure",
+        });
+      } catch (error) {
+        if (root === ".azure" && isIgnorableAzureError(error)) {
+          continue;
+        }
+        throw error;
+      }
       if (root === ".azure") {
         if (!attached) {
           continue;
@@ -51,7 +69,7 @@ export async function watchWorkspace(
     }
   }
 
-  async function attachTarget(target, { rejectSymlinks = false } = {}) {
+  async function attachTarget(target, { rejectSymlinks = false, requireDirectory = false } = {}) {
     if (watchers.has(target)) {
       return true;
     }
@@ -65,9 +83,12 @@ export async function watchWorkspace(
       throw error;
     }
 
-    if (rejectSymlinks) {
+    if (rejectSymlinks || requireDirectory) {
       const details = await lstat(target);
       if (details.isSymbolicLink()) {
+        return false;
+      }
+      if (requireDirectory && !details.isDirectory()) {
         return false;
       }
     }
@@ -86,7 +107,7 @@ export async function watchWorkspace(
     try {
       entries = await readdir(azureRoot, { withFileTypes: true });
     } catch (error) {
-      if (error?.code === "ENOENT") {
+      if (isIgnorableAzureError(error)) {
         return;
       }
       throw error;
@@ -95,8 +116,16 @@ export async function watchWorkspace(
     await Promise.all(
       entries
         .filter((entry) => entry.isDirectory())
-        .map((entry) =>
-          attachTarget(path.join(azureRoot, entry.name), { rejectSymlinks: true })),
+        .map(async (entry) => {
+          try {
+            await attachTarget(path.join(azureRoot, entry.name), { rejectSymlinks: true });
+          } catch (error) {
+            if (isIgnorableAzureError(error)) {
+              return;
+            }
+            throw error;
+          }
+        }),
     );
   }
 
@@ -106,12 +135,14 @@ export async function watchWorkspace(
       return false;
     }
     try {
-      const symlinkedAzdRoot = (await lstat(path.join(workspace, ".azure"))).isSymbolicLink();
-      if (!symlinkedAzdRoot) {
+      const azdRootDetails = await lstat(path.join(workspace, ".azure"));
+      const unusableAzdRoot =
+        azdRootDetails.isSymbolicLink() || !azdRootDetails.isDirectory();
+      if (!unusableAzdRoot) {
         return false;
       }
       if (filename == null) {
-        return true;
+        return azdRootDetails.isSymbolicLink();
       }
       const relative = filename.toString().split(path.sep).join("/");
       return relative === ".azure" || relative.startsWith(".azure/");

@@ -175,6 +175,40 @@ def test_readiness_proof_requires_passing_governed():
         assert "govern" in msg and "governed" in msg
 
 
+@pytest.mark.parametrize(
+    ("capabilities", "expected_fragment"),
+    [
+        ({}, "missing capabilities"),
+        (
+            {
+                "policy_artefact_present": {"status": "pass"},
+                "policy_schema_valid": {"status": "pass"},
+            },
+            "missing capabilities",
+        ),
+        (
+            {
+                **_fresh_govern("governed")["capabilities"],
+                "unexpected_capability": {"status": "pass"},
+            },
+            "unsupported capabilities",
+        ),
+    ],
+)
+def test_readiness_proof_requires_exact_govern_capabilities(capabilities, expected_fragment):
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    govern = _fresh_govern("governed")
+    govern["capabilities"] = capabilities
+    _write(specs, "govern-manifest.json", govern)
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    with pytest.raises(EvidenceGateError, match=expected_fragment):
+        eg.evaluate_evidence(root, mode="readiness-proof")
+
+
 def test_readiness_proof_requires_safe_check_and_scorecard_and_fails_postdeploy_when_missing():
     root = fixture_workdir("sample-pilot-broken")
     # remove the postdeploy manifest to simulate missing safe-check

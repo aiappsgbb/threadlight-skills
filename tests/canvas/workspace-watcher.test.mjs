@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -174,5 +174,123 @@ test("workspace watcher ignores symlinked .azure roots", async () => {
     watcher?.close();
     await rm(root, { recursive: true, force: true });
     await rm(external, { recursive: true, force: true });
+  }
+});
+
+test("workspace watcher ignores .azure files and still watches other roots", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-azure-file");
+  let watcher;
+  let refreshes = 0;
+  const errors = [];
+
+  try {
+    await writeFile(path.join(root, ".azure"), "not a directory\n");
+
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      {
+        debounceMs: 40,
+        onError: async (error) => {
+          errors.push(error);
+        },
+      },
+    );
+
+    await delay(120);
+    const baseline = refreshes;
+
+    await writeFile(path.join(root, ".azure"), "still not a directory\n");
+    await delay(120);
+
+    assert.equal(refreshes, baseline);
+    assert.deepEqual(errors, []);
+
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
+    await waitForRefreshCount(() => refreshes, baseline + 1);
+    await delay(80);
+
+    assert.deepEqual(errors, []);
+    assert.equal(refreshes, baseline + 1);
+  } finally {
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace watcher ignores unreadable .azure roots and still watches other roots", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-azure-unreadable");
+  let watcher;
+  let refreshes = 0;
+  const errors = [];
+
+  try {
+    await mkdir(path.join(root, ".azure"));
+    await chmod(path.join(root, ".azure"), 0o000);
+
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      {
+        debounceMs: 40,
+        onError: async (error) => {
+          errors.push(error);
+        },
+      },
+    );
+
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
+    await waitForRefreshCount(() => refreshes, 1);
+    await delay(80);
+
+    assert.deepEqual(errors, []);
+    assert.equal(refreshes, 1);
+  } finally {
+    await chmod(path.join(root, ".azure"), 0o755).catch(() => {});
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace watcher ignores unreadable azd env directories and still watches other roots", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-azure-env-unreadable");
+  let watcher;
+  let refreshes = 0;
+  const errors = [];
+
+  try {
+    await mkdir(path.join(root, ".azure", "dev"), { recursive: true });
+    await chmod(path.join(root, ".azure", "dev"), 0o000);
+
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      {
+        debounceMs: 40,
+        onError: async (error) => {
+          errors.push(error);
+        },
+      },
+    );
+
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
+    await waitForRefreshCount(() => refreshes, 1);
+    await delay(80);
+
+    assert.deepEqual(errors, []);
+    assert.equal(refreshes, 1);
+  } finally {
+    await chmod(path.join(root, ".azure", "dev"), 0o755).catch(() => {});
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
   }
 });
