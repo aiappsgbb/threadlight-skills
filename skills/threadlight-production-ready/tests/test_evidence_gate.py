@@ -21,6 +21,11 @@ sys.path.insert(0, str(TEST_DIR))
 
 from fixture_workdir import fixture_workdir
 
+# Import the script module at top-level so pytest fails at collection when
+# the module is absent, matching the spec for Task 1.
+import evidence_gate as eg  # noqa: E402
+from evidence_gate import EvidenceGateError
+
 
 def _write(specs_dir: Path, name: str, data: dict) -> None:
     specs_dir.mkdir(parents=True, exist_ok=True)
@@ -28,15 +33,36 @@ def _write(specs_dir: Path, name: str, data: dict) -> None:
 
 
 def _fresh_govern(verdict: str = "partial") -> dict:
-    return {"schema": "threadlight-govern-manifest/v2", "verdict": verdict}
+    return {
+        "schema": "threadlight-govern-manifest/v2",
+        "tool_version": "1.0",
+        "captured_at": "2026-01-01T00:00:00Z",
+        "verdict": verdict,
+        "capabilities": {},
+    }
 
 
 def _fresh_evals(verdict: str = "partial") -> dict:
-    return {"schema": "threadlight-evals-manifest/v1", "verdict": verdict}
+    return {
+        "schema": "threadlight-evals-manifest/v1",
+        "tool_version": "1.0",
+        "captured_at": "2026-01-01T00:00:00Z",
+        "verdict": verdict,
+        "capabilities": {},
+    }
 
 
 def _fresh_redteam(verdict: str = "partial") -> dict:
-    return {"schema": "threadlight-redteam-manifest/v1", "verdict": verdict}
+    return {
+        "schema": "threadlight-redteam-manifest/v1",
+        "tool_version": "1.0",
+        "captured_at": "2026-01-01T00:00:00Z",
+        "verdict": verdict,
+        "must_fix": [],
+        "should_fix": [],
+        "not_verified": [],
+        "capabilities": {"asr": {"thresholds": {}}},
+    }
 
 
 def test_live_smoke_accepts_non_passing_assurance_verdicts():
@@ -49,8 +75,6 @@ def test_live_smoke_accepts_non_passing_assurance_verdicts():
     _write(specs, "govern-manifest.json", _fresh_govern("partial"))
     _write(specs, "evals-manifest.json", _fresh_evals("none"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("partial"))
-
-    import evidence_gate as eg  # noqa: E402
 
     out = eg.evaluate_evidence(root, mode="live-smoke")
     assert out["status"] == "pass"
@@ -70,9 +94,6 @@ def test_readiness_proof_requires_passing_governed():
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
 
-    import evidence_gate as eg  # noqa: E402
-    from evidence_gate import EvidenceGateError
-
     try:
         eg.evaluate_evidence(root, mode="readiness-proof")
         raise AssertionError("expected EvidenceGateError for ungoverned manifest")
@@ -89,9 +110,6 @@ def test_readiness_proof_requires_safe_check_and_scorecard_and_fails_postdeploy_
     _write(specs, "govern-manifest.json", _fresh_govern("governed"))
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
-
-    import evidence_gate as eg  # noqa: E402
-    from evidence_gate import EvidenceGateError
 
     try:
         eg.evaluate_evidence(root, mode="readiness-proof")
@@ -132,8 +150,6 @@ def test_readiness_proof_passes_when_assurance_and_readiness_complete():
     (root / "tests" / "production-readiness-manifest.json").write_text(
         json.dumps(readiness), encoding="utf-8"
     )
-
-    import evidence_gate as eg  # noqa: E402
 
     out = eg.evaluate_evidence(root, mode="readiness-proof")
     assert out["status"] == "pass"
