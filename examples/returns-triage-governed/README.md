@@ -1,23 +1,23 @@
 # Returns Triage — Contoso Retail (Fast-PoC)
 
-> ### 📁 A captured, **sanitized** Threadlight run — read the receipts
+> ### 📁 A sanitized receipt: live run capture versus regenerated readiness assessment
 >
-> This directory is a **real, end-to-end run** produced by the Threadlight skills on a
-> private Citadel governance hub, **captured 2026-07-07** with the shipped skills. It is
-> published as evidence for the [case study](../../docs/case-study.html) — so you can
-> inspect exactly what the skills generate and govern, rather than take our word for it.
+> This directory is a **real, end-to-end run capture** produced by the Threadlight
+> skills on a private Citadel governance hub, **captured 2026-07-07** with the shipped
+> skills. The production-readiness assessment was **regenerated 2026-08-19 with
+> `threadlight-production-ready` v0.11.0**. Together they form the public receipt for
+> the [case study](../../docs/case-study.html) — evidence you can inspect, not a
+> deployable snapshot you should reuse unchanged.
 >
-> **Sanitized for public release.** The live `.env` / `.azure/` credentials (API key,
-> subscription, tenant, and resource IDs) were **excluded**, and the private hub endpoint
-> and resource names were replaced with placeholders
-> (`apim-citadel-hub.azure-api.net`, `rg-returns-triage-sample`, …). It is **illustrative,
-> not runnable as-is**.
+> **Sanitized for public release.** Credentials and resource identifiers were excluded
+> or replaced with placeholders (`apim-citadel-hub.azure-api.net`,
+> `rg-returns-triage-sample`, …). It is illustrative, not runnable as-is.
 >
 > **Start with the governance receipts:**
 > - [`returns-triage.agt-policy.yaml`](./returns-triage.agt-policy.yaml) — the committed policy (4 spec-grounded rules; `$250` escalate ceiling = BR-003). Lints clean under Agent Governance Toolkit 4.1.0.
 > - [`docs/agt-governance-report.md`](./docs/agt-governance-report.md) — the wiring verdict: **PARTIAL** (it refuses to fake an `agt verify` badge).
-> - [`docs/production-readiness-report.md`](./docs/production-readiness-report.md) — the readiness scorecard: **31% NOT READY**, agent-governance pillar **amber 71%**.
-> - [`specs/SPEC.md`](./specs/SPEC.md) · [`infra/`](./infra) · [`src/agent/skills/`](./src/agent/skills) — the spec, network-isolated IaC, and the generated skills.
+> - [`docs/production-readiness-report.md`](./docs/production-readiness-report.md) — the readiness scorecard: **29% NOT READY**, agent-governance pillar **amber 57%**.
+> - [`specs/SPEC.md`](./specs/SPEC.md) · [`infra/`](./infra) · [`src/agent/skills/`](./src/agent/skills) — the SpecKit spec (14 numbered sections, including value model), network-isolated IaC, and the generated skills.
 
 An AI assistant that triages retail returns in under a minute. Given a return (RMA)
 or order id, it correlates the order, the return record, and the customer profile,
@@ -101,7 +101,7 @@ Model traffic routes through the **Citadel governance hub**
 
 | Path | What |
 |------|------|
-| `specs/SPEC.md` | The SpecKit spec (13 sections) — canonical source of truth |
+| `specs/SPEC.md` | The SpecKit spec (14 numbered sections) — canonical source of truth |
 | `specs/foundation.md` | Foundation decision record (house-defaulted, Fast-PoC) |
 | `specs/manifest.json` | Machine-readable deployment contract |
 | `specs/sample-data/` | Mock data for the 3 upstream systems |
