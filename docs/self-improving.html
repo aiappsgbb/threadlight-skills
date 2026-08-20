@@ -298,10 +298,10 @@
       <h2><span class="n">01</span>How the loop works</h2>
 
       <p>
-        <code>learn</code> is a workflow run &rarr; <strong>diagnostics-to-backlog</strong>
-        loop: a <strong>deterministic harvest</strong> that no model touches, followed by a
-        <strong>single, tightly-scoped LLM step</strong> that ranks what to look at next.
-        Keeping the classification deterministic is what makes the output trustworthy.
+        The current flow is <strong>diagnostics-to-backlog</strong>:
+        <code>learn</code> harvests one finished workflow run, classifies grounded
+        findings, and ranks the next fixes. It does not apply changes, assign owners,
+        rerun the workflow, or claim measured improvement automatically.
       </p>
 
       <h3>1 &middot; Deterministic harvest (no LLM)</h3>

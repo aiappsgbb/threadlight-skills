@@ -390,7 +390,7 @@ _v1: high-level reminders only. For deep PAYG vs PTU analysis, run `paygo-ptu-co
 
 ## 8. Outcome KPI scorecard
 
-Joins the three signals CAF asks teams to measure as a real outcome (eval quality + measured unit cost + live telemetry):
+Joins the three outcome signals a production review needs (eval quality + measured unit cost + live telemetry):
 
 | KPI signal | Value | Source |
 |---|---|---|

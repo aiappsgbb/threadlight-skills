@@ -891,7 +891,7 @@ def test_report_renders_outcome_kpi_section(tmp_path, monkeypatch) -> None:
     md = pr._render_report(manifest, {"declared": "x", "detected": None, "resolved": "x"},
                            {}, [], {}, [])
     assert "Outcome KPI scorecard" in md
-    assert "Joins the three outcome signals a production review needs as a real outcome" in md
+    assert "Joins the three outcome signals a production review needs (eval quality + measured unit cost + live telemetry):" in md
     assert "CAF asks teams to measure" not in md
     # joined values must surface
     assert "97" in md            # pass-rate %
