@@ -121,6 +121,41 @@ def test_readiness_proof_requires_safe_check_and_scorecard_and_fails_postdeploy_
         assert "postdeploy-manifest" in str(e)
 
 
+def test_readiness_proof_requires_production_scorecard_evidence():
+    # When assurance manifests and a passing postdeploy manifest are present,
+    # readiness-proof must still require a production-readiness kpi_scorecard.
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    # passing manifests
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+
+    # ensure postdeploy manifest has phase=post-deploy and gaps=[]
+    post = root / "tests" / "postdeploy-manifest.json"
+    post_data = json.loads(post.read_text(encoding="utf-8"))
+    post_data["phase"] = "post-deploy"
+    post_data["gaps"] = []
+    post.write_text(json.dumps(post_data), encoding="utf-8")
+
+    # production readiness manifest is present but missing kpi_scorecard
+    readiness = {
+        "would_fail_hard_gate": False,
+        "go_live_recommendation": "ready",
+        # intentionally omit kpi_scorecard to assert failure
+    }
+    (root / "tests" / "production-readiness-manifest.json").write_text(
+        json.dumps(readiness), encoding="utf-8"
+    )
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError when production readiness scorecard missing/invalid")
+    except EvidenceGateError as e:
+        msg = str(e).lower()
+        assert "kpi" in msg or "scorecard" in msg or "production readiness kpi_scorecard" in msg
+
+
 def test_readiness_proof_passes_when_assurance_and_readiness_complete():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
