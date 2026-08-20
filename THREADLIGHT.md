@@ -5,6 +5,12 @@
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
+The paid live workflow has two evidence meanings. **Live smoke** proves the
+design, deployment, invocation, and assurance producers executed; it does not
+assert production readiness. **Readiness proof** additionally requires a green
+post-deploy safe-check, governed/comprehensive/hardened assurance verdicts, a
+ready production scorecard, and measured outcome KPIs.
+
 > **Runtime-policy authority.**
 > [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
 > is the canonical selector contract — the **vNext (`contract_version` 2.0.0)**

@@ -499,3 +499,18 @@ test('active Pages use current counts, product naming, and bounded Blueprint cla
   assert.doesNotMatch(pages, /Azure(?:&nbsp;|\s+)AI(?:&nbsp;|\s+)Foundry/);
   assert.doesNotMatch(read('docs/blueprint.html'), /exact (?:arc|lifecycle)/i);
 });
+
+test('public surfaces distinguish planning, smoke evidence, and diagnostics', () => {
+  const surfaces = [
+    read('README.md'),
+    read('THREADLIGHT.md'),
+    read('docs/self-improving.html'),
+  ].join('\n');
+
+  assert.match(surfaces, /agent-guided lifecycle planner/i);
+  assert.match(surfaces, /live smoke/i);
+  assert.match(surfaces, /readiness proof/i);
+  assert.match(surfaces, /diagnostics-to-backlog/i);
+  assert.doesNotMatch(surfaces, /closed autonomous loop/i);
+  assert.doesNotMatch(surfaces, /orchestrator\.py executes/i);
+});
