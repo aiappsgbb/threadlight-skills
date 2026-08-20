@@ -1142,9 +1142,9 @@ jobs:
               if [ "$EVIDENCE_STATUS" = "pass" ]; then
                 echo "Deployment and invocation were asserted; production readiness was not asserted."
               elif [ -n "$EVIDENCE_STATUS" ]; then
-                echo "Deployment and/or invocation were NOT fully asserted — evidence evaluation reported status: $EVIDENCE_STATUS. Check run artifacts for deploy/invoke/evidence logs."
+                echo "Live-smoke evidence was NOT fully asserted — evidence evaluation reported status: $EVIDENCE_STATUS. Check run artifacts for deploy/invoke/evidence logs."
               else
-                echo "Deployment and/or invocation were NOT fully asserted due to missing or incomplete evidence."
+                echo "Live-smoke evidence was NOT fully asserted due to missing or incomplete evidence."
                 # Provide helpful hints similar to the previous heuristics
                 if [ -s "$DEPLOY_LOG" ] && grep -qE "succeeded|Attempt .*succeeded" "$DEPLOY_LOG" 2>/dev/null; then
                   :
