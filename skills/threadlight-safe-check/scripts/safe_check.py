@@ -21,6 +21,7 @@ See SKILL.md for the full specification.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -102,9 +103,36 @@ MCP_CONFIG_CANDIDATES = (
     "mcp-config.json",
 )
 
+TOOL_GOVERNANCE_KEYS = {
+    "enabled", "contract_version", "source", "tools",
+}
+SOURCE_KEYS = {"tool_contracts", "action_gates"}
+TOOL_KEYS = {
+    "name", "action_class", "decision", "gate_id",
+    "enforcement_point", "policy_id", "required_audit_fields",
+}
+ACTION_CLASSES = {
+    "read", "reversible-write", "irreversible-write", "external-side-effect",
+}
+DECISIONS = {"allow", "deny", "conditional"}
+ENFORCEMENT_POINTS = {"agent-middleware", "mcp-server", "gateway"}
+COMMON_AUDIT_FIELDS = {
+    "event_id", "event_type", "timestamp", "correlation_id",
+    "contract_sha256", "policy_id", "tool_name", "action_class",
+    "decision", "enforcement_point", "adapter_id", "actor_id",
+}
+_MISSING = object()
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def canonical_sha256(value: Any) -> str:
+    payload = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
 def _az(*args: str, capture: bool = True) -> str:
@@ -296,6 +324,179 @@ def _print_active_context() -> None:
 # Phase 1 — design
 # ---------------------------------------------------------------------------
 
+def _section(text: str, start: int, end: int | None = None) -> str:
+    if end is None:
+        pattern = rf"(?ms)^##\s+{start}\.\s+.*\Z"
+    else:
+        pattern = rf"(?ms)^##\s+{start}\.\s+.*?(?=^##\s+{end}\.\s+|\Z)"
+    match = re.search(pattern, text)
+    return match.group(0) if match else ""
+
+
+def _canonical_tools(spec_text: str) -> tuple[list[str], list[str]]:
+    section = _section(spec_text, 6, 7)
+    headings = re.findall(r"(?m)^###\s+(.+?)\s*$", section)
+    grouped = [heading for heading in headings if "/" in heading]
+    tools: list[str] = []
+    for heading in headings:
+        stripped = heading.strip()
+        match = re.fullmatch(r"`?([A-Za-z0-9_.-]+)`?", stripped)
+        if match and "/" not in stripped:
+            tools.append(match.group(1))
+    return tools, grouped
+
+
+def _gate_ids(spec_text: str) -> list[str]:
+    return re.findall(
+        r"(?m)^-\s+\*\*Gate ID\*\*:\s+`?(GATE-\d{3})`?(?:\s|\(|$)",
+        _section(spec_text, 8, 9),
+    )
+
+
+def validate_tool_governance_design(
+    manifest: dict[str, Any], spec_text: str
+) -> tuple[dict[str, Any], list[str]]:
+    gaps: list[str] = []
+    block = manifest.get("tool_governance")
+    if block is None:
+        return {"enabled": False, "status": "not-applicable"}, gaps
+    if not isinstance(block, dict):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance must be an object"
+        ]
+    enabled = block.get("enabled", _MISSING)
+    if enabled is _MISSING or enabled is False:
+        return {"enabled": False, "status": "not-applicable"}, gaps
+    if not isinstance(enabled, bool):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance.enabled must be boolean"
+        ]
+
+    unknown = sorted(set(block) - TOOL_GOVERNANCE_KEYS)
+    if unknown:
+        gaps.append(f"tool_governance unknown keys: {', '.join(unknown)}")
+    missing_top = sorted(TOOL_GOVERNANCE_KEYS - set(block))
+    if missing_top:
+        gaps.append(
+            f"tool_governance missing keys: {', '.join(missing_top)}"
+        )
+    if block.get("contract_version") != "1.0":
+        gaps.append("tool_governance.contract_version must be '1.0'")
+
+    source = block.get("source")
+    if not isinstance(source, dict):
+        gaps.append("tool_governance.source must be an object")
+    else:
+        extra_source = sorted(set(source) - SOURCE_KEYS)
+        if extra_source:
+            gaps.append(
+                f"tool_governance.source unknown keys: {', '.join(extra_source)}"
+            )
+        missing_source = sorted(SOURCE_KEYS - set(source))
+        if missing_source:
+            gaps.append(
+                f"tool_governance.source missing keys: {', '.join(missing_source)}"
+            )
+        for key in sorted(SOURCE_KEYS & set(source)):
+            if not isinstance(source.get(key), str) or not source[key]:
+                gaps.append(
+                    f"tool_governance.source.{key} must be a non-empty string"
+                )
+
+    tools = block.get("tools")
+    if not isinstance(tools, list) or not tools:
+        gaps.append("tool_governance.tools must be a non-empty array")
+        tools = []
+
+    canonical_tools, grouped_headings = _canonical_tools(spec_text)
+    for heading in grouped_headings:
+        gaps.append(f"grouped canonical tool heading is invalid: {heading}")
+    gate_ids = _gate_ids(spec_text)
+    duplicate_gate_ids = sorted({
+        gate_id for gate_id in gate_ids if gate_ids.count(gate_id) > 1
+    })
+    for gate_id in duplicate_gate_ids:
+        gaps.append(f"duplicate SPEC section 8 gate_id: {gate_id}")
+
+    contract_names: list[str] = []
+    for item in tools:
+        if not isinstance(item, dict):
+            gaps.append("tool_governance.tools entries must be objects")
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            gaps.append("tool_governance tool name must be non-empty string")
+            continue
+        contract_names.append(name)
+        extra = sorted(set(item) - TOOL_KEYS)
+        if extra:
+            gaps.append(f"{name} unknown keys: {', '.join(extra)}")
+
+        decision = item.get("decision")
+        is_conditional = decision == "conditional"
+        expected_keys = set(TOOL_KEYS)
+        if not is_conditional:
+            expected_keys.discard("gate_id")
+        missing_keys = sorted(expected_keys - set(item))
+        if missing_keys:
+            gaps.append(f"{name} missing keys: {', '.join(missing_keys)}")
+
+        if item.get("action_class") not in ACTION_CLASSES:
+            gaps.append(f"{name} has invalid action_class")
+        if decision not in DECISIONS:
+            gaps.append(f"{name} has invalid decision")
+        if item.get("enforcement_point") not in ENFORCEMENT_POINTS:
+            gaps.append(f"{name} has invalid enforcement_point")
+        if not isinstance(item.get("policy_id"), str) or not item["policy_id"]:
+            gaps.append(f"{name} has invalid policy_id")
+
+        audit = item.get("required_audit_fields")
+        if (
+            not isinstance(audit, list)
+            or not all(isinstance(field, str) and field for field in audit)
+            or len(audit) != len(set(audit))
+        ):
+            gaps.append(f"{name} required_audit_fields must be unique non-empty strings")
+            audit_fields: set[str] = set()
+        else:
+            audit_fields = set(audit)
+            missing_audit = sorted(COMMON_AUDIT_FIELDS - audit_fields)
+            if missing_audit:
+                gaps.append(
+                    f"{name} missing audit fields: {', '.join(missing_audit)}"
+                )
+
+        gate_id = item.get("gate_id", _MISSING)
+        if is_conditional:
+            if not isinstance(gate_id, str) or not gate_id:
+                gaps.append(f"{name} gate_id is required for conditional decision")
+            elif gate_ids.count(gate_id) == 0:
+                gaps.append(f"unknown gate_id {gate_id} for {name}")
+            elif gate_ids.count(gate_id) > 1:
+                gaps.append(f"non-unique gate_id {gate_id} for {name}")
+            if not {"gate_id", "approval_id"}.issubset(audit_fields):
+                gaps.append(f"{name} conditional audit fields are incomplete")
+        elif gate_id is not _MISSING:
+            gaps.append(f"{name} gate_id is only valid for conditional decision")
+
+    canonical_set = set(canonical_tools)
+    contract_set = set(contract_names)
+    for name in canonical_tools:
+        if contract_names.count(name) == 0:
+            gaps.append(f"unclassified canonical tool: {name}")
+    for name in sorted(contract_set - canonical_set):
+        gaps.append(f"contract tool absent from SPEC section 6: {name}")
+    for name in sorted({tool for tool in contract_names if contract_names.count(tool) > 1}):
+        gaps.append(f"duplicate governed tool: {name}")
+
+    result = {
+        "enabled": True,
+        "status": "pass" if not gaps else "fail",
+        "tools_count": len(tools),
+        "contract_sha256": canonical_sha256(block),
+    }
+    return result, gaps
+
 def phase_design(manifest_path: Path, out_path: Path) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
@@ -333,6 +534,13 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
                         f"selector {sel!r}=yes but expected_resource_types "
                         f"is missing {required!r}")
 
+    spec_path = manifest_path.with_name("SPEC.md")
+    spec_text = (
+        spec_path.read_text(encoding="utf-8") if spec_path.is_file() else ""
+    )
+    governance, governance_gaps = validate_tool_governance_design(data, spec_text)
+    gaps.extend(governance_gaps)
+
     manifest = {
         "phase": "design",
         "checked_at": _utc_now(),
@@ -342,6 +550,7 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
         "scheduled_jobs_count": len(dm.get("scheduled_jobs", [])),
         "channels_count": len(dm.get("channels", [])),
         "expected_resource_types_count": len(expected),
+        "tool_governance": governance,
         "gaps": gaps,
     }
     out_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

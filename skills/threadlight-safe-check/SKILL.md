@@ -194,6 +194,16 @@ identical to `scripts/safe_check.py`, so the two never drift.
 7. `deployment_manifest.expected_resource_types[]` non-empty and
    contains the canonical `Microsoft.*` type for every `yes` selector
    per the table in **Selector → resource type map** below.
+8. If `tool_governance.enabled: true`, validate the closed
+   `tool_governance` schema (`enabled`, `contract_version`, `source`,
+   `tools`), exact `source.tool_contracts` / `source.action_gates`
+   strings, canonical SHA-256 digest, one-tool-per-`###`-heading
+   coverage of SPEC § 6, explicit action class / decision / policy /
+   enforcement fields, required common audit fields, and unique existing
+   `GATE-NNN` references from SPEC § 8.
+9. If the block is absent, omits `enabled`, or sets `enabled: false`,
+   record tool governance as `{"enabled": false, "status":
+   "not-applicable"}` and preserve legacy design-gaps / exit behavior.
 
 **Common gaps caught:**
 

@@ -19,9 +19,13 @@ skill ships no pytest harness of its own.
 """
 from __future__ import annotations
 
+import copy
+import json
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 TEST_DIR = Path(__file__).resolve().parent
 SKILL_DIR = TEST_DIR.parent
@@ -30,6 +34,7 @@ REPO_ROOT = SKILL_DIR.parent.parent
 EXAMPLE_COPY = (
     REPO_ROOT / "examples" / "returns-triage-governed" / "tests" / "safe_check.py"
 )
+GOVERNED_FIXTURE = TEST_DIR / "fixtures" / "tool-governance-enabled"
 
 sys.path.insert(0, str(SCRIPT.parent))
 import safe_check as sc  # noqa: E402
@@ -243,6 +248,256 @@ def test_nested_manifest_binding_gap_uses_correct_root() -> None:
     assert gaps == [
         "integration erp is declared real but runtime endpoint is still mock"
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tool governance design validation
+# ---------------------------------------------------------------------------
+
+def _governed_inputs() -> tuple[dict[str, object], str]:
+    manifest = json.loads(
+        (GOVERNED_FIXTURE / "specs" / "manifest.json").read_text(encoding="utf-8")
+    )
+    spec_text = (GOVERNED_FIXTURE / "specs" / "SPEC.md").read_text(encoding="utf-8")
+    return manifest, spec_text
+
+
+def test_tool_governance_design_contract_passes_fixture() -> None:
+    manifest, spec_text = _governed_inputs()
+    result, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert gaps == []
+    assert result["enabled"] is True
+    assert result["status"] == "pass"
+    assert result["tools_count"] == 3
+    assert result["contract_sha256"].startswith("sha256:")
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {},
+        {"tool_governance": {"enabled": False}},
+        {
+            "tool_governance": {
+                "contract_version": 99,
+                "source": {"unexpected": True},
+                "tools": "ignored when disabled is absent",
+            }
+        },
+    ],
+)
+def test_disabled_or_absent_contract_is_not_applicable(
+    manifest: dict[str, object],
+) -> None:
+    _, spec_text = _governed_inputs()
+    result, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert result == {"enabled": False, "status": "not-applicable"}
+    assert gaps == []
+
+
+def test_non_boolean_enabled_is_invalid() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["enabled"] = "yes"
+    result, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert result == {"enabled": False, "status": "invalid"}
+    assert gaps == ["tool_governance.enabled must be boolean"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("action_class", "unknown", "inventory_read has invalid action_class"),
+        ("decision", "sometimes", "inventory_read has invalid decision"),
+        (
+            "enforcement_point",
+            "prompt",
+            "inventory_read has invalid enforcement_point",
+        ),
+    ],
+)
+def test_tool_governance_schema_rejects_unknown_enums(
+    field: str, value: str, expected: str
+) -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["tools"][0][field] = value
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert expected in gaps
+
+
+def test_tool_governance_schema_rejects_unknown_top_source_and_tool_keys() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["implicit_allow"] = True
+    broken["tool_governance"]["source"]["notes"] = "extra"
+    broken["tool_governance"]["tools"][0]["alias"] = "inventory"
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert "tool_governance unknown keys: implicit_allow" in gaps
+    assert "tool_governance.source unknown keys: notes" in gaps
+    assert "inventory_read unknown keys: alias" in gaps
+
+
+def test_tool_governance_schema_rejects_missing_common_audit_fields() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["tools"][0]["required_audit_fields"].remove("actor_id")
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert "inventory_read missing audit fields: actor_id" in gaps
+
+
+def test_conditional_tool_requires_gate_id_and_conditional_audit_fields() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    tool = broken["tool_governance"]["tools"][2]
+    del tool["gate_id"]
+    tool["required_audit_fields"].remove("gate_id")
+    tool["required_audit_fields"].remove("approval_id")
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert "returns_apply_decision gate_id is required for conditional decision" in gaps
+    assert "returns_apply_decision conditional audit fields are incomplete" in gaps
+
+
+def test_tool_governance_schema_rejects_duplicate_and_extra_tools() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["tools"].append(
+        copy.deepcopy(broken["tool_governance"]["tools"][0])
+    )
+    broken["tool_governance"]["tools"].append(
+        {
+            "name": "inventory_shadow",
+            "action_class": "read",
+            "decision": "allow",
+            "enforcement_point": "mcp-server",
+            "policy_id": "TG-EXTRA",
+            "required_audit_fields": [
+                "event_id",
+                "event_type",
+                "timestamp",
+                "correlation_id",
+                "contract_sha256",
+                "policy_id",
+                "tool_name",
+                "action_class",
+                "decision",
+                "enforcement_point",
+                "adapter_id",
+                "actor_id",
+            ],
+        }
+    )
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert "duplicate governed tool: inventory_read" in gaps
+    assert "contract tool absent from SPEC section 6: inventory_shadow" in gaps
+
+
+def test_new_unclassified_tool_is_a_design_gap() -> None:
+    manifest, spec_text = _governed_inputs()
+    spec_text = spec_text.replace(
+        "## 7. Knowledge Sources",
+        "### `new_unclassified_tool`\n"
+        "- **Action class**: `read`\n"
+        "- **Decision**: `allow`\n"
+        "- **Enforcement point**: `mcp-server`\n"
+        "- **Policy ID**: `TG-NEW`\n"
+        "- **Required audit fields**: `event_id`\n\n"
+        "## 7. Knowledge Sources",
+    )
+    _, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert "unclassified canonical tool: new_unclassified_tool" in gaps
+
+
+def test_grouped_tool_headings_are_invalid() -> None:
+    manifest, spec_text = _governed_inputs()
+    spec_text = spec_text.replace(
+        "### `inventory_read`",
+        "### `inventory_read` / `inventory_list`",
+    )
+    _, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert (
+        "grouped canonical tool heading is invalid: `inventory_read` / `inventory_list`"
+        in gaps
+    )
+
+
+def test_unquoted_tool_heading_is_still_canonical() -> None:
+    manifest, spec_text = _governed_inputs()
+    spec_text = spec_text.replace("### `inventory_read`", "### inventory_read")
+    result, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert gaps == []
+    assert result["status"] == "pass"
+
+
+def test_case_sensitive_tool_names_must_match_exactly() -> None:
+    manifest, spec_text = _governed_inputs()
+    spec_text = spec_text.replace("### `inventory_read`", "### `Inventory_read`")
+    _, gaps = sc.validate_tool_governance_design(manifest, spec_text)
+    assert "contract tool absent from SPEC section 6: inventory_read" in gaps
+    assert "unclassified canonical tool: Inventory_read" in gaps
+
+
+def test_conditional_tool_requires_existing_gate() -> None:
+    manifest, spec_text = _governed_inputs()
+    broken = copy.deepcopy(manifest)
+    broken["tool_governance"]["tools"][2]["gate_id"] = "GATE-999"
+    _, gaps = sc.validate_tool_governance_design(broken, spec_text)
+    assert "unknown gate_id GATE-999 for returns_apply_decision" in gaps
+
+
+def test_duplicate_and_missing_spec_gates_are_gaps() -> None:
+    manifest, spec_text = _governed_inputs()
+    duplicated = spec_text.replace(
+        "## 9. Success Criteria",
+        "### Duplicate gate\n"
+        "- **Gate ID**: `GATE-001`\n"
+        "- **Action gate**: `approve`\n"
+        "## 9. Success Criteria",
+    )
+    _, duplicated_gaps = sc.validate_tool_governance_design(manifest, duplicated)
+    assert "duplicate SPEC section 8 gate_id: GATE-001" in duplicated_gaps
+
+    missing = spec_text.replace("- **Gate ID**: `GATE-001` (stable and unique within the SPEC)\n", "")
+    _, missing_gaps = sc.validate_tool_governance_design(manifest, missing)
+    assert "unknown gate_id GATE-001 for returns_apply_decision" in missing_gaps
+
+
+def test_contract_digest_is_stable() -> None:
+    manifest, spec_text = _governed_inputs()
+    reordered = json.loads(json.dumps(manifest))
+    reordered["tool_governance"]["tools"] = list(
+        reversed(reordered["tool_governance"]["tools"])
+    )
+    reordered["tool_governance"]["tools"] = list(
+        reversed(reordered["tool_governance"]["tools"])
+    )
+    result, gaps = sc.validate_tool_governance_design(reordered, spec_text)
+    assert gaps == []
+    payload = json.dumps(
+        reordered["tool_governance"],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    import hashlib
+
+    expected = "sha256:" + hashlib.sha256(payload).hexdigest()
+    assert result["contract_sha256"] == expected
+
+
+def test_phase_design_emits_tool_governance_result() -> None:
+    manifest_path = GOVERNED_FIXTURE / "specs" / "manifest.json"
+    out_path = GOVERNED_FIXTURE / "tests" / "safe-check-design-manifest.json"
+    try:
+        rc = sc.phase_design(manifest_path, out_path)
+        assert rc == 0
+        emitted = json.loads(out_path.read_text(encoding="utf-8"))
+        assert emitted["gaps"] == []
+        assert emitted["tool_governance"]["status"] == "pass"
+        assert emitted["tool_governance"]["contract_sha256"].startswith("sha256:")
+    finally:
+        if out_path.exists():
+            out_path.unlink()
 
 
 # ---------------------------------------------------------------------------
