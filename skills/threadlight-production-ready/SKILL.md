@@ -181,8 +181,8 @@ The IDs and prompts are sourced from `FRAMING_QUESTIONS` in
 | 4 | `provisioning_rights` | Whether the operator has Contributor-or-higher rights on the target resource group. |
 | 5 | `central_platform_team` | Whether a central platform/Citadel team owns shared gateways, Key Vault, or networking. |
 | 6 | `restricted_environment` | Whether direct writes are restricted and all changes must go through CI/CD. |
-| 7 | `cicd_target` | CI/CD target; `github-actions` is the only supported v0.5.0 value. |
-| 8 | `azure_tenant_id` | Azure tenant ID (UUID) where the production subscription lives; new in v0.5.0. |
+| 7 | `cicd_target` | CI/CD target; `github-actions` is the only supported value. |
+| 8 | `azure_tenant_id` | Azure tenant ID (UUID) where the production subscription lives. |
 
 ## Remediation recipes
 
@@ -1002,7 +1002,7 @@ block scalars (`|`, `>`), unquoted `<space>#` in values, duplicate
 top-level keys, duplicate `recipe_id` entries, and unknown top-level or
 per-override keys. Quote any value that contains `#`.
 
-**`--customer-overrides` is only valid on the v0.3.0 assess codepath.**
+**`--customer-overrides` is only valid on the assessment codepath.**
 Combining it with `--remediate`, `--onboard`, or standalone `--scaffold-cicd`
 (no manifest) exits 2 — those codepaths don't apply overrides, so
 honoring the flag would silently drop them.

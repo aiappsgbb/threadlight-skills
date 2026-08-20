@@ -210,9 +210,13 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
 test('cost and readiness skill docs publish the current evidence contracts', () => {
   const consumptionIq = read('skills/threadlight-consumption-iq/SKILL.md');
   const productionReady = read('skills/threadlight-production-ready/SKILL.md');
-  const productionReadyIntro = productionReady.split('\n').slice(0, 120).join('\n');
+  const productionReadyLines = productionReady.split('\n');
+  const productionReadyIntro = productionReadyLines.slice(0, 120).join('\n');
+  const framingQuestions = productionReadyLines.slice(170, 186).join('\n');
+  const customerOverrides = productionReadyLines.slice(998, 1009).join('\n');
   const reportTemplate = read('skills/threadlight-production-ready/references/report-template.md');
   const handoffChecklist = read('skills/threadlight-production-ready/references/handoff-checklist.md');
+  const handoffCurrentSection = handoffChecklist.split('\n').slice(65, 70).join('\n');
 
   assert.match(consumptionIq, /threadlight-cost-actuals\/v1/);
   assert.match(consumptionIq, /threadlight-cost-reconciliation\/v1/);
@@ -225,7 +229,24 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.doesNotMatch(productionReadyIntro, /v0\.3\.0/);
   assert.ok(!productionReadyIntro.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
 
+  assert.match(framingQuestions, /`github-actions` is the only supported value/i);
+  assert.doesNotMatch(framingQuestions, /only supported v0\.5\.0 value/i);
+  assert.doesNotMatch(framingQuestions, /new in v0\.5\.0/i);
+
+  assert.match(customerOverrides, /only valid on the assessment codepath/i);
+  assert.doesNotMatch(customerOverrides, /v0\.3\.0 assess codepath/i);
+  assert.doesNotMatch(customerOverrides, /v0\.5\.0/i);
+
+  assert.match(handoffCurrentSection, /governance \+ capacity surface/i);
+  assert.match(handoffCurrentSection, /current governance and capacity findings/i);
+  assert.doesNotMatch(handoffCurrentSection, /v0\.3\.0/i);
+
   assert.match(reportTemplate, /reconciled Azure actuals/i);
+  assert.match(reportTemplate, /Actuals window: `\{actuals_window\}`\./);
+  assert.match(reportTemplate, /Target scope: `\{actuals_scope\}`\./);
+  assert.match(reportTemplate, /Scope-bound reconciliation coverage: `\{reconciliation_coverage\}`\./);
+  assert.match(reportTemplate, /Variance vs forecast: `\{reconciliation_variance\}`\./);
+  assert.match(reportTemplate, /Unallocated cost: `\$\{unallocated_cost\}` USD\./);
   assert.match(reportTemplate, /KPI-003/);
 
   assert.match(handoffChecklist, /SPEC (?:§|section) 14/i);
