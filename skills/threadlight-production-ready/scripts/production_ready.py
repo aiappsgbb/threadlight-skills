@@ -932,6 +932,28 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 
+_DEFERRED_SURFACE_FINDING_IDS = frozenset({"AGT-007", "AGT-008", "AGT-103"})
+
+
+def _catalog_items(
+    *,
+    pillar: str | None = None,
+    include_deferred_surface_ids: frozenset[str] = frozenset(),
+):
+    for fid, meta in dict.items(FINDING_CATALOG):
+        if pillar is not None and meta["pillar"] != pillar:
+            continue
+        if fid in _DEFERRED_SURFACE_FINDING_IDS and fid not in include_deferred_surface_ids:
+            continue
+        yield fid, meta
+
+
+def _pillar_deferred_surface_ids(pillar: str) -> frozenset[str]:
+    if pillar == "agent-governance":
+        return _DEFERRED_SURFACE_FINDING_IDS
+    return frozenset()
+
+
 class _FindingCatalog(dict[str, dict[str, Any]]):
     """Compatibility wrapper for count/recipe guards while follow-up docs land.
 
@@ -942,14 +964,8 @@ class _FindingCatalog(dict[str, dict[str, Any]]):
     emitted findings available now.
     """
 
-    _deferred_surface_ids = frozenset({"AGT-007", "AGT-008", "AGT-103"})
-
     def _visible_items(self):
-        return [
-            (fid, meta)
-            for fid, meta in dict.items(self)
-            if fid not in self._deferred_surface_ids
-        ]
+        return list(_catalog_items())
 
     def items(self):
         return self._visible_items()
@@ -1763,8 +1779,10 @@ def _not_verified(fid: str, reason: str) -> Finding:
 def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]:
     return [
         _not_verified(fid, reason)
-        for fid, meta in FINDING_CATALOG.items()
-        if meta["pillar"] == pillar
+        for fid, _meta in _catalog_items(
+            pillar=pillar,
+            include_deferred_surface_ids=_pillar_deferred_surface_ids(pillar),
+        )
     ]
 
 
@@ -6377,8 +6395,11 @@ def _run_pillar(
         # The catch is deliberately narrowed to the JSON-shape-mismatch family so
         # a genuine, unexpected bug still surfaces by aborting.
         existing = {f.id for f in findings}
-        for fid, meta in FINDING_CATALOG.items():
-            if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
+        for fid, meta in _catalog_items(
+            pillar=pillar,
+            include_deferred_surface_ids=_pillar_deferred_surface_ids(pillar),
+        ):
+            if meta["tier"] == 0 and fid not in existing:
                 findings.append(_mk_finding(
                     fid, status="must-fix",
                     detail=f"static analyzer could not verify this control "

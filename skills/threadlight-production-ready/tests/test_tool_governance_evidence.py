@@ -559,3 +559,32 @@ def test_agt_static_emits_new_ids_once_on_legacy_and_govern_paths() -> None:
         governed = pr._check_agt_static(_ctx(repo), "auto")
         for fid in ("AGT-007", "AGT-008", "AGT-103"):
             assert sum(1 for finding in governed if finding.id == fid) == 1
+
+
+def test_run_pillar_fail_closed_keeps_deferred_governance_ids_visible(monkeypatch) -> None:
+    """A crashed AGT static runner must still emit the deferred tier-0 IDs."""
+
+    def _boom(_ctx, _agt_profile):
+        raise ValueError("boom")
+
+    original = pr.PILLAR_RUNNERS["agent-governance"]
+    monkeypatch.setitem(pr.PILLAR_RUNNERS, "agent-governance", (_boom, original[1]))
+
+    with _repo_copy("agt-run-pillar-crash") as repo:
+        _prepare_repo(repo)
+        findings, _evidence = pr._run_pillar(
+            "agent-governance",
+            _ctx(repo),
+            static_only=True,
+            tiers={0: True},
+            sub=None,
+            rg=None,
+            resolved_posture="",
+            agt_profile="auto",
+            quick=False,
+        )
+
+    for fid in ("AGT-007", "AGT-008", "AGT-103"):
+        emitted = [finding for finding in findings if finding.id == fid]
+        assert len(emitted) == 1, f"{fid} should appear exactly once after fail-closed crash handling"
+        assert emitted[0].status == "must-fix"
