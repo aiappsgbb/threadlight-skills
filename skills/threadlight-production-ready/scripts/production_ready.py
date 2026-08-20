@@ -3530,8 +3530,10 @@ def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
     actual_sub = actual_scope.get("subscription_id") if isinstance(actual_scope, dict) else None
     actual_rg = actual_scope.get("resource_group") if isinstance(actual_scope, dict) else None
     target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
-    if ((target_sub and actual_sub != target_sub)
-            or (target_rg and actual_rg != target_rg)):
+    if not target_sub or not target_rg:
+        return _cost_evidence_unverified(
+            "Assessment target subscription and resource group are required before cost evidence can be verified")
+    if actual_sub != target_sub or actual_rg != target_rg:
         return _cost_evidence_unverified(
             "Actuals scope does not match the assessment target scope")
 

@@ -859,6 +859,12 @@ def test_report_renders_cost_evidence_summary_fields(
         src_text=_OBS_SRC,
         evals=_evals_manifest(0.97),
     )
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-1",
+            "resource_group": "rg-pilot",
+        }
+    }
     assert hasattr(pr, "_cost_evidence_summary"), (
         "production_ready must publish a cost_evidence summary helper")
     manifest = {
@@ -897,6 +903,48 @@ def test_report_renders_cost_evidence_summary_fields(
         "- Measured cost / successful interaction: `$0.1083`.",
     ):
         assert expected in cost_section
+
+
+def test_report_cost_section_is_forecast_only_when_target_scope_is_unknown(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    ctx.manifest = {"deployment_manifest": {}}
+    manifest = {
+        "checked_at": "2025-01-01T00:00:00+00:00",
+        "mode": "static",
+        "agt_profile": "none",
+        "go_live_recommendation": "ready",
+        "would_fail_hard_gate": False,
+        "include_experimental": False,
+        "verification_coverage": {"verified": 1, "total_scoreable": 1, "percent": 100},
+        "verification_debt": {"total": 0, "by_pillar": {}},
+        "score": {"raw_percent": 100, "with_waivers_percent": 100},
+        "permission_tiers": {"0": True},
+        "warnings": [],
+        "safe_check_reference": {},
+        "pillars": [],
+        "evidence_register": [],
+        "evidence_freshness": {},
+        "waivers": [],
+        "not_verified_count": 0,
+        "kpi_scorecard": pr._kpi_signals(ctx),
+        "cost_evidence": pr._cost_evidence_summary(ctx),
+    }
+    md = pr._render_report(
+        manifest, {"declared": "x", "detected": None, "resolved": "x"}, {}, [], {}, []
+    )
+    cost_section = md.split("## 7. Cost projection", 1)[1].split("\n## 8. ", 1)[0]
+    assert "- Forecast-only / actuals not verified:" in cost_section
+    assert "Actuals scope:" not in cost_section
+    assert "Window totals vs forecast:" not in cost_section
+    assert "Measured cost / successful interaction" not in cost_section
 
 
 def test_report_cost_section_calls_out_forecast_only_when_actuals_are_not_verified(

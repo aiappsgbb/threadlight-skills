@@ -309,6 +309,12 @@ def test_cost_evidence_summary_relays_verified_bundle_fields(
 ) -> None:
     _freeze(monkeypatch)
     ctx = _write_bundle(tmp_path)
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-1",
+            "resource_group": "rg-pilot",
+        }
+    }
     assert hasattr(pr, "_cost_evidence_summary"), (
         "production_ready must publish a cost_evidence summary helper")
 
@@ -332,6 +338,46 @@ def test_cost_evidence_summary_relays_verified_bundle_fields(
     assert summary["source_resource_id_coverage_pct"] == 1.0
     assert summary["unallocated_actual_cost_usd"] == 12.3
     assert summary["cost_per_successful_interaction_usd"] == 0.1083
+
+
+def test_cost_evidence_summary_is_not_verified_when_target_scope_is_incomplete(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    assert hasattr(pr, "_cost_evidence_summary"), (
+        "production_ready must publish a cost_evidence summary helper")
+
+    for deployment_manifest in (
+        {},
+        {"subscription_id": "sub-1"},
+        {"resource_group": "rg-pilot"},
+    ):
+        ctx.manifest = {"deployment_manifest": deployment_manifest}
+        summary = pr._cost_evidence_summary(ctx)
+
+        assert summary["status"] == "not-verified"
+        assert "target" in summary["detail"].lower()
+        assert summary["source_paths"] == {
+            "forecast": "specs/cost-manifest.json",
+            "actuals": "specs/cost-actuals-manifest.json",
+            "reconciliation": "specs/cost-reconciliation-manifest.json",
+        }
+        for key in (
+            "actuals_window_start",
+            "actuals_window_end",
+            "actuals_subscription_id",
+            "actuals_resource_group",
+            "forecast_window_usd",
+            "forecast_monthly_usd",
+            "actual_window_usd",
+            "variance_pct",
+            "projection_attribution_coverage_pct",
+            "source_resource_id_coverage_pct",
+            "unallocated_actual_cost_usd",
+            "cost_per_successful_interaction_usd",
+        ):
+            assert summary.get(key) is None, f"{key} must stay absent when target scope is incomplete"
 
 
 def test_cost_evidence_summary_is_not_verified_on_target_scope_mismatch(
