@@ -144,11 +144,13 @@ def test_reconcile_is_documented_as_making_no_azure_call():
     assert "no azure call" in low or "no azure calls" in low
 
 
-def test_reconcile_scope_trust_is_stated_not_overclaimed():
-    """Standalone `reconcile` trusts the manifest's scope — it must not claim to verify it."""
+def test_reconcile_scope_trust_is_stated_with_optional_expect_scope_assertions():
+    """Standalone `reconcile` stays offline, but may now assert expected scope."""
     low = _lower()
     assert "collection scope" in low, "the report's scope block must be documented"
-    assert "does **not** re-verify" in low or "does not re-verify" in low
+    assert "--expect-subscription" in low
+    assert "--expect-resource-group" in low
+    assert "future work" not in low
 
 
 def test_exit_5_is_advisory_and_lands_after_the_artefacts():

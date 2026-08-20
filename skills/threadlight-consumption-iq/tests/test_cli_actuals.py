@@ -345,12 +345,16 @@ def test_parser_accepts_reconcile_paths() -> None:
         "--forecast", "forecast.json",
         "--actuals-manifest", "actuals.json",
         "--spec", "SPEC.md",
+        "--expect-subscription", "sub-1",
+        "--expect-resource-group", "rg-pilot",
         "--reconciliation-manifest", "reconciliation.json",
         "--report", "report.md",
     ])
     assert str(args.forecast) == "forecast.json"
     assert str(args.actuals_manifest) == "actuals.json"
     assert str(args.spec) == "SPEC.md"
+    assert args.expect_subscription == "sub-1"
+    assert args.expect_resource_group == "rg-pilot"
     assert str(args.reconciliation_manifest) == "reconciliation.json"
     assert str(args.report) == "report.md"
 
@@ -360,12 +364,21 @@ def test_parser_reconcile_defaults_use_module_constants() -> None:
     assert args.forecast == consumption_iq.DEFAULT_OUTPUT_MANIFEST
     assert args.actuals_manifest == consumption_iq.DEFAULT_ACTUALS_MANIFEST
     assert args.spec == consumption_iq.DEFAULT_SPEC_PATH
+    assert args.expect_subscription is None
+    assert args.expect_resource_group is None
     assert (
         args.reconciliation_manifest
         == consumption_iq.DEFAULT_RECONCILIATION_MANIFEST
     )
     assert args.report == consumption_iq.DEFAULT_RECONCILIATION_REPORT
     assert args.cost_history == consumption_iq.DEFAULT_COST_HISTORY
+
+
+def test_module_docstring_describes_optional_standalone_reconcile_scope_assertions() -> None:
+    doc = consumption_iq.__doc__ or ""
+    assert "--expect-subscription" in doc
+    assert "--expect-resource-group" in doc
+    assert "future work" not in doc.lower()
 
 
 def test_parser_run_keeps_projection_paths_and_adds_sidecar_flags() -> None:
@@ -1192,6 +1205,45 @@ def _reconcile_argv(args) -> list[str]:
         "--report", str(args.report),
         "--cost-history", str(args.cost_history),
     ]
+
+
+def test_phase_reconcile_forwards_optional_expect_scope(monkeypatch, tmp_path) -> None:
+    captured = {}
+    args = _reconcile_args(tmp_path)
+    args.expect_subscription = "sub-a"
+    args.expect_resource_group = "rg-a"
+
+    def fake_reconcile_costs(*call_args, **kwargs):
+        captured.update(kwargs)
+        return {"schema": "threadlight-cost-reconciliation/v1", "status": "pass", "warnings": []}
+
+    monkeypatch.setattr(consumption_iq, "reconcile_costs", fake_reconcile_costs)
+    consumption_iq._phase_reconcile(args)
+
+    assert captured["expected_subscription_id"] == "sub-a"
+    assert captured["expected_resource_group"] == "rg-a"
+
+
+def test_reconcile_expect_subscription_mismatch_exits_2(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
+    )
+    args = _reconcile_args(tmp_path)
+    argv = _reconcile_argv(args) + ["--expect-subscription", "sub-b"]
+    assert consumption_iq.main(argv) == 2
+
+
+def test_reconcile_expect_resource_group_mismatch_exits_2(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        consumption_iq,
+        "collect_sources",
+        lambda *a, **k: pytest.fail("reconcile must issue no Azure call"),
+    )
+    args = _reconcile_args(tmp_path)
+    argv = _reconcile_argv(args) + ["--expect-resource-group", "rg-b"]
+    assert consumption_iq.main(argv) == 2
 
 
 def test_phase_reconcile_never_calls_a_source(monkeypatch, tmp_path) -> None:
