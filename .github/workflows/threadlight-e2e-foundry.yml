@@ -10,12 +10,13 @@
 #   §6.2+§6.3   threadlight-deploy → azd up (Foundry account + Container
 #               App + hosted agent)
 #   §6.4        Invoke 2 killer prompts against the deployed agent
-#   legs        threadlight-govern + threadlight-evals + threadlight-redteam
-#               run against the deployed pilot (Protect/Discover control
-#               plane), then threadlight-production-ready renders the
-#               outcome-KPI scorecard that joins them — workflow-owned +
-#               deterministic, report-only for verdicts, gated on the leg
-#               manifests being emitted (see Phase 5)
+#   paid path   live-smoke deploys + invokes the pilot, then runs
+#               threadlight-evals + threadlight-redteam + threadlight-govern
+#               in report mode and renders the outcome-KPI scorecard without
+#               asserting production readiness
+#   strict path readiness-proof adds green post-deploy safe-check plus
+#               evidence-gated assurance verdicts, a ready production
+#               scorecard, and measured outcome KPIs (see Phase 5)
 #
 # The Pattern 0 phase is a CI-only gate that is NOT in the workshop runbook's
 # critical path (the workshop runs §4.4 Streamlit live for the same purpose).
@@ -35,7 +36,7 @@
 # COST + TRIGGER MODEL
 # ====================
 # - workflow_dispatch only — no cron, no PR trigger. Fire deliberately.
-# - Three tiers, pick the cheapest one that can answer your question:
+# - Four tiers, pick the cheapest one that can answer your question:
 #
 #     mode: smoke-only   ~$0      ~30s     registry/skill discovery only
 #     mode: design-only  ~$0.20   ~10min   + design + Pattern 0 + contract
@@ -43,13 +44,23 @@
 #                                          provisioned, so there is nothing
 #                                          to tear down. Cost is model
 #                                          tokens only.
-#     mode: full         ~$1      ~45-60m  everything, incl. azd up, invoke,
-#                                          govern/evals/red-team, teardown.
+#     mode: live-smoke   ~$1      ~45-60m  paid deploy + invoke path,
+#                                          report-only assurance legs, soft
+#                                          scorecard output. Deploys and
+#                                          invokes, but does NOT assert
+#                                          readiness.
+#     mode: readiness-proof
+#                         ~$1      ~45-60m  live-smoke plus green safe-check,
+#                                          passing assurance verdicts, a ready
+#                                          production scorecard, and measured
+#                                          outcome KPIs.
+#     mode: full         alias            deprecated alias for live-smoke.
 #
 #   design-only exists because most design→deploy contract breaks are
 #   visible in the generated artifacts, long before `azd up` spends a
-#   dollar. Reach for `full` when the question is genuinely about
-#   provisioning, the hosted agent, or the Phase 5 legs.
+#   dollar. Reach for `live-smoke` when the question is genuinely about
+#   provisioning, the hosted agent, or the paid deployment/invocation path;
+#   use `readiness-proof` when you need strict lifecycle evidence semantics.
 # - Always-teardown via `azd down --force --purge` in `if: always()` step;
 #   per-run RG name includes `github.run_id` to avoid collisions. Teardown
 #   is skipped in design-only/smoke-only — no RG was ever created.
@@ -149,11 +160,13 @@ on:
           - "true"
           - "false"
       mode:
-        description: "full = smoke + design + local-test + deploy + invoke + govern/evals/red-team + teardown (~$1/run, ~45-60min); design-only = smoke + design + Pattern 0 gate + design→deploy contract check, stops before azd up (~$0.20/run in model tokens, ~10min, ZERO Azure resource cost); smoke-only = registry discovery gate only (~$0/run, ~30s)"
+        description: "live-smoke = smoke + design + local-test + deploy + invoke + evals/red-team/govern + teardown (~$1/run, ~45-60min) and deploys + invokes without asserting readiness; readiness-proof = live-smoke plus green safe-check, passing assurance verdicts, a ready production scorecard, and measured outcome KPIs; full = deprecated alias to live-smoke; design-only = smoke + design + Pattern 0 gate + design→deploy contract check, stops before azd up (~$0.20/run in model tokens, ~10min, ZERO Azure resource cost); smoke-only = registry discovery gate only (~$0/run, ~30s)"
         required: false
-        default: "full"
+        default: "live-smoke"
         type: choice
         options:
+          - live-smoke
+          - readiness-proof
           - full
           - design-only
           - smoke-only
@@ -205,6 +218,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.3
+
+      - name: Normalize lifecycle evidence mode
+        id: evidence-mode
+        run: |
+          set -euo pipefail
+          case "${{ inputs.mode }}" in
+            full)
+              echo "::warning::mode=full is a deprecated alias; treating this run as live-smoke"
+              echo "mode=live-smoke" >> "$GITHUB_OUTPUT"
+              ;;
+            live-smoke|readiness-proof)
+              echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "mode=none" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       # ── Isolated az / azd config dirs ────────────────────────────────
       # Mirrors the per-run isolation convention the threadlight-deploy skill
@@ -712,24 +742,16 @@ jobs:
           }
           echo "✅ Pattern 0 gate passed — proceeding to deploy"
 
-      # ── design-only contract gate ────────────────────────────────────
-      # Runs ONLY in design-only mode, deliberately. The same rules are
-      # already enforced inline by the Phase 1 and Phase 2 asserts above,
-      # so this step is not load-bearing for `full` runs — and adding it
-      # there would risk reddening the ~$1 paid path over a checker
-      # disagreement rather than a real product break.
-      #
-      # design-only is a new mode, so gating it here cannot regress
-      # anything: worst case the cheap tier goes red for $0.20 and tells
-      # us the checker and the shipped bash disagree on real generated
-      # output — which is exactly the evidence needed before promoting
-      # the checker into `full` and deleting the duplicated bash.
+      # ── Contract gate ─────────────────────────────────────────────────
+      # Every non-registry-smoke build mode runs the same design→deploy
+      # contract check so the cheap and paid paths share one deterministic
+      # checker for generated artifacts.
       #
       # The checker is stricter than the bash in two places on purpose:
       # sample-data JSON is actually parsed (not just size-checked), and
       # .env.local is scanned for unresolved <placeholder> tokens.
-      - name: "[design-only gate] design→deploy contract check"
-        if: inputs.mode == 'design-only'
+      - name: "[contract gate] design→deploy contract check"
+        if: inputs.mode != 'smoke-only'
         run: |
           set -euo pipefail
           PILOT_DIR="${E2E_WORKSPACE}/${PILOT_SUBDIR}"
@@ -759,7 +781,7 @@ jobs:
             echo "| design→deploy contract check | ✅ |"
             echo "| Phase 3+ — azd up, invoke, govern/evals/red-team | skipped |"
             echo ""
-            echo "Run \`mode: full\` for the paid end-to-end gate."
+            echo "Run \`mode: live-smoke\` for deployment and invocation, or \`mode: readiness-proof\` for strict lifecycle evidence."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "[Phase 3/4 pre] Pre-seed deployment-posture.md for non-interactive Phase 1.5"
@@ -1007,17 +1029,30 @@ jobs:
           }
           echo "✅ Agent active"
 
+      - name: "[Readiness proof] Run post-deploy safe-check"
+        if: success() && steps.evidence-mode.outputs.mode == 'readiness-proof'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_WORKSPACE}"
+          PILOT_DIR="$E2E_WORKSPACE/${PILOT_SUBDIR}"
+          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
+            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
+          fi
+          cd "$PILOT_DIR"
+          python3 "$REPO/skills/threadlight-safe-check/scripts/safe_check.py" \
+            --phase post-deploy \
+            --out tests
+
       # ── Discover / Protect / Govern control-plane legs ────────────────
       # Workflow-owned + deterministic (no agent, no model spend), in the
       # same spirit as the Pattern 0 §4.3 gate above. Runs the three leg
       # CLIs against the *deployed* pilot so we prove they execute end-to-end
       # in the live pipeline and emit their manifests, then renders the
       # production-readiness scorecard that joins them into the outcome-KPI
-      # section. Report-only for verdicts: the workshop returns-triage
-      # scenario is not a fully-governed repo, so the legs surface gaps
-      # rather than pass — the deterministic gate is that each executable
-      # runs and writes a manifest (see the assert step).
-      - name: "[Phase 5/5] Run govern + evals + red-team legs against the deployed pilot"
+      # section. Producers stay report-only; lifecycle semantics are enforced
+      # separately by evidence_gate.
+      - name: "[Phase 5/5] Run evals + red-team + govern legs against the deployed pilot"
         if: success() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
         timeout-minutes: 8
         run: |
@@ -1028,61 +1063,68 @@ jobs:
             PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
           fi
           echo "Pilot dir: $PILOT_DIR" | tee /tmp/phase-legs.log
-          # Each leg in --emit (report) mode — no --gate, so a gap-laden
-          # workshop repo does not hard-fail here; the assert step below is
-          # the real gate (manifests must exist).
-          python3 "$REPO/skills/threadlight-govern/scripts/govern_check.py" \
-            --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::govern leg reported gaps"
+          MODE="${{ steps.evidence-mode.outputs.mode }}"
+          # Each leg stays in --emit (report) mode — no --gate here, so the
+          # workflow-owned evidence step decides when soft vs hard semantics
+          # apply.
           python3 "$REPO/skills/threadlight-evals/scripts/evals_check.py" \
             --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::evals leg reported gaps"
           python3 "$REPO/skills/threadlight-redteam/scripts/redteam_check.py" \
             --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::red-team leg reported gaps"
+          python3 "$REPO/skills/threadlight-govern/scripts/govern_check.py" \
+            --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::govern leg reported gaps"
           # Render the scorecard that consumes the three manifests + joins the
-          # outcome-KPI section. Best-effort: the workshop pilot may lack
-          # inputs the full scorecard needs; its own offline suite covers it.
-          python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
-            --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
-            --accept-stale-safe-check \
-            --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
-            --report "$PILOT_DIR/docs/production-readiness-report.md" \
-            2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
+          # outcome-KPI section. readiness-proof hard-fails on scorecard gaps;
+          # live-smoke records them without asserting readiness.
+          if [ "$MODE" = "readiness-proof" ]; then
+            python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
+              --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
+              --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
+              --report "$PILOT_DIR/docs/production-readiness-report.md" \
+              2>&1 | tee -a /tmp/phase-legs.log
+          else
+            python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
+              --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
+              --accept-stale-safe-check \
+              --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
+              --report "$PILOT_DIR/docs/production-readiness-report.md" \
+              2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
+          fi
 
-      - name: "[Phase 5/5 assert] Leg manifests emitted + scorecard joins KPIs"
-        if: success() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
+      - name: Evaluate lifecycle evidence semantics
+        if: success() && steps.evidence-mode.outputs.mode != 'none'
         run: |
           set -euo pipefail
+          REPO="${GITHUB_WORKSPACE}"
           PILOT_DIR="$E2E_WORKSPACE/${PILOT_SUBDIR}"
           if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
             PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
           fi
-          # Hard gate: each new leg executable must have run + written a valid
-          # manifest carrying a verdict (verdict VALUE is not asserted — the
-          # workshop repo legitimately reports gaps).
-          for leg in govern evals redteam; do
-            f="$PILOT_DIR/specs/${leg}-manifest.json"
-            if [ ! -s "$f" ]; then
-              echo "::error::${leg}-manifest.json not emitted — the ${leg} leg did not run end-to-end"
-              exit 1
-            fi
-            V=$(jq -er '.verdict' "$f") || {
-              echo "::error::${leg}-manifest.json missing a verdict — malformed manifest"
-              cat "$f"; exit 1
-            }
-            echo "✅ ${leg} leg ran live → verdict=${V}"
-          done
-          # Soft gate: if the scorecard rendered, it must carry the joined
-          # outcome-KPI block (proves the assess stage consumes the legs).
-          SC="$PILOT_DIR/tests/production-readiness-manifest.json"
-          if [ -s "$SC" ]; then
-            if jq -e '.kpi_scorecard' "$SC" >/dev/null 2>&1; then
-              echo "✅ scorecard joined the outcome-KPI block:"
-              jq -c '.kpi_scorecard' "$SC"
+          python3 "$REPO/skills/threadlight-production-ready/scripts/evidence_gate.py" \
+            --root "$PILOT_DIR" \
+            --mode "${{ steps.evidence-mode.outputs.mode }}" \
+            | tee /tmp/evidence-gate.json
+          {
+            echo "## Lifecycle evidence semantics"
+            echo ""
+            echo '```json'
+            cat /tmp/evidence-gate.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[paid run] Lifecycle summary"
+        if: always() && steps.evidence-mode.outputs.mode != 'none'
+        run: |
+          set -euo pipefail
+          {
+            echo "## Paid run"
+            echo ""
+            if [ "${{ steps.evidence-mode.outputs.mode }}" = "readiness-proof" ]; then
+              echo "Readiness semantics were asserted."
             else
-              echo "::warning::scorecard manifest present but has no kpi_scorecard block"
+              echo "Deployment and invocation were asserted; production readiness was not asserted."
             fi
-          else
-            echo "::warning::scorecard did not render against the workshop pilot (covered offline by test_e2e_control_plane.py)"
-          fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Snapshot deployed resources
         if: always() && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
