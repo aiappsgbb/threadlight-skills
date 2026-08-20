@@ -35,6 +35,14 @@ REPO_ROOT = SKILL_DIR.parent.parent
 EXAMPLE_COPY = (
     REPO_ROOT / "examples" / "returns-triage-governed" / "tests" / "safe_check.py"
 )
+HITL_SKILL = REPO_ROOT / "skills" / "threadlight-hitl-patterns" / "SKILL.md"
+HITL_AUDIT_SCHEMA = (
+    REPO_ROOT
+    / "skills"
+    / "threadlight-hitl-patterns"
+    / "references"
+    / "audit-schema.md"
+)
 GOVERNED_FIXTURE = TEST_DIR / "fixtures" / "tool-governance-enabled"
 SCRATCH_ROOT = TEST_DIR / "_scratch"
 
@@ -53,6 +61,10 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _read_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
 @contextmanager
@@ -389,6 +401,30 @@ def _governed_inputs() -> tuple[dict[str, object], str]:
     )
     spec_text = (GOVERNED_FIXTURE / "specs" / "SPEC.md").read_text(encoding="utf-8")
     return manifest, spec_text
+
+
+def test_hitl_contract_governed_fields_and_legacy_shape_are_documented() -> None:
+    skill_text = _read_text(HITL_SKILL)
+    audit_schema_text = _read_text(HITL_AUDIT_SCHEMA)
+
+    for marker in (
+        "gate_id",
+        "correlation_id",
+        "approval_id",
+        "policy_id",
+        "tool_name",
+        "contract_sha256",
+    ):
+        assert marker in skill_text
+        assert marker in audit_schema_text
+
+    for marker in ("case_id", "gate", "decision", "actor", "timestamp", "linked_rules"):
+        assert marker in skill_text
+        assert marker in audit_schema_text
+
+    assert "persist approval audit event before releasing the governed tool" in skill_text
+    assert "same approval_id cannot execute twice" in skill_text
+    assert "replay returns the prior outcome" in skill_text
 
 
 def test_tool_governance_design_contract_passes_fixture() -> None:
