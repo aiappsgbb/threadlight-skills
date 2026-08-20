@@ -115,6 +115,23 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(recap.locator('.recap-flow')).toHaveAttribute('aria-label', 'Curated Threadlight demo path');
     await expect(reel.locator('a[href="./case-study.html#proof"]')).toBeVisible();
   });
+
+  test('Beat 4 uses captured-deployment wording instead of live-tenant claims', async ({ page }) => {
+    await page.goto(LANDING);
+    const beat4 = page.locator('article.beat[data-beat="4"]');
+    await expect(beat4.locator('.art')).toHaveAttribute(
+      'aria-label',
+      'Captured deployment snapshot of the credit-memo agent',
+    );
+    await expect(beat4.locator('.art-head b')).toHaveText('credit-memo · captured proof');
+    await expect(beat4.locator('img[alt]')).toHaveAttribute(
+      'alt',
+      /captured proof|captured deployment snapshot/i,
+    );
+    await expect(beat4).not.toContainText(/live credit-memo agent in your Azure tenant/i);
+    await expect(beat4).not.toContainText(/credit-memo · live/i);
+    await expect(beat4).not.toContainText(/running live/i);
+  });
 });
 
 test.describe('primary navigation — shared across every chapter page', () => {
