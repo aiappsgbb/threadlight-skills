@@ -73,6 +73,14 @@ test('plugin.json is version 1.12.0 with the 22-total description', () => {
   assert.doesNotMatch(plugin.description, /brief to a deployed, production-ready Foundry agent/i);
 });
 
+test('marketplace metadata versions stay in parity with plugin.json', () => {
+  const plugin = JSON.parse(read('plugin.json'));
+  const marketplace = JSON.parse(read('.github/plugin/marketplace.json'));
+
+  assert.strictEqual(marketplace.metadata.version, plugin.version);
+  assert.strictEqual(marketplace.plugins[0].version, plugin.version);
+});
+
 test('published surfaces enumerate the 22-skill pack', () => {
   // The plan's canonical smoke assertions.
   assert.match(read('plugin.json'), /22 total/);
