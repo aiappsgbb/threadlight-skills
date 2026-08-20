@@ -55,6 +55,8 @@ POSTDEPLOY_MANIFEST = "tests/postdeploy-manifest.json"
 RFC3339_UTC_OR_OFFSET = re.compile(
     r"^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
 )
+_CAPABILITY_STATUSES = frozenset({"pass", "must-fix", "should-fix", "not-verified", "not-applicable"})
+_REDTEAM_FINDING_IDS = frozenset({"SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"})
 
 LEG_CONTRACTS = {
     "evals": {
@@ -62,18 +64,55 @@ LEG_CONTRACTS = {
         "skill": "threadlight-evals",
         "schema": "threadlight-evals-manifest/v1",
         "known_verdicts": frozenset({"comprehensive", "partial", "offline-only", "none"}),
+        "required_capabilities": frozenset({
+            "eval_scenarios_present",
+            "eval_datasets_present",
+            "dataset_shape_ok",
+            "thresholds_declared",
+            "schedule_present",
+            "run_history_present",
+            "online_eval_wired",
+            "latest_eval_run_fresh",
+            "alert_wired",
+            "latest_pass_rate_ok",
+            "ab_comparison_present",
+        }),
+        "require_check_id": True,
     },
     "redteam": {
         "manifest": "specs/redteam-manifest.json",
         "skill": "threadlight-redteam",
         "schema": "threadlight-redteam-manifest/v1",
         "known_verdicts": frozenset({"hardened", "partial", "vulnerable"}),
+        "required_capabilities": frozenset({
+            "scan_present",
+            "scan_fresh",
+            "jailbreak_asr_ok",
+            "prompt_injection_asr_ok",
+            "exfiltration_asr_ok",
+            "harmful_content_asr_ok",
+            "coverage_ok",
+        }),
+        "allow_finding_id": True,
+        "forbid_extra_fields": True,
     },
     "govern": {
         "manifest": "specs/govern-manifest.json",
         "skill": "threadlight-govern",
         "schema": "threadlight-govern-manifest/v2",
         "known_verdicts": frozenset({"governed", "partial", "ungoverned"}),
+        "required_capabilities": frozenset({
+            "policy_artefact_present",
+            "policy_schema_valid",
+            "policy_versioned",
+            "policy_default_deny",
+            "sensitive_action_rules_present",
+            "policy_tests_present",
+            "ci_gate_present",
+            "attestation_present",
+            "attestation_fresh",
+            "asi_reference_present",
+        }),
     },
 }
 
@@ -110,6 +149,28 @@ try:  # pragma: no cover - import wiring
     from skills._shared.manifest import validate_envelope as _validate_envelope  # noqa: E402
 except Exception:  # pragma: no cover - standalone fallback
     _validate_envelope = None
+
+try:  # pragma: no cover - import wiring
+    _EVIDENCE_GATE_DIR = _REPO_ROOT / "skills" / "threadlight-production-ready" / "scripts"
+    if str(_EVIDENCE_GATE_DIR) not in sys.path:
+        sys.path.insert(0, str(_EVIDENCE_GATE_DIR))
+    from evidence_gate import (  # noqa: E402
+        EvidenceGateError as _EvidenceGateError,
+        _validate_evals_manifest as _validate_evals_manifest_contract,
+        _validate_govern_manifest as _validate_govern_manifest_contract,
+        _validate_redteam_manifest as _validate_redteam_manifest_contract,
+    )
+except Exception:  # pragma: no cover - standalone fallback
+    _EvidenceGateError = ValueError
+    _validate_govern_manifest_contract = None
+    _validate_evals_manifest_contract = None
+    _validate_redteam_manifest_contract = None
+
+_ASSURANCE_MANIFEST_VALIDATORS = {
+    "govern": _validate_govern_manifest_contract,
+    "evals": _validate_evals_manifest_contract,
+    "redteam": _validate_redteam_manifest_contract,
+}
 
 
 def _is_valid_envelope(data: Any) -> bool:
@@ -348,7 +409,22 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
                 "infra + azure.yaml exist but .azure is symlinked — deploy evidence is not trusted.",
                 artifacts_seen=["infra/main.bicep", "azure.yaml"],
             )
-        env_dirs = [entry for entry in azure_dir.iterdir() if entry.is_dir()]
+        if not azure_dir.is_dir():
+            return StageDecision(
+                "deploy",
+                "run",
+                "infra + azure.yaml exist but no AGENT_FQDN in azd env — `azd up` hasn't completed.",
+                artifacts_seen=["infra/main.bicep", "azure.yaml"],
+            )
+        try:
+            env_dirs = [entry for entry in azure_dir.iterdir() if entry.is_dir()]
+        except OSError:
+            return StageDecision(
+                "deploy",
+                "run",
+                "infra + azure.yaml exist but no AGENT_FQDN in azd env — `azd up` hasn't completed.",
+                artifacts_seen=["infra/main.bicep", "azure.yaml"],
+            )
         if len(env_dirs) > 1:
             return StageDecision(
                 "deploy",
@@ -359,14 +435,21 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
         env_files = [env_dirs[0] / ".env"] if len(env_dirs) == 1 else []
         has_fqdn = False
         for env_file in env_files:
-            if env_file.parent.is_symlink() or env_file.is_symlink():
+            if env_file.parent.is_symlink() or env_file.is_symlink() or not env_file.is_file():
+                if not env_file.exists() and not (env_file.parent.is_symlink() or env_file.is_symlink()):
+                    continue
                 return StageDecision(
                     "deploy",
                     "run",
                     "infra + azure.yaml exist but azd env evidence is symlinked — deploy evidence is not trusted.",
                     artifacts_seen=["infra/main.bicep", "azure.yaml"],
                 )
-            text = env_file.read_text(encoding="utf-8", errors="ignore")
+            if not env_file.exists():
+                continue
+            try:
+                text = env_file.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
             for line in text.splitlines():
                 if line.lstrip().startswith("#"):
                     continue
@@ -541,6 +624,45 @@ def _parse_json_object(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _capability_error(
+    manifest_rel: str,
+    capability_name: str,
+    message: str,
+) -> str:
+    return f"{manifest_rel} capability {capability_name!r} {message}"
+
+
+def _validate_leg_capabilities(
+    manifest_rel: str,
+    capabilities: dict[str, Any],
+    contract: dict[str, Any],
+) -> str | None:
+    for capability_name in sorted(contract["required_capabilities"]):
+        capability = capabilities.get(capability_name)
+        if not isinstance(capability, dict):
+            return _capability_error(manifest_rel, capability_name, "must be an object")
+        if capability.get("status") not in _CAPABILITY_STATUSES:
+            return _capability_error(manifest_rel, capability_name, "has invalid status")
+        for field in ("evidence", "hint"):
+            if field in capability and capability[field] is not None and not isinstance(capability[field], str):
+                return _capability_error(manifest_rel, capability_name, f"has invalid {field!r}")
+        if contract.get("require_check_id") and not isinstance(capability.get("check_id"), str):
+            return _capability_error(manifest_rel, capability_name, "missing or invalid check_id")
+        if "finding_id" in capability:
+            if not contract.get("allow_finding_id") or capability["finding_id"] not in _REDTEAM_FINDING_IDS:
+                return _capability_error(manifest_rel, capability_name, "has invalid finding_id")
+        if contract.get("forbid_extra_fields"):
+            allowed_fields = {"status", "evidence", "hint"}
+            if contract.get("require_check_id"):
+                allowed_fields.add("check_id")
+            if contract.get("allow_finding_id"):
+                allowed_fields.add("finding_id")
+            extras = sorted(set(capability) - allowed_fields)
+            if extras:
+                return _capability_error(manifest_rel, capability_name, f"has unsupported fields {extras}")
+    return None
+
+
 def _postdeploy_age_seconds(path: Path, payload: dict[str, Any]) -> float | None:
     checked_at = _parse_iso(payload.get("checked_at", ""))
     if checked_at is None:
@@ -696,6 +818,57 @@ def _check_leg_manifest(workspace: Path, stage: str) -> StageDecision:
             f"{manifest_rel} verdict is unknown; re-running {skill}.",
             artifacts_seen=[manifest_rel],
         )
+    if not isinstance(manifest_data.get("tool_version"), str):
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} is missing or has invalid tool_version; re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    capabilities = manifest_data.get("capabilities")
+    if not isinstance(capabilities, dict):
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} capabilities are missing or invalid; re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    validator = _ASSURANCE_MANIFEST_VALIDATORS.get(stage)
+    if validator is not None:
+        try:
+            validator(manifest, manifest_data)
+        except _EvidenceGateError as error:
+            return StageDecision(
+                stage,
+                "run",
+                f"{manifest_rel} failed assurance contract validation ({error}); re-running {skill}.",
+                artifacts_seen=[manifest_rel],
+            )
+    required_capabilities = contract.get("required_capabilities")
+    if required_capabilities is not None:
+        capability_names = set(capabilities)
+        missing_capabilities = sorted(required_capabilities - capability_names)
+        extra_capabilities = sorted(capability_names - required_capabilities)
+        if missing_capabilities or extra_capabilities:
+            mismatch = []
+            if missing_capabilities:
+                mismatch.append(f"missing capabilities {missing_capabilities}")
+            if extra_capabilities:
+                mismatch.append(f"unsupported capabilities {extra_capabilities}")
+            return StageDecision(
+                stage,
+                "run",
+                f"{manifest_rel} has {' and '.join(mismatch)}; re-running {skill}.",
+                artifacts_seen=[manifest_rel],
+            )
+        capability_error = _validate_leg_capabilities(manifest_rel, capabilities, contract)
+        if capability_error is not None:
+            return StageDecision(
+                stage,
+                "run",
+                f"{capability_error}; re-running {skill}.",
+                artifacts_seen=[manifest_rel],
+            )
     age = (datetime.now(timezone.utc) - captured_at).total_seconds()
     if age > FRESHNESS_SECONDS:
         return StageDecision(

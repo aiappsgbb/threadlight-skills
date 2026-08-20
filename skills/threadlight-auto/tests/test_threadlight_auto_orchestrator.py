@@ -122,6 +122,27 @@ def test_manual_handoff_status_reflects_validated_envelope(tmp_path):
     }
 
 
+def test_govern_reruns_when_required_capabilities_are_missing(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "govern-manifest.json",
+        {
+            "schema": "threadlight-govern-manifest/v2",
+            "tool_version": "1.0",
+            "captured_at": _iso_now(),
+            "verdict": "governed",
+            "capabilities": {
+                "policy_artefact_present": {"status": "pass"},
+                "policy_schema_valid": {"status": "pass"},
+            },
+        },
+    )
+
+    decision = orch._check_govern(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "missing capabilities" in decision.reason
+
+
 def test_invalid_envelope_never_reports_complete(tmp_path):
     specs = tmp_path / "specs"
     specs.mkdir()
@@ -216,6 +237,18 @@ def test_deploy_requires_an_unambiguous_single_azd_env(tmp_path):
     assert "multiple azd envs" in decision.reason
 
 
+def test_deploy_treats_an_azd_env_without_dot_env_as_incomplete_evidence(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "AGENT_FQDN" in decision.reason
+
+
 def test_deploy_rejects_a_symlinked_azd_root(tmp_path):
     (tmp_path / "infra").mkdir()
     (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
@@ -249,6 +282,31 @@ def test_deploy_rejects_a_symlinked_azd_env_directory(tmp_path):
 
     assert decision.decision == "run"
     assert "symlinked" in decision.reason
+
+
+def test_deploy_rejects_a_broken_symlinked_dot_env(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    os.symlink(tmp_path / "missing.env", tmp_path / ".azure" / "dev" / ".env")
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "symlinked" in decision.reason
+
+
+def test_deploy_treats_a_regular_file_dot_azure_as_missing_evidence(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure").write_text("not a directory\n", encoding="utf-8")
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "AGENT_FQDN" in decision.reason
 
 
 def test_live_legs_never_added_to_stage_runner():
@@ -440,14 +498,47 @@ def test_leg_manifest_requires_expected_schema_captured_at_and_known_verdict(tmp
         assert decision.decision == "run"
 
 
+def test_leg_manifest_reruns_when_capabilities_are_missing(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "redteam-manifest.json",
+        {
+            "schema": "threadlight-redteam-manifest/v1",
+            "tool_version": "1.0",
+            "captured_at": _iso_now(),
+            "verdict": "hardened",
+        },
+    )
+
+    decision = orch._check_redteam(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "capabilities" in decision.reason
+
+
 def test_leg_manifest_skips_fresh_non_passing_known_verdict_with_reason(tmp_path):
     manifest = tmp_path / "specs" / "redteam-manifest.json"
     _write_json(
         manifest,
         {
             "schema": "threadlight-redteam-manifest/v1",
+            "tool_version": "1.0",
             "captured_at": _iso_now(),
             "verdict": "vulnerable",
+            "must_fix": [],
+            "should_fix": [],
+            "not_verified": [],
+            "capabilities": {
+                capability: {"status": "pass"}
+                for capability in orch.LEG_CONTRACTS["redteam"]["required_capabilities"]
+            },
+            "asr": {
+                "jailbreak": 0.0,
+                "prompt_injection": 0.0,
+                "indirect_attack": 0.0,
+                "exfiltration": 0.0,
+                "harmful_content": 0.0,
+            },
+            "thresholds": {"max_asr": 0.1, "freshness_days": 7, "min_attacks": 10},
         },
     )
 
@@ -455,6 +546,117 @@ def test_leg_manifest_skips_fresh_non_passing_known_verdict_with_reason(tmp_path
 
     assert decision.decision == "skip"
     assert "verdict=vulnerable" in decision.reason
+
+
+def test_leg_manifest_reruns_when_govern_capability_status_is_invalid(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "govern-manifest.json",
+        {
+            "schema": "threadlight-govern-manifest/v2",
+            "tool_version": "1.0",
+            "captured_at": _iso_now(),
+            "verdict": "governed",
+            "capabilities": {
+                capability: {"status": "pass"}
+                for capability in orch.LEG_CONTRACTS["govern"]["required_capabilities"]
+            }
+            | {"policy_schema_valid": {"status": "bogus"}},
+        },
+    )
+
+    decision = orch._check_govern(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "invalid status" in decision.reason
+
+
+def test_leg_manifest_reruns_when_evals_check_id_is_missing(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "evals-manifest.json",
+        {
+            "schema": "threadlight-evals-manifest/v1",
+            "tool_version": "1.0",
+            "captured_at": _iso_now(),
+            "verdict": "comprehensive",
+            "capabilities": {
+                capability: {"status": "pass", "check_id": f"eval-{index:03d}"}
+                for index, capability in enumerate(
+                    sorted(orch.LEG_CONTRACTS["evals"]["required_capabilities"]),
+                    start=1,
+                )
+            }
+            | {"eval_scenarios_present": {"status": "pass"}},
+        },
+    )
+
+    decision = orch._check_evals(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "check_id" in decision.reason
+
+
+def test_leg_manifest_reruns_when_redteam_capability_has_unsupported_fields(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "redteam-manifest.json",
+        {
+            "schema": "threadlight-redteam-manifest/v1",
+            "tool_version": "1.0",
+            "captured_at": _iso_now(),
+            "verdict": "vulnerable",
+            "must_fix": [],
+            "should_fix": [],
+            "not_verified": [],
+            "capabilities": {
+                capability: {"status": "pass"}
+                for capability in orch.LEG_CONTRACTS["redteam"]["required_capabilities"]
+            }
+            | {"scan_present": {"status": "pass", "bogus": 123}},
+            "asr": {
+                "jailbreak": 0.0,
+                "prompt_injection": 0.0,
+                "indirect_attack": 0.0,
+                "exfiltration": 0.0,
+                "harmful_content": 0.0,
+            },
+            "thresholds": {"max_asr": 0.1, "freshness_days": 7, "min_attacks": 10},
+        },
+    )
+
+    decision = orch._check_redteam(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "unsupported fields" in decision.reason
+
+
+def test_leg_manifest_reruns_when_redteam_tool_version_is_missing(tmp_path):
+    _write_json(
+        tmp_path / "specs" / "redteam-manifest.json",
+        {
+            "schema": "threadlight-redteam-manifest/v1",
+            "captured_at": _iso_now(),
+            "verdict": "hardened",
+            "must_fix": [],
+            "should_fix": [],
+            "not_verified": [],
+            "capabilities": {
+                capability: {"status": "pass"}
+                for capability in orch.LEG_CONTRACTS["redteam"]["required_capabilities"]
+            },
+            "asr": {
+                "jailbreak": 0.0,
+                "prompt_injection": 0.0,
+                "indirect_attack": 0.0,
+                "exfiltration": 0.0,
+                "harmful_content": 0.0,
+            },
+            "thresholds": {"max_asr": 0.1, "freshness_days": 7, "min_attacks": 10},
+        },
+    )
+
+    decision = orch._check_redteam(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "tool_version" in decision.reason
 
 
 def test_cost_projection_requires_1x_schema_before_trusting_generated_at(tmp_path):
