@@ -1,14 +1,15 @@
 name: docs-blueprint
 
 # Runs the Blueprint composer guards: the static data asset shape + the
-# skill-derivation logic, plus a generated-data drift/idempotence check.
-# Pure node:test + a stdlib-only python regen step. No browser, no Azure.
+# skill-derivation logic, plus a generated-data drift/idempotence check,
+# and the published Pages browser suite.
 on:
   pull_request:
     branches: [main]
     paths:
-      - "docs/assets/process-library.json"
-      - "docs/assets/blueprint-logic.js"
+      - "docs/*.html"
+      - "docs/assets/*.js"
+      - "docs/assets/*.json"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
@@ -20,18 +21,15 @@ on:
       - "skills/threadlight-design/references/runtime-policy.json"
       - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
+      - "tests/playwright/**"
       - "README.md"
       - "plugin.json"
-      - "docs/funnel.html"
-      - "docs/production.html"
-      - "docs/self-improving.html"
-      - "docs/index.html"
-      - "docs/customize.html"
   push:
     branches: [main]
     paths:
-      - "docs/assets/process-library.json"
-      - "docs/assets/blueprint-logic.js"
+      - "docs/*.html"
+      - "docs/assets/*.js"
+      - "docs/assets/*.json"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
@@ -43,13 +41,9 @@ on:
       - "skills/threadlight-design/references/runtime-policy.json"
       - "examples/returns-triage-governed/**"
       - "tests/blueprint/**"
+      - "tests/playwright/**"
       - "README.md"
       - "plugin.json"
-      - "docs/funnel.html"
-      - "docs/production.html"
-      - "docs/self-improving.html"
-      - "docs/index.html"
-      - "docs/customize.html"
   workflow_dispatch: {}
 
 jobs:
@@ -74,3 +68,18 @@ jobs:
         run: |
           python3 scripts/build_process_library.py --source docs/assets/process-library.json --out docs/assets/process-library.json
           git diff --exit-code -- docs/assets/process-library.json
+  pages-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tests/playwright/package-lock.json
+      - run: npm ci
+        working-directory: tests/playwright
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/playwright
+      - run: npm test
+        working-directory: tests/playwright

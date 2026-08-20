@@ -418,3 +418,20 @@ test('the generated process library exposes qualify as entry metadata, never a r
     );
   }
 });
+
+test('active Pages use current counts, product naming, and bounded Blueprint claims', () => {
+  const pages = [
+    'docs/index.html',
+    'docs/funnel.html',
+    'docs/production.html',
+    'docs/industries.html',
+    'docs/blueprint.html',
+    'docs/case-study.html',
+  ].map(read).join('\n');
+
+  assert.match(pages, /fifteen industries/i);
+  assert.match(pages, /eighty-nine curated scenarios/i);
+  assert.match(pages, /Microsoft Foundry/);
+  assert.doesNotMatch(pages, /Azure(?:&nbsp;|\s+)AI(?:&nbsp;|\s+)Foundry/);
+  assert.doesNotMatch(read('docs/blueprint.html'), /exact (?:arc|lifecycle)/i);
+});
