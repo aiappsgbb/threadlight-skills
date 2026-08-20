@@ -89,7 +89,7 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(page.locator('meta[name="twitter:card"]')).toHaveCount(1);
   });
 
-  test('puts value and evidence boundaries on the primary pages journey', async ({ page }) => {
+  test('puts value contract and evidence wording boundaries on the primary pages journey', async ({ page }) => {
     await page.goto(LANDING);
     await expect(page.locator('#how-it-works')).toContainText(/governed working pilot/i);
     await expect(page.locator('.demo-sub')).toContainText(/curated demo path|evidence-backed recreation/i);
