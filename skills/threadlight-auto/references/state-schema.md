@@ -71,12 +71,7 @@ pretty-printed JSON written by the guidance/agent side.
 
 ### Cost-projection fields
 
-`orchestrator.py::_check_cost_projection` reads two fields off the
-`cost_projection` stage entry directly — `last_deploy_at` (fallback: `azd env`'s
-`AZURE_LAST_DEPLOY_AT`) and `passed_at` — to decide whether a fresh
-`specs/cost-manifest.json` can be reused instead of re-running
-`scripts/consumption_iq.py run --all`. Those two are real, orchestrator-read
-fields and are documented here for that reason.
+`orchestrator.py::_check_cost_projection` uses the stage's `last_deploy_at` (fallback: `azd env`'s `AZURE_LAST_DEPLOY_AT`) together with `specs/cost-manifest.json.generated_at` to decide whether the existing forecast can be reused instead of re-running `scripts/consumption_iq.py run --all`. The planner trusts the manifest's `generated_at` vs the deploy marker for this decision. The `cost_projection.passed_at` entry is recorded by guidance for auditing/echoing only and is not consulted by `_check_cost_projection` to decide skip/run.
 
 The stage entry may also carry a `cost-reconciliation` status
 (`pass` / `degraded-source` / `not-verified`) when the optional actuals
