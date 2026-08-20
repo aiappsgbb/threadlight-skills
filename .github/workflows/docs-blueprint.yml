@@ -9,6 +9,7 @@ on:
     paths:
       - "docs/*.html"
       - "docs/assets/*.js"
+      - "docs/assets/*.css"
       - "docs/assets/*.json"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
@@ -29,6 +30,7 @@ on:
     paths:
       - "docs/*.html"
       - "docs/assets/*.js"
+      - "docs/assets/*.css"
       - "docs/assets/*.json"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
