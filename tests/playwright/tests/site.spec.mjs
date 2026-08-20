@@ -346,7 +346,10 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     await page.goto('/self-improving.html');
     const how = page.locator('#how');
     await expect(how).toContainText(/diagnostics-to-backlog/i);
-    await expect(how).not.toContainText(/automatic remediation|automatically remed/i);
+    await expect(how).toContainText(
+      /The current flow is diagnostics-to-backlog:\s+learn harvests one finished workflow run, classifies grounded\s+findings, and ranks the next fixes\.\s+It does not apply changes, assign owners,\s+rerun the workflow, or claim measured improvement automatically\./i,
+    );
+    await expect(how).not.toContainText(/automatic remediation/i);
   });
 });
 
