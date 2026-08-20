@@ -353,6 +353,10 @@ test.describe('production chapter (production.html)', () => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
     await expect(page.locator('#chapter-top h1')).toContainText(/prove it can ship/i);
+    await expect(page.locator('#chapter-top')).toContainText(/uplift\/handoff plan/i);
+    await expect(page.locator('#chapter-top')).toContainText(/move the pilot toward ship/i);
+    await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
+    await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
     const stats = page.locator('#chapter-top .stat-strip .stat');
     await expect(stats).toHaveCount(3);
     await expect(page.locator('#chapter-top .stat-strip')).toContainText('13');
@@ -462,6 +466,15 @@ test.describe('case study chapter (case-study.html)', () => {
     const cost = page.locator('#cost');
     await expect(cost).toContainText(/Reviewed monthly projection/i);
     await expect(cost).not.toContainText(/What it actually costs/i);
+  });
+
+  test('framing stays a governed working pilot with a conditional production gate', async ({ page }) => {
+    await page.goto('/case-study.html');
+    await expect(page).toHaveTitle(/governed working pilot/i);
+    await expect(page.locator('#chapter-top')).toContainText(/evidence-backed path to production/i);
+    await expect(page.locator('#glance')).toContainText(/onboarding\/safe-check gate remained conditional/i);
+    await expect(page.locator('#shipped')).not.toContainText(/This is the finish line/i);
+    await expect(page.locator('#verdict')).toContainText(/governed working pilot/i);
   });
 });
 

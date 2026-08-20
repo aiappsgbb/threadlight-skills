@@ -176,6 +176,23 @@ test.describe('case study wizard (case-study.html)', () => {
     }
   });
 
+  test('framing stays pilot-first and discloses the one conditional onboarding/safe-check gate', async ({ page }) => {
+    await page.goto(CS);
+    await ready(page);
+
+    await expect(page).toHaveTitle(/governed working pilot/i);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /evidence-backed path to production/i);
+
+    const glance = page.locator('#glance');
+    await expect(glance).toContainText(/governed working pilot/i);
+    await expect(glance).toContainText(/onboarding\/safe-check gate remained conditional/i);
+    await expect(glance).not.toContainText(/we reached the very end/i);
+
+    const verdict = page.locator('#verdict');
+    await expect(verdict).toContainText(/evidence-backed production path/i);
+    await expect(verdict).not.toContainText(/Idea to governed production/i);
+  });
+
   test('reduced motion: still fully navigable', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(CS);

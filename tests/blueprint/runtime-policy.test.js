@@ -1444,7 +1444,12 @@ test('docs-blueprint workflow paths (pull_request and push) cover every file thi
       exampleContainerPath,
     ]),
   ];
-  const requiredWorkflowEntries = ['docs/**'];
+  const requiredWorkflowEntries = [
+    'docs/**',
+    '.github/plugin/marketplace.json',
+    'skills/threadlight-consumption-iq/SKILL.md',
+    'skills/threadlight-production-ready/**',
+  ];
   const rejectedWorkflowEntries = ['docs/*.html', 'docs/assets/**'];
 
   for (const triggerKey of ['pull_request', 'push']) {
