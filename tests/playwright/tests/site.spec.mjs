@@ -374,16 +374,27 @@ test.describe('self-improving chapter (self-improving.html)', () => {
   test('evidence wording: the mechanism stays diagnostics-to-backlog and does not claim automatic remediation', async ({ page }) => {
     await page.goto('/self-improving.html');
     const how = page.locator('#how');
+    const lede = (await page.locator('.lede').textContent()) || '';
     await expect(how).toContainText(/diagnostics-to-backlog/i);
-    await expect(how).toContainText(
-      /The current flow is diagnostics-to-backlog:\s+learn harvests one finished workflow run, classifies grounded\s+findings, and ranks the next fixes\.\s+It does not apply changes, assign owners,\s+rerun the workflow, or claim measured improvement automatically\./i,
-    );
+    expect(lede).toContain('Every threadlight CI run');
+    expect(lede).toContain('green or red');
+    expect(lede).toContain('carries');
+    expect(lede).toContain('learnings');
+    expect(lede).toContain('rereading raw logs by hand is slow and noisy');
+    expect(lede).toContain('deterministic');
+    expect(lede).toContain('cold-path called learn harvests one GitHub Actions');
+    expect(lede).toContain('no matched-pair baseline');
+    expect(lede).toContain('grounded');
+    expect(lede).toContain('diagnostics and a ranked backlog');
+    expect(lede).toContain('mapped back to the evidence');
+    expect(lede).toContain('that justifies it');
     await expect(how).toContainText(
       /maintainers\s+may review candidate signatures and explicitly add rules\/tests/i,
     );
     await expect(how).toContainText(
       /only reviewed\s+rule\/test updates improve later classification/i,
     );
+    await expect(how).not.toContainText(/learnings,\s+re-reading raw logs by hand is slow and noisy/i);
     await expect(how).not.toContainText(/taught itself/i);
     await expect(how).not.toContainText(/self-teaching/i);
     await expect(how).not.toContainText(/^it gets better$/i);
