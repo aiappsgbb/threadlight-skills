@@ -51,16 +51,16 @@ Exit codes:
      routine signal for the common optional-evidence gaps.
 
 `reconcile` re-projects LOCAL documents only and issues no Azure call at
-all. It therefore TRUSTS the scope and window recorded in the actuals
-manifest it was pointed at: without `--start`/`--end`/`--subscription`/
-`--resource-group` there is nothing to compare them against, and the
-command does not re-verify that the recorded scope is the one an operator
-meant. What it does instead is publish them — `docs/cost-reconciliation.md`
-prints the collection scope and window under "Collection scope" — so a
-reviewer can see exactly which subscription, resource group and days the
-verdict rests on. (When those flags ARE present, as in
-`run --all --with-actuals`, the manifest's scope and window must match them
-or the run stops.)
+all. It therefore TRUSTS the actuals manifest bytes it was pointed at and
+the recorded window inside them: standalone `reconcile` has no
+`--start`/`--end`, so there is nothing offline to compare that window
+against. It can, however, assert the intended scope locally:
+`--expect-subscription` and `--expect-resource-group` require the recorded
+actuals scope to match before reconciling, while still publishing the
+collection scope and window under "Collection scope" so a reviewer can see
+exactly which subscription, resource group and days the verdict rests on.
+(When the collection flags ARE present, as in `run --all --with-actuals`,
+the manifest's scope and window must match them or the run stops.)
 
 Single-file CLI dispatcher; stdlib only. Per-phase logic lives in:
   scripts/discover.py
@@ -537,13 +537,12 @@ def _require_reusable_actuals(document: dict[str, Any], args: argparse.Namespace
     The schema, the `pass` status and a well-formed window are always
     required. The scope and window CROSS-CHECKS below are conditional, and
     deliberately so: they compare the manifest against what the caller asked
-    for, and standalone `reconcile` asks for nothing — it has no
-    `--start`/`--end`/`--subscription`/`--resource-group`. In that mode the
-    recorded scope and window are trusted as the operator's choice of
-    evidence, and are published in the report ("Collection scope") so a
-    reviewer can see which subscription, resource group and days the verdict
-    rests on. Under `run --all --with-actuals`, where those values exist,
-    a mismatch stops the run.
+    for. Standalone `reconcile` can now ask for expected scope with
+    `--expect-subscription` / `--expect-resource-group`, but it still has no
+    `--start`/`--end`, so the recorded window remains the operator's chosen
+    offline evidence and is published in the report ("Collection scope").
+    Under `run --all --with-actuals`, where the collection values exist, a
+    mismatch stops the run.
     """
     if document.get("schema") != ACTUALS_SCHEMA:
         raise ReconciliationInputError(

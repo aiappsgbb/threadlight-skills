@@ -231,6 +231,7 @@ scripts/consumption_iq.py actuals \
   --workspace-resource-id /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<ws>
 
 scripts/consumption_iq.py reconcile          # local documents only, no Azure calls
+scripts/consumption_iq.py reconcile --expect-subscription <sub-id> --expect-resource-group <rg>
 scripts/consumption_iq.py run --all --with-actuals --start 2026-08-01 --end 2026-08-08
 ```
 
@@ -248,16 +249,16 @@ reached only by naming `actuals` / `reconcile`, or by adding `--with-actuals`.
 
 **What `reconcile` trusts.** `reconcile` re-projects local documents and
 issues **no Azure call at all**, so it takes the scope and window recorded in
-the actuals manifest you point it at as given: it has no
-`--start`/`--end`/`--subscription`/`--resource-group` to compare them
-against, and it does **not** re-verify that the recorded scope is the one you
-meant. It publishes them instead — `docs/cost-reconciliation.md` prints the
-subscription, resource group and window under **Collection scope**, and
-`actuals_ref.sha256` pins the exact evidence bytes — so pick the manifest
-deliberately and read that section. (Under `run --all --with-actuals` those
-flags do exist, and a manifest whose scope or window disagrees with them
-stops the run.) An explicit `--expect-scope` assertion for standalone
-`reconcile` is possible future work, not something the command does today.
+the actuals manifest you point it at as given. Standalone `reconcile` still has
+no `--start`/`--end`, so it does not re-collect or re-verify the window from
+Azure, and `actuals_ref.sha256` still pins the exact evidence bytes you chose.
+If you want a local scope guardrail, pass `--expect-subscription` and/or
+`--expect-resource-group`: the command compares the recorded manifest scope to
+those expected values before reconciling and exits `2` on mismatch. It
+publishes the chosen subscription, resource group and window under
+**Collection scope** either way, so a reviewer can see exactly what the offline
+verdict rests on. (Under `run --all --with-actuals` the collection flags do
+exist, and a manifest whose scope or window disagrees with them stops the run.)
 
 **Flags.** `--start` / `--end` are `YYYY-MM-DD` (`--end` exclusive, must be
 after `--start`). `--subscription` defaults to `AZURE_SUBSCRIPTION_ID`,
