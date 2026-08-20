@@ -7,6 +7,14 @@ field.
 
 ## [Unreleased]
 
+### Changed
+
+- The public narrative now describes a governed working pilot, an evidence-
+  backed path to production, SPEC § 14 as the baseline/target/owner/timeframe/
+  measurement-source/maturity-policy contract, the forecast → settled Azure
+  actuals → reconciliation → cost per successful interaction arc, and
+  `threadlight-auto` as a planner rather than an executable worker.
+
 ### Fixed
 
 - **E2E job-start `azd auth login` had zero retry against an external OIDC

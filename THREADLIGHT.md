@@ -1,21 +1,9 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for the twenty-two-skill pilot pipeline.**
-> The narrative / pitch version of this material lives in the
-> [public docs site](https://aiappsgbb.github.io/threadlight-skills/). This file is
-> the chain map: what each skill takes in, what it produces, what it
-> depends on, and what fails silently if you skip it.
-
-Threadlight is a **library of twenty-two `threadlight-*` skills** (21 pipeline
-skills + the `threadlight-auto` orchestrator) that take a
-customer engagement from a one-paragraph brief through to a deployed,
-evaluated, observable, **production-ready** Microsoft Foundry hosted agent
-— runnable on the customer's tenant in a single working session, then
-walked to production go-live without ending up in lab graveyard. It is
-intentionally opinionated about ordering, cross-skill contracts (SPEC §
-sections, kebab-case selectors, the three-lifecycle gate), and the seller
-→ SE persona split. The contracts are markdown, not code; the runtime is
-GitHub Copilot CLI, Cowork, Cursor, or Coding Agent.
+> **Engineering reference for a governed working pilot with an evidence-backed path to production.**
+> Threadlight is a library of twenty-two `threadlight-*` skills (21 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a governed working pilot with auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+>
+> SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
 > **Runtime-policy authority.**
 > [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
@@ -153,7 +141,7 @@ manifest `partial` rather than summing an unknown as zero.
 - `specs/manifest.json` — machine-readable selector contract
   (`deployment_manifest{}`), the input contract for every downstream skill.
 - `AGENTS.md` + `src/agent/skills/<skill>/SKILL.md` — per-process skills.
-- `specs/overview.html` — self-contained dark-themed seller pitch page.
+- `specs/demo-deck.html` — self-contained dark-themed seller pitch page.
 - `specs/sample-data/*.json` — initial mock data shells (full generation
   is `threadlight-demo-data-factory`'s job).
 
@@ -724,25 +712,25 @@ is `production-ready` (UPG-001..003) alongside every other leg.
 
 ---
 
-## Appendix A — `threadlight-auto` (the orchestrator)
+## Appendix A — `threadlight-auto` (the lifecycle planner)
 
+The skills above are the spine. They are invoked individually when an SE wants stage-by-stage control.
 
-The nine skills above are the **spine**. They're invoked individually
-when an SE wants stage-by-stage control: design today, deploy tomorrow,
-production-ready next week.
-
-[`threadlight-auto`](skills/threadlight-auto/) is a **separate, optional
-wrapper** that drives the chain end-to-end behind one freeform prompt:
+[`threadlight-auto`](skills/threadlight-auto/) is the lifecycle planner for a freeform outcome:
 
 ```
-"Build me an auto-claim triage agent for Contoso Mutual in acme"
+freeform outcome
    ↓
-threadlight-auto → orchestrator.py state machine drives:
-   design → (optional) local-test → deploy → safe-check → invoke
-        → (optional, advisory) production-ready → (optional) sell
+orchestrator.py reads evidence and chooses next stage
+   ↓
+coding agent invokes that stage skill
+   ↓
+new evidence is read before the next decision
 ```
 
-It is not a tenth pillar — it's a different shape (a driver). Use it when:
+The planner does not execute stages. `--commit` writes `.threadlight/auto-next.json`; the agent-owned run updates `.threadlight/auto-state.json`.
+
+It is not a tenth pillar — it's a different shape (a planner). Use it when:
 
 - **First time** running the chain — you don't yet know which skill fires when
 - **Demos** — the whole arc has to complete in one Copilot session
@@ -753,17 +741,9 @@ Do NOT use it when:
 
 - You want fine-grained control over each stage (call the spine skills directly)
 - You're iterating on a single stage
-- This is production CI/CD — `threadlight-auto` is a **pilot driver**, not a
-  production pipeline orchestrator. For that, see `azd-patterns` + your CI tool.
+- This is production CI/CD — `threadlight-auto` is a pilot driver, not a production pipeline orchestrator. For that, see `azd-patterns` + your CI tool.
 
-The orchestrator persists state in `.threadlight/auto-state.json`, smart-recovers
-from the three most common deploy failures (quota, RBAC race, ImagePull), and
-HARD STOPs on tenant assertion failure or quota exhaustion. **Stage 6
-(production-ready) is opt-in** — the orchestrator never runs it by default,
-because demo workspaces shouldn't auto-generate customer-review artefacts.
-Set the `--run-production-ready` orchestrator flag (or invoke the skill
-directly) when you want the paved-path scorecard alongside the demo.
-
+The planner keeps the manual handoff model: `threadlight-connect`, `threadlight-ground`, `threadlight-loadtest`, `threadlight-cicd`, `threadlight-customize`, and the offline improvement legs remain human-led.
 ---
 
 ## Templates & substrates
@@ -951,5 +931,4 @@ The full canonical install set lives in `README.md` § "Threadlight".
 
 This file is the engineering reference. The customer / leadership
 narrative — manifesto, KPIs, animated chain, flywheel — lives in
-[`threadlight-experience.html`](threadlight-experience.html) (open in a
-browser).
+[`docs/index.html`](docs/index.html) (open in a browser).

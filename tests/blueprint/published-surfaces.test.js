@@ -127,6 +127,38 @@ test('no active product surface carries a stale skill-count claim', () => {
   }
 });
 
+test('root docs describe a governed pilot, explicit value evidence, and Auto as a planner', () => {
+  const readme = read('README.md');
+  const threadlight = read('THREADLIGHT.md');
+
+  for (const surface of [readme, threadlight]) {
+    for (const phrase of [
+      'governed working pilot',
+      'evidence-backed path to production',
+      'SPEC § 14',
+      'settled Azure actuals',
+      'cost per successful interaction',
+    ]) {
+      assert.ok(surface.includes(phrase), `missing ${phrase}`);
+    }
+  }
+
+  assert.ok(!readme.includes('production-ready in one session'));
+  assert.match(readme, /agent-guided lifecycle planner/);
+  assert.match(threadlight, /planner does not execute stages/);
+
+  for (const stale of [
+    'NEW v0.1.0-alpha',
+    'v0.3.0',
+    'React workspace',
+    'overview.html',
+    'threadlight-experience.html',
+  ]) {
+    assert.ok(!readme.includes(stale), `README still includes stale reference: ${stale}`);
+    assert.ok(!threadlight.includes(stale), `THREADLIGHT still includes stale reference: ${stale}`);
+  }
+});
+
 test('the generated process library exposes qualify as entry metadata, never a runtime skill', () => {
   const library = JSON.parse(read('docs/assets/process-library.json'));
   assert.ok(Array.isArray(library) && library.length > 0);
