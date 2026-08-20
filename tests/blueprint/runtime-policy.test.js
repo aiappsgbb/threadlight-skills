@@ -1444,14 +1444,14 @@ test('docs-blueprint workflow paths (pull_request and push) cover every file thi
       exampleContainerPath,
     ]),
   ];
-  const requiredWorkflowEntries = ['docs/assets/*.css'];
+  const requiredWorkflowEntries = ['docs/assets/**'];
 
   for (const triggerKey of ['pull_request', 'push']) {
     const pathEntries = extractWorkflowPathsList(workflowContent, triggerKey);
     for (const requiredEntry of requiredWorkflowEntries) {
       assert.ok(
         pathEntries.includes(requiredEntry),
-        `${triggerKey}.paths must include \`${requiredEntry}\` so CSS asset edits re-run the docs blueprint guards`,
+        `${triggerKey}.paths must include \`${requiredEntry}\` so published asset edits re-run the docs blueprint guards`,
       );
     }
     for (const testInputPath of testInputPaths) {

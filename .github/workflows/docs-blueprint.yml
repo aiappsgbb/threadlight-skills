@@ -8,9 +8,7 @@ on:
     branches: [main]
     paths:
       - "docs/*.html"
-      - "docs/assets/*.js"
-      - "docs/assets/*.css"
-      - "docs/assets/*.json"
+      - "docs/assets/**"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
@@ -29,9 +27,7 @@ on:
     branches: [main]
     paths:
       - "docs/*.html"
-      - "docs/assets/*.js"
-      - "docs/assets/*.css"
-      - "docs/assets/*.json"
+      - "docs/assets/**"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
