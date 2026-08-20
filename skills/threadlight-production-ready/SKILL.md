@@ -685,8 +685,8 @@ single "Oldest evidence" bullet only when staleness is flagged.
 4. **Pillar scorecard** — 13-row table with score per pillar, plus the residency sub-section under pillar 1.
 5. **Pillar deep-dives** — one block per pillar with all findings, evidence references, remediation links.
 6. **Uplift plan** — ordered next steps. Each step links to the awesome-gbb skill that fixes it.
-7. **Cost evidence and unit economics** — forecast source, reconciled Azure actuals, PAYG vs PTU recommendation at observed token volume, and idle-resource sweep.
-8. **Eval summary** — latest `foundry-evals` run output, trend, and freshness window.
+7. **Cost projection** — forecast source, reconciled Azure actuals, scope/window/coverage/variance evidence, PAYG vs PTU recommendation at observed token volume, unallocated-cost callout, and idle-resource sweep.
+8. **Outcome KPI scorecard** — joined outcome evidence for eval pass-rate, measured cost per successful interaction, traces, and declared baselines / deviation alert coverage.
 9. **Residual risk register + RACI + rollout/rollback/cutover** — the "what's left after waivers, who owns it, how do we land in production safely?" trio.
 10. **Appendix** — glossary, reference architecture diagram, evidence register (table), waiver register (table), assumptions list.
 

@@ -479,6 +479,8 @@ def test_cost102_should_fix_outside_declared_tolerance(tmp_path, monkeypatch) ->
     assert found["COST-102"].status == "should-fix"
     assert "42.0%" in found["COST-102"].detail
     assert "25.0%" in found["COST-102"].detail
+    assert "docs/cost-reconciliation.md" in found["COST-102"].detail
+    assert "docs/cost-reconciliation-report.md" not in found["COST-102"].detail
     assert found["COST-103"].status == "pass"
 
 

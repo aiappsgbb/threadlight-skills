@@ -5,6 +5,35 @@ const path = require('node:path');
 
 const repoRoot = path.join(__dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function extractBetweenHeadings(text, startHeading, endHeading) {
+  const pattern = new RegExp(
+    `^${escapeRegExp(startHeading)}\\n([\\s\\S]*?)(?=^${escapeRegExp(endHeading)}$)`,
+    'm',
+  );
+  const match = text.match(pattern);
+  assert.ok(match, `expected block between "${startHeading}" and "${endHeading}"`);
+  return `${startHeading}\n${match[1]}`;
+}
+
+function extractSectionHeading(text, number) {
+  const match = text.match(new RegExp(`^## ${number}\\. (.+)$`, 'm'));
+  assert.ok(match, `expected template heading for section ${number}`);
+  return match[1];
+}
+
+function extractSkillSectionHeading(text, number) {
+  const match = text.match(new RegExp(`\\n${number}\\. \\*\\*(.+?)\\*\\* —`));
+  assert.ok(match, `expected SKILL.md section ${number} summary`);
+  return match[1];
+}
+
+function extractProducerSectionHeading(text, number) {
+  const match = text.match(new RegExp(`out\\.append\\("## ${number}\\. ([^"]+)"\\)`));
+  assert.ok(match, `expected producer heading for section ${number}`);
+  return match[1];
+}
 
 const NEW_SKILLS = [
   'threadlight-qualify',
@@ -210,19 +239,39 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
 test('cost and readiness skill docs publish the current evidence contracts', () => {
   const consumptionIq = read('skills/threadlight-consumption-iq/SKILL.md');
   const productionReady = read('skills/threadlight-production-ready/SKILL.md');
-  const productionReadyLines = productionReady.split('\n');
-  const productionReadyIntro = productionReadyLines.slice(0, 120).join('\n');
-  const framingQuestions = productionReadyLines.slice(170, 186).join('\n');
-  const customerOverrides = productionReadyLines.slice(998, 1009).join('\n');
-  const reportSectionsBlock = productionReady.match(
-    /### `docs\/production-readiness-report\.md`[\s\S]*?The report is the customer-facing artefact\./,
-  )[0];
-  const readinessNotBlock = productionReady.match(
-    /## What this skill is NOT[\s\S]*?## Out of scope for v0\.5\.0/,
-  )[0];
+  const productionReadyHead = extractBetweenHeadings(
+    productionReady,
+    '# Threadlight Production Ready — paving the path to production',
+    '## What this skill does NOT replace',
+  );
+  const framingQuestions = extractBetweenHeadings(
+    productionReady,
+    '## Framing wizard questions',
+    '## Remediation recipes',
+  );
+  const customerOverrides = extractBetweenHeadings(
+    productionReady,
+    '## Per-customer overrides (SPEC § 12 / Bucket 4)',
+    '## Integration with the threadlight chain',
+  );
+  const reportSectionsBlock = extractBetweenHeadings(
+    productionReady,
+    '### `docs/production-readiness-report.md` (customer-facing markdown)',
+    '## Posture target resolution',
+  );
+  const readinessNotBlock = extractBetweenHeadings(
+    productionReady,
+    '## What this skill is NOT',
+    '## Out of scope for v0.5.0 (deferred to v0.6.0+)',
+  );
   const reportTemplate = read('skills/threadlight-production-ready/references/report-template.md');
+  const productionReadyScript = read('skills/threadlight-production-ready/scripts/production_ready.py');
   const handoffChecklist = read('skills/threadlight-production-ready/references/handoff-checklist.md');
-  const handoffCurrentSection = handoffChecklist.split('\n').slice(65, 70).join('\n');
+  const handoffCurrentSection = extractBetweenHeadings(
+    handoffChecklist,
+    '## F — Governance + capacity surface',
+    '## G — The production deploy path exists (CI/CD)',
+  );
 
   assert.match(consumptionIq, /threadlight-cost-actuals\/v1/);
   assert.match(consumptionIq, /threadlight-cost-reconciliation\/v1/);
@@ -231,9 +280,9 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(consumptionIq, /production-ready consumes verified artifacts and does not query or recompute/i);
   assert.doesNotMatch(consumptionIq, /Live actual-cost queries[\s\S]{0,120}threadlight-production-ready/i);
 
-  assert.match(productionReadyIntro, /v0\.11\.0/);
-  assert.doesNotMatch(productionReadyIntro, /v0\.3\.0/);
-  assert.ok(!productionReadyIntro.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
+  assert.match(productionReadyHead, /v0\.11\.0/);
+  assert.doesNotMatch(productionReadyHead, /v0\.3\.0/);
+  assert.ok(!productionReadyHead.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
 
   assert.match(framingQuestions, /`github-actions` is the only supported value/i);
   assert.doesNotMatch(framingQuestions, /only supported v0\.5\.0 value/i);
@@ -254,10 +303,24 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(reportTemplate, /Variance vs forecast: `\{reconciliation_variance\}`\./);
   assert.match(reportTemplate, /Unallocated cost: `\$\{unallocated_cost\}` USD\./);
   assert.match(reportTemplate, /KPI-003/);
-  assert.match(reportSectionsBlock, /7\. \*\*Cost evidence and unit economics\*\*/);
-  assert.match(reportSectionsBlock, /8\. \*\*Eval summary\*\*/);
-  assert.doesNotMatch(reportSectionsBlock, /7\. \*\*Cost projection\*\*/);
-  assert.doesNotMatch(reportSectionsBlock, /8\. \*\*Outcome KPI scorecard\*\*/);
+  assert.deepStrictEqual(
+    [
+      extractSkillSectionHeading(reportSectionsBlock, 7),
+      extractSkillSectionHeading(reportSectionsBlock, 8),
+    ],
+    ['Cost projection', 'Outcome KPI scorecard'],
+  );
+  assert.deepStrictEqual(
+    [extractSectionHeading(reportTemplate, 7), extractSectionHeading(reportTemplate, 8)],
+    ['Cost projection', 'Outcome KPI scorecard'],
+  );
+  assert.deepStrictEqual(
+    [
+      extractProducerSectionHeading(productionReadyScript, 7),
+      extractProducerSectionHeading(productionReadyScript, 8),
+    ],
+    ['Cost projection', 'Outcome KPI scorecard'],
+  );
   assert.match(readinessNotBlock, /consumes reconciled actuals from[\s\S]{0,40}threadlight-consumption-iq/i);
   assert.match(
     readinessNotBlock,
