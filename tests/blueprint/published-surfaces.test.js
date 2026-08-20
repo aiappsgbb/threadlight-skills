@@ -207,6 +207,23 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
   }
 });
 
+test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {
+  const readme = read('examples/returns-triage-governed/README.md');
+  const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');
+  const spec = read('examples/returns-triage-governed/specs/SPEC.md');
+
+  assert.match(readme, /captured 2026-07-07/i);
+  assert.match(readme, /regenerated 2026-08-19/i);
+  assert.match(readme, /29% NOT READY/i);
+  assert.match(readme, /agent-governance pillar.*amber 57%/i);
+  assert.match(readme, /14 numbered sections/i);
+
+  assert.match(report, /Raw score.*29%/i);
+  assert.match(report, /Agent governance \(AGT\).*57%/i);
+
+  assert.match(spec, /^## 14\. Value Model$/m);
+});
+
 test('the generated process library exposes qualify as entry metadata, never a runtime skill', () => {
   const library = JSON.parse(read('docs/assets/process-library.json'));
   assert.ok(Array.isArray(library) && library.length > 0);
