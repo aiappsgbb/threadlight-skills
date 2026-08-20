@@ -684,6 +684,7 @@
     list-style: none; margin: 30px 0 0; padding: 0;
     display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
   }
+  .recap-flow.is-quad { grid-template-columns: repeat(4, 1fr); }
   .rf-step {
     position: relative; padding: 16px 14px; border: 1px solid var(--line); border-radius: 12px;
     background: var(--bg-1); display: flex; flex-direction: column; gap: 4px;
@@ -697,7 +698,10 @@
   .rf-step b { font-family: var(--serif); font-size: 17px; color: var(--ink-0); line-height: 1.1; }
   .rf-step span:last-child { font-size: 12px; line-height: 1.4; color: var(--ink-2); }
   @media (max-width: 880px) { .recap-flow { grid-template-columns: repeat(3, 1fr); }
+    .recap-flow.is-quad { grid-template-columns: repeat(2, 1fr); }
     .rf-step:nth-child(3)::after { content: none; } }
+  @media (max-width: 880px) { .recap-flow.is-quad .rf-step:nth-child(2n)::after { content: none; }
+    .recap-flow.is-quad .rf-step:nth-child(3)::after { content: "→"; } }
   @media (max-width: 540px) { .recap-flow { grid-template-columns: 1fr 1fr; }
     .rf-step::after { content: none; } }
 
@@ -856,9 +860,10 @@
         Watch a paragraph become a <em>governed agent.</em>
       </h1>
       <p class="demo-sub reveal" data-delay="2">
-        Idea to production in one continuous run — the same chain a solution
-        engineer drives from GitHub Copilot. The CLI types itself; the artefacts
-        appear in sync. <strong>Press play, or scrub to any beat.</strong>
+        An evidence-backed recreation of the same journey a solution engineer
+        drives from GitHub Copilot — a <strong>curated demo path through the
+        22-skill library</strong>, not the live run itself. <strong>Press play,
+        or scrub to any beat.</strong>
       </p>
     </div>
   </section>
@@ -872,8 +877,8 @@
         Threadlight is 22 <strong>skills</strong> — Markdown playbooks GitHub&nbsp;Copilot follows in your
         repo to <strong>drive Azure&nbsp;AI&nbsp;Foundry, not replace it</strong>. They span a
         <strong>no-repo sizing entry</strong> that runs before design, through deploy and the production
-        gates, to on-demand <strong>evidence &amp; lifecycle legs</strong>. Here&rsquo;s the whole stack —
-        and the four words you&rsquo;ll see in the reel — in one glance.
+        gates, to on-demand <strong>evidence &amp; lifecycle legs</strong>. Here&rsquo;s the whole stack behind the
+        <strong>governed working pilot</strong> — and the four words you&rsquo;ll see in the reel — in one glance.
       </p>
 
       <div class="hiw-stack reveal" data-delay="2" role="list" aria-label="Who does what across the stack">
@@ -920,6 +925,40 @@
     </div>
   </section>
 
+  <!-- ====================== VALUE / EVIDENCE BOUNDARY ====================== -->
+  <section class="scene" id="value-evidence" aria-labelledby="value-evidence-h">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot"></span>Value &amp; evidence boundaries</p>
+      <h2 id="value-evidence-h" class="display reveal" data-delay="1">Forecast first. <em>Settled Azure actuals only after the pilot lands.</em></h2>
+      <p class="sub reveal" data-delay="2">
+        The primary Pages journey now keeps presales value, live pilot evidence, and outcome claims in their lanes.
+        <strong>SPEC §14 (section 14)</strong> sets the baseline forecast. Only a <strong>settled Azure actuals</strong>
+        window in the named subscription + resource group can be reconciled into a measured
+        <strong>cost per successful interaction</strong>.
+      </p>
+
+      <ol class="recap-flow is-quad reveal" data-delay="2" aria-label="Value and evidence progression">
+        <li class="rf-step"><span class="rf-n">01</span><b>Forecast</b><span>SPEC §14 frames the demand shape, success target, and pre-deploy cost view.</span></li>
+        <li class="rf-step"><span class="rf-n">02</span><b>Settled Azure actuals</b><span>Read-only pilot actuals arrive later, after the billing window closes on the target scope.</span></li>
+        <li class="rf-step"><span class="rf-n">03</span><b>Reconcile</b><span>Forecast and actuals are matched to the named subscription + resource group before any KPI is claimed.</span></li>
+        <li class="rf-step"><span class="rf-n">04</span><b>Outcome KPI</b><span>Only reconciled evidence can surface a measured cost per successful interaction.</span></li>
+      </ol>
+
+      <div class="recap-outcomes reveal" data-delay="3">
+        <div class="oc"><b>Baseline</b><span>SPEC §14 demand, throughput and budget assumptions before deployment.</span></div>
+        <div class="oc"><b>Target</b><span>The governed working pilot earns a measured cost per successful interaction, not just a forecast.</span></div>
+        <div class="oc"><b>Owner</b><span>The pilot operator and FinOps reviewer name the subscription + resource-group scope together.</span></div>
+        <div class="oc"><b>Timeframe</b><span>A settled post-pilot billing window, not day-zero estimates or live counters.</span></div>
+        <div class="oc"><b>Source</b><span>Forecast manifest, Azure actuals, and reconciliation output all have to agree.</span></div>
+        <div class="oc"><b>Maturity</b><span>Forecast → settled Azure actuals → reconcile → KPI; otherwise the claim stays not verified.</span></div>
+      </div>
+
+      <div class="hero-cta-row reveal" data-delay="3">
+        <a class="btn btn-ghost" href="./self-improving.html#how">See how diagnostics become backlog <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </section>
+
   <!-- ====================== THE REEL ====================== -->
   <section class="scene" aria-label="Threadlight pipeline demo reel" style="padding-top:0;">
     <div class="wrap wrap-wide">
@@ -929,14 +968,14 @@
           <!-- cover / click-to-start poster (enhanced mode only) -->
           <div class="reel-cover" data-reel="cover">
             <div class="rc-inner">
-              <p class="rc-eyebrow"><span class="dot"></span>Interactive demo · with voiceover</p>
-              <h2 class="rc-title">From one paragraph to a <em>governed agent</em> — live.</h2>
-              <p class="rc-sub">Idea&nbsp;→&nbsp;production, driven from a coding agent like <strong>GitHub&nbsp;Copilot</strong>. Six <span class="skill">threadlight-&lowast;</span> skills, one continuous run — no glue code, nothing mocked.</p>
+              <p class="rc-eyebrow"><span class="dot"></span>Interactive reel · evidence-backed recreation</p>
+              <h2 class="rc-title">From one paragraph to a <em>governed agent</em> — recreated from captured proof.</h2>
+              <p class="rc-sub">Idea&nbsp;→&nbsp;production, driven from a coding agent like <strong>GitHub&nbsp;Copilot</strong>. A curated demo path through the 22-skill library — evidence-backed recreation, not the live run itself.</p>
               <button class="rc-play" type="button" data-reel="start" aria-label="Play the reel with voiceover">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
                 Play the reel <span class="rc-hint">· ~2 min</span>
               </button>
-              <p class="rc-foot">play · pause · scrub any beat, anytime</p>
+              <p class="rc-foot">play · pause · scrub any beat, anytime &middot; <a href="./case-study.html#proof">captured live-run proof</a></p>
             </div>
           </div>
 
@@ -1154,7 +1193,7 @@
                 <span class="beat-step"><b>★</b> recap</span>
                 <h2 class="beat-title">A governed agent, <em>shipped.</em></h2>
               </div>
-              <p class="beat-caption">And that’s the whole arc. One paragraph becomes a working agent — deployed to your own tenant, governed and scored for production, with the customer talk-deck and prep-guide to walk in with. One continuous run, driven from your coding agent, nothing mocked.</p>
+              <p class="beat-caption">And that&rsquo;s the whole arc. This evidence-backed recreation walks a curated demo path through the 22-skill library: one paragraph becomes a working agent — deployed to your own tenant, governed and scored for production, with the customer talk-deck and prep-guide to walk in with.</p>
               <div class="close-stats">
                 <div class="cs"><b>92/100</b><span>Production-ready score · ship with 2 waivers</span></div>
                 <div class="cs"><b>13 pillars</b><span>Verified for ARB sign-off &amp; SRE hand-off</span></div>
@@ -1162,8 +1201,8 @@
                 <div class="cs"><b>sales kit</b><span>Customer talk-deck + seller prep-guide</span></div>
               </div>
               <p class="close-payoff">
-                Idea &rarr; production, in <em>one continuous run.</em>
-                <span class="close-sub">Driven from GitHub Copilot · everything past the PoC handled — govern, evals, red-team, scorecard, hand-off.</span>
+                Idea &rarr; production, through a <em>curated demo path.</em>
+                <span class="close-sub">Grounded in captured live-run proof · everything past the PoC handled — govern, evals, red-team, scorecard, hand-off.</span>
               </p>
             </article>
 
@@ -1252,7 +1291,7 @@
     <div class="wrap">
       <p class="eyebrow reveal"><span class="dot"></span>The whole reel, in one breath</p>
       <h2 id="recap-h" class="display reveal" data-delay="1">A paragraph in. A governed agent, <em>live in your tenant</em>, out.</h2>
-      <p class="sub reveal" data-delay="2">Six skills, one continuous run — no glue code, no hand-offs, nothing mocked.</p>
+      <p class="sub reveal" data-delay="2">A curated demo path through the 22-skill library — enough to show the journey without pretending the reel is the live run.</p>
 
       <ol class="recap-flow reveal" data-delay="2" aria-label="The six-skill pipeline">
         <li class="rf-step"><span class="rf-n">01</span><b>Brief</b><span>one plain-English paragraph</span></li>
@@ -1294,7 +1333,7 @@
     <div class="wrap">
       <p class="eyebrow reveal"><span class="dot"></span>That was the reel — now the receipts</p>
       <h2 id="demo-cta-h" class="display reveal" data-delay="1">Liked the demo? <em>See it run for real.</em></h2>
-      <p class="sub reveal" data-delay="2">The reel is a recreation. The case study is an actual end-to-end run — real prompts, OTel traces, costs, and verdict.</p>
+      <p class="sub reveal" data-delay="2">The reel is an evidence-backed recreation. The case study is an actual end-to-end run — real prompts, OTel traces, costs, and verdict.</p>
       <div class="hero-cta-row reveal" data-delay="3">
         <a class="btn btn-primary" href="./case-study.html">Read the real-run case study <span class="arrow">→</span></a>
         <a class="btn btn-ghost" href="./workbook.html">Run it yourself <span class="arrow">→</span></a>

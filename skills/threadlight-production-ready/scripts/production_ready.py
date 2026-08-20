@@ -6558,7 +6558,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         cpi_val = kpi.get("cost_per_interaction_usd")
         pr_str = f"{pr_val:.0%}" if isinstance(pr_val, (int, float)) else "not-verified"
         cpi_str = f"${cpi_val:.4f}" if isinstance(cpi_val, (int, float)) else "not-verified"
-        out.append("Joins the three signals CAF asks teams to measure as a real outcome "
+        out.append("Joins the three outcome signals a production review needs as a real outcome "
                    "(eval quality + measured unit cost + live telemetry):")
         out.append("")
         out.append("| KPI signal | Value | Source |")
