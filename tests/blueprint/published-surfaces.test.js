@@ -156,6 +156,21 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
   assert.ok(selfImproving.includes('skills/threadlight-upgrade'), 'self-improving must link threadlight-upgrade');
 });
 
+test('industries copy stays CI/CD-only and never reintroduces a laptop deploy command', () => {
+  const industries = read('docs/industries.html');
+
+  assert.match(industries, /starter skill\/evidence plan/i);
+  assert.match(industries, /production delivery stays\s+through CI\/CD/i);
+  assert.doesNotMatch(industries, /azd&nbsp;up/i, 'industries copy must not promise a laptop deploy command');
+});
+
+test('grab-shots targets the process library section, not the deprecated sector grid', () => {
+  const grabShots = read('tests/playwright/grab-shots.mjs');
+
+  assert.match(grabShots, /anchor:\s*'#library'|anchor:\s*"#library"/);
+  assert.doesNotMatch(grabShots, /#sector-grid/);
+});
+
 test('index + customize render the accurate 22 count', () => {
   const index = read('docs/index.html');
   const twitterDescription = index.match(

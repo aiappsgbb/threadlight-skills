@@ -29,7 +29,7 @@ const pages = [
     prefix:  'industries',
     targets: [
       { name: 'hero',       anchor: '.chapter-hero' },
-      { name: 'grid',       anchor: '#sector-grid' },
+      { name: 'library',    anchor: '#library' },
       { name: 'spec',       anchor: '#ind-spec' },
       { name: 'recap',      anchor: '#industry-recap' }
     ]
