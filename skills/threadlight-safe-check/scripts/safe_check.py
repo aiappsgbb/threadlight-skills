@@ -20,6 +20,7 @@ See SKILL.md for the full specification.
 """
 from __future__ import annotations
 
+import ast
 import argparse
 import hashlib
 import json
@@ -27,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+import tokenize
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -300,6 +302,62 @@ def _load_json_object(
     if not isinstance(data, dict):
         return None, [f"{label} must be a JSON object: {shown}"]
     return data, []
+
+
+def _resolve_repo_relative_path(
+    repo: Path, rel_path: str, label: str,
+) -> tuple[Path | None, list[str]]:
+    raw_path = Path(rel_path)
+    if raw_path.is_absolute():
+        return None, [f"{label} must resolve within repo root: {rel_path}"]
+    repo_root = repo.resolve()
+    resolved = (repo_root / raw_path).resolve(strict=False)
+    if not resolved.is_relative_to(repo_root):
+        return None, [f"{label} must resolve within repo root: {rel_path}"]
+    return resolved, []
+
+
+def _raw_repo_relative_path(repo: Path, rel_path: str) -> Path:
+    return repo.resolve() / Path(rel_path)
+
+
+def _has_module_level_canary_guard(
+    entrypoint_text: str, display_path: str,
+) -> tuple[bool, str | None]:
+    try:
+        module = ast.parse(entrypoint_text, filename=display_path)
+    except SyntaxError as exc:
+        return False, (
+            "tool governance probe entrypoint has invalid Python syntax: "
+            f"{display_path} ({exc.msg})"
+        )
+    for node in module.body:
+        value_node = None
+        if isinstance(node, ast.Assign):
+            if any(
+                isinstance(target, ast.Name)
+                and target.id == "THREADLIGHT_CANARY_ONLY"
+                for target in node.targets
+            ):
+                value_node = node.value
+        elif isinstance(node, ast.AnnAssign):
+            if (
+                isinstance(node.target, ast.Name)
+                and node.target.id == "THREADLIGHT_CANARY_ONLY"
+            ):
+                value_node = node.value
+        if value_node is None:
+            continue
+        try:
+            literal_value = ast.literal_eval(value_node)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(literal_value, bool) and literal_value is True:
+            return True, None
+    return False, (
+        "tool governance probe entrypoint must contain module-level canary guard "
+        "THREADLIGHT_CANARY_ONLY = True"
+    )
 
 
 def _extract_foundation_runtime(repo: Path) -> tuple[dict[str, str] | None, list[str]]:
@@ -1044,24 +1102,60 @@ def _run_governance_probe(
         gaps.append("tool governance probe.evidence must be a non-empty string")
         return entrypoint, None
 
-    entrypoint_path = repo / entrypoint
+    entrypoint_path, entrypoint_path_gaps = _resolve_repo_relative_path(
+        repo, entrypoint, "tool governance probe entrypoint"
+    )
+    gaps.extend(entrypoint_path_gaps)
+    if entrypoint_path is None:
+        return None, None
+    evidence_path, evidence_path_gaps = _resolve_repo_relative_path(
+        repo, evidence, "tool governance probe evidence"
+    )
+    gaps.extend(evidence_path_gaps)
+    if evidence_path is None:
+        return entrypoint, None
+    evidence_raw_path = _raw_repo_relative_path(repo, evidence)
+    if evidence_raw_path.is_symlink():
+        gaps.append(f"tool governance probe evidence must not be a symlink: {evidence}")
+        return entrypoint, None
+    try:
+        if evidence_path.exists():
+            evidence_path.unlink()
+    except OSError as exc:
+        gaps.append(
+            f"tool governance probe evidence cleanup failed: {evidence} ({exc})"
+        )
+        return entrypoint, None
     if not entrypoint_path.exists():
         gaps.append(f"tool governance probe entrypoint missing: {entrypoint}")
-        return entrypoint, evidence
+        return entrypoint, None
     try:
-        entrypoint_text = entrypoint_path.read_text(encoding="utf-8")
+        with tokenize.open(entrypoint_path) as fh:
+            entrypoint_text = fh.read()
+    except SyntaxError as exc:
+        gaps.append(
+            "tool governance probe entrypoint has invalid Python syntax: "
+            f"{entrypoint} ({exc})"
+        )
+        return entrypoint, None
+    except UnicodeDecodeError as exc:
+        gaps.append(
+            "tool governance probe entrypoint has invalid Python syntax: "
+            f"{entrypoint} ({exc})"
+        )
+        return entrypoint, None
     except OSError as exc:
         gaps.append(
             f"tool governance probe entrypoint unreadable: {entrypoint} ({exc})"
         )
-        return entrypoint, evidence
-    if "THREADLIGHT_CANARY_ONLY = True" not in entrypoint_text:
-        gaps.append(
-            "tool governance probe entrypoint must contain exact canary guard "
-            "THREADLIGHT_CANARY_ONLY = True"
-        )
-        return entrypoint, evidence
-
+        return entrypoint, None
+    has_guard, canary_gap = _has_module_level_canary_guard(
+        entrypoint_text, entrypoint
+    )
+    if not has_guard:
+        if canary_gap is not None:
+            gaps.append(canary_gap)
+        return entrypoint, None
     completed = subprocess.run(
         [sys.executable, entrypoint, "--out", evidence],
         cwd=repo,
@@ -1075,6 +1169,12 @@ def _run_governance_probe(
             f"tool governance probe failed: {entrypoint} exited "
             f"{completed.returncode}"
         )
+        try:
+            if evidence_path.exists():
+                evidence_path.unlink()
+        except OSError:
+            pass
+        return entrypoint, None
     return entrypoint, evidence
 
 
@@ -1170,6 +1270,7 @@ def validate_tool_governance_probe(
         )
 
     adapter_probe = adapter.get("probe")
+    entrypoint_rel: str | None = None
     evidence_rel: str | None = None
     if not isinstance(adapter_probe, dict):
         gaps.append("tool governance probe must be an object")
@@ -1177,28 +1278,48 @@ def validate_tool_governance_probe(
         entrypoint = adapter_probe.get("entrypoint")
         if not isinstance(entrypoint, str) or not entrypoint:
             gaps.append("tool governance probe.entrypoint must be a non-empty string")
+        else:
+            entrypoint_rel = entrypoint
         evidence = adapter_probe.get("evidence")
         if not isinstance(evidence, str) or not evidence:
             gaps.append("tool governance probe.evidence must be a non-empty string")
         else:
             evidence_rel = evidence
-            result["evidence"] = evidence
 
     adapter_manifest_sha256 = canonical_sha256(adapter)
     result["adapter_manifest_sha256"] = adapter_manifest_sha256
 
+    if entrypoint_rel is None:
+        result["status"] = "fail"
+        return result, gaps
+    _, entrypoint_path_gaps = _resolve_repo_relative_path(
+        repo, entrypoint_rel, "tool governance probe entrypoint"
+    )
+    gaps.extend(entrypoint_path_gaps)
+    if entrypoint_path_gaps:
+        result["status"] = "fail"
+        return result, gaps
+
     if run_probe:
         _, evidence_from_run = _run_governance_probe(repo, adapter, gaps)
-        if evidence_rel is None:
-            evidence_rel = evidence_from_run
-            if evidence_from_run is not None:
-                result["evidence"] = evidence_from_run
+        evidence_rel = evidence_from_run
 
     if evidence_rel is None:
         result["status"] = "fail"
         return result, gaps
 
-    evidence_path = repo / evidence_rel
+    evidence_path, evidence_path_gaps = _resolve_repo_relative_path(
+        repo, evidence_rel, "tool governance probe evidence"
+    )
+    gaps.extend(evidence_path_gaps)
+    if evidence_path is None:
+        result["status"] = "fail"
+        return result, gaps
+    if _raw_repo_relative_path(repo, evidence_rel).is_symlink():
+        gaps.append(f"tool governance probe evidence must not be a symlink: {evidence_rel}")
+        result["status"] = "fail"
+        return result, gaps
+    result["evidence"] = evidence_rel
     evidence_payload, evidence_gaps = _load_json_object(
         evidence_path,
         "tool governance probe evidence",

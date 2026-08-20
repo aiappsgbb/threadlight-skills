@@ -131,11 +131,28 @@ def _probe_entrypoint_path(repo: Path) -> Path:
     return repo / str(adapter["probe"]["entrypoint"])
 
 
+def _mutate_probe_adapter(repo: Path, mutator) -> None:
+    adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+    adapter = _read_json(adapter_path)
+    mutator(adapter)
+    _write_json(adapter_path, adapter)
+
+
 def _mutate_probe_evidence(repo: Path, mutator) -> None:
     evidence_path = _probe_evidence_path(repo)
     evidence = _read_json(evidence_path)
     mutator(evidence)
     _write_json(evidence_path, evidence)
+
+
+def _sync_probe_evidence_metadata(repo: Path) -> None:
+    adapter = _probe_adapter(repo)
+    _mutate_probe_evidence(
+        repo,
+        lambda evidence: evidence.update(
+            {"adapter_manifest_sha256": sc.canonical_sha256(adapter)}
+        ),
+    )
 
 
 def _vector(evidence: dict[str, object], vector_id: str) -> dict[str, object]:
@@ -1376,6 +1393,8 @@ def test_probe_allow_requires_outcome_event() -> None:
 def test_probe_canary_only_guard_blocks_unsafe_entrypoint(monkeypatch) -> None:
     with _governed_repo_copy("probe-canary-only-guard") as repo:
         manifest = _read_json(repo / "specs" / "manifest.json")
+        evidence_path = _probe_evidence_path(repo)
+        assert evidence_path.exists()
         _write(
             _probe_entrypoint_path(repo),
             "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = False\n",
@@ -1387,9 +1406,191 @@ def test_probe_canary_only_guard_blocks_unsafe_entrypoint(monkeypatch) -> None:
         monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
         _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
         assert (
-            "tool governance probe entrypoint must contain exact canary guard "
+            "tool governance probe entrypoint must contain module-level canary guard "
             "THREADLIGHT_CANARY_ONLY = True"
         ) in gaps
+        assert not evidence_path.exists()
+
+        result, rerun_gaps = sc.validate_tool_governance_probe(
+            repo, manifest, run_probe=False
+        )
+        assert result["status"] == "fail"
+        assert "tool governance probe evidence missing" in rerun_gaps[0]
+
+
+def test_probe_failed_run_cannot_reuse_stale_evidence() -> None:
+    with _governed_repo_copy("probe-stale-evidence") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        evidence_path = _probe_evidence_path(repo)
+        assert evidence_path.exists()
+        _write(
+            _probe_entrypoint_path(repo),
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\nraise SystemExit(7)\n",
+        )
+
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
+
+        assert result["status"] == "fail"
+        assert "evidence" not in result
+        assert not evidence_path.exists()
+        assert (
+            "tool governance probe failed: tests/tool_governance_probe.py exited 7"
+            in gaps
+        )
+
+
+def test_probe_canary_guard_accepts_module_level_annassign(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-annassign") as repo:
+        _write(
+            _probe_entrypoint_path(repo),
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY: bool = True\n",
+        )
+        calls: list[tuple[object, ...]] = []
+
+        def fake_run(*args, **kwargs):
+            calls.append(args)
+            return sc.subprocess.CompletedProcess(args[0], 0)
+
+        monkeypatch.setattr(sc.subprocess, "run", fake_run)
+        gaps: list[str] = []
+
+        entrypoint, evidence = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert entrypoint == "tests/tool_governance_probe.py"
+        assert evidence == "tests/tool-governance-probe-manifest.json"
+        assert gaps == []
+        assert calls
+
+
+def test_probe_canary_guard_accepts_utf8_bom_prefixed_source(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-bom") as repo:
+        _write(
+            _probe_entrypoint_path(repo),
+            "\ufeff#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+        calls: list[tuple[object, ...]] = []
+
+        def fake_run(*args, **kwargs):
+            calls.append(args)
+            return sc.subprocess.CompletedProcess(args[0], 0)
+
+        monkeypatch.setattr(sc.subprocess, "run", fake_run)
+        gaps: list[str] = []
+
+        entrypoint, evidence = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert entrypoint == "tests/tool_governance_probe.py"
+        assert evidence == "tests/tool-governance-probe-manifest.json"
+        assert gaps == []
+        assert calls
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            "#!/usr/bin/env python3\n# THREADLIGHT_CANARY_ONLY = True\n",
+            "tool governance probe entrypoint must contain module-level canary "
+            "guard THREADLIGHT_CANARY_ONLY = True",
+        ),
+        (
+            '#!/usr/bin/env python3\n"""THREADLIGHT_CANARY_ONLY = True"""\n',
+            "tool governance probe entrypoint must contain module-level canary "
+            "guard THREADLIGHT_CANARY_ONLY = True",
+        ),
+        (
+            "#!/usr/bin/env python3\nif True:\n    THREADLIGHT_CANARY_ONLY = True\n",
+            "tool governance probe entrypoint must contain module-level canary "
+            "guard THREADLIGHT_CANARY_ONLY = True",
+        ),
+    ],
+)
+def test_probe_canary_guard_rejects_spoofed_or_nested_assignment(
+    monkeypatch, body: str, expected: str,
+) -> None:
+    with _governed_repo_copy("probe-canary-spoof") as repo:
+        _write(_probe_entrypoint_path(repo), body)
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert expected in gaps
+
+
+def test_probe_canary_guard_reports_syntax_error(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-syntax-error") as repo:
+        _write(
+            _probe_entrypoint_path(repo),
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\nif (\n",
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert any(
+            gap.startswith(
+                "tool governance probe entrypoint has invalid Python syntax: "
+                "tests/tool_governance_probe.py"
+            )
+            for gap in gaps
+        )
+
+
+def test_probe_canary_guard_reports_invalid_encoding(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-invalid-encoding") as repo:
+        _write(
+            _probe_entrypoint_path(repo),
+            "# coding: definitely-not-an-encoding\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert any(
+            gap.startswith(
+                "tool governance probe entrypoint has invalid Python syntax: "
+                "tests/tool_governance_probe.py"
+            )
+            for gap in gaps
+        )
+
+
+def test_probe_canary_guard_reports_invalid_utf8_bytes(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-invalid-utf8") as repo:
+        path = _probe_entrypoint_path(repo)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"THREADLIGHT_CANARY_ONLY = True\n\xff\n")
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert any(
+            gap.startswith(
+                "tool governance probe entrypoint has invalid Python syntax: "
+                "tests/tool_governance_probe.py"
+            )
+            for gap in gaps
+        )
 
 
 def test_probe_nonzero_exit_is_visible_gap() -> None:
@@ -1404,6 +1605,163 @@ def test_probe_nonzero_exit_is_visible_gap() -> None:
             "tool governance probe failed: tests/tool_governance_probe.py exited 7"
             in gaps
         )
+
+
+def test_probe_entrypoint_traversal_is_rejected(monkeypatch) -> None:
+    with _governed_repo_copy("probe-entrypoint-traversal") as repo:
+        outside_entrypoint = repo.parent / "outside-probe.py"
+        _write(
+            outside_entrypoint,
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+        _mutate_probe_adapter(
+            repo,
+            lambda adapter: adapter["probe"].update({"entrypoint": "../outside-probe.py"}),
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert (
+            "tool governance probe entrypoint must resolve within repo root: "
+            "../outside-probe.py"
+        ) in gaps
+
+
+def test_probe_entrypoint_traversal_is_rejected_without_execution() -> None:
+    with _governed_repo_copy("probe-entrypoint-traversal-noexec") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        outside_entrypoint = repo.parent / "outside-noexec-probe.py"
+        _write(
+            outside_entrypoint,
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+        _mutate_probe_adapter(
+            repo,
+            lambda adapter: adapter["probe"].update(
+                {"entrypoint": "../outside-noexec-probe.py"}
+            ),
+        )
+        _sync_probe_evidence_metadata(repo)
+
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+
+        assert result["status"] == "fail"
+        assert (
+            "tool governance probe entrypoint must resolve within repo root: "
+            "../outside-noexec-probe.py"
+        ) in gaps
+
+
+def test_probe_evidence_traversal_is_rejected_before_loading() -> None:
+    with _governed_repo_copy("probe-evidence-traversal") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        outside_evidence = repo.parent / "outside-evidence.json"
+        _write_json(outside_evidence, _read_json(_probe_evidence_path(repo)))
+        _mutate_probe_adapter(
+            repo,
+            lambda adapter: adapter["probe"].update({"evidence": "../outside-evidence.json"}),
+        )
+
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+
+        assert result["status"] == "fail"
+        assert "evidence" not in result
+        assert (
+            "tool governance probe evidence must resolve within repo root: "
+            "../outside-evidence.json"
+        ) in gaps
+
+
+def test_probe_evidence_symlink_is_rejected_before_cleanup(monkeypatch) -> None:
+    with _governed_repo_copy("probe-evidence-symlink") as repo:
+        evidence_path = _probe_evidence_path(repo)
+        target_path = repo / "tests" / "symlink-target.json"
+        _write_json(target_path, {"preserve": True})
+        evidence_path.unlink()
+        evidence_path.symlink_to(target_path)
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, evidence = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert evidence is None
+        assert target_path.exists()
+        assert evidence_path.is_symlink()
+        assert (
+            "tool governance probe evidence must not be a symlink: "
+            "tests/tool-governance-probe-manifest.json"
+        ) in gaps
+
+
+def test_probe_entrypoint_symlink_escape_is_rejected(monkeypatch) -> None:
+    with _governed_repo_copy("probe-entrypoint-symlink-escape") as repo:
+        outside_entrypoint = repo.parent / "outside-symlink-probe.py"
+        _write(
+            outside_entrypoint,
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+        symlink_path = repo / "tests" / "symlinked-probe.py"
+        try:
+            symlink_path.symlink_to(outside_entrypoint)
+        except OSError as exc:
+            pytest.skip(f"symlink creation not supported: {exc}")
+        _mutate_probe_adapter(
+            repo,
+            lambda adapter: adapter["probe"].update({"entrypoint": "tests/symlinked-probe.py"}),
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        gaps: list[str] = []
+
+        _, _ = sc._run_governance_probe(repo, _probe_adapter(repo), gaps)
+
+        assert (
+            "tool governance probe entrypoint must resolve within repo root: "
+            "tests/symlinked-probe.py"
+        ) in gaps
+
+
+def test_probe_entrypoint_symlink_escape_is_rejected_without_execution() -> None:
+    with _governed_repo_copy("probe-entrypoint-symlink-noexec") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        outside_entrypoint = repo.parent / "outside-symlink-noexec-probe.py"
+        _write(
+            outside_entrypoint,
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\n",
+        )
+        symlink_path = repo / "tests" / "symlinked-noexec-probe.py"
+        try:
+            symlink_path.symlink_to(outside_entrypoint)
+        except OSError as exc:
+            pytest.skip(f"symlink creation not supported: {exc}")
+        _mutate_probe_adapter(
+            repo,
+            lambda adapter: adapter["probe"].update(
+                {"entrypoint": "tests/symlinked-noexec-probe.py"}
+            ),
+        )
+        _sync_probe_evidence_metadata(repo)
+
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+
+        assert result["status"] == "fail"
+        assert (
+            "tool governance probe entrypoint must resolve within repo root: "
+            "tests/symlinked-noexec-probe.py"
+        ) in gaps
 
 
 def test_phase_postdeploy_emits_tool_governance_probe_summary(monkeypatch) -> None:
