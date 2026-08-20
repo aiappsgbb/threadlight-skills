@@ -420,6 +420,175 @@ def test_cost_evidence_summary_is_not_verified_on_target_scope_mismatch(
         assert summary.get(key) is None, f"{key} must stay absent when scope is unverified"
 
 
+def test_resolve_assessment_target_scope_cli_beats_framing_and_manifest_azd() -> None:
+    scope = pr._resolve_assessment_target_scope(
+        manifest={
+            "deployment_manifest": {
+                "subscription_id": "sub-manifest",
+                "resource_group": "rg-manifest",
+            }
+        },
+        azd_env={
+            "AZURE_SUBSCRIPTION_ID": "sub-azd",
+            "AZURE_RESOURCE_GROUP": "rg-azd",
+        },
+        target_sub="sub-cli",
+        target_rg="rg-cli",
+        framing={
+            "target_subscription_id": "sub-framing",
+            "target_resource_group": "rg-framing",
+        },
+    )
+
+    assert scope.subscription_id == "sub-cli"
+    assert scope.resource_group == "rg-cli"
+    assert scope.subscription_source == "cli"
+    assert scope.resource_group_source == "cli"
+
+
+def test_resolve_assessment_target_scope_framing_beats_manifest_and_azd() -> None:
+    scope = pr._resolve_assessment_target_scope(
+        manifest={
+            "deployment_manifest": {
+                "subscription_id": "sub-manifest",
+                "resource_group": "rg-manifest",
+            }
+        },
+        azd_env={
+            "AZURE_SUBSCRIPTION_ID": "sub-azd",
+            "AZURE_RESOURCE_GROUP": "rg-azd",
+        },
+        framing={
+            "target_subscription_id": "sub-framing",
+            "target_resource_group": "rg-framing",
+        },
+    )
+
+    assert scope.subscription_id == "sub-framing"
+    assert scope.resource_group == "rg-framing"
+    assert scope.subscription_source == "framing"
+    assert scope.resource_group_source == "framing"
+
+
+def test_main_resolves_assessment_target_scope_before_kpi_and_cost(
+    tmp_path, monkeypatch
+) -> None:
+    tests_dir = tmp_path / "tests"
+    specs_dir = tmp_path / "specs"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / "SPEC.md").write_text("# SPEC\n", encoding="utf-8")
+    manifest_path = tests_dir / "input-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "deployment_manifest": {
+                    "subscription_id": "sub-manifest",
+                    "resource_group": "rg-manifest",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    framing_path = tests_dir / "framing.json"
+    framing_path.write_text(
+        json.dumps(
+            {
+                "target_subscription_id": "sub-framing",
+                "target_resource_group": "rg-framing",
+                "target_posture": "standard-ai-gateway",
+                "provisioning_rights": True,
+                "central_platform_team": False,
+                "restricted_environment": False,
+                "cicd_target": "github-actions",
+                "azure_tenant_id": "00000000-0000-0000-0000-000000000000",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    seen: dict[str, pr.AssessmentTargetScope | None] = {}
+
+    monkeypatch.setattr(
+        pr,
+        "_load_postdeploy",
+        lambda *args, **kwargs: (
+            {
+                "phase": "post-deploy",
+                "checked_at": "2026-08-10T00:00:00Z",
+                "deployment_manifest": {},
+            },
+            [],
+        ),
+    )
+    monkeypatch.setattr(pr, "_validate_manifest_binding", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        pr,
+        "_resolve_posture",
+        lambda *args, **kwargs: ("standard-ai-gateway", None, "standard-ai-gateway"),
+    )
+    monkeypatch.setattr(pr, "_detect_agt_profile", lambda *args, **kwargs: "none")
+    monkeypatch.setattr(
+        pr,
+        "_run_pillar",
+        lambda *args, **kwargs: ([], []),
+    )
+    monkeypatch.setattr(
+        pr,
+        "_build_manifest",
+        lambda **kwargs: {
+            "pillars": [],
+            "findings": [],
+            "warnings": [],
+            "go_live_recommendation": "ready_with_unverified_risk",
+        },
+    )
+    monkeypatch.setattr(pr, "_render_report", lambda *args, **kwargs: "ok\n")
+
+    def _fake_kpi(ctx):
+        seen["kpi"] = ctx.assessment_target_scope
+        return {}
+
+    def _fake_cost(ctx):
+        seen["cost"] = ctx.assessment_target_scope
+        return {"status": "not-verified", "detail": "stub", "source_paths": {}}
+
+    monkeypatch.setattr(pr, "_kpi_signals", _fake_kpi)
+    monkeypatch.setattr(pr, "_cost_evidence_summary", _fake_cost)
+
+    rc = pr.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--in-manifest",
+            str(manifest_path.relative_to(tmp_path)),
+            "--in-postdeploy",
+            "tests/postdeploy-manifest.json",
+            "--framing-file",
+            str(framing_path),
+            "--target-sub",
+            "sub-cli",
+            "--target-rg",
+            "rg-cli",
+            "--static",
+            "--quiet",
+            "--out",
+            "tests/out-manifest.json",
+            "--report",
+            "docs/out-report.md",
+        ]
+    )
+
+    assert rc == 0
+    assert seen["kpi"] == pr.AssessmentTargetScope(
+        subscription_id="sub-cli",
+        resource_group="rg-cli",
+        subscription_source="cli",
+        resource_group_source="cli",
+    )
+    assert seen["cost"] == seen["kpi"]
+
+
 # --------------------------------------------------------------------------
 # committed exemplar pairing — COST-102/COST-103 wording must not drift
 # --------------------------------------------------------------------------
