@@ -242,6 +242,45 @@ Plus **two orphan checks** (caught orphan
    declared `azure.yaml` service (or be `src/agent/` which has its own
    host). Otherwise → orphan; either wire or delete.
 
+If `tool_governance.enabled: true`, Phase 2 also validates the adapter
+wiring contract exactly — **no prompt fallback, no silent enforcement-point
+substitution**:
+
+1. `enabled` absent / missing / `false` → `{"enabled": false, "status":
+   "not-applicable"}` with no gaps.
+2. `policies/tool-governance/adapter-manifest.json` must exist, parse as a
+   JSON object, and declare schema
+   `threadlight.tool-governance-adapter/v1`.
+3. Adapter `contract_sha256` must equal the canonical digest of
+   `manifest["tool_governance"]`; adapter runtime
+   `{framework,runtime_shape,protocol}` must match `specs/foundation.md`
+   exactly.
+4. Initial supported frameworks are **only**
+   `github-copilot-sdk` and `microsoft-agent-framework`. Future tuples
+   such as `dotnet-harness` are recognized as evidence but still fail
+   predeploy as **unsupported runtime** until a real adapter ships.
+5. Every governed tool needs **exactly one** binding; no missing, duplicate,
+   or extra bindings. `binding.enforcement_point` must equal the manifest
+   contract. `adapter_id` must be non-empty.
+6. Every `policy_artifact` path must exist, be non-empty, and contain the
+   same `contract_sha256`.
+7. Every binding needs non-empty `wire_signals[]`, and each signal path must
+   exist with grounded evidence:
+   - `pre-tool-policy-binding` → file contains both
+     `agent_os.integrations` and `pre_tool_call` (records the
+     foundry-agt-selected surface; safe-check never fabricates this import)
+   - `mcp-server-policy-binding` → literal
+     `threadlight.tool-governance/mcp-server/v1`
+   - `gateway-policy-binding` → literal
+     `threadlight.tool-governance/gateway/v1`
+   - `dotnet-with-governance` → literal `.WithGovernance(`
+8. `github-copilot-sdk` tools may use only `mcp-server` or `gateway`.
+   `microsoft-agent-framework` may use `agent-middleware` only when a
+   resolved `pre-tool-policy-binding` signal is present.
+9. Adapter `audit` must declare schema
+   `threadlight.tool-governance-audit/v1` plus non-empty `sink`;
+   `probe.entrypoint` and `probe.evidence` must be non-empty strings.
+
 **Common gaps caught:**
 
 - `aca-bot: yes` but `azure.yaml` has no `bot` service → silent partial

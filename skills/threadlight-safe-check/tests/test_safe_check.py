@@ -19,10 +19,11 @@ skill ships no pytest harness of its own.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import copy
 import json
+import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,9 +36,85 @@ EXAMPLE_COPY = (
     REPO_ROOT / "examples" / "returns-triage-governed" / "tests" / "safe_check.py"
 )
 GOVERNED_FIXTURE = TEST_DIR / "fixtures" / "tool-governance-enabled"
+SCRATCH_ROOT = TEST_DIR / "_scratch"
 
 sys.path.insert(0, str(SCRIPT.parent))
 import safe_check as sc  # noqa: E402
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _write_json(path: Path, payload: object) -> None:
+    _write(path, json.dumps(payload, indent=2) + "\n")
+
+
+def _read_json(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@contextmanager
+def _scratch_dir(name: str) -> Path:
+    SCRATCH_ROOT.mkdir(exist_ok=True)
+    root = SCRATCH_ROOT / name
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@contextmanager
+def _governed_repo_copy(name: str) -> Path:
+    with _scratch_dir(name) as root:
+        shutil.copytree(GOVERNED_FIXTURE, root, dirs_exist_ok=True)
+        yield root
+
+
+def _seed_predeploy_files(repo: Path) -> None:
+    _write(
+        repo / "azure.yaml",
+        "name: governed-fixture\n"
+        "services:\n"
+        "  - name: mcp\n"
+        "    project: ./src/mcp\n",
+    )
+    _write(repo / "infra" / "main.bicep", "targetScope = 'resourceGroup'\n")
+    _write(repo / "src" / "mcp" / "Dockerfile", "FROM scratch\n")
+
+
+def _normalize_governance_artifacts(
+    repo: Path,
+    *,
+    runtime: dict[str, str] | None = None,
+) -> str:
+    manifest = _read_json(repo / "specs" / "manifest.json")
+    contract_sha256 = sc.canonical_sha256(manifest["tool_governance"])
+    adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+    adapter = _read_json(adapter_path)
+    if runtime is not None:
+        adapter["runtime"] = runtime
+    adapter["contract_sha256"] = contract_sha256
+    _write_json(adapter_path, adapter)
+    for rel in {
+        binding.get("policy_artifact")
+        for binding in adapter.get("bindings", [])
+        if isinstance(binding, dict)
+        and isinstance(binding.get("policy_artifact"), str)
+        and binding["policy_artifact"]
+    }:
+        _write_json(
+            repo / rel,
+            {
+                "schema": "threadlight.tool-governance/test-policy/v1",
+                "contract_sha256": contract_sha256,
+            },
+        )
+    return contract_sha256
 
 
 # ---------------------------------------------------------------------------
@@ -177,77 +254,84 @@ def test_mock_marker_does_not_match_substrings_like_mockingbird() -> None:
 # marked ancestor; never blindly assume parent.parent for a nested manifest.
 # ---------------------------------------------------------------------------
 
-def _make_repo_with_nested_manifest() -> tuple[Path, Path]:
+@contextmanager
+def _nested_manifest_repo() -> tuple[Path, Path]:
     """Build <root>/{azure.yaml, infra/mcp-config.json} with a manifest nested at
     <root>/a/b/specs/manifest.json (a non-default path). Returns (root, manifest).
 
-    Uses ``tempfile.mkdtemp`` (not the pytest ``tmp_path`` fixture) so the file
-    is exercised identically under pytest and the standalone runner below."""
-    root = Path(tempfile.mkdtemp()) / "root"
-    (root / "infra").mkdir(parents=True)
-    (root / "infra" / "mcp-config.json").write_text(
-        '{"servers": {"erp": {"url": "https://mock.example/mcp"}}}',
-        encoding="utf-8",
-    )
-    (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
-    nested = root / "a" / "b" / "specs"
-    nested.mkdir(parents=True)
-    manifest = nested / "manifest.json"
-    manifest.write_text("{}", encoding="utf-8")
-    return root, manifest
+    Uses a repo-local scratch directory so the file is exercised identically
+    under pytest and the standalone runner below."""
+    with _scratch_dir("repo-root-resolution") as scratch:
+        root = scratch / "root"
+        (root / "infra").mkdir(parents=True)
+        (root / "infra" / "mcp-config.json").write_text(
+            '{"servers": {"erp": {"url": "https://mock.example/mcp"}}}',
+            encoding="utf-8",
+        )
+        (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+        nested = root / "a" / "b" / "specs"
+        nested.mkdir(parents=True)
+        manifest = nested / "manifest.json"
+        manifest.write_text("{}", encoding="utf-8")
+        yield root, manifest
 
 
 def test_repo_root_prefers_explicit_cli_root() -> None:
-    root, manifest = _make_repo_with_nested_manifest()
-    # An explicit root (what the CLI passes as Path.cwd()) always wins, even for a
-    # deeply nested manifest whose parent.parent is NOT the root.
-    assert sc._repo_root_for_manifest(manifest, explicit_root=root) == root
-    assert manifest.parent.parent != root  # precondition: parent.parent is wrong
+    with _nested_manifest_repo() as (root, manifest):
+        # An explicit root (what the CLI passes as Path.cwd()) always wins, even for a
+        # deeply nested manifest whose parent.parent is NOT the root.
+        assert sc._repo_root_for_manifest(manifest, explicit_root=root) == root
+        assert manifest.parent.parent != root  # precondition: parent.parent is wrong
 
 
 def test_repo_root_discovers_nearest_marked_ancestor_for_nested_manifest() -> None:
-    root, manifest = _make_repo_with_nested_manifest()
-    # No explicit root: walk up to the nearest ancestor carrying a repo marker
-    # (azure.yaml / infra), NOT the manifest's grandparent (a/b).
-    resolved = sc._repo_root_for_manifest(manifest)
-    assert resolved == root
-    assert resolved != manifest.parent.parent
+    with _nested_manifest_repo() as (root, manifest):
+        # No explicit root: walk up to the nearest ancestor carrying a repo marker
+        # (azure.yaml / infra), NOT the manifest's grandparent (a/b).
+        resolved = sc._repo_root_for_manifest(manifest)
+        assert resolved == root
+        assert resolved != manifest.parent.parent
 
 
 def test_repo_root_default_layout_unaffected() -> None:
-    root = Path(tempfile.mkdtemp()) / "root"
-    (root / "infra").mkdir(parents=True)
-    (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
-    (root / "specs").mkdir()
-    manifest = root / "specs" / "manifest.json"
-    manifest.write_text("{}", encoding="utf-8")
-    assert sc._repo_root_for_manifest(manifest) == root
+    with _scratch_dir("repo-root-default-layout") as root:
+        (root / "infra").mkdir(parents=True)
+        (root / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+        (root / "specs").mkdir()
+        manifest = root / "specs" / "manifest.json"
+        manifest.write_text("{}", encoding="utf-8")
+        assert sc._repo_root_for_manifest(manifest) == root
 
 
 def test_repo_root_falls_back_to_grandparent_without_markers() -> None:
     # A bare pilot with no azure.yaml / infra / .git / mcp-config: discovery finds
     # no marker and falls back to the legacy grandparent, which is correct for the
     # default specs layout.
-    root = Path(tempfile.mkdtemp()) / "bare"
-    (root / "specs").mkdir(parents=True)
-    manifest = root / "specs" / "manifest.json"
-    manifest.write_text("{}", encoding="utf-8")
-    assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
+    with _scratch_dir("repo-root-bare-layout") as root:
+        (root / "specs").mkdir(parents=True)
+        manifest = root / "specs" / "manifest.json"
+        manifest.write_text("{}", encoding="utf-8")
+        original = sc._looks_like_repo_root
+        sc._looks_like_repo_root = lambda _: False
+        try:
+            assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
+        finally:
+            sc._looks_like_repo_root = original
 
 
 def test_nested_manifest_binding_gap_uses_correct_root() -> None:
-    # End-to-end: with the explicit CLI root, the nested manifest still resolves
-    # the effective mcp-config under <root>/infra and flags the mock binding.
-    root, manifest = _make_repo_with_nested_manifest()
-    resolved = sc._repo_root_for_manifest(manifest, explicit_root=root)
-    mcp = sc._load_effective_mcp_config(resolved)
-    gaps = sc.integration_binding_gaps(
-        integrations=[{"id": "erp", "availability": "real"}],
-        mcp_config=mcp,
-    )
-    assert gaps == [
-        "integration erp is declared real but runtime endpoint is still mock"
-    ]
+    with _nested_manifest_repo() as (root, manifest):
+        # End-to-end: with the explicit CLI root, the nested manifest still resolves
+        # the effective mcp-config under <root>/infra and flags the mock binding.
+        resolved = sc._repo_root_for_manifest(manifest, explicit_root=root)
+        mcp = sc._load_effective_mcp_config(resolved)
+        gaps = sc.integration_binding_gaps(
+            integrations=[{"id": "erp", "availability": "real"}],
+            mcp_config=mcp,
+        )
+        assert gaps == [
+            "integration erp is declared real but runtime endpoint is still mock"
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -498,6 +582,509 @@ def test_phase_design_emits_tool_governance_result() -> None:
     finally:
         if out_path.exists():
             out_path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Tool governance pre-deploy validation
+# ---------------------------------------------------------------------------
+
+def test_validate_tool_governance_predeploy_passes_governed_fixture() -> None:
+    with _governed_repo_copy("predeploy-pass") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert gaps == []
+        assert result["enabled"] is True
+        assert result["status"] == "pass"
+        assert result["contract_sha256"] == sc.canonical_sha256(
+            manifest["tool_governance"]
+        )
+        assert result["adapter_manifest"] == (
+            "policies/tool-governance/adapter-manifest.json"
+        )
+        assert result["bindings_count"] == 3
+
+
+def test_phase_predeploy_emits_tool_governance_payload() -> None:
+    with _governed_repo_copy("phase-predeploy-payload") as repo:
+        _seed_predeploy_files(repo)
+        out_path = repo / "tests" / "safe-check-predeploy-manifest.json"
+        rc = sc.phase_predeploy(repo, repo / "specs" / "manifest.json", out_path)
+        emitted = _read_json(out_path)
+        assert rc == 0
+        assert emitted["gaps"] == []
+        assert emitted["tool_governance"]["status"] == "pass"
+        assert emitted["tool_governance"]["bindings_count"] == 3
+
+
+def test_predeploy_disabled_tool_governance_is_not_applicable() -> None:
+    with _governed_repo_copy("predeploy-disabled") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        manifest["tool_governance"].pop("enabled")
+        result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert result == {"enabled": False, "status": "not-applicable"}
+        assert gaps == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (
+            lambda repo: (repo / "policies" / "tool-governance" / "adapter-manifest.json").unlink(),
+            "tool governance adapter manifest missing",
+        ),
+        (
+            lambda repo: _write(
+                repo / "policies" / "tool-governance" / "adapter-manifest.json",
+                "{not json}\n",
+            ),
+            "tool governance adapter manifest is not valid JSON",
+        ),
+        (
+            lambda repo: _write_json(
+                repo / "policies" / "tool-governance" / "adapter-manifest.json",
+                [],
+            ),
+            "tool governance adapter manifest must be a JSON object",
+        ),
+    ],
+)
+def test_predeploy_missing_or_invalid_adapter_manifest_is_gap(
+    mutation, expected: str
+) -> None:
+    with _governed_repo_copy(expected.replace(" ", "-")) as repo:
+        _seed_predeploy_files(repo)
+        mutation(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert result["status"] == "fail"
+        assert any(expected in gap for gap in gaps)
+
+
+def test_adapter_hash_mismatch_is_gap() -> None:
+    with _governed_repo_copy("adapter-hash-mismatch") as repo:
+        _seed_predeploy_files(repo)
+        adapter = _read_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        )
+        adapter["contract_sha256"] = "sha256:deadbeef"
+        _write_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json",
+            adapter,
+        )
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert (
+            "tool governance adapter contract_sha256 must match the canonical manifest digest"
+            in gaps
+        )
+
+
+def test_predeploy_runtime_tuple_mismatch_is_gap() -> None:
+    with _governed_repo_copy("runtime-mismatch") as repo:
+        _seed_predeploy_files(repo)
+        adapter = _read_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        )
+        adapter["runtime"] = {
+            "framework": "microsoft-agent-framework",
+            "runtime_shape": "agent",
+            "protocol": "responses",
+        }
+        _write_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json",
+            adapter,
+        )
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert (
+            "tool governance adapter runtime must match specs/foundation.md framework/runtime_shape/protocol"
+            in gaps
+        )
+
+
+def test_unknown_runtime_is_unsupported_even_when_dotnet_signal_is_present() -> None:
+    with _governed_repo_copy("unknown-runtime") as repo:
+        _seed_predeploy_files(repo)
+        _write(
+            repo / "specs" / "foundation.md",
+            "# Foundation\n\n```yaml\nframework: dotnet-harness\nruntime_shape: agent\nprotocol: invocations\n```\n",
+        )
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        adapter = _read_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        )
+        adapter["runtime"] = {
+            "framework": "dotnet-harness",
+            "runtime_shape": "agent",
+            "protocol": "invocations",
+        }
+        for binding in adapter["bindings"]:
+            binding["wire_signals"] = [
+                {
+                    "path": "src/mcp/Program.cs",
+                    "kind": "dotnet-with-governance",
+                }
+            ]
+        _write(repo / "src" / "mcp" / "Program.cs", "builder.WithGovernance();\n")
+        _write_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json",
+            adapter,
+        )
+        _normalize_governance_artifacts(
+            repo,
+            runtime={
+                "framework": "dotnet-harness",
+                "runtime_shape": "agent",
+                "protocol": "invocations",
+            },
+        )
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert "tool governance runtime framework not yet supported: dotnet-harness" in gaps
+        assert not any("unknown wire signal kind" in gap for gap in gaps)
+
+
+def test_ghcp_agent_middleware_binding_is_rejected() -> None:
+    with _governed_repo_copy("ghcp-agent-middleware") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        for tool in manifest["tool_governance"]["tools"]:
+            tool["enforcement_point"] = "agent-middleware"
+        _write_json(repo / "specs" / "manifest.json", manifest)
+        adapter = _read_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        )
+        for binding in adapter["bindings"]:
+            binding["enforcement_point"] = "agent-middleware"
+            binding["wire_signals"] = [
+                {
+                    "path": "src/agent/container.py",
+                    "kind": "pre-tool-policy-binding",
+                }
+            ]
+        _write(
+            repo / "src" / "agent" / "container.py",
+            "agent_os.integrations = []\npre_tool_call = 'governed'\n",
+        )
+        _write_json(
+            repo / "policies" / "tool-governance" / "adapter-manifest.json",
+            adapter,
+        )
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert (
+            "github-copilot-sdk tools must use mcp-server or gateway, not agent-middleware"
+            in gaps
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda repo, adapter: adapter["bindings"].pop(),
+            "missing adapter binding for governed tool returns_apply_decision",
+        ),
+        (
+            lambda repo, adapter: adapter["bindings"].append(copy.deepcopy(adapter["bindings"][0])),
+            "duplicate adapter binding for governed tool inventory_read",
+        ),
+        (
+            lambda repo, adapter: adapter["bindings"].append(
+                {
+                    "tool_name": "inventory_shadow",
+                    "enforcement_point": "mcp-server",
+                    "adapter_id": "shadow-adapter",
+                    "policy_artifact": "policies/tool-governance/generated/mcp-policy.json",
+                    "wire_signals": [
+                        {
+                            "path": "src/mcp/server.py",
+                            "kind": "mcp-server-policy-binding",
+                        }
+                    ],
+                }
+            ),
+            "adapter binding tool is not governed by the contract: inventory_shadow",
+        ),
+    ],
+)
+def test_predeploy_binding_coverage_requires_exactly_one_binding_per_tool(
+    mutator, expected: str
+) -> None:
+    with _governed_repo_copy(expected.split()[-1]) as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        mutator(repo, adapter)
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert expected in gaps
+
+
+def test_predeploy_binding_requires_nonempty_adapter_id() -> None:
+    with _governed_repo_copy("binding-missing-adapter-id") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        adapter["bindings"][0]["adapter_id"] = ""
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert "inventory_read binding adapter_id must be a non-empty string" in gaps
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda repo, adapter: adapter["bindings"][0].update({"wire_signals": []}),
+            "inventory_read binding must declare at least one wire signal",
+        ),
+        (
+            lambda repo, adapter: adapter["bindings"][0].update(
+                {"wire_signals": [{"path": "src/mcp/missing.py", "kind": "mcp-server-policy-binding"}]}
+            ),
+            "inventory_read wire signal path does not exist: src/mcp/missing.py",
+        ),
+        (
+            lambda repo, adapter: adapter["bindings"][0].update(
+                {"wire_signals": [{"path": "src/mcp/server.py", "kind": "unknown-binding"}]}
+            ),
+            "inventory_read has unknown wire signal kind: unknown-binding",
+        ),
+    ],
+)
+def test_missing_wire_signal_and_unknown_kinds_are_gaps(
+    mutator, expected: str
+) -> None:
+    with _governed_repo_copy(expected.split(":")[0].replace(" ", "-")) as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        mutator(repo, adapter)
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert expected in gaps
+
+
+def test_predeploy_unresolved_pretool_policy_binding_markers_are_gap() -> None:
+    with _governed_repo_copy("pretool-unresolved") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        for tool in manifest["tool_governance"]["tools"]:
+            tool["enforcement_point"] = "agent-middleware"
+        _write_json(repo / "specs" / "manifest.json", manifest)
+        _write(
+            repo / "specs" / "foundation.md",
+            "# Foundation\n\n```yaml\nframework: microsoft-agent-framework\nruntime_shape: agent\nprotocol: responses\n```\n",
+        )
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        adapter["runtime"] = {
+            "framework": "microsoft-agent-framework",
+            "runtime_shape": "agent",
+            "protocol": "responses",
+        }
+        for binding in adapter["bindings"]:
+            binding["enforcement_point"] = "agent-middleware"
+            binding["wire_signals"] = [
+                {
+                    "path": "src/agent/container.py",
+                    "kind": "pre-tool-policy-binding",
+                }
+            ]
+        _write(repo / "src" / "agent" / "container.py", "pre_tool_call = 'governed'\n")
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(
+            repo,
+            runtime={
+                "framework": "microsoft-agent-framework",
+                "runtime_shape": "agent",
+                "protocol": "responses",
+            },
+        )
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert (
+            "inventory_read pre-tool-policy-binding markers unresolved in src/agent/container.py"
+            in gaps
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (
+            lambda repo: (repo / "policies" / "tool-governance" / "generated" / "mcp-policy.json").unlink(),
+            "inventory_read policy artifact missing: policies/tool-governance/generated/mcp-policy.json",
+        ),
+        (
+            lambda repo: _write(
+                repo / "policies" / "tool-governance" / "generated" / "mcp-policy.json",
+                "",
+            ),
+            "inventory_read policy artifact is empty: policies/tool-governance/generated/mcp-policy.json",
+        ),
+        (
+            lambda repo: _write_json(
+                repo / "policies" / "tool-governance" / "generated" / "mcp-policy.json",
+                {"schema": "threadlight.tool-governance/test-policy/v1", "contract_sha256": "sha256:wrong"},
+            ),
+            "inventory_read policy artifact must contain contract_sha256 sha256:",
+        ),
+    ],
+)
+def test_predeploy_policy_artifact_must_exist_be_nonempty_and_match_hash(
+    mutation, expected: str
+) -> None:
+    with _governed_repo_copy("policy-artifact-check") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        expected_hash = _normalize_governance_artifacts(repo)
+        mutation(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        if expected.endswith("sha256:"):
+            assert any(expected_hash in gap for gap in gaps)
+        else:
+            assert expected in gaps
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda adapter: adapter["audit"].update({"schema": "threadlight.tool-governance-audit/v2"}),
+            "tool governance audit.schema must be 'threadlight.tool-governance-audit/v1'",
+        ),
+        (
+            lambda adapter: adapter["audit"].update({"sink": ""}),
+            "tool governance audit.sink must be a non-empty string",
+        ),
+        (
+            lambda adapter: adapter["probe"].update({"entrypoint": ""}),
+            "tool governance probe.entrypoint must be a non-empty string",
+        ),
+        (
+            lambda adapter: adapter["probe"].update({"evidence": ""}),
+            "tool governance probe.evidence must be a non-empty string",
+        ),
+    ],
+)
+def test_predeploy_bad_audit_and_probe_config_are_gaps(
+    mutator, expected: str
+) -> None:
+    with _governed_repo_copy("audit-probe-check") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        mutator(adapter)
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert expected in gaps
+
+
+def test_predeploy_gateway_policy_binding_signal_passes() -> None:
+    with _governed_repo_copy("gateway-signal-pass") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        for tool in manifest["tool_governance"]["tools"]:
+            tool["enforcement_point"] = "gateway"
+        _write_json(repo / "specs" / "manifest.json", manifest)
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        for binding in adapter["bindings"]:
+            binding["enforcement_point"] = "gateway"
+            binding["wire_signals"] = [
+                {
+                    "path": "src/gateway/app.py",
+                    "kind": "gateway-policy-binding",
+                }
+            ]
+        _write(
+            repo / "src" / "gateway" / "app.py",
+            'GATEWAY_BINDING = "threadlight.tool-governance/gateway/v1"\n',
+        )
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert gaps == []
+        assert result["status"] == "pass"
+
+
+def test_predeploy_rejects_gateway_binding_backed_only_by_mcp_signal() -> None:
+    with _governed_repo_copy("gateway-signal-mismatch") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        for tool in manifest["tool_governance"]["tools"]:
+            tool["enforcement_point"] = "gateway"
+        _write_json(repo / "specs" / "manifest.json", manifest)
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        for binding in adapter["bindings"]:
+            binding["enforcement_point"] = "gateway"
+            binding["wire_signals"] = [
+                {
+                    "path": "src/mcp/server.py",
+                    "kind": "mcp-server-policy-binding",
+                }
+            ]
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(repo)
+        _, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert (
+            "inventory_read binding enforcement evidence must match gateway"
+            in gaps
+        )
+
+
+def test_predeploy_maf_agent_middleware_pretool_signal_passes() -> None:
+    with _governed_repo_copy("maf-agent-middleware-pass") as repo:
+        _seed_predeploy_files(repo)
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        for tool in manifest["tool_governance"]["tools"]:
+            tool["enforcement_point"] = "agent-middleware"
+        _write_json(repo / "specs" / "manifest.json", manifest)
+        _write(
+            repo / "specs" / "foundation.md",
+            "# Foundation\n\n```yaml\nframework: microsoft-agent-framework\nruntime_shape: agent\nprotocol: responses\n```\n",
+        )
+        adapter_path = repo / "policies" / "tool-governance" / "adapter-manifest.json"
+        adapter = _read_json(adapter_path)
+        adapter["runtime"] = {
+            "framework": "microsoft-agent-framework",
+            "runtime_shape": "agent",
+            "protocol": "responses",
+        }
+        for binding in adapter["bindings"]:
+            binding["enforcement_point"] = "agent-middleware"
+            binding["wire_signals"] = [
+                {
+                    "path": "src/agent/container.py",
+                    "kind": "pre-tool-policy-binding",
+                }
+            ]
+        _write(
+            repo / "src" / "agent" / "container.py",
+            "agent_os.integrations = ['foundry']\npre_tool_call = 'governed'\n",
+        )
+        _write_json(adapter_path, adapter)
+        _normalize_governance_artifacts(
+            repo,
+            runtime={
+                "framework": "microsoft-agent-framework",
+                "runtime_shape": "agent",
+                "protocol": "responses",
+            },
+        )
+        result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
+        assert gaps == []
+        assert result["status"] == "pass"
 
 
 # ---------------------------------------------------------------------------

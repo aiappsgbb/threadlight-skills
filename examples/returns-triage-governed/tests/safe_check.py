@@ -121,6 +121,25 @@ COMMON_AUDIT_FIELDS = {
     "contract_sha256", "policy_id", "tool_name", "action_class",
     "decision", "enforcement_point", "adapter_id", "actor_id",
 }
+TOOL_GOVERNANCE_ADAPTER_PATH = Path("policies/tool-governance/adapter-manifest.json")
+TOOL_GOVERNANCE_ADAPTER_SCHEMA = "threadlight.tool-governance-adapter/v1"
+TOOL_GOVERNANCE_AUDIT_SCHEMA = "threadlight.tool-governance-audit/v1"
+SUPPORTED_GOVERNANCE_FRAMEWORKS = {
+    "github-copilot-sdk", "microsoft-agent-framework",
+}
+WIRE_SIGNAL_EVIDENCE = {
+    "pre-tool-policy-binding": ("agent_os.integrations", "pre_tool_call"),
+    "mcp-server-policy-binding": ("threadlight.tool-governance/mcp-server/v1",),
+    "gateway-policy-binding": ("threadlight.tool-governance/gateway/v1",),
+    "dotnet-with-governance": (".WithGovernance(",),
+}
+ENFORCEMENT_POINT_SIGNAL_KINDS = {
+    "agent-middleware": {
+        "pre-tool-policy-binding", "dotnet-with-governance",
+    },
+    "mcp-server": {"mcp-server-policy-binding"},
+    "gateway": {"gateway-policy-binding"},
+}
 _MISSING = object()
 
 
@@ -265,6 +284,89 @@ def _load_effective_mcp_config(repo: Path) -> dict[str, Any]:
         if isinstance(data, dict):
             return data
     return {}
+
+
+def _load_json_object(
+    path: Path, label: str, display_path: str | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    shown = display_path or path.as_posix()
+    if not path.exists():
+        return None, [f"{label} missing: {shown}"]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None, [f"{label} is not valid JSON: {shown}"]
+    if not isinstance(data, dict):
+        return None, [f"{label} must be a JSON object: {shown}"]
+    return data, []
+
+
+def _extract_foundation_runtime(repo: Path) -> tuple[dict[str, str] | None, list[str]]:
+    path = repo / "specs" / "foundation.md"
+    if not path.exists():
+        return None, ["tool governance foundation missing: specs/foundation.md"]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, [f"tool governance foundation unreadable: {exc}"]
+    runtime: dict[str, str] = {}
+    gaps: list[str] = []
+    for key in ("framework", "runtime_shape", "protocol"):
+        match = re.search(
+            rf"(?m)^\s*{key}\s*:\s*([^\n#]+?)\s*(?:#.*)?$", text,
+        )
+        if match is None or not match.group(1).strip():
+            gaps.append(
+                f"tool governance foundation missing {key}: specs/foundation.md"
+            )
+            continue
+        runtime[key] = match.group(1).strip()
+    return (runtime if not gaps else None), gaps
+
+
+def _runtime_tuple(value: Any, label: str) -> tuple[dict[str, str] | None, list[str]]:
+    if not isinstance(value, dict):
+        return None, [f"{label} must be an object"]
+    runtime: dict[str, str] = {}
+    gaps: list[str] = []
+    for key in ("framework", "runtime_shape", "protocol"):
+        raw = value.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            gaps.append(f"{label}.{key} must be a non-empty string")
+            continue
+        runtime[key] = raw.strip()
+    return (runtime if not gaps else None), gaps
+
+
+def _validate_wire_signal(
+    repo: Path, tool_name: str, signal: Any,
+) -> tuple[str | None, list[str]]:
+    if not isinstance(signal, dict):
+        return None, [f"{tool_name} wire signal entries must be objects"]
+    path = signal.get("path")
+    if not isinstance(path, str) or not path:
+        return None, [f"{tool_name} wire signal path must be a non-empty string"]
+    kind = signal.get("kind")
+    if not isinstance(kind, str) or not kind:
+        return None, [f"{tool_name} wire signal kind must be a non-empty string"]
+    if kind not in WIRE_SIGNAL_EVIDENCE:
+        return None, [f"{tool_name} has unknown wire signal kind: {kind}"]
+    signal_path = repo / path
+    if not signal_path.exists():
+        return None, [f"{tool_name} wire signal path does not exist: {path}"]
+    try:
+        text = signal_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, [f"{tool_name} wire signal unreadable at {path}: {exc}"]
+    markers = WIRE_SIGNAL_EVIDENCE[kind]
+    missing = [marker for marker in markers if marker not in text]
+    if missing:
+        if kind == "pre-tool-policy-binding":
+            return None, [
+                f"{tool_name} pre-tool-policy-binding markers unresolved in {path}"
+            ]
+        return None, [f"{tool_name} {kind} marker unresolved in {path}"]
+    return kind, []
 
 
 # Directory entries that identify a repo/project ROOT (not the ``specs`` subdir
@@ -561,25 +663,265 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
 # Phase 2 — pre-deploy
 # ---------------------------------------------------------------------------
 
+def validate_tool_governance_predeploy(
+    repo: Path, manifest: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    block = manifest.get("tool_governance")
+    if block is None:
+        return {"enabled": False, "status": "not-applicable"}, []
+    if not isinstance(block, dict):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance must be an object"
+        ]
+    enabled = block.get("enabled", _MISSING)
+    if enabled is _MISSING or enabled is False:
+        return {"enabled": False, "status": "not-applicable"}, []
+    if not isinstance(enabled, bool):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance.enabled must be boolean"
+        ]
+
+    contract_sha256 = canonical_sha256(block)
+    result: dict[str, Any] = {
+        "enabled": True,
+        "status": "fail",
+        "contract_sha256": contract_sha256,
+        "adapter_manifest": TOOL_GOVERNANCE_ADAPTER_PATH.as_posix(),
+        "bindings_count": 0,
+    }
+    gaps: list[str] = []
+
+    foundation_runtime, foundation_gaps = _extract_foundation_runtime(repo)
+    gaps.extend(foundation_gaps)
+
+    adapter_path = repo / TOOL_GOVERNANCE_ADAPTER_PATH
+    adapter, adapter_gaps = _load_json_object(
+        adapter_path,
+        "tool governance adapter manifest",
+        TOOL_GOVERNANCE_ADAPTER_PATH.as_posix(),
+    )
+    gaps.extend(adapter_gaps)
+    if adapter is None:
+        return result, gaps
+
+    if adapter.get("schema") != TOOL_GOVERNANCE_ADAPTER_SCHEMA:
+        gaps.append(
+            "tool governance adapter schema must be "
+            f"{TOOL_GOVERNANCE_ADAPTER_SCHEMA!r}"
+        )
+    if adapter.get("contract_sha256") != contract_sha256:
+        gaps.append(
+            "tool governance adapter contract_sha256 must match the canonical "
+            "manifest digest"
+        )
+
+    adapter_runtime, runtime_gaps = _runtime_tuple(
+        adapter.get("runtime"), "tool governance adapter runtime"
+    )
+    gaps.extend(runtime_gaps)
+    if foundation_runtime is not None:
+        framework = foundation_runtime["framework"]
+        if framework not in SUPPORTED_GOVERNANCE_FRAMEWORKS:
+            gaps.append(
+                f"tool governance runtime framework not yet supported: {framework}"
+            )
+    if (
+        foundation_runtime is not None
+        and adapter_runtime is not None
+        and adapter_runtime != foundation_runtime
+    ):
+        gaps.append(
+            "tool governance adapter runtime must match "
+            "specs/foundation.md framework/runtime_shape/protocol"
+        )
+
+    bindings = adapter.get("bindings")
+    if not isinstance(bindings, list):
+        gaps.append("tool governance adapter bindings must be an array")
+        bindings = []
+    result["bindings_count"] = len(bindings)
+
+    contract_tools: dict[str, str] = {}
+    raw_tools = block.get("tools")
+    if isinstance(raw_tools, list):
+        for tool in raw_tools:
+            if not isinstance(tool, dict):
+                continue
+            name = tool.get("name")
+            point = tool.get("enforcement_point")
+            if isinstance(name, str) and name and isinstance(point, str) and point:
+                contract_tools[name] = point
+
+    binding_counts: dict[str, int] = {}
+    runtime_framework = (
+        foundation_runtime["framework"]
+        if foundation_runtime is not None
+        else (adapter_runtime or {}).get("framework", "")
+    )
+    for binding in bindings:
+        if not isinstance(binding, dict):
+            gaps.append("tool governance adapter bindings entries must be objects")
+            continue
+        tool_name = binding.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name:
+            gaps.append(
+                "tool governance adapter binding tool_name must be a non-empty string"
+            )
+            continue
+        binding_counts[tool_name] = binding_counts.get(tool_name, 0) + 1
+        if tool_name not in contract_tools:
+            gaps.append(
+                f"adapter binding tool is not governed by the contract: {tool_name}"
+            )
+
+        enforcement_point = binding.get("enforcement_point")
+        if not isinstance(enforcement_point, str) or not enforcement_point:
+            gaps.append(
+                f"{tool_name} binding enforcement_point must be a non-empty string"
+            )
+        elif tool_name in contract_tools and enforcement_point != contract_tools[tool_name]:
+            gaps.append(
+                f"{tool_name} binding enforcement_point must match contract: "
+                f"{contract_tools[tool_name]}"
+            )
+
+        adapter_id = binding.get("adapter_id")
+        if not isinstance(adapter_id, str) or not adapter_id:
+            gaps.append(
+                f"{tool_name} binding adapter_id must be a non-empty string"
+            )
+
+        policy_artifact = binding.get("policy_artifact")
+        if not isinstance(policy_artifact, str) or not policy_artifact:
+            gaps.append(
+                f"{tool_name} binding policy_artifact must be a non-empty string"
+            )
+        else:
+            policy_path = repo / policy_artifact
+            if not policy_path.exists():
+                gaps.append(
+                    f"{tool_name} policy artifact missing: {policy_artifact}"
+                )
+            else:
+                try:
+                    policy_text = policy_path.read_text(encoding="utf-8")
+                except OSError as exc:
+                    gaps.append(
+                        f"{tool_name} policy artifact unreadable: {policy_artifact} ({exc})"
+                    )
+                else:
+                    if not policy_text.strip():
+                        gaps.append(
+                            f"{tool_name} policy artifact is empty: {policy_artifact}"
+                        )
+                    elif contract_sha256 not in policy_text:
+                        gaps.append(
+                            f"{tool_name} policy artifact must contain "
+                            f"contract_sha256 {contract_sha256}"
+                        )
+
+        wire_signals = binding.get("wire_signals")
+        if not isinstance(wire_signals, list) or not wire_signals:
+            gaps.append(
+                f"{tool_name} binding must declare at least one wire signal"
+            )
+            resolved_signal_kinds: set[str] = set()
+        else:
+            resolved_signal_kinds = set()
+            for signal in wire_signals:
+                resolved_kind, signal_gaps = _validate_wire_signal(
+                    repo, tool_name, signal
+                )
+                gaps.extend(signal_gaps)
+                if resolved_kind is not None:
+                    resolved_signal_kinds.add(resolved_kind)
+        if (
+            isinstance(enforcement_point, str)
+            and enforcement_point in ENFORCEMENT_POINTS
+            and resolved_signal_kinds
+            and not resolved_signal_kinds
+            & ENFORCEMENT_POINT_SIGNAL_KINDS[enforcement_point]
+        ):
+            gaps.append(
+                f"{tool_name} binding enforcement evidence must match "
+                f"{enforcement_point}"
+            )
+
+        if enforcement_point == "agent-middleware":
+            if runtime_framework == "github-copilot-sdk":
+                gaps.append(
+                    "github-copilot-sdk tools must use mcp-server or gateway, "
+                    "not agent-middleware"
+                )
+            elif (
+                runtime_framework == "microsoft-agent-framework"
+                and "pre-tool-policy-binding" not in resolved_signal_kinds
+            ):
+                gaps.append(
+                    f"{tool_name} agent-middleware binding requires resolved "
+                    "pre-tool-policy-binding evidence"
+                )
+
+    for tool_name, count in binding_counts.items():
+        if tool_name in contract_tools and count > 1:
+            gaps.append(f"duplicate adapter binding for governed tool {tool_name}")
+    for tool_name in contract_tools:
+        if binding_counts.get(tool_name, 0) == 0:
+            gaps.append(f"missing adapter binding for governed tool {tool_name}")
+
+    audit = adapter.get("audit")
+    if not isinstance(audit, dict):
+        gaps.append("tool governance audit must be an object")
+    else:
+        if audit.get("schema") != TOOL_GOVERNANCE_AUDIT_SCHEMA:
+            gaps.append(
+                "tool governance audit.schema must be "
+                f"{TOOL_GOVERNANCE_AUDIT_SCHEMA!r}"
+            )
+        sink = audit.get("sink")
+        if not isinstance(sink, str) or not sink:
+            gaps.append("tool governance audit.sink must be a non-empty string")
+
+    probe = adapter.get("probe")
+    if not isinstance(probe, dict):
+        gaps.append("tool governance probe must be an object")
+    else:
+        entrypoint = probe.get("entrypoint")
+        if not isinstance(entrypoint, str) or not entrypoint:
+            gaps.append(
+                "tool governance probe.entrypoint must be a non-empty string"
+            )
+        evidence = probe.get("evidence")
+        if not isinstance(evidence, str) or not evidence:
+            gaps.append("tool governance probe.evidence must be a non-empty string")
+
+    result["status"] = "pass" if not gaps else "fail"
+    return result, gaps
+
+
 def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     selectors = dm.get("module_selectors", {})
     services = {s["name"]: s for s in dm.get("services", [])}
     gaps: list[str] = []
+    governance, governance_gaps = validate_tool_governance_predeploy(repo, data)
+    gaps.extend(governance_gaps)
 
     azure_yaml = repo / "azure.yaml"
     if not azure_yaml.exists():
         gaps.append("azure.yaml missing at repo root")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra={"repo": str(repo),
+                                      "tool_governance": governance})
     azure_text = azure_yaml.read_text(encoding="utf-8")
 
     main_bicep = repo / "infra" / "main.bicep"
     if not main_bicep.exists():
         gaps.append("infra/main.bicep missing")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra={"repo": str(repo),
+                                      "tool_governance": governance})
     main_text = main_bicep.read_text(encoding="utf-8")
 
     for selector, val in selectors.items():
@@ -664,7 +1006,8 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
                         "entry in azure.yaml services")
 
     return _write_and_emit(out_path, "pre-deploy", gaps,
-                           extra={"repo": str(repo)})
+                           extra={"repo": str(repo),
+                                  "tool_governance": governance})
 
 
 # ---------------------------------------------------------------------------
