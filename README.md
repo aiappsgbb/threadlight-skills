@@ -8,6 +8,12 @@
 > measurement source, and maturity policy. Its public arc is forecast →
 > settled Azure actuals → reconciliation → cost per successful interaction.
 
+The paid live workflow has two evidence meanings. **Live smoke** proves the
+design, deployment, invocation, and assurance producers executed; it does not
+assert production readiness. **Readiness proof** additionally requires a green
+post-deploy safe-check, governed/comprehensive/hardened assurance verdicts, a
+ready production scorecard, and measured outcome KPIs.
+
 | Skill | What it does |
 |-------|-------------|
 | [`threadlight-qualify`](skills/threadlight-qualify/) | **No-repo / Cowork qualification & sizing entry — *before* Design.** Turns a declared interview (no Azure, `az`, `azd`, Bicep, Docker, or customer credentials) into a deterministic sizing package — `qualification/sizing.md`, `sizing-manifest.json`, `discovery.md`, optional `roi.md` — and seeds SPEC § 12 `load_profile{}`. **Not a deployed runtime skill.** |
