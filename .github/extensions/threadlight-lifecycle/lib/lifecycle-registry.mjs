@@ -236,7 +236,7 @@ export const SKILL_REGISTRY = Object.freeze([
     "Deploy to the sandbox",
     [artifactGroup("azure.yaml"), artifactGroup("infra/main.bicep")],
     {
-      completionArtifact: "docs/safe-check-post.md",
+      optionalArtifacts: ["docs/safe-check-post.md"],
       prerequisiteSkills: ["threadlight-design"],
     },
   ),
@@ -244,9 +244,10 @@ export const SKILL_REGISTRY = Object.freeze([
     "threadlight-safe-check",
     "build-deploy",
     "Verify the deployment",
-    [artifactGroup("docs/safe-check-post.md")],
+    [artifactGroup("tests/postdeploy-manifest.json")],
     {
       freshnessHours: 24,
+      optionalArtifacts: ["docs/safe-check-post.md"],
       prerequisiteSkills: ["threadlight-deploy"],
     },
   ),

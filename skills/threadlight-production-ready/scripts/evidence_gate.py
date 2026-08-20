@@ -7,8 +7,9 @@ imported by tests (evaluate_evidence) and runnable as a CLI (main()).
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -68,6 +69,10 @@ _REDTEAM_ASR_KEYS = {
 }
 _REDTEAM_FINDING_IDS = {"SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"}
 _AGT_PROFILES = {"auto", "v3_7", "v4_preview", "none"}
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?"
+    r"(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
+)
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -104,6 +109,22 @@ def _is_datetime_string(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+def _parse_rfc3339_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not _RFC3339_RE.match(value):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def _validate_datetime_field(manifest_name: str, data: Dict[str, Any], field: str) -> None:
@@ -336,6 +357,23 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
         raise EvidenceGateError("postdeploy-manifest phase must be 'post-deploy'")
     if post.get("gaps") != []:
         raise EvidenceGateError("postdeploy-manifest gaps must be empty list")
+    checked_at = _parse_rfc3339_datetime(post.get("checked_at"))
+    if checked_at is None:
+        raise EvidenceGateError("postdeploy-manifest checked_at must be a strict RFC3339 timestamp with timezone")
+    age = datetime.now(timezone.utc) - checked_at
+    if age.total_seconds() < 0:
+        raise EvidenceGateError("postdeploy-manifest checked_at must not be in the future")
+    if age >= timedelta(hours=24):
+        raise EvidenceGateError("postdeploy-manifest checked_at must be fresher than 24h")
+    manifest = _load_json(specs_dir / "manifest.json")
+    current_deployment = manifest.get("deployment_manifest")
+    postdeploy_deployment = post.get("deployment_manifest")
+    if not isinstance(current_deployment, dict):
+        raise EvidenceGateError("specs/manifest.json missing deployment_manifest")
+    if not isinstance(postdeploy_deployment, dict):
+        raise EvidenceGateError("postdeploy-manifest missing deployment_manifest snapshot")
+    if _canonical_json(current_deployment) != _canonical_json(postdeploy_deployment):
+        raise EvidenceGateError("postdeploy-manifest deployment_manifest no longer matches specs/manifest.json")
 
     # production readiness manifest
     pr_path = root / "tests" / "production-readiness-manifest.json"

@@ -233,3 +233,106 @@ test("reader allows cost evidence artifacts and still rejects unlisted siblings"
     );
   });
 });
+
+test("reader allows azd env directories without allowlisting arbitrary root secrets", async () => {
+  await withWorkspace("azd-env", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await writeFile(new URL(".azure/README.md", workspace), "notes", "utf8");
+    await writeFile(
+      new URL(".azure/dev/.env", workspace),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+      "utf8",
+    );
+
+    const reader = await createArtifactReader(workspacePath);
+
+    assert.deepEqual(await reader.readDir(".azure"), [".azure/dev"]);
+    assert.equal(
+      await reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"),
+      "threadlight-dev.example.com",
+    );
+    await assert.rejects(
+      reader.readText(".azure/dev/.env"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === ".azure/dev/.env",
+    );
+    await assert.rejects(
+      reader.readAzdEnvValue(".azure/dev", "AZURE_SUBSCRIPTION_ID"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === "AZURE_SUBSCRIPTION_ID",
+    );
+    await assert.rejects(
+      reader.readText(".env"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === ".env",
+    );
+  });
+});
+
+test("reader includes symlinked azd env directories in discovery so callers can treat them as untrusted", async () => {
+  await withWorkspace("azd-symlink-env", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await mkdir(new URL("shadow-env/", workspace), { recursive: true });
+    await symlink("../shadow-env", fileURLToPath(new URL(".azure/prod", workspace)));
+
+    const reader = await createArtifactReader(workspacePath);
+
+    assert.deepEqual(
+      await reader.readDir(".azure"),
+      [".azure/dev", ".azure/prod"],
+    );
+    await assert.rejects(
+      reader.readAzdEnvValue(".azure/prod", "AGENT_FQDN"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === ".azure/prod",
+    );
+  });
+});
+
+test("reader rejects symlinked azd env files that escape the workspace", async () => {
+  await withWorkspace("azd-env-symlink", async ({ base, workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await writeFile(new URL("outside.env", base), "AGENT_FQDN=leaked.example.com\n", "utf8");
+    await symlink(
+      fileURLToPath(new URL("outside.env", base)),
+      fileURLToPath(new URL(".azure/dev/.env", workspace)),
+    );
+
+    const reader = await createArtifactReader(workspacePath);
+
+    await assert.rejects(
+      reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === ".azure/dev/.env",
+    );
+  });
+});
+
+test("reader rejects symlinked azd roots", async () => {
+  await withWorkspace("azd-root-symlink", async ({ base, workspace, workspacePath }) => {
+    await mkdir(new URL("secrets/dev/", workspace), { recursive: true });
+    await writeFile(
+      new URL("secrets/dev/.env", workspace),
+      "AGENT_FQDN=secret.example.com\n",
+      "utf8",
+    );
+    await symlink(
+      fileURLToPath(new URL("secrets/", workspace)),
+      fileURLToPath(new URL(".azure", workspace)),
+    );
+
+    const reader = await createArtifactReader(workspacePath);
+
+    await assert.rejects(
+      reader.readDir(".azure"),
+      (error) =>
+        error instanceof ArtifactAccessError &&
+        error.relativePath === ".azure",
+    );
+  });
+});

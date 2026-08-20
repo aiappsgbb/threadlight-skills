@@ -19,6 +19,7 @@ skill ships no pytest harness of its own.
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -243,6 +244,41 @@ def test_nested_manifest_binding_gap_uses_correct_root() -> None:
     assert gaps == [
         "integration erp is declared real but runtime endpoint is still mock"
     ]
+
+
+def test_phase_postdeploy_embeds_checked_manifest_snapshot() -> None:
+    tmp_path = Path(tempfile.mkdtemp())
+    manifest_path = tmp_path / "specs" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps({"deployment_manifest": {"subscription_id": "sub-1", "resource_group": "rg-1"}}),
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "tests" / "postdeploy-manifest.json"
+    out_path.parent.mkdir(parents=True)
+
+    original_az = sc._az
+    original_repo_root = sc._repo_root_for_manifest
+    original_load_mcp = sc._load_effective_mcp_config
+    try:
+        sc._az = lambda *args: "[]"
+        sc._repo_root_for_manifest = lambda manifest, explicit_root=None: tmp_path
+        sc._load_effective_mcp_config = lambda root: {}
+
+        exit_code = sc.phase_postdeploy(manifest_path, out_path, "rg-1", repo_root=tmp_path)
+    finally:
+        sc._az = original_az
+        sc._repo_root_for_manifest = original_repo_root
+        sc._load_effective_mcp_config = original_load_mcp
+
+    assert exit_code == 0
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["phase"] == "post-deploy"
+    assert isinstance(payload.get("checked_at"), str)
+    assert payload["deployment_manifest"] == {
+        "subscription_id": "sub-1",
+        "resource_group": "rg-1",
+    }
 
 
 # ---------------------------------------------------------------------------

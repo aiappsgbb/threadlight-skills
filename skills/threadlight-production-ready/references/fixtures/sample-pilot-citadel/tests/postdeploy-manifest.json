@@ -11,5 +11,6 @@
       "owner": "citadel-team@example.com",
       "posture": "citadel-spoke"
     }
-  }
+  },
+  "gaps": []
 }

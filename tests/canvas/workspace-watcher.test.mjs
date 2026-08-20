@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -62,7 +62,6 @@ test("workspace watcher attaches newly created roots before publishing debounced
   } finally {
     watcher?.close();
     await rm(root, { recursive: true, force: true });
-    await rm(SCRATCH_ROOT, { recursive: true, force: true });
   }
 });
 
@@ -83,6 +82,7 @@ test("workspace watcher refreshes Improve and Handoff evidence", async () => {
     await mkdir(path.join(root, "tests"));
     await mkdir(path.join(root, "router-bench-out"));
     await waitForRefreshCount(() => refreshes, 1);
+    await delay(80);
 
     await writeFile(
       path.join(root, "tests", "production-readiness-manifest.json"),
@@ -100,6 +100,79 @@ test("workspace watcher refreshes Improve and Handoff evidence", async () => {
   } finally {
     watcher?.close();
     await rm(root, { recursive: true, force: true });
-    await rm(SCRATCH_ROOT, { recursive: true, force: true });
+  }
+});
+
+test("workspace watcher refreshes when azd env evidence appears under .azure", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-azure-env");
+  let watcher;
+  let refreshes = 0;
+
+  try {
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      { debounceMs: 40 },
+    );
+
+    await mkdir(path.join(root, ".azure"));
+    await waitForRefreshCount(() => refreshes, 1);
+
+    await mkdir(path.join(root, ".azure", "dev"));
+    await waitForRefreshCount(() => refreshes, 2);
+
+    await writeFile(
+      path.join(root, ".azure", "dev", ".env"),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+    );
+    await waitForRefreshCount(() => refreshes, 3);
+
+    await writeFile(
+      path.join(root, ".azure", "dev", ".env"),
+      "AGENT_FQDN=threadlight-prod.example.com\n",
+    );
+    await waitForRefreshCount(() => refreshes, 4);
+
+    assert.equal(refreshes, 4);
+  } finally {
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace watcher ignores symlinked .azure roots", async () => {
+  const root = await createScratchWorkspace("workspace-watcher-azure-symlink");
+  const external = await createScratchWorkspace("workspace-watcher-azure-external");
+  let watcher;
+  let refreshes = 0;
+
+  try {
+    await mkdir(path.join(external, "dev"), { recursive: true });
+    await symlink(external, path.join(root, ".azure"));
+
+    watcher = await watchWorkspace(
+      root,
+      async () => {
+        refreshes += 1;
+      },
+      { debounceMs: 40 },
+    );
+
+    await delay(120);
+    const baseline = refreshes;
+
+    await writeFile(
+      path.join(external, "dev", ".env"),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+    );
+    await delay(120);
+
+    assert.equal(refreshes, baseline);
+  } finally {
+    watcher?.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(external, { recursive: true, force: true });
   }
 });

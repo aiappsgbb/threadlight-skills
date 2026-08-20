@@ -1,4 +1,7 @@
-import { createArtifactReader } from "./artifact-reader.mjs";
+import {
+  ArtifactAccessError,
+  createArtifactReader,
+} from "./artifact-reader.mjs";
 import {
   LEG_ENVELOPE_CONTRACTS,
   LIFECYCLE_PHASES,
@@ -103,8 +106,65 @@ function parseTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function evidenceTimestamp(json, metadata) {
+function parseRfc3339Timestamp(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(\.\d+)?([Zz]|([+-])([01]\d|2[0-3]):([0-5]\d))$/.exec(
+    value.trim(),
+  );
+  if (!match) {
+    return null;
+  }
+  const parsed = parseTimestamp(value);
+  if (!parsed) {
+    return null;
+  }
+  const [
+    ,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    fractionalSeconds = "",
+    zone,
+    offsetSign,
+    offsetHour,
+    offsetMinute,
+  ] = match;
+  const milliseconds = fractionalSeconds
+    ? Number(fractionalSeconds.slice(1).padEnd(3, "0").slice(0, 3))
+    : 0;
+  const offsetMinutes = /^[Zz]$/.test(zone)
+    ? 0
+    : (offsetSign === "+" ? 1 : -1) * (Number(offsetHour) * 60 + Number(offsetMinute));
+  const adjusted = new Date(parsed.getTime() + offsetMinutes * 60_000);
+  return adjusted.getUTCFullYear() === Number(year) &&
+      adjusted.getUTCMonth() === Number(month) - 1 &&
+      adjusted.getUTCDate() === Number(day) &&
+      adjusted.getUTCHours() === Number(hour) &&
+      adjusted.getUTCMinutes() === Number(minute) &&
+      adjusted.getUTCSeconds() === Number(second) &&
+      adjusted.getUTCMilliseconds() === milliseconds
+    ? parsed
+    : null;
+}
+
+function postdeployCheckedAt(postdeploy, now) {
+  const checkedAt = parseRfc3339Timestamp(postdeploy?.checked_at);
+  if (!checkedAt || checkedAt.getTime() > now.getTime()) {
+    return null;
+  }
+  return checkedAt;
+}
+
+function evidenceTimestamp(json, metadata, jsonPath, now) {
   if (isPlainObject(json)) {
+    if (jsonPath === "tests/postdeploy-manifest.json") {
+      return postdeployCheckedAt(json, now);
+    }
     for (const key of ["captured_at", "generated_at", "checked_at"]) {
       const parsed = parseTimestamp(json[key]);
       if (parsed) {
@@ -331,7 +391,10 @@ function projectLegStatus(json, contract, now) {
   return { status: "complete" };
 }
 
-function evidenceStatus(value) {
+function evidenceStatus(value, jsonPath, now) {
+  if (jsonPath === "tests/postdeploy-manifest.json") {
+    return isGreenPostdeployManifest(value) && postdeployCheckedAt(value, now) ? null : "failed";
+  }
   if (!isPlainObject(value)) {
     return null;
   }
@@ -404,6 +467,36 @@ function classifyReconciliation(reconciliation) {
     : "reconciliation-not-verified";
 }
 
+function isGreenPostdeployManifest(postdeploy) {
+  return (
+    isPlainObject(postdeploy) &&
+    postdeploy.phase === "post-deploy" &&
+    Array.isArray(postdeploy.gaps) &&
+    postdeploy.gaps.length === 0
+  );
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (isPlainObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function postdeployBindsManifest(postdeploy, manifest) {
+  const snapshot = postdeploy?.deployment_manifest;
+  const current = manifest?.deployment_manifest;
+  return isPlainObject(snapshot) &&
+    isPlainObject(current) &&
+    stableJson(snapshot) === stableJson(current);
+}
+
 async function readOptionalJson(reader, relativePath) {
   if (!(await reader.exists(relativePath))) {
     return { state: "missing", value: null };
@@ -464,8 +557,9 @@ async function costEvidenceState(reader, manifest) {
   return classifyReconciliation(reconciliation.value);
 }
 
-function readinessEvidenceState(assurance, readiness) {
+function readinessEvidenceState(assurance, readiness, safeCheckStatus) {
   if (
+    safeCheckStatus !== "complete" ||
     assurance?.govern !== "governed" ||
     assurance?.evals !== "comprehensive" ||
     assurance?.redteam !== "hardened" ||
@@ -490,23 +584,25 @@ function readinessEvidenceState(assurance, readiness) {
   return "readiness-proof";
 }
 
-async function skillEvidenceState(definition, reader, manifest) {
+async function skillEvidenceState(definition, reader, manifest, projectedSkills) {
   if (definition.id === "threadlight-consumption-iq") {
     return costEvidenceState(reader, manifest);
   }
   if (definition.id === "threadlight-production-ready") {
-    const [govern, evals, redteam, readiness] = await Promise.all([
+    const [govern, evals, redteam, readiness, postdeploy] = await Promise.all([
       readOptionalJson(reader, "specs/govern-manifest.json"),
       readOptionalJson(reader, "specs/evals-manifest.json"),
       readOptionalJson(reader, "specs/redteam-manifest.json"),
       readOptionalJson(reader, "tests/production-readiness-manifest.json"),
+      readOptionalJson(reader, "tests/postdeploy-manifest.json"),
     ]);
-    const hasAnyReadinessEvidence = [govern, evals, redteam, readiness].some(
+    const hasAnyReadinessEvidence = [govern, evals, redteam, readiness, postdeploy].some(
       (artifact) => artifact.state !== "missing",
     );
     if (!hasAnyReadinessEvidence) {
       return undefined;
     }
+    const safeCheckStatus = projectedSkills.get("threadlight-safe-check")?.status ?? null;
     return readinessEvidenceState(
       {
         govern: govern.value?.verdict ?? null,
@@ -514,9 +610,52 @@ async function skillEvidenceState(definition, reader, manifest) {
         redteam: redteam.value?.verdict ?? null,
       },
       readiness.value,
+      safeCheckStatus,
     );
   }
   return undefined;
+}
+
+async function hasDeployCompletionEvidence(reader) {
+  try {
+    const azdEnvDirs = await reader.readDir(".azure");
+    if (!Array.isArray(azdEnvDirs) || azdEnvDirs.length !== 1) {
+      return false;
+    }
+
+    for (const envDir of azdEnvDirs) {
+      const value = parseEnvAssignment(
+        await reader.readAzdEnvValue(envDir, "AGENT_FQDN"),
+      );
+      if (value) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    if (error instanceof ArtifactAccessError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function parseEnvAssignment(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  if (value.trimStart().startsWith("#")) {
+    return "";
+  }
+  const trimmed = value.split(/\s+#/u, 1)[0].trim();
+  if (
+    trimmed.length >= 2 &&
+    (trimmed.startsWith('"') && trimmed.endsWith('"') ||
+      trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
 }
 
 function firstJsonPath(requiredArtifactGroups) {
@@ -540,7 +679,7 @@ function parseError(error) {
   };
 }
 
-function statusWithFreshness(status, definition, timestamp, now) {
+function statusWithFreshness(status, definition, timestamp, now, jsonPath = null) {
   if (
     definition.freshnessHours === null ||
     (status !== "complete" && status !== "running")
@@ -551,11 +690,14 @@ function statusWithFreshness(status, definition, timestamp, now) {
     return "stale";
   }
   const ageHours = (now.getTime() - timestamp.getTime()) / 3_600_000;
+  if (jsonPath === "tests/postdeploy-manifest.json") {
+    return ageHours >= definition.freshnessHours ? "stale" : status;
+  }
   return ageHours > definition.freshnessHours ? "stale" : status;
 }
 
 async function collectEvidence(reader, definition) {
-  const evidence = [];
+  const requiredEvidence = [];
 
   for (const group of definition.requiredArtifactGroups) {
     let match = null;
@@ -572,11 +714,24 @@ async function collectEvidence(reader, definition) {
       }
     }
     if (match) {
-      evidence.push(match);
+      requiredEvidence.push(match);
     }
   }
 
-  return evidence;
+  const evidence = [...requiredEvidence];
+  for (const artifactPath of definition.optionalArtifacts) {
+    const metadata = await reader.metadata(artifactPath);
+    if (metadata) {
+      evidence.push({
+        path: metadata.relativePath,
+        kind: metadata.kind,
+        modifiedAt: metadata.modifiedAt,
+        size: metadata.size,
+      });
+    }
+  }
+
+  return { requiredEvidence, evidence };
 }
 
 function aggregatePhaseStatus(skills) {
@@ -664,7 +819,7 @@ async function projectSkill({
     };
   }
 
-  const evidence = await collectEvidence(reader, definition);
+  const { requiredEvidence, evidence } = await collectEvidence(reader, definition);
   const incompletePrerequisiteId = definition.prerequisiteSkills.find((skillId) => {
     const prerequisite = projectedSkills.get(skillId);
     return (
@@ -682,10 +837,10 @@ async function projectSkill({
     status = incompletePrerequisite ? "blocked" : "ready";
   } else if (
     definition.requiredArtifactGroups.length > 0 &&
-    evidence.length === definition.requiredArtifactGroups.length
+    requiredEvidence.length === definition.requiredArtifactGroups.length
   ) {
     status = "complete";
-  } else if (evidence.length > 0) {
+  } else if (requiredEvidence.length > 0) {
     status = "running";
   } else if (incompletePrerequisite) {
     status = "blocked";
@@ -703,8 +858,8 @@ async function projectSkill({
       : "running";
   }
 
-  let timestamp = evidenceTimestamp(null, evidence[0]);
   const jsonPath = firstJsonPath(definition.requiredArtifactGroups);
+  let timestamp = evidenceTimestamp(null, evidence[0], jsonPath, now);
   const legContract = jsonPath ? LEG_ENVELOPE_CONTRACTS[jsonPath] : undefined;
   if (evidence.length > 0 && jsonPath) {
     try {
@@ -745,11 +900,23 @@ async function projectSkill({
           });
         }
       } else if (jsonExists) {
-        const evidenceOverride = evidenceStatus(json);
+        const evidenceOverride = evidenceStatus(json, jsonPath, now);
         if (evidenceOverride) {
           status = evidenceOverride;
         }
-        timestamp = evidenceTimestamp(json, evidence[0]);
+        if (
+          definition.id === "threadlight-safe-check" &&
+          !postdeployBindsManifest(json, manifest)
+        ) {
+          status = "failed";
+          errors.push({
+            code: "artifact-invalid",
+            path: jsonPath,
+            message:
+              "Post-deploy proof no longer matches specs/manifest.json. Re-run threadlight-safe-check.",
+          });
+        }
+        timestamp = evidenceTimestamp(json, evidence[0], jsonPath, now);
       }
     } catch (error) {
       if (!isArtifactParseError(error)) {
@@ -761,10 +928,43 @@ async function projectSkill({
   }
 
   if (!legContract) {
-    status = statusWithFreshness(status, definition, timestamp, now);
+    status = statusWithFreshness(status, definition, timestamp, now, jsonPath);
   }
 
-  const evidenceState = await skillEvidenceState(definition, reader, manifest);
+  if (
+    definition.id === "threadlight-deploy" &&
+    status === "complete" &&
+    !(await hasDeployCompletionEvidence(reader))
+  ) {
+    status = "running";
+  }
+
+  if (
+    incompletePrerequisite &&
+    status === "complete" &&
+    (
+      definition.id === "threadlight-safe-check" ||
+      definition.id === "threadlight-production-ready"
+    )
+  ) {
+    status = "blocked";
+  }
+
+  const evidenceState = await skillEvidenceState(
+    definition,
+    reader,
+    manifest,
+    projectedSkills,
+  );
+
+  if (
+    definition.id === "threadlight-production-ready" &&
+    status === "complete" &&
+    evidenceState !== undefined &&
+    evidenceState !== "readiness-proof"
+  ) {
+    status = "running";
+  }
 
   return {
     definition,

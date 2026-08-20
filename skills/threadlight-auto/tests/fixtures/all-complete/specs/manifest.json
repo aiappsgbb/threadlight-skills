@@ -1,0 +1,6 @@
+{
+  "deployment_manifest": {
+    "subscription_id": "sub-1",
+    "resource_group": "rg-pilot"
+  }
+}

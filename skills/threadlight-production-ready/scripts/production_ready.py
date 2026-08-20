@@ -1123,23 +1123,37 @@ def _load_postdeploy(path: Path, accept_stale: bool, freshness_hours: int) -> tu
         _eprint(f"error: {path} phase={phase!r}, expected 'post-deploy'")
         raise SystemExit(2)
 
+    gaps = data.get("gaps")
+    if not isinstance(gaps, list) or gaps:
+        _eprint(f"error: {path} gaps must be an empty list to prove safe-check completion")
+        _eprint("re-run safe-check and resolve every reported gap before readiness-proof")
+        raise SystemExit(2)
+
     checked_at = data.get("checked_at")
-    if isinstance(checked_at, str):
-        try:
-            t = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            age = datetime.now(timezone.utc) - t
-            if age > timedelta(hours=freshness_hours):
-                msg = f"safe-check manifest is {age.total_seconds()/3600:.1f}h old (limit {freshness_hours}h)"
-                if accept_stale:
-                    warnings.append(msg + " — accepted via --accept-stale-safe-check")
-                else:
-                    _eprint(f"error: {msg}")
-                    _eprint("re-run safe-check or pass --accept-stale-safe-check")
-                    raise SystemExit(2)
-        except ValueError:
-            warnings.append(f"safe-check checked_at not ISO-8601: {checked_at!r}")
+    t = _parse_rfc3339_datetime(checked_at)
+    if t is not None:
+        age = datetime.now(timezone.utc) - t
+        if age.total_seconds() < 0:
+            _eprint(f"error: safe-check checked_at is in the future: {checked_at!r}")
+            _eprint("re-run safe-check to refresh the post-deploy proof")
+            raise SystemExit(2)
+        if age >= timedelta(hours=freshness_hours):
+            msg = f"safe-check manifest is {age.total_seconds()/3600:.1f}h old (limit {freshness_hours}h)"
+            if accept_stale:
+                warnings.append(msg + " — accepted via --accept-stale-safe-check")
+            else:
+                _eprint(f"error: {msg}")
+                _eprint("re-run safe-check or pass --accept-stale-safe-check")
+                raise SystemExit(2)
     else:
-        warnings.append("safe-check checked_at missing")
+        msg = (
+            f"safe-check checked_at not ISO-8601: {checked_at!r}"
+            if isinstance(checked_at, str)
+            else "safe-check checked_at missing"
+        )
+        _eprint(f"error: {msg}")
+        _eprint("re-run safe-check to regenerate a valid post-deploy proof timestamp")
+        raise SystemExit(2)
 
     return data, warnings
 
@@ -1169,31 +1183,27 @@ def _validate_manifest_binding(
     dm = manifest.get("deployment_manifest", {})
     pdm = postdeploy.get("deployment_manifest") or {}
     if not pdm:
-        warnings.append("safe-check manifest has no embedded deployment_manifest snapshot")
-        return warnings
+        msg = "safe-check manifest has no embedded deployment_manifest snapshot"
+        _eprint("error: " + msg)
+        _eprint("re-run safe-check against the current deployment before readiness-proof")
+        raise SystemExit(2)
 
     for key in ("subscription_id", "resource_group"):
         a = dm.get(key)
         b = pdm.get(key)
         if a and b and a != b:
             msg = f"deployment_manifest.{key} mismatch: current={a!r} safe-check={b!r}"
-            if accept_stale:
-                warnings.append(msg + " — accepted via --accept-stale-safe-check")
-            else:
-                _eprint("error: " + msg)
-                _eprint("re-run safe-check or pass --accept-stale-safe-check")
-                raise SystemExit(2)
+            _eprint("error: " + msg)
+            _eprint("re-run safe-check against the current deployment before readiness-proof")
+            raise SystemExit(2)
 
     h_now = _sha256_block(dm)
     h_then = _sha256_block(pdm)
     if h_now != h_then:
         msg = f"deployment_manifest hash changed since safe-check (now={h_now[:12]} then={h_then[:12]})"
-        if accept_stale:
-            warnings.append(msg + " — accepted via --accept-stale-safe-check")
-        else:
-            _eprint("error: " + msg)
-            _eprint("re-run safe-check or pass --accept-stale-safe-check")
-            raise SystemExit(2)
+        _eprint("error: " + msg)
+        _eprint("re-run safe-check against the current deployment before readiness-proof")
+        raise SystemExit(2)
 
     return warnings
 
@@ -2006,6 +2016,16 @@ def _gap_is_rfc3339(value: Any) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _parse_rfc3339_datetime(value: Any) -> datetime | None:
+    if not _gap_is_rfc3339(value):
+        return None
+    normalized = value[:-1] + "+00:00" if value[-1] in "Zz" else value
+    try:
+        return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 def _gap_is_draft7_integer(value: Any) -> bool:
@@ -6225,7 +6245,7 @@ def _compute_evidence_freshness(
           "oldest_captured_at": ISO 8601 UTC | None,
           "newest_captured_at": ISO 8601 UTC | None,
           "span_hours":          int | None,    # newest - oldest, hours, floored
-          "stale":               bool,          # (checked_at - oldest) > freshness_hours, STRICT >
+          "stale":               bool,          # (checked_at - oldest) >= freshness_hours
           "threshold_hours":     int,           # echoed for downstream consumers
         }
 
@@ -6234,8 +6254,8 @@ def _compute_evidence_freshness(
     appends explanatory entries for: unparseable rows, all-unparseable runs,
     clock skew (captured_at after checked_at), and unparseable `checked_at`.
 
-    Strict `>` comparison: an evidence row exactly `freshness_hours` old is
-    NOT stale. Matches the safe-check freshness convention.
+    Strict `>=` comparison: an evidence row exactly `freshness_hours` old is
+    stale. Matches the safe-check freshness convention.
     """
     block: dict = {
         "oldest_captured_at": None,
@@ -6279,7 +6299,9 @@ def _compute_evidence_freshness(
     block["span_hours"] = int(max(0.0, span_seconds) // 3600)
 
     try:
-        checked_dt = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        checked_dt = _parse_rfc3339_datetime(checked_at)
+        if checked_dt is None:
+            raise ValueError
     except (ValueError, TypeError):
         if warnings is not None:
             warnings.append(
@@ -6298,7 +6320,7 @@ def _compute_evidence_freshness(
         return block
 
     age_hours = age_seconds / 3600.0
-    block["stale"] = age_hours > freshness_hours
+    block["stale"] = age_hours >= freshness_hours
     return block
 
 

@@ -1,4 +1,1 @@
-{
-  "phase": "post-deploy",
-  "gaps": []
-}
+{"checked_at": "2026-08-20T17:53:20+00:00", "phase": "post-deploy", "gaps": [], "deployment_manifest": {"subscription_id": "sub-1", "resource_group": "rg-pilot"}}

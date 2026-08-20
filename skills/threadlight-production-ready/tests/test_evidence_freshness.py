@@ -13,7 +13,7 @@ Test catalog (matches ADR `2026-06-10-per-evidence-freshness-design.md`):
     t_static_mode                — empty register → null timestamps, stale=false
     t_fresh_evidence             — 5 min old   → stale=false, no banner
     t_stale_evidence             — 30 h old    → stale=true,  banner present
-    t_exact_boundary             — exactly 24h → stale=false (strict ">")
+    t_exact_boundary             — exactly 24h → stale=true (strict ">=")
     t_unparseable_only           — bad ISO     → null + warning, stale=false
     t_mixed_parseable            — bad+good    → freshness from good, warning
     t_custom_flag                — --freshness-hours 72 + 30h row → stale=false
@@ -120,11 +120,11 @@ def t_stale_evidence() -> None:
 
 def t_exact_boundary() -> None:
     print("\nt_exact_boundary")
-    # Exactly 24h before checked_at — must not be stale (strict ">" per D6)
+    # Exactly 24h before checked_at — must be stale (strict ">=")
     checked_at = ts(0)
     ev = [mk_evidence(ts(24))]
     block = pr._compute_evidence_freshness(ev, checked_at, freshness_hours=24)
-    expect(block["stale"] is False, "exact-24h: NOT stale (strict >)")
+    expect(block["stale"] is True, "exact-24h: stale (strict >=)")
     # 24h + 1s should be stale
     base = datetime.now(timezone.utc)
     just_over = (base - timedelta(hours=24, seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")

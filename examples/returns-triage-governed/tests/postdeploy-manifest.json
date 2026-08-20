@@ -1,6 +1,49 @@
 {
   "phase": "post-deploy",
+  "checked_at": "2026-07-07T13:09:52Z",
   "deployed_at": "2026-07-07T13:09:52Z",
+  "deployment_manifest": {
+    "module_selectors": {
+      "foundry-account": "yes",
+      "cosmos-db": "yes",
+      "ai-search": "yes",
+      "foundry-iq-index": "yes",
+      "storage-blob": "yes",
+      "aca-mcp": "yes",
+      "aca-bot": "yes",
+      "aca-job": "yes",
+      "workspace-ui": "yes",
+      "app-insights": "yes",
+      "key-vault": "no",
+      "event-grid": "no",
+      "service-bus": "no"
+    },
+    "services": [
+      {"name": "agent", "host": "azure.ai.agent", "src": "src/agent"},
+      {"name": "mcp", "host": "containerapp", "src": "src/mcp"},
+      {"name": "bot", "host": "containerapp", "src": "src/bot"},
+      {"name": "workspace", "host": "containerapp", "src": "src/workspace"}
+    ],
+    "scheduled_jobs": [
+      {"name": "open-queue-sweep", "schedule": "*/15 * * * *", "tool": "returns_list_open", "src": "src/jobs/open-queue-sweep"}
+    ],
+    "channels": [
+      {"name": "Returns Workspace", "type": "web", "service": "workspace"},
+      {"name": "Teams supervisor escalation card", "type": "teams", "service": "bot"}
+    ],
+    "expected_resource_types": [
+      "Microsoft.CognitiveServices/accounts",
+      "Microsoft.DocumentDB/databaseAccounts",
+      "Microsoft.Search/searchServices",
+      "Microsoft.App/managedEnvironments",
+      "Microsoft.App/containerApps",
+      "Microsoft.App/jobs",
+      "Microsoft.BotService/botServices",
+      "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "Microsoft.ContainerRegistry/registries",
+      "Microsoft.Insights/components"
+    ]
+  },
   "rg": "rg-returns-triage-sample",
   "checked_selectors": [
     "aca-bot",
