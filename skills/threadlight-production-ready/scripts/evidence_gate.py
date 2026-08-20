@@ -67,6 +67,7 @@ _REDTEAM_ASR_KEYS = {
     "harmful_content",
 }
 _REDTEAM_FINDING_IDS = {"SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"}
+_AGT_PROFILES = {"auto", "v3_7", "v4_preview", "none"}
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -115,6 +116,27 @@ def _validate_optional_non_negative_int(manifest_name: str, data: Dict[str, Any]
         raise EvidenceGateError(f"{manifest_name} has invalid {field!r}")
 
 
+def _validate_optional_string_list(manifest_name: str, data: Dict[str, Any], field: str) -> None:
+    if field not in data:
+        return
+    values = data[field]
+    if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+        raise EvidenceGateError(f"{manifest_name} has invalid {field!r} (must be list of strings)")
+
+
+def _validate_optional_enum_string(
+    manifest_name: str,
+    data: Dict[str, Any],
+    field: str,
+    allowed: set[str],
+) -> None:
+    if field not in data:
+        return
+    value = data[field]
+    if not isinstance(value, str) or value not in allowed:
+        raise EvidenceGateError(f"{manifest_name} has invalid {field!r}")
+
+
 def _validate_capability(
     manifest_name: str,
     capability_name: str,
@@ -151,6 +173,9 @@ def _validate_capability(
 
 def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
     _validate_optional_non_negative_int(path.name, data, "freshness_window_days")
+    _validate_optional_enum_string(path.name, data, "agt_profile", _AGT_PROFILES)
+    for list_field in ("must_fix", "should_fix", "not_verified"):
+        _validate_optional_string_list(path.name, data, list_field)
     capabilities = data["capabilities"]
     invalid_names = set(capabilities) - _GOVERN_CAPABILITIES
     if invalid_names:
@@ -161,6 +186,8 @@ def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
 
 def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:
     _validate_optional_non_negative_int(path.name, data, "freshness_window_days")
+    for list_field in ("must_fix", "should_fix", "not_verified"):
+        _validate_optional_string_list(path.name, data, list_field)
     capabilities = data["capabilities"]
     missing = _EVALS_CAPABILITIES - set(capabilities)
     extras = set(capabilities) - _EVALS_CAPABILITIES
