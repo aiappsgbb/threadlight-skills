@@ -298,6 +298,14 @@ def test_readiness_summary_requires_explicit_passing_evidence():
         "the paid-run summary must explicitly check for EVIDENCE_STATUS == \"pass\" "
         "before claiming live-smoke success"
     )
+    assert "Live-smoke evidence was NOT fully asserted" in body, (
+        "the live-smoke summary must describe a generic evidence-semantics failure, "
+        "not blame only deployment/invocation when assurance evidence is missing"
+    )
+    assert "Deployment and/or invocation were NOT fully asserted" not in body, (
+        "the live-smoke summary must not imply only deployment/invocation failed "
+        "when the evidence gate can also fail on assurance evidence"
+    )
 
 
 def test_smoke_only_stays_free():
