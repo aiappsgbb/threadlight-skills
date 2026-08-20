@@ -376,6 +376,15 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     await expect(how).toContainText(
       /The current flow is diagnostics-to-backlog:\s+learn harvests one finished workflow run, classifies grounded\s+findings, and ranks the next fixes\.\s+It does not apply changes, assign owners,\s+rerun the workflow, or claim measured improvement automatically\./i,
     );
+    await expect(how).toContainText(
+      /maintainers\s+may review candidate signatures and explicitly add rules\/tests/i,
+    );
+    await expect(how).toContainText(
+      /only reviewed\s+rule\/test updates improve later classification/i,
+    );
+    await expect(how).not.toContainText(/taught itself/i);
+    await expect(how).not.toContainText(/self-teaching/i);
+    await expect(how).not.toContainText(/^it gets better$/i);
     await expect(how).not.toContainText(/automatic remediation/i);
   });
 });
