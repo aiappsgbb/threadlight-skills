@@ -82,6 +82,7 @@ def actuals(total=70.0, successes=100):
     return {
         "schema": "threadlight-cost-actuals/v1",
         "status": "pass",
+        "scope": {"subscription_id": "sub-a", "resource_group": "rg-a"},
         "window": {
             "start": "2026-08-01T00:00:00Z",
             "end": "2026-08-08T00:00:00Z",
@@ -144,7 +145,7 @@ def policy():
     }
 
 
-def run(f=None, a=None, p=None, errors=None):
+def run(f=None, a=None, p=None, errors=None, **kwargs):
     return reconcile_costs(
         f or forecast(),
         a or actuals(),
@@ -152,6 +153,7 @@ def run(f=None, a=None, p=None, errors=None):
         policy_errors=errors or [],
         generated_at=GENERATED,
         policy_spec_sha256=SPEC_SHA256,
+        **kwargs,
     )
 
 
@@ -235,6 +237,30 @@ def test_token_reprice_never_substitutes_for_a_missing_total() -> None:
     assert result["status"] == "not-verified"
 
 
+def test_expected_scope_matching_actuals_passes() -> None:
+    result = run(
+        expected_subscription_id="sub-a",
+        expected_resource_group="rg-a",
+    )
+    assert result["status"] == "pass"
+
+
+def test_mismatched_expected_subscription_raises() -> None:
+    with pytest.raises(
+        ReconciliationInputError,
+        match="actuals scope subscription_id 'sub-a' does not match expected 'sub-b'",
+    ):
+        run(expected_subscription_id="sub-b")
+
+
+def test_mismatched_expected_resource_group_raises() -> None:
+    with pytest.raises(
+        ReconciliationInputError,
+        match="actuals scope resource_group 'rg-a' does not match expected 'rg-b'",
+    ):
+        run(expected_resource_group="rg-b")
+
+
 def test_reconcile_costs_takes_no_token_cost_argument() -> None:
     """The type boundary itself is what prevents double counting: there is
     no parameter through which a token reprice could ever be passed in.
@@ -251,6 +277,8 @@ def test_reconcile_costs_takes_no_token_cost_argument() -> None:
         "forecast",
         "actuals",
         "policy",
+        "expected_subscription_id",
+        "expected_resource_group",
         "policy_errors",
         "generated_at",
         "policy_spec_sha256",

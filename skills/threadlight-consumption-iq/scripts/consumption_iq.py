@@ -627,6 +627,8 @@ def _phase_reconcile(
         forecast,
         actuals,
         policy.policy,
+        expected_subscription_id=getattr(args, "expect_subscription", None),
+        expected_resource_group=getattr(args, "expect_resource_group", None),
         policy_errors=list(policy.errors),
         # When this verdict was COMPUTED, which is not when its evidence was
         # collected. The actuals keep their own `generated_at` (`collected_at`
@@ -827,6 +829,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--actuals-manifest", type=Path, default=DEFAULT_ACTUALS_MANIFEST
     )
     reconcile_p.add_argument("--spec", type=Path, default=DEFAULT_SPEC_PATH)
+    reconcile_p.add_argument(
+        "--expect-subscription",
+        dest="expect_subscription",
+        help="Require the actuals manifest scope to match this subscription before reconciling.",
+    )
+    reconcile_p.add_argument(
+        "--expect-resource-group",
+        dest="expect_resource_group",
+        help="Require the actuals manifest scope to match this resource group before reconciling.",
+    )
     reconcile_p.add_argument(
         "--reconciliation-manifest", type=Path, default=DEFAULT_RECONCILIATION_MANIFEST
     )

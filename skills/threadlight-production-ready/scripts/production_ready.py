@@ -3676,6 +3676,21 @@ def _validate_cost_actuals_target_scope(
 
 def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
     """Summarize reconciled cost evidence for the manifest/report. Never raises."""
+    target_scope = _assessment_target_scope_for_ctx(ctx)
+    actuals_scope_probe = _read_cost_artifact(
+        ctx.root / "specs" / "cost-actuals-manifest.json"
+    )
+    if isinstance(actuals_scope_probe, dict):
+        actual_sub, actual_rg, scope_error = _validate_cost_actuals_target_scope(
+            actuals_scope_probe,
+            target_scope.subscription_id,
+            target_scope.resource_group,
+        )
+        if scope_error is not None:
+            return _cost_evidence_unverified(scope_error)
+    else:
+        actual_sub = actual_rg = None
+
     try:
         bundle = _read_cost_reconciliation_bundle(ctx)
     except (AttributeError, TypeError, KeyError, ValueError, IndexError,
@@ -3690,12 +3705,12 @@ def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
             "No provable specs/cost-reconciliation-manifest.json")
 
     reconciliation, actuals, _forecast = bundle
-    target_scope = _assessment_target_scope_for_ctx(ctx)
-    actual_sub, actual_rg, scope_error = _validate_cost_actuals_target_scope(
-        actuals, target_scope.subscription_id, target_scope.resource_group
-    )
-    if scope_error is not None:
-        return _cost_evidence_unverified(scope_error)
+    if actual_sub is None or actual_rg is None:
+        actual_sub, actual_rg, scope_error = _validate_cost_actuals_target_scope(
+            actuals, target_scope.subscription_id, target_scope.resource_group
+        )
+        if scope_error is not None:
+            return _cost_evidence_unverified(scope_error)
 
     stale_reason = reconciliation.get("_stale_reason")
     if stale_reason:
@@ -4873,6 +4888,13 @@ def _read_cost_reconciliation_bundle(
     collected_at = _parse_utc_instant(actuals.get("generated_at"))
     if reconciled_at is None or collected_at is None or reconciled_at < collected_at:
         # A verdict cannot predate the evidence it judges.
+        return None
+
+    target_scope = _assessment_target_scope_for_ctx(ctx)
+    _actual_sub, _actual_rg, scope_error = _validate_cost_actuals_target_scope(
+        actuals, target_scope.subscription_id, target_scope.resource_group
+    )
+    if scope_error is not None:
         return None
 
     data["_stale_reason"] = _cost_window_staleness(actuals, data)
