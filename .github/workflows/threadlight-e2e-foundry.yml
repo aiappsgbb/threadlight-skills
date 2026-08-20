@@ -305,7 +305,7 @@ jobs:
           #
           # This is the same failure class as the agent-framework pin rot: an
           # unpinned upstream that breaks us silently and is invisible to pytest.
-          # Bump both deliberately, re-run `mode=full`, and update
+          # Bump both deliberately, re-run `mode=live-smoke`, and update
           # skills/threadlight-deploy/references/upstream-pin.md in the same PR.
           curl -fsSL https://aka.ms/install-azd.sh | bash -s -- --version 1.31.1
           azd version
@@ -1116,13 +1116,34 @@ jobs:
         if: always() && steps.evidence-mode.outputs.mode != 'none'
         run: |
           set -euo pipefail
+          MODE="${{ steps.evidence-mode.outputs.mode }}"
+          EVIDENCE_JSON="/tmp/evidence-gate.json"
+          INVOKE_RESULTS="${E2E_WORKSPACE}/${PILOT_SUBDIR}/docs/invoke-results.md"
+          DEPLOY_LOG="/tmp/phase-deploy.log"
+          TRANSCRIPT1="/tmp/phase-invoke-transcript-1.txt"
+          TRANSCRIPT2="/tmp/phase-invoke-transcript-2.txt"
           {
             echo "## Paid run"
             echo ""
-            if [ "${{ steps.evidence-mode.outputs.mode }}" = "readiness-proof" ]; then
-              echo "Readiness semantics were asserted."
+            if [ "$MODE" = "readiness-proof" ]; then
+              if [ -s "$EVIDENCE_JSON" ]; then
+                echo "Readiness semantics were asserted."
+              else
+                echo "Readiness semantics could not be asserted — evidence evaluation did not run or failed. Check run artifacts for deploy/invoke/evidence logs."
+              fi
             else
-              echo "Deployment and invocation were asserted; production readiness was not asserted."
+              # live-smoke path: confirm deploy + invoke artifacts before claiming assertions
+              DEPLOY_OK=0
+              INVOKE_OK=0
+              if [ -s "$DEPLOY_LOG" ] && grep -qE "succeeded|Attempt .*succeeded" "$DEPLOY_LOG" 2>/dev/null; then DEPLOY_OK=1; fi
+              if [ -s "$INVOKE_RESULTS" ] && [ -s "$TRANSCRIPT1" ] && [ -s "$TRANSCRIPT2" ]; then INVOKE_OK=1; fi
+              if [ "$DEPLOY_OK" -eq 1 ] && [ "$INVOKE_OK" -eq 1 ]; then
+                echo "Deployment and invocation were asserted; production readiness was not asserted."
+              else
+                echo "Deployment and/or invocation were NOT fully asserted due to prior failures."
+                if [ "$DEPLOY_OK" -ne 1 ]; then echo "- Deployment/assert step did not complete successfully (see /tmp/phase-deploy.log)"; fi
+                if [ "$INVOKE_OK" -ne 1 ]; then echo "- Invocation/assert step did not complete successfully (missing invoke-results.md or transcripts)"; fi
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
