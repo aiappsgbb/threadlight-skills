@@ -363,7 +363,9 @@ test.describe('self-improving chapter (self-improving.html)', () => {
   test('title, headline, and the four numbered sections', async ({ page }) => {
     await page.goto('/self-improving.html');
     await expect(page).toHaveTitle(/Self-improving/i);
-    await expect(page.locator('h1')).toContainText(/learns from every run/i);
+    await expect(page.locator('h1')).toContainText(
+      /The pipeline that turns every run into a ranked backlog/i,
+    );
     for (const id of ['how', 'caught', 'found', 'maintain']) {
       await expect(page.locator('#' + id), `self-improving section #${id}`).toHaveCount(1);
     }
