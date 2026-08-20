@@ -159,10 +159,38 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI
-    p = argparse.ArgumentParser(prog="evidence-gate")
-    p.add_argument("--root", default=".", help="project root")
-    p.add_argument("--mode", required=True, help="mode of evaluation: live-smoke or readiness-proof")
-    args = p.parse_args(argv)
+    class CLIParseError(Exception):
+        """Raised for CLI parsing failures so we can emit JSON instead of argparse text."""
+
+    class JSONArgumentParser(argparse.ArgumentParser):
+        def error(self, message):
+            # Raise instead of exiting/printing to allow JSON failure handling
+            raise CLIParseError(message)
+
+    def _get_arg_value(argv_list: list[str], name: str) -> str | None:
+        for i, tok in enumerate(argv_list):
+            if tok == name and i + 1 < len(argv_list):
+                return argv_list[i + 1]
+            if tok.startswith(name + "="):
+                return tok.split("=", 1)[1]
+        return None
+
+    argv_list = list(argv) if argv is not None else list(sys.argv[1:])
+    p = JSONArgumentParser(prog="evidence-gate")
+    p.add_argument("--root", required=True, help="project root")
+    p.add_argument(
+        "--mode",
+        required=True,
+        choices=["live-smoke", "readiness-proof"],
+        help="mode of evaluation: live-smoke or readiness-proof",
+    )
+    try:
+        args = p.parse_args(argv_list)
+    except CLIParseError as e:
+        mode_value = _get_arg_value(argv_list, "--mode")
+        print(json.dumps({"status": "fail", "mode": mode_value, "error": str(e)}))
+        return 2
+
     try:
         out = evaluate_evidence(Path(args.root), args.mode)
     except EvidenceGateError as e:
