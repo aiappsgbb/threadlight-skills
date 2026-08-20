@@ -867,6 +867,40 @@ test("producer-like assurance manifests keep readiness proof intact", async () =
   });
 });
 
+test("assurance manifests accept timezone-qualified ISO timestamps with a space separator", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "specs/govern-manifest.json",
+      assuranceManifest("govern", {
+        captured_at: "2026-08-06 08:00:00+00:00",
+      }),
+    );
+    await writeJson(
+      "specs/evals-manifest.json",
+      assuranceManifest("evals", {
+        captured_at: "2026-08-06 08:00:00+00:00",
+      }),
+    );
+    await writeJson(
+      "specs/redteam-manifest.json",
+      assuranceManifest("redteam", {
+        captured_at: "2026-08-06 08:00:00+00:00",
+        scan_captured_at: "2026-08-06 08:00:00+00:00",
+      }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
+    assert.equal(findSkill(model, "threadlight-evals").status, "complete");
+    assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-proof",
+    );
+  });
+});
+
 test("deploy treats unreadable .azure roots as absent evidence instead of throwing", async () => {
   await withFixture("complete-pilot", async ({ workspace }) => {
     const azureRoot = path.join(workspace, ".azure");
