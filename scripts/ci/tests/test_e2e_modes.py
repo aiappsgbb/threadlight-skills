@@ -23,7 +23,10 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "threadlight-e2e-foundry.yml"
 
-GATE_STEP = "[design-only gate] design→deploy contract check"
+GATE_STEP = "[contract gate] design→deploy contract check"
+READINESS_SAFE_CHECK_STEP = "[Readiness proof] Run post-deploy safe-check"
+EVIDENCE_GATE_STEP = "Evaluate lifecycle evidence semantics"
+LIFECYCLE_SUMMARY_STEP = "[paid run] Lifecycle summary"
 
 # Steps that appear after the design-only gate and are deliberately allowed to
 # run in design-only mode, because they neither provision nor delete Azure
@@ -49,6 +52,14 @@ def load_inputs() -> dict:
     return trigger["workflow_dispatch"]["inputs"]
 
 
+def normalized_evidence_mode(mode: str) -> str:
+    if mode in {"live-smoke", "full"}:
+        return "live-smoke"
+    if mode == "readiness-proof":
+        return "readiness-proof"
+    return "none"
+
+
 def step_runs(condition: str | None, mode: str, teardown: str = "true") -> bool:
     """Evaluate a step's `if:` for a given mode.
 
@@ -61,8 +72,12 @@ def step_runs(condition: str | None, mode: str, teardown: str = "true") -> bool:
         return True
     expr = re.sub(r"\b(?:always|success)\(\)", "True", condition.strip())
     expr = expr.replace("inputs.mode", repr(mode))
+    expr = expr.replace(
+        "steps.evidence-mode.outputs.mode", repr(normalized_evidence_mode(mode))
+    )
     expr = expr.replace("inputs.teardown", repr(teardown))
     expr = expr.replace(" && ", " and ")
+    expr = expr.replace(" || ", " or ")
     if not re.fullmatch(r"[\w\s'!=.()-]+", expr):
         raise AssertionError(f"unsupported `if:` syntax for this guard: {condition!r}")
     return bool(eval(expr))  # noqa: S307 - input is this repo's own workflow
@@ -80,23 +95,46 @@ def test_workflow_parses():
     assert load_steps(), "E2E workflow has no steps"
 
 
-def test_three_cost_tiers_are_offered():
+def test_five_lifecycle_modes_are_offered():
     options = load_inputs()["mode"]["options"]
-    assert options == ["full", "design-only", "smoke-only"], (
-        "mode options changed; the cost table in the workflow header and the "
-        "guards in this file both assume exactly these three tiers"
+    assert options == [
+        "live-smoke",
+        "readiness-proof",
+        "full",
+        "design-only",
+        "smoke-only",
+    ], (
+        "mode options changed; the workflow header and these guards both "
+        "assume the approved Task 2 lifecycle tiers and alias ordering"
     )
 
 
-def test_default_mode_is_still_full():
+def test_default_mode_is_live_smoke():
     # Changing the default silently changes what a bare dispatch costs.
-    assert load_inputs()["mode"]["default"] == "full"
+    assert load_inputs()["mode"]["default"] == "live-smoke"
 
 
-def test_mode_description_documents_every_option():
+def test_mode_description_documents_every_option_and_alias_status():
     description = load_inputs()["mode"]["description"]
     for option in load_inputs()["mode"]["options"]:
         assert option in description, f"mode option {option!r} is undocumented"
+    assert "deprecated alias" in description, (
+        "the workflow must keep documenting that `full` is only a deprecated "
+        "alias to `live-smoke`"
+    )
+
+
+def test_step_condition_evaluator_understands_evidence_mode_output():
+    assert step_runs(
+        "steps.evidence-mode.outputs.mode == 'readiness-proof'",
+        "readiness-proof",
+    )
+    assert not step_runs(
+        "steps.evidence-mode.outputs.mode == 'readiness-proof'",
+        "live-smoke",
+    )
+    assert step_runs("steps.evidence-mode.outputs.mode != 'none'", "full")
+    assert not step_runs("steps.evidence-mode.outputs.mode != 'none'", "design-only")
 
 
 def test_design_only_runs_the_design_and_pattern0_phases():
@@ -154,6 +192,7 @@ def test_the_gate_step_actually_invokes_the_contract_checker():
     """A gate that doesn't run the checker is decoration."""
     step = next(s for s in load_steps() if s.get("name") == GATE_STEP)
     body = step["run"]
+    assert step.get("if") == "inputs.mode != 'smoke-only'"
     assert "check_pilot_contract.py" in body
     # Fast-PoC is what Phase 1 drives, so the profile must match or the §13
     # silent-defaults callout would go unchecked in the cheap tier.
@@ -195,10 +234,10 @@ def test_require_value_model_is_not_leaked_into_other_checker_uses():
         f"body, the design-only gate ({GATE_STEP!r}); found it in: {leaked}"
     )
     gate = next(s for s in steps if s.get("name") == GATE_STEP)
-    assert gate.get("if") == "inputs.mode == 'design-only'", (
-        "the design-only gate's `if:` changed; --require-value-model must "
-        "stay pinned to `inputs.mode == 'design-only'` or the stricter "
-        "check silently widens to other tiers"
+    assert gate.get("if") == "inputs.mode != 'smoke-only'", (
+        "the shared contract gate's `if:` changed; --require-value-model must "
+        "stay pinned to every non-smoke-only path or one of the paid/design "
+        "tiers will silently stop enforcing the design→deploy contract"
     )
 
 
@@ -206,20 +245,47 @@ def test_the_referenced_contract_checker_exists():
     assert (REPO_ROOT / "scripts" / "ci" / "check_pilot_contract.py").is_file()
 
 
-def test_full_mode_still_runs_everything():
-    """design-only must be purely additive to the paid path."""
-    names = names_for("full")
+def test_contract_gate_runs_for_every_non_smoke_mode():
+    for mode in ("design-only", "live-smoke", "readiness-proof", "full"):
+        assert GATE_STEP in names_for(mode), f"{mode} must run the contract gate"
+    assert GATE_STEP not in names_for("smoke-only")
+
+
+@pytest.mark.parametrize("mode", ["live-smoke", "readiness-proof", "full"])
+def test_paid_modes_run_the_major_lifecycle_steps(mode):
+    """Paid modes share the deploy/invoke/report spine; `full` aliases live-smoke."""
+    names = names_for(mode)
     for expected in (
         "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up",
         "[Phase 4/4] Drive §6.4 — invoke killer prompts",
-        "[Phase 5/5] Run govern + evals + red-team legs against the deployed pilot",
+        "[Phase 5/5] Run evals + red-team + govern legs against the deployed pilot",
+        "Assert agent deployed + responding",
+        EVIDENCE_GATE_STEP,
+        LIFECYCLE_SUMMARY_STEP,
         "Teardown — azd down --force --purge",
     ):
-        assert expected in names, f"full mode lost {expected!r}"
+        assert expected in names, f"{mode} lost {expected!r}"
 
 
-def test_full_mode_skips_the_design_only_summary():
+def test_only_readiness_proof_runs_the_strict_post_deploy_safe_check():
+    assert READINESS_SAFE_CHECK_STEP in names_for("readiness-proof")
+    for mode in ("live-smoke", "full", "design-only", "smoke-only"):
+        assert READINESS_SAFE_CHECK_STEP not in names_for(mode)
+
+
+def test_full_alias_keeps_live_smoke_semantics():
     assert "[design-only] Run summary" not in names_for("full")
+    assert READINESS_SAFE_CHECK_STEP not in names_for("full")
+
+
+def test_readiness_summary_requires_explicit_passing_evidence():
+    body = next(
+        s for s in load_steps() if s.get("name") == LIFECYCLE_SUMMARY_STEP
+    )["run"]
+    assert ".status" in body, (
+        "the paid-run summary must inspect the evidence-gate JSON status "
+        "before it claims readiness semantics were asserted"
+    )
 
 
 def test_smoke_only_stays_free():
