@@ -1444,14 +1444,21 @@ test('docs-blueprint workflow paths (pull_request and push) cover every file thi
       exampleContainerPath,
     ]),
   ];
-  const requiredWorkflowEntries = ['docs/assets/**'];
+  const requiredWorkflowEntries = ['docs/**'];
+  const rejectedWorkflowEntries = ['docs/*.html', 'docs/assets/**'];
 
   for (const triggerKey of ['pull_request', 'push']) {
     const pathEntries = extractWorkflowPathsList(workflowContent, triggerKey);
     for (const requiredEntry of requiredWorkflowEntries) {
       assert.ok(
         pathEntries.includes(requiredEntry),
-        `${triggerKey}.paths must include \`${requiredEntry}\` so published asset edits re-run the docs blueprint guards`,
+        `${triggerKey}.paths must include \`${requiredEntry}\` so any docs change re-runs the docs blueprint guards`,
+      );
+    }
+    for (const rejectedEntry of rejectedWorkflowEntries) {
+      assert.ok(
+        !pathEntries.includes(rejectedEntry),
+        `${triggerKey}.paths must not keep the narrower \`${rejectedEntry}\` entry once docs/** covers the full docs tree`,
       );
     }
     for (const testInputPath of testInputPaths) {

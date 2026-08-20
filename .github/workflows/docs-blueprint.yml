@@ -7,8 +7,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "docs/*.html"
-      - "docs/assets/**"
+      - "docs/**"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
@@ -26,8 +25,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/*.html"
-      - "docs/assets/**"
+      - "docs/**"
       - ".github/workflows/docs-blueprint.yml"
       - "scripts/build_process_library.py"
       - "THREADLIGHT.md"
