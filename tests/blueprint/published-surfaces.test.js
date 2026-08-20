@@ -207,6 +207,31 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
   }
 });
 
+test('cost and readiness skill docs publish the current evidence contracts', () => {
+  const consumptionIq = read('skills/threadlight-consumption-iq/SKILL.md');
+  const productionReady = read('skills/threadlight-production-ready/SKILL.md');
+  const productionReadyIntro = productionReady.split('\n').slice(0, 120).join('\n');
+  const reportTemplate = read('skills/threadlight-production-ready/references/report-template.md');
+  const handoffChecklist = read('skills/threadlight-production-ready/references/handoff-checklist.md');
+
+  assert.match(consumptionIq, /threadlight-cost-actuals\/v1/);
+  assert.match(consumptionIq, /threadlight-cost-reconciliation\/v1/);
+  assert.match(consumptionIq, /COST-102[\s\S]{0,200}mature\/fresh\/scope-bound reconciliation/i);
+  assert.match(consumptionIq, /COST-103[\s\S]{0,200}PAYG\/PTU recommendation at observed token volume/i);
+  assert.match(consumptionIq, /production-ready consumes verified artifacts and does not query or recompute/i);
+  assert.doesNotMatch(consumptionIq, /Live actual-cost queries[\s\S]{0,120}threadlight-production-ready/i);
+
+  assert.match(productionReadyIntro, /v0\.11\.0/);
+  assert.doesNotMatch(productionReadyIntro, /v0\.3\.0/);
+  assert.ok(!productionReadyIntro.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
+
+  assert.match(reportTemplate, /reconciled Azure actuals/i);
+  assert.match(reportTemplate, /KPI-003/);
+
+  assert.match(handoffChecklist, /SPEC (?:§|section) 14/i);
+  assert.match(handoffChecklist, /scope-bound reconciliation/i);
+});
+
 test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {
   const readme = read('examples/returns-triage-governed/README.md');
   const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');

@@ -40,6 +40,10 @@ item is a yes/no question.
 | ☐ | If PTU: capacity per region+model is reserved and matches § 12 | Product |
 | ☐ | If PTU: PAYG fallback enabled if § 12 says so | Product |
 | ☐ | Cost forecast at 5x and 20x usage has been shared with finance | Product |
+| ☐ | SPEC § 14 declares the success event plus baseline, target, owner, source, and maturity policy for the value model | Product |
+| ☐ | Reconciled Azure actuals, if collected, target the intended subscription/resource-group scope and a settled window | Finance partner |
+| ☐ | Scope-bound reconciliation has been reviewed for variance, coverage, and unallocated cost before handoff | Finance partner |
+| ☐ | KPI-003 measured cost per successful interaction is recorded, or the report explicitly says `not-verified` | Product |
 
 ## D — The customer agreed in writing
 

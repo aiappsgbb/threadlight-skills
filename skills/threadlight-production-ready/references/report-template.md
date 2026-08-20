@@ -124,27 +124,45 @@ re-run this skill to verify.
 
 ---
 
-## 7. Cost projection
+## 7. Cost evidence and unit economics
 
-### Current usage
+### Forecast source *(always expected)*
 
-- Period: last 7 days, observed via `Cost Management Reader`.
-- Spend: `${current_spend}` USD; trend `{trend}` vs prior 7 days.
+- Projection artefact: `docs/cost-projection.md` generated `{forecast_generated_at}`.
+- Forecast manifest: `specs/cost-manifest.json` schema `{forecast_schema}`.
+- Basis: SPEC § 12 declared load / rollout posture `{forecast_basis}`.
+- Recommendations freshness: `{forecast_recommendation_summary}`.
 
-### Forecast (90 days at observed rate)
+| Forecast scenario | Monthly cost | Source | Confidence |
+|---|---|---|---|
+| Declared pilot load | `${forecast_low}` | `specs/cost-manifest.json` | High |
+| Expansion / 5x load | `${forecast_mid}` | `specs/cost-manifest.json` | Medium |
+| Full rollout / 20x load | `${forecast_high}` | `specs/cost-manifest.json` | Low |
 
-| Scenario | 90-day cost | Confidence |
-|---|---|---|
-| Current usage extrapolated | `${forecast_low}` | High |
-| 5x usage (production launch) | `${forecast_mid}` | Medium |
-| 20x usage (full rollout) | `${forecast_high}` | Low |
+### Reconciled Azure actuals *(optional later-pilot evidence)*
 
-### PAYG vs PTU recommendation
+- Reconciliation status: `{reconciliation_status}` (`{reconciliation_maturity}`).
+- Actuals window: `{actuals_window}`.
+- Target scope: `{actuals_scope}`.
+- Scope-bound reconciliation coverage: `{reconciliation_coverage}`.
+- Variance vs forecast: `{reconciliation_variance}`.
+- Unallocated cost: `${unallocated_cost}` USD.
+- Source note: reconciled Azure actuals are optional until a settled window
+  exists; absent evidence remains `not-verified`.
+
+### PAYG vs PTU recommendation at observed token volume
 
 `{ptu_recommendation_summary}`
 
 (See `paygo-ptu-cost-analyzer` for the full PTU-break-even math
 specific to this customer's load shape.)
+
+### KPI-003 — measured cost per successful interaction
+
+- Status: `{kpi003_status}`.
+- Measured value: `{kpi003_value}`.
+- Join inputs: eval pass-rate `{kpi003_eval_source}` + reconciled Azure actuals
+  `{kpi003_cost_source}` + telemetry/traces `{kpi003_trace_source}`.
 
 ### Idle resources
 

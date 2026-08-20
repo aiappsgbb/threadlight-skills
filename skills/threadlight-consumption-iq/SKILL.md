@@ -7,13 +7,16 @@ description: >-
   that meets constraints. Reads deployed Bicep + SPEC § 12
   load_profile and the Azure Retail Prices API; emits cost-projection.md +
   cost-manifest.json. Also a PRE-SALES phased estimate with no pilot (phases,
-  EA/MCA discount, one-pager). Also OPT-IN read-only live actuals:
-  `actuals` / `reconcile` / `run --all --with-actuals` query Cost Management,
-  Monitor and Log Analytics for a window and reconcile them against the
-  forecast; the default projection stays offline. Advisory only. USE FOR:
-  azure consumption projection, post-deploy cost, SKU diff, PAYG vs PTU, load
-  profile, cost-manifest.json, pre-sales estimate, EA/MCA discount, cost
-  actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
+  EA/MCA discount, one-pager). Also owns OPT-IN read-only live actuals
+  collection plus scope-bound reconciliation: `actuals` /
+  `reconcile` / `run --all --with-actuals` query Cost Management, Monitor and
+  Log Analytics for a settled window, publish
+  `threadlight-cost-actuals/v1`, then reconcile it into
+  `threadlight-cost-reconciliation/v1`. `threadlight-production-ready`
+  consumes verified artifacts and does not query or recompute. Advisory only.
+  USE FOR: azure consumption projection, post-deploy cost, SKU diff, PAYG vs
+  PTU, load profile, cost-manifest.json, pre-sales estimate, EA/MCA discount,
+  cost actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
   PAYG-vs-PTU break-even with no pilot (use paygo-ptu-cost-analyzer); Bicep
   mutation (use threadlight-deploy).
 metadata:
@@ -30,6 +33,32 @@ metadata:
 > Naming: the `-iq` suffix matches the target Field Outcomes
 > view's `ai-foundry-account-iq` / `azure-account-iq` family under
 > **Build & Deliver → Drive Consumption**.
+
+## Current evidence contract
+
+This skill owns the cost evidence lifecycle for a pilot:
+
+1. **Forecast** — `docs/cost-projection.md` + `specs/cost-manifest.json`
+   project declared load against public pricing.
+2. **Read-only actuals collection** — `specs/cost-actuals-manifest.json`
+   (`threadlight-cost-actuals/v1`) captures Cost Management / Monitor / Log
+   Analytics evidence for a settled window.
+3. **Scope-bound reconciliation manifest** —
+   `specs/cost-reconciliation-manifest.json`
+   (`threadlight-cost-reconciliation/v1`) proves the actuals still match the
+   exact forecast, SPEC § 14 policy, and collection scope/window they were
+   reconciled against.
+4. **Human reconciliation report** — `docs/cost-reconciliation.md` explains the
+   variance, coverage, maturity, and unit-economics result.
+
+Production-ready consumes verified artifacts and does not query or recompute.
+`threadlight-production-ready`'s cost/readiness findings are downstream
+consumers of what this skill publishes:
+
+- `COST-102` = **mature/fresh/scope-bound reconciliation**.
+- `COST-103` = **PAYG/PTU recommendation at observed token volume**.
+- `KPI-003` = **measured cost per successful interaction joined with eval and
+  telemetry evidence**.
 
 ## Why this skill exists
 
@@ -60,9 +89,10 @@ This skill produces the answer in one command.
 |---|---|
 | AOAI-only PAYG-vs-PTU break-even on a notebook (no deployed pilot) | `paygo-ptu-cost-analyzer` (awesome-gbb) |
 | Static cost-pillar checks (Budget declared? anomaly alert? projection present?) | `threadlight-production-ready` pillar 10 |
-| Live actual-cost queries (last-7-days vs budget) | `threadlight-production-ready` `COST-101..103` |
+| Live budget presence / anomaly posture on the target subscription or RG | `threadlight-production-ready` `COST-101` + cost-pillar budget/anomaly checks |
+| Assessing the verified reconciliation bundle in a readiness report | `threadlight-production-ready` `COST-102`, `COST-103`, `KPI-003` *(artifact consumers only; no query/recompute)* |
 | Bicep mutation from recommendations | `threadlight-deploy` on the next run (this skill is advisory) |
-| Real-time anomaly detection | `threadlight-production-ready` `COST-102` |
+| Real-time anomaly detection | Azure-native budget/anomaly automation; this skill stays evidence-only |
 | Demand forecasting / usage time-series | out of scope; foundry-observability owns the trace side |
 
 ## When to invoke
@@ -150,7 +180,10 @@ load_profile:
 | Output | Consumer | Format |
 |---|---|---|
 | `docs/cost-projection.md` | humans + `threadlight-production-ready` `COST-005` | markdown: per-resource sections, side-by-side SKU tables, top-N recommendations, mermaid cost share donut |
-| `specs/cost-manifest.json` | `threadlight-production-ready` `COST-006` + `threadlight-auto` resumability + downstream CI | strict v1 schema (see `references/cost-manifest-schema.md`) |
+| `specs/cost-manifest.json` | `threadlight-production-ready` `COST-005..007` + `threadlight-auto` resumability + downstream CI | strict v1 schema (see `references/cost-manifest-schema.md`) |
+| `specs/cost-actuals-manifest.json` | reconciliation + audit trail | read-only settled-window capture (`threadlight-cost-actuals/v1`) |
+| `specs/cost-reconciliation-manifest.json` | `threadlight-production-ready` `COST-102`, `COST-103`, `KPI-003` | strict reconciliation verdict bundle (`threadlight-cost-reconciliation/v1`) |
+| `docs/cost-reconciliation.md` | humans + handoff review | markdown summary of scope/window, variance, coverage, unallocated cost, and unit economics |
 | `specs/SPEC.md § 12 load_profile{}` | re-runs of this skill, future deploys, `threadlight-design` template | back-filled if wizard ran |
 
 ## Resource coverage matrix (v1)
@@ -323,7 +356,9 @@ subprocess + JSON. Mirrors the dependency posture of
 |---|---|
 | `COST-005` (projection artefact present) | now passes only if **both** `docs/cost-projection.md` and `specs/cost-manifest.json` exist **and** `generated_at` is within 30 days of the latest deploy |
 | **NEW `COST-006`** (recommendations addressed) | reads `recommendations[]`; flags `must-fix` if any rec with `monthly_savings_usd > $100/mo` is unaddressed (i.e., `current_sku` still matches deployed selectors); flags `should-fix` for recs ≥ $25/mo |
-| `COST-103` (last-7-day actual vs budget) | numerator unchanged; denominator now reads `cost-manifest.json → totals.monthly_cost_current_usd` instead of prompting the user |
+| `COST-102` | relays **mature/fresh/scope-bound reconciliation** from `specs/cost-reconciliation-manifest.json`; production-ready consumes the verdict and does not query or recompute |
+| `COST-103` | relays the **PAYG/PTU recommendation at observed token volume** from `drivers.payg_ptu`; production-ready does not author new break-even math |
+| `KPI-003` | reports **measured cost per successful interaction** only when the reconciled actuals can be joined with eval evidence and telemetry/traces; otherwise it stays `not-verified` |
 
 ### `threadlight-auto` orchestrator updates
 

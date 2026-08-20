@@ -21,20 +21,14 @@ metadata:
 
 # Threadlight Production Ready — paving the path to production
 
-> **v0.3.0 — "the real way to land in prod"** (Nov 2025). Replaces 16
-> regex-over-Bicep-text static checks with a real ARM-graph parser
-> (`BicepGraph` shells `az bicep build` and walks compiled JSON), wires
-> 5 long-stubbed live probes (OBS-106, OBS-102 KQL, SEC-106, SRE-104,
-> NET-501 Citadel APIM via `TL_CITADEL_HUB_RG`), retires unimplemented
-> stubs to `experimental: true` (24 IDs total — 23 new + 1 inherited
-> from v0.2.0 — excluded from scoring unless `--include-experimental`),
-> adds **15 new** non-experimental Defender/Policy/quota/restore-drill/
-> Foundry-RBAC finding IDs, fixes the scoring bug that gave
-> `not-verified` 50% credit (now 0), and ships `--diff`, `--gate-preview`,
-> `--remediate`, trend CSV, and an OIDC CI recipe. **`bicep` CLI is now a
-> hard prerequisite** — missing CLI exits 2 with `az bicep install`
-> instructions, no silent regex fallback. See
-> `docs/production-readiness.md#whats-new-in-v030` for the full diff.
+> **v0.11.0 — advisory assessment + explicit remediation workflow.** The
+> current contract is simple: the assessment phase is always read-only. It
+> inventories evidence, scores 13 pillars, and writes the scorecard/report
+> without patching the repo, querying cost actuals on its own, or deploying
+> anything. Repo remediation, CI scaffold generation, and any downstream
+> deployment require an explicit operator action (`--onboard`,
+> `--scaffold-cicd`, or a follow-on remediation/deploy skill); none of those
+> happen as a side effect of a plain assessment run.
 
 The single skill in the chain that asks "**is this pilot ready for the
 customer architecture review, or is it about to land in the lab graveyard?**"
@@ -72,12 +66,11 @@ knowledge.
 | Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
 | Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
 
-**This skill recommends an assessment, then executes the remediation through the
-agent.** v0.4.0 introduces a 3-phase production-onboarding flow — see
-[What this skill does in v0.4.0](#what-this-skill-does-in-v040) below for the
-contract details.
+**This skill separates assessment from follow-on actions.** The scorecard is
+always advisory and read-only. The remediation workflow is explicit, reviewable,
+and opt-in.
 
-## What this skill does in v0.4.0
+## What this skill does in v0.11.0
 
 ```mermaid
 flowchart LR
@@ -86,19 +79,21 @@ flowchart LR
     C -.->|post-deploy| A
 ```
 
-The skill drives **production onboarding** in three phases:
+The skill exposes an **explicit production-onboarding workflow**:
 
-1. **Assess.** A Python script (`scripts/production_ready.py`) inventories your
-   target Azure subscription/resource group, scores it against 188 findings
-   spanning 13 production-readiness pillars, and emits an `apply-plan.json`
-   that names every must-fix gap and the remediation recipe that closes it.
+1. **Assess (always safe, always read-only).** A Python script
+   (`scripts/production_ready.py`) inventories your target Azure
+   subscription/resource group, scores it against 188 findings spanning 13
+   production-readiness pillars, and emits the scorecard/report plus an
+   `apply-plan.json` that names every must-fix gap and the remediation recipe
+   that closes it.
 
-2. **Refine + Deploy.** The Copilot agent reads `apply-plan.json`, opens the
-   recipes named there, and **executes** each fix using its native Edit/Write
-   tools (for `kind: repo-edit`) or by invoking sibling awesome-gbb skills
-   (for `kind: sibling-skill`). Items marked `kind: manual` are surfaced to
-   you for explicit acknowledgement before any change. Items marked
-   `kind: deferred-to-pipeline` are recorded for Phase 3.
+2. **Refine + remediate (explicit action).** Only when you invoke an explicit
+   follow-up (`--onboard`, or ask the agent to execute the apply-plan) does the
+   Copilot agent read `apply-plan.json`, open the named recipes, and prepare
+   repo edits / sibling-skill follow-ups. Items marked `kind: manual` are
+   surfaced to you for acknowledgement before any change. Items marked
+   `kind: deferred-to-pipeline` are recorded for the CI/CD handoff.
 
    **Stale-plan detection (the agent MUST do this before applying anything).**
    Each `apply-plan.json` carries a `manifest_sha256` field — the SHA256 of
@@ -114,12 +109,13 @@ The skill drives **production onboarding** in three phases:
    findings that now do — silent drift between the plan and reality is the
    single failure mode this gate exists to prevent.
 
-3. **CI/CD Handoff.** When the apply-plan contains pipeline-deferred items
-   (or you pass `--scaffold-cicd`), the script renders a GitHub Actions
-   workflow (`.github/workflows/azd-deploy-prod.yml`) and a central-platform-
-   team runbook (`docs/threadlight-cicd/central-team-uami-readme.md`)
-   explaining exactly which UAMI + federated credential to provision so
-   future pushes to `main` deploy without long-lived secrets.
+3. **CI/CD handoff (explicit action).** Only when the apply-plan contains
+   pipeline-deferred items (or you pass `--scaffold-cicd`) does the script
+   render a GitHub Actions workflow (`.github/workflows/azd-deploy-prod.yml`)
+   and a central-platform-team runbook
+   (`docs/threadlight-cicd/central-team-uami-readme.md`) explaining exactly
+   which UAMI + federated credential to provision so future pushes to `main`
+   deploy without long-lived secrets.
 
    > **This is the *basic* scaffold (GitHub Actions only).** The authoritative,
    > expanded CI/CD home is the dedicated **`threadlight-cicd`** skill: GitHub
@@ -129,12 +125,18 @@ The skill drives **production onboarding** in three phases:
    > from `citadel-hub-deploy`). After this readiness gate is green, hand off to
    > `threadlight-cicd` for the production pipeline.
 
-**The Python script is assessor-only for remediation findings.** It never mutates your repo or
-subscription for findings — fixes are dispatched to the agent as apply-plan tasks. The single
-documented exception is `--scaffold-cicd`, which writes 2 files (`.github/workflows/azd-deploy-prod.yml`
-and `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so the
-production-onboarding pipeline can run. That exception is bounded, opt-in, and writes deterministic
-templates only — it does not emit remediation patches.
+4. **Deployment (explicit action outside this assessment).** Production Ready
+   never runs `azd up` for you. Deployment happens later through the generated
+   pipeline or a downstream deployment skill/session.
+
+**The Python script is assessor-only for remediation findings.** It never
+mutates your repo or subscription for findings — fixes are dispatched to the
+agent as apply-plan tasks. The single documented exception is
+`--scaffold-cicd`, which writes 2 files
+(`.github/workflows/azd-deploy-prod.yml` and
+`docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so
+the production-onboarding pipeline can run. That exception is bounded, opt-in,
+and writes deterministic templates only — it does not emit remediation patches.
 
 ## How to invoke
 
@@ -453,13 +455,25 @@ the `AzureCliCredential` for free.
 
 | Source | Used for | Required? |
 |---|---|---|
-| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Yes** (skill exits 2 without it) — **except Kratos-export mode**, where the framing wizard supplies § 12 instead (see below) |
+| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Assessment modes:** no — absent § 12 yields `RDY-002` and the assessment keeps going via framing/evidence fallback. **Target-specific follow-up modes:** yes, unless equivalent framing/flags supply the declared production target. |
 | `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes — in Kratos-export mode, derived from the export's `infra/` + `azure.yaml` |
 | `tests/postdeploy-manifest.json` | Latest `safe-check --phase post-deploy` output; **pre-flight checks freshness, RG/sub match, hash** | Yes |
 | `infra/**/*.bicep`, `azure.yaml`, `src/**/Dockerfile` | Static analysis (pillars 4, 9, 10, 11, 13) | Yes |
 | `tests/production-readiness-waivers.json` | Customer-accepted findings | Optional |
 | `azd env get-values` | Current deployment binding (subscription, resource group, region) | Yes for live mode |
 | Live Azure via `az` | Live probes (tiered per pillar — see [`references/live-probe-permissions.md`](references/live-probe-permissions.md)) | Optional (default on); missing perms → `not-verified` |
+
+### SPEC § 12 behavior by mode
+
+- **Assessment (`default`, `--static`, `--quick`, `--pillar`)** keeps running if
+  § 12 is absent. The skill emits `RDY-002`, then uses the existing
+  framing/evidence fallback path (`framing-file` / CLI overrides / detected
+  evidence / `standard-ai-gateway`) so the report stays advisory instead of
+  failing closed.
+- **Commands that require a declared production target** keep the existing input
+  error until that target is supplied by § 12 or explicit framing/flags. No new
+  silent defaults are introduced for remediation, CI scaffold, or downstream
+  deployment actions.
 
 ### Kratos-export mode (no SPEC § 12; trimmed infra is intentional)
 
