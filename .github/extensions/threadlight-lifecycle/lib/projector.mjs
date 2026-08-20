@@ -405,9 +405,12 @@ function classifyReconciliation(reconciliation) {
 }
 
 async function readOptionalJson(reader, relativePath) {
+  if (!(await reader.exists(relativePath))) {
+    return { state: "missing", value: null };
+  }
   try {
     const value = await reader.readJson(relativePath);
-    return value === null ? { state: "missing", value: null } : { state: "present", value };
+    return value === null ? { state: "invalid", value: null } : { state: "present", value };
   } catch (error) {
     if (isArtifactParseError(error)) {
       return { state: "invalid", value: null };
@@ -432,11 +435,18 @@ async function costEvidenceState(reader, manifest) {
   if (actuals.state === "invalid" || !isValidActualsManifest(actuals.value)) {
     return "actuals-invalid";
   }
+  const expectedScope = {
+    subscription_id: manifest?.deployment_manifest?.subscription_id,
+    resource_group: manifest?.deployment_manifest?.resource_group,
+  };
   if (
-    !hasScopeMatch(actuals.value.scope, {
-      subscription_id: manifest?.deployment_manifest?.subscription_id,
-      resource_group: manifest?.deployment_manifest?.resource_group,
-    })
+    !nonEmptyText(expectedScope.subscription_id) ||
+    !nonEmptyText(expectedScope.resource_group)
+  ) {
+    return "scope-mismatch";
+  }
+  if (
+    !hasScopeMatch(actuals.value.scope, expectedScope)
   ) {
     return "scope-mismatch";
   }
@@ -491,8 +501,11 @@ async function skillEvidenceState(definition, reader, manifest) {
       readOptionalJson(reader, "specs/redteam-manifest.json"),
       readOptionalJson(reader, "tests/production-readiness-manifest.json"),
     ]);
-    if (readiness.state === "missing") {
-      return null;
+    const hasAnyReadinessEvidence = [govern, evals, redteam, readiness].some(
+      (artifact) => artifact.state !== "missing",
+    );
+    if (!hasAnyReadinessEvidence) {
+      return undefined;
     }
     return readinessEvidenceState(
       {
@@ -503,7 +516,7 @@ async function skillEvidenceState(definition, reader, manifest) {
       readiness.value,
     );
   }
-  return null;
+  return undefined;
 }
 
 function firstJsonPath(requiredArtifactGroups) {
@@ -696,15 +709,27 @@ async function projectSkill({
   if (evidence.length > 0 && jsonPath) {
     try {
       let json = null;
-      if (jsonPath === "specs/manifest.json") {
+      const jsonExists = await reader.exists(jsonPath);
+      if (jsonExists && jsonPath === "specs/manifest.json") {
         json = manifest;
         if (manifestInvalid) {
           status = "failed";
         }
-      } else {
+      } else if (jsonExists) {
         json = await reader.readJson(jsonPath);
       }
-      if (legContract) {
+      if (
+        jsonExists &&
+        json === null &&
+        !(jsonPath === "specs/manifest.json" && manifestInvalid)
+      ) {
+        status = "failed";
+        errors.push({
+          code: "artifact-invalid",
+          path: jsonPath,
+          message: "Required JSON evidence must not be null.",
+        });
+      } else if (jsonExists && legContract) {
         // Live-leg artifact: only project from its status once the safe common
         // envelope validates. A malformed manifest renders `failed` + a
         // payload-free error, never a presence-only `complete`. Freshness is
@@ -719,7 +744,7 @@ async function projectSkill({
             message: projected.error,
           });
         }
-      } else {
+      } else if (jsonExists) {
         const evidenceOverride = evidenceStatus(json);
         if (evidenceOverride) {
           status = evidenceOverride;
@@ -744,7 +769,7 @@ async function projectSkill({
   return {
     definition,
     status,
-    ...(evidenceState ? { evidenceState } : {}),
+    ...(evidenceState !== undefined ? { evidenceState } : {}),
     evidence,
     blockers: incompletePrerequisite
       ? [

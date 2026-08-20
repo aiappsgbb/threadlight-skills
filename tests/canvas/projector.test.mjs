@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { rm } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -168,6 +169,20 @@ test("deploy-blocked workspace waits for verified deployment evidence", async ()
   });
 });
 
+test("invalid design manifest reports only the parse failure", async () => {
+  await withFixture("design-only", async ({ workspace, writeString }) => {
+    await writeString("specs/manifest.json", "{\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const errors = model.errors.filter((error) => error.path === "specs/manifest.json");
+
+    assert.deepEqual(
+      errors.map((error) => error.code),
+      ["artifact-parse-failed"],
+    );
+  });
+});
+
 test("partial assurance keeps discovery running and governance ready", async () => {
   await withFixture("partial-assurance", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
@@ -227,6 +242,16 @@ test("complete pilot projects all phases complete without errors", async () => {
   });
 });
 
+test("threadlight-consumption-iq keeps explicit null evidence state before forecast evidence exists", async () => {
+  await withFixture("design-only", async ({ workspace }) => {
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(Object.hasOwn(skill, "evidenceState"), true);
+    assert.equal(skill.evidenceState, null);
+  });
+});
+
 test("threadlight-consumption-iq surfaces non-gating cost evidence state transitions", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
     let model = await projectWorkspace(workspace, { now: NOW });
@@ -271,9 +296,14 @@ test("threadlight-consumption-iq surfaces non-gating cost evidence state transit
 
 test("threadlight-production-ready surfaces readiness proof evidence separately from status", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("specs/evals-manifest.json", {
+      captured_at: "2026-08-06T08:00:00Z",
+      verdict: "partial",
+      must_fix: [],
+    });
     await writeJson(
       "tests/production-readiness-manifest.json",
-      readinessManifest({ kpi_scorecard: { traces_emit: false } }),
+      readinessManifest(),
     );
 
     let model = await projectWorkspace(workspace, { now: NOW });
@@ -282,6 +312,14 @@ test("threadlight-production-ready surfaces readiness proof evidence separately 
     assert.equal(skill.status, "complete");
     assert.equal(skill.evidenceState, "readiness-incomplete");
 
+    await writeJson(
+      "specs/evals-manifest.json",
+      {
+        captured_at: "2026-08-06T08:00:00Z",
+        verdict: "comprehensive",
+        must_fix: [],
+      },
+    );
     await writeJson(
       "tests/production-readiness-manifest.json",
       readinessManifest(),
@@ -292,6 +330,76 @@ test("threadlight-production-ready surfaces readiness proof evidence separately 
 
     assert.equal(skill.status, "complete");
     assert.equal(skill.evidenceState, "readiness-proof");
+  });
+});
+
+test("threadlight-production-ready treats missing or invalid readiness evidence as incomplete proof", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await rm(path.join(workspace, "tests/production-readiness-manifest.json"));
+
+    let model = await projectWorkspace(workspace, { now: NOW });
+    let skill = findSkill(model, "threadlight-production-ready");
+
+    assert.notEqual(skill.status, "failed");
+    assert.equal(skill.evidenceState, "readiness-incomplete");
+
+    await writeString("tests/production-readiness-manifest.json", "{\n");
+
+    model = await projectWorkspace(workspace, { now: NOW });
+    skill = findSkill(model, "threadlight-production-ready");
+
+    assert.equal(skill.status, "failed");
+    assert.equal(skill.evidenceState, "readiness-incomplete");
+  });
+});
+
+test("threadlight-production-ready leaves evidence state unset before readiness work starts", async () => {
+  await withFixture("empty", async ({ workspace }) => {
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const skill = findSkill(model, "threadlight-production-ready");
+
+    assert.equal(Object.hasOwn(skill, "evidenceState"), false);
+  });
+});
+
+test("threadlight-consumption-iq does not claim reconciliation when target scope is unavailable", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("specs/manifest.json", {
+      traits: ["human-approval"],
+      mock_systems: ["orders"],
+      deployment_manifest: {
+        module_selectors: {
+          "workspace-ui": "yes",
+          "aca-job": "no",
+          "event-grid": "no",
+          "service-bus": "no",
+        },
+        scheduled_jobs: [],
+      },
+    });
+    await writeJson("specs/cost-actuals-manifest.json", costActualsManifest());
+    await writeJson(
+      "specs/cost-reconciliation-manifest.json",
+      costReconciliationManifest(),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "scope-mismatch");
+  });
+});
+
+test("threadlight-consumption-iq surfaces invalid actuals artifacts instead of treating them as missing", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString("specs/cost-actuals-manifest.json", "null\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "actuals-invalid");
   });
 });
 
