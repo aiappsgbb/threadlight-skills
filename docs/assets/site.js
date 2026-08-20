@@ -329,6 +329,7 @@
 
     syncOpen(false);
     button.addEventListener('click', () => syncOpen(!nav.hasAttribute('data-mobile-open')));
+    masthead.classList.add('mobile-nav-enhanced');
     nav.dataset.mobileNavWired = 'true';
   }
 
