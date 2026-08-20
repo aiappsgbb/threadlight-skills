@@ -512,7 +512,7 @@ def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecis
         _load_profile_complete(spec_text)
         and manifest_generated_at is not None
         and last_deploy_dt is not None
-        and manifest_generated_at >= last_deploy_dt
+        and manifest_generated_at > last_deploy_dt
     ):
         passed_at = state.get("cost_projection", {}).get("passed_at", "")
         return StageDecision(
