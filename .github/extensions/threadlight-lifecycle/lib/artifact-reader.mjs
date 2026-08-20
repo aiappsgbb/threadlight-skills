@@ -91,6 +91,10 @@ function isMissing(error) {
   return error?.code === "ENOENT";
 }
 
+function isIgnorableAzdBoundaryError(error) {
+  return ["EACCES", "EPERM", "ENOENT", "ENOTDIR"].includes(error?.code);
+}
+
 export async function createArtifactReader(workspace) {
   const workspaceReal = await realpath(workspace);
   const workspaceRoot = path.parse(workspaceReal).root;
@@ -223,19 +227,48 @@ export async function createArtifactReader(workspace) {
 
     async readDir(relativePath) {
       if (relativePath === ".azure") {
-        const resolved = await resolveAzdRoot();
-        if (!resolved.exists) {
-          return null;
-        }
+        try {
+          const resolved = await resolveAzdRoot();
+          if (!resolved.exists) {
+            return null;
+          }
 
-        const details = await stat(resolved.candidate);
-        if (!details.isDirectory()) {
-          return null;
-        }
+          const details = await stat(resolved.candidate);
+          if (!details.isDirectory()) {
+            return null;
+          }
 
-        return (await readdir(resolved.candidate, { withFileTypes: true }))
-          .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-          .map((entry) => `.azure/${entry.name}`);
+          const entries = await readdir(resolved.candidate, { withFileTypes: true });
+          const discovered = await Promise.all(
+            entries.map(async (entry) => {
+              if (entry.isSymbolicLink()) {
+                return `.azure/${entry.name}`;
+              }
+              if (!entry.isDirectory()) {
+                return null;
+              }
+              const envPath = path.join(resolved.candidate, entry.name);
+              try {
+                await readdir(envPath);
+                return `.azure/${entry.name}`;
+              } catch (error) {
+                if (isIgnorableAzdBoundaryError(error)) {
+                  return null;
+                }
+                throw error;
+              }
+            }),
+          );
+          return discovered.filter(Boolean);
+        } catch (error) {
+          if (
+            !(error instanceof ArtifactAccessError) &&
+            isIgnorableAzdBoundaryError(error)
+          ) {
+            return null;
+          }
+          throw error;
+        }
       }
 
       const resolved = await resolveAllowed(relativePath);
@@ -259,75 +292,91 @@ export async function createArtifactReader(workspace) {
       }
 
       const normalized = normalizeAzdEnvDir(relativeEnvDir);
-      const resolved = await resolveAzdRoot();
-      if (!resolved.exists) {
-        return null;
-      }
-
-      const envDir = path.join(
-        resolved.candidate,
-        normalized.slice(".azure/".length),
-      );
-      let envDirDetails;
       try {
-        envDirDetails = await lstat(envDir);
-      } catch (error) {
-        if (isMissing(error) || error?.code === "ENOTDIR") {
+        const resolved = await resolveAzdRoot();
+        if (!resolved.exists) {
           return null;
         }
-        throw error;
-      }
-      if (envDirDetails.isSymbolicLink()) {
-        throw new ArtifactAccessError(normalized, "symlinked env directories are not allowed");
-      }
 
-      const candidate = path.join(
-        envDir,
-        ".env",
-      );
-      let details;
-      try {
-        details = await lstat(candidate);
-      } catch (error) {
-        if (isMissing(error) || error?.code === "ENOTDIR") {
-          return null;
-        }
-        throw error;
-      }
-      if (details.isSymbolicLink()) {
-        throw new ArtifactAccessError(`${normalized}/.env`, "symlinked env files are not allowed");
-      }
-
-      let realCandidate;
-      try {
-        realCandidate = await realpath(candidate);
-      } catch (error) {
-        if (isMissing(error) || error?.code === "ENOTDIR") {
-          return null;
-        }
-        throw error;
-      }
-      if (
-        realCandidate !== workspaceReal &&
-        !realCandidate.startsWith(rootPrefix)
-      ) {
-        throw new ArtifactAccessError(`${normalized}/.env`, "resolved path escapes workspace");
-      }
-
-      try {
-        const text = await readFile(realCandidate, "utf8");
-        for (const line of text.split(/\r?\n/u)) {
-          if (line.trimStart().startsWith("#")) {
-            continue;
+        const envDir = path.join(
+          resolved.candidate,
+          normalized.slice(".azure/".length),
+        );
+        let envDirDetails;
+        try {
+          envDirDetails = await lstat(envDir);
+        } catch (error) {
+          if (isIgnorableAzdBoundaryError(error)) {
+            return null;
           }
-          const match = /^\s*AGENT_FQDN\s*=\s*(.*)$/u.exec(line);
-          if (match) {
-            return match[1];
-          }
+          throw error;
         }
-        return null;
+        if (envDirDetails.isSymbolicLink()) {
+          throw new ArtifactAccessError(normalized, "symlinked env directories are not allowed");
+        }
+        if (!envDirDetails.isDirectory()) {
+          return null;
+        }
+
+        const candidate = path.join(
+          envDir,
+          ".env",
+        );
+        let details;
+        try {
+          details = await lstat(candidate);
+        } catch (error) {
+          if (isIgnorableAzdBoundaryError(error)) {
+            return null;
+          }
+          throw error;
+        }
+        if (details.isSymbolicLink()) {
+          throw new ArtifactAccessError(`${normalized}/.env`, "symlinked env files are not allowed");
+        }
+        if (!details.isFile()) {
+          return null;
+        }
+
+        let realCandidate;
+        try {
+          realCandidate = await realpath(candidate);
+        } catch (error) {
+          if (isIgnorableAzdBoundaryError(error)) {
+            return null;
+          }
+          throw error;
+        }
+        if (
+          realCandidate !== workspaceReal &&
+          !realCandidate.startsWith(rootPrefix)
+        ) {
+          throw new ArtifactAccessError(`${normalized}/.env`, "resolved path escapes workspace");
+        }
+
+        try {
+          const text = await readFile(realCandidate, "utf8");
+          for (const line of text.split(/\r?\n/u)) {
+            if (line.trimStart().startsWith("#")) {
+              continue;
+            }
+            const match = /^\s*AGENT_FQDN\s*=\s*(.*)$/u.exec(line);
+            if (match) {
+              return match[1];
+            }
+          }
+          return null;
+        } catch (error) {
+          if (isIgnorableAzdBoundaryError(error)) {
+            return null;
+          }
+          throw error;
+        }
       } catch (error) {
-        if (isMissing(error) || error?.code === "ENOTDIR") {
+        if (
+          !(error instanceof ArtifactAccessError) &&
+          isIgnorableAzdBoundaryError(error)
+        ) {
           return null;
         }
         throw error;

@@ -215,6 +215,80 @@ const LEG_MAX_VALID_FOR_HOURS = 8760;
 // exactly what the producer's `format: date-time` contract forbids.
 const LEG_RFC3339_RE =
   /^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+const ASSURANCE_CAPABILITY_STATUS_ENUM = new Set([
+  "pass",
+  "must-fix",
+  "should-fix",
+  "not-verified",
+  "not-applicable",
+]);
+const ASSURANCE_REDTEAM_FINDING_IDS = new Set([
+  "SAFE-101",
+  "SAFE-102",
+  "SAFE-103",
+  "SAFE-104",
+  "SAFE-105",
+  "SAFE-106",
+]);
+const ASSURANCE_AGT_PROFILES = new Set(["auto", "v3_7", "v4_preview", "none"]);
+const ASSURANCE_REDTEAM_ASR_KEYS = new Set([
+  "jailbreak",
+  "prompt_injection",
+  "indirect_attack",
+  "exfiltration",
+  "harmful_content",
+]);
+const ASSURANCE_CONTRACTS = Object.freeze({
+  "specs/govern-manifest.json": Object.freeze({
+    schema: "threadlight-govern-manifest/v2",
+    knownVerdicts: new Set(["governed", "partial", "ungoverned"]),
+    requiredCapabilities: new Set([
+      "policy_artefact_present",
+      "policy_schema_valid",
+      "policy_versioned",
+      "policy_default_deny",
+      "sensitive_action_rules_present",
+      "policy_tests_present",
+      "ci_gate_present",
+      "attestation_present",
+      "attestation_fresh",
+      "asi_reference_present",
+    ]),
+  }),
+  "specs/evals-manifest.json": Object.freeze({
+    schema: "threadlight-evals-manifest/v1",
+    knownVerdicts: new Set(["comprehensive", "partial", "offline-only", "none"]),
+    requiredCapabilities: new Set([
+      "eval_scenarios_present",
+      "eval_datasets_present",
+      "dataset_shape_ok",
+      "thresholds_declared",
+      "schedule_present",
+      "run_history_present",
+      "online_eval_wired",
+      "latest_eval_run_fresh",
+      "alert_wired",
+      "latest_pass_rate_ok",
+      "ab_comparison_present",
+    ]),
+    requireCheckId: true,
+  }),
+  "specs/redteam-manifest.json": Object.freeze({
+    schema: "threadlight-redteam-manifest/v1",
+    knownVerdicts: new Set(["hardened", "partial", "vulnerable"]),
+    requiredCapabilities: new Set([
+      "scan_present",
+      "scan_fresh",
+      "jailbreak_asr_ok",
+      "prompt_injection_asr_ok",
+      "exfiltration_asr_ok",
+      "harmful_content_asr_ok",
+      "coverage_ok",
+    ]),
+    allowFindingId: true,
+    forbidExtraFields: true,
+  }),
+});
 
 function isLegRfc3339(value) {
   if (typeof value !== "string" || !LEG_RFC3339_RE.test(value)) {
@@ -241,6 +315,253 @@ function isDraft7Integer(value) {
   // `typeof value === "number"` excludes booleans, and Number.isInteger already
   // rejects NaN/Infinity and any fractional value.
   return typeof value === "number" && Number.isInteger(value);
+}
+
+function isStringOrNull(value) {
+  return value === null || typeof value === "string";
+}
+
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isNonNegativeInteger(value) {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0;
+}
+
+function invalidAssurance(manifestPath, message) {
+  return { valid: false, reason: `${manifestPath.split("/").at(-1)} ${message}` };
+}
+
+function validateCapabilityObject(manifestPath, capabilityName, capability, contract) {
+  const manifestName = manifestPath.split("/").at(-1);
+  if (!isPlainObject(capability)) {
+    return `${manifestName} capability ${JSON.stringify(capabilityName)} must be an object`;
+  }
+  if (!ASSURANCE_CAPABILITY_STATUS_ENUM.has(capability.status)) {
+    return `${manifestName} capability ${JSON.stringify(capabilityName)} has invalid status`;
+  }
+  for (const field of ["evidence", "hint"]) {
+    if (field in capability && !isStringOrNull(capability[field])) {
+      return `${manifestName} capability ${JSON.stringify(capabilityName)} has invalid ${JSON.stringify(field)}`;
+    }
+  }
+  if (contract.requireCheckId && typeof capability.check_id !== "string") {
+    return `${manifestName} capability ${JSON.stringify(capabilityName)} missing or invalid 'check_id'`;
+  }
+  if ("finding_id" in capability) {
+    if (
+      !contract.allowFindingId ||
+      !ASSURANCE_REDTEAM_FINDING_IDS.has(capability.finding_id)
+    ) {
+      return `${manifestName} capability ${JSON.stringify(capabilityName)} has invalid 'finding_id'`;
+    }
+  }
+  if (contract.forbidExtraFields) {
+    const allowedFields = new Set(["status", "evidence", "hint"]);
+    if (contract.requireCheckId) {
+      allowedFields.add("check_id");
+    }
+    if (contract.allowFindingId) {
+      allowedFields.add("finding_id");
+    }
+    const extras = Object.keys(capability).filter((key) => !allowedFields.has(key));
+    if (extras.length > 0) {
+      return `${manifestName} capability ${JSON.stringify(capabilityName)} has unsupported fields: ${JSON.stringify(extras.sort())}`;
+    }
+  }
+  return null;
+}
+
+function validateAssuranceCapabilities(manifestPath, capabilities, contract) {
+  const capabilityNames = new Set(Object.keys(capabilities));
+  const missingCapabilities = [...contract.requiredCapabilities]
+    .filter((name) => !capabilityNames.has(name))
+    .sort();
+  const extraCapabilities = [...capabilityNames]
+    .filter((name) => !contract.requiredCapabilities.has(name))
+    .sort();
+  if (missingCapabilities.length > 0) {
+    return `${manifestPath.split("/").at(-1)} missing capabilities: ${JSON.stringify(missingCapabilities)}`;
+  }
+  if (extraCapabilities.length > 0) {
+    return `${manifestPath.split("/").at(-1)} has unsupported capabilities: ${JSON.stringify(extraCapabilities)}`;
+  }
+  for (const capabilityName of [...contract.requiredCapabilities].sort()) {
+    const error = validateCapabilityObject(
+      manifestPath,
+      capabilityName,
+      capabilities[capabilityName],
+      contract,
+    );
+    if (error) {
+      return error;
+    }
+  }
+  return null;
+}
+
+function validateGovernAssurance(manifestPath, value, contract) {
+  if (
+    "freshness_window_days" in value &&
+    !isNonNegativeInteger(value.freshness_window_days)
+  ) {
+    return `${manifestPath.split("/").at(-1)} has invalid 'freshness_window_days'`;
+  }
+  if (
+    "agt_profile" in value &&
+    (typeof value.agt_profile !== "string" ||
+      !ASSURANCE_AGT_PROFILES.has(value.agt_profile))
+  ) {
+    return `${manifestPath.split("/").at(-1)} has invalid 'agt_profile'`;
+  }
+  for (const field of ["must_fix", "should_fix", "not_verified"]) {
+    if (field in value && !isStringArray(value[field])) {
+      return `${manifestPath.split("/").at(-1)} has invalid '${field}' (must be list of strings)`;
+    }
+  }
+  return validateAssuranceCapabilities(manifestPath, value.capabilities, contract);
+}
+
+function validateEvalsAssurance(manifestPath, value, contract) {
+  if (
+    "freshness_window_days" in value &&
+    !isNonNegativeInteger(value.freshness_window_days)
+  ) {
+    return `${manifestPath.split("/").at(-1)} has invalid 'freshness_window_days'`;
+  }
+  for (const field of ["must_fix", "should_fix", "not_verified"]) {
+    if (field in value && !isStringArray(value[field])) {
+      return `${manifestPath.split("/").at(-1)} has invalid '${field}' (must be list of strings)`;
+    }
+  }
+  return validateAssuranceCapabilities(manifestPath, value.capabilities, contract);
+}
+
+function validateRedteamAssurance(manifestPath, value, contract) {
+  const manifestName = manifestPath.split("/").at(-1);
+  for (const field of ["scan_result", "tool"]) {
+    if (field in value && !isStringOrNull(value[field])) {
+      return `${manifestName} has invalid ${JSON.stringify(field)}`;
+    }
+  }
+  if (
+    "scan_captured_at" in value &&
+    value.scan_captured_at !== null &&
+    !parseRfc3339Timestamp(value.scan_captured_at)
+  ) {
+    return `${manifestName} missing or invalid 'scan_captured_at'`;
+  }
+  if (
+    "num_attacks" in value &&
+    value.num_attacks !== null &&
+    !isNonNegativeInteger(value.num_attacks)
+  ) {
+    return `${manifestName} has invalid 'num_attacks'`;
+  }
+  if ("strategies" in value && !isStringArray(value.strategies)) {
+    return `${manifestName} has invalid 'strategies'`;
+  }
+  for (const field of ["must_fix", "should_fix", "not_verified"]) {
+    if (!isStringArray(value[field])) {
+      return `${manifestName} missing or invalid '${field}' (must be list of strings)`;
+    }
+  }
+  if (!isPlainObject(value.asr)) {
+    return `${manifestName} missing or invalid 'asr' (must be object)`;
+  }
+  const invalidAsrKeys = Object.keys(value.asr).filter(
+    (key) => !ASSURANCE_REDTEAM_ASR_KEYS.has(key),
+  );
+  if (invalidAsrKeys.length > 0) {
+    return `${manifestName} has unsupported asr fields: ${JSON.stringify(invalidAsrKeys.sort())}`;
+  }
+  for (const [key, asrValue] of Object.entries(value.asr)) {
+    if (!isFiniteNumber(asrValue) || asrValue < 0 || asrValue > 1) {
+      return `${manifestName} asr.${key} must be a number between 0 and 1`;
+    }
+  }
+  if (!isPlainObject(value.thresholds)) {
+    return `${manifestName} missing or invalid 'thresholds' (must be object)`;
+  }
+  const requiredThresholds = new Set(["max_asr", "freshness_days", "min_attacks"]);
+  const thresholdKeys = new Set(Object.keys(value.thresholds));
+  const missingThresholds = [...requiredThresholds]
+    .filter((key) => !thresholdKeys.has(key))
+    .sort();
+  const extraThresholds = [...thresholdKeys]
+    .filter((key) => !requiredThresholds.has(key))
+    .sort();
+  if (missingThresholds.length > 0) {
+    return `${manifestName} missing thresholds: ${JSON.stringify(missingThresholds)}`;
+  }
+  if (extraThresholds.length > 0) {
+    return `${manifestName} has unsupported thresholds: ${JSON.stringify(extraThresholds)}`;
+  }
+  if (
+    !isFiniteNumber(value.thresholds.max_asr) ||
+    value.thresholds.max_asr < 0 ||
+    value.thresholds.max_asr > 1
+  ) {
+    return `${manifestName} thresholds.max_asr must be a number between 0 and 1`;
+  }
+  if (!isNonNegativeInteger(value.thresholds.freshness_days)) {
+    return `${manifestName} thresholds.freshness_days must be an integer >= 0`;
+  }
+  if (
+    !isNonNegativeInteger(value.thresholds.min_attacks) ||
+    value.thresholds.min_attacks < 1
+  ) {
+    return `${manifestName} thresholds.min_attacks must be an integer >= 1`;
+  }
+  return validateAssuranceCapabilities(manifestPath, value.capabilities, contract);
+}
+
+function validateAssuranceManifest(manifestPath, value) {
+  const contract = ASSURANCE_CONTRACTS[manifestPath];
+  if (!contract) {
+    return null;
+  }
+  if (!isPlainObject(value)) {
+    return invalidAssurance(manifestPath, "must be a JSON object");
+  }
+  if (value.schema !== contract.schema) {
+    return invalidAssurance(
+      manifestPath,
+      `schema expected ${JSON.stringify(contract.schema)}`,
+    );
+  }
+  if (typeof value.tool_version !== "string") {
+    return invalidAssurance(manifestPath, "missing or invalid 'tool_version'");
+  }
+  const capturedAt = parseRfc3339Timestamp(value.captured_at);
+  if (!capturedAt) {
+    return invalidAssurance(manifestPath, "missing or invalid 'captured_at'");
+  }
+  if (!contract.knownVerdicts.has(value.verdict)) {
+    return invalidAssurance(
+      manifestPath,
+      `verdict ${JSON.stringify(value.verdict)} not in allowed ${JSON.stringify([...contract.knownVerdicts].sort())}`,
+    );
+  }
+  if (!isPlainObject(value.capabilities)) {
+    return invalidAssurance(
+      manifestPath,
+      "missing or invalid 'capabilities' (must be object)",
+    );
+  }
+  const validator = manifestPath === "specs/govern-manifest.json"
+    ? validateGovernAssurance
+    : manifestPath === "specs/evals-manifest.json"
+      ? validateEvalsAssurance
+      : validateRedteamAssurance;
+  const validationError = validator(manifestPath, value, contract);
+  if (validationError) {
+    return { valid: false, reason: validationError };
+  }
+  return { valid: true, verdict: value.verdict, capturedAt };
 }
 
 function validateLegEnvelope(value, contract) {
@@ -603,11 +924,23 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills)
       return undefined;
     }
     const safeCheckStatus = projectedSkills.get("threadlight-safe-check")?.status ?? null;
+    const governValidation =
+      govern.state === "present"
+        ? validateAssuranceManifest("specs/govern-manifest.json", govern.value)
+        : null;
+    const evalsValidation =
+      evals.state === "present"
+        ? validateAssuranceManifest("specs/evals-manifest.json", evals.value)
+        : null;
+    const redteamValidation =
+      redteam.state === "present"
+        ? validateAssuranceManifest("specs/redteam-manifest.json", redteam.value)
+        : null;
     return readinessEvidenceState(
       {
-        govern: govern.value?.verdict ?? null,
-        evals: evals.value?.verdict ?? null,
-        redteam: redteam.value?.verdict ?? null,
+        govern: governValidation?.valid ? governValidation.verdict : null,
+        evals: evalsValidation?.valid ? evalsValidation.verdict : null,
+        redteam: redteamValidation?.valid ? redteamValidation.verdict : null,
       },
       readiness.value,
       safeCheckStatus,
@@ -900,23 +1233,39 @@ async function projectSkill({
           });
         }
       } else if (jsonExists) {
-        const evidenceOverride = evidenceStatus(json, jsonPath, now);
-        if (evidenceOverride) {
-          status = evidenceOverride;
-        }
-        if (
-          definition.id === "threadlight-safe-check" &&
-          !postdeployBindsManifest(json, manifest)
-        ) {
+        const assuranceValidation = validateAssuranceManifest(jsonPath, json);
+        if (assuranceValidation && !assuranceValidation.valid) {
           status = "failed";
           errors.push({
             code: "artifact-invalid",
             path: jsonPath,
-            message:
-              "Post-deploy proof no longer matches specs/manifest.json. Re-run threadlight-safe-check.",
+            message: assuranceValidation.reason,
           });
+        } else if (assuranceValidation) {
+          timestamp = assuranceValidation.capturedAt;
+          const evidenceOverride = evidenceStatus(json, jsonPath, now);
+          if (evidenceOverride) {
+            status = evidenceOverride;
+          }
+        } else {
+          const evidenceOverride = evidenceStatus(json, jsonPath, now);
+          if (evidenceOverride) {
+            status = evidenceOverride;
+          }
+          if (
+            definition.id === "threadlight-safe-check" &&
+            !postdeployBindsManifest(json, manifest)
+          ) {
+            status = "failed";
+            errors.push({
+              code: "artifact-invalid",
+              path: jsonPath,
+              message:
+                "Post-deploy proof no longer matches specs/manifest.json. Re-run threadlight-safe-check.",
+            });
+          }
+          timestamp = evidenceTimestamp(json, evidence[0], jsonPath, now);
         }
-        timestamp = evidenceTimestamp(json, evidence[0], jsonPath, now);
       }
     } catch (error) {
       if (!isArtifactParseError(error)) {

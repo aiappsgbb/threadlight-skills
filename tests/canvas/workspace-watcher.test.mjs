@@ -23,6 +23,12 @@ async function waitForRefreshCount(getCount, expected, timeoutMs = 2_000) {
   }
 }
 
+async function waitForRefreshAndSettle(getCount, expected, debounceMs = 40) {
+  await waitForRefreshCount(getCount, expected);
+  await delay(debounceMs * 2);
+  assert.equal(getCount(), expected);
+}
+
 async function createScratchWorkspace(name) {
   const workspace = path.join(
     SCRATCH_ROOT,
@@ -107,6 +113,7 @@ test("workspace watcher refreshes when azd env evidence appears under .azure", a
   const root = await createScratchWorkspace("workspace-watcher-azure-env");
   let watcher;
   let refreshes = 0;
+  const debounceMs = 40;
 
   try {
     watcher = await watchWorkspace(
@@ -114,14 +121,14 @@ test("workspace watcher refreshes when azd env evidence appears under .azure", a
       async () => {
         refreshes += 1;
       },
-      { debounceMs: 40 },
+      { debounceMs },
     );
 
     await mkdir(path.join(root, ".azure"));
-    await waitForRefreshCount(() => refreshes, 1);
+    await waitForRefreshAndSettle(() => refreshes, 1, debounceMs);
 
     await mkdir(path.join(root, ".azure", "dev"));
-    await waitForRefreshCount(() => refreshes, 2);
+    await waitForRefreshAndSettle(() => refreshes, 2, debounceMs);
 
     await writeFile(
       path.join(root, ".azure", "dev", ".env"),
