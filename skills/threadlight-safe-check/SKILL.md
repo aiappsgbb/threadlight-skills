@@ -151,7 +151,11 @@ threadlight-safe-check/
 ├── scripts/
 │   └── safe_check.py              (single-file Python module — the CLI)
 └── tests/
-    └── test_safe_check.py         (integration_binding_gaps + example parity)
+    ├── test_safe_check.py         (gate tests + example parity)
+    └── fixtures/tool-governance-enabled/
+        ├── policies/tool-governance/adapter-manifest.json
+        ├── tests/tool_governance_probe.py
+        └── tests/tool-governance-probe-manifest.json
 ```
 
 The CLI is **one file** (~250 LOC) intentionally — copy it into the pilot
@@ -171,6 +175,49 @@ python3 -m pytest skills/threadlight-safe-check/tests/ -q
 `test_safe_check.py` also asserts the example copy shipped as
 `examples/returns-triage-governed/tests/safe_check.py` stays **byte-for-byte**
 identical to `scripts/safe_check.py`, so the two never drift.
+
+---
+
+## Tool-governance post-deploy proof (canary-only)
+
+When `tool_governance.enabled: true`, the post-deploy phase adds a proof step
+after the existing Azure image / job / App Insights / bot / Cosmos /
+integration / channel / schedule checks complete:
+
+1. Load `policies/tool-governance/adapter-manifest.json` and resolve
+   `probe.entrypoint` plus `probe.evidence` relative to the pilot repo root.
+2. The probe entrypoint source MUST contain the exact line
+   `THREADLIGHT_CANARY_ONLY = True`. Anything else is an immediate gap and
+   **safe-check does not execute the file**.
+3. Execution is always:
+
+   ```python
+   [sys.executable, entrypoint, "--out", evidence]
+   ```
+
+   with `cwd=<repo>`, `shell=False`, `capture_output=True`, and `check=False`.
+   Safe-check never shells out through `sh -c`, and it never calls production
+   mutation endpoints itself — only the adapter's canary-only probe may run.
+4. The evidence file (for example
+   `tests/tool-governance-probe-manifest.json`) must be JSON schema
+   `threadlight.tool-governance-probe/v1`, must report `status: pass`, and must
+   echo both the canonical `tool_governance` contract hash and the canonical
+   adapter-manifest hash.
+5. The evidence must prove:
+   - `allow-canary` → expected/observed `allow`, execution count `1`, non-empty
+     `correlation_id` + `decision_events`, exactly one outcome event
+   - `deny-canary` → expected/observed `deny`, execution count `0`, non-empty
+     `correlation_id` + `decision_events`, **no** outcome events
+   - `conditional-canary` (only when the contract has a conditional tool) →
+     expected/observed `conditional`, execution count `1`, non-empty
+     `correlation_id`, `gate_id`, `approval_id`, `decision_events`, exactly one
+     outcome event, and the `gate_id` must match a governed conditional tool
+6. `audit_field_results` must cover every vector exactly once, each with
+   `status: pass` and `missing: []`.
+7. `tests/postdeploy-manifest.json` stores only the summary under
+   `tool_governance` (status, contract hash, adapter hash, relative evidence
+   path). The detailed probe vectors stay in the separate evidence file while
+   top-level `gaps[]` remain the single failure contract for the gate.
 
 ---
 

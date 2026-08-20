@@ -117,6 +117,34 @@ def _normalize_governance_artifacts(
     return contract_sha256
 
 
+def _probe_adapter(repo: Path) -> dict[str, object]:
+    return _read_json(repo / "policies" / "tool-governance" / "adapter-manifest.json")
+
+
+def _probe_evidence_path(repo: Path) -> Path:
+    adapter = _probe_adapter(repo)
+    return repo / str(adapter["probe"]["evidence"])
+
+
+def _probe_entrypoint_path(repo: Path) -> Path:
+    adapter = _probe_adapter(repo)
+    return repo / str(adapter["probe"]["entrypoint"])
+
+
+def _mutate_probe_evidence(repo: Path, mutator) -> None:
+    evidence_path = _probe_evidence_path(repo)
+    evidence = _read_json(evidence_path)
+    mutator(evidence)
+    _write_json(evidence_path, evidence)
+
+
+def _vector(evidence: dict[str, object], vector_id: str) -> dict[str, object]:
+    for item in evidence["vectors"]:
+        if item["id"] == vector_id:
+            return item
+    raise AssertionError(f"missing vector {vector_id}")
+
+
 # ---------------------------------------------------------------------------
 # integration_binding_gaps — the certain contradiction
 # ---------------------------------------------------------------------------
@@ -1085,6 +1113,338 @@ def test_predeploy_maf_agent_middleware_pretool_signal_passes() -> None:
         result, gaps = sc.validate_tool_governance_predeploy(repo, manifest)
         assert gaps == []
         assert result["status"] == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Tool governance post-deploy probe validation
+# ---------------------------------------------------------------------------
+
+def test_probe_fixture_passes_without_running_probe() -> None:
+    with _governed_repo_copy("probe-pass-without-run") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        result, gaps = sc.validate_tool_governance_probe(
+            repo, manifest, run_probe=False
+        )
+        assert gaps == []
+        assert result["enabled"] is True
+        assert result["status"] == "pass"
+        assert result["evidence"] == "tests/tool-governance-probe-manifest.json"
+        assert result["contract_sha256"] == sc.canonical_sha256(
+            manifest["tool_governance"]
+        )
+
+
+def test_probe_executes_actual_fixture_probe_when_requested() -> None:
+    with _governed_repo_copy("probe-run-pass") as repo:
+        evidence_path = _probe_evidence_path(repo)
+        if evidence_path.exists():
+            evidence_path.unlink()
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
+        assert gaps == []
+        assert result["status"] == "pass"
+        assert evidence_path.exists()
+
+
+def test_probe_disabled_or_missing_enabled_is_not_applicable() -> None:
+    with _governed_repo_copy("probe-disabled") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        manifest["tool_governance"].pop("enabled")
+        result, gaps = sc.validate_tool_governance_probe(
+            repo, manifest, run_probe=False
+        )
+        assert result == {"enabled": False, "status": "not-applicable"}
+        assert gaps == []
+
+
+def test_deny_execution_count_must_stay_zero() -> None:
+    with _governed_repo_copy("probe-deny-executed") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "deny-canary").update(
+                {
+                    "observed_execution_count": 1,
+                    "outcome_events": [
+                        {
+                            "event_id": "outcome-deny-001",
+                            "event_type": "tool_governance.outcome",
+                        }
+                    ],
+                }
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "deny-canary observed_execution_count must be 0" in gaps
+        assert "deny-canary must not record outcome_event_ids" in gaps
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_probe_allow_execution_count_must_be_exactly_one(count: int) -> None:
+    with _governed_repo_copy(f"probe-allow-count-{count}") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "allow-canary").update(
+                {"observed_execution_count": count}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "allow-canary observed_execution_count must be 1" in gaps
+
+
+def test_probe_decision_mismatch_is_gap() -> None:
+    with _governed_repo_copy("probe-decision-mismatch") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "allow-canary").update(
+                {"observed_decision": "deny"}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "allow-canary observed_decision must be 'allow'" in gaps
+
+
+def test_probe_audit_correlation_fields_are_required() -> None:
+    with _governed_repo_copy("probe-audit-correlation") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "allow-canary").update(
+                {"correlation_id": "", "decision_events": []}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "allow-canary must record correlation_id" in gaps
+        assert "allow-canary must record decision_event_ids" in gaps
+
+
+def test_probe_hash_mismatches_are_gaps() -> None:
+    with _governed_repo_copy("probe-hash-mismatch") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: evidence.update(
+                {
+                    "contract_sha256": "sha256:deadbeef",
+                    "adapter_manifest_sha256": "sha256:badc0de",
+                }
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert (
+            "tool governance probe contract_sha256 must match the canonical manifest digest"
+            in gaps
+        )
+        assert (
+            "tool governance probe adapter_manifest_sha256 must match the canonical adapter digest"
+            in gaps
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda evidence: evidence.update(
+                {"schema": "threadlight.tool-governance-probe/v2"}
+            ),
+            "tool governance probe schema must be 'threadlight.tool-governance-probe/v1'",
+        ),
+        (
+            lambda evidence: evidence.update({"status": "fail"}),
+            "tool governance probe status must be 'pass'",
+        ),
+    ],
+)
+def test_probe_schema_and_status_must_match_contract(mutator, expected: str) -> None:
+    with _governed_repo_copy(expected.split()[3]) as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(repo, mutator)
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert expected in gaps
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda evidence: evidence.pop("audit_field_results"),
+            "tool governance probe audit_field_results must be a list",
+        ),
+        (
+            lambda evidence: evidence.update(
+                {
+                    "audit_field_results": evidence["audit_field_results"]
+                    + [copy.deepcopy(evidence["audit_field_results"][0])]
+                }
+            ),
+            "duplicate audit_field_results vector_id: allow-canary",
+        ),
+        (
+            lambda evidence: evidence["audit_field_results"].pop(),
+            "tool governance probe audit_field_results must cover exactly: allow-canary, conditional-canary, deny-canary",
+        ),
+    ],
+)
+def test_probe_audit_field_results_must_be_complete(mutator, expected: str) -> None:
+    with _governed_repo_copy("probe-audit-results") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(repo, mutator)
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert expected in gaps
+
+
+def test_probe_incomplete_audit_field_result_is_gap() -> None:
+    with _governed_repo_copy("probe-audit-result-incomplete") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: evidence["audit_field_results"][0].update(
+                {"status": "fail", "missing": ["correlation_id"]}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "audit_field_results allow-canary must have status 'pass'" in gaps
+        assert "audit_field_results allow-canary missing must be []" in gaps
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected"),
+    [
+        (
+            lambda evidence: _vector(evidence, "conditional-canary").update(
+                {"gate_id": ""}
+            ),
+            "conditional-canary must record gate_id",
+        ),
+        (
+            lambda evidence: _vector(evidence, "conditional-canary").update(
+                {"approval_id": ""}
+            ),
+            "conditional-canary must record approval_id",
+        ),
+        (
+            lambda evidence: _vector(evidence, "conditional-canary").update(
+                {"correlation_id": ""}
+            ),
+            "conditional-canary must record correlation_id",
+        ),
+        (
+            lambda evidence: _vector(evidence, "conditional-canary").update(
+                {"observed_execution_count": 0}
+            ),
+            "conditional-canary observed_execution_count must be 1",
+        ),
+    ],
+)
+def test_probe_conditional_requirements_are_enforced(mutator, expected: str) -> None:
+    with _governed_repo_copy("probe-conditional-requirements") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(repo, mutator)
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert expected in gaps
+
+
+def test_probe_missing_conditional_outcome_is_gap() -> None:
+    with _governed_repo_copy("probe-conditional-no-outcome") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "conditional-canary").update(
+                {"outcome_events": []}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "conditional-canary must record exactly one outcome_event_id" in gaps
+
+
+def test_probe_allow_requires_outcome_event() -> None:
+    with _governed_repo_copy("probe-allow-no-outcome") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(
+            repo,
+            lambda evidence: _vector(evidence, "allow-canary").update(
+                {"outcome_events": []}
+            ),
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert "allow-canary must record exactly one outcome_event_id" in gaps
+
+
+def test_probe_canary_only_guard_blocks_unsafe_entrypoint(monkeypatch) -> None:
+    with _governed_repo_copy("probe-canary-only-guard") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _write(
+            _probe_entrypoint_path(repo),
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = False\n",
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("subprocess.run should not be called")
+
+        monkeypatch.setattr(sc.subprocess, "run", fail_if_called)
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
+        assert (
+            "tool governance probe entrypoint must contain exact canary guard "
+            "THREADLIGHT_CANARY_ONLY = True"
+        ) in gaps
+
+
+def test_probe_nonzero_exit_is_visible_gap() -> None:
+    with _governed_repo_copy("probe-nonzero-exit") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _write(
+            _probe_entrypoint_path(repo),
+            "#!/usr/bin/env python3\nTHREADLIGHT_CANARY_ONLY = True\nraise SystemExit(7)\n",
+        )
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
+        assert (
+            "tool governance probe failed: tests/tool_governance_probe.py exited 7"
+            in gaps
+        )
+
+
+def test_phase_postdeploy_emits_tool_governance_probe_summary(monkeypatch) -> None:
+    with _governed_repo_copy("phase-postdeploy-tool-governance") as repo:
+        manifest_path = repo / "specs" / "manifest.json"
+        out_path = repo / "tests" / "postdeploy-manifest.json"
+
+        def fake_az(*args: str, capture: bool = True) -> str:
+            if args[:2] == ("resource", "list") and "--resource-type" not in args:
+                return json.dumps(
+                    [{"type": "Microsoft.App/containerApps", "name": "fixture-mcp"}]
+                )
+            if args[:2] == ("containerapp", "list"):
+                return json.dumps(
+                    [
+                        {
+                            "name": "fixture-mcp",
+                            "fqdn": "mcp.contoso.example",
+                            "image": "contoso/mcp:latest",
+                            "state": "Running",
+                        }
+                    ]
+                )
+            if args[:3] == ("containerapp", "job", "list"):
+                return "[]"
+            if args[:2] == ("resource", "list") and "--resource-type" in args:
+                return "[]"
+            raise AssertionError(f"unexpected az args: {args}")
+
+        monkeypatch.setattr(sc, "_az", fake_az)
+        rc = sc.phase_postdeploy(manifest_path, out_path, "fixture-rg", repo_root=repo)
+        emitted = _read_json(out_path)
+        assert rc == 0
+        assert emitted["gaps"] == []
+        assert emitted["tool_governance"]["status"] == "pass"
+        assert emitted["tool_governance"]["evidence"] == (
+            "tests/tool-governance-probe-manifest.json"
+        )
+        assert emitted["tool_governance"]["contract_sha256"].startswith("sha256:")
+        assert "vectors" not in emitted["tool_governance"]
+        assert "audit_field_results" not in emitted["tool_governance"]
 
 
 # ---------------------------------------------------------------------------

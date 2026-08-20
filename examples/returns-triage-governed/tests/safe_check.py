@@ -124,6 +124,7 @@ COMMON_AUDIT_FIELDS = {
 TOOL_GOVERNANCE_ADAPTER_PATH = Path("policies/tool-governance/adapter-manifest.json")
 TOOL_GOVERNANCE_ADAPTER_SCHEMA = "threadlight.tool-governance-adapter/v1"
 TOOL_GOVERNANCE_AUDIT_SCHEMA = "threadlight.tool-governance-audit/v1"
+TOOL_GOVERNANCE_PROBE_SCHEMA = "threadlight.tool-governance-probe/v1"
 SUPPORTED_GOVERNANCE_FRAMEWORKS = {
     "github-copilot-sdk", "microsoft-agent-framework",
 }
@@ -1011,6 +1012,338 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Tool governance post-deploy probe validation
+# ---------------------------------------------------------------------------
+
+def _event_ids(events: Any) -> list[str]:
+    if not isinstance(events, list):
+        return []
+    ids: list[str] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_id = event.get("event_id")
+        if isinstance(event_id, str) and event_id:
+            ids.append(event_id)
+    return ids
+
+
+def _run_governance_probe(
+    repo: Path, adapter: dict[str, Any], gaps: list[str],
+) -> tuple[str | None, str | None]:
+    probe = adapter.get("probe")
+    if not isinstance(probe, dict):
+        gaps.append("tool governance probe must be an object")
+        return None, None
+    entrypoint = probe.get("entrypoint")
+    if not isinstance(entrypoint, str) or not entrypoint:
+        gaps.append("tool governance probe.entrypoint must be a non-empty string")
+        return None, None
+    evidence = probe.get("evidence")
+    if not isinstance(evidence, str) or not evidence:
+        gaps.append("tool governance probe.evidence must be a non-empty string")
+        return entrypoint, None
+
+    entrypoint_path = repo / entrypoint
+    if not entrypoint_path.exists():
+        gaps.append(f"tool governance probe entrypoint missing: {entrypoint}")
+        return entrypoint, evidence
+    try:
+        entrypoint_text = entrypoint_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        gaps.append(
+            f"tool governance probe entrypoint unreadable: {entrypoint} ({exc})"
+        )
+        return entrypoint, evidence
+    if "THREADLIGHT_CANARY_ONLY = True" not in entrypoint_text:
+        gaps.append(
+            "tool governance probe entrypoint must contain exact canary guard "
+            "THREADLIGHT_CANARY_ONLY = True"
+        )
+        return entrypoint, evidence
+
+    completed = subprocess.run(
+        [sys.executable, entrypoint, "--out", evidence],
+        cwd=repo,
+        shell=False,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        gaps.append(
+            f"tool governance probe failed: {entrypoint} exited "
+            f"{completed.returncode}"
+        )
+    return entrypoint, evidence
+
+
+def _validate_probe_vector(
+    vector: dict[str, Any],
+    vector_id: str,
+    *,
+    decision: str,
+    execution_count: int,
+    require_outcome: bool,
+    gaps: list[str],
+    gate_ids: set[str] | None = None,
+) -> None:
+    if vector.get("expected_decision") != decision:
+        gaps.append(f"{vector_id} expected_decision must be {decision!r}")
+    if vector.get("observed_decision") != decision:
+        gaps.append(f"{vector_id} observed_decision must be {decision!r}")
+    if vector.get("expected_execution_count") != execution_count:
+        gaps.append(
+            f"{vector_id} expected_execution_count must be {execution_count}"
+        )
+    if vector.get("observed_execution_count") != execution_count:
+        gaps.append(
+            f"{vector_id} observed_execution_count must be {execution_count}"
+        )
+    correlation_id = vector.get("correlation_id")
+    if not isinstance(correlation_id, str) or not correlation_id:
+        gaps.append(f"{vector_id} must record correlation_id")
+    if not _event_ids(vector.get("decision_events")):
+        gaps.append(f"{vector_id} must record decision_event_ids")
+    outcome_ids = _event_ids(vector.get("outcome_events"))
+    if require_outcome:
+        if len(outcome_ids) != 1:
+            gaps.append(f"{vector_id} must record exactly one outcome_event_id")
+    elif outcome_ids:
+        gaps.append(f"{vector_id} must not record outcome_event_ids")
+
+    if decision != "conditional":
+        return
+
+    gate_id = vector.get("gate_id")
+    if not isinstance(gate_id, str) or not gate_id:
+        gaps.append(f"{vector_id} must record gate_id")
+    elif gate_ids is not None and gate_id not in gate_ids:
+        gaps.append(
+            f"{vector_id} gate_id must match a conditional governed tool gate_id"
+        )
+    approval_id = vector.get("approval_id")
+    if not isinstance(approval_id, str) or not approval_id:
+        gaps.append(f"{vector_id} must record approval_id")
+
+
+def validate_tool_governance_probe(
+    repo: Path, manifest: dict[str, Any], *, run_probe: bool,
+) -> tuple[dict[str, Any], list[str]]:
+    block = manifest.get("tool_governance")
+    if block is None:
+        return {"enabled": False, "status": "not-applicable"}, []
+    if not isinstance(block, dict):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance must be an object"
+        ]
+    enabled = block.get("enabled", _MISSING)
+    if enabled is _MISSING or enabled is False:
+        return {"enabled": False, "status": "not-applicable"}, []
+    if not isinstance(enabled, bool):
+        return {"enabled": False, "status": "invalid"}, [
+            "tool_governance.enabled must be boolean"
+        ]
+
+    contract_sha256 = canonical_sha256(block)
+    result: dict[str, Any] = {
+        "enabled": True,
+        "status": "fail",
+        "contract_sha256": contract_sha256,
+    }
+    gaps: list[str] = []
+
+    adapter_path = repo / TOOL_GOVERNANCE_ADAPTER_PATH
+    adapter, adapter_gaps = _load_json_object(
+        adapter_path,
+        "tool governance adapter manifest",
+        TOOL_GOVERNANCE_ADAPTER_PATH.as_posix(),
+    )
+    gaps.extend(adapter_gaps)
+    if adapter is None:
+        return result, gaps
+
+    if adapter.get("schema") != TOOL_GOVERNANCE_ADAPTER_SCHEMA:
+        gaps.append(
+            "tool governance adapter schema must be "
+            f"{TOOL_GOVERNANCE_ADAPTER_SCHEMA!r}"
+        )
+
+    adapter_probe = adapter.get("probe")
+    evidence_rel: str | None = None
+    if not isinstance(adapter_probe, dict):
+        gaps.append("tool governance probe must be an object")
+    else:
+        entrypoint = adapter_probe.get("entrypoint")
+        if not isinstance(entrypoint, str) or not entrypoint:
+            gaps.append("tool governance probe.entrypoint must be a non-empty string")
+        evidence = adapter_probe.get("evidence")
+        if not isinstance(evidence, str) or not evidence:
+            gaps.append("tool governance probe.evidence must be a non-empty string")
+        else:
+            evidence_rel = evidence
+            result["evidence"] = evidence
+
+    adapter_manifest_sha256 = canonical_sha256(adapter)
+    result["adapter_manifest_sha256"] = adapter_manifest_sha256
+
+    if run_probe:
+        _, evidence_from_run = _run_governance_probe(repo, adapter, gaps)
+        if evidence_rel is None:
+            evidence_rel = evidence_from_run
+            if evidence_from_run is not None:
+                result["evidence"] = evidence_from_run
+
+    if evidence_rel is None:
+        result["status"] = "fail"
+        return result, gaps
+
+    evidence_path = repo / evidence_rel
+    evidence_payload, evidence_gaps = _load_json_object(
+        evidence_path,
+        "tool governance probe evidence",
+        evidence_rel,
+    )
+    gaps.extend(evidence_gaps)
+    if evidence_payload is None:
+        result["status"] = "fail"
+        return result, gaps
+
+    if evidence_payload.get("schema") != TOOL_GOVERNANCE_PROBE_SCHEMA:
+        gaps.append(
+            "tool governance probe schema must be "
+            f"{TOOL_GOVERNANCE_PROBE_SCHEMA!r}"
+        )
+    if evidence_payload.get("contract_sha256") != contract_sha256:
+        gaps.append(
+            "tool governance probe contract_sha256 must match the canonical "
+            "manifest digest"
+        )
+    if evidence_payload.get("adapter_manifest_sha256") != adapter_manifest_sha256:
+        gaps.append(
+            "tool governance probe adapter_manifest_sha256 must match the "
+            "canonical adapter digest"
+        )
+    if evidence_payload.get("status") != "pass":
+        gaps.append("tool governance probe status must be 'pass'")
+
+    conditional_gate_ids = {
+        tool.get("gate_id")
+        for tool in block.get("tools", [])
+        if isinstance(tool, dict)
+        and tool.get("decision") == "conditional"
+        and isinstance(tool.get("gate_id"), str)
+        and tool.get("gate_id")
+    }
+    expected_vector_ids = {"allow-canary", "deny-canary"}
+    if conditional_gate_ids:
+        expected_vector_ids.add("conditional-canary")
+
+    vectors = evidence_payload.get("vectors")
+    vector_by_id: dict[str, dict[str, Any]] = {}
+    if not isinstance(vectors, list):
+        gaps.append("tool governance probe vectors must be a list")
+        vectors = []
+    for item in vectors:
+        if not isinstance(item, dict):
+            gaps.append("tool governance probe vector entries must be objects")
+            continue
+        vector_id = item.get("id")
+        if not isinstance(vector_id, str) or not vector_id:
+            gaps.append(
+                "tool governance probe vector id must be a non-empty string"
+            )
+            continue
+        if vector_id in vector_by_id:
+            gaps.append(f"duplicate tool governance probe vector id: {vector_id}")
+            continue
+        vector_by_id[vector_id] = item
+    if set(vector_by_id) != expected_vector_ids:
+        gaps.append(
+            "tool governance probe vectors must cover exactly: "
+            + ", ".join(sorted(expected_vector_ids))
+        )
+
+    allow_vector = vector_by_id.get("allow-canary")
+    if allow_vector is None:
+        gaps.append("missing tool governance probe vector: allow-canary")
+    else:
+        _validate_probe_vector(
+            allow_vector,
+            "allow-canary",
+            decision="allow",
+            execution_count=1,
+            require_outcome=True,
+            gaps=gaps,
+        )
+
+    deny_vector = vector_by_id.get("deny-canary")
+    if deny_vector is None:
+        gaps.append("missing tool governance probe vector: deny-canary")
+    else:
+        _validate_probe_vector(
+            deny_vector,
+            "deny-canary",
+            decision="deny",
+            execution_count=0,
+            require_outcome=False,
+            gaps=gaps,
+        )
+
+    if conditional_gate_ids:
+        conditional_vector = vector_by_id.get("conditional-canary")
+        if conditional_vector is None:
+            gaps.append("missing tool governance probe vector: conditional-canary")
+        else:
+            _validate_probe_vector(
+                conditional_vector,
+                "conditional-canary",
+                decision="conditional",
+                execution_count=1,
+                require_outcome=True,
+                gaps=gaps,
+                gate_ids=conditional_gate_ids,
+            )
+
+    audit_field_results = evidence_payload.get("audit_field_results")
+    if not isinstance(audit_field_results, list):
+        gaps.append("tool governance probe audit_field_results must be a list")
+    else:
+        seen_audit_ids: set[str] = set()
+        for item in audit_field_results:
+            if not isinstance(item, dict):
+                gaps.append(
+                    "tool governance probe audit_field_results entries must be objects"
+                )
+                continue
+            vector_id = item.get("vector_id")
+            if not isinstance(vector_id, str) or not vector_id:
+                gaps.append(
+                    "tool governance probe audit_field_results vector_id must be a "
+                    "non-empty string"
+                )
+                continue
+            if vector_id in seen_audit_ids:
+                gaps.append(f"duplicate audit_field_results vector_id: {vector_id}")
+                continue
+            seen_audit_ids.add(vector_id)
+            if item.get("status") != "pass":
+                gaps.append(
+                    f"audit_field_results {vector_id} must have status 'pass'"
+                )
+            if item.get("missing") != []:
+                gaps.append(f"audit_field_results {vector_id} missing must be []")
+        if seen_audit_ids != expected_vector_ids:
+            gaps.append(
+                "tool governance probe audit_field_results must cover exactly: "
+                + ", ".join(sorted(expected_vector_ids))
+            )
+
+    result["status"] = "pass" if not gaps else "fail"
+    return result, gaps
+
+
+# ---------------------------------------------------------------------------
 # Phase 3 — post-deploy
 # ---------------------------------------------------------------------------
 
@@ -1490,6 +1823,10 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     effective_mcp_config = _load_effective_mcp_config(resolved_root)
     binding_gaps = integration_binding_gaps(integrations, effective_mcp_config)
     gaps.extend(binding_gaps)
+    governance, governance_gaps = validate_tool_governance_probe(
+        resolved_root, data, run_probe=True
+    )
+    gaps.extend(governance_gaps)
     integration_binding_results = {
         "integrations_declared": len(integrations) if isinstance(integrations, list) else 0,
         "mcp_config_present": bool(effective_mcp_config),
@@ -1508,6 +1845,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "bot_auth_health": bot_auth_health_results,
         "cosmos_firewall_health": cosmos_firewall_health_results,
         "integration_binding": integration_binding_results,
+        "tool_governance": governance,
         "channels": channel_results,
         "scheduled_jobs": job_results,
         "gaps": gaps,
