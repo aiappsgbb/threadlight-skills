@@ -63,11 +63,11 @@ item is a yes/no question.
 | ☐ | If SRE Agent recipe adopted: daily health task is scheduled | SRE |
 | ☐ | If AGT middleware in use: verifier run within last 30 days, results green | Product |
 
-## F — Governance + capacity surface (v0.3.0)
+## F — Governance + capacity surface
 
-These rows match new finding IDs added in production-ready v0.3.0. They
-are advisory but every "no" here was the cause of a production incident
-in at least one prior GBB engagement, so push hard against waiving them.
+These rows capture current governance and capacity findings that must be
+reviewed before go-live. They are advisory, but every "no" here is a
+current risk signal, so push hard against waiving them.
 
 | ☐ | Item | Owner | Finding ID |
 |---|---|---|---|
