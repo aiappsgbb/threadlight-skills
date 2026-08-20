@@ -179,6 +179,8 @@ export async function createWorkspaceFixture(name) {
     traits: ["human-approval"],
     mock_systems: ["orders"],
     deployment_manifest: {
+      subscription_id: "sub-1",
+      resource_group: "rg-pilot",
       module_selectors: {
         "workspace-ui": "yes",
         "aca-job": "no",
@@ -226,17 +228,26 @@ export async function createWorkspaceFixture(name) {
   await fixture.writeString("src/bot/index.js", "export default {};\n");
   await fixture.writeString("src/workspace/index.html", "<main>Orders</main>\n");
   await fixture.writeJson("specs/redteam-manifest.json", {
-    verdict: "pass",
+    verdict: "hardened",
     must_fix: [],
   });
   await fixture.writeJson("specs/govern-manifest.json", {
-    verdict: "comprehensive",
+    verdict: "governed",
     must_fix: [],
   });
   await fixture.writeJson("tests/production-readiness-manifest.json", {
     checked_at: "2026-08-06T08:00:00Z",
     go_live_recommendation: "ready",
     would_fail_hard_gate: false,
+    kpi_scorecard: {
+      latency_declared: true,
+      cost_per_interaction_declared: true,
+      success_rate_declared: true,
+      deviation_alert_present: true,
+      traces_emit: true,
+      eval_pass_rate: 0.99,
+      cost_per_interaction_usd: 0.01,
+    },
   });
   await fixture.writeString("router-bench-out/learnings-1.md", "# Learnings\n");
   await fixture.writeString(

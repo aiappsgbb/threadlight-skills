@@ -40,6 +40,105 @@ function findSkill(model, id) {
   return undefined;
 }
 
+function costActualsManifest(overrides = {}) {
+  return {
+    schema: "threadlight-cost-actuals/v1",
+    status: "pass",
+    generated_at: "2026-08-06T08:00:00Z",
+    window: {
+      start: "2026-08-01T00:00:00Z",
+      end: "2026-08-06T00:00:00Z",
+      ...(overrides.window ?? {}),
+    },
+    scope: {
+      subscription_id: "sub-1",
+      resource_group: "rg-pilot",
+      ...(overrides.scope ?? {}),
+    },
+    cost: {
+      period_total_usd: 130,
+      ...(overrides.cost ?? {}),
+    },
+    usage: {
+      successful_interactions: 1200,
+      interaction_status: "pass",
+      model_attribution_status: "pass",
+      ...(overrides.usage ?? {}),
+    },
+    provenance: {
+      sources: [],
+      ...(overrides.provenance ?? {}),
+    },
+    warnings: [...(overrides.warnings ?? [])],
+    ...overrides,
+  };
+}
+
+function costReconciliationManifest(overrides = {}) {
+  return {
+    schema: "threadlight-cost-reconciliation/v1",
+    status: "pass",
+    generated_at: "2026-08-06T08:30:00Z",
+    variance_status: "pass",
+    maturity: {
+      status: "pass",
+      checks: [],
+      ...(overrides.maturity ?? {}),
+    },
+    unit_economics: {
+      status: "pass",
+      target_status: "pass",
+      ...(overrides.unit_economics ?? {}),
+    },
+    totals: {
+      forecast_window_usd: 125,
+      forecast_monthly_usd: 500,
+      actual_window_usd: 130,
+      variance_pct: 0.04,
+      ...(overrides.totals ?? {}),
+    },
+    coverage: {
+      projection_attribution_coverage_pct: 1,
+      source_resource_id_coverage_pct: 1,
+      ...(overrides.coverage ?? {}),
+    },
+    drivers: {
+      payg_ptu: {
+        status: "pass",
+        observed_volume_variance_pct: 0.01,
+        threshold_pct: 0.1,
+      },
+      ...(overrides.drivers ?? {}),
+    },
+    policy_snapshot: {
+      max_window_end_age_days: 7,
+      ...(overrides.policy_snapshot ?? {}),
+    },
+    policy_errors: [...(overrides.policy_errors ?? [])],
+    warnings: [...(overrides.warnings ?? [])],
+    ...overrides,
+  };
+}
+
+function readinessManifest(overrides = {}) {
+  return {
+    checked_at: "2026-08-06T08:00:00Z",
+    go_live_recommendation: "ready",
+    would_fail_hard_gate: false,
+    kpi_scorecard: {
+      latency_declared: true,
+      cost_per_interaction_declared: true,
+      success_rate_declared: true,
+      deviation_alert_present: true,
+      traces_emit: true,
+      eval_pass_rate: 0.99,
+      cost_per_interaction_usd: 0.01,
+      ...(overrides.kpi_scorecard ?? {}),
+    },
+    ...overrides,
+  };
+}
+
 test("empty workspace is ready to start pilot design", async () => {
   await withFixture("empty", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
@@ -125,6 +224,74 @@ test("complete pilot projects all phases complete without errors", async () => {
       ["complete", "complete", "complete", "complete", "complete", "complete"],
     );
     assert.deepEqual(model.errors, []);
+  });
+});
+
+test("threadlight-consumption-iq surfaces non-gating cost evidence state transitions", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    let model = await projectWorkspace(workspace, { now: NOW });
+    let skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "forecast-only");
+
+    await writeJson("specs/cost-actuals-manifest.json", costActualsManifest());
+    model = await projectWorkspace(workspace, { now: NOW });
+    skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "actuals-collected");
+
+    await writeJson(
+      "specs/cost-reconciliation-manifest.json",
+      costReconciliationManifest(),
+    );
+    model = await projectWorkspace(workspace, { now: NOW });
+    skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "reconciled");
+
+    await writeJson(
+      "specs/cost-actuals-manifest.json",
+      costActualsManifest({
+        scope: {
+          subscription_id: "sub-2",
+          resource_group: "rg-other",
+        },
+      }),
+    );
+    model = await projectWorkspace(workspace, { now: NOW });
+    skill = findSkill(model, "threadlight-consumption-iq");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "scope-mismatch");
+  });
+});
+
+test("threadlight-production-ready surfaces readiness proof evidence separately from status", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/production-readiness-manifest.json",
+      readinessManifest({ kpi_scorecard: { traces_emit: false } }),
+    );
+
+    let model = await projectWorkspace(workspace, { now: NOW });
+    let skill = findSkill(model, "threadlight-production-ready");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "readiness-incomplete");
+
+    await writeJson(
+      "tests/production-readiness-manifest.json",
+      readinessManifest(),
+    );
+
+    model = await projectWorkspace(workspace, { now: NOW });
+    skill = findSkill(model, "threadlight-production-ready");
+
+    assert.equal(skill.status, "complete");
+    assert.equal(skill.evidenceState, "readiness-proof");
   });
 });
 
