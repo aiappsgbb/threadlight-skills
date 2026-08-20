@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,11 @@ def _fresh_redteam(verdict: str = "partial") -> dict:
 def _write_passing_readiness_artifacts(root: Path) -> None:
     post = root / "tests" / "postdeploy-manifest.json"
     post_data = json.loads(post.read_text(encoding="utf-8"))
+    manifest = json.loads((root / "specs" / "manifest.json").read_text(encoding="utf-8"))
+    post_data["checked_at"] = (
+        datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
+    post_data["deployment_manifest"] = manifest["deployment_manifest"]
     post_data["phase"] = "post-deploy"
     post_data["gaps"] = []
     post.write_text(json.dumps(post_data), encoding="utf-8")
@@ -229,6 +235,54 @@ def test_readiness_proof_passes_when_assurance_and_readiness_complete():
     assert out["status"] == "pass"
     assert out["readiness_asserted"] is True
     assert out["mode"] == "readiness-proof"
+
+
+def test_readiness_proof_rejects_stale_or_malformed_postdeploy_checked_at():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    post = root / "tests" / "postdeploy-manifest.json"
+    stale = json.loads(post.read_text(encoding="utf-8"))
+    stale["checked_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=24)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    post.write_text(json.dumps(stale), encoding="utf-8")
+
+    with pytest.raises(EvidenceGateError, match="fresher than 24h"):
+        eg.evaluate_evidence(root, mode="readiness-proof")
+
+    stale["checked_at"] = "2026-08-06 08:00:00"
+    post.write_text(json.dumps(stale), encoding="utf-8")
+
+    with pytest.raises(EvidenceGateError, match="checked_at"):
+        eg.evaluate_evidence(root, mode="readiness-proof")
+
+    stale["checked_at"] = "2026-08-06 08:00:00+00:00"
+    post.write_text(json.dumps(stale), encoding="utf-8")
+
+    with pytest.raises(EvidenceGateError, match="checked_at"):
+        eg.evaluate_evidence(root, mode="readiness-proof")
+
+
+def test_readiness_proof_rejects_postdeploy_manifest_binding_drift():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    post = root / "tests" / "postdeploy-manifest.json"
+    post_data = json.loads(post.read_text(encoding="utf-8"))
+    post_data["deployment_manifest"]["resource_group"] = "rg-drifted"
+    post.write_text(json.dumps(post_data), encoding="utf-8")
+
+    with pytest.raises(EvidenceGateError, match="deployment_manifest"):
+        eg.evaluate_evidence(root, mode="readiness-proof")
 
 
 def test_readiness_proof_rejects_schema_invalid_evals_manifest():

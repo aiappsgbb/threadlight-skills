@@ -946,7 +946,9 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
 
     payload = {
         "phase": "post-deploy",
+        "checked_at": _utc_now(),
         "deployed_at": _utc_now(),
+        "deployment_manifest": dm,
         "rg": rg,
         "checked_selectors": sorted(selectors),
         "deployed_resource_types": sorted(deployed_types),

@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 const ALLOWED_FILES = new Set([
@@ -20,6 +20,7 @@ const ALLOWED_FILES = new Set([
   "specs/upgrade-manifest.json",
   "qualification/sizing-manifest.json",
   "tests/production-readiness-manifest.json",
+  "tests/postdeploy-manifest.json",
   ".threadlight/auto-state.json",
   ".threadlight/preflight-passed.json",
   "azure-pipelines.yml",
@@ -128,6 +129,50 @@ export async function createArtifactReader(workspace) {
     return { normalized, candidate: realCandidate, exists: true };
   }
 
+  async function resolveAzdRoot() {
+    const candidate = path.resolve(workspaceReal, ".azure");
+    let details;
+    try {
+      details = await lstat(candidate);
+    } catch (error) {
+      if (isMissing(error)) {
+        return { candidate, exists: false };
+      }
+      throw error;
+    }
+    if (details.isSymbolicLink()) {
+      throw new ArtifactAccessError(".azure", "symlinked azd roots are not allowed");
+    }
+
+    let realCandidate;
+
+    try {
+      realCandidate = await realpath(candidate);
+    } catch (error) {
+      throw error;
+    }
+
+    if (realCandidate !== candidate) {
+      throw new ArtifactAccessError(".azure", "resolved azd root must stay under the literal .azure directory");
+    }
+    if (realCandidate !== workspaceReal && !realCandidate.startsWith(rootPrefix)) {
+      throw new ArtifactAccessError(".azure", "resolved path escapes workspace");
+    }
+
+    return { candidate: realCandidate, exists: true };
+  }
+
+  function normalizeAzdEnvDir(relativePath) {
+    if (typeof relativePath !== "string") {
+      throw new ArtifactAccessError(relativePath, "path must be a string");
+    }
+    const normalized = path.posix.normalize(relativePath.replaceAll("\\", "/"));
+    if (!/^\.azure\/[^/]+$/u.test(normalized)) {
+      throw new ArtifactAccessError(relativePath, "path is not an azd env directory");
+    }
+    return normalized;
+  }
+
   return Object.freeze({
     async exists(relativePath) {
       const resolved = await resolveAllowed(relativePath);
@@ -173,6 +218,119 @@ export async function createArtifactReader(workspace) {
         return JSON.parse(text);
       } catch (error) {
         throw new ArtifactParseError(normalize(relativePath), error);
+      }
+    },
+
+    async readDir(relativePath) {
+      if (relativePath === ".azure") {
+        const resolved = await resolveAzdRoot();
+        if (!resolved.exists) {
+          return null;
+        }
+
+        const details = await stat(resolved.candidate);
+        if (!details.isDirectory()) {
+          return null;
+        }
+
+        return (await readdir(resolved.candidate, { withFileTypes: true }))
+          .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+          .map((entry) => `.azure/${entry.name}`);
+      }
+
+      const resolved = await resolveAllowed(relativePath);
+      if (!resolved.exists) {
+        return null;
+      }
+
+      const details = await stat(resolved.candidate);
+      if (!details.isDirectory()) {
+        return null;
+      }
+
+      return (await readdir(resolved.candidate))
+        .map((entry) => path.posix.join(resolved.normalized, entry))
+        .filter((entry) => isAllowed(entry));
+    },
+
+    async readAzdEnvValue(relativeEnvDir, variableName) {
+      if (variableName !== "AGENT_FQDN") {
+        throw new ArtifactAccessError(variableName, "variable is not allowlisted");
+      }
+
+      const normalized = normalizeAzdEnvDir(relativeEnvDir);
+      const resolved = await resolveAzdRoot();
+      if (!resolved.exists) {
+        return null;
+      }
+
+      const envDir = path.join(
+        resolved.candidate,
+        normalized.slice(".azure/".length),
+      );
+      let envDirDetails;
+      try {
+        envDirDetails = await lstat(envDir);
+      } catch (error) {
+        if (isMissing(error) || error?.code === "ENOTDIR") {
+          return null;
+        }
+        throw error;
+      }
+      if (envDirDetails.isSymbolicLink()) {
+        throw new ArtifactAccessError(normalized, "symlinked env directories are not allowed");
+      }
+
+      const candidate = path.join(
+        envDir,
+        ".env",
+      );
+      let details;
+      try {
+        details = await lstat(candidate);
+      } catch (error) {
+        if (isMissing(error) || error?.code === "ENOTDIR") {
+          return null;
+        }
+        throw error;
+      }
+      if (details.isSymbolicLink()) {
+        throw new ArtifactAccessError(`${normalized}/.env`, "symlinked env files are not allowed");
+      }
+
+      let realCandidate;
+      try {
+        realCandidate = await realpath(candidate);
+      } catch (error) {
+        if (isMissing(error) || error?.code === "ENOTDIR") {
+          return null;
+        }
+        throw error;
+      }
+      if (
+        realCandidate !== workspaceReal &&
+        !realCandidate.startsWith(rootPrefix)
+      ) {
+        throw new ArtifactAccessError(`${normalized}/.env`, "resolved path escapes workspace");
+      }
+
+      try {
+        const text = await readFile(realCandidate, "utf8");
+        for (const line of text.split(/\r?\n/u)) {
+          if (line.trimStart().startsWith("#")) {
+            continue;
+          }
+          const match = /^\s*AGENT_FQDN\s*=\s*(.*)$/u.exec(line);
+          if (match) {
+            return match[1];
+          }
+        }
+        return null;
+      } catch (error) {
+        if (isMissing(error) || error?.code === "ENOTDIR") {
+          return null;
+        }
+        throw error;
       }
     },
   });

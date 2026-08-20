@@ -32,6 +32,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import shutil
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -50,6 +52,9 @@ PREFLIGHT_MARKER = ".threadlight/preflight-passed.json"
 
 FRESHNESS_SECONDS = 24 * 60 * 60
 POSTDEPLOY_MANIFEST = "tests/postdeploy-manifest.json"
+RFC3339_UTC_OR_OFFSET = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$"
+)
 
 LEG_CONTRACTS = {
     "evals": {
@@ -296,6 +301,28 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
     )
 
 
+def _parse_env_assignment(value: str) -> str:
+    if value.strip().startswith("#"):
+        return ""
+    candidate = re.split(r"\s+#", value, maxsplit=1)[0].strip()
+    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"'", '"'}:
+        candidate = candidate[1:-1].strip()
+    return candidate
+
+
+def _deployment_manifest_binding_matches(workspace: Path, manifest_data: dict[str, Any]) -> bool:
+    snapshot = manifest_data.get("deployment_manifest")
+    current = _parse_json_object(workspace / "specs" / "manifest.json")
+    if not isinstance(snapshot, dict) or not isinstance(current, dict):
+        return False
+    current_snapshot = current.get("deployment_manifest")
+    if not isinstance(current_snapshot, dict):
+        return False
+    return json.dumps(snapshot, sort_keys=True, separators=(",", ":")) == json.dumps(
+        current_snapshot, sort_keys=True, separators=(",", ":")
+    )
+
+
 def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
     main_bicep = workspace / "infra" / "main.bicep"
     azure_yaml = workspace / "azure.yaml"
@@ -314,8 +341,41 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
 
     azure_dir = workspace / ".azure"
     if azure_dir.exists():
-        env_files = list(azure_dir.glob("*/.env"))
-        has_fqdn = any("AGENT_FQDN" in f.read_text(encoding="utf-8", errors="ignore") for f in env_files)
+        if azure_dir.is_symlink():
+            return StageDecision(
+                "deploy",
+                "run",
+                "infra + azure.yaml exist but .azure is symlinked — deploy evidence is not trusted.",
+                artifacts_seen=["infra/main.bicep", "azure.yaml"],
+            )
+        env_dirs = [entry for entry in azure_dir.iterdir() if entry.is_dir()]
+        if len(env_dirs) > 1:
+            return StageDecision(
+                "deploy",
+                "run",
+                "infra + azure.yaml exist but multiple azd envs are present — current deploy evidence is ambiguous.",
+                artifacts_seen=["infra/main.bicep", "azure.yaml", ".azure/<env>/.env"],
+            )
+        env_files = [env_dirs[0] / ".env"] if len(env_dirs) == 1 else []
+        has_fqdn = False
+        for env_file in env_files:
+            if env_file.parent.is_symlink() or env_file.is_symlink():
+                return StageDecision(
+                    "deploy",
+                    "run",
+                    "infra + azure.yaml exist but azd env evidence is symlinked — deploy evidence is not trusted.",
+                    artifacts_seen=["infra/main.bicep", "azure.yaml"],
+                )
+            text = env_file.read_text(encoding="utf-8", errors="ignore")
+            for line in text.splitlines():
+                if line.lstrip().startswith("#"):
+                    continue
+                match = re.match(r"^\s*AGENT_FQDN\s*=\s*(.*)$", line)
+                if match and _parse_env_assignment(match.group(1)):
+                    has_fqdn = True
+                    break
+            if has_fqdn:
+                break
         if has_fqdn:
             return StageDecision(
                 "deploy",
@@ -333,58 +393,66 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
 
 def _check_safe_check(workspace: Path, _: dict[str, Any]) -> StageDecision:
     safe_doc = workspace / "docs" / "safe-check-post.md"
-    age = _file_age_seconds(safe_doc)
-    if age is None:
-        return StageDecision(
-            "safe_check",
-            "run",
-            "docs/safe-check-post.md missing.",
-            artifacts_missing=["docs/safe-check-post.md"],
-        )
-    if age > FRESHNESS_SECONDS:
-        return StageDecision(
-            "safe_check",
-            "run",
-            f"docs/safe-check-post.md is {int(age/3600)} h old (> 24 h); re-running.",
-            artifacts_seen=["docs/safe-check-post.md"],
-        )
-
     manifest = workspace / POSTDEPLOY_MANIFEST
     if not manifest.exists():
         return StageDecision(
             "safe_check",
             "run",
             f"{POSTDEPLOY_MANIFEST} missing; safe-check requires manifest evidence, not docs alone.",
-            artifacts_seen=["docs/safe-check-post.md"],
             artifacts_missing=[POSTDEPLOY_MANIFEST],
         )
     manifest_data = _parse_json_object(manifest)
+    seen = [POSTDEPLOY_MANIFEST]
+    if safe_doc.exists():
+        seen.insert(0, "docs/safe-check-post.md")
     if manifest_data is None:
         return StageDecision(
             "safe_check",
             "run",
             f"{POSTDEPLOY_MANIFEST} is unreadable or malformed; safe-check evidence is not trustworthy.",
-            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+            artifacts_seen=seen,
         )
     if manifest_data.get("phase") != "post-deploy":
         return StageDecision(
             "safe_check",
             "run",
             f"{POSTDEPLOY_MANIFEST} phase must be post-deploy; re-running threadlight-safe-check.",
-            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+            artifacts_seen=seen,
         )
     if manifest_data.get("gaps") != []:
         return StageDecision(
             "safe_check",
             "run",
             f"{POSTDEPLOY_MANIFEST} reports unresolved gaps; re-running threadlight-safe-check.",
-            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+            artifacts_seen=seen,
+        )
+    if not _deployment_manifest_binding_matches(workspace, manifest_data):
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} no longer matches specs/manifest.json; re-running threadlight-safe-check.",
+            artifacts_seen=seen,
+        )
+    age = _postdeploy_age_seconds(manifest, manifest_data)
+    if age is None or age < 0 or age >= FRESHNESS_SECONDS:
+        reason = (
+            f"{POSTDEPLOY_MANIFEST} has no fresh checked_at evidence; re-running threadlight-safe-check."
+            if age is None
+            else f"{POSTDEPLOY_MANIFEST} checked_at is in the future; re-running threadlight-safe-check."
+            if age < 0
+            else f"{POSTDEPLOY_MANIFEST} is {int(age/3600)} h old (>= 24 h); re-running threadlight-safe-check."
+        )
+        return StageDecision(
+            "safe_check",
+            "run",
+            reason,
+            artifacts_seen=seen,
         )
     return StageDecision(
         "safe_check",
         "skip",
-        f"docs/safe-check-post.md is {int(age/60)} m old (< 24 h) and {POSTDEPLOY_MANIFEST} is green.",
-        artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+        f"{POSTDEPLOY_MANIFEST} is green and {int(age/60)} m old (< 24 h).",
+        artifacts_seen=seen,
     )
 
 
@@ -454,12 +522,15 @@ def _load_profile_complete(spec_text: str) -> bool:
 
 def _parse_iso(ts: str) -> datetime | None:
     """Parse ISO-8601 UTC timestamp, return None on failure."""
-    if not ts:
+    if not ts or not RFC3339_UTC_OR_OFFSET.fullmatch(ts):
         return None
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00").replace("z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def _parse_json_object(path: Path) -> dict[str, Any] | None:
@@ -468,6 +539,13 @@ def _parse_json_object(path: Path) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def _postdeploy_age_seconds(path: Path, payload: dict[str, Any]) -> float | None:
+    checked_at = _parse_iso(payload.get("checked_at", ""))
+    if checked_at is None:
+        return None
+    return (datetime.now(timezone.utc) - checked_at).total_seconds()
 
 
 def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecision:

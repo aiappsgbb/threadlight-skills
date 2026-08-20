@@ -206,7 +206,24 @@ export async function createWorkspaceFixture(name) {
     return fixture;
   }
 
+  await fixture.writeString(".azure/dev/.env", "AGENT_FQDN=threadlight-dev.example.com\n");
   await fixture.writeString("docs/safe-check-post.md", "PASS\n");
+  await fixture.writeJson("tests/postdeploy-manifest.json", {
+    checked_at: "2026-08-06T08:00:00Z",
+    phase: "post-deploy",
+    gaps: [],
+    deployment_manifest: {
+      subscription_id: "sub-1",
+      resource_group: "rg-pilot",
+      module_selectors: {
+        "workspace-ui": "yes",
+        "aca-job": "no",
+        "event-grid": "no",
+        "service-bus": "no",
+      },
+      scheduled_jobs: [],
+    },
+  });
   await fixture.writeJson("specs/cost-manifest.json", {
     generated_at: "2026-08-06T08:00:00Z",
     verdict: "complete",

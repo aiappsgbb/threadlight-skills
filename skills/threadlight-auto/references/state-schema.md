@@ -8,9 +8,10 @@ writes `.threadlight/auto-next.json` for the coding agent to consume. Format:
 pretty-printed JSON written by the guidance/agent side.
 
 > **Schema.** Stage names are `preflight / design / deploy / safe_check /
-> cost_projection / invoke`; artifact paths are `specs/SPEC.md`,
-> `docs/safe-check-post.md`, `specs/cost-manifest.json`,
-> `docs/invoke-results.md`.
+> cost_projection / invoke`; primary artifact paths are `specs/SPEC.md`,
+> `tests/postdeploy-manifest.json`, `specs/cost-manifest.json`,
+> `docs/invoke-results.md`. `docs/safe-check-post.md` remains optional
+> human-readable evidence for `safe_check`.
 
 ## Top-level shape
 
@@ -62,7 +63,7 @@ pretty-printed JSON written by the guidance/agent side.
 | preflight | `.threadlight/preflight-passed.json` | Marker freshness |
 | design | `specs/SPEC.md` | Drives all downstream gates (NEEDS CLARIFICATION scan, hash drift) |
 | deploy | `infra/main.bicep` | Bicep authoring is the load-bearing artifact for safe-check |
-| safe_check | `docs/safe-check-post.md` + `tests/postdeploy-manifest.json` | End-state evidence pair for resumption-aware invoke; docs alone are insufficient |
+| safe_check | `tests/postdeploy-manifest.json` | Semantic safe-check proof for resumption-aware invoke (`phase=post-deploy`, `gaps=[]`, fresh RFC3339 `checked_at`). `docs/safe-check-post.md` is optional human-readable evidence only. |
 | cost_projection | `specs/cost-manifest.json` | Feeds `orchestrator.py`'s `_check_cost_projection` freshness/resumability check (trusted only when `schema_version` starts with `1.` and `generated_at` is newer than last deploy) |
 | invoke | `docs/invoke-results.md` | Demo-scenario evidence; freshness gates re-run after spec change |
 | evals | `specs/evals-manifest.json` | Discover leg — offline + online (Foundry CE) + A/B eval evidence consumed by production-ready pillar 6 |

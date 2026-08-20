@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { rm } from "node:fs/promises";
+import { rm, symlink } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -140,6 +140,26 @@ function readinessManifest(overrides = {}) {
   };
 }
 
+function postdeployManifest(overrides = {}) {
+  return {
+    checked_at: "2026-08-06T08:00:00Z",
+    phase: "post-deploy",
+    gaps: [],
+    deployment_manifest: {
+      subscription_id: "sub-1",
+      resource_group: "rg-pilot",
+      module_selectors: {
+        "workspace-ui": "yes",
+        "aca-job": "no",
+        "event-grid": "no",
+        "service-bus": "no",
+      },
+      scheduled_jobs: [],
+    },
+    ...overrides,
+  };
+}
+
 test("empty workspace is ready to start pilot design", async () => {
   await withFixture("empty", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
@@ -165,7 +185,89 @@ test("deploy-blocked workspace waits for verified deployment evidence", async ()
     const phase = findPhase(model, "build-deploy");
 
     assert.notEqual(phase.status, "complete");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
     assert.match(phase.blockers.join("\n"), /Verify the deployment/);
+  });
+});
+
+test("deploy requires a real AGENT_FQDN assignment, not a commented env line", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString(".azure/dev/.env", "# AGENT_FQDN=commented-out.example.com\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy requires a non-empty AGENT_FQDN assignment", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString(".azure/dev/.env", "AGENT_FQDN=\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy requires a non-empty AGENT_FQDN assignment after unquoting", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString('.azure/dev/.env', 'AGENT_FQDN=""\n');
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy ignores inline comments after an empty AGENT_FQDN assignment", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString(".azure/dev/.env", "AGENT_FQDN=   # placeholder until deployed\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy stays incomplete when multiple azd env directories exist", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString(".azure/prod/.env", "AGENT_FQDN=threadlight-prod.example.com\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy treats symlinked azd roots as untrusted evidence instead of throwing", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString("shadow-azure/dev/.env", "AGENT_FQDN=shadow.example.com\n");
+    await rm(path.join(workspace, ".azure"), { recursive: true, force: true });
+    await symlink("shadow-azure", path.join(workspace, ".azure"));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+  });
+});
+
+test("deploy stays incomplete when azd env discovery includes a symlinked env directory", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString("shadow-env/.env", "AGENT_FQDN=shadow.example.com\n");
+    await symlink("../shadow-env", path.join(workspace, ".azure", "prod"));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
 
@@ -233,6 +335,7 @@ test("complete pilot projects all phases complete without errors", async () => {
   await withFixture("complete-pilot", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
 
+    assert.equal(findSkill(model, "threadlight-auto").status, "running");
     assert.equal(findSkill(model, "threadlight-production-ready").status, "complete");
     assert.deepEqual(
       model.phases.map((phase) => phase.status),
@@ -309,7 +412,7 @@ test("threadlight-production-ready surfaces readiness proof evidence separately 
     let model = await projectWorkspace(workspace, { now: NOW });
     let skill = findSkill(model, "threadlight-production-ready");
 
-    assert.equal(skill.status, "complete");
+    assert.equal(skill.status, "running");
     assert.equal(skill.evidenceState, "readiness-incomplete");
 
     await writeJson(
@@ -330,6 +433,306 @@ test("threadlight-production-ready surfaces readiness proof evidence separately 
 
     assert.equal(skill.status, "complete");
     assert.equal(skill.evidenceState, "readiness-proof");
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence is missing", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    await rm(path.join(workspace, "tests/postdeploy-manifest.json"));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.notEqual(findSkill(model, "threadlight-production-ready").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+    assert.notEqual(findPhase(model, "handoff").status, "complete");
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence is malformed", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString("tests/postdeploy-manifest.json", "{\n");
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence has the wrong phase", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ phase: "pre-deploy" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence carries gaps", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ gaps: ["resource mismatch"] }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete when postdeploy proof no longer matches the current manifest", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("tests/postdeploy-manifest.json", postdeployManifest({
+      deployment_manifest: {
+        subscription_id: "sub-1",
+        resource_group: "rg-other",
+      },
+    }));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "failed");
+    assert.equal(findSkill(model, "threadlight-production-ready").status, "blocked");
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence omits required proof fields", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("tests/postdeploy-manifest.json", {});
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence lacks checked_at", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("tests/postdeploy-manifest.json", {
+      phase: "post-deploy",
+      gaps: [],
+    });
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence uses a timezone-less checked_at", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-06T08:00:00" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence uses a future checked_at", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-07T08:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence uses an invalid RFC3339 checked_at", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-05T24:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence uses an impossible calendar date", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-02-30T08:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: new Date("2026-03-02T12:00:00Z") });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "failed");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("safe-check accepts lowercase z checked_at and keeps readiness-proof aligned with threadlight-auto", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-06T08:00:00z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-proof",
+    );
+  });
+});
+
+test("safe-check stays incomplete and readiness proof stays incomplete when postdeploy evidence is exactly 24 hours old", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-05T08:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "stale");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("stale safe-check proof only blocks readiness proof and handoff, not later evidence surfaces", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-01T00:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "stale");
+    assert.equal(findSkill(model, "threadlight-production-ready").status, "blocked");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+    assert.equal(findSkill(model, "threadlight-consumption-iq").status, "complete");
+    assert.equal(findSkill(model, "threadlight-evals").status, "complete");
+    assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
+    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
+    assert.equal(findPhase(model, "discover").status, "complete");
+    assert.equal(findPhase(model, "protect-govern").status, "complete");
+    assert.equal(findPhase(model, "handoff").status, "blocked");
+  });
+});
+
+test("non-postdeploy 24-hour freshness boundaries remain aligned with threadlight-auto", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-07T07:59:59Z" }),
+    );
+    await writeJson("specs/evals-manifest.json", {
+      captured_at: "2026-08-06T08:00:00Z",
+      verdict: "complete",
+    });
+
+    const model = await projectWorkspace(workspace, {
+      now: new Date("2026-08-07T08:00:00Z"),
+    });
+
+    assert.equal(findSkill(model, "threadlight-evals").status, "complete");
+  });
+});
+
+test("threadlight-production-ready does not claim readiness proof when safe-check evidence is stale", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(
+      "tests/postdeploy-manifest.json",
+      postdeployManifest({ checked_at: "2026-08-01T00:00:00Z" }),
+    );
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "stale");
+    assert.notEqual(findSkill(model, "threadlight-production-ready").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+    assert.notEqual(findPhase(model, "handoff").status, "complete");
+  });
+});
+
+test("safe-check proof does not require the optional markdown report", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    await rm(path.join(workspace, "docs/safe-check-post.md"));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-safe-check").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-proof",
+    );
+  });
+});
+
+test("safe-check surfaces the optional markdown report as evidence when present", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const skill = findSkill(model, "threadlight-safe-check");
+
+    assert.ok(skill.evidence.some((item) => item.path === "docs/safe-check-post.md"));
   });
 });
 

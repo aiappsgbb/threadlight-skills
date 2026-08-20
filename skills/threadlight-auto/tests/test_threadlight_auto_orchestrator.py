@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -56,6 +57,19 @@ def _iso_now() -> str:
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_postdeploy_fixture(tmp_path: Path, payload: dict) -> None:
+    deployment_manifest = {
+        "subscription_id": "sub-1",
+        "resource_group": "rg-pilot",
+    }
+    _write_json(tmp_path / "specs" / "manifest.json", {"deployment_manifest": deployment_manifest})
+    merged = {
+        "deployment_manifest": deployment_manifest,
+        **payload,
+    }
+    _write_json(tmp_path / "tests" / "postdeploy-manifest.json", merged)
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +134,123 @@ def test_invalid_envelope_never_reports_complete(tmp_path):
     assert connect["status"] == "partial"
 
 
+def test_deploy_requires_a_real_agent_fqdn_assignment(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    (tmp_path / ".azure" / "dev" / ".env").write_text(
+        "# AGENT_FQDN=commented-out.example.com\n",
+        encoding="utf-8",
+    )
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "AGENT_FQDN" not in decision.reason or "hasn't completed" in decision.reason
+
+
+def test_deploy_requires_a_non_empty_agent_fqdn_assignment(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    (tmp_path / ".azure" / "dev" / ".env").write_text(
+        "AGENT_FQDN=\n",
+        encoding="utf-8",
+    )
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+
+
+def test_deploy_rejects_a_quoted_empty_agent_fqdn_assignment(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    (tmp_path / ".azure" / "dev" / ".env").write_text(
+        'AGENT_FQDN=""\n',
+        encoding="utf-8",
+    )
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+
+
+def test_deploy_rejects_an_inline_comment_after_empty_agent_fqdn_assignment(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    (tmp_path / ".azure" / "dev" / ".env").write_text(
+        "AGENT_FQDN=   # placeholder until deployed\n",
+        encoding="utf-8",
+    )
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+
+
+def test_deploy_requires_an_unambiguous_single_azd_env(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure" / "dev").mkdir(parents=True)
+    (tmp_path / ".azure" / "dev" / ".env").write_text(
+        "AGENT_FQDN=threadlight-dev.example.com\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".azure" / "prod").mkdir(parents=True)
+    (tmp_path / ".azure" / "prod" / ".env").write_text(
+        "AGENT_FQDN=threadlight-prod.example.com\n",
+        encoding="utf-8",
+    )
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "multiple azd envs" in decision.reason
+
+
+def test_deploy_rejects_a_symlinked_azd_root(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / "shadow-azure" / "dev").mkdir(parents=True)
+    (tmp_path / "shadow-azure" / "dev" / ".env").write_text(
+        "AGENT_FQDN=shadow.example.com\n",
+        encoding="utf-8",
+    )
+    os.symlink(tmp_path / "shadow-azure", tmp_path / ".azure", target_is_directory=True)
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "symlinked" in decision.reason
+
+
+def test_deploy_rejects_a_symlinked_azd_env_directory(tmp_path):
+    (tmp_path / "infra").mkdir()
+    (tmp_path / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    (tmp_path / "azure.yaml").write_text("name: pilot\n", encoding="utf-8")
+    (tmp_path / ".azure").mkdir(parents=True)
+    (tmp_path / "shadow-env").mkdir(parents=True)
+    (tmp_path / "shadow-env" / ".env").write_text(
+        "AGENT_FQDN=shadow.example.com\n",
+        encoding="utf-8",
+    )
+    os.symlink(tmp_path / "shadow-env", tmp_path / ".azure" / "dev", target_is_directory=True)
+
+    decision = orch._check_deploy(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "symlinked" in decision.reason
+
+
 def test_live_legs_never_added_to_stage_runner():
     assert set(orch.MANUAL_HANDOFFS) == {
         "threadlight-connect", "threadlight-ground",
@@ -156,8 +287,143 @@ def test_safe_check_non_green_postdeploy_manifest_with_fresh_doc_runs(tmp_path):
 
     assert decision.decision == "run"
     # Reason should mention gaps and that we need to re-run the safe-check
-    assert "gaps" in decision.reason.lower()
+    assert "gaps" in decision.reason
+
+
+def test_safe_check_requires_postdeploy_manifest_to_match_current_deployment_manifest(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "safe-check-post.md").write_text("# green\n", encoding="utf-8")
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "deployment_manifest": {
+                    "subscription_id": "sub-1",
+                    "resource_group": "rg-current",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "postdeploy-manifest.json").write_text(
+        json.dumps(
+            {
+                "phase": "post-deploy",
+                "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "gaps": [],
+                "deployment_manifest": {
+                    "subscription_id": "sub-1",
+                    "resource_group": "rg-old",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "no longer matches" in decision.reason.lower()
     assert "re-running" in decision.reason.lower()
+
+
+def test_safe_check_green_postdeploy_manifest_skips_without_doc(tmp_path):
+    _write_postdeploy_fixture(tmp_path, {"checked_at": _iso_now(), "phase": "post-deploy", "gaps": []})
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "skip"
+    assert "tests/postdeploy-manifest.json" in decision.artifacts_seen
+
+
+def test_safe_check_manifest_without_checked_at_runs(tmp_path):
+    _write_postdeploy_fixture(tmp_path, {"phase": "post-deploy", "gaps": []})
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "checked_at" in decision.reason
+
+
+def test_safe_check_manifest_with_timezone_less_checked_at_runs(tmp_path):
+    _write_postdeploy_fixture(
+        tmp_path,
+        {"checked_at": "2026-08-06T08:00:00", "phase": "post-deploy", "gaps": []},
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "checked_at" in decision.reason
+
+
+def test_safe_check_manifest_with_space_separated_checked_at_runs(tmp_path):
+    _write_postdeploy_fixture(
+        tmp_path,
+        {"checked_at": "2026-08-06 08:00:00+00:00", "phase": "post-deploy", "gaps": []},
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "checked_at" in decision.reason
+
+
+def test_safe_check_manifest_with_future_checked_at_runs(tmp_path):
+    _write_postdeploy_fixture(
+        tmp_path,
+        {"checked_at": "2099-01-01T00:00:00Z", "phase": "post-deploy", "gaps": []},
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "future" in decision.reason.lower()
+
+
+def test_safe_check_manifest_with_invalid_rfc3339_checked_at_runs(tmp_path):
+    _write_postdeploy_fixture(
+        tmp_path,
+        {"checked_at": "2026-08-05T24:00:00Z", "phase": "post-deploy", "gaps": []},
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "checked_at" in decision.reason
+
+
+def test_safe_check_manifest_with_impossible_calendar_date_runs(tmp_path):
+    _write_postdeploy_fixture(
+        tmp_path,
+        {"checked_at": "2026-02-30T08:00:00Z", "phase": "post-deploy", "gaps": []},
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "checked_at" in decision.reason
+
+
+def test_safe_check_manifest_with_lowercase_z_skips(tmp_path):
+    checked_at = _iso_now().replace("Z", "z")
+    _write_postdeploy_fixture(tmp_path, {"checked_at": checked_at, "phase": "post-deploy", "gaps": []})
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "skip"
+    assert "tests/postdeploy-manifest.json" in decision.artifacts_seen
+
+
+def test_safe_check_manifest_exactly_24_hours_old_runs(tmp_path):
+    checked_at = (datetime.now(timezone.utc) - timedelta(hours=24)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    _write_postdeploy_fixture(tmp_path, {"checked_at": checked_at, "phase": "post-deploy", "gaps": []})
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert ">= 24 h" in decision.reason
 
 
 def test_leg_manifest_requires_expected_schema_captured_at_and_known_verdict(tmp_path):
@@ -340,15 +606,22 @@ def main() -> int:
             print(f"❌ {fixture_name}: fixture dir missing")
             failures += 1
             continue
-        if fixture_name == "all-complete":
-            for rel in (
-                ".threadlight/preflight-passed.json",
-                "docs/safe-check-post.md",
-                "docs/invoke-results.md",
-            ):
-                os.utime(fixture / rel)
         try:
-            report = run(fixture)
+            fixture_to_run = fixture
+            with tempfile.TemporaryDirectory(prefix=f"threadlight-{fixture_name}-") as tmp:
+                if fixture_name == "all-complete":
+                    fixture_to_run = Path(tmp) / fixture_name
+                    shutil.copytree(fixture, fixture_to_run)
+                    for rel in (
+                        ".threadlight/preflight-passed.json",
+                        "docs/invoke-results.md",
+                    ):
+                        os.utime(fixture_to_run / rel)
+                    postdeploy = fixture_to_run / "tests" / "postdeploy-manifest.json"
+                    postdeploy_data = json.loads(postdeploy.read_text(encoding="utf-8"))
+                    postdeploy_data["checked_at"] = _iso_now()
+                    postdeploy.write_text(json.dumps(postdeploy_data), encoding="utf-8")
+                report = run(fixture_to_run)
         except Exception as exc:  # noqa: BLE001
             print(f"❌ {fixture_name}: orchestrator crashed: {exc!r}")
             failures += 1
