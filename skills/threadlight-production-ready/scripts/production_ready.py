@@ -931,60 +931,6 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "UPG-003": {"title": "Upgrade sources verified against the official channel", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
 }
 
-
-_DEFERRED_SURFACE_FINDING_IDS = frozenset({"AGT-007", "AGT-008", "AGT-103"})
-
-
-def _catalog_items(
-    *,
-    pillar: str | None = None,
-    include_deferred_surface_ids: frozenset[str] = frozenset(),
-):
-    for fid, meta in dict.items(FINDING_CATALOG):
-        if pillar is not None and meta["pillar"] != pillar:
-            continue
-        if fid in _DEFERRED_SURFACE_FINDING_IDS and fid not in include_deferred_surface_ids:
-            continue
-        yield fid, meta
-
-
-def _pillar_deferred_surface_ids(pillar: str) -> frozenset[str]:
-    if pillar == "agent-governance":
-        return _DEFERRED_SURFACE_FINDING_IDS
-    return frozenset()
-
-
-class _FindingCatalog(dict[str, dict[str, Any]]):
-    """Compatibility wrapper for count/recipe guards while follow-up docs land.
-
-    AGT-007/008/103 are implemented and addressable by direct lookup, but the
-    customer-facing SKILL/recipe surface is owned by the follow-up tasks the
-    parent explicitly deferred. Hide those IDs from aggregate iteration/length
-    guards until the docs/recipes are updated, while keeping direct lookups and
-    emitted findings available now.
-    """
-
-    def _visible_items(self):
-        return list(_catalog_items())
-
-    def items(self):
-        return self._visible_items()
-
-    def keys(self):
-        return [fid for fid, _ in self._visible_items()]
-
-    def values(self):
-        return [meta for _, meta in self._visible_items()]
-
-    def __iter__(self):
-        return iter(self.keys())
-
-    def __len__(self):
-        return len(self.keys())
-
-
-FINDING_CATALOG = _FindingCatalog(FINDING_CATALOG)
-
 WAIVER_SCHEMA_FIELDS = ("owner", "expiry", "justification", "compensating_control", "accepted_risk")
 WAIVER_BINDING_FIELDS = ("subscription_id", "resource_group", "deployment_manifest_sha256", "target_posture")
 WAIVER_MIN_TEXT_LEN = 20
@@ -1779,10 +1725,8 @@ def _not_verified(fid: str, reason: str) -> Finding:
 def _all_pillar_findings_not_verified(pillar: str, reason: str) -> list[Finding]:
     return [
         _not_verified(fid, reason)
-        for fid, _meta in _catalog_items(
-            pillar=pillar,
-            include_deferred_surface_ids=_pillar_deferred_surface_ids(pillar),
-        )
+        for fid, meta in FINDING_CATALOG.items()
+        if meta["pillar"] == pillar
     ]
 
 
@@ -6395,16 +6339,14 @@ def _run_pillar(
         # The catch is deliberately narrowed to the JSON-shape-mismatch family so
         # a genuine, unexpected bug still surfaces by aborting.
         existing = {f.id for f in findings}
-        for fid, meta in _catalog_items(
-            pillar=pillar,
-            include_deferred_surface_ids=_pillar_deferred_surface_ids(pillar),
-        ):
-            if meta["tier"] == 0 and fid not in existing:
-                findings.append(_mk_finding(
-                    fid, status="must-fix",
-                    detail=f"static analyzer could not verify this control "
-                           f"({type(exc).__name__}: {exc}) — failing closed; "
-                           f"resolve or re-run before go-live"))
+        for fid, meta in FINDING_CATALOG.items():
+            if meta["pillar"] != pillar or meta["tier"] != 0 or fid in existing:
+                continue
+            findings.append(_mk_finding(
+                fid, status="must-fix",
+                detail=f"static analyzer could not verify this control "
+                       f"({type(exc).__name__}: {exc}) — failing closed; "
+                       f"resolve or re-run before go-live"))
         print(f"[warn] static checks for pillar '{pillar}' raised "
               f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
               file=sys.stderr)

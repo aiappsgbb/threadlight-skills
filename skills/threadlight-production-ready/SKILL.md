@@ -89,7 +89,7 @@ flowchart LR
 The skill drives **production onboarding** in three phases:
 
 1. **Assess.** A Python script (`scripts/production_ready.py`) inventories your
-   target Azure subscription/resource group, scores it against 188 findings
+   target Azure subscription/resource group, scores it against 191 findings
    spanning 13 production-readiness pillars, and emits an `apply-plan.json`
    that names every must-fix gap and the remediation recipe that closes it.
 
@@ -135,6 +135,12 @@ documented exception is `--scaffold-cicd`, which writes 2 files (`.github/workfl
 and `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so the
 production-onboarding pipeline can run. That exception is bounded, opt-in, and writes deterministic
 templates only — it does not emit remediation patches.
+
+> **Current agent-governance delta.** The baseline catalog now includes
+> evidence-based governance checks for enabled tool coverage (`AGT-007`),
+> runtime-appropriate adapter wiring (`AGT-008`), and fresh contract-probe
+> evidence (`AGT-103`). No version bump — this is the shipped policy surface
+> finally reflected in docs and recipes.
 
 ## How to invoke
 
@@ -200,7 +206,7 @@ skills threadlight delegates to.
 | Customer architecture review in 3 days | `python tests/production_ready.py --target citadel-spoke` (or other posture) | Same as above, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` (no live Azure auth needed) | Pure static scorecard from repo + safe-check manifests |
 | You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` finding surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
-| AGT v4 shipped (2026-06-01) and you want deep checks against the v4 surface | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the 5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, and v4 audit-field set (AGT-V4-001/002/003/006/007 + AGT-V4-101 live stub), in addition to the version-agnostic AGT-001..006 / AGT-101..102 |
+| AGT v4 shipped (2026-06-01) and you want deep checks against the v4 surface | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the 5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, and v4 audit-field set (AGT-V4-001/002/003/006/007 + AGT-V4-101 live stub), in addition to the version-agnostic AGT-001..008 / AGT-101..103 |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` and `would_fail_hard_gate` flags |
 
 > **Rule of thumb.** This skill runs at most twice per pilot
@@ -218,7 +224,7 @@ about findings, not just emit them.
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
 | 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
-| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | AGT module imported in app code (capability-based, version-agnostic) — wiring depth not asserted by static check; policy + verifier artefacts present; OWASP-ASI reference present | `foundry-agt` |
+| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | Committed AGT policy + enabled contract coverage + runtime-appropriate adapter + fresh contract-probe evidence (capability-based, version-agnostic); OWASP-ASI reference present | `foundry-agt` |
 | 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
 | 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
@@ -1047,12 +1053,13 @@ sync with the awesome-gbb skill catalog as it evolves.
 v0.9.0 realigns the **agent-governance** pillar to the real Agent Governance
 Toolkit model. Governance is a **committed policy** you author, lint, test, and
 gate in CI — `policy.yaml` (top-level `version` + `name` + `rules:`) validated by
-`agt lint-policy` / `agt test` and attested by `agt verify --badge` — not an
-in-process middleware import. The `AGT-001..006` checks now score the policy
-artefact, its schema validity, a pinned ruleset version, an OWASP ASI 2026
-reference, a CI governance gate, and a telemetry sink. `RAI-002/003` decouple
-from the governance manifest so a model-edge control (Content Safety prompt
-shields) is scored on its own signals.
+`agt lint-policy` / `agt test` and attested by `agt verify --badge`. The
+version-agnostic AGT surface now scores the policy artefact, schema validity, a
+pinned ruleset version, an OWASP ASI 2026 reference, a CI governance gate,
+enabled contract coverage (`AGT-007`), a runtime-appropriate adapter
+(`AGT-008`), fresh contract-probe evidence (`AGT-103`), and the telemetry sink.
+`RAI-002/003` decouple from the governance manifest so a model-edge control
+(Content Safety prompt shields) is scored on its own signals.
 
 | Area | v0.9.0 delta |
 | --- | --- |
