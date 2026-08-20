@@ -7,6 +7,7 @@ TDD: these tests are written first and should fail until
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,7 +39,18 @@ def _fresh_govern(verdict: str = "partial") -> dict:
         "tool_version": "1.0",
         "captured_at": "2026-01-01T00:00:00Z",
         "verdict": verdict,
-        "capabilities": {},
+        "capabilities": {
+            "policy_artefact_present": {"status": "pass"},
+            "policy_schema_valid": {"status": "pass"},
+            "policy_versioned": {"status": "pass"},
+            "policy_default_deny": {"status": "pass"},
+            "sensitive_action_rules_present": {"status": "pass"},
+            "policy_tests_present": {"status": "pass"},
+            "ci_gate_present": {"status": "pass"},
+            "attestation_present": {"status": "pass"},
+            "attestation_fresh": {"status": "pass"},
+            "asi_reference_present": {"status": "pass"},
+        },
     }
 
 
@@ -48,7 +60,19 @@ def _fresh_evals(verdict: str = "partial") -> dict:
         "tool_version": "1.0",
         "captured_at": "2026-01-01T00:00:00Z",
         "verdict": verdict,
-        "capabilities": {},
+        "capabilities": {
+            "eval_scenarios_present": {"check_id": "eval-001", "status": "pass"},
+            "eval_datasets_present": {"check_id": "eval-002", "status": "pass"},
+            "dataset_shape_ok": {"check_id": "eval-003", "status": "pass"},
+            "thresholds_declared": {"check_id": "eval-004", "status": "pass"},
+            "schedule_present": {"check_id": "eval-005", "status": "pass"},
+            "run_history_present": {"check_id": "eval-006", "status": "pass"},
+            "online_eval_wired": {"check_id": "eval-007", "status": "pass"},
+            "latest_eval_run_fresh": {"check_id": "eval-008", "status": "pass"},
+            "alert_wired": {"check_id": "eval-009", "status": "pass"},
+            "latest_pass_rate_ok": {"check_id": "eval-010", "status": "pass"},
+            "ab_comparison_present": {"check_id": "eval-011", "status": "pass"},
+        },
     }
 
 
@@ -61,11 +85,49 @@ def _fresh_redteam(verdict: str = "partial") -> dict:
         "must_fix": [],
         "should_fix": [],
         "not_verified": [],
-        # Spec-compliant shape: top-level 'asr' and 'thresholds' alongside 'capabilities'
-        "capabilities": {},
-        "asr": {},
-        "thresholds": {},
+        "capabilities": {
+            "scan_present": {"status": "pass"},
+            "scan_fresh": {"status": "pass"},
+            "jailbreak_asr_ok": {"status": "pass"},
+            "prompt_injection_asr_ok": {"status": "pass"},
+            "exfiltration_asr_ok": {"status": "pass"},
+            "harmful_content_asr_ok": {"status": "pass"},
+            "coverage_ok": {"status": "pass"},
+        },
+        "asr": {
+            "jailbreak": 0.0,
+            "prompt_injection": 0.0,
+            "indirect_attack": 0.0,
+            "exfiltration": 0.0,
+            "harmful_content": 0.0,
+        },
+        "thresholds": {"max_asr": 0.1, "freshness_days": 7, "min_attacks": 10},
     }
+
+
+def _write_passing_readiness_artifacts(root: Path) -> None:
+    post = root / "tests" / "postdeploy-manifest.json"
+    post_data = json.loads(post.read_text(encoding="utf-8"))
+    post_data["phase"] = "post-deploy"
+    post_data["gaps"] = []
+    post.write_text(json.dumps(post_data), encoding="utf-8")
+
+    readiness = {
+        "would_fail_hard_gate": False,
+        "go_live_recommendation": "ready",
+        "kpi_scorecard": {
+            "latency_declared": True,
+            "cost_per_interaction_declared": True,
+            "success_rate_declared": True,
+            "deviation_alert_present": True,
+            "traces_emit": True,
+            "eval_pass_rate": 0.99,
+            "cost_per_interaction_usd": 0.01,
+        },
+    }
+    (root / "tests" / "production-readiness-manifest.json").write_text(
+        json.dumps(readiness), encoding="utf-8"
+    )
 
 
 def test_live_smoke_accepts_non_passing_assurance_verdicts():
@@ -131,18 +193,15 @@ def test_readiness_proof_requires_production_scorecard_evidence():
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
 
-    # ensure postdeploy manifest has phase=post-deploy and gaps=[]
     post = root / "tests" / "postdeploy-manifest.json"
     post_data = json.loads(post.read_text(encoding="utf-8"))
     post_data["phase"] = "post-deploy"
     post_data["gaps"] = []
     post.write_text(json.dumps(post_data), encoding="utf-8")
 
-    # production readiness manifest is present but missing kpi_scorecard
     readiness = {
         "would_fail_hard_gate": False,
         "go_live_recommendation": "ready",
-        # intentionally omit kpi_scorecard to assert failure
     }
     (root / "tests" / "production-readiness-manifest.json").write_text(
         json.dumps(readiness), encoding="utf-8"
@@ -159,37 +218,109 @@ def test_readiness_proof_requires_production_scorecard_evidence():
 def test_readiness_proof_passes_when_assurance_and_readiness_complete():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
-    # passing manifests
     _write(specs, "govern-manifest.json", _fresh_govern("governed"))
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
-
-    # ensure postdeploy manifest has phase=post-deploy and gaps=[]
-    post = root / "tests" / "postdeploy-manifest.json"
-    post_data = json.loads(post.read_text(encoding="utf-8"))
-    post_data["phase"] = "post-deploy"
-    post_data["gaps"] = []
-    post.write_text(json.dumps(post_data), encoding="utf-8")
-
-    # production readiness manifest with scorecard + readiness fields
-    readiness = {
-        "would_fail_hard_gate": False,
-        "go_live_recommendation": "ready",
-        "kpi_scorecard": {
-            "latency_declared": True,
-            "cost_per_interaction_declared": True,
-            "success_rate_declared": True,
-            "deviation_alert_present": True,
-            "traces_emit": True,
-            "eval_pass_rate": 0.99,
-            "cost_per_interaction_usd": 0.01,
-        },
-    }
-    (root / "tests" / "production-readiness-manifest.json").write_text(
-        json.dumps(readiness), encoding="utf-8"
-    )
+    _write_passing_readiness_artifacts(root)
 
     out = eg.evaluate_evidence(root, mode="readiness-proof")
     assert out["status"] == "pass"
     assert out["readiness_asserted"] is True
     assert out["mode"] == "readiness-proof"
+
+
+def test_readiness_proof_rejects_schema_invalid_evals_manifest():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_evals = _fresh_evals("comprehensive")
+    invalid_evals["capabilities"] = {}
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", invalid_evals)
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for schema-invalid evals manifest")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "evals-manifest.json" in msg
+        assert "capabilities" in msg or "check_id" in msg
+
+
+def test_readiness_proof_rejects_schema_invalid_redteam_thresholds():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_redteam = _fresh_redteam("hardened")
+    invalid_redteam["thresholds"] = {"max_asr": 1.5, "freshness_days": -1, "min_attacks": 0}
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", invalid_redteam)
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for schema-invalid redteam thresholds")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "redteam-manifest.json" in msg
+        assert "threshold" in msg or "max_asr" in msg or "min_attacks" in msg
+
+
+def test_cli_success_returns_json_payload_and_exit_zero():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--root", str(root), "--mode", "readiness-proof"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "pass"
+    assert payload["mode"] == "readiness-proof"
+    assert payload["readiness_asserted"] is True
+
+
+def test_cli_argument_failure_returns_json_payload_and_exit_two():
+    root = fixture_workdir("sample-pilot-citadel")
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--root", str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "fail"
+    assert payload["mode"] is None
+    assert "mode" in payload["error"].lower()
+
+
+def test_cli_evidence_failure_returns_json_payload_and_exit_two():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_evals = _fresh_evals("comprehensive")
+    invalid_evals["capabilities"] = {}
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", invalid_evals)
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--root", str(root), "--mode", "readiness-proof"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "fail"
+    assert payload["mode"] == "readiness-proof"
+    assert "evals-manifest.json" in payload["error"]

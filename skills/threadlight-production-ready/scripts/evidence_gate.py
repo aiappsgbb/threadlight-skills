@@ -23,6 +23,49 @@ _ASSURANCE_SPECS = {
     "evals": ("threadlight-evals-manifest/v1", {"comprehensive", "partial", "offline-only", "none"}, "comprehensive"),
     "redteam": ("threadlight-redteam-manifest/v1", {"hardened", "partial", "vulnerable"}, "hardened"),
 }
+_CAPABILITY_STATUSES = {"pass", "must-fix", "should-fix", "not-verified", "not-applicable"}
+_GOVERN_CAPABILITIES = {
+    "policy_artefact_present",
+    "policy_schema_valid",
+    "policy_versioned",
+    "policy_default_deny",
+    "sensitive_action_rules_present",
+    "policy_tests_present",
+    "ci_gate_present",
+    "attestation_present",
+    "attestation_fresh",
+    "asi_reference_present",
+}
+_EVALS_CAPABILITIES = {
+    "eval_scenarios_present",
+    "eval_datasets_present",
+    "dataset_shape_ok",
+    "thresholds_declared",
+    "schedule_present",
+    "run_history_present",
+    "online_eval_wired",
+    "latest_eval_run_fresh",
+    "alert_wired",
+    "latest_pass_rate_ok",
+    "ab_comparison_present",
+}
+_REDTEAM_CAPABILITIES = {
+    "scan_present",
+    "scan_fresh",
+    "jailbreak_asr_ok",
+    "prompt_injection_asr_ok",
+    "exfiltration_asr_ok",
+    "harmful_content_asr_ok",
+    "coverage_ok",
+}
+_REDTEAM_ASR_KEYS = {
+    "jailbreak",
+    "prompt_injection",
+    "indirect_attack",
+    "exfiltration",
+    "harmful_content",
+}
+_REDTEAM_FINDING_IDS = {"SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"}
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -37,6 +80,119 @@ def _load_json(path: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise EvidenceGateError(f"{path} must be a JSON object")
     return data
+
+
+def _is_string_or_none(value: Any) -> bool:
+    return value is None or isinstance(value, str)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _validate_capability(
+    manifest_name: str,
+    capability_name: str,
+    capability: Any,
+    *,
+    require_check_id: bool = False,
+    allow_finding_id: bool = False,
+    forbid_extra_fields: bool = False,
+) -> None:
+    if not isinstance(capability, dict):
+        raise EvidenceGateError(f"{manifest_name} capability {capability_name!r} must be an object")
+    if capability.get("status") not in _CAPABILITY_STATUSES:
+        raise EvidenceGateError(f"{manifest_name} capability {capability_name!r} has invalid status")
+    if require_check_id and not isinstance(capability.get("check_id"), str):
+        raise EvidenceGateError(f"{manifest_name} capability {capability_name!r} missing or invalid 'check_id'")
+    for field in ("evidence", "hint"):
+        if field in capability and not _is_string_or_none(capability.get(field)):
+            raise EvidenceGateError(f"{manifest_name} capability {capability_name!r} has invalid {field!r}")
+    if "finding_id" in capability:
+        if not allow_finding_id or capability["finding_id"] not in _REDTEAM_FINDING_IDS:
+            raise EvidenceGateError(f"{manifest_name} capability {capability_name!r} has invalid 'finding_id'")
+    if forbid_extra_fields:
+        allowed_fields = {"status", "evidence", "hint"}
+        if require_check_id:
+            allowed_fields.add("check_id")
+        if allow_finding_id:
+            allowed_fields.add("finding_id")
+        extras = set(capability) - allowed_fields
+        if extras:
+            raise EvidenceGateError(
+                f"{manifest_name} capability {capability_name!r} has unsupported fields: {sorted(extras)}"
+            )
+
+
+def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
+    capabilities = data["capabilities"]
+    invalid_names = set(capabilities) - _GOVERN_CAPABILITIES
+    if invalid_names:
+        raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(invalid_names)}")
+    for capability_name, capability in capabilities.items():
+        _validate_capability(path.name, capability_name, capability)
+
+
+def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:
+    capabilities = data["capabilities"]
+    missing = _EVALS_CAPABILITIES - set(capabilities)
+    extras = set(capabilities) - _EVALS_CAPABILITIES
+    if missing:
+        raise EvidenceGateError(f"{path.name} missing capabilities: {sorted(missing)}")
+    if extras:
+        raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(extras)}")
+    for capability_name in sorted(_EVALS_CAPABILITIES):
+        _validate_capability(path.name, capability_name, capabilities[capability_name], require_check_id=True)
+
+
+def _validate_redteam_manifest(path: Path, data: Dict[str, Any]) -> None:
+    for list_field in ("must_fix", "should_fix", "not_verified"):
+        values = data.get(list_field)
+        if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+            raise EvidenceGateError(f"{path.name} missing or invalid '{list_field}' (must be list of strings)")
+
+    asr = data.get("asr")
+    if not isinstance(asr, dict):
+        raise EvidenceGateError(f"{path.name} missing or invalid 'asr' (must be object)")
+    invalid_asr_keys = set(asr) - _REDTEAM_ASR_KEYS
+    if invalid_asr_keys:
+        raise EvidenceGateError(f"{path.name} has unsupported asr fields: {sorted(invalid_asr_keys)}")
+    for key, value in asr.items():
+        if not _is_number(value) or not 0 <= value <= 1:
+            raise EvidenceGateError(f"{path.name} asr.{key} must be a number between 0 and 1")
+
+    thresholds = data.get("thresholds")
+    if not isinstance(thresholds, dict):
+        raise EvidenceGateError(f"{path.name} missing or invalid 'thresholds' (must be object)")
+    required_thresholds = {"max_asr", "freshness_days", "min_attacks"}
+    missing_thresholds = required_thresholds - set(thresholds)
+    extra_thresholds = set(thresholds) - required_thresholds
+    if missing_thresholds:
+        raise EvidenceGateError(f"{path.name} missing thresholds: {sorted(missing_thresholds)}")
+    if extra_thresholds:
+        raise EvidenceGateError(f"{path.name} has unsupported thresholds: {sorted(extra_thresholds)}")
+    if not _is_number(thresholds["max_asr"]) or not 0 <= thresholds["max_asr"] <= 1:
+        raise EvidenceGateError(f"{path.name} thresholds.max_asr must be a number between 0 and 1")
+    if not isinstance(thresholds["freshness_days"], int) or isinstance(thresholds["freshness_days"], bool) or thresholds["freshness_days"] < 0:
+        raise EvidenceGateError(f"{path.name} thresholds.freshness_days must be an integer >= 0")
+    if not isinstance(thresholds["min_attacks"], int) or isinstance(thresholds["min_attacks"], bool) or thresholds["min_attacks"] < 1:
+        raise EvidenceGateError(f"{path.name} thresholds.min_attacks must be an integer >= 1")
+
+    capabilities = data["capabilities"]
+    missing_capabilities = _REDTEAM_CAPABILITIES - set(capabilities)
+    extra_capabilities = set(capabilities) - _REDTEAM_CAPABILITIES
+    if missing_capabilities:
+        raise EvidenceGateError(f"{path.name} missing capabilities: {sorted(missing_capabilities)}")
+    if extra_capabilities:
+        raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(extra_capabilities)}")
+    for capability_name in sorted(_REDTEAM_CAPABILITIES):
+        _validate_capability(
+            path.name,
+            capability_name,
+            capabilities[capability_name],
+            allow_finding_id=True,
+            forbid_extra_fields=True,
+        )
 
 
 def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
@@ -76,18 +232,12 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
         if "capabilities" not in data or not isinstance(data.get("capabilities"), dict):
             raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities' (must be object)")
 
-        # Additional structural checks for redteam manifests
-        if key == "redteam":
-            # require lists for findings categories
-            for list_field in ("must_fix", "should_fix", "not_verified"):
-                if list_field not in data or not isinstance(data.get(list_field), list):
-                    raise EvidenceGateError(f"{path.name} missing or invalid '{list_field}' (must be list)")
-            # The Task 1 contract requires top-level 'asr' and 'thresholds' keys
-            # alongside 'capabilities' (capabilities remains a separate object).
-            if "asr" not in data or not isinstance(data.get("asr"), dict):
-                raise EvidenceGateError(f"{path.name} missing or invalid 'asr' (must be object)")
-            if "thresholds" not in data or not isinstance(data.get("thresholds"), dict):
-                raise EvidenceGateError(f"{path.name} missing or invalid 'thresholds' (must be object)")
+        if key == "govern":
+            _validate_govern_manifest(path, data)
+        elif key == "evals":
+            _validate_evals_manifest(path, data)
+        elif key == "redteam":
+            _validate_redteam_manifest(path, data)
 
         # record verdict
         verdicts[key] = verdict
