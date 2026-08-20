@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.12.0"
+  version: "1.13.0"
 ---
 
 # Threadlight Design
@@ -612,10 +612,10 @@ Must include all sections from the template:
 4. **Data Models** — all entities with field-level schemas and system of record
 5. **System Integrations** — each external system, direction, auth, availability (including **mock** flag)
 5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `foundry-mcp-aca`.** *Required for any process that talks to external systems.*
-6. **Tool Contracts** — abstract tool definitions (not bound to any runtime)
+6. **Tool Contracts** — abstract tool definitions (not bound to any runtime) plus the optional governance fields. Opt in only with `tool_governance.enabled: true`; absence or `enabled: false` preserves all legacy behavior. When enabled, every exact canonical tool appears exactly once, every tool has one explicit decision, unclassified tools are gaps, never implicit allows, and SPEC sections 6 and 8 are the source of truth; the manifest is a generated projection.
 7. **Knowledge Sources** — reference documents, policies, search indexes — with explicit `foundry-iq` / `mcp-search` / `inline-context` backing decision
 7b. **AI Services & Model Selection** — chat / vision / DocIntel / Speech models with versions. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
-8. **Human Interaction Points** — approvals, escalations, conversational flows — with **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
+8. **Human Interaction Points** — approvals, escalations, conversational flows — with stable `GATE-NNN` IDs, approval propagation (`approval_id` + original `correlation_id`), and **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
 8b. **Human Interaction (Workspace UX)** — case-list / inbox / dashboard / console / kanban / map shape with primary filters, detail sections, action toolbar, audit viewer. **INPUT CONTRACT for `threadlight-workspace-ui`.** *Optional — skip if humans only interact via approval cards.*
 9. **Success Criteria** — functional, performance, quality targets + evaluation scenarios (S-XXX linked to BR-XXX) **+ Business KPIs table (BR → KPI mapping)** for continuous evaluation
 10. **Trigger & Run Model** — how/when the process executes, volume, SLA
@@ -943,6 +943,40 @@ Machine-readable deployment contract (lives with the spec):
     "auth_required_sources": [],
     "regulatory": []
   },
+  "tool_governance": {
+    "enabled": true,
+    "contract_version": "1.0",
+    "source": {
+      "tool_contracts": "specs/SPEC.md#6-tool-contracts",
+      "action_gates": "specs/SPEC.md#8-human-interaction-points"
+    },
+    "tools": [
+      {
+        "name": "returns_apply_decision",
+        "action_class": "reversible-write",
+        "decision": "conditional",
+        "gate_id": "GATE-001",
+        "enforcement_point": "mcp-server",
+        "policy_id": "TG-RETURNS-001",
+        "required_audit_fields": [
+          "event_id",
+          "event_type",
+          "timestamp",
+          "correlation_id",
+          "contract_sha256",
+          "policy_id",
+          "tool_name",
+          "action_class",
+          "decision",
+          "enforcement_point",
+          "adapter_id",
+          "actor_id",
+          "gate_id",
+          "approval_id"
+        ]
+      }
+    ]
+  },
   "deployment_manifest": {
     "module_selectors": {
       "foundry-account":  "yes",
@@ -985,6 +1019,13 @@ Machine-readable deployment contract (lives with the spec):
   }
 }
 ```
+
+When `tool_governance.enabled: true`, project the block mechanically from SPEC
+sections 6 and 8. The manifest is a generated projection, not a second policy
+authoring surface. If the block is absent or sets `enabled: false`, preserve all
+legacy behavior. Never infer a global default: every exact canonical tool
+appears exactly once, every tool has one explicit decision, and unclassified
+tools are gaps, never implicit allows.
 
 > **`deployment_manifest` is a contract `threadlight-deploy` reads
 > mechanically.** The deploy skill's Phase 3 module-selector check

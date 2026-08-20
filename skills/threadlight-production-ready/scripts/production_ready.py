@@ -487,7 +487,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -697,7 +697,10 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-005": {"title": "AGT governance gate runs in CI", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    "AGT-007": {"title": "Enabled tool-governance contract covers every canonical tool", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-008": {"title": "Declared tool-governance runtime adapter is wired", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
+    "AGT-103": {"title": "Tool-governance allow/deny probe evidence is current and correlatable", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
     # ---- agent-governance — v4-preview deep checks (gated to --agt-profile v4_preview)
     # See docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md for rationale.
@@ -2642,6 +2645,678 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
 # one canonical file — a cross-file merge lets a sibling (e.g. `policy.prod.yaml`)
 # supply an anchor the real `policy.yaml` is missing and false-pass a hard gate.
 _CANONICAL_POLICY_NAMES = ("policy.yaml", "agt-policy.yaml", "policy.yml")
+_TG_MISSING = object()
+_TOOL_GOVERNANCE_ADAPTER_PATH = Path("policies/tool-governance/adapter-manifest.json")
+_TOOL_GOVERNANCE_PROBE_PATH = Path("tests/tool-governance-probe-manifest.json")
+_TOOL_GOVERNANCE_DESIGN_PATH = Path("tests/safe-check-design-manifest.json")
+_TOOL_GOVERNANCE_POSTDEPLOY_PATH = Path("tests/postdeploy-manifest.json")
+_TOOL_GOVERNANCE_ADAPTER_SCHEMA = "threadlight.tool-governance-adapter/v1"
+_TOOL_GOVERNANCE_AUDIT_SCHEMA = "threadlight.tool-governance-audit/v1"
+_TOOL_GOVERNANCE_PROBE_SCHEMA = "threadlight.tool-governance-probe/v1"
+_SUPPORTED_TOOL_GOVERNANCE_FRAMEWORKS = {
+    "github-copilot-sdk",
+    "microsoft-agent-framework",
+    "dotnet-harness",
+}
+_TOOL_GOVERNANCE_SIGNAL_MARKERS = {
+    "pre-tool-policy-binding": ("agent_os.integrations", "pre_tool_call"),
+    "mcp-server-policy-binding": ("threadlight.tool-governance/mcp-server/v1",),
+    "gateway-policy-binding": ("threadlight.tool-governance/gateway/v1",),
+    "dotnet-with-governance": (".WithGovernance(",),
+}
+_TOOL_GOVERNANCE_POINT_TO_SIGNALS = {
+    "agent-middleware": {"pre-tool-policy-binding", "dotnet-with-governance"},
+    "mcp-server": {"mcp-server-policy-binding"},
+    "gateway": {"gateway-policy-binding"},
+}
+
+
+def _canonical_sha256(value: Any) -> str:
+    payload = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _load_json_object(
+    path: Path,
+    label: str,
+    display_path: str | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    shown = display_path or path.as_posix()
+    data = _read_json(path)
+    if data is None:
+        if path.exists():
+            return None, [f"{label} is not valid JSON: {shown}"]
+        return None, [f"{label} missing: {shown}"]
+    if not isinstance(data, dict):
+        return None, [f"{label} must be a JSON object: {shown}"]
+    return data, []
+
+
+def _resolve_repo_relative_path(
+    repo: Path,
+    rel_path: str,
+    label: str,
+) -> tuple[Path | None, list[str]]:
+    raw = Path(rel_path)
+    if raw.is_absolute():
+        return None, [f"{label} must resolve within repo root: {rel_path}"]
+    repo_root = repo.resolve()
+    resolved = (repo_root / raw).resolve(strict=False)
+    if not resolved.is_relative_to(repo_root):
+        return None, [f"{label} must resolve within repo root: {rel_path}"]
+    return resolved, []
+
+
+def _extract_foundation_runtime(repo: Path) -> tuple[dict[str, str] | None, list[str]]:
+    path = repo / "specs" / "foundation.md"
+    text = _read_text(path)
+    if text is None:
+        return None, ["tool governance foundation missing: specs/foundation.md"]
+    runtime: dict[str, str] = {}
+    gaps: list[str] = []
+    for key in ("framework", "runtime_shape", "protocol"):
+        match = re.search(rf"(?m)^\s*{key}\s*:\s*([^\n#]+?)\s*(?:#.*)?$", text)
+        if match is None or not match.group(1).strip():
+            gaps.append(f"tool governance foundation missing {key}: specs/foundation.md")
+            continue
+        runtime[key] = match.group(1).strip()
+    return (runtime if not gaps else None), gaps
+
+
+def _runtime_tuple(value: Any, label: str) -> tuple[dict[str, str] | None, list[str]]:
+    if not isinstance(value, dict):
+        return None, [f"{label} must be an object"]
+    runtime: dict[str, str] = {}
+    gaps: list[str] = []
+    for key in ("framework", "runtime_shape", "protocol"):
+        raw = value.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            gaps.append(f"{label}.{key} must be a non-empty string")
+            continue
+        runtime[key] = raw.strip()
+    return (runtime if not gaps else None), gaps
+
+
+def _tool_governance_signal_kinds(
+    repo: Path,
+    tool_name: str,
+    signals: Any,
+    gaps: list[str],
+) -> set[str]:
+    if not isinstance(signals, list) or not signals:
+        gaps.append(f"{tool_name} binding must declare at least one wire signal")
+        return set()
+    resolved: set[str] = set()
+    for signal in signals:
+        if not isinstance(signal, dict):
+            gaps.append(f"{tool_name} wire signal entries must be objects")
+            continue
+        path = signal.get("path")
+        kind = signal.get("kind")
+        if not isinstance(path, str) or not path:
+            gaps.append(f"{tool_name} wire signal path must be a non-empty string")
+            continue
+        if not isinstance(kind, str) or not kind:
+            gaps.append(f"{tool_name} wire signal kind must be a non-empty string")
+            continue
+        if kind not in _TOOL_GOVERNANCE_SIGNAL_MARKERS:
+            gaps.append(f"{tool_name} has unknown wire signal kind: {kind}")
+            continue
+        signal_path, path_gaps = _resolve_repo_relative_path(
+            repo, path, f"{tool_name} wire signal path"
+        )
+        gaps.extend(path_gaps)
+        if signal_path is None:
+            continue
+        text = _read_text(signal_path)
+        if text is None:
+            gaps.append(f"{tool_name} wire signal path does not exist: {path}")
+            continue
+        missing = [
+            marker
+            for marker in _TOOL_GOVERNANCE_SIGNAL_MARKERS[kind]
+            if marker not in text
+        ]
+        if missing:
+            if kind == "pre-tool-policy-binding":
+                gaps.append(
+                    f"{tool_name} pre-tool-policy-binding markers unresolved in {path}"
+                )
+            else:
+                gaps.append(f"{tool_name} {kind} marker unresolved in {path}")
+            continue
+        resolved.add(kind)
+    return resolved
+
+
+def _tool_governance_event_id_list(
+    vector: dict[str, Any],
+    vector_id: str,
+    field: str,
+    *,
+    allow_empty: bool,
+    gaps: list[str],
+) -> list[str]:
+    legacy_field = "decision_events" if field == "decision_event_ids" else "outcome_events"
+    if legacy_field in vector:
+        gaps.append(f"{vector_id} must not include legacy {legacy_field}")
+    value = vector.get(field)
+    requirement = (
+        "a non-empty list of unique non-empty strings"
+        if not allow_empty
+        else "a list of unique non-empty strings"
+    )
+    if not isinstance(value, list):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    if any(not isinstance(item, str) or not item for item in value):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    if len(set(value)) != len(value):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    if not allow_empty and not value:
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    return value
+
+
+def _validate_tool_governance_probe_vector(
+    vector: dict[str, Any],
+    vector_id: str,
+    *,
+    decision: str,
+    execution_count: int,
+    require_outcome: bool,
+    gaps: list[str],
+    gate_ids: set[str] | None = None,
+) -> None:
+    if vector.get("expected_decision") != decision:
+        gaps.append(f"{vector_id} expected_decision must be {decision!r}")
+    if vector.get("observed_decision") != decision:
+        gaps.append(f"{vector_id} observed_decision must be {decision!r}")
+    if vector.get("expected_execution_count") != execution_count:
+        gaps.append(f"{vector_id} expected_execution_count must be {execution_count}")
+    if vector.get("observed_execution_count") != execution_count:
+        gaps.append(f"{vector_id} observed_execution_count must be {execution_count}")
+    correlation_id = vector.get("correlation_id")
+    if not isinstance(correlation_id, str) or not correlation_id:
+        gaps.append(f"{vector_id} must record correlation_id")
+    _tool_governance_event_id_list(
+        vector,
+        vector_id,
+        "decision_event_ids",
+        allow_empty=False,
+        gaps=gaps,
+    )
+    outcome_ids = _tool_governance_event_id_list(
+        vector,
+        vector_id,
+        "outcome_event_ids",
+        allow_empty=True,
+        gaps=gaps,
+    )
+    if require_outcome:
+        if len(outcome_ids) != 1:
+            gaps.append(f"{vector_id} must record exactly one outcome_event_id")
+    elif outcome_ids:
+        gaps.append(f"{vector_id} must not record outcome_event_ids")
+    if decision != "conditional":
+        return
+    gate_id = vector.get("gate_id")
+    if not isinstance(gate_id, str) or not gate_id:
+        gaps.append(f"{vector_id} must record gate_id")
+    elif gate_ids is not None and gate_id not in gate_ids:
+        gaps.append(f"{vector_id} gate_id must match a conditional governed tool gate_id")
+    approval_id = vector.get("approval_id")
+    if not isinstance(approval_id, str) or not approval_id:
+        gaps.append(f"{vector_id} must record approval_id")
+
+
+def _tool_governance_failure_status(contract_tools: list[dict[str, Any]]) -> str:
+    for tool in contract_tools:
+        if tool.get("action_class") == "irreversible-write":
+            return "must-fix"
+    return "should-fix"
+
+
+def _tool_governance_not_applicable() -> list[Finding]:
+    return [
+        _mk_finding("AGT-007", status="not-applicable", detail="tool_governance is absent or disabled"),
+        _mk_finding("AGT-008", status="not-applicable", detail="tool_governance is absent or disabled"),
+        _mk_finding("AGT-103", status="not-applicable", detail="tool_governance is absent or disabled"),
+    ]
+
+
+def _tool_governance_contract(ctx: RepoContext) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[str], bool]:
+    manifest, manifest_gaps = _load_json_object(
+        ctx.root / "specs" / "manifest.json",
+        "tool governance contract manifest",
+        "specs/manifest.json",
+    )
+    if manifest is None:
+        return None, [], manifest_gaps, True
+    block = manifest.get("tool_governance")
+    if block is None:
+        return None, [], [], False
+    if not isinstance(block, dict):
+        return None, [], ["tool_governance must be an object"], True
+    enabled = block.get("enabled", _TG_MISSING)
+    if enabled is _TG_MISSING or enabled is False:
+        return None, [], [], False
+    if not isinstance(enabled, bool):
+        return block, [], ["tool_governance.enabled must be boolean"], True
+    raw_tools = block.get("tools")
+    contract_tools: list[dict[str, Any]] = []
+    gaps: list[str] = []
+    if not isinstance(raw_tools, list) or not raw_tools:
+        gaps.append("tool_governance.tools must be a non-empty array")
+    else:
+        for item in raw_tools:
+            if not isinstance(item, dict):
+                gaps.append("tool_governance.tools entries must be objects")
+                continue
+            contract_tools.append(item)
+    return block, contract_tools, gaps, True
+
+
+def _check_tool_governance_static(ctx: RepoContext) -> list[Finding]:
+    block, contract_tools, contract_gaps, enabled = _tool_governance_contract(ctx)
+    if not enabled:
+        return _tool_governance_not_applicable()
+
+    contract_hash = _canonical_sha256(block) if isinstance(block, dict) else None
+    agt007_gaps = list(contract_gaps)
+    agt008_gaps = list(contract_gaps)
+    agt103_gaps = list(contract_gaps)
+
+    raw_tools = block.get("tools") if isinstance(block, dict) else None
+    if isinstance(raw_tools, list):
+        if len(contract_tools) != len(raw_tools):
+            agt007_gaps.append("tool_governance.tools contains malformed entries")
+        contract_names = [tool.get("name") for tool in contract_tools if isinstance(tool.get("name"), str) and tool.get("name")]
+        if len(contract_names) != len(contract_tools):
+            agt008_gaps.append("governed tools must declare non-empty names")
+            agt103_gaps.append("governed tools must declare non-empty names")
+        duplicate_names = sorted({name for name in contract_names if contract_names.count(name) > 1})
+        for name in duplicate_names:
+            agt007_gaps.append(f"duplicate governed tool: {name}")
+            agt008_gaps.append(f"duplicate governed tool: {name}")
+            agt103_gaps.append(f"duplicate governed tool: {name}")
+    else:
+        contract_names = []
+
+    design_payload, design_load_gaps = _load_json_object(
+        ctx.root / _TOOL_GOVERNANCE_DESIGN_PATH,
+        "tool governance design evidence",
+        _TOOL_GOVERNANCE_DESIGN_PATH.as_posix(),
+    )
+    agt007_gaps.extend(design_load_gaps)
+    if design_payload is not None:
+        design_block = design_payload.get("tool_governance")
+        if not isinstance(design_block, dict):
+            agt007_gaps.append("safe-check design manifest missing tool_governance object")
+        else:
+            if design_block.get("enabled") is not True:
+                agt007_gaps.append("safe-check design manifest must record enabled=true")
+            if design_block.get("status") != "pass":
+                agt007_gaps.append("safe-check design manifest tool_governance.status must be 'pass'")
+            if design_block.get("tools_count") != len(contract_tools):
+                agt007_gaps.append("safe-check design manifest tools_count must match canonical contract")
+            if contract_hash is not None and design_block.get("contract_sha256") != contract_hash:
+                agt007_gaps.append("safe-check design manifest contract_sha256 must match canonical contract")
+
+    foundation_runtime, foundation_gaps = _extract_foundation_runtime(ctx.root)
+    agt008_gaps.extend(foundation_gaps)
+    adapter, adapter_load_gaps = _load_json_object(
+        ctx.root / _TOOL_GOVERNANCE_ADAPTER_PATH,
+        "tool governance adapter manifest",
+        _TOOL_GOVERNANCE_ADAPTER_PATH.as_posix(),
+    )
+    agt008_gaps.extend(adapter_load_gaps)
+    agt103_gaps.extend(adapter_load_gaps)
+    adapter_runtime: dict[str, str] | None = None
+    adapter_probe: dict[str, Any] | None = None
+    adapter_hash: str | None = None
+    if adapter is not None:
+        adapter_hash = _canonical_sha256(adapter)
+        if adapter.get("schema") != _TOOL_GOVERNANCE_ADAPTER_SCHEMA:
+            agt008_gaps.append(
+                f"tool governance adapter schema must be {_TOOL_GOVERNANCE_ADAPTER_SCHEMA!r}"
+            )
+        if contract_hash is not None and adapter.get("contract_sha256") != contract_hash:
+            agt008_gaps.append(
+                "tool governance adapter contract_sha256 must match the canonical manifest digest"
+            )
+        adapter_runtime, runtime_gaps = _runtime_tuple(
+            adapter.get("runtime"), "tool governance adapter runtime"
+        )
+        agt008_gaps.extend(runtime_gaps)
+        if foundation_runtime is not None:
+            framework = foundation_runtime["framework"]
+            if framework not in _SUPPORTED_TOOL_GOVERNANCE_FRAMEWORKS:
+                agt008_gaps.append(
+                    f"tool governance runtime framework not yet supported: {framework}"
+                )
+        if (
+            foundation_runtime is not None
+            and adapter_runtime is not None
+            and adapter_runtime != foundation_runtime
+        ):
+            agt008_gaps.append(
+                "tool governance adapter runtime must match specs/foundation.md framework/runtime_shape/protocol"
+            )
+
+        contract_points: dict[str, str] = {}
+        for tool in contract_tools:
+            name = tool.get("name")
+            point = tool.get("enforcement_point")
+            if not isinstance(name, str) or not name:
+                continue
+            if not isinstance(point, str) or not point:
+                agt008_gaps.append(f"{name} has invalid enforcement_point")
+                continue
+            contract_points[name] = point
+
+        bindings = adapter.get("bindings")
+        if not isinstance(bindings, list):
+            agt008_gaps.append("tool governance adapter bindings must be an array")
+            bindings = []
+        binding_counts: dict[str, int] = {}
+        runtime_framework = (
+            foundation_runtime["framework"]
+            if foundation_runtime is not None
+            else (adapter_runtime or {}).get("framework", "")
+        )
+        for binding in bindings:
+            if not isinstance(binding, dict):
+                agt008_gaps.append("tool governance adapter bindings entries must be objects")
+                continue
+            tool_name = binding.get("tool_name")
+            if not isinstance(tool_name, str) or not tool_name:
+                agt008_gaps.append("tool governance adapter binding tool_name must be a non-empty string")
+                continue
+            binding_counts[tool_name] = binding_counts.get(tool_name, 0) + 1
+            if tool_name not in contract_points:
+                agt008_gaps.append(f"adapter binding tool is not governed by the contract: {tool_name}")
+            enforcement_point = binding.get("enforcement_point")
+            if not isinstance(enforcement_point, str) or not enforcement_point:
+                agt008_gaps.append(f"{tool_name} binding enforcement_point must be a non-empty string")
+            elif tool_name in contract_points and enforcement_point != contract_points[tool_name]:
+                agt008_gaps.append(
+                    f"{tool_name} binding enforcement_point must match contract: {contract_points[tool_name]}"
+                )
+            adapter_id = binding.get("adapter_id")
+            if not isinstance(adapter_id, str) or not adapter_id.strip():
+                agt008_gaps.append(f"{tool_name} binding adapter_id must be a non-empty string")
+            policy_artifact = binding.get("policy_artifact")
+            if not isinstance(policy_artifact, str) or not policy_artifact:
+                agt008_gaps.append(f"{tool_name} binding policy_artifact must be a non-empty string")
+            else:
+                policy_path, policy_path_gaps = _resolve_repo_relative_path(
+                    ctx.root, policy_artifact, f"{tool_name} policy artifact"
+                )
+                agt008_gaps.extend(policy_path_gaps)
+                if policy_path is not None:
+                    policy_text = _read_text(policy_path)
+                    if policy_text is None:
+                        agt008_gaps.append(f"{tool_name} policy artifact missing: {policy_artifact}")
+                    elif not policy_text.strip():
+                        agt008_gaps.append(f"{tool_name} policy artifact is empty: {policy_artifact}")
+                    elif contract_hash is not None and contract_hash not in policy_text:
+                        agt008_gaps.append(
+                            f"{tool_name} policy artifact must contain contract_sha256 {contract_hash}"
+                        )
+            resolved_signal_kinds = _tool_governance_signal_kinds(
+                ctx.root, tool_name, binding.get("wire_signals"), agt008_gaps
+            )
+            if (
+                isinstance(enforcement_point, str)
+                and enforcement_point in _TOOL_GOVERNANCE_POINT_TO_SIGNALS
+                and resolved_signal_kinds
+                and not resolved_signal_kinds
+                & _TOOL_GOVERNANCE_POINT_TO_SIGNALS[enforcement_point]
+            ):
+                agt008_gaps.append(
+                    f"{tool_name} binding enforcement evidence must match {enforcement_point}"
+                )
+            if enforcement_point == "agent-middleware":
+                if runtime_framework == "github-copilot-sdk":
+                    agt008_gaps.append(
+                        "github-copilot-sdk tools must use mcp-server or gateway, not agent-middleware"
+                    )
+                elif (
+                    runtime_framework == "microsoft-agent-framework"
+                    and "pre-tool-policy-binding" not in resolved_signal_kinds
+                ):
+                    agt008_gaps.append(
+                        f"{tool_name} agent-middleware binding requires resolved pre-tool-policy-binding evidence"
+                    )
+                elif (
+                    runtime_framework == "dotnet-harness"
+                    and "dotnet-with-governance" not in resolved_signal_kinds
+                ):
+                    agt008_gaps.append(
+                        f"{tool_name} agent-middleware binding requires resolved dotnet-with-governance evidence"
+                    )
+            elif runtime_framework == "github-copilot-sdk" and enforcement_point not in {"mcp-server", "gateway"}:
+                agt008_gaps.append(
+                    f"github-copilot-sdk tool {tool_name} must use mcp-server or gateway enforcement"
+                )
+        for tool_name, count in binding_counts.items():
+            if tool_name in contract_points and count > 1:
+                agt008_gaps.append(f"duplicate adapter binding for governed tool {tool_name}")
+        for tool_name in contract_points:
+            if binding_counts.get(tool_name, 0) == 0:
+                agt008_gaps.append(f"missing adapter binding for governed tool {tool_name}")
+
+        audit = adapter.get("audit")
+        if not isinstance(audit, dict):
+            agt008_gaps.append("tool governance audit must be an object")
+        else:
+            if audit.get("schema") != _TOOL_GOVERNANCE_AUDIT_SCHEMA:
+                agt008_gaps.append(
+                    f"tool governance audit.schema must be {_TOOL_GOVERNANCE_AUDIT_SCHEMA!r}"
+                )
+            sink = audit.get("sink")
+            if not isinstance(sink, str) or not sink:
+                agt008_gaps.append("tool governance audit.sink must be a non-empty string")
+
+        adapter_probe = adapter.get("probe")
+        if not isinstance(adapter_probe, dict):
+            agt008_gaps.append("tool governance probe must be an object")
+            adapter_probe = None
+        else:
+            entrypoint = adapter_probe.get("entrypoint")
+            evidence = adapter_probe.get("evidence")
+            if not isinstance(entrypoint, str) or not entrypoint:
+                agt008_gaps.append("tool governance probe.entrypoint must be a non-empty string")
+            if not isinstance(evidence, str) or not evidence:
+                agt008_gaps.append("tool governance probe.evidence must be a non-empty string")
+
+    probe_status = _tool_governance_failure_status(contract_tools)
+    probe, probe_load_gaps = _load_json_object(
+        ctx.root / _TOOL_GOVERNANCE_PROBE_PATH,
+        "tool governance probe evidence",
+        _TOOL_GOVERNANCE_PROBE_PATH.as_posix(),
+    )
+    agt103_gaps.extend(probe_load_gaps)
+    if probe is not None:
+        if probe.get("schema") != _TOOL_GOVERNANCE_PROBE_SCHEMA:
+            agt103_gaps.append(
+                f"tool governance probe schema must be {_TOOL_GOVERNANCE_PROBE_SCHEMA!r}"
+            )
+        if contract_hash is not None and probe.get("contract_sha256") != contract_hash:
+            agt103_gaps.append(
+                "tool governance probe contract_sha256 must match the canonical manifest digest"
+            )
+        if adapter_hash is not None and probe.get("adapter_manifest_sha256") != adapter_hash:
+            agt103_gaps.append(
+                "tool governance probe adapter_manifest_sha256 must match the canonical adapter digest"
+            )
+        if probe.get("status") != "pass":
+            agt103_gaps.append("tool governance probe status must be 'pass'")
+        generated_at = probe.get("generated_at")
+        if not isinstance(generated_at, str) or not generated_at:
+            agt103_gaps.append("tool governance probe generated_at must be present")
+        else:
+            try:
+                normalized = generated_at[:-1] + "+00:00" if generated_at.endswith(("Z", "z")) else generated_at
+                parsed = datetime.fromisoformat(normalized)
+                if parsed.tzinfo is None:
+                    raise ValueError("timezone offset required")
+                generated_dt = parsed.astimezone(timezone.utc)
+                now = datetime.now(timezone.utc)
+                if not (now - timedelta(hours=24) <= generated_dt <= now):
+                    agt103_gaps.append("tool governance probe generated_at must be within the last 24h")
+            except ValueError:
+                agt103_gaps.append("tool governance probe generated_at must be ISO-8601 with UTC offset")
+
+        conditional_gate_ids = {
+            tool.get("gate_id")
+            for tool in contract_tools
+            if tool.get("decision") == "conditional"
+            and isinstance(tool.get("gate_id"), str)
+            and tool.get("gate_id")
+        }
+        expected_vector_ids = {"allow-canary", "deny-canary"}
+        if conditional_gate_ids:
+            expected_vector_ids.add("conditional-canary")
+
+        vectors = probe.get("vectors")
+        vector_by_id: dict[str, dict[str, Any]] = {}
+        if not isinstance(vectors, list):
+            agt103_gaps.append("tool governance probe vectors must be a list")
+            vectors = []
+        for item in vectors:
+            if not isinstance(item, dict):
+                agt103_gaps.append("tool governance probe vector entries must be objects")
+                continue
+            vector_id = item.get("id")
+            if not isinstance(vector_id, str) or not vector_id:
+                agt103_gaps.append("tool governance probe vector id must be a non-empty string")
+                continue
+            if vector_id in vector_by_id:
+                agt103_gaps.append(f"duplicate tool governance probe vector id: {vector_id}")
+                continue
+            vector_by_id[vector_id] = item
+        if set(vector_by_id) != expected_vector_ids:
+            agt103_gaps.append(
+                "tool governance probe vectors must cover exactly: "
+                + ", ".join(sorted(expected_vector_ids))
+            )
+        allow_vector = vector_by_id.get("allow-canary")
+        if allow_vector is None:
+            agt103_gaps.append("missing tool governance probe vector: allow-canary")
+        else:
+            _validate_tool_governance_probe_vector(
+                allow_vector,
+                "allow-canary",
+                decision="allow",
+                execution_count=1,
+                require_outcome=True,
+                gaps=agt103_gaps,
+            )
+        deny_vector = vector_by_id.get("deny-canary")
+        if deny_vector is None:
+            agt103_gaps.append("missing tool governance probe vector: deny-canary")
+        else:
+            _validate_tool_governance_probe_vector(
+                deny_vector,
+                "deny-canary",
+                decision="deny",
+                execution_count=0,
+                require_outcome=False,
+                gaps=agt103_gaps,
+            )
+        if conditional_gate_ids:
+            conditional_vector = vector_by_id.get("conditional-canary")
+            if conditional_vector is None:
+                agt103_gaps.append("missing tool governance probe vector: conditional-canary")
+            else:
+                _validate_tool_governance_probe_vector(
+                    conditional_vector,
+                    "conditional-canary",
+                    decision="conditional",
+                    execution_count=1,
+                    require_outcome=True,
+                    gaps=agt103_gaps,
+                    gate_ids=conditional_gate_ids,
+                )
+
+        audit_field_results = probe.get("audit_field_results")
+        if not isinstance(audit_field_results, list):
+            agt103_gaps.append("tool governance probe audit_field_results must be a list")
+        else:
+            seen_audit_ids: set[str] = set()
+            for item in audit_field_results:
+                if not isinstance(item, dict):
+                    agt103_gaps.append(
+                        "tool governance probe audit_field_results entries must be objects"
+                    )
+                    continue
+                vector_id = item.get("vector_id")
+                if not isinstance(vector_id, str) or not vector_id:
+                    agt103_gaps.append(
+                        "tool governance probe audit_field_results vector_id must be a non-empty string"
+                    )
+                    continue
+                if vector_id in seen_audit_ids:
+                    agt103_gaps.append(f"duplicate audit_field_results vector_id: {vector_id}")
+                    continue
+                seen_audit_ids.add(vector_id)
+                if item.get("status") != "pass":
+                    agt103_gaps.append(f"audit_field_results {vector_id} must have status 'pass'")
+                if item.get("missing") != []:
+                    agt103_gaps.append(f"audit_field_results {vector_id} missing must be []")
+            if seen_audit_ids != expected_vector_ids:
+                agt103_gaps.append(
+                    "tool governance probe audit_field_results must cover exactly: "
+                    + ", ".join(sorted(expected_vector_ids))
+                )
+
+    postdeploy = _read_json(ctx.root / _TOOL_GOVERNANCE_POSTDEPLOY_PATH)
+    if isinstance(postdeploy, dict):
+        postdeploy_block = postdeploy.get("tool_governance")
+        if isinstance(postdeploy_block, dict):
+            if postdeploy_block.get("status") != "pass":
+                agt103_gaps.append("postdeploy tool_governance.status must be 'pass'")
+            if contract_hash is not None and postdeploy_block.get("contract_sha256") != contract_hash:
+                agt103_gaps.append("postdeploy tool_governance.contract_sha256 must match canonical contract")
+            if postdeploy_block.get("evidence") not in (None, _TOOL_GOVERNANCE_PROBE_PATH.as_posix()):
+                agt103_gaps.append(
+                    "postdeploy tool_governance.evidence must reference tests/tool-governance-probe-manifest.json"
+                )
+
+    detail_007 = "Tool-governance design evidence matches the canonical contract"
+    if agt007_gaps:
+        detail_007 = "; ".join(agt007_gaps)
+    detail_008 = "Tool-governance adapter wiring matches contract, runtime, and evidence"
+    if agt008_gaps:
+        detail_008 = "; ".join(agt008_gaps)
+    detail_103 = "Tool-governance probe evidence is fresh, correlatable, and current"
+    if agt103_gaps:
+        detail_103 = "; ".join(agt103_gaps)
+
+    return [
+        _mk_finding(
+            "AGT-007",
+            status="must-fix" if agt007_gaps else "pass",
+            detail=detail_007,
+        ),
+        _mk_finding(
+            "AGT-008",
+            status="must-fix" if agt008_gaps else "pass",
+            detail=detail_008,
+        ),
+        _mk_finding(
+            "AGT-103",
+            status=probe_status if agt103_gaps else "pass",
+            detail=detail_103,
+        ),
+    ]
 
 
 def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
@@ -2664,6 +3339,7 @@ def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
+    governance_findings = _check_tool_governance_static(ctx)
     # Prefer the threadlight-govern leg manifest when it is present and fresh:
     # the leg has already verified AGT wiring, so report its verdict as
     # evidence rather than re-deriving from heuristics.
@@ -2695,6 +3371,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
             detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
         if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
             out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
+        out.extend(governance_findings)
         return out
     # ---- legacy heuristic path (no govern manifest) ----
     # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
@@ -2747,6 +3424,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     # Note unknown profile
     if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
         out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
+    out.extend(governance_findings)
     return out
 
 
@@ -5692,12 +6370,13 @@ def _run_pillar(
         # a genuine, unexpected bug still surfaces by aborting.
         existing = {f.id for f in findings}
         for fid, meta in FINDING_CATALOG.items():
-            if meta["pillar"] == pillar and meta["tier"] == 0 and fid not in existing:
-                findings.append(_mk_finding(
-                    fid, status="must-fix",
-                    detail=f"static analyzer could not verify this control "
-                           f"({type(exc).__name__}: {exc}) — failing closed; "
-                           f"resolve or re-run before go-live"))
+            if meta["pillar"] != pillar or meta["tier"] != 0 or fid in existing:
+                continue
+            findings.append(_mk_finding(
+                fid, status="must-fix",
+                detail=f"static analyzer could not verify this control "
+                       f"({type(exc).__name__}: {exc}) — failing closed; "
+                       f"resolve or re-run before go-live"))
         print(f"[warn] static checks for pillar '{pillar}' raised "
               f"{type(exc).__name__}: {exc} — failing closed (must-fix)",
               file=sys.stderr)

@@ -20,7 +20,7 @@ description: >
   orchestration (threadlight-deploy), schema authoring
   (threadlight-design).
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -151,7 +151,11 @@ threadlight-safe-check/
 ├── scripts/
 │   └── safe_check.py              (single-file Python module — the CLI)
 └── tests/
-    └── test_safe_check.py         (integration_binding_gaps + example parity)
+    ├── test_safe_check.py         (gate tests + example parity)
+    └── fixtures/tool-governance-enabled/
+        ├── policies/tool-governance/adapter-manifest.json
+        ├── tests/tool_governance_probe.py
+        └── tests/tool-governance-probe-manifest.json
 ```
 
 The CLI is **one file** (~250 LOC) intentionally — copy it into the pilot
@@ -171,6 +175,50 @@ python3 -m pytest skills/threadlight-safe-check/tests/ -q
 `test_safe_check.py` also asserts the example copy shipped as
 `examples/returns-triage-governed/tests/safe_check.py` stays **byte-for-byte**
 identical to `scripts/safe_check.py`, so the two never drift.
+
+---
+
+## Tool-governance post-deploy proof (canary-only)
+
+When `tool_governance.enabled: true`, the post-deploy phase adds a proof step
+after the existing Azure image / job / App Insights / bot / Cosmos /
+integration / channel / schedule checks complete:
+
+1. Load `policies/tool-governance/adapter-manifest.json` and resolve
+   `probe.entrypoint` plus `probe.evidence` relative to the pilot repo root.
+2. The probe entrypoint source MUST contain the exact line
+   `THREADLIGHT_CANARY_ONLY = True`. Anything else is an immediate gap and
+   **safe-check does not execute the file**.
+3. Execution is always:
+
+   ```python
+   [sys.executable, entrypoint, "--out", evidence]
+   ```
+
+   with `cwd=<repo>`, `shell=False`, `capture_output=True`, and `check=False`.
+   Safe-check never shells out through `sh -c`, and it never calls production
+   mutation endpoints itself — only the adapter's canary-only probe may run.
+4. The evidence file (for example
+   `tests/tool-governance-probe-manifest.json`) must be JSON schema
+   `threadlight.tool-governance-probe/v1`, must report `status: pass`, and must
+   echo both the canonical `tool_governance` contract hash and the canonical
+   adapter-manifest hash.
+5. The evidence must prove:
+   - `allow-canary` → expected/observed `allow`, execution count `1`, non-empty
+     `correlation_id` + `decision_event_ids`, exactly one `outcome_event_id`
+   - `deny-canary` → expected/observed `deny`, execution count `0`, non-empty
+     `correlation_id` + `decision_event_ids`, empty `outcome_event_ids`
+   - `conditional-canary` (only when the contract has a conditional tool) →
+     expected/observed `conditional`, execution count `1`, non-empty
+     `correlation_id`, `gate_id`, `approval_id`, `decision_event_ids`, exactly
+     one `outcome_event_id`, and the `gate_id` must match a governed
+     conditional tool
+6. `audit_field_results` must cover every vector exactly once, each with
+   `status: pass` and `missing: []`.
+7. `tests/postdeploy-manifest.json` stores only the summary under
+   `tool_governance` (status, contract hash, adapter hash, relative evidence
+   path). The detailed probe vectors stay in the separate evidence file while
+   top-level `gaps[]` remain the single failure contract for the gate.
 
 ---
 
@@ -194,6 +242,16 @@ identical to `scripts/safe_check.py`, so the two never drift.
 7. `deployment_manifest.expected_resource_types[]` non-empty and
    contains the canonical `Microsoft.*` type for every `yes` selector
    per the table in **Selector → resource type map** below.
+8. If `tool_governance.enabled: true`, validate the closed
+   `tool_governance` schema (`enabled`, `contract_version`, `source`,
+   `tools`), exact `source.tool_contracts` / `source.action_gates`
+   strings, canonical SHA-256 digest, one-tool-per-`###`-heading
+   coverage of SPEC § 6, explicit action class / decision / policy /
+   enforcement fields, required common audit fields, and unique existing
+   `GATE-NNN` references from SPEC § 8.
+9. If the block is absent, omits `enabled`, or sets `enabled: false`,
+   record tool governance as `{"enabled": false, "status":
+   "not-applicable"}` and preserve legacy design-gaps / exit behavior.
 
 **Common gaps caught:**
 
@@ -231,6 +289,45 @@ Plus **two orphan checks** (caught orphan
 2. **`src/`-folder orphan check.** Every `src/<dir>/` must map to a
    declared `azure.yaml` service (or be `src/agent/` which has its own
    host). Otherwise → orphan; either wire or delete.
+
+If `tool_governance.enabled: true`, Phase 2 also validates the adapter
+wiring contract exactly — **no prompt fallback, no silent enforcement-point
+substitution**:
+
+1. `enabled` absent / missing / `false` → `{"enabled": false, "status":
+   "not-applicable"}` with no gaps.
+2. `policies/tool-governance/adapter-manifest.json` must exist, parse as a
+   JSON object, and declare schema
+   `threadlight.tool-governance-adapter/v1`.
+3. Adapter `contract_sha256` must equal the canonical digest of
+   `manifest["tool_governance"]`; adapter runtime
+   `{framework,runtime_shape,protocol}` must match `specs/foundation.md`
+   exactly.
+4. Initial supported frameworks are **only**
+   `github-copilot-sdk` and `microsoft-agent-framework`. Future tuples
+   such as `dotnet-harness` are recognized as evidence but still fail
+   predeploy as **unsupported runtime** until a real adapter ships.
+5. Every governed tool needs **exactly one** binding; no missing, duplicate,
+   or extra bindings. `binding.enforcement_point` must equal the manifest
+   contract. `adapter_id` must be non-empty.
+6. Every `policy_artifact` path must exist, be non-empty, and contain the
+   same `contract_sha256`.
+7. Every binding needs non-empty `wire_signals[]`, and each signal path must
+   exist with grounded evidence:
+   - `pre-tool-policy-binding` → file contains both
+     `agent_os.integrations` and `pre_tool_call` (records the
+     foundry-agt-selected surface; safe-check never fabricates this import)
+   - `mcp-server-policy-binding` → literal
+     `threadlight.tool-governance/mcp-server/v1`
+   - `gateway-policy-binding` → literal
+     `threadlight.tool-governance/gateway/v1`
+   - `dotnet-with-governance` → literal `.WithGovernance(`
+8. `github-copilot-sdk` tools may use only `mcp-server` or `gateway`.
+   `microsoft-agent-framework` may use `agent-middleware` only when a
+   resolved `pre-tool-policy-binding` signal is present.
+9. Adapter `audit` must declare schema
+   `threadlight.tool-governance-audit/v1` plus non-empty `sink`;
+   `probe.entrypoint` and `probe.evidence` must be non-empty strings.
 
 **Common gaps caught:**
 

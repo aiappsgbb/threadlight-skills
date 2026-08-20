@@ -20,8 +20,9 @@ static + `AGT-V4-101` live) that anchor on the v4-specific surface
 (5-distribution package names, ACS `intervention_points:` schema,
 dynamic policy conditions, composite GitHub Action with mandatory
 `toolkit-version:`, and the expanded audit-field set). The
-version-agnostic `AGT-001..006` / `AGT-101..102` checks above still
-run unchanged. See
+version-agnostic `AGT-001..008` / `AGT-101..103` checks above still
+run unchanged, now with evidence-based contract / adapter / probe
+coverage. See
 [`docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md`](../../../../docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md)
 for the recon evidence and design rationale.
 
@@ -29,21 +30,24 @@ for the recon evidence and design rationale.
 
 ### Static
 
-| ID | Check | Default status |
-|---|---|---|
-| `AGT-001` | Policy is **schema-valid** — top-level `version` + `name` + `rules:` present, lints clean under `agt lint-policy` | `must-fix` if not schema-valid |
-| `AGT-002` | AGT policy artefact present (`policy.yaml`, `agt-policy.yaml`, or equivalent referenced from `agent.yaml`) | `must-fix` if missing |
-| `AGT-003` | OWASP / Agentic Security Initiative 2026 ("ASI") reference present in policy / source / docs | `should-fix` if absent |
-| `AGT-004` | Policy ruleset carries a pinned semver `version:` (not `latest`, not absent) | `should-fix` if missing |
-| `AGT-005` | A CI workflow runs the toolkit (`agt verify` / `lint-policy` / `test`) so a policy regression fails the pipeline | `should-fix` if no gate |
-| `AGT-006` | Telemetry sink configured so policy decisions are auditable | `should-fix` if absent |
+| ID | Catalog title | Check | Default status |
+|---|---|---|---|
+| `AGT-001` | AGT policy is schema-valid (lints clean) | Policy is **schema-valid** — top-level `version` + `name` + `rules:` present, lints clean under `agt lint-policy` | `must-fix` if not schema-valid |
+| `AGT-002` | policy.yaml present in repo | AGT policy artefact present (`policy.yaml`, `agt-policy.yaml`, or equivalent referenced from `agent.yaml`) | `must-fix` if missing |
+| `AGT-003` | OWASP ASI 2026 verifier referenced | OWASP / Agentic Security Initiative 2026 ("ASI") reference present in policy / source / docs | `should-fix` if absent |
+| `AGT-004` | AGT policy ruleset version pinned | Policy ruleset carries a pinned semver `version:` (not `latest`, not absent) | `should-fix` if missing |
+| `AGT-005` | AGT governance gate runs in CI | A CI workflow runs the toolkit (`agt verify` / `lint-policy` / `test`) so a policy regression fails the pipeline | `should-fix` if no gate |
+| `AGT-006` | AGT telemetry sink configured | Telemetry sink configured so policy decisions are auditable | `should-fix` if absent |
+| `AGT-007` | Enabled tool-governance contract covers every canonical tool | `tool_governance.enabled: true` contract in `specs/manifest.json` classifies **every** canonical SPEC § 6 tool, points back to SPEC § 6 / § 8, and publishes stable `gate_id` values for every conditional decision — no implicit allow for omitted tools | `must-fix` if any canonical tool is unclassified, duplicated, or a conditional tool lacks a stable § 8 gate |
+| `AGT-008` | Declared tool-governance runtime adapter is wired | `policies/tool-governance/adapter-manifest.json` exists, hashes the canonical contract, preserves each declared `enforcement_point`, resolves real `wire_signals`, and uses a runtime-appropriate adapter (`mcp-server` / `gateway` for GHCP, real pre-tool middleware evidence for MAF) | `must-fix` if adapter wiring drifts from the contract/runtime, policy hashes, or falls back to prompt-only enforcement |
+| `AGT-103` | Tool-governance allow/deny probe evidence is current and correlatable | Fresh `tests/tool-governance-probe-manifest.json` (≤24h) proves approved behavior: allow canary executes once, deny canary executes zero times, and any conditional canary records `gate_id` + `approval_id`; evidence must correlate contract + adapter hashes and flow through post-deploy manifests | `pass` when evidence is fresh; otherwise dynamic — `must-fix` if any governed tool is `irreversible-write`, else `should-fix` |
 
 ### Live (tier 1)
 
-| ID | Check | Default status |
-|---|---|---|
-| `AGT-101` | If AGT runs in a sidecar container, sidecar present in the deployed ACA | `must-fix` if expected |
-| `AGT-102` | If AGT logs telemetry to AppIn, recent traces (last 24h) carry an AGT span/operation | `should-fix` if absent (with hint: may be deployed but not exercised) |
+| ID | Catalog title | Check | Default status |
+|---|---|---|---|
+| `AGT-101` | Workload identity scoped to AGT-required RBAC | RG role assignments for the workload identity stay within the AGT-required surface — no broad `Owner` / `Contributor` grants on the target resource group | `should-fix` if broad role assignments are present or scoping cannot be verified |
+| `AGT-102` | AGT denials visible in App Insights last 24h | If AGT logs telemetry to App Insights, recent traces (last 24h) carry an AGT denial span / operation | `should-fix` if absent (with hint: may be deployed but not exercised) |
 
 ## Capability detection
 
@@ -81,14 +85,14 @@ false-fails on non-v4 pilots and never leaks into `v3_7` / `none`
 output. The full evidence trail and the exact regex anchors are in the
 [design note](../../../../docs/superpowers/specs/2026-06-10-agt-v4-deep-checks-design.md).
 
-| ID | Detection signal (where to look) | Default status |
-|---|---|---|
-| `AGT-V4-001` | `requirements*.txt`, `pyproject.toml`, `package.json` declare one of `agent-governance-toolkit-{core,runtime,sre,cli}` or `agent-governance-toolkit[full]` | `pass` if v4 names found; `not-applicable` if no AGT deps at all; `must-fix` only if v3.7-shape names are declared without v4 names |
-| `AGT-V4-002` | A policy YAML carries `agent_control_specification_version:` and an `intervention_points:` block with at least one canonical key (`agent_startup`, `input`, `pre_model_call`, `post_model_call`, `pre_tool_call`, `post_tool_call`, `output`) | `pass` if both markers present; `not-applicable` if no policy YAML exists; `should-fix` if policy exists but lacks the ACS markers |
-| `AGT-V4-003` | A policy YAML (or an `agent_os.integrations` block) references `time_window`, `day_of_week`, `cost_per_window`, or `token_count_per_window` | `pass` (informational — never `must-fix`); `not-applicable` if nothing dynamic detected |
-| `AGT-V4-006` | A workflow under `.github/workflows/` uses `microsoft/agent-governance-toolkit/action@vX` | `pass` if the action step also sets `toolkit-version:`; `must-fix` if the action is used without `toolkit-version:`; `not-applicable` if the action is never used |
-| `AGT-V4-007` | A committed verifier JSON (under `tests/**/verifier*.json`, `tests/**/agt-verifier*.json`, or `docs/**/agt-verifier*.json`) | `pass` if ≥3 of the 5 v4 audit fields (`arguments_hash`, `approver_did`, `policy_version`, `issued_at`, `completed_at`) are present; `should-fix` if JSON exists but is missing them; `not-verified` if no JSON exists |
-| `AGT-V4-101` (live, tier 2) | KQL probe in App Insights for denial events carrying a v4-shaped `policy_version` | Always `not-verified` in v1 (KQL probe deferred — same pattern as `AGT-102`) |
+| ID | Catalog title | Check | Default status |
+|---|---|---|---|
+| `AGT-V4-001` | AGT v4 distribution names declared in dependencies | `requirements*.txt`, `pyproject.toml`, `package.json` declare one of `agent-governance-toolkit-{core,runtime,sre,cli}` or `agent-governance-toolkit[full]` | `pass` if v4 names found; `not-applicable` if no AGT deps at all; `must-fix` only if v3.7-shape names are declared without v4 names |
+| `AGT-V4-002` | AGT v4 policy uses ACS intervention_points schema | A policy YAML carries `agent_control_specification_version:` and an `intervention_points:` block with at least one canonical key (`agent_startup`, `input`, `pre_model_call`, `post_model_call`, `pre_tool_call`, `post_tool_call`, `output`) | `pass` if both markers present; `not-applicable` if no policy YAML exists; `should-fix` if policy exists but lacks the ACS markers |
+| `AGT-V4-003` | AGT v4 dynamic policy conditions (time/cost/quota) detected | A policy YAML (or an `agent_os.integrations` block) references `time_window`, `day_of_week`, `cost_per_window`, or `token_count_per_window` | `pass` (informational — never `must-fix`); `not-applicable` if nothing dynamic detected |
+| `AGT-V4-006` | AGT v4 composite GitHub Action pinned via toolkit-version | A workflow under `.github/workflows/` uses `microsoft/agent-governance-toolkit/action@vX` | `pass` if the action step also sets `toolkit-version:`; `must-fix` if the action is used without `toolkit-version:`; `not-applicable` if the action is never used |
+| `AGT-V4-007` | AGT v4 audit fields present in committed verifier JSON | A committed verifier JSON (under `tests/**/verifier*.json`, `tests/**/agt-verifier*.json`, or `docs/**/agt-verifier*.json`) | `pass` if ≥3 of the 5 v4 audit fields (`arguments_hash`, `approver_did`, `policy_version`, `issued_at`, `completed_at`) are present; `should-fix` if JSON exists but is missing them; `not-verified` if no JSON exists |
+| `AGT-V4-101` | AGT v4 denials carry v4-shaped policy_version in App Insights | KQL probe in App Insights for denial events carrying a v4-shaped `policy_version` | Always `not-verified` in v1 (KQL probe deferred — same pattern as `AGT-102`) |
 
 **Deferred to a follow-up PR:**
 

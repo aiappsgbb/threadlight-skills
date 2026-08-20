@@ -1,0 +1,96 @@
+{
+  "name": "tool-governance-fixture",
+  "tool_governance": {
+    "enabled": true,
+    "contract_version": "1.0",
+    "source": {
+      "tool_contracts": "specs/SPEC.md#6-tool-contracts",
+      "action_gates": "specs/SPEC.md#8-human-interaction-points"
+    },
+    "tools": [
+      {
+        "name": "inventory_read",
+        "action_class": "read",
+        "decision": "allow",
+        "enforcement_point": "mcp-server",
+        "policy_id": "TG-FIXTURE-READ",
+        "required_audit_fields": [
+          "event_id",
+          "event_type",
+          "timestamp",
+          "correlation_id",
+          "contract_sha256",
+          "policy_id",
+          "tool_name",
+          "action_class",
+          "decision",
+          "enforcement_point",
+          "adapter_id",
+          "actor_id"
+        ]
+      },
+      {
+        "name": "external_notify",
+        "action_class": "external-side-effect",
+        "decision": "deny",
+        "enforcement_point": "mcp-server",
+        "policy_id": "TG-FIXTURE-DENY",
+        "required_audit_fields": [
+          "event_id",
+          "event_type",
+          "timestamp",
+          "correlation_id",
+          "contract_sha256",
+          "policy_id",
+          "tool_name",
+          "action_class",
+          "decision",
+          "enforcement_point",
+          "adapter_id",
+          "actor_id"
+        ]
+      },
+      {
+        "name": "returns_apply_decision",
+        "action_class": "reversible-write",
+        "decision": "conditional",
+        "gate_id": "GATE-001",
+        "enforcement_point": "mcp-server",
+        "policy_id": "TG-FIXTURE-HITL",
+        "required_audit_fields": [
+          "event_id",
+          "event_type",
+          "timestamp",
+          "correlation_id",
+          "contract_sha256",
+          "policy_id",
+          "tool_name",
+          "action_class",
+          "decision",
+          "enforcement_point",
+          "adapter_id",
+          "actor_id",
+          "gate_id",
+          "approval_id"
+        ]
+      }
+    ]
+  },
+  "deployment_manifest": {
+    "module_selectors": {
+      "aca-mcp": "yes"
+    },
+    "services": [
+      {
+        "name": "mcp",
+        "host": "containerapp",
+        "src": "src/mcp"
+      }
+    ],
+    "scheduled_jobs": [],
+    "channels": [],
+    "expected_resource_types": [
+      "Microsoft.App/containerApps"
+    ]
+  }
+}

@@ -470,6 +470,7 @@ def test_cli_survives_a_nonexistent_target(tmp_path, capsys):
 def test_version_matches_skill_md_metadata():
     text = (TEST_DIR.parent / "SKILL.md").read_text(encoding="utf-8")
     declared = scc.parse_frontmatter(text)
+    assert scc.VERSION == "1.13.0"
     assert declared.get("metadata.version") == scc.VERSION, (
         "SKILL.md metadata.version must equal skill_contract_check.VERSION")
 

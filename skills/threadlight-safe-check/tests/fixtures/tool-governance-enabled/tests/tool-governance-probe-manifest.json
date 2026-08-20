@@ -1,0 +1,77 @@
+{
+  "schema": "threadlight.tool-governance-probe/v1",
+  "contract_sha256": "sha256:67428d8a48645114ce87615f9e3e3300a44bbde1628b06f2a3adcc094aa27984",
+  "adapter_manifest_sha256": "sha256:a80bf4b14fd9206ab6c00cc4d11b68a061f3a3ccce5ec4f20931cde5235d3ad5",
+  "generated_at": "2026-08-20T12:59:12Z",
+  "vectors": [
+    {
+      "id": "allow-canary",
+      "tool_name": "inventory_read",
+      "policy_id": "TG-FIXTURE-READ",
+      "expected_decision": "allow",
+      "observed_decision": "allow",
+      "expected_execution_count": 1,
+      "observed_execution_count": 1,
+      "correlation_id": "probe-allow-001",
+      "decision_event_ids": [
+        "decision-allow-001"
+      ],
+      "outcome_event_ids": [
+        "outcome-allow-001"
+      ],
+      "status": "pass"
+    },
+    {
+      "id": "deny-canary",
+      "tool_name": "external_notify",
+      "policy_id": "TG-FIXTURE-DENY",
+      "expected_decision": "deny",
+      "observed_decision": "deny",
+      "expected_execution_count": 0,
+      "observed_execution_count": 0,
+      "correlation_id": "probe-deny-001",
+      "decision_event_ids": [
+        "decision-deny-001"
+      ],
+      "outcome_event_ids": [],
+      "status": "pass"
+    },
+    {
+      "id": "conditional-canary",
+      "tool_name": "returns_apply_decision",
+      "policy_id": "TG-FIXTURE-HITL",
+      "expected_decision": "conditional",
+      "observed_decision": "conditional",
+      "expected_execution_count": 1,
+      "observed_execution_count": 1,
+      "correlation_id": "probe-hitl-001",
+      "gate_id": "GATE-001",
+      "approval_id": "approval-fixture-001",
+      "decision_event_ids": [
+        "decision-hitl-001"
+      ],
+      "outcome_event_ids": [
+        "outcome-hitl-001"
+      ],
+      "status": "pass"
+    }
+  ],
+  "audit_field_results": [
+    {
+      "vector_id": "allow-canary",
+      "missing": [],
+      "status": "pass"
+    },
+    {
+      "vector_id": "deny-canary",
+      "missing": [],
+      "status": "pass"
+    },
+    {
+      "vector_id": "conditional-canary",
+      "missing": [],
+      "status": "pass"
+    }
+  ],
+  "status": "pass"
+}

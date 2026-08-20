@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.4"
+  version: "1.7.0"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -501,6 +501,42 @@ Core deployment inputs:
   resolve the remaining signals, or hard-stop back to `threadlight-design`,
   before honoring the operator's choice.
 
+#### Tool-governance adapter selection (opt-in)
+
+Read `specs/manifest.json.tool_governance` only when `enabled: true`.
+Preserve contract semantics exactly: `tool_name`, `action_class`, `decision`,
+`gate_id`, `enforcement_point`, `policy_id`, and required audit fields
+`event_id`, `event_type`, `timestamp`, `correlation_id`, `contract_sha256`,
+`policy_id`, `tool_name`, `action_class`, `decision`, `enforcement_point`,
+`adapter_id`, `actor_id` (plus `gate_id` / `approval_id` when the contract
+declares a conditional gate).
+
+| Runtime/tool shape | Supported enforcement |
+|---|---|
+| MAF Agent in-process tool | invoke/use `foundry-agt` and record the installed skill's real deterministic pre-tool boundary as `agent-middleware` |
+| MAF Workflow executor tool | invoke/use `foundry-agt` on every executor capable of invoking the tool and record the installed skill's real deterministic pre-tool boundary on each executor |
+| MAF MCP tool | `agent-middleware`, `mcp-server`, or `gateway`, but MAF MCP tools only bind at the exact declared supported boundary |
+| GHCP SDK MCP tool | `mcp-server` or `gateway`; GHCP SDK tools are MCP-bound |
+| GHCP SDK in-process tool | unsupported |
+
+- GHCP SDK tools are MCP-bound and governance applies only at the declared
+  `mcp-server` or `gateway` boundary.
+- GHCP + `agent-middleware` is an explicit deployment gap: never claim that
+  `CopilotClient` or `InvocationAgentServerHost` provides in-process
+  enforcement. If a governed GHCP tool declares any unsupported point,
+  unsupported point stops deployment and there is no prompt fallback.
+- For MAF, invoke/use `foundry-agt` when any governed tool declares
+  `agent-middleware`. Require the installed skill's real deterministic pre-tool
+  boundary, generated policy artifact, audit sink, and inspectable wire signal.
+  Do not invent AGT import or API names.
+- MAF workflows must bind every executor capable of invoking the tool; one
+  unwired executor is a deployment gap even if the others are protected.
+- MAF MCP tools only bind at the exact declared supported boundary; never
+  substitute another point, never silently move enforcement, and never fall
+  back to prompt instructions.
+- Reserve future `dotnet-with-governance` / `.WithGovernance()` detection now,
+  but do not implement the .NET adapter in this task.
+
 #### 1e. Choose model access pattern
 
 | Pattern | When to Use | How |
@@ -909,6 +945,19 @@ The runtime uses `CopilotClient` + `InvocationAgentServerHost`:
 4. `InvocationAgentServerHost` serves the Invocations protocol (SSE streaming)
 5. Diagnostic HTTP server on import failure (keeps container alive for debugging)
 
+**Tool-governance generation (opt-in):**
+
+- GHCP SDK tools are MCP-bound. When governance is enabled, bind every governed
+  tool only at its declared `mcp-server` or `gateway` boundary.
+- Generated MCP-server policy assets use
+  `threadlight.tool-governance/mcp-server/v1`; generated gateway assets use
+  `threadlight.tool-governance/gateway/v1`.
+- Never claim that `CopilotClient` or `InvocationAgentServerHost` provides
+  in-process enforcement.
+- GHCP + `agent-middleware` is an explicit deployment gap. If the exact
+  declared boundary is unavailable, stop with an unsupported-enforcement gap and
+  do not add prompt-only policy text as a fallback.
+
 #### MAF variant (when Toolbox or custom @tool needed)
 
 **Copy the reference template** from the `foundry-hosted-agents` companion
@@ -925,6 +974,19 @@ The runtime uses `Agent` + `FoundryChatClient` + `ResponsesHostServer`:
    `parse_tool_results` extractor (avoids the [<Content>] repr leak)
 4. `ResponsesHostServer(agent).run()` serves the Responses protocol
 5. Diagnostic HTTP server on import failure
+
+**Tool-governance generation (opt-in):**
+
+- When any governed tool declares `agent-middleware`, invoke/use `foundry-agt`
+  and use the installed skill's real deterministic pre-tool boundary. Record
+  the exact supported integration surface chosen by the installed skill.
+- Do not invent AGT import or API names. The adapter manifest must report the
+  actual surface selected by `foundry-agt`.
+- MAF workflow builds must apply the same adapter to every executor capable of
+  invoking the tool.
+- MAF MCP tools only bind at the exact declared supported boundary. If the
+  installed adapter cannot enforce that point, stop with an unsupported gap
+  instead of downgrading to another boundary.
 
 **Do NOT write the container runtime from scratch** — always start from the reference
 template in the corresponding skill.
@@ -970,6 +1032,106 @@ agent = Agent(
 > **Tip:** Custom tools are a practical workaround for missing platform capabilities.
 > For example, if you need web search but can't use MCP, define a custom tool that
 > calls a search API (Tavily, SerpAPI, etc.) directly from Python.
+
+#### Tool-governance generated artifacts (opt-in)
+
+Generate this artifact tree when `specs/manifest.json.tool_governance.enabled`
+is `true`:
+
+```text
+policies/tool-governance/adapter-manifest.json
+policies/tool-governance/generated/<adapter policy>
+tests/tool_governance_probe.py
+tests/tool-governance-probe-manifest.json
+```
+
+Use this exact adapter-manifest schema example:
+
+```json
+{
+  "schema": "threadlight.tool-governance-adapter/v1",
+  "contract_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "runtime": {
+    "framework": "github-copilot-sdk",
+    "runtime_shape": "agent",
+    "protocol": "invocations"
+  },
+  "bindings": [
+    {
+      "tool_name": "returns_apply_decision",
+      "enforcement_point": "mcp-server",
+      "adapter_id": "mcp-tool-governance",
+      "policy_artifact": "policies/tool-governance/generated/mcp-policy.json",
+      "wire_signals": [
+        {
+          "path": "src/mcp/server.py",
+          "kind": "mcp-server-policy-binding"
+        }
+      ]
+    }
+  ],
+  "audit": {
+    "schema": "threadlight.tool-governance-audit/v1",
+    "sink": "application-insights"
+  },
+  "probe": {
+    "entrypoint": "tests/tool_governance_probe.py",
+    "evidence": "tests/tool-governance-probe-manifest.json"
+  }
+}
+```
+
+Every generated policy artifact contains the same canonical `contract_sha256`
+as `adapter-manifest.json`; file path alone is not proof.
+
+Recognized wire-signal kinds:
+
+- `pre-tool-policy-binding` for the real `foundry-agt` MAF pre-tool surface
+- `mcp-server-policy-binding`
+- `gateway-policy-binding`
+- reserve future `dotnet-with-governance` / `.WithGovernance()` detection now.
+  Do not implement the .NET adapter in this task.
+
+Generate the probe with the literal guard:
+
+```python
+THREADLIGHT_CANARY_ONLY = True
+```
+
+The probe writes `tests/tool-governance-probe-manifest.json` during post-deploy
+validation and emits `allow-canary`, `deny-canary`, plus a conditional vector if
+the contract declares one. Include audit IDs and correlation fields in the
+evidence:
+
+```json
+{
+  "vectors": [
+    {
+      "id": "allow-canary",
+      "expected_execution_count": 1,
+      "observed_execution_count": 1,
+      "correlation_id": "probe-allow-001",
+      "decision_event_ids": ["audit-allow-001"],
+      "outcome_event_ids": ["outcome-allow-001"]
+    },
+    {
+      "id": "deny-canary",
+      "expected_execution_count": 0,
+      "observed_execution_count": 0,
+      "correlation_id": "probe-deny-001",
+      "decision_event_ids": ["audit-deny-001"],
+      "outcome_event_ids": []
+    }
+  ]
+}
+```
+
+If the contract includes a gate-backed tool, add a conditional vector if the
+contract declares one and carry `gate_id`, `approval_id`, and the original
+`correlation_id`.
+
+The probe may run only adapter-owned mock or canary paths: production mutation
+endpoints are forbidden.
 
 ### 5. `src/agent/pyproject.toml` — Python Dependencies
 

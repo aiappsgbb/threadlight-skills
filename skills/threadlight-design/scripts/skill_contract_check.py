@@ -46,7 +46,7 @@ import os
 import re
 import sys
 
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 MANIFEST_SCHEMA = "threadlight-skill-contract-manifest/v1"
 
 # The Copilot skill loader's hard cap on the parsed `description` scalar.

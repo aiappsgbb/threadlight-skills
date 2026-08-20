@@ -1,0 +1,28 @@
+{
+  "schema": "threadlight.tool-governance/mcp-server/v1",
+  "contract_sha256": "sha256:67428d8a48645114ce87615f9e3e3300a44bbde1628b06f2a3adcc094aa27984",
+  "rules": [
+    {
+      "policy_id": "TG-FIXTURE-READ",
+      "tool_name": "inventory_read",
+      "action_class": "read",
+      "decision": "allow",
+      "enforcement_point": "mcp-server"
+    },
+    {
+      "policy_id": "TG-FIXTURE-DENY",
+      "tool_name": "external_notify",
+      "action_class": "external-side-effect",
+      "decision": "deny",
+      "enforcement_point": "mcp-server"
+    },
+    {
+      "policy_id": "TG-FIXTURE-HITL",
+      "tool_name": "returns_apply_decision",
+      "action_class": "reversible-write",
+      "decision": "conditional",
+      "gate_id": "GATE-001",
+      "enforcement_point": "mcp-server"
+    }
+  ]
+}
