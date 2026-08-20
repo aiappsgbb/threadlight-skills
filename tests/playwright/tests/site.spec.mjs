@@ -84,8 +84,15 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await page.goto(LANDING);
     const icon = await page.locator('link[rel="icon"]').getAttribute('href');
     expect(icon).toMatch(/^data:image\/svg\+xml/);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      'content',
+      'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
+    );
     await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
-    await expect(page.locator('meta[property="og:description"]')).toHaveCount(1);
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+      'content',
+      'An evidence-backed reel: paragraph in → specced, validated on your PC, and shown through captured deployment proof. Play, pause, scrub, replay — then open the real case study for the live run.',
+    );
     await expect(page.locator('meta[name="twitter:card"]')).toHaveCount(1);
   });
 
@@ -123,11 +130,14 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
       'aria-label',
       'Captured deployment snapshot of the credit-memo agent',
     );
+    await expect(beat4.locator('.beat-title')).toHaveText('Captured deployment proof.');
     await expect(beat4.locator('.art-head b')).toHaveText('credit-memo · captured proof');
     await expect(beat4.locator('img[alt]')).toHaveAttribute(
       'alt',
       /captured proof|captured deployment snapshot/i,
     );
+    await expect(beat4).toContainText(/captured deployment proof/i);
+    await expect(beat4).not.toContainText(/deployed to your Azure/i);
     await expect(beat4).not.toContainText(/live credit-memo agent in your Azure tenant/i);
     await expect(beat4).not.toContainText(/credit-memo · live/i);
     await expect(beat4).not.toContainText(/running live/i);
