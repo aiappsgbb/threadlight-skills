@@ -206,7 +206,12 @@ def _make_ctx(root: Path) -> "pr.RepoContext":
         azure_yaml_text="",
         docs_text="",
         azd_env={},
-        manifest={},
+        manifest={
+            "deployment_manifest": {
+                "subscription_id": "sub-1",
+                "resource_group": "rg-pilot",
+            }
+        },
         bicep_text="",
         src_text="",
         bicep_graph=pr.BicepGraph(resources=[], source_files=[]),
@@ -1114,6 +1119,22 @@ def test_bundle_loader_and_wrapper_agree(tmp_path, monkeypatch) -> None:
                             _forecast(), _actuals(), SPEC_TEXT))
     assert pr._read_cost_reconciliation_bundle(bad) is None
     assert pr._read_cost_reconciliation(bad) is None
+
+
+def test_bundle_loader_rejects_actuals_from_another_resource_group(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-1",
+            "resource_group": "rg-other",
+        }
+    }
+    assert pr._read_cost_reconciliation_bundle(ctx) is None
+    assert pr._read_cost_reconciliation(ctx) is None
+    _both_not_verified(ctx)
 
 
 def test_bundle_loader_carries_the_stale_reason(tmp_path, monkeypatch) -> None:

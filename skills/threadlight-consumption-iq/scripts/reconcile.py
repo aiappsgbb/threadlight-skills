@@ -710,11 +710,18 @@ class _Actuals:
     """Narrowly validated view over one `threadlight-cost-actuals/v1` doc."""
 
     def __init__(self, actuals: dict[str, Any]) -> None:
+        scope = _section(actuals, "scope", "actuals.scope")
         window = _section(actuals, "window", "actuals.window")
         cost = _section(actuals, "cost", "actuals.cost")
         usage = _section(actuals, "usage", "actuals.usage")
 
         self.status = _optional_str(actuals, "status", "actuals.status")
+        self.subscription_id = _optional_str(
+            scope, "subscription_id", "actuals.scope.subscription_id"
+        )
+        self.resource_group = _optional_str(
+            scope, "resource_group", "actuals.scope.resource_group"
+        )
         self.complete_days = _optional_int(
             window, "complete_days", "actuals.window.complete_days", minimum=1
         )
@@ -1720,6 +1727,51 @@ def _observed_deployment_tokens(
     return (total if matched else None), False
 
 
+def _expected_scope_text(value: object, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ReconciliationInputError(f"{label} must be a string, got {value!r}")
+    text = value.strip()
+    return text or None
+
+
+def _validate_expected_scope(
+    observed: _Actuals,
+    *,
+    expected_subscription_id: object,
+    expected_resource_group: object,
+) -> None:
+    expected_sub = _expected_scope_text(
+        expected_subscription_id, "expected_subscription_id"
+    )
+    expected_rg = _expected_scope_text(
+        expected_resource_group, "expected_resource_group"
+    )
+    if (
+        expected_sub is not None
+        and (
+            observed.subscription_id is None
+            or observed.subscription_id.casefold() != expected_sub.casefold()
+        )
+    ):
+        raise ReconciliationInputError(
+            "actuals scope subscription_id "
+            f"{observed.subscription_id!r} does not match expected {expected_sub!r}"
+        )
+    if (
+        expected_rg is not None
+        and (
+            observed.resource_group is None
+            or observed.resource_group.casefold() != expected_rg.casefold()
+        )
+    ):
+        raise ReconciliationInputError(
+            "actuals scope resource_group "
+            f"{observed.resource_group!r} does not match expected {expected_rg!r}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -1730,6 +1782,8 @@ def reconcile_costs(
     actuals: dict[str, object],
     policy: dict[str, object],
     *,
+    expected_subscription_id: str | None = None,
+    expected_resource_group: str | None = None,
     policy_errors: list[str],
     generated_at: str,
     policy_spec_sha256: str,
@@ -1793,6 +1847,11 @@ def reconcile_costs(
             "are not verified",
         )
     observed = _Actuals(actuals)
+    _validate_expected_scope(
+        observed,
+        expected_subscription_id=expected_subscription_id,
+        expected_resource_group=expected_resource_group,
+    )
     snapshot = _policy_snapshot(policy, warnings)
     missing_paths = _missing_policy_paths(policy, snapshot)
     # ONE definition, shared with `evaluate_maturity`: an unusable anchor is
