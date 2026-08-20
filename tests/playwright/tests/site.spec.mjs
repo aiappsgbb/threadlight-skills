@@ -305,7 +305,7 @@ test.describe('production chapter (production.html)', () => {
     }
   });
 
-  test('the proof section separates forecast, settled Azure actuals, and reconciliation', async ({ page }) => {
+  test('evidence wording: the proof section separates forecast, settled Azure actuals, and reconciliation', async ({ page }) => {
     await page.goto('/production.html');
     const proof = page.locator('#proof');
     await expect(proof).toContainText(/forecast/i);
@@ -342,7 +342,7 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     }
   });
 
-  test('the mechanism stays diagnostics-to-backlog and does not claim automatic remediation', async ({ page }) => {
+  test('evidence wording: the mechanism stays diagnostics-to-backlog and does not claim automatic remediation', async ({ page }) => {
     await page.goto('/self-improving.html');
     const how = page.locator('#how');
     await expect(how).toContainText(/diagnostics-to-backlog/i);
@@ -354,7 +354,7 @@ test.describe('self-improving chapter (self-improving.html)', () => {
 });
 
 test.describe('case study chapter (case-study.html)', () => {
-  test('the cost section stays a reviewed monthly projection, not a literal actuals claim', async ({ page }) => {
+  test('evidence wording: the cost section stays a reviewed monthly projection, not a literal actuals claim', async ({ page }) => {
     await page.goto('/case-study.html');
     const cost = page.locator('#cost');
     await expect(cost).toContainText(/Reviewed monthly projection/i);
