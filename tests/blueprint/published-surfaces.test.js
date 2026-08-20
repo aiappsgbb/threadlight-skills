@@ -65,7 +65,12 @@ test('filesystem publishes exactly 22 threadlight-* skills', () => {
 test('plugin.json is version 1.12.0 with the 22-total description', () => {
   const plugin = JSON.parse(read('plugin.json'));
   assert.strictEqual(plugin.version, '1.12.0');
-  assert.match(plugin.description, /21 pipeline skills \+ threadlight-auto orchestrator \(22 total\)/);
+  assert.match(
+    plugin.description,
+    /21 pipeline skills \+ threadlight-auto agent-guided lifecycle planner \(22 total\).*brief to a governed working pilot with an evidence-backed path to production/i,
+  );
+  assert.doesNotMatch(plugin.description, /full-auto orchestrator/i);
+  assert.doesNotMatch(plugin.description, /brief to a deployed, production-ready Foundry agent/i);
 });
 
 test('published surfaces enumerate the 22-skill pack', () => {
@@ -124,6 +129,26 @@ test('no active product surface carries a stale skill-count claim', () => {
     const text = read(surface);
     const m = STALE_COUNT.exec(text);
     assert.strictEqual(m, null, `${surface} still has a stale skill-count claim: ${m && m[0]}`);
+  }
+});
+
+test('plugin.json and marketplace metadata use governed-pilot planner wording', () => {
+  const plugin = JSON.parse(read('plugin.json'));
+  const marketplace = JSON.parse(read('.github/plugin/marketplace.json'));
+
+  const descriptions = [
+    ['plugin.json', plugin.description],
+    ['marketplace.metadata.description', marketplace.metadata.description],
+    ['marketplace.plugins[0].description', marketplace.plugins[0].description],
+  ];
+
+  for (const [label, description] of descriptions) {
+    assert.match(description, /22 total/);
+    assert.match(description, /agent-guided lifecycle planner/i, `${label} must call threadlight-auto a planner`);
+    assert.match(description, /governed working pilot/i, `${label} must describe a governed pilot`);
+    assert.doesNotMatch(description, /full-auto orchestrator/i, `${label} must not claim full-auto orchestration`);
+    assert.doesNotMatch(description, /brief to a deployed, production-ready Foundry agent/i, `${label} must not claim brief-to-production-ready`);
+    assert.doesNotMatch(description, /17 total|16 pipeline/i, `${label} must not keep the stale count`);
   }
 });
 
