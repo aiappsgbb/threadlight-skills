@@ -67,6 +67,17 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _json_code_blocks(markdown: str) -> list[dict[str, object]]:
+    blocks: list[dict[str, object]] = []
+    for chunk in markdown.split("```json")[1:]:
+        block, fence, _ = chunk.partition("```")
+        assert fence, "unterminated ```json block"
+        payload = json.loads(block.strip())
+        assert isinstance(payload, dict)
+        blocks.append(payload)
+    return blocks
+
+
 @contextmanager
 def _scratch_dir(name: str) -> Path:
     SCRATCH_ROOT.mkdir(exist_ok=True)
@@ -406,21 +417,37 @@ def _governed_inputs() -> tuple[dict[str, object], str]:
 def test_hitl_contract_governed_fields_and_legacy_shape_are_documented() -> None:
     skill_text = _read_text(HITL_SKILL)
     audit_schema_text = _read_text(HITL_AUDIT_SCHEMA)
-
-    for marker in (
+    audit_blocks = _json_code_blocks(audit_schema_text)
+    governed_fields = {
         "gate_id",
         "correlation_id",
         "approval_id",
         "policy_id",
         "tool_name",
         "contract_sha256",
-    ):
+    }
+
+    assert "## Document shape" in audit_schema_text
+    assert "## Governed conditional extension" in audit_schema_text
+    assert "audit-{uuid4}" not in audit_schema_text
+    assert "audit-{case_id}-{gate}-{activity_id}" in skill_text
+    assert "audit-{case_id}-{gate}-{activity_id}" in audit_schema_text
+    assert len(audit_blocks) == 2
+
+    for marker in governed_fields:
         assert marker in skill_text
         assert marker in audit_schema_text
 
     for marker in ("case_id", "gate", "decision", "actor", "timestamp", "linked_rules"):
         assert marker in skill_text
         assert marker in audit_schema_text
+
+    base_document, governed_extension = audit_blocks
+    assert base_document["id"] == "audit-{case_id}-{gate}-{activity_id}"
+    assert governed_fields.isdisjoint(base_document)
+    assert set(governed_extension) == governed_fields
+    assert "merge" in audit_schema_text
+    assert "governed conditional release" in audit_schema_text
 
     assert "persist approval audit event before releasing the governed tool" in skill_text
     assert "same approval_id cannot execute twice" in skill_text

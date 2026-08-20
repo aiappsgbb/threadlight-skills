@@ -16,16 +16,10 @@
 
 ```json
 {
-  "id": "audit-{uuid4}",
+  "id": "audit-{case_id}-{gate}-{activity_id}",
   "case_id": "DEMO-CUST-00007",
   "gate": "approve",
-  "gate_id": "GATE-001",
   "decision": "approved",
-  "correlation_id": "corr-returns-20260510-084700",
-  "approval_id": "apr-20260510-084723-0001",
-  "policy_id": "TG-RET-003",
-  "tool_name": "returns_apply_decision",
-  "contract_sha256": "sha256:6d6bc7d6a1b4f6d0d0ef4f5f7f8e9a0b5c8d3e2f1a6b7c8d9e0f1a2b3c4d5e6f",
   "actor": {
     "upn": "analyst@northbank-demo.com",
     "displayName": "Jane Analyst",
@@ -50,12 +44,29 @@
 }
 ```
 
-`gate` remains the canonical UX taxonomy (`approve`, `reject`, etc.); `gate_id`
-is the stable SPEC interaction identifier (`GATE-NNN`). The governed fields
-`gate_id`, `correlation_id`, `approval_id`, `policy_id`, `tool_name`, and
-`contract_sha256` are required only for a governed conditional tool release.
-Existing ungoverned events remain valid and readable with the legacy audit shape
-(`case_id`, `gate`, `decision`, `actor`, `timestamp`, `linked_rules`, ...).
+This base document shape is the legacy-compatible canonical audit row. It keeps
+the existing audit fields plus the deterministic `id` so replay tooling can
+reconstruct the same audit event key for an identical gate/activity pair.
+
+## Governed conditional extension
+
+```json
+{
+  "gate_id": "GATE-001",
+  "correlation_id": "corr-returns-20260510-084700",
+  "approval_id": "apr-20260510-084723-0001",
+  "policy_id": "TG-RET-003",
+  "tool_name": "returns_apply_decision",
+  "contract_sha256": "sha256:6d6bc7d6a1b4f6d0d0ef4f5f7f8e9a0b5c8d3e2f1a6b7c8d9e0f1a2b3c4d5e6f"
+}
+```
+
+For governed conditional release, merge this object into the base document
+shape. `gate` remains the canonical UX taxonomy (`approve`, `reject`, etc.);
+`gate_id` is the stable SPEC interaction identifier (`GATE-NNN`). Existing
+ungoverned events remain valid and readable with the base legacy shape
+(`case_id`, `gate`, `decision`, `actor`, `timestamp`, `linked_rules`, ...),
+while governed conditional events MUST include the merged extension fields.
 
 For governed conditional tools:
 
