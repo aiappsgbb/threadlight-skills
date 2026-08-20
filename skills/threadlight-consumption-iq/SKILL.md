@@ -1,24 +1,18 @@
 ---
 name: threadlight-consumption-iq
 description: >-
-  Use after threadlight-safe-check post-deploy and before
-  threadlight-production-ready to project per-resource monthly Azure cost at
-  the customer's declared load and compare 2–3 SKUs to pick the cheapest
-  that meets constraints. Reads deployed Bicep + SPEC § 12
-  load_profile and the Azure Retail Prices API; emits cost-projection.md +
-  cost-manifest.json. Also a PRE-SALES phased estimate with no pilot (phases,
-  EA/MCA discount, one-pager). Also owns OPT-IN read-only live actuals
-  collection plus scope-bound reconciliation: `actuals` /
-  `reconcile` / `run --all --with-actuals` query Cost Management, Monitor and
-  Log Analytics for a settled window, publish
-  `threadlight-cost-actuals/v1`, then reconcile it into
-  `threadlight-cost-reconciliation/v1`. `threadlight-production-ready`
-  consumes verified artifacts and does not query or recompute. Advisory only.
-  USE FOR: azure consumption projection, post-deploy cost, SKU diff, PAYG vs
-  PTU, load profile, cost-manifest.json, pre-sales estimate, EA/MCA discount,
-  cost actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
-  PAYG-vs-PTU break-even with no pilot (use paygo-ptu-cost-analyzer); Bicep
-  mutation (use threadlight-deploy).
+  Project Azure cost from deployed Bicep + SPEC § 12, compare viable SKUs, and
+  emit cost-projection.md + cost-manifest.json after safe-check. Also supports
+  no-pilot pre-sales estimates with phased rollout, EA/MCA discount, and a
+  one-pager. Owns opt-in read-only actuals and scope-bound reconciliation from
+  Cost Management, Monitor, and Log Analytics, publishing
+  threadlight-cost-actuals/v1 and threadlight-cost-reconciliation/v1.
+  threadlight-production-ready only consumes verified artifacts. Advisory.
+  USE FOR: Azure consumption projection, post-deploy cost, SKU diff, PAYG vs
+  PTU, load profile, cost manifest, pre-sales estimate, EA/MCA discount, cost
+  actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
+  break-even without a pilot (use paygo-ptu-cost-analyzer); Bicep mutation
+  (use threadlight-deploy).
 metadata:
   version: "0.4.0"
 ---
