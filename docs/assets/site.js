@@ -305,10 +305,38 @@
     targets.forEach((sec) => io.observe(sec));
   }
 
+  function wireMobileNav() {
+    const masthead = document.querySelector('header.masthead');
+    const nav = masthead && masthead.querySelector('nav.nav');
+    if (!masthead || !nav || nav.dataset.mobileNavWired === 'true') return;
+
+    let button = masthead.querySelector('[data-mobile-nav-toggle]');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mobile-nav-toggle';
+      button.setAttribute('data-mobile-nav-toggle', '');
+      button.setAttribute('aria-expanded', 'false');
+      button.setAttribute('aria-label', 'Toggle chapter navigation');
+      button.textContent = 'Menu';
+      masthead.insertBefore(button, nav);
+    }
+
+    const syncOpen = (open) => {
+      nav.toggleAttribute('data-mobile-open', open);
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    syncOpen(false);
+    button.addEventListener('click', () => syncOpen(!nav.hasAttribute('data-mobile-open')));
+    nav.dataset.mobileNavWired = 'true';
+  }
+
   // ---------------------------------------------------------------
   // boot
   // ---------------------------------------------------------------
   function init() {
+    wireMobileNav();
     spawnParticles();
     wireReveal();
     wireCounters();

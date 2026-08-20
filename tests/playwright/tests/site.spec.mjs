@@ -174,6 +174,26 @@ test.describe('primary navigation — shared across every chapter page', () => {
       }
     });
   }
+
+  test('mobile chapter navigation toggles open and closed from the shared masthead control', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/production.html');
+
+    const toggle = page.locator('[data-mobile-nav-toggle]');
+    const nav = page.locator('header.masthead nav.nav');
+
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(nav).toBeHidden();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(nav).toBeVisible();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(nav).toBeHidden();
+  });
 });
 
 test.describe('public-safety audit — no internal-only phrasing leaks', () => {

@@ -216,6 +216,31 @@
     font-size: 14px; font-weight: 700; letter-spacing: .02em; color: var(--ink-0);
   }
   .masthead .brand-name span { color: var(--ink-3); font-weight: 400; padding-left: 8px; }
+  .mobile-nav-toggle {
+    display: none;
+    appearance: none;
+    border: 1px solid var(--line-2);
+    background: var(--bg-2);
+    color: var(--ink-0);
+    border-radius: 999px;
+    padding: 9px 14px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--e-1);
+  }
+  .mobile-nav-toggle:hover,
+  .mobile-nav-toggle[aria-expanded="true"] {
+    border-color: var(--chapter-accent);
+    background: color-mix(in srgb, var(--bg-2) 72%, var(--chapter-accent) 28%);
+  }
+  .mobile-nav-toggle:focus-visible {
+    outline: 2px solid var(--chapter-accent);
+    outline-offset: 3px;
+  }
   .masthead .nav {
     display: flex; gap: 26px;
     font-size: 12.5px; font-weight: 500; letter-spacing: .04em;
@@ -239,7 +264,57 @@
     .masthead .nav .nav-ico { display: none; }
     .masthead .nav a { gap: 0; }
   }
-  @media (max-width: 720px) { .masthead .nav { display: none; } }
+  @media (max-width: 720px) {
+    .masthead {
+      padding: 14px 20px;
+      gap: 12px;
+      align-items: center;
+    }
+    .masthead .brand {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .mobile-nav-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      flex: 0 0 auto;
+    }
+    .masthead .nav {
+      display: none;
+      position: absolute;
+      top: calc(100% - 1px);
+      left: 0;
+      right: 0;
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+      padding: 14px 20px 18px;
+      background: color-mix(in srgb, var(--bg-1) 92%, black 8%);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line-2);
+      box-shadow: var(--e-2);
+    }
+    .masthead .nav[data-mobile-open] { display: flex; }
+    .masthead .nav a {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      color: var(--ink-1);
+      justify-content: flex-start;
+      background: transparent;
+    }
+    .masthead .nav a:hover,
+    .masthead .nav a:focus-visible,
+    .masthead .nav a[aria-current="page"] {
+      color: var(--ink-0);
+      border-color: var(--line-2);
+      background: color-mix(in srgb, var(--bg-2) 80%, var(--chapter-accent) 20%);
+    }
+  }
 
   /* ---------- shared scene ---------- */
   section.scene {
