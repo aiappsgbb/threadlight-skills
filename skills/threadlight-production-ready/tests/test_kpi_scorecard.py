@@ -177,6 +177,21 @@ def _kpi_ctx(
     if evals is not None:
         payload = evals if isinstance(evals, str) else json.dumps(evals)
         (specs / "evals-manifest.json").write_text(payload, encoding="utf-8")
+    actuals = bundle_kwargs.get("actuals")
+    if not isinstance(actuals, dict):
+        actuals = _actuals()
+    actual_scope = actuals.get("scope") if isinstance(actuals, dict) else None
+    manifest = {}
+    if isinstance(actual_scope, dict):
+        sub = actual_scope.get("subscription_id")
+        rg = actual_scope.get("resource_group")
+        if isinstance(sub, str) and isinstance(rg, str):
+            manifest = {
+                "deployment_manifest": {
+                    "subscription_id": sub,
+                    "resource_group": rg,
+                }
+            }
     return pr.RepoContext(
         root=tmp_path,
         bicep_files=[],
@@ -188,7 +203,7 @@ def _kpi_ctx(
         azure_yaml_text="",
         docs_text="",
         azd_env={},
-        manifest={},
+        manifest=manifest,
         bicep_text=bicep_text,
         src_text=src_text,
         bicep_graph=pr.BicepGraph(resources=[], source_files=[]),
@@ -333,6 +348,71 @@ def test_actual_unit_cost_read_from_reconciliation(tmp_path, monkeypatch) -> Non
     ctx = _kpi_ctx(tmp_path)
     value = pr._read_cost_per_interaction(ctx)
     assert value is not None and abs(value - 0.1083) < 1e-9
+
+
+def test_off_target_actuals_withhold_cost_evidence_and_kpi_measurement(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-1",
+            "resource_group": "rg-other",
+        }
+    }
+
+    summary = pr._cost_evidence_summary(ctx)
+    assert summary["status"] == "not-verified"
+    assert "scope" in summary["detail"].lower()
+
+    assert pr._read_cost_per_interaction(ctx) is None
+    assert pr._kpi_signals(ctx)["cost_per_interaction_usd"] is None
+
+    findings = _by_id(pr._check_kpi_static(ctx))
+    assert findings["KPI-003"].status != "pass"
+    assert findings["KPI-003"].status == "should-fix"
+
+
+def test_target_scope_casefold_match_accepts_cost_evidence_and_kpi_measurement(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    actuals = _actuals()
+    actuals["scope"] = {
+        "subscription_id": "A0B1C2D3-E4F5-6789-ABCD-EF0123456789",
+        "resource_group": "RG-Pilot",
+    }
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+        actuals=actuals,
+    )
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "a0b1c2d3-e4f5-6789-abcd-ef0123456789",
+            "resource_group": "rg-pilot",
+        }
+    }
+
+    summary = pr._cost_evidence_summary(ctx)
+    assert summary["status"] == "pass"
+    assert summary["actuals_subscription_id"] == "A0B1C2D3-E4F5-6789-ABCD-EF0123456789"
+    assert summary["actuals_resource_group"] == "RG-Pilot"
+    assert summary["cost_per_successful_interaction_usd"] == 0.1083
+
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 0.1083) < 1e-9
+
+    findings = _by_id(pr._check_kpi_static(ctx))
+    assert findings["KPI-003"].status == "pass"
 
 
 def test_forecast_cpi_never_shadows_a_rejected_reconciliation(tmp_path, monkeypatch) -> None:

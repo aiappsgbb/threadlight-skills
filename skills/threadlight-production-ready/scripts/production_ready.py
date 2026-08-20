@@ -3510,6 +3510,43 @@ def _cost_evidence_unverified(detail: str) -> dict[str, Any]:
     }
 
 
+def _non_empty_scope_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _validate_cost_actuals_target_scope(
+    actuals: dict[str, Any],
+    expected_subscription_id: object,
+    expected_resource_group: object,
+) -> tuple[str | None, str | None, str | None]:
+    expected_sub = _non_empty_scope_text(expected_subscription_id)
+    expected_rg = _non_empty_scope_text(expected_resource_group)
+    if expected_sub is None or expected_rg is None:
+        return None, None, (
+            "Assessment target subscription and resource group are required before "
+            "cost evidence can be verified"
+        )
+
+    actual_scope = actuals.get("scope")
+    actual_sub = _non_empty_scope_text(
+        actual_scope.get("subscription_id") if isinstance(actual_scope, dict) else None
+    )
+    actual_rg = _non_empty_scope_text(
+        actual_scope.get("resource_group") if isinstance(actual_scope, dict) else None
+    )
+    if actual_sub is None or actual_rg is None:
+        return actual_sub, actual_rg, "Actuals scope does not match the assessment target scope"
+    if (
+        actual_sub.casefold() != expected_sub.casefold()
+        or actual_rg.casefold() != expected_rg.casefold()
+    ):
+        return actual_sub, actual_rg, "Actuals scope does not match the assessment target scope"
+    return actual_sub, actual_rg, None
+
+
 def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
     """Summarize reconciled cost evidence for the manifest/report. Never raises."""
     try:
@@ -3526,16 +3563,12 @@ def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
             "No provable specs/cost-reconciliation-manifest.json")
 
     reconciliation, actuals, _forecast = bundle
-    actual_scope = actuals.get("scope")
-    actual_sub = actual_scope.get("subscription_id") if isinstance(actual_scope, dict) else None
-    actual_rg = actual_scope.get("resource_group") if isinstance(actual_scope, dict) else None
     target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
-    if not target_sub or not target_rg:
-        return _cost_evidence_unverified(
-            "Assessment target subscription and resource group are required before cost evidence can be verified")
-    if actual_sub != target_sub or actual_rg != target_rg:
-        return _cost_evidence_unverified(
-            "Actuals scope does not match the assessment target scope")
+    actual_sub, actual_rg, scope_error = _validate_cost_actuals_target_scope(
+        actuals, target_sub, target_rg
+    )
+    if scope_error is not None:
+        return _cost_evidence_unverified(scope_error)
 
     stale_reason = reconciliation.get("_stale_reason")
     if stale_reason:
@@ -3655,6 +3688,12 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     if bundle is None:
         return None
     data, actuals, _forecast = bundle
+    target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
+    _actual_sub, _actual_rg, scope_error = _validate_cost_actuals_target_scope(
+        actuals, target_sub, target_rg
+    )
+    if scope_error is not None:
+        return None
     return _read_cost_per_interaction_from_bundle(data, actuals)
 
 
