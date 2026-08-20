@@ -4723,7 +4723,7 @@ def _check_cost_102(data: dict) -> Finding:
     return _mk_finding("COST-102", status="should-fix",
         detail=(f"Observed cost variance {observed} exceeds the SPEC § 14 declared tolerance "
                 f"{declared} (policy_snapshot.max_forecast_variance_pct). Review "
-                "docs/cost-reconciliation-report.md, then re-project or re-baseline with "
+                "docs/cost-reconciliation.md, then re-project or re-baseline with "
                 "threadlight-consumption-iq."))
 
 

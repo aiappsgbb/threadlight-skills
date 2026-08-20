@@ -124,7 +124,7 @@ re-run this skill to verify.
 
 ---
 
-## 7. Cost evidence and unit economics
+## 7. Cost projection
 
 ### Forecast source *(always expected)*
 
@@ -172,22 +172,25 @@ specific to this customer's load shape.)
 
 ---
 
-## 8. Eval summary
+## 8. Outcome KPI scorecard
 
-> Source: latest `foundry-evals` run output under `evals/runs/` (or
-> Foundry CE result if Plan A).
+> Source: joined outcome evidence from the latest `foundry-evals` run,
+> reconciled Azure actuals, and live telemetry/traces.
 
-| Scenario | Threshold | Last result | Status |
-|---|---|---|---|
-| `{eval[0].name}` | `{eval[0].threshold}` | `{eval[0].score}` | `{eval[0].status}` |
+| KPI signal | Value | Source |
+|---|---|---|
+| Eval pass-rate | `{scorecard_eval_pass_rate}` | `specs/evals-manifest.json` (`threadlight-evals`) |
+| Actual cost / successful interaction | `{scorecard_cost_per_interaction}` | `specs/cost-reconciliation-manifest.json` (`threadlight-consumption-iq` actuals) |
+| Traces emitting | `{scorecard_traces_emit}` | Foundry observability / OTel wiring |
 
-Trend (last N runs):
+| Baseline declared | Status |
+|---|---|
+| Latency | `{scorecard_latency_declared}` |
+| Cost-per-interaction | `{scorecard_cost_baseline_declared}` |
+| Success-rate | `{scorecard_success_rate_declared}` |
+| Deviation alert wired | `{scorecard_deviation_alert_present}` |
 
-```
-{ascii_sparkline_or_table}
-```
-
-Eval freshness: `{last_eval_at}` (within freshness window: `{within_window}`).
+KPI-003 status: `{kpi003_status}`.
 
 ---
 
