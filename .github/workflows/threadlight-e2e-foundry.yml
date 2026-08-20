@@ -1118,18 +1118,24 @@ jobs:
           set -euo pipefail
           MODE="${{ steps.evidence-mode.outputs.mode }}"
           EVIDENCE_JSON="/tmp/evidence-gate.json"
+          EVIDENCE_STATUS=""
           INVOKE_RESULTS="${E2E_WORKSPACE}/${PILOT_SUBDIR}/docs/invoke-results.md"
           DEPLOY_LOG="/tmp/phase-deploy.log"
           TRANSCRIPT1="/tmp/phase-invoke-transcript-1.txt"
           TRANSCRIPT2="/tmp/phase-invoke-transcript-2.txt"
+          if [ -s "$EVIDENCE_JSON" ]; then
+            EVIDENCE_STATUS=$(jq -r '.status // empty' "$EVIDENCE_JSON" 2>/dev/null || true)
+          fi
           {
             echo "## Paid run"
             echo ""
             if [ "$MODE" = "readiness-proof" ]; then
-              if [ -s "$EVIDENCE_JSON" ]; then
+              if [ "$EVIDENCE_STATUS" = "pass" ]; then
                 echo "Readiness semantics were asserted."
+              elif [ -n "$EVIDENCE_STATUS" ]; then
+                echo "Readiness semantics were NOT asserted — evidence evaluation reported status: $EVIDENCE_STATUS. Check run artifacts for deploy/invoke/evidence logs."
               else
-                echo "Readiness semantics could not be asserted — evidence evaluation did not run or failed. Check run artifacts for deploy/invoke/evidence logs."
+                echo "Readiness semantics could not be asserted — evidence evaluation did not run, failed before emitting readable JSON, or produced no status. Check run artifacts for deploy/invoke/evidence logs."
               fi
             else
               # live-smoke path: confirm deploy + invoke artifacts before claiming assertions
