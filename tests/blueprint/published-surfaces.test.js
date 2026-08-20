@@ -130,6 +130,8 @@ test('no active product surface carries a stale skill-count claim', () => {
 test('root docs describe a governed pilot, explicit value evidence, and Auto as a planner', () => {
   const readme = read('README.md');
   const threadlight = read('THREADLIGHT.md');
+  const oneSessionProductionClaim =
+    /(?:production-ready[\s\S]{0,120}(?:single working session|one session)|(?:single working session|one session)[\s\S]{0,120}production-ready)/i;
 
   for (const surface of [readme, threadlight]) {
     for (const phrase of [
@@ -143,7 +145,20 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
     }
   }
 
-  assert.ok(!readme.includes('production-ready in one session'));
+  for (const claim of [
+    'production-ready — in a single working session',
+    'production-ready\nin one session',
+    'one session\nproduction-ready',
+  ]) {
+    assert.match(claim, oneSessionProductionClaim, `claim pattern should be rejected: ${claim}`);
+  }
+
+  for (const good of ['A pilot can be produced in a working session.', 'A working session produces the pilot and evidence.']) {
+    assert.doesNotMatch(good, oneSessionProductionClaim, `legitimate working-session phrasing should stay allowed: ${good}`);
+  }
+
+  assert.ok(!oneSessionProductionClaim.test(readme));
+  assert.ok(!oneSessionProductionClaim.test(threadlight));
   assert.match(readme, /agent-guided lifecycle planner/);
   assert.match(threadlight, /planner does not execute stages/);
 
