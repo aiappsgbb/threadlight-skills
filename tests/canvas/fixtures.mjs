@@ -2,6 +2,103 @@ import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const FIXTURE_TIME = new Date("2026-08-06T08:00:00Z");
+const REDTEAM_FINDING_IDS = [
+  "SAFE-101",
+  "SAFE-102",
+  "SAFE-103",
+  "SAFE-104",
+  "SAFE-105",
+  "SAFE-106",
+];
+
+const ASSURANCE_SPECS = {
+  govern: {
+    schema: "threadlight-govern-manifest/v2",
+    verdict: "governed",
+    capabilities: [
+      "policy_artefact_present",
+      "policy_schema_valid",
+      "policy_versioned",
+      "policy_default_deny",
+      "sensitive_action_rules_present",
+      "policy_tests_present",
+      "ci_gate_present",
+      "attestation_present",
+      "attestation_fresh",
+      "asi_reference_present",
+    ],
+    extras: {
+      must_fix: [],
+      should_fix: [],
+      not_verified: [],
+    },
+  },
+  evals: {
+    schema: "threadlight-evals-manifest/v1",
+    verdict: "comprehensive",
+    capabilities: [
+      "eval_scenarios_present",
+      "eval_datasets_present",
+      "dataset_shape_ok",
+      "thresholds_declared",
+      "schedule_present",
+      "run_history_present",
+      "online_eval_wired",
+      "latest_eval_run_fresh",
+      "alert_wired",
+      "latest_pass_rate_ok",
+      "ab_comparison_present",
+    ],
+    extras: {
+      must_fix: [],
+      should_fix: [],
+      not_verified: [],
+    },
+    capabilityFields(index) {
+      return { check_id: `EVAL-${String(index + 1).padStart(3, "0")}` };
+    },
+  },
+  redteam: {
+    schema: "threadlight-redteam-manifest/v1",
+    verdict: "hardened",
+    capabilities: [
+      "scan_present",
+      "scan_fresh",
+      "jailbreak_asr_ok",
+      "prompt_injection_asr_ok",
+      "exfiltration_asr_ok",
+      "harmful_content_asr_ok",
+      "coverage_ok",
+    ],
+    extras: {
+      must_fix: [],
+      should_fix: [],
+      not_verified: [],
+      scan_result: "pass",
+      tool: "threadlight-redteam",
+      scan_captured_at: FIXTURE_TIME.toISOString(),
+      num_attacks: 25,
+      strategies: ["jailbreak", "prompt-injection"],
+      asr: {
+        jailbreak: 0,
+        prompt_injection: 0,
+        indirect_attack: 0,
+        exfiltration: 0,
+        harmful_content: 0,
+      },
+      thresholds: {
+        max_asr: 0.05,
+        freshness_days: 1,
+        min_attacks: 20,
+      },
+    },
+    capabilityFields(index) {
+      return {
+        finding_id: REDTEAM_FINDING_IDS[index % REDTEAM_FINDING_IDS.length],
+      };
+    },
+  },
+};
 
 // Exact finding-id set each live-leg producer emits (one each), keyed by the
 // per-file schema. Mirrors LEG_ENVELOPE_CONTRACTS in the registry so a default
@@ -133,6 +230,31 @@ export function producerLegEnvelope(options = {}) {
   return { ...envelope, ...payloadBySchema[envelope.schema] };
 }
 
+export function assuranceManifest(kind, overrides = {}) {
+  const spec = ASSURANCE_SPECS[kind];
+  if (!spec) {
+    throw new Error(`Unknown assurance manifest kind: ${kind}`);
+  }
+  const capabilities = Object.fromEntries(
+    spec.capabilities.map((capabilityName, index) => [
+      capabilityName,
+      {
+        status: "pass",
+        ...(spec.capabilityFields?.(index) ?? {}),
+      },
+    ]),
+  );
+  return {
+    schema: spec.schema,
+    tool_version: "0.1.0",
+    captured_at: FIXTURE_TIME.toISOString(),
+    verdict: spec.verdict,
+    capabilities,
+    ...spec.extras,
+    ...overrides,
+  };
+}
+
 function fixtureUrl(name) {
   return new URL(
     `./.tmp-projector-${name}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}/`,
@@ -229,12 +351,11 @@ export async function createWorkspaceFixture(name) {
     verdict: "complete",
   });
   await fixture.writeJson("specs/evals-manifest.json", {
+    ...assuranceManifest("evals"),
     captured_at:
       name === "stale-assurance"
         ? "2026-07-01T00:00:00Z"
         : "2026-08-06T08:00:00Z",
-    verdict: "comprehensive",
-    must_fix: [],
   });
 
   if (name === "partial-assurance" || name === "stale-assurance") {
@@ -245,12 +366,10 @@ export async function createWorkspaceFixture(name) {
   await fixture.writeString("src/bot/index.js", "export default {};\n");
   await fixture.writeString("src/workspace/index.html", "<main>Orders</main>\n");
   await fixture.writeJson("specs/redteam-manifest.json", {
-    verdict: "hardened",
-    must_fix: [],
+    ...assuranceManifest("redteam"),
   });
   await fixture.writeJson("specs/govern-manifest.json", {
-    verdict: "governed",
-    must_fix: [],
+    ...assuranceManifest("govern"),
   });
   await fixture.writeJson("tests/production-readiness-manifest.json", {
     checked_at: "2026-08-06T08:00:00Z",

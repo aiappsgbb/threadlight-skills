@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { rm, symlink } from "node:fs/promises";
 import test from "node:test";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { projectWorkspace } from "../../.github/extensions/threadlight-lifecycle/lib/projector.mjs";
 import { createIntentBroker } from "../../.github/extensions/threadlight-lifecycle/lib/intents.mjs";
 import {
+  assuranceManifest,
   createWorkspaceFixture,
   legEnvelope,
   producerLegEnvelope,
@@ -304,11 +306,13 @@ test("stale assurance marks threadlight evals stale", async () => {
 
 test("partial governance evidence keeps govern skill running", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
-    await writeJson("specs/govern-manifest.json", {
-      verdict: "partial",
-      not_verified: ["JWT policy"],
-      must_fix: [],
-    });
+    await writeJson(
+      "specs/govern-manifest.json",
+      assuranceManifest("govern", {
+        verdict: "partial",
+        not_verified: ["JWT policy"],
+      }),
+    );
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
@@ -399,11 +403,12 @@ test("threadlight-consumption-iq surfaces non-gating cost evidence state transit
 
 test("threadlight-production-ready surfaces readiness proof evidence separately from status", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
-    await writeJson("specs/evals-manifest.json", {
-      captured_at: "2026-08-06T08:00:00Z",
-      verdict: "partial",
-      must_fix: [],
-    });
+    await writeJson(
+      "specs/evals-manifest.json",
+      assuranceManifest("evals", {
+        verdict: "partial",
+      }),
+    );
     await writeJson(
       "tests/production-readiness-manifest.json",
       readinessManifest(),
@@ -417,11 +422,7 @@ test("threadlight-production-ready surfaces readiness proof evidence separately 
 
     await writeJson(
       "specs/evals-manifest.json",
-      {
-        captured_at: "2026-08-06T08:00:00Z",
-        verdict: "comprehensive",
-        must_fix: [],
-      },
+      assuranceManifest("evals"),
     );
     await writeJson(
       "tests/production-readiness-manifest.json",
@@ -681,16 +682,234 @@ test("non-postdeploy 24-hour freshness boundaries remain aligned with threadligh
       "tests/postdeploy-manifest.json",
       postdeployManifest({ checked_at: "2026-08-07T07:59:59Z" }),
     );
-    await writeJson("specs/evals-manifest.json", {
-      captured_at: "2026-08-06T08:00:00Z",
-      verdict: "complete",
-    });
+    await writeJson(
+      "specs/evals-manifest.json",
+      assuranceManifest("evals"),
+    );
 
     const model = await projectWorkspace(workspace, {
       now: new Date("2026-08-07T08:00:00Z"),
     });
 
     assert.equal(findSkill(model, "threadlight-evals").status, "complete");
+  });
+});
+
+async function assertInvalidAssurance({
+  skillId,
+  path: manifestPath,
+  manifest,
+  expectedMessage,
+}) {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson(manifestPath, manifest);
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, skillId).status, "failed");
+    assert.notEqual(findSkill(model, "threadlight-production-ready").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+    assert.match(
+      model.errors
+        .filter((error) => error.path === manifestPath)
+        .map((error) => error.message)
+        .join("\n"),
+      expectedMessage,
+    );
+  });
+}
+
+test("govern assurance manifests require the exact capability contract", async () => {
+  await assertInvalidAssurance({
+    skillId: "threadlight-govern",
+    path: "specs/govern-manifest.json",
+    manifest: assuranceManifest("govern", { capabilities: {} }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-govern",
+    path: "specs/govern-manifest.json",
+    manifest: assuranceManifest("govern", {
+      capabilities: {
+        policy_artefact_present: { status: "pass" },
+      },
+    }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-govern",
+    path: "specs/govern-manifest.json",
+    manifest: assuranceManifest("govern", {
+      capabilities: {
+        ...assuranceManifest("govern").capabilities,
+        unexpected_capability: { status: "pass" },
+      },
+    }),
+    expectedMessage: /unsupported capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-govern",
+    path: "specs/govern-manifest.json",
+    manifest: assuranceManifest("govern", {
+      capabilities: {
+        ...assuranceManifest("govern").capabilities,
+        policy_tests_present: { status: true },
+      },
+    }),
+    expectedMessage: /invalid status/i,
+  });
+});
+
+test("evals assurance manifests require the exact capability contract", async () => {
+  await assertInvalidAssurance({
+    skillId: "threadlight-evals",
+    path: "specs/evals-manifest.json",
+    manifest: assuranceManifest("evals", { capabilities: {} }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-evals",
+    path: "specs/evals-manifest.json",
+    manifest: assuranceManifest("evals", {
+      capabilities: {
+        eval_scenarios_present: { status: "pass", check_id: "EVAL-001" },
+      },
+    }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-evals",
+    path: "specs/evals-manifest.json",
+    manifest: assuranceManifest("evals", {
+      capabilities: {
+        ...assuranceManifest("evals").capabilities,
+        unexpected_capability: { status: "pass", check_id: "EVAL-999" },
+      },
+    }),
+    expectedMessage: /unsupported capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-evals",
+    path: "specs/evals-manifest.json",
+    manifest: assuranceManifest("evals", {
+      capabilities: {
+        ...assuranceManifest("evals").capabilities,
+        latest_eval_run_fresh: { status: "pass" },
+      },
+    }),
+    expectedMessage: /missing or invalid 'check_id'|missing or invalid check_id/i,
+  });
+});
+
+test("redteam assurance manifests require the exact capability contract", async () => {
+  await assertInvalidAssurance({
+    skillId: "threadlight-redteam",
+    path: "specs/redteam-manifest.json",
+    manifest: assuranceManifest("redteam", { capabilities: {} }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-redteam",
+    path: "specs/redteam-manifest.json",
+    manifest: assuranceManifest("redteam", {
+      capabilities: {
+        scan_present: { status: "pass", finding_id: "SAFE-101" },
+      },
+    }),
+    expectedMessage: /missing capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-redteam",
+    path: "specs/redteam-manifest.json",
+    manifest: assuranceManifest("redteam", {
+      capabilities: {
+        ...assuranceManifest("redteam").capabilities,
+        unexpected_capability: { status: "pass", finding_id: "SAFE-101" },
+      },
+    }),
+    expectedMessage: /unsupported capabilities/i,
+  });
+  await assertInvalidAssurance({
+    skillId: "threadlight-redteam",
+    path: "specs/redteam-manifest.json",
+    manifest: assuranceManifest("redteam", {
+      capabilities: {
+        ...assuranceManifest("redteam").capabilities,
+        coverage_ok: {
+          status: "pass",
+          finding_id: "SAFE-999",
+          extra: true,
+        },
+      },
+    }),
+    expectedMessage: /invalid 'finding_id'|unsupported fields/i,
+  });
+});
+
+test("producer-like assurance manifests keep readiness proof intact", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("specs/govern-manifest.json", assuranceManifest("govern"));
+    await writeJson("specs/evals-manifest.json", assuranceManifest("evals"));
+    await writeJson("specs/redteam-manifest.json", assuranceManifest("redteam"));
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
+    assert.equal(findSkill(model, "threadlight-evals").status, "complete");
+    assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-proof",
+    );
+  });
+});
+
+test("deploy treats unreadable .azure roots as absent evidence instead of throwing", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const azureRoot = path.join(workspace, ".azure");
+    try {
+      await chmod(azureRoot, 0o000);
+      const model = await projectWorkspace(workspace, { now: NOW });
+
+      assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+      assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+    } finally {
+      await chmod(azureRoot, 0o755).catch(() => {});
+    }
+  });
+});
+
+test("deploy treats unreadable azd env directories as absent evidence instead of throwing", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const envDir = path.join(workspace, ".azure", "dev");
+    try {
+      await chmod(envDir, 0o000);
+      const model = await projectWorkspace(workspace, { now: NOW });
+
+      assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+      assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
+    } finally {
+      await chmod(envDir, 0o755).catch(() => {});
+    }
+  });
+});
+
+test("deploy ignores unreadable sibling azd env directories when exactly one usable env remains", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeString }) => {
+    await writeString(".azure/prod/.env", "AGENT_FQDN=threadlight-prod.example.com\n");
+    const unreadableEnvDir = path.join(workspace, ".azure", "prod");
+    try {
+      await chmod(unreadableEnvDir, 0o000);
+      const model = await projectWorkspace(workspace, { now: NOW });
+
+      assert.equal(findSkill(model, "threadlight-deploy").status, "complete");
+      assert.equal(findSkill(model, "threadlight-safe-check").status, "complete");
+    } finally {
+      await chmod(unreadableEnvDir, 0o755).catch(() => {});
+    }
   });
 });
 

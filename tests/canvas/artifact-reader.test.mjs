@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  chmod,
   mkdir,
   rm,
   symlink,
@@ -334,5 +335,77 @@ test("reader rejects symlinked azd roots", async () => {
         error instanceof ArtifactAccessError &&
         error.relativePath === ".azure",
     );
+  });
+});
+
+test("reader treats unreadable .azure roots as absent evidence", async () => {
+  await withWorkspace("azd-root-unreadable", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await writeFile(
+      new URL(".azure/dev/.env", workspace),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+      "utf8",
+    );
+    await chmod(fileURLToPath(new URL(".azure/", workspace)), 0o000);
+
+    try {
+      const reader = await createArtifactReader(workspacePath);
+
+      assert.equal(await reader.readDir(".azure"), null);
+      assert.equal(await reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"), null);
+    } finally {
+      await chmod(fileURLToPath(new URL(".azure/", workspace)), 0o755).catch(() => {});
+    }
+  });
+});
+
+test("reader treats unreadable azd env directories as absent evidence", async () => {
+  await withWorkspace("azd-env-unreadable", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await writeFile(
+      new URL(".azure/dev/.env", workspace),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+      "utf8",
+    );
+    await chmod(fileURLToPath(new URL(".azure/dev/", workspace)), 0o000);
+
+    try {
+      const reader = await createArtifactReader(workspacePath);
+
+      assert.equal(await reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"), null);
+    } finally {
+      await chmod(fileURLToPath(new URL(".azure/dev/", workspace)), 0o755).catch(() => {});
+    }
+  });
+});
+
+test("reader excludes unreadable azd env directories from discovery", async () => {
+  await withWorkspace("azd-env-filter", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/", workspace), { recursive: true });
+    await mkdir(new URL(".azure/prod/", workspace), { recursive: true });
+    await writeFile(
+      new URL(".azure/dev/.env", workspace),
+      "AGENT_FQDN=threadlight-dev.example.com\n",
+      "utf8",
+    );
+    await chmod(fileURLToPath(new URL(".azure/prod/", workspace)), 0o000);
+
+    try {
+      const reader = await createArtifactReader(workspacePath);
+
+      assert.deepEqual(await reader.readDir(".azure"), [".azure/dev"]);
+    } finally {
+      await chmod(fileURLToPath(new URL(".azure/prod/", workspace)), 0o755).catch(() => {});
+    }
+  });
+});
+
+test("reader treats a directory-valued azd env file as absent evidence", async () => {
+  await withWorkspace("azd-env-dir-env", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL(".azure/dev/.env/", workspace), { recursive: true });
+
+    const reader = await createArtifactReader(workspacePath);
+
+    assert.equal(await reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"), null);
   });
 });
