@@ -200,7 +200,7 @@ skills threadlight delegates to.
 | `safe-check --phase post-deploy` returned green and the customer wants to talk about production | `python tests/production_ready.py` | Markdown report + JSON manifest |
 | Customer architecture review in 3 days | `python tests/production_ready.py --target citadel-spoke` (or other posture) | Same as above, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` (no live Azure auth needed) | Pure static scorecard from repo + safe-check manifests |
-| You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` finding surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
+| You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` warning surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
 | AGT v4 shipped (2026-06-01) and you want deep checks against the v4 surface | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the 5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, and v4 audit-field set (AGT-V4-001/002/003/006/007 + AGT-V4-101 live stub), in addition to the version-agnostic AGT-001..006 / AGT-101..102 |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` and `would_fail_hard_gate` flags |
 
@@ -405,7 +405,7 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | `0` | Checks ran and report was written. Per-finding statuses (including `must-fix` and `not-verified`) live inside the report. **The skill never returns non-zero for findings in v1 — it is soft-advisory.** |
-| `2` | Missing prerequisite: no `specs/manifest.json`, no `tests/postdeploy-manifest.json`, safe-check manifest stale (use `--accept-stale-safe-check` to override) or scope-mismatched (different subscription/RG), or unknown `--pillar` id. **Missing SPEC § 12 does NOT exit 2** — the skill emits an `RDY-002` finding, falls back to `standard-ai-gateway` posture, and still produces the report. |
+| `2` | Missing prerequisite: no `specs/manifest.json`, no `tests/postdeploy-manifest.json`, safe-check manifest stale (use `--accept-stale-safe-check` to override) or scope-mismatched (different subscription/RG), or unknown `--pillar` id. **Missing SPEC § 12 does NOT exit 2** — the skill emits an `RDY-002` warning, falls back to `standard-ai-gateway` posture, and still produces the report. |
 | `3` | I/O failure: cannot read inputs, cannot write outputs, `az` not on PATH at all. |
 
 > Missing Azure auth or insufficient permissions for specific live
@@ -454,7 +454,7 @@ the `AzureCliCredential` for free.
 
 | Source | Used for | Required? |
 |---|---|---|
-| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Assessment modes:** no — absent § 12 yields `RDY-002` and the assessment keeps going via framing/evidence fallback. **Target-specific follow-up modes:** yes, unless equivalent framing/flags supply the declared production target. |
+| `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Assessment modes:** no — absent § 12 yields an `RDY-002` warning and the assessment keeps going via framing/evidence fallback. **Target-specific follow-up modes:** yes, unless equivalent framing/flags supply the declared production target. |
 | `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes — in Kratos-export mode, derived from the export's `infra/` + `azure.yaml` |
 | `tests/postdeploy-manifest.json` | Latest `safe-check --phase post-deploy` output; **pre-flight checks freshness, RG/sub match, hash** | Yes |
 | `infra/**/*.bicep`, `azure.yaml`, `src/**/Dockerfile` | Static analysis (pillars 4, 9, 10, 11, 13) | Yes |
@@ -465,7 +465,7 @@ the `AzureCliCredential` for free.
 ### SPEC § 12 behavior by mode
 
 - **Assessment (`default`, `--static`, `--quick`, `--pillar`)** keeps running if
-  § 12 is absent. The skill emits `RDY-002`, then uses the existing
+  § 12 is absent. The skill emits an `RDY-002` warning, then uses the existing
   framing/evidence fallback path (`framing-file` / CLI overrides / detected
   evidence / `standard-ai-gateway`) so the report stays advisory instead of
   failing closed.

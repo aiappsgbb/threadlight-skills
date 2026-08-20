@@ -22,6 +22,9 @@ on:
       - "tests/playwright/**"
       - "README.md"
       - "plugin.json"
+      - ".github/plugin/marketplace.json"
+      - "skills/threadlight-consumption-iq/SKILL.md"
+      - "skills/threadlight-production-ready/**"
   push:
     branches: [main]
     paths:
@@ -40,6 +43,9 @@ on:
       - "tests/playwright/**"
       - "README.md"
       - "plugin.json"
+      - ".github/plugin/marketplace.json"
+      - "skills/threadlight-consumption-iq/SKILL.md"
+      - "skills/threadlight-production-ready/**"
   workflow_dispatch: {}
 
 jobs:

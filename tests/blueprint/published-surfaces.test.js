@@ -284,6 +284,26 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
     '### `docs/production-readiness-report.md` (customer-facing markdown)',
     '## Posture target resolution',
   );
+  const whenToInvoke = extractBetweenHeadings(
+    productionReady,
+    '## When to invoke',
+    '## The 13 pillars',
+  );
+  const exitCodesBlock = extractBetweenHeadings(
+    productionReady,
+    'Exit codes:',
+    '## Files in this skill',
+  );
+  const inputsBlock = extractBetweenHeadings(
+    productionReady,
+    '## Inputs',
+    '### SPEC § 12 behavior by mode',
+  );
+  const spec12ModeBlock = extractBetweenHeadings(
+    productionReady,
+    '### SPEC § 12 behavior by mode',
+    '### Kratos-export mode (no SPEC § 12; trimmed infra is intentional)',
+  );
   const readinessNotBlock = extractBetweenHeadings(
     productionReady,
     '## What this skill is NOT',
@@ -375,6 +395,16 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
     handoffChecklist,
     /KPI-003 measured cost per successful interaction is recorded, or the report explicitly says `not-verified`/i,
   );
+
+  for (const [label, block] of [
+    ['when to invoke', whenToInvoke],
+    ['exit codes', exitCodesBlock],
+    ['inputs', inputsBlock],
+    ['SPEC § 12 behavior', spec12ModeBlock],
+  ]) {
+    assert.match(block, /RDY-002[\s\S]{0,80}warning/i, `${label} must describe RDY-002 as a warning`);
+    assert.doesNotMatch(block, /RDY-002[\s\S]{0,80}finding/i, `${label} must not describe RDY-002 as a finding`);
+  }
 });
 
 test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {
