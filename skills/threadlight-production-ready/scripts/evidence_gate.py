@@ -82,13 +82,12 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
             for list_field in ("must_fix", "should_fix", "not_verified"):
                 if list_field not in data or not isinstance(data.get(list_field), list):
                     raise EvidenceGateError(f"{path.name} missing or invalid '{list_field}' (must be list)")
-            # capabilities.asr.thresholds must exist and be objects
-            cap = data.get("capabilities")
-            asr = cap.get("asr") if isinstance(cap, dict) else None
-            if asr is None or not isinstance(asr, dict):
-                raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities.asr' (must be object)")
-            if "thresholds" not in asr or not isinstance(asr.get("thresholds"), dict):
-                raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities.asr.thresholds' (must be object)")
+            # The Task 1 contract requires top-level 'asr' and 'thresholds' keys
+            # alongside 'capabilities' (capabilities remains a separate object).
+            if "asr" not in data or not isinstance(data.get("asr"), dict):
+                raise EvidenceGateError(f"{path.name} missing or invalid 'asr' (must be object)")
+            if "thresholds" not in data or not isinstance(data.get("thresholds"), dict):
+                raise EvidenceGateError(f"{path.name} missing or invalid 'thresholds' (must be object)")
 
         # record verdict
         verdicts[key] = verdict
