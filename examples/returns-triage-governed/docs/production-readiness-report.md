@@ -377,6 +377,9 @@ _v1: high-level reminders only. For deep PAYG vs PTU analysis, run `paygo-ptu-co
 
 - Pricing plan declared in SPEC § 10: no
 - Budget alerts wired: no / not-verified
+- Forecast manifest: `specs/cost-manifest.json`.
+- Reconciled actuals bundle: `specs/cost-reconciliation-manifest.json` + `specs/cost-actuals-manifest.json`.
+- Forecast-only / actuals not verified: No provable specs/cost-reconciliation-manifest.json.
 
 ## 8. Outcome KPI scorecard
 

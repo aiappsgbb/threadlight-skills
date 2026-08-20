@@ -297,11 +297,17 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.doesNotMatch(handoffCurrentSection, /v0\.3\.0/i);
 
   assert.match(reportTemplate, /reconciled Azure actuals/i);
+  assert.match(reportTemplate, /Pricing plan declared in SPEC § 10: `\{pricing_plan_declared\}`\./);
+  assert.match(reportTemplate, /Budget alerts wired: `\{budget_alerts_wired\}`\./);
+  assert.match(reportTemplate, /Forecast manifest: `specs\/cost-manifest\.json`\./);
+  assert.match(reportTemplate, /Reconciled actuals bundle: `specs\/cost-reconciliation-manifest\.json` \+ `specs\/cost-actuals-manifest\.json`\./);
   assert.match(reportTemplate, /Actuals window: `\{actuals_window\}`\./);
-  assert.match(reportTemplate, /Target scope: `\{actuals_scope\}`\./);
-  assert.match(reportTemplate, /Scope-bound reconciliation coverage: `\{reconciliation_coverage\}`\./);
-  assert.match(reportTemplate, /Variance vs forecast: `\{reconciliation_variance\}`\./);
-  assert.match(reportTemplate, /Unallocated cost: `\$\{unallocated_cost\}` USD\./);
+  assert.match(reportTemplate, /Actuals scope: subscription `\{actuals_subscription_id\}`, resource group `\{actuals_resource_group\}`\./);
+  assert.match(reportTemplate, /Window totals vs forecast: actual `\$\{actual_window_usd\}` vs forecast `\$\{forecast_window_usd\}` \(`\{variance_pct\}` variance\)\./);
+  assert.match(reportTemplate, /Coverage: projection attribution `\{projection_coverage_pct\}`; source resource IDs `\{source_coverage_pct\}`\./);
+  assert.match(reportTemplate, /Unallocated actual cost: `\$\{unallocated_actual_cost_usd\}`\./);
+  assert.match(reportTemplate, /Measured cost \/ successful interaction: `\$\{measured_cost_per_successful_interaction_usd\}`\./);
+  assert.match(reportTemplate, /Forecast-only \/ actuals not verified: `\{cost_evidence_detail\}`\./);
   assert.match(reportTemplate, /KPI-003/);
   assert.deepStrictEqual(
     [
