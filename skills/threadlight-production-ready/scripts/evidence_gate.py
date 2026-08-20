@@ -67,7 +67,11 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
             raise EvidenceGateError(f"{path.name} verdict {verdict!r} not in allowed {sorted(allowed)}")
         verdicts[key] = verdict
 
+    # For live-smoke we require the assurance manifests be present and structurally valid
+    missing = [k for k in _ASSURANCE_SPECS.keys() if k not in verdicts]
     if mode == "live-smoke":
+        if missing:
+            raise EvidenceGateError(f"missing assurance manifests: {', '.join(missing)}")
         # live smoke verifies structural validity only and never asserts readiness
         return {"status": "pass", "mode": mode, "readiness_asserted": False, "verdicts": verdicts}
 
@@ -118,10 +122,12 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
     for field in required_booleans:
         if score.get(field) is not True:
             raise EvidenceGateError(f"kpi_scorecard.{field} must be true")
-    # numeric fields
-    if not isinstance(score.get("eval_pass_rate"), (int, float)):
+    # numeric fields (must be numeric *and not boolean*)
+    ep = score.get("eval_pass_rate")
+    if not (isinstance(ep, (int, float)) and not isinstance(ep, bool)):
         raise EvidenceGateError("kpi_scorecard.eval_pass_rate must be measured")
-    if not isinstance(score.get("cost_per_interaction_usd"), (int, float)):
+    cpi = score.get("cost_per_interaction_usd")
+    if not (isinstance(cpi, (int, float)) and not isinstance(cpi, bool)):
         raise EvidenceGateError("kpi_scorecard.cost_per_interaction_usd must be measured")
 
     return {"status": "pass", "mode": mode, "readiness_asserted": True, "verdicts": verdicts}
