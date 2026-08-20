@@ -227,6 +227,7 @@ test('the returns-triage receipt distinguishes run capture from regenerated asse
 test('the returns-triage README discloses receipt compatibility limits and preserves report findings', () => {
   const readme = read('examples/returns-triage-governed/README.md');
   const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');
+  const spec = read('examples/returns-triage-governed/specs/SPEC.md');
 
   for (const phrase of [
     'exact committed snapshot',
@@ -240,6 +241,11 @@ test('the returns-triage README discloses receipt compatibility limits and prese
   ]) {
     assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), `README must disclose: ${phrase}`);
   }
+
+  assert.match(spec, /^### Evaluation Scenarios$/m);
+  assert.match(spec, /success_event:\s*\n\s+name:\s+return_decision_completed/);
+  assert.match(spec, /target_cost_per_successful_interaction_usd:\s+0\.18/);
+  assert.match(spec, /actual_cost_basis:\s+usage-pretax/);
 
   assert.match(report, /SPEC sec 9 missing — no eval scenarios declared/i);
   assert.match(report, /SPEC sec 10 \(Cost\) missing — pricing plan undocumented/i);
