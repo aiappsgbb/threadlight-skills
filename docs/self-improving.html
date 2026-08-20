@@ -298,8 +298,9 @@
       <h2><span class="n">01</span>How the loop works</h2>
 
       <p>
-        <code>learn</code> is a two-part machine: a <strong>deterministic harvest</strong>
-        that no model touches, followed by a <strong>single, tightly-scoped LLM step</strong>.
+        <code>learn</code> is a workflow run &rarr; <strong>diagnostics-to-backlog</strong>
+        loop: a <strong>deterministic harvest</strong> that no model touches, followed by a
+        <strong>single, tightly-scoped LLM step</strong> that ranks what to look at next.
         Keeping the classification deterministic is what makes the output trustworthy.
       </p>
 
@@ -342,15 +343,14 @@
         surfaces, which is exactly how a healthy run should read.
       </p>
 
-      <h3>3 &middot; The single LLM step: digest &rarr; fixes</h3>
+      <h3>3 &middot; The single LLM step: digest &rarr; ranked backlog</h3>
       <p>
         Only after the digest is written does a model get involved &mdash; and it reads
         <strong>the digest, never the raw logs</strong>. For each finding it names the
-        most likely root cause and the <strong>smallest durable fix</strong>
-        (a pin, a backoff, a quota bump, a wire-API switch, an RBAC grant), and maps
-        the recommendation back to a finding <code>id</code>. If the run is green with
-        zero findings, it says so &mdash; it is <strong>forbidden from inventing issues
-        that aren&rsquo;t in the digest</strong>.
+        most likely root cause, suggests the <strong>smallest durable next step</strong>,
+        and maps that recommendation back to a finding <code>id</code> in a ranked backlog.
+        If the run is green with zero findings, it says so &mdash; it is
+        <strong>forbidden from inventing issues that aren&rsquo;t in the digest</strong>.
       </p>
     </section>
 

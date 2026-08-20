@@ -88,6 +88,23 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(page.locator('meta[property="og:description"]')).toHaveCount(1);
     await expect(page.locator('meta[name="twitter:card"]')).toHaveCount(1);
   });
+
+  test('puts value and evidence boundaries on the primary pages journey', async ({ page }) => {
+    await page.goto(LANDING);
+    await expect(page.locator('#how-it-works')).toContainText(/governed working pilot/i);
+    await expect(page.locator('.demo-sub')).toContainText(/curated demo path|evidence-backed recreation/i);
+    await expect(page.locator('main')).not.toContainText(/one continuous run/i);
+
+    const valueEvidence = page.locator('#value-evidence');
+    await expect(valueEvidence).toContainText(/SPEC\s*(§|section)\s*14/i);
+    await expect(valueEvidence).toContainText(/settled Azure actuals/i);
+    await expect(valueEvidence).toContainText(/cost per successful interaction/i);
+    await expect(valueEvidence.locator('a[href="./self-improving.html#how"]')).toBeVisible();
+
+    const reel = page.locator('section[aria-label="Threadlight pipeline demo reel"]');
+    await expect(reel).toContainText(/evidence-backed recreation/i);
+    await expect(reel.locator('a[href="./case-study.html#proof"]')).toBeVisible();
+  });
 });
 
 test.describe('primary navigation — shared across every chapter page', () => {
@@ -277,6 +294,14 @@ test.describe('production chapter (production.html)', () => {
       expect(gridText, `gap grid should name ${s}`).toContain(s);
     }
   });
+
+  test('the proof section separates forecast, settled Azure actuals, and reconciliation', async ({ page }) => {
+    await page.goto('/production.html');
+    const proof = page.locator('#proof');
+    await expect(proof).toContainText(/forecast/i);
+    await expect(proof).toContainText(/Azure actuals/i);
+    await expect(proof).toContainText(/reconcil/i);
+  });
 });
 
 test.describe('industries chapter (industries.html)', () => {
@@ -302,6 +327,22 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     for (const id of ['how', 'caught', 'found', 'maintain']) {
       await expect(page.locator('#' + id), `self-improving section #${id}`).toHaveCount(1);
     }
+  });
+
+  test('the mechanism stays diagnostics-to-backlog and does not claim automatic remediation', async ({ page }) => {
+    await page.goto('/self-improving.html');
+    const how = page.locator('#how');
+    await expect(how).toContainText(/diagnostics-to-backlog/i);
+    await expect(how).not.toContainText(/automatic remediation|automatically remed/i);
+  });
+});
+
+test.describe('case study chapter (case-study.html)', () => {
+  test('the cost section stays a reviewed monthly projection, not a literal actuals claim', async ({ page }) => {
+    await page.goto('/case-study.html');
+    const cost = page.locator('#cost');
+    await expect(cost).toContainText(/Reviewed monthly projection/i);
+    await expect(cost).not.toContainText(/What it actually costs/i);
   });
 });
 
