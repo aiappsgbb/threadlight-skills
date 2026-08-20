@@ -520,7 +520,7 @@ def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecis
             "skip",
             (
                 f"cost-projection: load_profile complete + manifest fresh (generated_at "
-                f"{manifest_generated_at.isoformat()} >= last_deploy {last_deploy_dt.isoformat()})."
+                f"{manifest_generated_at.isoformat()} > last_deploy_at {last_deploy_dt.isoformat()})."
                 + (f" Previously passed at {passed_at}." if passed_at else "")
             ),
             artifacts_seen=["specs/SPEC.md", "specs/cost-manifest.json"],
