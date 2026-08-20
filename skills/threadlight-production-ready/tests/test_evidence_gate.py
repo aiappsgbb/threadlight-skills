@@ -61,7 +61,10 @@ def _fresh_redteam(verdict: str = "partial") -> dict:
         "must_fix": [],
         "should_fix": [],
         "not_verified": [],
-        "capabilities": {"asr": {"thresholds": {}}},
+        # Spec-compliant shape: top-level 'asr' and 'thresholds' alongside 'capabilities'
+        "capabilities": {},
+        "asr": {},
+        "thresholds": {},
     }
 
 
