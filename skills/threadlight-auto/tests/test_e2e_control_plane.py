@@ -81,7 +81,9 @@ def _seed_reconciled_cost(root: pathlib.Path) -> None:
     """
     specs = root / "specs"
     specs.mkdir(exist_ok=True)
-    deployment = json.loads((specs / "manifest.json").read_text(encoding="utf-8"))[
+    deployment_manifest = json.loads(
+        (specs / "manifest.json").read_text(encoding="utf-8")
+    )[
         "deployment_manifest"
     ]
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -96,8 +98,8 @@ def _seed_reconciled_cost(root: pathlib.Path) -> None:
         "generated_at": _stamp(now - timedelta(hours=1)),
         "status": "pass",
         "scope": {
-            "subscription_id": deployment["subscription_id"],
-            "resource_group": deployment["resource_group"],
+            "subscription_id": deployment_manifest["subscription_id"],
+            "resource_group": deployment_manifest["resource_group"],
         },
         "window": {
             "start": _stamp(now - timedelta(days=8)),
