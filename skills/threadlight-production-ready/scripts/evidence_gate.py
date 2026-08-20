@@ -62,9 +62,35 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
         schema = data.get("schema")
         if schema != expected_schema:
             raise EvidenceGateError(f"{path.name} schema expected {expected_schema!r}")
+        # Common required fields for govern/evals/redteam
+        # All assurance manifests must include tool_version and captured_at
+        if "tool_version" not in data or not isinstance(data.get("tool_version"), str):
+            raise EvidenceGateError(f"{path.name} missing or invalid 'tool_version'")
+        if "captured_at" not in data or not isinstance(data.get("captured_at"), str):
+            raise EvidenceGateError(f"{path.name} missing or invalid 'captured_at'")
         verdict = data.get("verdict")
         if verdict not in allowed:
             raise EvidenceGateError(f"{path.name} verdict {verdict!r} not in allowed {sorted(allowed)}")
+
+        # Capabilities must be present and an object for govern/evals/redteam
+        if "capabilities" not in data or not isinstance(data.get("capabilities"), dict):
+            raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities' (must be object)")
+
+        # Additional structural checks for redteam manifests
+        if key == "redteam":
+            # require lists for findings categories
+            for list_field in ("must_fix", "should_fix", "not_verified"):
+                if list_field not in data or not isinstance(data.get(list_field), list):
+                    raise EvidenceGateError(f"{path.name} missing or invalid '{list_field}' (must be list)")
+            # capabilities.asr.thresholds must exist and be objects
+            cap = data.get("capabilities")
+            asr = cap.get("asr") if isinstance(cap, dict) else None
+            if asr is None or not isinstance(asr, dict):
+                raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities.asr' (must be object)")
+            if "thresholds" not in asr or not isinstance(asr.get("thresholds"), dict):
+                raise EvidenceGateError(f"{path.name} missing or invalid 'capabilities.asr.thresholds' (must be object)")
+
+        # record verdict
         verdicts[key] = verdict
 
     # For live-smoke we require the assurance manifests be present and structurally valid
@@ -136,7 +162,7 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI
     p = argparse.ArgumentParser(prog="evidence-gate")
     p.add_argument("--root", default=".", help="project root")
-    p.add_argument("--mode", required=True, choices=["live-smoke", "readiness-proof"])
+    p.add_argument("--mode", required=True, help="mode of evaluation: live-smoke or readiness-proof")
     args = p.parse_args(argv)
     try:
         out = evaluate_evidence(Path(args.root), args.mode)
