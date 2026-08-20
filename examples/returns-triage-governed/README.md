@@ -9,6 +9,10 @@
 > the [case study](../../docs/case-study.html) — evidence you can inspect, not a
 > deployable snapshot you should reuse unchanged.
 >
+> This receipt assesses the exact committed snapshot captured here; no different input set was used.
+> Because the older section shape in SPEC is still committed, the current parser cannot verify all existing information and will surface some present/legacy-shaped evidence as missing or not verified. §9 evaluation evidence and §10 cost contract are explicit compatibility examples.
+> These are visible compatibility findings, not hidden corrections.
+>
 > **Sanitized for public release.** Credentials and resource identifiers were excluded
 > or replaced with placeholders (`apim-citadel-hub.azure-api.net`,
 > `rg-returns-triage-sample`, …). It is illustrative, not runnable as-is.
