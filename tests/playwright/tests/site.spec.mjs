@@ -179,9 +179,11 @@ test.describe('primary navigation — shared across every chapter page', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/production.html');
 
+    const masthead = page.locator('header.masthead');
     const toggle = page.locator('[data-mobile-nav-toggle]');
     const nav = page.locator('header.masthead nav.nav');
 
+    await expect(masthead).toHaveClass(/mobile-nav-enhanced/);
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(nav).toBeHidden();
@@ -193,6 +195,33 @@ test.describe('primary navigation — shared across every chapter page', () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(nav).toBeHidden();
+  });
+
+  test('no-JS mobile chapter navigation stays visible and usable', async ({ browser }) => {
+    const context = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 390, height: 844 },
+    });
+    const page = await context.newPage();
+
+    try {
+      await page.goto('/production.html');
+
+      const masthead = page.locator('header.masthead');
+      const nav = masthead.locator('nav.nav');
+      const links = nav.locator('a');
+
+      await expect(masthead).not.toHaveClass(/mobile-nav-enhanced/);
+      await expect(page.locator('[data-mobile-nav-toggle]')).toHaveCount(0);
+      await expect(nav).toBeVisible();
+      await expect(links).toHaveCount(5);
+      await expect(links.first()).toBeVisible();
+
+      await links.filter({ hasText: 'Blueprint' }).click();
+      await expect(page).toHaveURL(/blueprint\.html$/);
+    } finally {
+      await context.close();
+    }
   });
 });
 
