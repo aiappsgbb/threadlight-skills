@@ -1,8 +1,11 @@
 # `.threadlight/auto-state.json` — schema
 
-The `threadlight-auto` orchestrator reads (and writes, when `--commit` flag is set)
-this file to track which stages have run, what artifact hashes they produced,
-and which auto-recovery actions fired. Format: pretty-printed JSON.
+`.threadlight/auto-state.json` is owned by the `threadlight-auto` guidance
+contract. The Python planner in `references/orchestrator.py` reads this file to
+decide what can resume; it does **not** write or migrate
+`.threadlight/auto-state.json`. When invoked with `--commit`, `orchestrator.py`
+writes `.threadlight/auto-next.json` for the coding agent to consume. Format:
+pretty-printed JSON written by the guidance/agent side.
 
 > **Schema.** Stage names are `preflight / design / deploy / safe_check /
 > cost_projection / invoke`; artifact paths are `specs/SPEC.md`,
@@ -59,8 +62,8 @@ and which auto-recovery actions fired. Format: pretty-printed JSON.
 | preflight | `.threadlight/preflight-passed.json` | Marker freshness |
 | design | `specs/SPEC.md` | Drives all downstream gates (NEEDS CLARIFICATION scan, hash drift) |
 | deploy | `infra/main.bicep` | Bicep authoring is the load-bearing artifact for safe-check |
-| safe_check | `docs/safe-check-post.md` | End-state record for resumption-aware invoke |
-| cost_projection | `specs/cost-manifest.json` | Feeds `orchestrator.py`'s `_check_cost_projection` freshness/resumability check (`generated_at` vs last deploy) |
+| safe_check | `docs/safe-check-post.md` + `tests/postdeploy-manifest.json` | End-state evidence pair for resumption-aware invoke; docs alone are insufficient |
+| cost_projection | `specs/cost-manifest.json` | Feeds `orchestrator.py`'s `_check_cost_projection` freshness/resumability check (trusted only when `schema_version` starts with `1.` and `generated_at` is newer than last deploy) |
 | invoke | `docs/invoke-results.md` | Demo-scenario evidence; freshness gates re-run after spec change |
 | evals | `specs/evals-manifest.json` | Discover leg — offline + online (Foundry CE) + A/B eval evidence consumed by production-ready pillar 6 |
 | redteam | `specs/redteam-manifest.json` | Discover leg — AI Red Teaming Agent scan evidence consumed by production-ready pillar 7 (SAFE-1xx) |
@@ -107,8 +110,10 @@ their run without parsing JSON.
 
 ## Migrations
 
-When the schema bumps `version`, the orchestrator reads the old version,
-applies a migration (in-process), and re-writes the file at the new version.
+There are no planner-side migrations. If guidance bumps `version`, the
+guidance/agent that owns `.threadlight/auto-state.json` must write the new
+shape before the planner reads it. `orchestrator.py` treats the file as
+read-only state input.
 
 ## What this file is NOT
 
