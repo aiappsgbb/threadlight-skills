@@ -49,6 +49,28 @@ DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
 PREFLIGHT_MARKER = ".threadlight/preflight-passed.json"
 
 FRESHNESS_SECONDS = 24 * 60 * 60
+POSTDEPLOY_MANIFEST = "tests/postdeploy-manifest.json"
+
+LEG_CONTRACTS = {
+    "evals": {
+        "manifest": "specs/evals-manifest.json",
+        "skill": "threadlight-evals",
+        "schema": "threadlight-evals-manifest/v1",
+        "known_verdicts": frozenset({"comprehensive", "partial", "offline-only", "none"}),
+    },
+    "redteam": {
+        "manifest": "specs/redteam-manifest.json",
+        "skill": "threadlight-redteam",
+        "schema": "threadlight-redteam-manifest/v1",
+        "known_verdicts": frozenset({"hardened", "partial", "vulnerable"}),
+    },
+    "govern": {
+        "manifest": "specs/govern-manifest.json",
+        "skill": "threadlight-govern",
+        "schema": "threadlight-govern-manifest/v2",
+        "known_verdicts": frozenset({"governed", "partial", "ungoverned"}),
+    },
+}
 
 # -----------------------------------------------------------------------------
 # Manual handoffs — the four executable live legs (Task 7)
@@ -326,11 +348,43 @@ def _check_safe_check(workspace: Path, _: dict[str, Any]) -> StageDecision:
             f"docs/safe-check-post.md is {int(age/3600)} h old (> 24 h); re-running.",
             artifacts_seen=["docs/safe-check-post.md"],
         )
+
+    manifest = workspace / POSTDEPLOY_MANIFEST
+    if not manifest.exists():
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} missing; safe-check requires manifest evidence, not docs alone.",
+            artifacts_seen=["docs/safe-check-post.md"],
+            artifacts_missing=[POSTDEPLOY_MANIFEST],
+        )
+    manifest_data = _parse_json_object(manifest)
+    if manifest_data is None:
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} is unreadable or malformed; safe-check evidence is not trustworthy.",
+            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+        )
+    if manifest_data.get("phase") != "post-deploy":
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} phase must be post-deploy; re-running threadlight-safe-check.",
+            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+        )
+    if manifest_data.get("gaps") != []:
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} reports unresolved gaps; re-running threadlight-safe-check.",
+            artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
+        )
     return StageDecision(
         "safe_check",
         "skip",
-        f"docs/safe-check-post.md is {int(age/60)} m old (< 24 h).",
-        artifacts_seen=["docs/safe-check-post.md"],
+        f"docs/safe-check-post.md is {int(age/60)} m old (< 24 h) and {POSTDEPLOY_MANIFEST} is green.",
+        artifacts_seen=["docs/safe-check-post.md", POSTDEPLOY_MANIFEST],
     )
 
 
@@ -408,6 +462,14 @@ def _parse_iso(ts: str) -> datetime | None:
         return None
 
 
+def _parse_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecision:
     cost_manifest = workspace / "specs" / "cost-manifest.json"
     spec_path = workspace / "specs" / "SPEC.md"
@@ -425,7 +487,9 @@ def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecis
         try:
             import json as _json
             data = _json.loads(cost_manifest.read_text(encoding="utf-8"))
-            manifest_generated_at = _parse_iso(data.get("generated_at", ""))
+            schema_version = data.get("schema_version")
+            if isinstance(schema_version, str) and schema_version.startswith("1."):
+                manifest_generated_at = _parse_iso(data.get("generated_at", ""))
         except (OSError, ValueError):
             pass
 
@@ -483,43 +547,89 @@ def _check_cost_projection(workspace: Path, state: dict[str, Any]) -> StageDecis
             artifacts_missing=["specs/SPEC.md#load_profile"],
         )
 
+    artifacts_seen = ["specs/SPEC.md"]
+    artifacts_missing: list[str] = []
+    reason = "specs/cost-manifest.json missing or stale — running threadlight-consumption-iq."
+    if cost_manifest.exists():
+        artifacts_seen.append("specs/cost-manifest.json")
+        reason = (
+            "specs/cost-manifest.json is stale or lacks a trusted 1.x schema_version/generated_at pair "
+            "— running threadlight-consumption-iq."
+        )
+    else:
+        artifacts_missing.append("specs/cost-manifest.json")
+
     return StageDecision(
         "cost_projection",
         "run",
-        "specs/cost-manifest.json missing or stale — running threadlight-consumption-iq.",
-        artifacts_seen=["specs/SPEC.md"],
-        artifacts_missing=["specs/cost-manifest.json"],
+        reason,
+        artifacts_seen=artifacts_seen,
+        artifacts_missing=artifacts_missing,
     )
 
 
-def _check_leg_manifest(workspace: Path, stage: str, manifest_rel: str, skill: str) -> StageDecision:
+def _check_leg_manifest(workspace: Path, stage: str) -> StageDecision:
     """Generic resumability probe for a Discover/Protect leg.
 
-    The leg is re-run when its manifest under specs/ is missing or older than
-    the 24 h session-freshness window, and skipped when a fresh manifest is
-    present. Mirrors the invoke/safe_check pattern so a re-deploy upstream
-    cascades a fresh evaluation / scan / governance pass.
+    The leg is re-run when its manifest is missing, malformed, stale by
+    `captured_at`, or outside the known schema/verdict contract. Fresh valid
+    non-passing verdicts still skip: threadlight-auto plans which executed legs
+    to resume, it does not reinterpret advisory readiness outcomes.
     """
+    contract = LEG_CONTRACTS[stage]
+    manifest_rel = contract["manifest"]
+    skill = contract["skill"]
     manifest = workspace / manifest_rel
-    age = _file_age_seconds(manifest)
-    if age is None:
+    if not manifest.exists():
         return StageDecision(
             stage,
             "run",
             f"{manifest_rel} missing — {skill} has not produced its leg manifest yet.",
             artifacts_missing=[manifest_rel],
         )
+    manifest_data = _parse_json_object(manifest)
+    if manifest_data is None:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} is unreadable or malformed — re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    if manifest_data.get("schema") != contract["schema"]:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} schema mismatch (expected {contract['schema']}); re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    captured_at = _parse_iso(manifest_data.get("captured_at", ""))
+    if captured_at is None:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} has no parseable captured_at; re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    verdict = manifest_data.get("verdict")
+    if verdict not in contract["known_verdicts"]:
+        return StageDecision(
+            stage,
+            "run",
+            f"{manifest_rel} verdict is unknown; re-running {skill}.",
+            artifacts_seen=[manifest_rel],
+        )
+    age = (datetime.now(timezone.utc) - captured_at).total_seconds()
     if age > FRESHNESS_SECONDS:
         return StageDecision(
             stage,
             "run",
-            f"{manifest_rel} is {int(age/3600)} h old (> 24 h); re-running {skill}.",
+            f"{manifest_rel} captured_at is {int(age/3600)} h old (> 24 h); re-running {skill}.",
             artifacts_seen=[manifest_rel],
         )
     return StageDecision(
         stage,
         "skip",
-        f"{manifest_rel} is {int(age/60)} m old (< 24 h).",
+        f"{manifest_rel} captured_at is {int(max(age, 0)/60)} m old (< 24 h) with verdict={verdict}.",
         artifacts_seen=[manifest_rel],
     )
 
@@ -528,21 +638,21 @@ def _check_leg_manifest(workspace: Path, stage: str, manifest_rel: str, skill: s
 # Runs threadlight-evals; emits specs/evals-manifest.json consumed by
 # production-ready pillar 6 (EVAL-001..004).
 def _check_evals(workspace: Path, _: dict[str, Any]) -> StageDecision:
-    return _check_leg_manifest(workspace, "evals", "specs/evals-manifest.json", "threadlight-evals")
+    return _check_leg_manifest(workspace, "evals")
 
 
 # Discover leg — AI Red Teaming Agent adversarial scan. Runs threadlight-redteam;
 # emits docs/redteam-report.md + specs/redteam-manifest.json mapped to
 # production-ready pillar 7 (SAFE-101..106).
 def _check_redteam(workspace: Path, _: dict[str, Any]) -> StageDecision:
-    return _check_leg_manifest(workspace, "redteam", "specs/redteam-manifest.json", "threadlight-redteam")
+    return _check_leg_manifest(workspace, "redteam")
 
 
 # Protect leg — agent-runtime governance (AGT). Runs threadlight-govern; emits
 # the verifier report + specs/govern-manifest.json consumed by production-ready
 # pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003).
 def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
-    return _check_leg_manifest(workspace, "govern", "specs/govern-manifest.json", "threadlight-govern")
+    return _check_leg_manifest(workspace, "govern")
 
 
 STAGE_PROBES = {

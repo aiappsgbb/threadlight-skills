@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -46,6 +47,15 @@ def _leg_envelope(schema: str, status: str) -> str:
         "status": status,
         "findings": [],
     })
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +130,85 @@ def test_live_legs_never_added_to_stage_runner():
     assert "loadtest" not in orch.STAGES
     assert "upgrade" not in orch.STAGES
     assert orch.STAGE_PROBES.keys() == set(orch.STAGES)
+
+
+def test_safe_check_requires_green_postdeploy_manifest_even_with_fresh_doc(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "safe-check-post.md").write_text("# green\n", encoding="utf-8")
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert "tests/postdeploy-manifest.json" in decision.artifacts_missing
+
+
+def test_leg_manifest_requires_expected_schema_captured_at_and_known_verdict(tmp_path):
+    manifest = tmp_path / "specs" / "evals-manifest.json"
+    bad_payloads = (
+        {"schema": "threadlight-evals-manifest/v999", "captured_at": _iso_now(), "verdict": "comprehensive"},
+        {"schema": "threadlight-evals-manifest/v1", "verdict": "comprehensive"},
+        {"schema": "threadlight-evals-manifest/v1", "captured_at": _iso_now(), "verdict": "mystery"},
+    )
+
+    for payload in bad_payloads:
+        _write_json(manifest, payload)
+        decision = orch._check_evals(tmp_path, {})
+        assert decision.decision == "run"
+
+
+def test_leg_manifest_skips_fresh_non_passing_known_verdict_with_reason(tmp_path):
+    manifest = tmp_path / "specs" / "redteam-manifest.json"
+    _write_json(
+        manifest,
+        {
+            "schema": "threadlight-redteam-manifest/v1",
+            "captured_at": _iso_now(),
+            "verdict": "vulnerable",
+        },
+    )
+
+    decision = orch._check_redteam(tmp_path, {})
+
+    assert decision.decision == "skip"
+    assert "verdict=vulnerable" in decision.reason
+
+
+def test_cost_projection_requires_1x_schema_before_trusting_generated_at(tmp_path):
+    spec = tmp_path / "specs" / "SPEC.md"
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    spec.write_text(
+        "\n".join(
+            [
+                "load_profile:",
+                "  workload_class: steady",
+                "  peak_concurrent_sessions: 10",
+                "  avg_requests_per_session: 4",
+                "  avg_tokens_per_request: 800",
+                "  peak_requests_per_second: 3",
+                "  business_hours_only: true",
+                "  cosmos_gb_year_one: 1",
+                "  storage_gb_year_one: 1",
+                "  ai_search_documents: 10",
+                "  monthly_growth_rate: 0.1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_json(
+        tmp_path / "specs" / "cost-manifest.json",
+        {
+            "schema_version": "2.0",
+            "generated_at": _iso_now(),
+        },
+    )
+
+    decision = orch._check_cost_projection(
+        tmp_path,
+        {"cost_projection": {"last_deploy_at": "2026-01-01T00:00:00Z"}},
+    )
+
+    assert decision.decision == "run"
 
 
 def run(workspace: Path) -> dict:

@@ -205,8 +205,12 @@ next to the existing use-case skills.
 
 ## Resumption — read `.threadlight/auto-state.json` first
 
-Before any work, `threadlight-auto` reads `.threadlight/auto-state.json` (if present)
-and computes which stages are already done. Stages are skipped when ALL conditions hold:
+`.threadlight/auto-state.json` is owned by the `threadlight-auto` guidance
+contract. The Python planner (`references/orchestrator.py`) reads it (if
+present) to compute which stages are already done; it does **not** write or
+migrate that file. With `--commit`, the planner writes
+`.threadlight/auto-next.json` for the coding agent instead. Stages are skipped
+when ALL conditions hold:
 
 | Stage | Skip when |
 |---|---|
@@ -214,11 +218,11 @@ and computes which stages are already done. Stages are skipped when ALL conditio
 | Design | `specs/SPEC.md` exists AND `sha256(SPEC.md) == auto-state.json[design].artifact_hash` AND no `[NEEDS CLARIFICATION:` markers |
 | Local-test | `specs/SPEC.md` exists AND `src/agent/main.py` runs locally (optional stage; skipped on freshness if SPEC unchanged) |
 | Deploy | `azure.yaml` + `infra/main.bicep` exist AND `azd env get-values \| grep -q AGENT_FQDN` AND first-listed agent `status: active` via `azd ai agent show` |
-| Safe-check | `docs/safe-check-post.md` exists AND `< 24 h` AND post-deploy gate exit was 0 |
-| Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.generated_at > AZURE_LAST_DEPLOY_AT` (or `auto-state.json[cost_projection].passed_at` recorded on a prior run) |
-| Evals (Discover) | `specs/evals-manifest.json` exists AND `< 24 h` old (re-runs when a fresh deploy/invoke cascades) |
-| Red-team (Discover) | `specs/redteam-manifest.json` exists AND `< 24 h` old |
-| Govern (Protect) | `specs/govern-manifest.json` exists AND `< 24 h` old |
+| Safe-check | `docs/safe-check-post.md` exists AND `< 24 h` old AND `tests/postdeploy-manifest.json` is valid JSON with `phase=post-deploy` and `gaps=[]` |
+| Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.schema_version` starts with `1.` AND `generated_at > AZURE_LAST_DEPLOY_AT` (or `auto-state.json[cost_projection].passed_at` recorded on a prior run) |
+| Evals (Discover) | `specs/evals-manifest.json` has schema `threadlight-evals-manifest/v1`, a parseable `captured_at`, and a known verdict (`comprehensive` / `partial` / `offline-only` / `none`) captured `< 24 h` ago (re-runs when a fresh deploy/invoke cascades) |
+| Red-team (Discover) | `specs/redteam-manifest.json` has schema `threadlight-redteam-manifest/v1`, a parseable `captured_at`, and a known verdict (`hardened` / `partial` / `vulnerable`) captured `< 24 h` ago |
+| Govern (Protect) | `specs/govern-manifest.json` has schema `threadlight-govern-manifest/v2`, a parseable `captured_at`, and a known verdict (`governed` / `partial` / `ungoverned`) captured `< 24 h` ago |
 | Sell (optional) | `docs/{seller-prep.md,demo-rehearsal.md}` exist |
 
 If a stage's freshness check fails, that stage AND all downstream stages re-run
@@ -237,7 +241,7 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 | 1 | Design | `threadlight-design` | `specs/SPEC.md` + `specs/manifest.json` + `AGENTS.md` + `skills/*` + `docs/{demo-deck,prep-guide}` — **skipped in Kratos-export mode** (the bundle is already designed) |
 | 2 | Local-test (OPTIONAL) | `threadlight-local-test` | `src/agent/main.py` runs via Pattern 0; smoke test passes |
 | 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active`. **In Kratos-export mode** `threadlight-deploy` runs enrich/validate only (no regen) + backfills `use-cases/<x>/evals/` |
-| 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + behavioral gates green |
+| 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `docs/safe-check-post.md` + `tests/postdeploy-manifest.json` (`phase=post-deploy`, `gaps=[]`) + behavioral gates green |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. Reconciled actuals are an opt-in subphase of this stage — see [§ Reconciled actuals](#cost-projection-stage--optional-reconciled-actuals-subphase-opt-in). |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
 | 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `foundry-evals`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
