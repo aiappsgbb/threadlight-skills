@@ -315,18 +315,33 @@ def _phase_decision(framing, rights_result):
     }
 
 
-def _emit_phase_banner(framing, rights, decision, sink=None):
+def _emit_phase_banner(
+    framing,
+    rights,
+    decision,
+    target_scope: "AssessmentTargetScope | None" = None,
+    sink=None,
+):
     """Render the v0.4.0 phase-decision banner. Side-effecting (writes to sink).
     Default sink is sys.stderr.
     """
     if sink is None:
         sink = sys.stderr
+    target_sub = (
+        target_scope.subscription_id
+        if isinstance(target_scope, AssessmentTargetScope)
+        else framing.get("target_subscription_id")
+    )
+    target_rg = (
+        target_scope.resource_group
+        if isinstance(target_scope, AssessmentTargetScope)
+        else framing.get("target_resource_group")
+    )
     bar = "━" * 64
     print(bar, file=sink)
     print("THREADLIGHT v0.4.0 — Production Onboarding", file=sink)
     print(
-        f"  Target: {framing.get('target_subscription_id')}/"
-        f"{framing.get('target_resource_group')}",
+        f"  Target: {target_sub or 'unknown'}/{target_rg or 'unknown'}",
         file=sink,
     )
     print(f"  Posture: {framing.get('target_posture')}", file=sink)
@@ -372,13 +387,20 @@ def _run_assessment_for_onboard(args, framing: dict) -> dict:
         )
     manifest = _load_manifest(manifest_path)
 
-    sub = getattr(args, "target_sub", None) or framing.get("target_subscription_id")
-    rg = getattr(args, "target_rg", None) or framing.get("target_resource_group")
+    scope = _resolve_assessment_target_scope(
+        manifest=manifest,
+        azd_env=_load_azd_env(root),
+        target_sub=getattr(args, "target_sub", None),
+        target_rg=getattr(args, "target_rg", None),
+        framing=framing,
+    )
+    sub = scope.subscription_id
+    rg = scope.resource_group
     rights = _probe_provisioning_rights(
         sub, rg, skip=getattr(args, "no_rights_probe", False)
     )
     decision = _phase_decision(framing, rights)
-    _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+    _emit_phase_banner(framing, rights, decision, target_scope=scope, sink=sys.stderr)
     manifest["rights_probe"] = rights
     manifest["phase_decision"] = decision
     return manifest
@@ -2402,6 +2424,26 @@ class BicepGraph:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class AssessmentTargetScope:
+    subscription_id: str | None
+    resource_group: str | None
+    subscription_source: str
+    resource_group_source: str
+
+
+def _load_azd_env(root: Path) -> dict[str, str]:
+    env_path = root / ".azure"
+    azd_env: dict[str, str] = {}
+    if env_path.exists():
+        for envfile in env_path.rglob(".env"):
+            for line in (_read_text(envfile) or "").splitlines():
+                if "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    azd_env[k.strip()] = v.strip().strip('"')
+    return azd_env
+
+
 @dataclass
 class RepoContext:
     root: Path
@@ -2419,6 +2461,7 @@ class RepoContext:
     src_text: str = ""
     bicep_graph: BicepGraph | None = None
     resolved_posture: str = ""
+    assessment_target_scope: AssessmentTargetScope | None = None
     mcp_sbom: dict | None = None
     agent_identity: dict | None = None
 
@@ -2434,14 +2477,7 @@ class RepoContext:
         )
         bicep_text = "\n".join((_read_text(p) or "") for p in bicep)
         src_text = "\n".join((_read_text(p) or "") for p in src)
-        env_path = root / ".azure"
-        azd_env: dict[str, str] = {}
-        if env_path.exists():
-            for envfile in env_path.rglob(".env"):
-                for line in (_read_text(envfile) or "").splitlines():
-                    if "=" in line and not line.startswith("#"):
-                        k, _, v = line.partition("=")
-                        azd_env[k.strip()] = v.strip().strip('"')
+        azd_env = _load_azd_env(root)
         # BicepGraph: hard prerequisite in v0.3.0. May raise PrerequisiteError
         # which main() catches and surfaces with an install hint + exit 2.
         bicep_graph = BicepGraph.from_repo(root) if bicep else BicepGraph([], [])
@@ -3517,6 +3553,97 @@ def _non_empty_scope_text(value: object) -> str | None:
     return text or None
 
 
+def _resolve_target_scope_component(
+    *,
+    cli_value: object,
+    framing_value: object,
+    fallback_value: str | None,
+    fallback_source: str,
+) -> tuple[str | None, str]:
+    cli_text = _non_empty_scope_text(cli_value)
+    if cli_text is not None:
+        return cli_text, "cli"
+    framing_text = _non_empty_scope_text(framing_value)
+    if framing_text is not None:
+        return framing_text, "framing"
+    if fallback_value is not None:
+        return fallback_value, fallback_source
+    return None, "none"
+
+
+def _manifest_or_azd_target_scope(
+    manifest: dict,
+    azd_env: dict[str, str],
+) -> AssessmentTargetScope:
+    dm = manifest.get("deployment_manifest", {})
+    manifest_sub = _non_empty_scope_text(
+        dm.get("subscription_id") if isinstance(dm, dict) else None
+    )
+    azd_sub = _non_empty_scope_text(azd_env.get("AZURE_SUBSCRIPTION_ID"))
+    manifest_rg = _non_empty_scope_text(
+        dm.get("resource_group") if isinstance(dm, dict) else None
+    )
+    azd_rg = (
+        _non_empty_scope_text(azd_env.get("AZURE_RESOURCE_GROUP"))
+        or _non_empty_scope_text(azd_env.get("RESOURCE_GROUP_NAME"))
+    )
+    return AssessmentTargetScope(
+        subscription_id=manifest_sub or azd_sub,
+        resource_group=manifest_rg or azd_rg,
+        subscription_source="manifest" if manifest_sub is not None else (
+            "azd_env" if azd_sub is not None else "none"
+        ),
+        resource_group_source="manifest" if manifest_rg is not None else (
+            "azd_env" if azd_rg is not None else "none"
+        ),
+    )
+
+
+def _resolve_assessment_target_scope(
+    *,
+    manifest: dict,
+    azd_env: dict[str, str],
+    target_sub: object = None,
+    target_rg: object = None,
+    framing: dict[str, Any] | None = None,
+) -> AssessmentTargetScope:
+    base_scope = _manifest_or_azd_target_scope(manifest, azd_env)
+    framing_sub = (
+        framing.get("target_subscription_id") if isinstance(framing, dict) else None
+    )
+    framing_rg = (
+        framing.get("target_resource_group") if isinstance(framing, dict) else None
+    )
+    resolved_sub, sub_source = _resolve_target_scope_component(
+        cli_value=target_sub,
+        framing_value=framing_sub,
+        fallback_value=base_scope.subscription_id,
+        fallback_source=base_scope.subscription_source,
+    )
+    resolved_rg, rg_source = _resolve_target_scope_component(
+        cli_value=target_rg,
+        framing_value=framing_rg,
+        fallback_value=base_scope.resource_group,
+        fallback_source=base_scope.resource_group_source,
+    )
+    return AssessmentTargetScope(
+        subscription_id=resolved_sub,
+        resource_group=resolved_rg,
+        subscription_source=sub_source,
+        resource_group_source=rg_source,
+    )
+
+
+def _assessment_target_scope_for_ctx(ctx: RepoContext) -> AssessmentTargetScope:
+    scope = getattr(ctx, "assessment_target_scope", None)
+    if isinstance(scope, AssessmentTargetScope):
+        return scope
+    return _resolve_assessment_target_scope(
+        manifest=ctx.manifest,
+        azd_env=ctx.azd_env,
+    )
+
+
 def _validate_cost_actuals_target_scope(
     actuals: dict[str, Any],
     expected_subscription_id: object,
@@ -3563,9 +3690,9 @@ def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
             "No provable specs/cost-reconciliation-manifest.json")
 
     reconciliation, actuals, _forecast = bundle
-    target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
+    target_scope = _assessment_target_scope_for_ctx(ctx)
     actual_sub, actual_rg, scope_error = _validate_cost_actuals_target_scope(
-        actuals, target_sub, target_rg
+        actuals, target_scope.subscription_id, target_scope.resource_group
     )
     if scope_error is not None:
         return _cost_evidence_unverified(scope_error)
@@ -3688,9 +3815,9 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     if bundle is None:
         return None
     data, actuals, _forecast = bundle
-    target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
+    target_scope = _assessment_target_scope_for_ctx(ctx)
     _actual_sub, _actual_rg, scope_error = _validate_cost_actuals_target_scope(
-        actuals, target_sub, target_rg
+        actuals, target_scope.subscription_id, target_scope.resource_group
     )
     if scope_error is not None:
         return None
@@ -6675,10 +6802,8 @@ def _detect_apim_evidence(sub: str | None, rg: str | None, az_ok: bool) -> bool 
 
 
 def _extract_sub_rg(manifest: dict, azd_env: dict[str, str]) -> tuple[str | None, str | None]:
-    dm = manifest.get("deployment_manifest", {})
-    sub = dm.get("subscription_id") or azd_env.get("AZURE_SUBSCRIPTION_ID")
-    rg = dm.get("resource_group") or azd_env.get("AZURE_RESOURCE_GROUP") or azd_env.get("RESOURCE_GROUP_NAME")
-    return sub, rg
+    scope = _manifest_or_azd_target_scope(manifest, azd_env)
+    return scope.subscription_id, scope.resource_group
 
 
 def _build_evidence_ref(pillar: str, idx: int) -> str:
@@ -6878,6 +7003,14 @@ def main(argv: list[str] | None = None) -> int:
     except PrerequisiteError as e:
         _eprint(f"error: {e}")
         return 2
+    framing = load_framing_file(args.framing_file) if args.framing_file else None
+    ctx.assessment_target_scope = _resolve_assessment_target_scope(
+        manifest=manifest,
+        azd_env=ctx.azd_env,
+        target_sub=args.target_sub,
+        target_rg=args.target_rg,
+        framing=framing,
+    )
 
     # 3b. Missing SPEC § 12 — soft warning, NOT exit 2 (rubber-duck #1).
     # When §12 is absent or empty, the skill still runs; posture falls back to
@@ -6902,7 +7035,8 @@ def main(argv: list[str] | None = None) -> int:
     az_ok = _az_available()
     if not args.static and not az_ok:
         warnings.append("`az` CLI not found on PATH — live probes degraded to not-verified")
-    sub, rg = _extract_sub_rg(manifest, ctx.azd_env)
+    sub = ctx.assessment_target_scope.subscription_id
+    rg = ctx.assessment_target_scope.resource_group
     apim_evidence = None
     if not args.static:
         apim_evidence = _detect_apim_evidence(sub, rg, az_ok)
@@ -7045,13 +7179,13 @@ def main(argv: list[str] | None = None) -> int:
     # to the manifest, emit the phase banner, build apply-plan, and optionally
     # scaffold CI/CD templates. All of this is a no-op when --framing-file is
     # absent, preserving v0.3.0 invocation compatibility.
-    if args.framing_file:
-        framing = load_framing_file(args.framing_file)
-        sub = args.target_sub or framing.get("target_subscription_id")
-        rg = args.target_rg or framing.get("target_resource_group")
+    if framing is not None:
         rights = _probe_provisioning_rights(sub, rg, skip=args.no_rights_probe)
         decision = _phase_decision(framing, rights)
-        _emit_phase_banner(framing, rights, decision, sink=sys.stderr)
+        _emit_phase_banner(
+            framing, rights, decision,
+            target_scope=ctx.assessment_target_scope, sink=sys.stderr,
+        )
         out_manifest["version"] = VERSION
         out_manifest["rights_probe"] = rights
         out_manifest["phase_decision"] = decision

@@ -415,6 +415,114 @@ def test_target_scope_casefold_match_accepts_cost_evidence_and_kpi_measurement(
     assert findings["KPI-003"].status == "pass"
 
 
+def test_cli_resolved_target_scope_matches_actuals_when_manifest_is_wrong(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-manifest",
+            "resource_group": "rg-manifest",
+        }
+    }
+    ctx.azd_env = {
+        "AZURE_SUBSCRIPTION_ID": "sub-azd",
+        "AZURE_RESOURCE_GROUP": "rg-azd",
+    }
+    ctx.assessment_target_scope = pr.AssessmentTargetScope(
+        subscription_id="sub-1",
+        resource_group="rg-pilot",
+        subscription_source="cli",
+        resource_group_source="cli",
+    )
+
+    summary = pr._cost_evidence_summary(ctx)
+    assert summary["status"] == "pass"
+    assert summary["actuals_subscription_id"] == "sub-1"
+    assert summary["actuals_resource_group"] == "rg-pilot"
+
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 0.1083) < 1e-9
+
+    findings = _by_id(pr._check_kpi_static(ctx))
+    assert findings["KPI-003"].status == "pass"
+
+
+def test_framing_resolved_target_scope_matches_actuals_when_cli_is_absent(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    ctx.manifest = {}
+    ctx.azd_env = {
+        "AZURE_SUBSCRIPTION_ID": "sub-azd",
+        "AZURE_RESOURCE_GROUP": "rg-azd",
+    }
+    ctx.assessment_target_scope = pr.AssessmentTargetScope(
+        subscription_id="sub-1",
+        resource_group="rg-pilot",
+        subscription_source="framing",
+        resource_group_source="framing",
+    )
+
+    summary = pr._cost_evidence_summary(ctx)
+    assert summary["status"] == "pass"
+
+    value = pr._read_cost_per_interaction(ctx)
+    assert value is not None and abs(value - 0.1083) < 1e-9
+
+    findings = _by_id(pr._check_kpi_static(ctx))
+    assert findings["KPI-003"].status == "pass"
+
+
+def test_resolved_target_scope_stays_fail_closed_when_unknown_or_mismatched(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    expected = (
+        pr.AssessmentTargetScope(
+            subscription_id=None,
+            resource_group="rg-pilot",
+            subscription_source="none",
+            resource_group_source="framing",
+        ),
+        pr.AssessmentTargetScope(
+            subscription_id="sub-1",
+            resource_group="rg-other",
+            subscription_source="cli",
+            resource_group_source="cli",
+        ),
+    )
+
+    for scope in expected:
+        ctx = _kpi_ctx(
+            tmp_path,
+            spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+            src_text=_OBS_SRC,
+            evals=_evals_manifest(0.97),
+        )
+        ctx.manifest = {}
+        ctx.azd_env = {}
+        ctx.assessment_target_scope = scope
+
+        summary = pr._cost_evidence_summary(ctx)
+        assert summary["status"] == "not-verified"
+        assert pr._read_cost_per_interaction(ctx) is None
+        findings = _by_id(pr._check_kpi_static(ctx))
+        assert findings["KPI-003"].status == "should-fix"
+
+
 def test_forecast_cpi_never_shadows_a_rejected_reconciliation(tmp_path, monkeypatch) -> None:
     """A hash-valid bundle that failed its own gate must not fall back."""
     _freeze(monkeypatch)
