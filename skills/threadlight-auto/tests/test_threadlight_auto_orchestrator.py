@@ -142,6 +142,24 @@ def test_safe_check_requires_green_postdeploy_manifest_even_with_fresh_doc(tmp_p
     assert "tests/postdeploy-manifest.json" in decision.artifacts_missing
 
 
+def test_safe_check_non_green_postdeploy_manifest_with_fresh_doc_runs(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "safe-check-post.md").write_text("# green\n", encoding="utf-8")
+    # Create a postdeploy manifest that reports unresolved gaps
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "postdeploy-manifest.json").write_text(
+        json.dumps({"phase": "post-deploy", "gaps": [{"id": "g1", "reason": "issue"}]}),
+        encoding="utf-8",
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    # Reason should mention gaps and that we need to re-run the safe-check
+    assert "gaps" in decision.reason.lower()
+    assert "re-running" in decision.reason.lower()
+
+
 def test_leg_manifest_requires_expected_schema_captured_at_and_known_verdict(tmp_path):
     manifest = tmp_path / "specs" / "evals-manifest.json"
     bad_payloads = (
