@@ -229,6 +229,53 @@ def test_cost_projection_requires_1x_schema_before_trusting_generated_at(tmp_pat
     assert decision.decision == "run"
 
 
+def test_cost_projection_resumability_requires_strictly_newer_than_last_deploy(tmp_path):
+    """Regression: resume check should require manifest.generated_at > last_deploy_at.
+
+    If generated_at equals the recorded last deploy instant, the planner must
+    re-run cost-projection (decision "run").
+    """
+    spec = tmp_path / "specs" / "SPEC.md"
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    spec.write_text(
+        "\n".join(
+            [
+                "load_profile:",
+                "  workload_class: steady",
+                "  peak_concurrent_sessions: 10",
+                "  avg_requests_per_session: 4",
+                "  avg_tokens_per_request: 800",
+                "  peak_requests_per_second: 3",
+                "  business_hours_only: true",
+                "  cosmos_gb_year_one: 1",
+                "  storage_gb_year_one: 1",
+                "  ai_search_documents: 10",
+                "  monthly_growth_rate: 0.1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # Use a trusted 1.x schema_version and set generated_at exactly equal to last_deploy
+    last_deploy = "2026-08-20T12:34:56Z"
+    _write_json(
+        tmp_path / "specs" / "cost-manifest.json",
+        {
+            "schema_version": "1.0",
+            "generated_at": last_deploy,
+        },
+    )
+
+    decision = orch._check_cost_projection(
+        tmp_path,
+        {"cost_projection": {"last_deploy_at": last_deploy}},
+    )
+
+    # Expect RUN because generated_at must be strictly newer than last_deploy to reuse
+    assert decision.decision == "run"
+
+
 def run(workspace: Path) -> dict:
     out = subprocess.run(
         [sys.executable, str(ORCH), "--workspace", str(workspace), "--dry-run", "--output", "json"],
