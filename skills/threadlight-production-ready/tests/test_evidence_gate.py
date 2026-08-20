@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 TEST_DIR = Path(__file__).resolve().parent
 SKILL_DIR = TEST_DIR.parent
 SCRIPT = SKILL_DIR / "scripts" / "evidence_gate.py"
@@ -303,6 +305,80 @@ def test_readiness_proof_rejects_invalid_optional_evals_freshness_window_days():
         msg = str(e)
         assert "evals-manifest.json" in msg
         assert "freshness_window_days" in msg
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("must_fix", "not-a-list"),
+        ("should_fix", ["keep", 1]),
+        ("not_verified", {"oops": 1}),
+    ],
+)
+def test_readiness_proof_rejects_invalid_optional_govern_findings_lists(field, invalid_value):
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_govern = _fresh_govern("governed")
+    invalid_govern[field] = invalid_value
+    _write(specs, "govern-manifest.json", invalid_govern)
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError(f"expected EvidenceGateError for invalid govern {field}")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "govern-manifest.json" in msg
+        assert field in msg
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("must_fix", "not-a-list"),
+        ("should_fix", {"oops": 1}),
+        ("not_verified", ["keep", 1]),
+    ],
+)
+def test_readiness_proof_rejects_invalid_optional_evals_findings_lists(field, invalid_value):
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_evals = _fresh_evals("comprehensive")
+    invalid_evals[field] = invalid_value
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", invalid_evals)
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError(f"expected EvidenceGateError for invalid evals {field}")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "evals-manifest.json" in msg
+        assert field in msg
+
+
+@pytest.mark.parametrize("invalid_value", ["bogus", 123, {"oops": 1}])
+def test_readiness_proof_rejects_invalid_optional_govern_agt_profile(invalid_value):
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_govern = _fresh_govern("governed")
+    invalid_govern["agt_profile"] = invalid_value
+    _write(specs, "govern-manifest.json", invalid_govern)
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for invalid govern agt_profile")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "govern-manifest.json" in msg
+        assert "agt_profile" in msg
 
 
 def test_readiness_proof_rejects_invalid_optional_redteam_typed_fields():
