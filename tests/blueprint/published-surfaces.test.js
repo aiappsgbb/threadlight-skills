@@ -156,6 +156,25 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
   assert.ok(selfImproving.includes('skills/threadlight-upgrade'), 'self-improving must link threadlight-upgrade');
 });
 
+test('funnel metadata reflects the governed working pilot framing', () => {
+  const funnel = read('docs/funnel.html');
+
+  assert.match(funnel, /<title>Threadlight — governed working pilot funnel\.<\/title>/);
+  assert.match(
+    funnel,
+    /<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+  );
+  assert.match(
+    funnel,
+    /<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+  );
+  assert.match(
+    funnel,
+    /<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+  );
+  assert.doesNotMatch(funnel, /eleven-skill|deployed agent in one session/i);
+});
+
 test('industries copy stays CI/CD-only and never reintroduces a laptop deploy command', () => {
   const industries = read('docs/industries.html');
 

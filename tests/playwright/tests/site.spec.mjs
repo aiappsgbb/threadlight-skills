@@ -240,7 +240,19 @@ test.describe('public-safety audit — no internal-only phrasing leaks', () => {
 test.describe('funnel chapter — the five-stage narrative (funnel.html)', () => {
   test('hero: Threadlight title, the process → agent headline, and the technical-briefing CTA', async ({ page }) => {
     await page.goto('/funnel.html');
-    await expect(page).toHaveTitle(/Threadlight/);
+    await expect(page).toHaveTitle(/governed working pilot funnel/i);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      'content',
+      /governed working pilot.*evidence-backed path to production.*22-skill library/i,
+    );
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+      'content',
+      /governed working pilot.*evidence-backed path to production.*22-skill library/i,
+    );
+    await expect(page.locator('meta[name="twitter:description"]')).toHaveAttribute(
+      'content',
+      /governed working pilot.*evidence-backed path to production.*22-skill library/i,
+    );
     const headline = page.locator('#scene-hero .hero-headline');
     await expect(headline).toContainText(/Business\s+process/i);
     await expect(headline).toContainText(/working\s+agent/i);
