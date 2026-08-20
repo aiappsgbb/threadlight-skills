@@ -224,6 +224,28 @@ test('the returns-triage receipt distinguishes run capture from regenerated asse
   assert.match(spec, /^## 14\. Value Model$/m);
 });
 
+test('the returns-triage README discloses receipt compatibility limits and preserves report findings', () => {
+  const readme = read('examples/returns-triage-governed/README.md');
+  const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');
+
+  for (const phrase of [
+    'exact committed snapshot',
+    'no different input set',
+    'older section shape',
+    'current parser cannot verify all existing information',
+    '§9 evaluation evidence',
+    '§10 cost contract',
+    'visible compatibility findings',
+    'not hidden corrections',
+  ]) {
+    assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), `README must disclose: ${phrase}`);
+  }
+
+  assert.match(report, /SPEC sec 9 missing — no eval scenarios declared/i);
+  assert.match(report, /SPEC sec 10 \(Cost\) missing — pricing plan undocumented/i);
+  assert.match(report, /What was not verified/i);
+});
+
 test('the generated process library exposes qualify as entry metadata, never a runtime skill', () => {
   const library = JSON.parse(read('docs/assets/process-library.json'));
   assert.ok(Array.isArray(library) && library.length > 0);
