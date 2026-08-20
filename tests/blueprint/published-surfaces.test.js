@@ -250,7 +250,18 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(reportTemplate, /KPI-003/);
 
   assert.match(handoffChecklist, /SPEC (?:§|section) 14/i);
-  assert.match(handoffChecklist, /scope-bound reconciliation/i);
+  assert.match(
+    handoffChecklist,
+    /Reconciled Azure actuals, if collected, target the intended subscription\/resource-group scope and a settled window/i,
+  );
+  assert.match(
+    handoffChecklist,
+    /Scope-bound reconciliation has been reviewed for variance, coverage, and unallocated cost before handoff/i,
+  );
+  assert.match(
+    handoffChecklist,
+    /KPI-003 measured cost per successful interaction is recorded, or the report explicitly says `not-verified`/i,
+  );
 });
 
 test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {
