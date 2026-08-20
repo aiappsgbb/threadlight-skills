@@ -219,7 +219,7 @@ when ALL conditions hold:
 | Local-test | `specs/SPEC.md` exists AND `src/agent/main.py` runs locally (optional stage; skipped on freshness if SPEC unchanged) |
 | Deploy | `azure.yaml` + `infra/main.bicep` exist AND `azd env get-values \| grep -q AGENT_FQDN` AND first-listed agent `status: active` via `azd ai agent show` |
 | Safe-check | `docs/safe-check-post.md` exists AND `< 24 h` old AND `tests/postdeploy-manifest.json` is valid JSON with `phase=post-deploy` and `gaps=[]` |
-| Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.schema_version` starts with `1.` AND `generated_at > AZURE_LAST_DEPLOY_AT` (or `auto-state.json[cost_projection].passed_at` recorded on a prior run) |
+| Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.schema_version` starts with `1.` AND `generated_at > AZURE_LAST_DEPLOY_AT` (the planner trusts `specs/cost-manifest.json.generated_at` vs `AZURE_LAST_DEPLOY_AT`; `.threadlight/auto-state.json[cost_projection].passed_at` is recorded for audit/echo only and is not used as a skip gate) |
 | Evals (Discover) | `specs/evals-manifest.json` has schema `threadlight-evals-manifest/v1`, a parseable `captured_at`, and a known verdict (`comprehensive` / `partial` / `offline-only` / `none`) captured `< 24 h` ago (re-runs when a fresh deploy/invoke cascades) |
 | Red-team (Discover) | `specs/redteam-manifest.json` has schema `threadlight-redteam-manifest/v1`, a parseable `captured_at`, and a known verdict (`hardened` / `partial` / `vulnerable`) captured `< 24 h` ago |
 | Govern (Protect) | `specs/govern-manifest.json` has schema `threadlight-govern-manifest/v2`, a parseable `captured_at`, and a known verdict (`governed` / `partial` / `ungoverned`) captured `< 24 h` ago |
@@ -316,10 +316,7 @@ projection stage itself is skipped.** The Resumption table's Cost-projection
 skip rule decides only whether Stage 5 needs to **re-run**
 `scripts/consumption_iq.py run --all` to refresh a stale
 `specs/cost-manifest.json` — it says nothing about the actuals subphase, and
-it must never be read as one. On a **resumed** run where
-`.threadlight/auto-state.json[cost_projection].passed_at` (or a fresh
-`generated_at`) makes the orchestrator's `_check_cost_projection` return
-`skip`, and the operator has explicitly asked for actuals under rule 3,
+it must never be read as one. On a **resumed** run where `specs/cost-manifest.json.generated_at > AZURE_LAST_DEPLOY_AT` makes the orchestrator's `_check_cost_projection` return `skip`. `.threadlight/auto-state.json[cost_projection].passed_at` is recorded for auditing/echo purposes only and is not consulted by the planner to decide skip/run. If the operator has explicitly asked for actuals under rule 3, `threadlight-auto` still runs the actuals subphase as described below,
 `threadlight-auto` still runs the subphase — it just does so with
 `scripts/consumption_iq.py actuals ...` followed by
 `scripts/consumption_iq.py reconcile` (both read-only, reusing the existing,
