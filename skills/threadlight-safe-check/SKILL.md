@@ -20,7 +20,7 @@ description: >
   orchestration (threadlight-deploy), schema authoring
   (threadlight-design).
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI

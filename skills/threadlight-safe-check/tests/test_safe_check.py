@@ -414,6 +414,11 @@ def _governed_inputs() -> tuple[dict[str, object], str]:
     return manifest, spec_text
 
 
+def test_safe_check_and_hitl_skill_versions_are_pinned() -> None:
+    assert 'version: "1.2.0"' in _read_text(SKILL_DIR / "SKILL.md")
+    assert 'version: "1.2.0"' in _read_text(HITL_SKILL)
+
+
 def test_hitl_contract_governed_fields_and_legacy_shape_are_documented() -> None:
     skill_text = _read_text(HITL_SKILL)
     audit_schema_text = _read_text(HITL_AUDIT_SCHEMA)

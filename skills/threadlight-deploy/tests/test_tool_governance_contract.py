@@ -30,6 +30,10 @@ def _assert_phrase_present(text: str, *, label: str) -> None:
     assert text in NORMALIZED_SKILL, f"Missing {label}: {text}"
 
 
+def test_skill_version_is_pinned() -> None:
+    assert 'version: "1.7.0"' in SKILL
+
+
 def test_ghcp_governance_contract_is_explicitly_mcp_only() -> None:
     required = (
         "GHCP SDK tools are MCP-bound",

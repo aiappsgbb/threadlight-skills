@@ -16,7 +16,7 @@ description: >-
   authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
   access contracts (citadel-spoke-onboarding).
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -136,11 +136,11 @@ and `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo 
 production-onboarding pipeline can run. That exception is bounded, opt-in, and writes deterministic
 templates only — it does not emit remediation patches.
 
-> **Current agent-governance delta.** The baseline catalog now includes
-> evidence-based governance checks for enabled tool coverage (`AGT-007`),
-> runtime-appropriate adapter wiring (`AGT-008`), and fresh contract-probe
-> evidence (`AGT-103`). No version bump — this is the shipped policy surface
-> finally reflected in docs and recipes.
+> **v0.12.0 — agent-governance evidence refresh.** The baseline catalog now
+> includes evidence-based governance checks for enabled tool coverage
+> (`AGT-007`), runtime-appropriate adapter wiring (`AGT-008`), and fresh
+> contract-probe evidence (`AGT-103`). This release also documents the
+> production-ready evidence expected for the new tool-governance contract.
 
 ## How to invoke
 

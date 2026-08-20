@@ -179,6 +179,17 @@ field.
 
 ### Added
 
+- **Tool-governance contract evidence is now released across the Threadlight
+  chain.** `threadlight-design` documents the opt-in, runtime-agnostic tool
+  governance projection derived from SPEC §§ 6/8; `threadlight-deploy`
+  documents `foundry-agt` as the real pre-tool boundary where the runtime
+  supports it and keeps GHCP governance explicitly MCP-server/gateway only;
+  `threadlight-safe-check` now requires complete coverage plus adapter/canary
+  evidence (including matching contract/adapter hashes); `threadlight-hitl-patterns`
+  documents correlation/approval propagation for governed conditional tools;
+  and `threadlight-production-ready` now expects AGT-007/008/103 evidence for
+  customer production-readiness review.
+
 - **`threadlight-auto` now carries reconciled cost actuals as an advisory,
   opt-in subphase — and nothing about the state machine changed.**
   `references/orchestrator.py`, `STAGES`, and `.threadlight/auto-state.json`'s

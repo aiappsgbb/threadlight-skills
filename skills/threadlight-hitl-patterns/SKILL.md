@@ -12,7 +12,7 @@ description: >
   UI (use threadlight-workspace-ui), agent runtime logic (use
   threadlight-deploy).
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Threadlight HITL Patterns

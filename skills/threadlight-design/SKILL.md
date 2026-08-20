@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.12.0"
+  version: "1.13.0"
 ---
 
 # Threadlight Design
