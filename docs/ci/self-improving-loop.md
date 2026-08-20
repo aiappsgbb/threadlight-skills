@@ -1,11 +1,13 @@
-# The self-improving cold-path — learn from any CI run
+# The self-improving cold-path — diagnostics to backlog, reviewer-gated updates
 
 > A finished CI run is a wasted asset if nobody reads it. The **self-improving
 > cold-path** (`learn <run_id>`) turns **one** GitHub Actions run — green or red,
-> **no matched-pair baseline** — into a grounded, deduplicated learnings digest:
-> phase parity, a reality-tuned failure taxonomy, and ranked fixes mapped back to
-> evidence. It is the primary offline leg for threadlight pilots driven by the
-> GitHub Copilot CLI on Microsoft Foundry.
+> **no matched-pair baseline** — into a grounded, deduplicated diagnostics digest:
+> phase parity, a reality-tuned failure taxonomy, and ranked backlog items mapped
+> back to evidence. Maintainers may review candidate signatures and explicitly add
+> rules/tests; only reviewed rule/test updates improve later classification. It is
+> the primary offline leg for threadlight pilots driven by the GitHub Copilot CLI on
+> Microsoft Foundry.
 >
 > Skill: [`threadlight-router-bench`](../../skills/threadlight-router-bench/SKILL.md).
 > Companion (optional efficiency proof): [Router validation](./router-validation.md).
@@ -111,9 +113,9 @@ reads **`learnings-<run_id>.md`, never the raw logs**:
 > retries) worth watching. **Do not invent issues that are not in the digest.**
 
 Anything reusable — a new taxonomy signature, a recurring root cause — is captured as
-a follow-up, so the cold-path keeps improving across runs.
+a follow-up for maintainer review, so later runs can be classified more sharply.
 
-## What it caught (and taught itself)
+## What it caught (and what maintainers reviewed)
 
 The loop earned its keep on this very exercise. Pointed at the failing matrix runs,
 it turned logs into fixes with **no guesswork and no re-running pairs**:
@@ -123,7 +125,8 @@ it turned logs into fixes with **no guesswork and no re-running pairs**:
 - **A protocol-contract gap** (a `wire_protocol` finding) surfaced by a Phase-4
   protocol probe added to the workload pack.
 
-Three fixes shipped straight from those digests. And the taxonomy itself got sharper:
+Three fixes shipped straight from those digests. Maintainers then reviewed the
+candidate signatures and landed the durable updates, so the taxonomy itself got sharper:
 
 - Added a **`protocol_contract`** classification rule so wire-contract mismatches are
   caught by category, not by chance.
@@ -131,8 +134,8 @@ Three fixes shipped straight from those digests. And the taxonomy itself got sha
   hard blocker, not a warning.
 - The skill's own test suite grew **51 → 53** to lock the new behavior in.
 
-That is the compounding property: the loop doesn't just report this run, it improves
-how it reads the *next* one.
+That is the compounding property: the loop doesn't just report this run, reviewed
+rules and tests improve how it reads the *next* one.
 
 ## Reproduce
 
@@ -161,7 +164,7 @@ repo's `python-pytest.yml`.
   fixed-taxonomy and evidence-scoped, but the root-cause → fix mapping is the one LLM
   step. It is constrained to the digest, but treat its fixes as proposals to verify.
 - **Taxonomy is closed by design.** New failure shapes are *added deliberately* (as a
-  new rule + tests), not inferred at runtime — that's what keeps precision high.
+  reviewed new rule + tests), not inferred at runtime — that's what keeps precision high.
 - **`learn` reads; it never provisions.** Teardown stays forced in the e2e workflow;
   this cold-path touches no Azure resources.
 

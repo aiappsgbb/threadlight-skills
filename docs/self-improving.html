@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Self-improving CI — the pipeline that learns from every run.</title>
-<meta name="description" content="Every threadlight CI run — green or red — is mined by a self-improving cold-path (learn) that turns one GitHub Actions run into a grounded list of fixes. No matched-pair baseline, no re-running jobs to learn. It classifies what went wrong with a reality-tuned failure taxonomy, maps every recommendation to evidence, and folds new signatures back in so it reads the next run more sharply. Constrained model-router efficiency is one of the things this loop found.">
+<title>Self-improving CI — diagnostics to backlog, reviewer-gated updates.</title>
+<meta name="description" content="Every threadlight CI run — green or red — is mined by a deterministic cold-path (learn) that turns one GitHub Actions run into a grounded diagnostics digest and ranked backlog. No matched-pair baseline, no auto-apply. Maintainers may review candidate signatures and explicitly add rules/tests; only reviewed rule/test updates improve later classification. Constrained model-router efficiency is one of the things this loop found.">
 <meta name="theme-color" content="#e0b13a">
 
 <meta property="og:type"        content="article">
-<meta property="og:title"       content="Self-improving CI — the pipeline that learns from every run.">
-<meta property="og:description" content="A cold-path called learn harvests one CI run — green or red, no baseline — and turns it into ranked, evidence-mapped fixes. It taught itself new failure signatures in-flight. Cheap-model routing is just one thing the loop found.">
+<meta property="og:title"       content="Self-improving CI — diagnostics to backlog, reviewer-gated updates.">
+<meta property="og:description" content="A cold-path called learn harvests one CI run — green or red, no baseline — and turns it into a ranked, evidence-mapped backlog. Maintainers may review candidate signatures and explicitly add rules/tests; only reviewed updates improve later classification. Cheap-model routing is just one thing the loop found.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/self-improving.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-self-improving.svg">
@@ -17,8 +17,8 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Self-improving CI — the pipeline that learns from every run.">
-<meta name="twitter:description"   content="A cold-path harvests one CI run — green or red, no baseline — into ranked, evidence-mapped fixes, and gets sharper each run. Cheap-model routing is one thing it found.">
+<meta name="twitter:title"       content="Self-improving CI — diagnostics to backlog, reviewer-gated updates.">
+<meta name="twitter:description"   content="A cold-path harvests one CI run — green or red, no baseline — into ranked, evidence-mapped backlog items. Maintainers review candidate signatures and add rules/tests; only reviewed updates improve later classification. Cheap-model routing is one thing it found.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-self-improving.svg">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
@@ -149,15 +149,15 @@
 <main>
   <article class="doc">
     <p class="crumb"><a href="./index.html">Threadlight</a> / Self-improving</p>
-    <h1>The pipeline that <em>learns from every run</em></h1>
+    <h1>The pipeline that turns every run into a ranked backlog</h1>
     <p class="lede">
       Every threadlight CI run &mdash; <strong>green or red</strong> &mdash; carries
-      learnings, and re-reading raw logs by hand is slow and noisy. So a cold-path
+      re-reading raw logs by hand is slow and noisy. So a deterministic cold-path
       called <code>learn</code> harvests <strong>one</strong> GitHub Actions run,
-      <strong>no matched-pair baseline</strong>, and turns it into a grounded list of
-      ranked fixes &mdash; each one mapped back to the evidence that justifies it. Point
-      it at any single run and it tells you what to fix, or what to keep. That is the
-      self-improving loop the team actually asked for.
+      <strong>no matched-pair baseline</strong>, and turns it into grounded findings
+      and a ranked backlog &mdash; each one mapped back to the evidence that justifies
+      it. Maintainers may review candidate signatures and explicitly add rules/tests;
+      only those reviewed updates improve later classification.
     </p>
 
     <div class="why-grid">
@@ -180,17 +180,18 @@
       </article>
       <article class="why-card">
         <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M16 4h5v5"/><path d="M3 21h18"/></svg></span>
-        <p class="why-kicker">And it compounds</p>
-        <h3>Compounds over runs.</h3>
-        <p>New failure signatures fold back into the taxonomy as rules and tests, so
-          the loop reads the <strong>next</strong> run more sharply. It doesn&rsquo;t
-          just report &mdash; it gets better.</p>
+        <p class="why-kicker">And review compounds</p>
+        <h3>Reviewed updates compound over runs.</h3>
+        <p>New failure signatures are only folded into the taxonomy when maintainers
+          review them and add rules/tests, so later runs are classified more sharply.
+          It doesn&rsquo;t teach itself; reviewed updates are what make the next run
+          clearer.</p>
       </article>
     </div>
 
     <figure class="diagram-card" aria-labelledby="loop-cap">
       <div class="diagram-frame" tabindex="0">
-        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The self-improving loop: a single CI run is harvested deterministically with no model, classified into an ordered taxonomy, and written to a digest; one scoped LLM step turns the digest into ranked fixes; new signatures fold back into rules and tests so the next run reads sharper.">
+        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The self-improving loop: a single CI run is harvested deterministically with no model, classified into an ordered taxonomy, and written to a digest; one scoped LLM step turns the digest into ranked fixes; maintainers may review candidate signatures and add rules/tests, and only reviewed updates improve later classification.">
           <defs>
             <style>
               .lp-node { font-family: var(--mono); font-size: 13px; letter-spacing: .05em; fill: currentColor; font-weight: 600; }
@@ -243,13 +244,13 @@
             <line x1="887" y1="116" x2="910" y2="116"/><path d="M907 111 L914 116 L907 121"/>
           </g>
 
-          <!-- return arc: fold back into the next run -->
+          <!-- return arc: reviewed updates feed later runs -->
           <path d="M990 162 C 990 232 760 262 540 262 C 320 262 90 232 90 162" fill="none" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="2 5"/>
           <path d="M85 169 L90 159 L95 169" fill="none" stroke="var(--lime)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <text x="540" y="238" text-anchor="middle" class="lp-flow">the loop reads the next run more sharply</text>
+          <text x="540" y="238" text-anchor="middle" class="lp-flow">reviewed rules and tests make later runs read more sharply</text>
         </svg>
       </div>
-      <figcaption id="loop-cap" class="diagram-caption">harvest &rarr; classify &rarr; digest &rarr; one LLM step &rarr; fold back</figcaption>
+      <figcaption id="loop-cap" class="diagram-caption">harvest &rarr; classify &rarr; digest &rarr; one LLM step &rarr; maintainer review</figcaption>
     </figure>
 
     <p class="kicker">Why a loop, not a log-read</p>
@@ -282,7 +283,7 @@
       <div class="outcome-result">
         <span class="oc-dim">Net effect</span>
         <span class="oc-cell">slow, noisy, non-repeatable</span>
-        <span class="oc-cell oc-on">durable learnings that compound</span>
+        <span class="oc-cell oc-on">durable reviewed updates that compound</span>
       </div>
     </div>
     <p class="note">
@@ -301,7 +302,9 @@
         The current flow is <strong>diagnostics-to-backlog</strong>:
         <code>learn</code> harvests one finished workflow run, classifies grounded
         findings, and ranks the next fixes. It does not apply changes, assign owners,
-        rerun the workflow, or claim measured improvement automatically.
+        rerun the workflow, or claim measured improvement automatically. Maintainers
+        may review candidate signatures and explicitly add rules/tests; only reviewed
+        rule/test updates improve later classification.
       </p>
 
       <h3>1 &middot; Deterministic harvest (no LLM)</h3>
@@ -355,7 +358,7 @@
     </section>
 
     <section id="caught" data-toc-id="caught" data-toc-label="What it caught">
-      <h2><span class="n">02</span>What it caught &mdash; and taught itself</h2>
+      <h2><span class="n">02</span>What it caught &mdash; and what maintainers reviewed</h2>
 
       <p>
         The loop earned its keep on this very exercise. Pointed at the failing runs, it
@@ -369,8 +372,9 @@
           finding) surfaced by a Phase-4 protocol probe added to the workload pack.</li>
       </ul>
       <p>
-        Both fixes shipped straight from those digests. And the more durable win: the
-        taxonomy itself got <strong>sharper</strong>.
+        Both fixes shipped straight from those digests. Maintainers then reviewed the
+        candidate signatures and landed the durable updates, so the taxonomy itself got
+        <strong>sharper</strong>.
       </p>
       <ul>
         <li>Added a <code>protocol_contract</code> rule so wire-contract mismatches are
@@ -382,7 +386,8 @@
       </ul>
       <p class="note">
         That is the compounding property in one sentence: the loop doesn&rsquo;t just
-        report <em>this</em> run &mdash; it improves how it reads the <em>next</em> one.
+        report <em>this</em> run &mdash; reviewed rules and tests improve how it reads
+        the <em>next</em> one.
         <a href="./ci/self-improving-loop.md">Read the full method&nbsp;&nearr;</a>
       </p>
     </section>
@@ -442,8 +447,8 @@
           findings into ranked fixes, each mapped to a finding id.</li>
         <li><strong>Ship the fix.</strong> The smallest durable change per finding &mdash;
           a pin, a backoff, a wire-API switch.</li>
-        <li><strong>Fold it back.</strong> A recurring signature becomes a new rule and
-          test, so the loop reads the next run more sharply.</li>
+        <li><strong>Review it back.</strong> A recurring signature becomes a new rule and
+          test after maintainer review, so the loop reads the next run more sharply.</li>
       </ol>
 
       <p>
