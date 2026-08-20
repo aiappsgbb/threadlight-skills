@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from pathlib import Path
 TEST_DIR = Path(__file__).resolve().parent
 SKILL = TEST_DIR.parent / "SKILL.md"
 TEMPLATE = TEST_DIR.parent / "references" / "speckit-template.md"
+REPO_ROOT = TEST_DIR.parent.parent.parent
 
 
 def _extract_between(text: str, start_heading: str, end_heading: str) -> str:
@@ -27,6 +29,10 @@ def _manifest_example(skill_text: str) -> str:
     )
     assert match, "manifest example JSON block not found"
     return match.group("json")
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def test_speckit_template_documents_opt_in_tool_governance_contract():
@@ -131,3 +137,39 @@ def test_design_skill_manifest_example_includes_tool_governance_machine_contract
         "approval_id",
     ):
         assert f'"{field}"' in example
+
+
+def test_governed_fixture_manifest_exposes_exact_tool_decisions():
+    manifest = _load_json(
+        REPO_ROOT
+        / "skills"
+        / "threadlight-safe-check"
+        / "tests"
+        / "fixtures"
+        / "tool-governance-enabled"
+        / "specs"
+        / "manifest.json"
+    )
+
+    tool_governance = manifest["tool_governance"]
+    assert tool_governance["enabled"] is True
+    assert tool_governance["contract_version"] == "1.0"
+    assert [
+        {
+            "name": contract["name"],
+            "decision": contract["decision"],
+        }
+        for contract in tool_governance["tools"]
+    ] == [
+        {"name": "inventory_read", "decision": "allow"},
+        {"name": "external_notify", "decision": "deny"},
+        {"name": "returns_apply_decision", "decision": "conditional"},
+    ]
+
+
+def test_legacy_example_manifest_has_no_top_level_tool_governance():
+    manifest = _load_json(
+        REPO_ROOT / "examples" / "returns-triage-governed" / "specs" / "manifest.json"
+    )
+
+    assert "tool_governance" not in manifest

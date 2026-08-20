@@ -1,0 +1,55 @@
+{
+  "schema": "threadlight.tool-governance-adapter/v1",
+  "contract_sha256": "sha256:67428d8a48645114ce87615f9e3e3300a44bbde1628b06f2a3adcc094aa27984",
+  "runtime": {
+    "framework": "github-copilot-sdk",
+    "runtime_shape": "agent",
+    "protocol": "invocations"
+  },
+  "bindings": [
+    {
+      "tool_name": "inventory_read",
+      "enforcement_point": "mcp-server",
+      "adapter_id": "mcp-tool-governance",
+      "policy_artifact": "policies/tool-governance/generated/mcp-policy.json",
+      "wire_signals": [
+        {
+          "path": "src/mcp/server.py",
+          "kind": "mcp-server-policy-binding"
+        }
+      ]
+    },
+    {
+      "tool_name": "external_notify",
+      "enforcement_point": "mcp-server",
+      "adapter_id": "mcp-tool-governance",
+      "policy_artifact": "policies/tool-governance/generated/mcp-policy.json",
+      "wire_signals": [
+        {
+          "path": "src/mcp/server.py",
+          "kind": "mcp-server-policy-binding"
+        }
+      ]
+    },
+    {
+      "tool_name": "returns_apply_decision",
+      "enforcement_point": "mcp-server",
+      "adapter_id": "mcp-tool-governance",
+      "policy_artifact": "policies/tool-governance/generated/mcp-policy.json",
+      "wire_signals": [
+        {
+          "path": "src/mcp/server.py",
+          "kind": "mcp-server-policy-binding"
+        }
+      ]
+    }
+  ],
+  "audit": {
+    "schema": "threadlight.tool-governance-audit/v1",
+    "sink": "fixture-memory"
+  },
+  "probe": {
+    "entrypoint": "tests/tool_governance_probe.py",
+    "evidence": "tests/tool-governance-probe-manifest.json"
+  }
+}
