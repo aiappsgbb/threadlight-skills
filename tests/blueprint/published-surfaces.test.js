@@ -157,7 +157,17 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
 });
 
 test('index + customize render the accurate 22 count', () => {
-  assert.match(read('docs/index.html'), /Threadlight is 22/);
+  const index = read('docs/index.html');
+  const twitterDescription = index.match(
+    /<meta name="twitter:description"\s+content="([^"]+)">/,
+  );
+  assert.ok(twitterDescription, 'expected twitter description meta tag');
+  assert.match(index, /Threadlight is 22/);
+  assert.strictEqual(
+    twitterDescription[1],
+    'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
+  );
+  assert.doesNotMatch(twitterDescription[1], /self-driving/i);
   assert.match(read('docs/customize.html'), /22 skills/);
 });
 
