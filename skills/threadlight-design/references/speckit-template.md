@@ -187,6 +187,18 @@ Define the tools the agent will use. These are abstract — not bound to any spe
 - **Error Cases**: [What can go wrong and how to handle it]
 - **Backed by**: [System integration name from § 5, or "internal logic"]
 
+> **Optional governance contract (opt-in only).** Enabled only by `tool_governance.enabled: true`. Use exactly one canonical tool per `###` heading. Do not group multiple tools under one heading. Do not invent a global allow/deny baseline.
+>
+> When enabled, every exact canonical tool appears exactly once, every tool has one explicit decision, unclassified tools are gaps, never implicit allows, and SPEC sections 6 and 8 are the source of truth; the manifest is a generated projection.
+>
+> Add these fields to each governed tool:
+> - **Action class**: `read` | `reversible-write` | `irreversible-write` | `external-side-effect`
+> - **Decision**: `allow` | `deny` | `conditional`
+> - **HITL gate ID**: `GATE-NNN` (required exactly when **Decision** is `conditional`; omit otherwise)
+> - **Enforcement point**: `agent-middleware` | `mcp-server` | `gateway`
+> - **Policy ID**: stable non-empty identifier
+> - **Required audit fields**: `event_id`, `event_type`, `timestamp`, `correlation_id`, `contract_sha256`, `policy_id`, `tool_name`, `action_class`, `decision`, `enforcement_point`, `adapter_id`, `actor_id`; add `gate_id`, `approval_id` for `conditional`
+
 ---
 
 ## 7. Knowledge Sources
@@ -310,6 +322,8 @@ Where humans are involved — approvals, escalations, input requests, feedback l
 - **Data Presented**: [What the human sees]
 - **Options**: [What actions can the human take?]
 - **Timeout/SLA**: [How long before escalation?]
+- **Gate ID**: `GATE-NNN`
+- **Approval propagation**: return `approval_id` together with the original `correlation_id`
 - **Action gate** (use the canonical taxonomy below): `approve` | `edit-and-approve` | `reject` | `escalate` | `signoff` | `audit-view` | `request-info`
   | Gate | Semantics | Typical UX |
   |------|-----------|------------|
