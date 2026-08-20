@@ -112,9 +112,14 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     const recap = page.locator('section.recap');
     await expect(reel).toContainText(/evidence-backed recreation/i);
     await expect(reel).toContainText(/captured live-run proof/i);
+    await expect(reel).toContainText(/captured proof/i);
+    await expect(reel).toContainText(/auditable artifact|auditable artefact/i);
+    await expect(reel).toContainText(/recreated journey/i);
     await expect(reel).not.toContainText(/six-skill pipeline/i);
     await expect(reel).not.toContainText(/live in your tenant/i);
     await expect(reel).not.toContainText(/live in your own tenant/i);
+    await expect(reel).not.toContainText(/on your Azure/i);
+    await expect(reel).not.toContainText(/nothing mocked/i);
     await expect(recap).toContainText(/curated Threadlight demo path/i);
     await expect(recap).not.toContainText(/six-skill pipeline/i);
     await expect(recap).not.toContainText(/live in your tenant/i);
