@@ -1138,17 +1138,24 @@ jobs:
                 echo "Readiness semantics could not be asserted — evidence evaluation did not run, failed before emitting readable JSON, or produced no status. Check run artifacts for deploy/invoke/evidence logs."
               fi
             else
-              # live-smoke path: confirm deploy + invoke artifacts before claiming assertions
-              DEPLOY_OK=0
-              INVOKE_OK=0
-              if [ -s "$DEPLOY_LOG" ] && grep -qE "succeeded|Attempt .*succeeded" "$DEPLOY_LOG" 2>/dev/null; then DEPLOY_OK=1; fi
-              if [ -s "$INVOKE_RESULTS" ] && [ -s "$TRANSCRIPT1" ] && [ -s "$TRANSCRIPT2" ]; then INVOKE_OK=1; fi
-              if [ "$DEPLOY_OK" -eq 1 ] && [ "$INVOKE_OK" -eq 1 ]; then
+              # live-smoke path: require explicit passing evidence from evidence_gate.json
+              if [ "$EVIDENCE_STATUS" = "pass" ]; then
                 echo "Deployment and invocation were asserted; production readiness was not asserted."
+              elif [ -n "$EVIDENCE_STATUS" ]; then
+                echo "Deployment and/or invocation were NOT fully asserted — evidence evaluation reported status: $EVIDENCE_STATUS. Check run artifacts for deploy/invoke/evidence logs."
               else
-                echo "Deployment and/or invocation were NOT fully asserted due to prior failures."
-                if [ "$DEPLOY_OK" -ne 1 ]; then echo "- Deployment/assert step did not complete successfully (see /tmp/phase-deploy.log)"; fi
-                if [ "$INVOKE_OK" -ne 1 ]; then echo "- Invocation/assert step did not complete successfully (missing invoke-results.md or transcripts)"; fi
+                echo "Deployment and/or invocation were NOT fully asserted due to missing or incomplete evidence."
+                # Provide helpful hints similar to the previous heuristics
+                if [ -s "$DEPLOY_LOG" ] && grep -qE "succeeded|Attempt .*succeeded" "$DEPLOY_LOG" 2>/dev/null; then
+                  :
+                else
+                  echo "- Deployment/assert step did not complete successfully (see /tmp/phase-deploy.log)"
+                fi
+                if [ -s "$INVOKE_RESULTS" ] && [ -s "$TRANSCRIPT1" ] && [ -s "$TRANSCRIPT2" ]; then
+                  :
+                else
+                  echo "- Invocation/assert step did not complete successfully (missing invoke-results.md or transcripts)"
+                fi
               fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"

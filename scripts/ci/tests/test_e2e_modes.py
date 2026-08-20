@@ -286,6 +286,18 @@ def test_readiness_summary_requires_explicit_passing_evidence():
         "the paid-run summary must inspect the evidence-gate JSON status "
         "before it claims readiness semantics were asserted"
     )
+    # For live-smoke the summary must require explicit passing evidence (not
+    # just deploy-log or file heuristics). It should reference the EVIDENCE_STATUS
+    # variable and check for a passing value.
+    assert "EVIDENCE_STATUS" in body, (
+        "the paid-run summary must read the evidence status into EVIDENCE_STATUS"
+    )
+    import re
+
+    assert re.search(r'=\s*"pass"', body), (
+        "the paid-run summary must explicitly check for EVIDENCE_STATUS == \"pass\" "
+        "before claiming live-smoke success"
+    )
 
 
 def test_smoke_only_stays_free():
