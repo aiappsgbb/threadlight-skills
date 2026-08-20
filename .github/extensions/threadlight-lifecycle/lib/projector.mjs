@@ -152,6 +152,68 @@ function parseRfc3339Timestamp(value) {
     : null;
 }
 
+function parseIsoDatetimeWithTimezone(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2}).([01]\d|2[0-3]):([0-5]\d):([0-5]\d)([.,]\d+)?(Z|([+-])([01]\d|2[0-3])(?::?([0-5]\d))?(?::?([0-5]\d))?)$/.exec(
+    value.trim(),
+  );
+  if (!match) {
+    return null;
+  }
+  const [
+    ,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    fractionalSeconds = "",
+    zone,
+    offsetSign,
+    offsetHour,
+    offsetMinute = "00",
+    offsetSecond = "00",
+  ] = match;
+  const milliseconds = fractionalSeconds
+    ? Number(fractionalSeconds.slice(1).padEnd(3, "0").slice(0, 3))
+    : 0;
+  const offsetMillis =
+    zone === "Z"
+    ? 0
+    : (offsetSign === "+" ? 1 : -1) *
+      ((Number(offsetHour) * 60 * 60 +
+        Number(offsetMinute) * 60 +
+        Number(offsetSecond)) *
+        1000);
+  const utcMillis =
+    Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    milliseconds,
+    ) - offsetMillis;
+  const parsed = new Date(utcMillis);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const adjusted = new Date(parsed.getTime() + offsetMillis);
+  return adjusted.getUTCFullYear() === Number(year) &&
+    adjusted.getUTCMonth() === Number(month) - 1 &&
+    adjusted.getUTCDate() === Number(day) &&
+    adjusted.getUTCHours() === Number(hour) &&
+    adjusted.getUTCMinutes() === Number(minute) &&
+    adjusted.getUTCSeconds() === Number(second) &&
+    adjusted.getUTCMilliseconds() === milliseconds
+    ? parsed
+    : null;
+}
+
 function postdeployCheckedAt(postdeploy, now) {
   const checkedAt = parseRfc3339Timestamp(postdeploy?.checked_at);
   if (!checkedAt || checkedAt.getTime() > now.getTime()) {
@@ -450,7 +512,7 @@ function validateRedteamAssurance(manifestPath, value, contract) {
   if (
     "scan_captured_at" in value &&
     value.scan_captured_at !== null &&
-    !parseRfc3339Timestamp(value.scan_captured_at)
+    !parseIsoDatetimeWithTimezone(value.scan_captured_at)
   ) {
     return `${manifestName} missing or invalid 'scan_captured_at'`;
   }
@@ -536,7 +598,7 @@ function validateAssuranceManifest(manifestPath, value) {
   if (typeof value.tool_version !== "string") {
     return invalidAssurance(manifestPath, "missing or invalid 'tool_version'");
   }
-  const capturedAt = parseRfc3339Timestamp(value.captured_at);
+  const capturedAt = parseIsoDatetimeWithTimezone(value.captured_at);
   if (!capturedAt) {
     return invalidAssurance(manifestPath, "missing or invalid 'captured_at'");
   }

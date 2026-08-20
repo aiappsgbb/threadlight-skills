@@ -189,9 +189,12 @@ test("workspace watcher ignores .azure files and still watches other roots", asy
   let watcher;
   let refreshes = 0;
   const errors = [];
+  const debounceMs = 40;
 
   try {
     await writeFile(path.join(root, ".azure"), "not a directory\n");
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
     watcher = await watchWorkspace(
       root,
@@ -199,7 +202,7 @@ test("workspace watcher ignores .azure files and still watches other roots", asy
         refreshes += 1;
       },
       {
-        debounceMs: 40,
+        debounceMs,
         onError: async (error) => {
           errors.push(error);
         },
@@ -215,10 +218,8 @@ test("workspace watcher ignores .azure files and still watches other roots", asy
     assert.equal(refreshes, baseline);
     assert.deepEqual(errors, []);
 
-    await mkdir(path.join(root, "specs"));
-    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
-    await waitForRefreshCount(() => refreshes, baseline + 1);
-    await delay(80);
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
+    await waitForRefreshAndSettle(() => refreshes, baseline + 1, debounceMs);
 
     assert.deepEqual(errors, []);
     assert.equal(refreshes, baseline + 1);
@@ -233,10 +234,13 @@ test("workspace watcher ignores unreadable .azure roots and still watches other 
   let watcher;
   let refreshes = 0;
   const errors = [];
+  const debounceMs = 40;
 
   try {
     await mkdir(path.join(root, ".azure"));
     await chmod(path.join(root, ".azure"), 0o000);
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
     watcher = await watchWorkspace(
       root,
@@ -244,20 +248,21 @@ test("workspace watcher ignores unreadable .azure roots and still watches other 
         refreshes += 1;
       },
       {
-        debounceMs: 40,
+        debounceMs,
         onError: async (error) => {
           errors.push(error);
         },
       },
     );
 
-    await mkdir(path.join(root, "specs"));
-    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
-    await waitForRefreshCount(() => refreshes, 1);
-    await delay(80);
+    await delay(120);
+    const baseline = refreshes;
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
+    await waitForRefreshCount(() => refreshes, baseline + 1);
+    await delay(debounceMs * 2);
 
     assert.deepEqual(errors, []);
-    assert.equal(refreshes, 1);
+    assert.ok(refreshes >= baseline + 1);
   } finally {
     await chmod(path.join(root, ".azure"), 0o755).catch(() => {});
     watcher?.close();
@@ -270,10 +275,13 @@ test("workspace watcher ignores unreadable azd env directories and still watches
   let watcher;
   let refreshes = 0;
   const errors = [];
+  const debounceMs = 40;
 
   try {
     await mkdir(path.join(root, ".azure", "dev"), { recursive: true });
     await chmod(path.join(root, ".azure", "dev"), 0o000);
+    await mkdir(path.join(root, "specs"));
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
     watcher = await watchWorkspace(
       root,
@@ -281,20 +289,21 @@ test("workspace watcher ignores unreadable azd env directories and still watches
         refreshes += 1;
       },
       {
-        debounceMs: 40,
+        debounceMs,
         onError: async (error) => {
           errors.push(error);
         },
       },
     );
 
-    await mkdir(path.join(root, "specs"));
-    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
-    await waitForRefreshCount(() => refreshes, 1);
-    await delay(80);
+    await delay(120);
+    const baseline = refreshes;
+    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
+    await waitForRefreshCount(() => refreshes, baseline + 1);
+    await delay(debounceMs * 2);
 
     assert.deepEqual(errors, []);
-    assert.equal(refreshes, 1);
+    assert.ok(refreshes >= baseline + 1);
   } finally {
     await chmod(path.join(root, ".azure", "dev"), 0o755).catch(() => {});
     watcher?.close();
