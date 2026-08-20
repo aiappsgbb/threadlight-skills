@@ -7,6 +7,7 @@ imported by tests (evaluate_evidence) and runnable as a CLI (main()).
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 import sys
 from pathlib import Path
@@ -90,6 +91,30 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _is_non_negative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_datetime_string(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
+
+
+def _validate_datetime_field(manifest_name: str, data: Dict[str, Any], field: str) -> None:
+    if not _is_datetime_string(data.get(field)):
+        raise EvidenceGateError(f"{manifest_name} missing or invalid {field!r}")
+
+
+def _validate_optional_non_negative_int(manifest_name: str, data: Dict[str, Any], field: str) -> None:
+    if field in data and not _is_non_negative_int(data[field]):
+        raise EvidenceGateError(f"{manifest_name} has invalid {field!r}")
+
+
 def _validate_capability(
     manifest_name: str,
     capability_name: str,
@@ -125,6 +150,7 @@ def _validate_capability(
 
 
 def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
+    _validate_optional_non_negative_int(path.name, data, "freshness_window_days")
     capabilities = data["capabilities"]
     invalid_names = set(capabilities) - _GOVERN_CAPABILITIES
     if invalid_names:
@@ -134,6 +160,7 @@ def _validate_govern_manifest(path: Path, data: Dict[str, Any]) -> None:
 
 
 def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:
+    _validate_optional_non_negative_int(path.name, data, "freshness_window_days")
     capabilities = data["capabilities"]
     missing = _EVALS_CAPABILITIES - set(capabilities)
     extras = set(capabilities) - _EVALS_CAPABILITIES
@@ -146,6 +173,17 @@ def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:
 
 
 def _validate_redteam_manifest(path: Path, data: Dict[str, Any]) -> None:
+    for field in ("scan_result", "tool"):
+        if field in data and not _is_string_or_none(data.get(field)):
+            raise EvidenceGateError(f"{path.name} has invalid {field!r}")
+    if "scan_captured_at" in data and data.get("scan_captured_at") is not None:
+        _validate_datetime_field(path.name, data, "scan_captured_at")
+    if "num_attacks" in data and data.get("num_attacks") is not None and not _is_non_negative_int(data["num_attacks"]):
+        raise EvidenceGateError(f"{path.name} has invalid 'num_attacks'")
+    if "strategies" in data:
+        strategies = data.get("strategies")
+        if not isinstance(strategies, list) or any(not isinstance(item, str) for item in strategies):
+            raise EvidenceGateError(f"{path.name} has invalid 'strategies'")
     for list_field in ("must_fix", "should_fix", "not_verified"):
         values = data.get(list_field)
         if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
@@ -222,8 +260,7 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
         # All assurance manifests must include tool_version and captured_at
         if "tool_version" not in data or not isinstance(data.get("tool_version"), str):
             raise EvidenceGateError(f"{path.name} missing or invalid 'tool_version'")
-        if "captured_at" not in data or not isinstance(data.get("captured_at"), str):
-            raise EvidenceGateError(f"{path.name} missing or invalid 'captured_at'")
+        _validate_datetime_field(path.name, data, "captured_at")
         verdict = data.get("verdict")
         if verdict not in allowed:
             raise EvidenceGateError(f"{path.name} verdict {verdict!r} not in allowed {sorted(allowed)}")

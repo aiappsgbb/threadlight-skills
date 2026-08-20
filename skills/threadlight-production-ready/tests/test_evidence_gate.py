@@ -267,6 +267,70 @@ def test_readiness_proof_rejects_schema_invalid_redteam_thresholds():
         assert "threshold" in msg or "max_asr" in msg or "min_attacks" in msg
 
 
+def test_readiness_proof_rejects_assurance_manifest_with_invalid_captured_at():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_govern = _fresh_govern("governed")
+    invalid_govern["captured_at"] = "not-a-date"
+    _write(specs, "govern-manifest.json", invalid_govern)
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for invalid assurance manifest captured_at")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "govern-manifest.json" in msg
+        assert "captured_at" in msg
+
+
+def test_readiness_proof_rejects_invalid_optional_evals_freshness_window_days():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_evals = _fresh_evals("comprehensive")
+    invalid_evals["freshness_window_days"] = "seven"
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", invalid_evals)
+    _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for invalid evals freshness_window_days")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "evals-manifest.json" in msg
+        assert "freshness_window_days" in msg
+
+
+def test_readiness_proof_rejects_invalid_optional_redteam_typed_fields():
+    root = fixture_workdir("sample-pilot-citadel")
+    specs = root / "specs"
+    invalid_redteam = _fresh_redteam("hardened")
+    invalid_redteam["num_attacks"] = "25"
+    invalid_redteam["strategies"] = "not-a-list"
+    invalid_redteam["scan_result"] = 123
+    invalid_redteam["tool"] = {"name": "pyrit"}
+    invalid_redteam["scan_captured_at"] = "not-a-date"
+    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(specs, "redteam-manifest.json", invalid_redteam)
+    _write_passing_readiness_artifacts(root)
+
+    try:
+        eg.evaluate_evidence(root, mode="readiness-proof")
+        raise AssertionError("expected EvidenceGateError for invalid optional redteam typed fields")
+    except EvidenceGateError as e:
+        msg = str(e)
+        assert "redteam-manifest.json" in msg
+        assert any(
+            field in msg
+            for field in ("num_attacks", "strategies", "scan_result", "tool", "scan_captured_at")
+        )
+
+
 def test_cli_success_returns_json_payload_and_exit_zero():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
