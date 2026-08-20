@@ -131,8 +131,7 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 **The Python script is assessor-only for remediation findings.** It never
 mutates your repo or subscription for findings — fixes are dispatched to the
-agent as apply-plan tasks. The single documented exception is
-`--scaffold-cicd`, which writes 2 files
+agent as apply-plan tasks. The single documented exception is `--scaffold-cicd`, which writes 2 files
 (`.github/workflows/azd-deploy-prod.yml` and
 `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so
 the production-onboarding pipeline can run. That exception is bounded, opt-in,
