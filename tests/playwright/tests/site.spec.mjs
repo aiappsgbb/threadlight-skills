@@ -102,7 +102,17 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(valueEvidence.locator('a[href="./self-improving.html#how"]')).toBeVisible();
 
     const reel = page.locator('section[aria-label="Threadlight pipeline demo reel"]');
+    const recap = page.locator('section.recap');
     await expect(reel).toContainText(/evidence-backed recreation/i);
+    await expect(reel).toContainText(/captured live-run proof/i);
+    await expect(reel).not.toContainText(/six-skill pipeline/i);
+    await expect(reel).not.toContainText(/live in your tenant/i);
+    await expect(reel).not.toContainText(/live in your own tenant/i);
+    await expect(recap).toContainText(/curated Threadlight demo path/i);
+    await expect(recap).not.toContainText(/six-skill pipeline/i);
+    await expect(recap).not.toContainText(/live in your tenant/i);
+    await expect(recap).not.toContainText(/live in your own tenant/i);
+    await expect(recap.locator('.recap-flow')).toHaveAttribute('aria-label', 'Curated Threadlight demo path');
     await expect(reel.locator('a[href="./case-study.html#proof"]')).toBeVisible();
   });
 });
@@ -301,6 +311,9 @@ test.describe('production chapter (production.html)', () => {
     await expect(proof).toContainText(/forecast/i);
     await expect(proof).toContainText(/Azure actuals/i);
     await expect(proof).toContainText(/reconcil/i);
+    await expect(proof).toContainText(/target subscription/i);
+    await expect(proof).toContainText(/resource group/i);
+    await expect(proof).toContainText(/not-verified/i);
   });
 });
 
