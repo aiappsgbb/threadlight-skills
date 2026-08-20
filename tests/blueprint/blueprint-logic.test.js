@@ -82,6 +82,8 @@ test('buildPrompt embeds name, summary + threadlight-auto', () => {
   assert.ok(p.includes('threadlight-auto'));
   assert.ok(p.includes('do X'));
   assert.ok(p.includes('X'));
+  assert.match(p, /Microsoft Foundry/);
+  assert.doesNotMatch(p, /Azure AI Foundry/);
 });
 
 test('buildPrompt lists integrations + approvals when present', () => {
@@ -94,6 +96,8 @@ test('buildAutomation describes a hands-off CI/CD deploy with no laptop commands
   const steps = L.buildAutomation(base);
   assert.ok(Array.isArray(steps) && steps.length >= 3);
   const text = steps.map(s => s.text).join('\n');
+  assert.match(text, /Microsoft Foundry/);
+  assert.doesNotMatch(text, /Azure AI Foundry/);
   // The whole point: Copilot deploys through CI/CD — the user runs nothing.
   assert.ok(/CI\/CD/.test(text), 'must state the deploy goes through CI/CD');
   assert.ok(/never run a deploy command/i.test(text), 'must say the user runs no deploy command');

@@ -102,7 +102,7 @@
     var skills = deriveSkills(p);
     var lines = [];
     lines.push('Use threadlight-auto to take "' + (p.name || 'this process') +
-      '" from idea to a production-ready Azure AI Foundry agent.');
+      '" from idea to a production-ready Microsoft Foundry agent.');
     lines.push('');
     if (p.summary) lines.push('What it does: ' + p.summary);
     lines.push('Domain: ' + prettyIndustry(p.industry) + ' · Complexity: ' + (p.complexity || 'medium'));
@@ -132,7 +132,7 @@
     var skills = deriveSkills(p);
     function has(s) { return skills.indexOf(s) !== -1; }
     var steps = [];
-    steps.push({ text: 'Designs the agent on Azure AI Foundry and proves it locally on real cases.' });
+    steps.push({ text: 'Designs the agent on Microsoft Foundry and proves it locally on real cases.' });
     if (has('threadlight-demo-data-factory'))
       steps.push({ text: 'Wires your integrations behind a realistic demo-data harness.' });
     if (has('threadlight-hitl-patterns'))
