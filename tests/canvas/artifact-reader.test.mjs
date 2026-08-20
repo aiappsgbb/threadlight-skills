@@ -190,3 +190,46 @@ test("reader still rejects a non-allowlisted specs manifest", async () => {
     );
   });
 });
+
+test("reader allows cost evidence artifacts and still rejects unlisted siblings", async () => {
+  await withWorkspace("cost-evidence", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL("specs/", workspace), { recursive: true });
+    await mkdir(new URL("docs/", workspace), { recursive: true });
+    await writeFile(
+    new URL("specs/cost-actuals-manifest.json", workspace),
+    '{"schema":"threadlight-cost-actuals/v1"}',
+    "utf8",
+    );
+    await writeFile(
+    new URL("specs/cost-reconciliation-manifest.json", workspace),
+    '{"schema":"threadlight-cost-reconciliation/v1"}',
+    "utf8",
+    );
+    await writeFile(
+    new URL("docs/cost-reconciliation-report.md", workspace),
+    "# Cost reconciliation\n",
+    "utf8",
+    );
+
+    const reader = await createArtifactReader(workspacePath);
+
+    assert.deepEqual(
+    await reader.readJson("specs/cost-actuals-manifest.json"),
+    { schema: "threadlight-cost-actuals/v1" },
+    );
+    assert.deepEqual(
+    await reader.readJson("specs/cost-reconciliation-manifest.json"),
+    { schema: "threadlight-cost-reconciliation/v1" },
+    );
+    assert.equal(
+    await reader.readText("docs/cost-reconciliation-report.md"),
+    "# Cost reconciliation\n",
+    );
+    await assert.rejects(
+    reader.exists("docs/cost-reconciliation-notes.md"),
+    (error) =>
+      error instanceof ArtifactAccessError &&
+      error.relativePath === "docs/cost-reconciliation-notes.md",
+    );
+  });
+});

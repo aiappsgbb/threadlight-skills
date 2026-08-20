@@ -96,7 +96,10 @@ function renderSkillDetails(phase) {
   const items = skills
     .map((skill) => {
       const id = skill?.definition?.id ?? "unknown-skill";
-      return `<li><code>${escapeHtml(id)}</code>${statusBadge(skill?.status)}</li>`;
+      const evidenceState = skill?.evidenceState
+        ? ` <span class="muted">(${escapeHtml(skill.evidenceState)})</span>`
+        : "";
+      return `<li><code>${escapeHtml(id)}</code>${statusBadge(skill?.status)}${evidenceState}</li>`;
     })
     .join("");
 

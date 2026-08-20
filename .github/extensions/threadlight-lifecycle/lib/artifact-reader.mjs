@@ -9,6 +9,8 @@ const ALLOWED_FILES = new Set([
   "specs/foundation.md",
   "specs/manifest.json",
   "specs/cost-manifest.json",
+  "specs/cost-actuals-manifest.json",
+  "specs/cost-reconciliation-manifest.json",
   "specs/evals-manifest.json",
   "specs/redteam-manifest.json",
   "specs/govern-manifest.json",
@@ -23,6 +25,7 @@ const ALLOWED_FILES = new Set([
   "azure-pipelines.yml",
   "docs/safe-check-post.md",
   "docs/cost-projection.md",
+  "docs/cost-reconciliation-report.md",
   "docs/redteam-report.md",
   "docs/production-readiness-report.md",
 ]);

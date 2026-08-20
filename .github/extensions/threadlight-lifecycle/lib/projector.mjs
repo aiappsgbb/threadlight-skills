@@ -5,6 +5,16 @@ import {
   SKILL_REGISTRY,
 } from "./lifecycle-registry.mjs";
 
+const COST_ACTUALS_SCHEMA = "threadlight-cost-actuals/v1";
+const COST_RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1";
+const READINESS_REQUIRED_BOOLEANS = Object.freeze([
+  "latency_declared",
+  "cost_per_interaction_declared",
+  "success_rate_declared",
+  "deviation_alert_present",
+  "traces_emit",
+]);
+
 const ACTIONABLE_PHASE_STATUSES = new Set([
   "ready",
   "blocked",
@@ -338,6 +348,164 @@ function evidenceStatus(value) {
   return null;
 }
 
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function nonEmptyText(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function hasScopeMatch(actualScope, expectedScope) {
+  const actualSubscription = nonEmptyText(actualScope?.subscription_id);
+  const actualResourceGroup = nonEmptyText(actualScope?.resource_group);
+  const expectedSubscription = nonEmptyText(expectedScope?.subscription_id);
+  const expectedResourceGroup = nonEmptyText(expectedScope?.resource_group);
+  if (
+    !actualSubscription ||
+    !actualResourceGroup ||
+    !expectedSubscription ||
+    !expectedResourceGroup
+  ) {
+    return true;
+  }
+  return (
+    actualSubscription.toLowerCase() === expectedSubscription.toLowerCase() &&
+    actualResourceGroup.toLowerCase() === expectedResourceGroup.toLowerCase()
+  );
+}
+
+function isValidActualsManifest(actuals) {
+  return (
+    isPlainObject(actuals) &&
+    actuals.schema === COST_ACTUALS_SCHEMA &&
+    actuals.status === "pass" &&
+    isPlainObject(actuals.window) &&
+    nonEmptyText(actuals.window.start) &&
+    nonEmptyText(actuals.window.end) &&
+    isPlainObject(actuals.scope) &&
+    nonEmptyText(actuals.scope.subscription_id) &&
+    nonEmptyText(actuals.scope.resource_group)
+  );
+}
+
+function classifyReconciliation(reconciliation) {
+  if (
+    !isPlainObject(reconciliation) ||
+    reconciliation.schema !== COST_RECONCILIATION_SCHEMA ||
+    !isPlainObject(reconciliation.maturity) ||
+    typeof reconciliation.status !== "string" ||
+    typeof reconciliation.maturity.status !== "string"
+  ) {
+    return "reconciliation-invalid";
+  }
+  return reconciliation.status === "pass" && reconciliation.maturity.status === "pass"
+    ? "reconciled"
+    : "reconciliation-not-verified";
+}
+
+async function readOptionalJson(reader, relativePath) {
+  try {
+    const value = await reader.readJson(relativePath);
+    return value === null ? { state: "missing", value: null } : { state: "present", value };
+  } catch (error) {
+    if (isArtifactParseError(error)) {
+      return { state: "invalid", value: null };
+    }
+    throw error;
+  }
+}
+
+async function costEvidenceState(reader, manifest) {
+  if (!isPlainObject(manifest)) {
+    return null;
+  }
+  const forecast = await readOptionalJson(reader, "specs/cost-manifest.json");
+  if (forecast.state !== "present" || !isPlainObject(forecast.value)) {
+    return null;
+  }
+
+  const actuals = await readOptionalJson(reader, "specs/cost-actuals-manifest.json");
+  if (actuals.state === "missing") {
+    return "forecast-only";
+  }
+  if (actuals.state === "invalid" || !isValidActualsManifest(actuals.value)) {
+    return "actuals-invalid";
+  }
+  if (
+    !hasScopeMatch(actuals.value.scope, {
+      subscription_id: manifest?.deployment_manifest?.subscription_id,
+      resource_group: manifest?.deployment_manifest?.resource_group,
+    })
+  ) {
+    return "scope-mismatch";
+  }
+
+  const reconciliation = await readOptionalJson(
+    reader,
+    "specs/cost-reconciliation-manifest.json",
+  );
+  if (reconciliation.state === "missing") {
+    return "actuals-collected";
+  }
+  if (reconciliation.state === "invalid") {
+    return "reconciliation-invalid";
+  }
+  return classifyReconciliation(reconciliation.value);
+}
+
+function readinessEvidenceState(assurance, readiness) {
+  if (
+    assurance?.govern !== "governed" ||
+    assurance?.evals !== "comprehensive" ||
+    assurance?.redteam !== "hardened" ||
+    !isPlainObject(readiness) ||
+    readiness.go_live_recommendation !== "ready" ||
+    readiness.would_fail_hard_gate !== false
+  ) {
+    return "readiness-incomplete";
+  }
+
+  const kpiScorecard = readiness.kpi_scorecard;
+  if (!isPlainObject(kpiScorecard)) {
+    return "readiness-incomplete";
+  }
+  if (
+    READINESS_REQUIRED_BOOLEANS.some((field) => kpiScorecard[field] !== true) ||
+    !isFiniteNumber(kpiScorecard.eval_pass_rate) ||
+    !isFiniteNumber(kpiScorecard.cost_per_interaction_usd)
+  ) {
+    return "readiness-incomplete";
+  }
+  return "readiness-proof";
+}
+
+async function skillEvidenceState(definition, reader, manifest) {
+  if (definition.id === "threadlight-consumption-iq") {
+    return costEvidenceState(reader, manifest);
+  }
+  if (definition.id === "threadlight-production-ready") {
+    const [govern, evals, redteam, readiness] = await Promise.all([
+      readOptionalJson(reader, "specs/govern-manifest.json"),
+      readOptionalJson(reader, "specs/evals-manifest.json"),
+      readOptionalJson(reader, "specs/redteam-manifest.json"),
+      readOptionalJson(reader, "tests/production-readiness-manifest.json"),
+    ]);
+    if (readiness.state === "missing") {
+      return null;
+    }
+    return readinessEvidenceState(
+      {
+        govern: govern.value?.verdict ?? null,
+        evals: evals.value?.verdict ?? null,
+        redteam: redteam.value?.verdict ?? null,
+      },
+      readiness.value,
+    );
+  }
+  return null;
+}
+
 function firstJsonPath(requiredArtifactGroups) {
   return requiredArtifactGroups
     .flat()
@@ -571,9 +739,12 @@ async function projectSkill({
     status = statusWithFreshness(status, definition, timestamp, now);
   }
 
+  const evidenceState = await skillEvidenceState(definition, reader, manifest);
+
   return {
     definition,
     status,
+    ...(evidenceState ? { evidenceState } : {}),
     evidence,
     blockers: incompletePrerequisite
       ? [
