@@ -126,49 +126,19 @@ re-run this skill to verify.
 
 ## 7. Cost projection
 
-### Forecast source *(always expected)*
+_v1: high-level reminders only. For deep PAYG vs PTU analysis, run `paygo-ptu-cost-analyzer`._
 
-- Projection artefact: `docs/cost-projection.md` generated `{forecast_generated_at}`.
-- Forecast manifest: `specs/cost-manifest.json` schema `{forecast_schema}`.
-- Basis: SPEC § 12 declared load / rollout posture `{forecast_basis}`.
-- Recommendations freshness: `{forecast_recommendation_summary}`.
-
-| Forecast scenario | Monthly cost | Source | Confidence |
-|---|---|---|---|
-| Declared pilot load | `${forecast_low}` | `specs/cost-manifest.json` | High |
-| Expansion / 5x load | `${forecast_mid}` | `specs/cost-manifest.json` | Medium |
-| Full rollout / 20x load | `${forecast_high}` | `specs/cost-manifest.json` | Low |
-
-### Reconciled Azure actuals *(optional later-pilot evidence)*
-
-- Reconciliation status: `{reconciliation_status}` (`{reconciliation_maturity}`).
+- Pricing plan declared in SPEC § 10: `{pricing_plan_declared}`.
+- Budget alerts wired: `{budget_alerts_wired}`.
+- Forecast manifest: `specs/cost-manifest.json`.
+- Reconciled actuals bundle: `specs/cost-reconciliation-manifest.json` + `specs/cost-actuals-manifest.json`.
 - Actuals window: `{actuals_window}`.
-- Target scope: `{actuals_scope}`.
-- Scope-bound reconciliation coverage: `{reconciliation_coverage}`.
-- Variance vs forecast: `{reconciliation_variance}`.
-- Unallocated cost: `${unallocated_cost}` USD.
-- Source note: reconciled Azure actuals are optional until a settled window
-  exists; absent evidence remains `not-verified`.
-
-### PAYG vs PTU recommendation at observed token volume
-
-`{ptu_recommendation_summary}`
-
-(See `paygo-ptu-cost-analyzer` for the full PTU-break-even math
-specific to this customer's load shape.)
-
-### KPI-003 — measured cost per successful interaction
-
-- Status: `{kpi003_status}`.
-- Measured value: `{kpi003_value}`.
-- Join inputs: eval pass-rate `{kpi003_eval_source}` + reconciled Azure actuals
-  `{kpi003_cost_source}` + telemetry/traces `{kpi003_trace_source}`.
-
-### Idle resources
-
-| Resource | Type | Last activity | Recommendation |
-|---|---|---|---|
-| `{idle[0].name}` | `{idle[0].type}` | `{idle[0].last_activity}` | Decommission or scale to zero |
+- Actuals scope: subscription `{actuals_subscription_id}`, resource group `{actuals_resource_group}`.
+- Window totals vs forecast: actual `${actual_window_usd}` vs forecast `${forecast_window_usd}` (`{variance_pct}` variance).
+- Coverage: projection attribution `{projection_coverage_pct}`; source resource IDs `{source_coverage_pct}`.
+- Unallocated actual cost: `${unallocated_actual_cost_usd}`.
+- Measured cost / successful interaction: `${measured_cost_per_successful_interaction_usd}`.
+- Forecast-only / actuals not verified: `{cost_evidence_detail}`.
 
 ---
 

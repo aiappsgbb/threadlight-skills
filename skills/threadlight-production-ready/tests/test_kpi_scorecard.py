@@ -849,6 +849,97 @@ def test_report_renders_a_withheld_unit_cost_as_not_verified(
     assert "not-verified" in kpi_section
 
 
+def test_report_renders_cost_evidence_summary_fields(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _kpi_ctx(
+        tmp_path,
+        spec_text=RECON_SPEC_TEXT + _SPEC_WITH_BASELINES,
+        src_text=_OBS_SRC,
+        evals=_evals_manifest(0.97),
+    )
+    assert hasattr(pr, "_cost_evidence_summary"), (
+        "production_ready must publish a cost_evidence summary helper")
+    manifest = {
+        "checked_at": "2025-01-01T00:00:00+00:00",
+        "mode": "static",
+        "agt_profile": "none",
+        "go_live_recommendation": "ready",
+        "would_fail_hard_gate": False,
+        "include_experimental": False,
+        "verification_coverage": {"verified": 1, "total_scoreable": 1, "percent": 100},
+        "verification_debt": {"total": 0, "by_pillar": {}},
+        "score": {"raw_percent": 100, "with_waivers_percent": 100},
+        "permission_tiers": {"0": True},
+        "warnings": [],
+        "safe_check_reference": {},
+        "pillars": [],
+        "evidence_register": [],
+        "evidence_freshness": {},
+        "waivers": [],
+        "not_verified_count": 0,
+        "kpi_scorecard": pr._kpi_signals(ctx),
+        "cost_evidence": pr._cost_evidence_summary(ctx),
+    }
+    md = pr._render_report(
+        manifest, {"declared": "x", "detected": None, "resolved": "x"}, {}, [], {}, []
+    )
+    cost_section = md.split("## 7. Cost projection", 1)[1].split("\n## 8. ", 1)[0]
+    for expected in (
+        "- Forecast manifest: `specs/cost-manifest.json`.",
+        "- Reconciled actuals bundle: `specs/cost-reconciliation-manifest.json` + `specs/cost-actuals-manifest.json`.",
+        "- Actuals window: `2026-08-01T00:00:00Z → 2026-08-08T00:00:00Z`.",
+        "- Actuals scope: subscription `sub-1`, resource group `rg-pilot`.",
+        "- Window totals vs forecast: actual `$130.00` vs forecast `$120.00` (`+12.0%` variance).",
+        "- Coverage: projection attribution `100.0%`; source resource IDs `100.0%`.",
+        "- Unallocated actual cost: `$12.30`.",
+        "- Measured cost / successful interaction: `$0.1083`.",
+    ):
+        assert expected in cost_section
+
+
+def test_report_cost_section_calls_out_forecast_only_when_actuals_are_not_verified(
+) -> None:
+    manifest = {
+        "checked_at": "2025-01-01T00:00:00+00:00",
+        "mode": "static",
+        "agt_profile": "none",
+        "go_live_recommendation": "ready",
+        "would_fail_hard_gate": False,
+        "include_experimental": False,
+        "verification_coverage": {"verified": 1, "total_scoreable": 1, "percent": 100},
+        "verification_debt": {"total": 0, "by_pillar": {}},
+        "score": {"raw_percent": 100, "with_waivers_percent": 100},
+        "permission_tiers": {"0": True},
+        "warnings": [],
+        "safe_check_reference": {},
+        "pillars": [],
+        "evidence_register": [],
+        "evidence_freshness": {},
+        "waivers": [],
+        "not_verified_count": 0,
+        "kpi_scorecard": {},
+        "cost_evidence": {
+            "status": "not-verified",
+            "detail": "scope mismatch",
+            "source_paths": {
+                "forecast": "specs/cost-manifest.json",
+                "actuals": "specs/cost-actuals-manifest.json",
+                "reconciliation": "specs/cost-reconciliation-manifest.json",
+            },
+        },
+    }
+    md = pr._render_report(
+        manifest, {"declared": "x", "detected": None, "resolved": "x"}, {}, [], {}, []
+    )
+    cost_section = md.split("## 7. Cost projection", 1)[1].split("\n## 8. ", 1)[0]
+    assert "- Forecast manifest: `specs/cost-manifest.json`." in cost_section
+    assert "- Reconciled actuals bundle: `specs/cost-reconciliation-manifest.json` + `specs/cost-actuals-manifest.json`." in cost_section
+    assert "Forecast-only / actuals not verified: scope mismatch." in cost_section
+    assert "Measured cost / successful interaction" not in cost_section
+
+
 # ---------------------------------------------------------------------------
 # Committed exemplar pairing — KPI-003 wording must not drift
 # ---------------------------------------------------------------------------

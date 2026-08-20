@@ -131,6 +131,10 @@ def _reconciliation(
     generated_at: str = RECONCILED_AT,
     drivers: object = None,
     unit_economics: object = None,
+    forecast_window_usd: object = 120.0,
+    projection_attribution_coverage_pct: object = 1.0,
+    source_resource_id_coverage_pct: object = 1.0,
+    unmodeled_actual_usd: object = 12.3,
 ) -> dict:
     payg = {
         "status": payg_status,
@@ -171,6 +175,7 @@ def _reconciliation(
         "maturity": {"status": maturity, "checks": []},
         "totals": {
             "forecast_monthly_usd": 500.0,
+            "forecast_window_usd": forecast_window_usd,
             "actual_window_usd": 130.0,
             "variance_pct": variance_pct,
         },
@@ -178,8 +183,9 @@ def _reconciliation(
             unit_economics if unit_economics is not None else dict(UNIT_ECONOMICS)
         ),
         "coverage": {
-            "projection_attribution_coverage_pct": 1.0,
-            "source_resource_id_coverage_pct": 1.0,
+            "projection_attribution_coverage_pct": projection_attribution_coverage_pct,
+            "source_resource_id_coverage_pct": source_resource_id_coverage_pct,
+            "unmodeled_actual_usd": unmodeled_actual_usd,
         },
         "drivers": {"payg_ptu": payg} if drivers is None else drivers,
         "warnings": [],
@@ -291,6 +297,81 @@ def test_catalog_entries_declare_tolerance_without_a_hardcoded_number() -> None:
     for meta in (cost102, cost103):
         assert "20%" not in meta["title"]
         assert "20" not in meta["title"]
+
+
+# --------------------------------------------------------------------------
+# cost_evidence summary
+# --------------------------------------------------------------------------
+
+
+def test_cost_evidence_summary_relays_verified_bundle_fields(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    assert hasattr(pr, "_cost_evidence_summary"), (
+        "production_ready must publish a cost_evidence summary helper")
+
+    summary = pr._cost_evidence_summary(ctx)
+
+    assert summary["status"] == "pass"
+    assert summary["source_paths"] == {
+        "forecast": "specs/cost-manifest.json",
+        "actuals": "specs/cost-actuals-manifest.json",
+        "reconciliation": "specs/cost-reconciliation-manifest.json",
+    }
+    assert summary["actuals_window_start"] == "2026-08-01T00:00:00Z"
+    assert summary["actuals_window_end"] == WINDOW_END
+    assert summary["actuals_subscription_id"] == "sub-1"
+    assert summary["actuals_resource_group"] == "rg-pilot"
+    assert summary["forecast_window_usd"] == 120.0
+    assert summary["forecast_monthly_usd"] == 500.0
+    assert summary["actual_window_usd"] == 130.0
+    assert summary["variance_pct"] == 0.12
+    assert summary["projection_attribution_coverage_pct"] == 1.0
+    assert summary["source_resource_id_coverage_pct"] == 1.0
+    assert summary["unallocated_actual_cost_usd"] == 12.3
+    assert summary["cost_per_successful_interaction_usd"] == 0.1083
+
+
+def test_cost_evidence_summary_is_not_verified_on_target_scope_mismatch(
+    tmp_path, monkeypatch
+) -> None:
+    _freeze(monkeypatch)
+    ctx = _write_bundle(tmp_path)
+    ctx.manifest = {
+        "deployment_manifest": {
+            "subscription_id": "sub-1",
+            "resource_group": "rg-other",
+        }
+    }
+    assert hasattr(pr, "_cost_evidence_summary"), (
+        "production_ready must publish a cost_evidence summary helper")
+
+    summary = pr._cost_evidence_summary(ctx)
+
+    assert summary["status"] == "not-verified"
+    assert "scope" in summary["detail"].lower()
+    assert summary["source_paths"] == {
+        "forecast": "specs/cost-manifest.json",
+        "actuals": "specs/cost-actuals-manifest.json",
+        "reconciliation": "specs/cost-reconciliation-manifest.json",
+    }
+    for key in (
+        "actuals_window_start",
+        "actuals_window_end",
+        "actuals_subscription_id",
+        "actuals_resource_group",
+        "forecast_window_usd",
+        "forecast_monthly_usd",
+        "actual_window_usd",
+        "variance_pct",
+        "projection_attribution_coverage_pct",
+        "source_resource_id_coverage_pct",
+        "unallocated_actual_cost_usd",
+        "cost_per_successful_interaction_usd",
+    ):
+        assert summary.get(key) is None, f"{key} must stay absent when scope is unverified"
 
 
 # --------------------------------------------------------------------------

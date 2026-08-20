@@ -3454,10 +3454,147 @@ def _expected_unit_cost(actuals: dict, claimed_successes: int) -> Decimal | None
     return expected
 
 
+_COST_EVIDENCE_SOURCE_PATHS = {
+    "forecast": "specs/cost-manifest.json",
+    "actuals": "specs/cost-actuals-manifest.json",
+    "reconciliation": "specs/cost-reconciliation-manifest.json",
+}
+
+
 def _short(value: object, limit: int = 48) -> str:
     """A repr bounded for a log line — hostile evidence never sets its length."""
     text = repr(value)
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _read_cost_per_interaction_from_bundle(
+    reconciliation: dict[str, Any], actuals: dict[str, Any]
+) -> float | None:
+    """The measured cost/successful-interaction from one proved bundle."""
+    if reconciliation.get("_stale_reason"):
+        return None
+    maturity = reconciliation.get("maturity")
+    maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
+    if reconciliation.get("status") != "pass" or maturity_status != "pass":
+        return None
+    unit = reconciliation.get("unit_economics")
+    if not isinstance(unit, dict) or unit.get("status") != "pass":
+        return None
+    if unit.get("target_status") not in ("pass", "should-fix"):
+        return None
+    successes = unit.get("successful_interactions")
+    if isinstance(successes, bool) or not isinstance(successes, int) or successes <= 0:
+        # A rate with nothing to divide by is not a measurement.
+        return None
+    cost = unit.get("cost_per_successful_interaction_usd")
+    if not _is_finite_number(cost) or float(cost) < 0:
+        return None
+
+    expected = _expected_unit_cost(actuals, successes)
+    if expected is None:
+        return None
+    reported = Decimal(str(float(cost)))
+    if abs(reported - expected) > _COST_UNIT_RATE_TOLERANCE:
+        return _withhold_unit_cost(
+            f"reconciliation reports ${float(cost):.4f} per successful interaction, "
+            f"but the digest-pinned actuals re-derive "
+            f"${float(expected):.4f} over {successes} success(es)")
+    return float(cost)
+
+
+def _cost_evidence_unverified(detail: str) -> dict[str, Any]:
+    return {
+        "status": "not-verified",
+        "detail": detail,
+        "source_paths": dict(_COST_EVIDENCE_SOURCE_PATHS),
+    }
+
+
+def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
+    """Summarize reconciled cost evidence for the manifest/report. Never raises."""
+    try:
+        bundle = _read_cost_reconciliation_bundle(ctx)
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError,
+            ArithmeticError) as exc:
+        print(f"[warn] cost reconciliation artifact reader raised "
+              f"{type(exc).__name__}: {exc} — cost evidence reported as not-verified",
+              file=sys.stderr)
+        return _cost_evidence_unverified(
+            f"The reconciliation artifact could not be read ({type(exc).__name__}: {exc})")
+    if bundle is None:
+        return _cost_evidence_unverified(
+            "No provable specs/cost-reconciliation-manifest.json")
+
+    reconciliation, actuals, _forecast = bundle
+    actual_scope = actuals.get("scope")
+    actual_sub = actual_scope.get("subscription_id") if isinstance(actual_scope, dict) else None
+    actual_rg = actual_scope.get("resource_group") if isinstance(actual_scope, dict) else None
+    target_sub, target_rg = _extract_sub_rg(ctx.manifest, ctx.azd_env)
+    if ((target_sub and actual_sub != target_sub)
+            or (target_rg and actual_rg != target_rg)):
+        return _cost_evidence_unverified(
+            "Actuals scope does not match the assessment target scope")
+
+    stale_reason = reconciliation.get("_stale_reason")
+    if stale_reason:
+        return _cost_evidence_unverified(
+            f"Reconciled cost evidence is stale — {stale_reason}")
+    maturity = reconciliation.get("maturity")
+    maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
+    if reconciliation.get("status") != "pass" or maturity_status != "pass":
+        return _cost_evidence_unverified(
+            f"Reconciliation reports status={reconciliation.get('status')!r} / "
+            f"maturity={maturity_status!r}")
+
+    window = actuals.get("window")
+    totals = reconciliation.get("totals")
+    coverage = reconciliation.get("coverage")
+    return {
+        "status": "pass",
+        "source_paths": dict(_COST_EVIDENCE_SOURCE_PATHS),
+        "actuals_window_start": (
+            window.get("start") if isinstance(window, dict) and isinstance(window.get("start"), str)
+            else None
+        ),
+        "actuals_window_end": (
+            window.get("end") if isinstance(window, dict) and isinstance(window.get("end"), str)
+            else None
+        ),
+        "actuals_subscription_id": actual_sub if isinstance(actual_sub, str) else None,
+        "actuals_resource_group": actual_rg if isinstance(actual_rg, str) else None,
+        "forecast_window_usd": (
+            float(totals.get("forecast_window_usd")) if isinstance(totals, dict)
+            and _is_finite_number(totals.get("forecast_window_usd")) else None
+        ),
+        "forecast_monthly_usd": (
+            float(totals.get("forecast_monthly_usd")) if isinstance(totals, dict)
+            and _is_finite_number(totals.get("forecast_monthly_usd")) else None
+        ),
+        "actual_window_usd": (
+            float(totals.get("actual_window_usd")) if isinstance(totals, dict)
+            and _is_finite_number(totals.get("actual_window_usd")) else None
+        ),
+        "variance_pct": (
+            float(totals.get("variance_pct")) if isinstance(totals, dict)
+            and _is_finite_number(totals.get("variance_pct")) else None
+        ),
+        "projection_attribution_coverage_pct": (
+            float(coverage.get("projection_attribution_coverage_pct"))
+            if isinstance(coverage, dict)
+            and _is_finite_number(coverage.get("projection_attribution_coverage_pct")) else None
+        ),
+        "source_resource_id_coverage_pct": (
+            float(coverage.get("source_resource_id_coverage_pct"))
+            if isinstance(coverage, dict)
+            and _is_finite_number(coverage.get("source_resource_id_coverage_pct")) else None
+        ),
+        "unallocated_actual_cost_usd": (
+            float(coverage.get("unmodeled_actual_usd")) if isinstance(coverage, dict)
+            and _is_finite_number(coverage.get("unmodeled_actual_usd")) else None
+        ),
+        "cost_per_successful_interaction_usd": _read_cost_per_interaction_from_bundle(
+            reconciliation, actuals),
+    }
 
 
 def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
@@ -3516,35 +3653,7 @@ def _read_cost_per_interaction(ctx: RepoContext) -> float | None:
     if bundle is None:
         return None
     data, actuals, _forecast = bundle
-    if data.get("_stale_reason"):
-        return None
-    maturity = data.get("maturity")
-    maturity_status = maturity.get("status") if isinstance(maturity, dict) else None
-    if data.get("status") != "pass" or maturity_status != "pass":
-        return None
-    unit = data.get("unit_economics")
-    if not isinstance(unit, dict) or unit.get("status") != "pass":
-        return None
-    if unit.get("target_status") not in ("pass", "should-fix"):
-        return None
-    successes = unit.get("successful_interactions")
-    if isinstance(successes, bool) or not isinstance(successes, int) or successes <= 0:
-        # A rate with nothing to divide by is not a measurement.
-        return None
-    cost = unit.get("cost_per_successful_interaction_usd")
-    if not _is_finite_number(cost) or float(cost) < 0:
-        return None
-
-    expected = _expected_unit_cost(actuals, successes)
-    if expected is None:
-        return None
-    reported = Decimal(str(float(cost)))
-    if abs(reported - expected) > _COST_UNIT_RATE_TOLERANCE:
-        return _withhold_unit_cost(
-            f"reconciliation reports ${float(cost):.4f} per successful interaction, "
-            f"but the digest-pinned actuals re-derive "
-            f"${float(expected):.4f} over {successes} success(es)")
-    return float(cost)
+    return _read_cost_per_interaction_from_bundle(data, actuals)
 
 
 def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
@@ -4488,6 +4597,10 @@ def _is_declared_ratio(value: Any) -> bool:
 
 def _fmt_ratio_pct(value: Any) -> str:
     return f"{float(value) * 100:.1f}%" if _is_finite_number(value) else "unknown"
+
+
+def _fmt_usd(value: Any, decimals: int = 2) -> str:
+    return f"${float(value):.{decimals}f}" if _is_finite_number(value) else "unknown"
 
 
 def _fmt_token_volume(value: Any) -> str:
@@ -6327,6 +6440,71 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("")
     out.append("- Pricing plan declared in SPEC § 10: " + ("yes" if any(f.id == "COST-001" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no"))
     out.append("- Budget alerts wired: " + ("yes" if any(f.id == "COST-101" and f.status == "pass" for fs in pillar_results_waived.values() for f in fs) else "no / not-verified"))
+    cost_evidence = manifest.get("cost_evidence") or {}
+    source_paths = cost_evidence.get("source_paths") or {}
+    if isinstance(source_paths, dict):
+        forecast_path = source_paths.get("forecast") or _COST_EVIDENCE_SOURCE_PATHS["forecast"]
+        actuals_path = source_paths.get("actuals") or _COST_EVIDENCE_SOURCE_PATHS["actuals"]
+        reconcile_path = (
+            source_paths.get("reconciliation")
+            or _COST_EVIDENCE_SOURCE_PATHS["reconciliation"]
+        )
+    else:
+        forecast_path = _COST_EVIDENCE_SOURCE_PATHS["forecast"]
+        actuals_path = _COST_EVIDENCE_SOURCE_PATHS["actuals"]
+        reconcile_path = _COST_EVIDENCE_SOURCE_PATHS["reconciliation"]
+    out.append(f"- Forecast manifest: `{forecast_path}`.")
+    out.append(
+        f"- Reconciled actuals bundle: `{reconcile_path}` + `{actuals_path}`."
+    )
+    if cost_evidence.get("status") == "pass":
+        start = cost_evidence.get("actuals_window_start") or "unknown"
+        end = cost_evidence.get("actuals_window_end") or "unknown"
+        sub = cost_evidence.get("actuals_subscription_id") or "unknown"
+        rg = cost_evidence.get("actuals_resource_group") or "unknown"
+        actual = _fmt_usd(cost_evidence.get("actual_window_usd"))
+        forecast_window = cost_evidence.get("forecast_window_usd")
+        forecast_monthly = cost_evidence.get("forecast_monthly_usd")
+        if _is_finite_number(forecast_window):
+            forecast_label = _fmt_usd(forecast_window)
+        elif _is_finite_number(forecast_monthly):
+            forecast_label = _fmt_usd(forecast_monthly) + " monthly"
+        else:
+            forecast_label = "unknown"
+        variance = _fmt_ratio_pct(cost_evidence.get("variance_pct"))
+        signed_variance = (
+            ("+" if float(cost_evidence.get("variance_pct")) >= 0 else "")
+            + variance
+            if _is_finite_number(cost_evidence.get("variance_pct"))
+            else variance
+        )
+        out.append(f"- Actuals window: `{start} → {end}`.")
+        out.append(
+            f"- Actuals scope: subscription `{sub}`, resource group `{rg}`."
+        )
+        out.append(
+            f"- Window totals vs forecast: actual `{actual}` vs forecast "
+            f"`{forecast_label}` (`{signed_variance}` variance)."
+        )
+        out.append(
+            f"- Coverage: projection attribution "
+            f"`{_fmt_ratio_pct(cost_evidence.get('projection_attribution_coverage_pct'))}`; "
+            f"source resource IDs "
+            f"`{_fmt_ratio_pct(cost_evidence.get('source_resource_id_coverage_pct'))}`."
+        )
+        out.append(
+            f"- Unallocated actual cost: "
+            f"`{_fmt_usd(cost_evidence.get('unallocated_actual_cost_usd'))}`."
+        )
+        measured = cost_evidence.get("cost_per_successful_interaction_usd")
+        measured_label = _fmt_usd(measured, 4) if _is_finite_number(measured) else "not-verified"
+        out.append(
+            f"- Measured cost / successful interaction: `{measured_label}`."
+        )
+    elif cost_evidence.get("detail"):
+        out.append(
+            f"- Forecast-only / actuals not verified: {cost_evidence.get('detail')}."
+        )
     out.append("")
     # 8. Outcome KPI scorecard
     out.append("## 8. Outcome KPI scorecard")
@@ -6804,6 +6982,7 @@ def main(argv: list[str] | None = None) -> int:
         include_experimental=args.include_experimental,
     )
     out_manifest["kpi_scorecard"] = _kpi_signals(ctx)
+    out_manifest["cost_evidence"] = _cost_evidence_summary(ctx)
     out_path = root / args.out
     report_path = root / args.report
     try:
