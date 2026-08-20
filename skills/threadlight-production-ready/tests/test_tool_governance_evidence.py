@@ -509,7 +509,7 @@ def test_agt008_accepts_supported_signal_kinds(
         ),
         (
             "outcome",
-            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_events": []})),
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_event_ids": []})),
         ),
         (
             "conditional",
@@ -533,6 +533,84 @@ def _mutate_vector(repo: Path, vector_id: str, mutator) -> None:
             mutator(vector)
             break
     _write_json(_probe_path(repo), payload)
+
+
+def _assert_agt103_gap(repo: Path, expected: str, *, status: str = "should-fix") -> None:
+    findings = _by_id(pr._check_tool_governance_static(_ctx(repo)))
+    assert findings["AGT-103"].status == status, findings["AGT-103"].detail
+    assert expected in findings["AGT-103"].detail
+
+
+@pytest.mark.parametrize(
+    ("name", "mutator", "expected"),
+    [
+        (
+            "missing-decision-event-ids",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.pop("decision_event_ids", None)),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-not-list",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"decision_event_ids": "decision-allow-001"})),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-empty",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"decision_event_ids": []})),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-non-string",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"decision_event_ids": ["decision-allow-001", ""]})),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-duplicate",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"decision_event_ids": ["decision-allow-001", "decision-allow-001"]})),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "legacy-decision-events",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"decision_events": [{"event_id": "decision-allow-legacy"}]})),
+            "allow-canary must not include legacy decision_events",
+        ),
+        (
+            "missing-outcome-event-ids",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.pop("outcome_event_ids", None)),
+            "allow-canary must record exactly one outcome_event_id",
+        ),
+        (
+            "outcome-event-ids-not-list",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_event_ids": "outcome-allow-001"})),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "outcome-event-ids-empty",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_event_ids": []})),
+            "allow-canary must record exactly one outcome_event_id",
+        ),
+        (
+            "outcome-event-ids-non-string",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_event_ids": ["outcome-allow-001", ""]})),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "outcome-event-ids-duplicate",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_event_ids": ["outcome-allow-001", "outcome-allow-001"]})),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "legacy-outcome-events",
+            lambda repo: _mutate_vector(repo, "allow-canary", lambda vector: vector.update({"outcome_events": [{"event_id": "outcome-allow-legacy"}]})),
+            "allow-canary must not include legacy outcome_events",
+        ),
+    ],
+)
+def test_agt103_rejects_invalid_event_id_arrays(name: str, mutator, expected: str) -> None:
+    with _repo_copy(f"agt103-id-arrays-{name}") as repo:
+        _prepare_repo(repo)
+        mutator(repo)
+        _assert_agt103_gap(repo, expected)
 
 
 def test_agt103_escalates_for_irreversible_write_contracts() -> None:

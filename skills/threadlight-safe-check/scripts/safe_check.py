@@ -1073,17 +1073,36 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 # Tool governance post-deploy probe validation
 # ---------------------------------------------------------------------------
 
-def _event_ids(events: Any) -> list[str]:
-    if not isinstance(events, list):
+def _event_id_list(
+    vector: dict[str, Any],
+    vector_id: str,
+    field: str,
+    *,
+    allow_empty: bool,
+    gaps: list[str],
+) -> list[str]:
+    legacy_field = "decision_events" if field == "decision_event_ids" else "outcome_events"
+    if legacy_field in vector:
+        gaps.append(f"{vector_id} must not include legacy {legacy_field}")
+    value = vector.get(field, _MISSING)
+    requirement = (
+        "a non-empty list of unique non-empty strings"
+        if not allow_empty
+        else "a list of unique non-empty strings"
+    )
+    if value is _MISSING or not isinstance(value, list):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
         return []
-    ids: list[str] = []
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        event_id = event.get("event_id")
-        if isinstance(event_id, str) and event_id:
-            ids.append(event_id)
-    return ids
+    if any(not isinstance(item, str) or not item for item in value):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    if len(set(value)) != len(value):
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    if not allow_empty and not value:
+        gaps.append(f"{vector_id} {field} must be {requirement}")
+        return []
+    return value
 
 
 def _run_governance_probe(
@@ -1203,9 +1222,20 @@ def _validate_probe_vector(
     correlation_id = vector.get("correlation_id")
     if not isinstance(correlation_id, str) or not correlation_id:
         gaps.append(f"{vector_id} must record correlation_id")
-    if not _event_ids(vector.get("decision_events")):
-        gaps.append(f"{vector_id} must record decision_event_ids")
-    outcome_ids = _event_ids(vector.get("outcome_events"))
+    _event_id_list(
+        vector,
+        vector_id,
+        "decision_event_ids",
+        allow_empty=False,
+        gaps=gaps,
+    )
+    outcome_ids = _event_id_list(
+        vector,
+        vector_id,
+        "outcome_event_ids",
+        allow_empty=True,
+        gaps=gaps,
+    )
     if require_outcome:
         if len(outcome_ids) != 1:
             gaps.append(f"{vector_id} must record exactly one outcome_event_id")

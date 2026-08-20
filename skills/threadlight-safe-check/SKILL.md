@@ -205,13 +205,14 @@ integration / channel / schedule checks complete:
    adapter-manifest hash.
 5. The evidence must prove:
    - `allow-canary` → expected/observed `allow`, execution count `1`, non-empty
-     `correlation_id` + `decision_events`, exactly one outcome event
+     `correlation_id` + `decision_event_ids`, exactly one `outcome_event_id`
    - `deny-canary` → expected/observed `deny`, execution count `0`, non-empty
-     `correlation_id` + `decision_events`, **no** outcome events
+     `correlation_id` + `decision_event_ids`, empty `outcome_event_ids`
    - `conditional-canary` (only when the contract has a conditional tool) →
      expected/observed `conditional`, execution count `1`, non-empty
-     `correlation_id`, `gate_id`, `approval_id`, `decision_events`, exactly one
-     outcome event, and the `gate_id` must match a governed conditional tool
+     `correlation_id`, `gate_id`, `approval_id`, `decision_event_ids`, exactly
+     one `outcome_event_id`, and the `gate_id` must match a governed
+     conditional tool
 6. `audit_field_results` must cover every vector exactly once, each with
    `status: pass` and `missing: []`.
 7. `tests/postdeploy-manifest.json` stores only the summary under

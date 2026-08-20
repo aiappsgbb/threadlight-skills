@@ -93,9 +93,21 @@ def _scratch_dir(name: str) -> Path:
 
 @contextmanager
 def _governed_repo_copy(name: str) -> Path:
-    with _scratch_dir(name) as root:
-        shutil.copytree(GOVERNED_FIXTURE, root, dirs_exist_ok=True)
-        yield root
+    with _scratch_dir(name) as container:
+        repo = container / "repo"
+        shutil.copytree(GOVERNED_FIXTURE, repo)
+        yield repo
+
+
+def test_governed_repo_copy_cleans_sibling_artifacts() -> None:
+    container: Path | None = None
+    with _governed_repo_copy("sibling-cleanup") as repo:
+        container = repo.parent
+        leaked = container / "outside-artifact.json"
+        leaked.write_text("{}", encoding="utf-8")
+        assert leaked.exists()
+    assert container is not None
+    assert not container.exists()
 
 
 def _seed_predeploy_files(repo: Path) -> None:
@@ -183,6 +195,33 @@ def _vector(evidence: dict[str, object], vector_id: str) -> dict[str, object]:
         if item["id"] == vector_id:
             return item
     raise AssertionError(f"missing vector {vector_id}")
+
+
+def _assert_event_id_array(
+    vector: dict[str, object], field: str, *, allow_empty: bool = False
+) -> None:
+    legacy_field = "decision_events" if field == "decision_event_ids" else "outcome_events"
+    assert legacy_field not in vector
+    assert field in vector
+    value = vector[field]
+    assert isinstance(value, list)
+    assert all(isinstance(item, str) and item for item in value)
+    assert len(value) == len(set(value))
+    if not allow_empty:
+        assert value
+
+
+def _assert_exact_probe_vector_schema(
+    vector: dict[str, object], *, require_outcome: bool
+) -> None:
+    _assert_event_id_array(vector, "decision_event_ids")
+    _assert_event_id_array(
+        vector, "outcome_event_ids", allow_empty=not require_outcome
+    )
+    if require_outcome:
+        assert len(vector["outcome_event_ids"]) == 1
+    else:
+        assert vector["outcome_event_ids"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1231,6 +1270,31 @@ def test_probe_executes_actual_fixture_probe_when_requested() -> None:
         assert evidence_path.exists()
 
 
+def test_committed_probe_fixture_vectors_use_exact_event_id_arrays() -> None:
+    evidence = _read_json(GOVERNED_FIXTURE / "tests" / "tool-governance-probe-manifest.json")
+    vectors = {vector["id"]: vector for vector in evidence["vectors"]}
+    _assert_exact_probe_vector_schema(vectors["allow-canary"], require_outcome=True)
+    _assert_exact_probe_vector_schema(vectors["conditional-canary"], require_outcome=True)
+    _assert_exact_probe_vector_schema(vectors["deny-canary"], require_outcome=False)
+
+
+def test_probe_script_emits_exact_event_id_arrays() -> None:
+    with _governed_repo_copy("probe-script-schema") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        result, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=True)
+        assert gaps == []
+        assert result["status"] == "pass"
+        evidence = _read_json(_probe_evidence_path(repo))
+        vectors = {vector["id"]: vector for vector in evidence["vectors"]}
+        _assert_exact_probe_vector_schema(vectors["allow-canary"], require_outcome=True)
+        _assert_exact_probe_vector_schema(
+            vectors["conditional-canary"], require_outcome=True
+        )
+        _assert_exact_probe_vector_schema(
+            vectors["deny-canary"], require_outcome=False
+        )
+
+
 def test_probe_disabled_or_missing_enabled_is_not_applicable() -> None:
     with _governed_repo_copy("probe-disabled") as repo:
         manifest = _read_json(repo / "specs" / "manifest.json")
@@ -1250,12 +1314,7 @@ def test_deny_execution_count_must_stay_zero() -> None:
             lambda evidence: _vector(evidence, "deny-canary").update(
                 {
                     "observed_execution_count": 1,
-                    "outcome_events": [
-                        {
-                            "event_id": "outcome-deny-001",
-                            "event_type": "tool_governance.outcome",
-                        }
-                    ],
+                    "outcome_event_ids": ["outcome-deny-001"],
                 }
             ),
         )
@@ -1297,12 +1356,15 @@ def test_probe_audit_correlation_fields_are_required() -> None:
         _mutate_probe_evidence(
             repo,
             lambda evidence: _vector(evidence, "allow-canary").update(
-                {"correlation_id": "", "decision_events": []}
+                {"correlation_id": "", "decision_event_ids": []}
             ),
         )
         _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
         assert "allow-canary must record correlation_id" in gaps
-        assert "allow-canary must record decision_event_ids" in gaps
+        assert (
+            "allow-canary decision_event_ids must be a non-empty list of unique "
+            "non-empty strings"
+        ) in gaps
 
 
 def test_probe_hash_mismatches_are_gaps() -> None:
@@ -1438,7 +1500,7 @@ def test_probe_missing_conditional_outcome_is_gap() -> None:
         _mutate_probe_evidence(
             repo,
             lambda evidence: _vector(evidence, "conditional-canary").update(
-                {"outcome_events": []}
+                {"outcome_event_ids": []}
             ),
         )
         _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
@@ -1451,11 +1513,84 @@ def test_probe_allow_requires_outcome_event() -> None:
         _mutate_probe_evidence(
             repo,
             lambda evidence: _vector(evidence, "allow-canary").update(
-                {"outcome_events": []}
+                {"outcome_event_ids": []}
             ),
         )
         _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
         assert "allow-canary must record exactly one outcome_event_id" in gaps
+
+
+@pytest.mark.parametrize(
+    ("name", "mutator", "expected"),
+    [
+        (
+            "missing-decision-event-ids",
+            lambda vector: vector.pop("decision_event_ids", None),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-not-list",
+            lambda vector: vector.update({"decision_event_ids": "decision-allow-001"}),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-empty",
+            lambda vector: vector.update({"decision_event_ids": []}),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-non-string",
+            lambda vector: vector.update({"decision_event_ids": ["decision-allow-001", ""]}),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "decision-event-ids-duplicate",
+            lambda vector: vector.update({"decision_event_ids": ["decision-allow-001", "decision-allow-001"]}),
+            "allow-canary decision_event_ids must be a non-empty list of unique non-empty strings",
+        ),
+        (
+            "legacy-decision-events",
+            lambda vector: vector.update({"decision_events": [{"event_id": "decision-allow-legacy"}]}),
+            "allow-canary must not include legacy decision_events",
+        ),
+        (
+            "missing-outcome-event-ids",
+            lambda vector: vector.pop("outcome_event_ids", None),
+            "allow-canary must record exactly one outcome_event_id",
+        ),
+        (
+            "outcome-event-ids-not-list",
+            lambda vector: vector.update({"outcome_event_ids": "outcome-allow-001"}),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "outcome-event-ids-empty",
+            lambda vector: vector.update({"outcome_event_ids": []}),
+            "allow-canary must record exactly one outcome_event_id",
+        ),
+        (
+            "outcome-event-ids-non-string",
+            lambda vector: vector.update({"outcome_event_ids": ["outcome-allow-001", ""]}),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "outcome-event-ids-duplicate",
+            lambda vector: vector.update({"outcome_event_ids": ["outcome-allow-001", "outcome-allow-001"]}),
+            "allow-canary outcome_event_ids must be a list of unique non-empty strings",
+        ),
+        (
+            "legacy-outcome-events",
+            lambda vector: vector.update({"outcome_events": [{"event_id": "outcome-allow-legacy"}]}),
+            "allow-canary must not include legacy outcome_events",
+        ),
+    ],
+)
+def test_probe_rejects_invalid_event_id_arrays(name: str, mutator, expected: str) -> None:
+    with _governed_repo_copy(f"probe-id-arrays-{name}") as repo:
+        manifest = _read_json(repo / "specs" / "manifest.json")
+        _mutate_probe_evidence(repo, lambda evidence: mutator(_vector(evidence, "allow-canary")))
+        _, gaps = sc.validate_tool_governance_probe(repo, manifest, run_probe=False)
+        assert expected in gaps
 
 
 def test_probe_canary_only_guard_blocks_unsafe_entrypoint(monkeypatch) -> None:

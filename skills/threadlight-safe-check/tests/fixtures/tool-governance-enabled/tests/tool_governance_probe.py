@@ -41,8 +41,8 @@ def main() -> int:
             "expected_execution_count": 1,
             "observed_execution_count": 1,
             "correlation_id": "probe-allow-001",
-            "decision_events": [{"event_id": "decision-allow-001", "event_type": "tool_governance.decision"}],
-            "outcome_events": [{"event_id": "outcome-allow-001", "event_type": "tool_governance.outcome"}],
+            "decision_event_ids": ["decision-allow-001"],
+            "outcome_event_ids": ["outcome-allow-001"],
             "status": "pass",
         },
         {
@@ -54,8 +54,8 @@ def main() -> int:
             "expected_execution_count": 0,
             "observed_execution_count": 0,
             "correlation_id": "probe-deny-001",
-            "decision_events": [{"event_id": "decision-deny-001", "event_type": "tool_governance.decision"}],
-            "outcome_events": [],
+            "decision_event_ids": ["decision-deny-001"],
+            "outcome_event_ids": [],
             "status": "pass",
         },
         {
@@ -69,8 +69,8 @@ def main() -> int:
             "correlation_id": "probe-hitl-001",
             "gate_id": "GATE-001",
             "approval_id": "approval-fixture-001",
-            "decision_events": [{"event_id": "decision-hitl-001", "event_type": "tool_governance.decision"}],
-            "outcome_events": [{"event_id": "outcome-hitl-001", "event_type": "tool_governance.outcome"}],
+            "decision_event_ids": ["decision-hitl-001"],
+            "outcome_event_ids": ["outcome-hitl-001"],
             "status": "pass",
         },
     ]

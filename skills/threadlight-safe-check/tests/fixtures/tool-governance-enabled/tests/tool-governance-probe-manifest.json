@@ -2,7 +2,7 @@
   "schema": "threadlight.tool-governance-probe/v1",
   "contract_sha256": "sha256:67428d8a48645114ce87615f9e3e3300a44bbde1628b06f2a3adcc094aa27984",
   "adapter_manifest_sha256": "sha256:a80bf4b14fd9206ab6c00cc4d11b68a061f3a3ccce5ec4f20931cde5235d3ad5",
-  "generated_at": "2026-08-20T10:48:32Z",
+  "generated_at": "2026-08-20T12:59:12Z",
   "vectors": [
     {
       "id": "allow-canary",
@@ -13,17 +13,11 @@
       "expected_execution_count": 1,
       "observed_execution_count": 1,
       "correlation_id": "probe-allow-001",
-      "decision_events": [
-        {
-          "event_id": "decision-allow-001",
-          "event_type": "tool_governance.decision"
-        }
+      "decision_event_ids": [
+        "decision-allow-001"
       ],
-      "outcome_events": [
-        {
-          "event_id": "outcome-allow-001",
-          "event_type": "tool_governance.outcome"
-        }
+      "outcome_event_ids": [
+        "outcome-allow-001"
       ],
       "status": "pass"
     },
@@ -36,13 +30,10 @@
       "expected_execution_count": 0,
       "observed_execution_count": 0,
       "correlation_id": "probe-deny-001",
-      "decision_events": [
-        {
-          "event_id": "decision-deny-001",
-          "event_type": "tool_governance.decision"
-        }
+      "decision_event_ids": [
+        "decision-deny-001"
       ],
-      "outcome_events": [],
+      "outcome_event_ids": [],
       "status": "pass"
     },
     {
@@ -56,17 +47,11 @@
       "correlation_id": "probe-hitl-001",
       "gate_id": "GATE-001",
       "approval_id": "approval-fixture-001",
-      "decision_events": [
-        {
-          "event_id": "decision-hitl-001",
-          "event_type": "tool_governance.decision"
-        }
+      "decision_event_ids": [
+        "decision-hitl-001"
       ],
-      "outcome_events": [
-        {
-          "event_id": "outcome-hitl-001",
-          "event_type": "tool_governance.outcome"
-        }
+      "outcome_event_ids": [
+        "outcome-hitl-001"
       ],
       "status": "pass"
     }
