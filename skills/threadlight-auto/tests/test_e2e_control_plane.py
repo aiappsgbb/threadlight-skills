@@ -81,6 +81,9 @@ def _seed_reconciled_cost(root: pathlib.Path) -> None:
     """
     specs = root / "specs"
     specs.mkdir(exist_ok=True)
+    deployment = json.loads((specs / "manifest.json").read_text(encoding="utf-8"))[
+        "deployment_manifest"
+    ]
     now = datetime.now(timezone.utc).replace(microsecond=0)
     forecast = {
         "schema_version": "1.0",
@@ -92,7 +95,10 @@ def _seed_reconciled_cost(root: pathlib.Path) -> None:
         "schema": "threadlight-cost-actuals/v1",
         "generated_at": _stamp(now - timedelta(hours=1)),
         "status": "pass",
-        "scope": {"subscription_id": "sub-1", "resource_group": "rg-pilot-prod"},
+        "scope": {
+            "subscription_id": deployment["subscription_id"],
+            "resource_group": deployment["resource_group"],
+        },
         "window": {
             "start": _stamp(now - timedelta(days=8)),
             "end": _stamp(now - timedelta(days=1)),
