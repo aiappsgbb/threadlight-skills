@@ -112,7 +112,6 @@ discoverability or navigation reshaping.
 
 **Primary public Pages surfaces**
 
-- `docs/index.html`
 - `docs/funnel.html`
 - `docs/blueprint.html`
 - `docs/industries.html`
@@ -124,6 +123,9 @@ discoverability or navigation reshaping.
 
 **Supporting public contract surfaces**
 
+- `docs/index.html` as an **immutable homepage boundary** for regression checks
+  only; PR1 and PR2 may verify it remains unchanged, but may not revise its
+  demo, hero, reel, order, copy, visuals, behavior, assets, or interaction
 - `docs/production-readiness.md`
 - `docs/assets/site.js` only where active-nav or discoverability behavior must
   reflect the new canonical page model
@@ -142,7 +144,7 @@ not vague guidance:
 | `docs/funnel.html` five-stage framing | presents a simplified flow as if it were the complete canonical public approach | Reframe the page as the canonical **How it works** explanation with explicit automated/manual/evidence boundaries |
 | `docs/funnel.html` stage ownership | conversation/design flow currently names `threadlight-auto` in a way that can be read as execution ownership | Preserve Auto only as planner guidance, never as the worker lane |
 | `docs/industries.html` metadata and hero/library copy | promises an exact skill sequence and a no-commands path that hides later handoffs | State that Industries feeds the starter plan into Blueprint/How it works, while later legs depend on the chosen path |
-| `docs/index.html` hero and proof language | compresses the public story into "one guided session to a deployed pilot" without equally visible proof boundaries | Keep the demo-led energy but anchor it to governed pilot + evidence-backed path language |
+| `docs/index.html` demo and hero boundary | the approved scope forbids touching the homepage demo/reel, hero, order, copy, visuals, behavior, assets, or interaction in either PR | Treat Home as **immutable content**. The only permitted Home impact is the shared global nav/chrome addition from PR2, and that addition must not alter demo content, geometry, timing, or interaction |
 | `docs/production.html` and `docs/production-readiness.md` | remediation language can be read as if naming the fix is close to closing the gap | Make remediation explicit follow-up work and state that reruns determine outcome |
 | `README.md` and `THREADLIGHT.md` | must remain the canonical exhaustive technical references and stay word-for-word aligned with the same truth contract used on Pages | Add or keep parity assertions so they do not drift apart |
 
@@ -166,6 +168,8 @@ PR1 must add or extend tests that fail on public-contract regressions:
 - **README/THREADLIGHT parity** checks for lifecycle classification, Auto
   wording, and cost-evidence phrasing;
 - **metadata assertions** for key Pages surfaces;
+- **immutable homepage assertions** proving the approved Home demo boundary was
+  not touched;
 - **link and fragment checks** for touched pages;
 - **browser assertions** that the touched pages still render the corrected copy
   in the existing layouts.
@@ -177,13 +181,15 @@ At minimum, the test suite should fail if public text reintroduces:
 - actual-cost claims without reconciliation;
 - remediation-guarantees-green wording;
 - retired artifact names;
+- any unauthorized `docs/index.html` content diff inside the immutable homepage
+  boundary;
 - page-title/nav mismatches for the canonical public journey.
 
 ### 4.6 Visual boundary
 
 PR1 makes **no visual redesign changes**. Copy, metadata, link structure,
 fixtures, and tests may change. The homepage reel and the broader visual system
-must not.
+must not. `docs/index.html` is regression-tested, not rewritten.
 
 ## 5. Pull request 2 - Make the complete approach discoverable
 
@@ -215,6 +221,8 @@ PR2 must enforce the following rules:
 - global navigation adds **How it works** on every chapter page;
 - active-nav state is consistent on desktop and mobile;
 - no public page is discoverable only through footer links or direct URL entry;
+- the shared nav/chrome update may appear on Home, but it must not change demo
+  content, hero copy, reel geometry, motion timing, or interaction behavior;
 - no chapter page is orphaned from the primary site journey.
 
 ### 5.4 Inbound-link contract
@@ -322,7 +330,7 @@ Each public surface must own one clear part of the story:
 
 | Surface | Sole public responsibility |
 |---|---|
-| Home (`docs/index.html`) | demo-led introduction; the homepage demo stays untouched |
+| Home (`docs/index.html`) | demo-led introduction; immutable demo surface except for shared nav/chrome additions that do not alter demo content or geometry |
 | Funnel / How it works (`docs/funnel.html`) | canonical complete public approach |
 | Blueprint (`docs/blueprint.html`) | process-to-starter-plan generation |
 | Case study (`docs/case-study.html`) | proof that the approach has been run |
@@ -336,6 +344,8 @@ Each public surface must own one clear part of the story:
 Implications:
 
 - Home should tease, not exhaustively explain.
+- Home is not an authorized copy-edit surface for this effort; it is an
+  immutable demo boundary with regression proofs.
 - How it works should connect the whole approach, not duplicate the homepage
   demo or the hands-on workbook.
 - Blueprint should explain the starter-plan boundary, not swallow the full
@@ -358,7 +368,10 @@ The implementation must preserve and reuse the existing visual system:
 5. allow **no horizontal overflow** at any reviewed breakpoint;
 6. keep interactive controls at **44px minimum touch target** where practical;
 7. run visual review at **1440px**, **1024px**, and **390px** widths;
-8. preserve the homepage reel exactly as it is.
+8. preserve the homepage reel exactly as it is;
+9. if Home receives the shared nav/chrome addition in PR2, that change must not
+   alter hero copy, demo order, demo geometry, asset payloads, interaction
+   timing, or behavior.
 
 Navigation or discoverability changes must be expressed as extensions of the
 existing chrome, not as a new site shell.
@@ -377,6 +390,7 @@ That canonical testable source should include:
 - the six-phase skill map from section 6;
 - page ownership from section 7;
 - required nav entries and required deep links;
+- the immutable-homepage boundary definition and its approved allowlist;
 - banned stale terms and banned misleading claims.
 
 Whether this lives as a JSON fixture, JS fixture, or Markdown-derived test input
@@ -398,7 +412,10 @@ Required coverage:
    public reference or skill page;
 5. **browser tests** — nav, active state, How it works flow, inbound links, and
    ownership-signaled CTAs are exercised in Playwright;
-6. **cache-bust coverage** — changed assets remain wired into existing
+6. **immutable homepage guard** — baseline hashes or a scoped git-diff allowlist
+   prove the demo DOM/assets stayed untouched; permitted scope is limited to the
+   shared nav/chrome addition in PR2;
+7. **cache-bust coverage** — changed assets remain wired into existing
    cache-busting checks and workflows.
 
 ### 9.3 Safety rules for content architecture
@@ -409,6 +426,8 @@ Required coverage:
   to the owning explanation.
 - No technical reference should quietly diverge from the public site.
 - No actual-cost wording should survive without explicit reconciliation context.
+- No completion claim should be accepted unless the immutable homepage boundary
+  proof is attached.
 
 ## 10. 9/10 release rubric for audited areas
 
@@ -431,6 +450,7 @@ every audited area scores at least **9/10** using the rubric below.
 | Typography | Existing hierarchy remains readable at desktop/mobile/200% zoom | zoom audit, responsive screenshots, no clipped headings/body text |
 | Responsive behavior | No horizontal overflow; nav and TOC behavior remain usable | Playwright/mobile checks plus manual zoom review |
 | Bespoke UX | New or changed wayfinding feels native to the current chrome, not generic | before/after screenshot review and interaction checklist |
+| Homepage immutability | Home demo, hero, reel, assets, and interaction match baseline exactly apart from the approved shared nav/chrome delta in PR2 | baseline hash report or scoped git-diff allowlist plus focused browser comparison |
 | Cross-page consistency | labels, counts, lifecycle boundaries, and active nav states agree across pages | contract tests plus manual click-through |
 | Advanced discoverability | every advanced page has >=3 contextual inbound links and the user can intentionally reach it from the main journey | link-map checklist plus browser tests |
 | Content consistency | canonical truth contract has zero contradictions across owned surfaces | claim-matrix checklist plus Node assertions |
@@ -443,7 +463,9 @@ No PR may claim completion, clarity, or 9/10 status without:
 1. a completed checklist against every rubric row;
 2. fresh targeted test runs;
 3. fresh responsive screenshots or visual review captures;
-4. explicit confirmation that the homepage demo/reel remained untouched.
+4. explicit confirmation that the homepage demo/reel remained untouched;
+5. baseline hash evidence or a scoped git-diff allowlist proving any Home delta
+   stayed inside the approved nav/chrome boundary.
 
 ## 11. Sequencing, rollback boundaries, and scope cuts
 
@@ -482,6 +504,7 @@ Disallowed scope cuts:
 - skipping the How it works nav entry;
 - skipping the >=3 inbound-link rule for advanced pages;
 - skipping rubric evidence or regression tests;
+- skipping immutable-homepage proof;
 - touching or moving the homepage reel.
 
 ## 12. Acceptance criteria and explicit exit condition
@@ -502,7 +525,9 @@ Disallowed scope cuts:
    untouched.
 9. Public claims, metadata, links, browser flows, and cache-bust behavior are
    covered by targeted existing test surfaces.
-10. Every audited dimension in section 10 scores at least 9/10 with evidence.
+10. Home immutability is proven by baseline hashes or a scoped git-diff
+    allowlist attached to the release evidence.
+11. Every audited dimension in section 10 scores at least 9/10 with evidence.
 
 ### 12.2 Explicit exit condition
 
@@ -513,6 +538,7 @@ verified such that:
 - PR2 leaves the public site with no orphan pages and no advanced-page
   discoverability gap below the required threshold;
 - the homepage reel is unchanged;
+- immutable-homepage proof shows no unauthorized Home delta;
 - fresh tests and visual review evidence support a minimum 9/10 score in every
   audited area;
 - no remaining open issue would force public readers to infer a false proof,
