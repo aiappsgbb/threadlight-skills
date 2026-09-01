@@ -1,0 +1,5 @@
+tools:
+  - id: payments.refund
+    consequence: irreversible
+    execution_modes: [interactive, batch, background, subagent, direct-tool]
+    provider_hosted: false

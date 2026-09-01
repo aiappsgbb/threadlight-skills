@@ -1,0 +1,9 @@
+tools:
+  - id: mail.send
+    consequence: external-egress
+    execution_modes: [provider-hosted-tool]
+    provider_hosted: true
+  - id: search.lookup
+    consequence: read
+    execution_modes: [provider-hosted-tool]
+    provider_hosted: true
