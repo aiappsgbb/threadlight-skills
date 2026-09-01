@@ -47,8 +47,27 @@ equivalent server-side control naming authorization, idempotency, and
 transaction-boundary evidence — is proven to apply before the state change
 represented by ``tool-service``; a control observed only after the action
 has already executed (a "post-model" observation, e.g. an audit record
-written after a direct provider call) is never treated as pre-action
-control, no matter how it looks superficially.
+written after a direct provider call, or even a real call to the Agent
+Hooks pre-tool-call function itself made only *after* the state change has
+already run) is never treated as pre-action control, no matter how it
+looks superficially or where its node happens to sort in
+``CANONICAL_NODE_ORDER``: coverage is decided from each call's actual
+relative position in the source, never merely from both nodes being
+present somewhere in the path.
+
+Static evidence is gathered from every candidate module that defines a
+matching dispatch function, not just the first one found: if the same
+dispatch name is defined more than once across a target's own source (for
+example, a legacy mediated implementation left behind alongside a newer
+bypassing one), any evidenced bypass among those definitions always wins
+over a mediated duplicate — a real bypass is never masked by an
+alphabetically-earlier or otherwise first-scanned file that happens to
+look clean. See the recognition-conventions comment ahead of the static
+call-evidence section below for the exact dispatch-function-name and
+receiver-name conventions this scanner recognizes; any code that does not
+match those exact names is invisible to it, and a mode with no matching
+evidence anywhere stays ``not-verified`` — indeterminate, never a false
+``pass``.
 
 Trust boundaries are preserved rather than inferred across: a cooperative
 host/worker process is never treated as a security boundary in its own
@@ -170,6 +189,43 @@ def _is_exclusively_provider_hosted(action: ActionRecord) -> bool:
 
 # ---------------------------------------------------------------------------
 # Static call-evidence scanning (build_mediation_graph)
+#
+# Recognition conventions (exhaustive — anything not matching these exact
+# names is invisible to this scanner and leaves the corresponding node
+# absent, never falsely inferred as present):
+#
+# - Dispatch function name: ``_mode_action_function_name`` below defines the
+#   only name this scanner ever looks for — the mode with hyphens replaced
+#   by underscores, an underscore, then the action id with every ``.`` and
+#   ``-`` replaced by ``_`` (e.g. mode ``direct-tool`` + action
+#   ``payments.refund`` => ``direct_tool_payments_refund``). A target that
+#   implements a mode's dispatch under any other name is indistinguishable
+#   from "no dispatch code at all" to this scanner: the mode stays
+#   ``not-verified``, never assumed covered *or* bypassed.
+# - Receiver/attribute names for each node, matched via
+#   ``_call_qualified_name`` against a call of the exact shape
+#   ``<receiver>.<method>(...)`` (a bare local-variable attribute access; a
+#   call reached through any other indirection — a decorator, a stored
+#   callable, a dynamically dispatched attribute, an aliased import, a
+#   wrapper class instance under a different variable name — is not
+#   recognized):
+#     * ``agent_hooks.pre_tool_call``   -> pre-action-seam evidence
+#     * ``agent_hooks.require_approval`` -> approval-check evidence
+#     * ``agent_hooks.post_tool_call``  -> post-action-seam evidence
+#     * ``tool_service.*`` (any method) -> tool-service evidence (governed
+#       execution)
+#     * ``provider.*`` (any method)     -> tool-service-equivalent evidence
+#       (a raw, unmediated call directly to the external provider/API
+#       client — also counts as "the state change happened" for bypass
+#       detection, exactly like a ``tool_service.*`` call would)
+#     * ``output_mediator.*`` (any method) -> output-mediator evidence
+#     * ``audit_sink.*`` (any method)      -> audit-sink evidence
+# - Only the *relative source position* of the first ``pre_tool_call`` and
+#   the first state-changing (``tool_service.*``/``provider.*``) call within
+#   one dispatch function's body decides whether that seam call counts:
+#   calling ``pre_tool_call`` at all is not enough on its own, and a call
+#   that happens later in the function than the state change is a post-hoc
+#   observation (see the module docstring), never pre-action mediation.
 # ---------------------------------------------------------------------------
 
 _EXCLUDED_DIR_NAMES: frozenset = frozenset(
@@ -211,18 +267,35 @@ def _parse_python(path: Path) -> Optional[ast.Module]:
 
 
 def _mode_action_function_name(action_id: str, mode: str) -> str:
+    """Return the one dispatch-function name this scanner recognizes.
+
+    ``<mode-with-underscores>_<action-id-with-underscores>`` — e.g. mode
+    ``direct-tool`` and action ``payments.refund`` yields
+    ``direct_tool_payments_refund``. See the recognition-conventions
+    comment above this section for the full, exhaustive list of names and
+    call shapes this scanner can see; anything else is invisible to it.
+    """
     slug_mode = mode.replace("-", "_")
     slug_action = action_id.replace(".", "_").replace("-", "_")
     return f"{slug_mode}_{slug_action}"
 
 
-def _find_function(
-    tree: ast.Module, name: str
-) -> Optional[ast.FunctionDef | ast.AsyncFunctionDef]:
+def _index_functions_by_name(
+    tree: ast.Module,
+) -> Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"]:
+    """Index every function definition in *tree* by name, first-wins.
+
+    Built once per file (see :func:`_build_ast_index`) rather than walked
+    afresh for every ``(action, mode)`` lookup that might need it.
+    """
+    functions: Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"] = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return node
-    return None
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name not in functions
+        ):
+            functions[node.name] = node
+    return functions
 
 
 def _call_qualified_name(call: ast.Call) -> Optional[str]:
@@ -328,18 +401,65 @@ def _candidate_files(root: Path, action: ActionRecord) -> Tuple[Path, ...]:
     return tuple(candidates)
 
 
-def _static_evidence(
-    root: Path, action: ActionRecord, mode: str
-) -> Optional[Tuple[Tuple[str, ...], str]]:
-    """Return ``(nodes, found_relative)`` from static AST scanning, or
-    ``None`` if no matching dispatch function was found anywhere.
+_AstIndex = Dict[Path, Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"]]
+
+
+def _build_ast_index(
+    root: Path, actions: Tuple[ActionRecord, ...]
+) -> _AstIndex:
+    """Parse and index every candidate file's functions exactly once.
+
+    Collects the union of every file :func:`_candidate_files` could ever
+    return for any of *actions* (whether from declared
+    ``known_runtime_paths``/``implementation_refs`` or the root-wide
+    fallback scan), then parses and indexes each distinct file exactly
+    once. Built fresh for one :func:`build_mediation_graph` call and
+    shared by every ``(action, mode)`` lookup that call makes, so a target
+    with many actions and five required modes each never causes the same
+    file to be re-read and re-walked over and over — parsing (and the
+    ``ast.walk`` needed to find every function by name) happens once per
+    distinct file for the whole assessment, not once per lookup.
     """
-    function_name = _mode_action_function_name(action.action_id, mode)
-    for candidate in _candidate_files(root, action):
+    all_candidates: "Dict[Path, None]" = {}
+    for action in actions:
+        for candidate in _candidate_files(root, action):
+            all_candidates.setdefault(candidate, None)
+
+    index: _AstIndex = {}
+    for candidate in all_candidates:
         tree = _parse_python(candidate)
         if tree is None:
             continue
-        func_node = _find_function(tree, function_name)
+        index[candidate] = _index_functions_by_name(tree)
+    return index
+
+
+def _static_evidence(
+    root: Path, action: ActionRecord, mode: str, ast_index: _AstIndex
+) -> Optional[Tuple[Tuple[str, ...], str]]:
+    """Return ``(nodes, found_relative)`` from static AST scanning, or
+    ``None`` if no matching dispatch function was found anywhere.
+
+    Every candidate file is scanned — not just the first one where the
+    dispatch function name is found — because the *same* dispatch name can
+    be defined more than once across a target's modules (e.g. a legacy
+    mediated implementation left behind alongside a newer bypassing one).
+    Whenever any candidate's evidence proves a bypass (a state change with
+    no pre-action seam actually preceding it), that bypass evidence always
+    wins over a duplicate's mediated evidence — a real bypass is never
+    masked just because a differently-named or earlier-sorted file happens
+    to look clean. Only when no candidate shows a bypass does the first
+    match (in ``_candidate_files``' deterministic order) supply the node
+    evidence, matching prior behavior when there is no such ambiguity.
+    """
+    function_name = _mode_action_function_name(action.action_id, mode)
+    matches: List[Tuple[Tuple[str, ...], str, bool]] = []
+
+    for candidate in _candidate_files(root, action):
+        functions = ast_index.get(candidate)
+        if not functions:
+            continue
+        func_node = functions.get(function_name)
         if func_node is None:
             continue
 
@@ -348,6 +468,17 @@ def _static_evidence(
             p for p in (trace.tool_service, trace.provider) if p is not None
         ]
         state_change_pos = min(state_positions) if state_positions else None
+        # A pre-action-seam call only counts when its own source position
+        # actually precedes the first state-changing call — a call to
+        # ``agent_hooks.pre_tool_call`` made *after* the state change has
+        # already run is a post-hoc observation (like a trailing audit
+        # record), never pre-action mediation, no matter how it looks in
+        # the canonical, structurally-ordered node list below.
+        seam_precedes_service = (
+            trace.pre_action_seam is not None
+            and state_change_pos is not None
+            and trace.pre_action_seam < state_change_pos
+        )
 
         nodes: List[str] = ["entry"]
         if mode in ("batch", "background"):
@@ -355,7 +486,9 @@ def _static_evidence(
         if mode == "subagent":
             nodes.append("agent/subagent")
         nodes.append("tool-router")
-        if trace.pre_action_seam is not None:
+        if trace.pre_action_seam is not None and (
+            state_change_pos is None or seam_precedes_service
+        ):
             nodes.append("pre-action-seam")
         if trace.approval_check is not None:
             nodes.append("approval-check")
@@ -371,8 +504,17 @@ def _static_evidence(
             nodes.append("audit-sink")
 
         found_relative = candidate.relative_to(root.resolve()).as_posix()
-        return tuple(nodes), found_relative
-    return None
+        is_bypass = state_change_pos is not None and not seam_precedes_service
+        matches.append((tuple(nodes), found_relative, is_bypass))
+
+    if not matches:
+        return None
+
+    for nodes, found_relative, is_bypass in matches:
+        if is_bypass:
+            return nodes, found_relative
+    first_nodes, first_found_relative, _ = matches[0]
+    return first_nodes, first_found_relative
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +647,7 @@ def _build_path(
     mode: str,
     entry_refs: Tuple[str, ...],
     adapter_declared: Optional[PathRecord],
+    ast_index: _AstIndex,
 ) -> PathRecord:
     """Build the single, authoritative path for one ``(action, mode)`` pair.
 
@@ -517,9 +660,11 @@ def _build_path(
     the node evidence and independently-checked equivalent-control
     evidence; nothing supplied by the adapter is ever trusted verbatim. If
     neither source has anything, the path is ``not-verified`` — evidence
-    absent, not falsely assumed passing or failing.
+    absent, not falsely assumed passing or failing. ``ast_index`` is the
+    shared, parse-once-per-file index built by :func:`_build_ast_index`
+    for the whole :func:`build_mediation_graph` call.
     """
-    static = _static_evidence(root, action, mode)
+    static = _static_evidence(root, action, mode, ast_index)
     if static is not None:
         nodes, found_relative = static
         evidence_refs = tuple(
@@ -619,13 +764,20 @@ def build_mediation_graph(
         key = (declared_path.action_id, declared_path.mode)
         adapter_declared_by_key.setdefault(key, declared_path)
 
+    non_provider_actions = tuple(
+        action
+        for action in sorted(actions, key=lambda a: a.action_id)
+        if not _is_exclusively_provider_hosted(action)
+    )
+    # Parsed and indexed once for the whole assessment below, then reused
+    # for every (action, mode) lookup — see _build_ast_index.
+    ast_index = _build_ast_index(root_path, non_provider_actions)
+
     paths: List[PathRecord] = []
     uncovered: List[PathRecord] = []
     findings: List[Finding] = []
 
-    for action in sorted(actions, key=lambda a: a.action_id):
-        if _is_exclusively_provider_hosted(action):
-            continue
+    for action in non_provider_actions:
         for mode in REQUIRED_NON_PROVIDER_MODES:
             record = _build_path(
                 root_path,
@@ -633,6 +785,7 @@ def build_mediation_graph(
                 mode,
                 entry_refs,
                 adapter_declared_by_key.get((action.action_id, mode)),
+                ast_index,
             )
             paths.append(record)
             if not record.covered:

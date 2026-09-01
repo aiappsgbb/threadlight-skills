@@ -1,0 +1,5 @@
+tools:
+  - id: notifications.send
+    consequence: external-egress
+    execution_modes: [direct-tool]
+    provider_hosted: false

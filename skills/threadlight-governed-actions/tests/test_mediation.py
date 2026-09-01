@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import textwrap
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -24,6 +25,7 @@ import canonical
 import contracts
 import inventory
 import maf_adapter
+import mediation
 from contracts import ActionRecord, Finding, PathRecord
 from mediation import (
     CANONICAL_NODE_ORDER,
@@ -623,6 +625,441 @@ def test_incomplete_equivalent_control_does_not_cover_a_bypassed_path(
         "MED-001",
         "direct-tool path for payments.settle lacks pre-action mediation",
     ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+# ---------------------------------------------------------------------------
+# build_mediation_graph: static-evidence robustness (source-order, duplicate
+# dispatch definitions, AST caching, path-escape, and malformed-input
+# degradation)
+# ---------------------------------------------------------------------------
+
+
+def test_post_hoc_pre_action_seam_call_does_not_cover_a_bypass_path(
+    fixture_root: Path,
+):
+    """A real call to the Agent Hooks seam that happens *after* the state
+    change already ran must never be credited as pre-action mediation,
+    even though ``pre-action-seam`` sorts before ``tool-service`` in
+    ``CANONICAL_NODE_ORDER``. Coverage must come from each call's actual
+    source position, not merely from both node names being present
+    somewhere in the path.
+    """
+    root = fixture_root / "post-hoc-seam-bypass"
+    actions = inventory.build_action_inventory(root).actions
+    graph = build_mediation_graph(root, actions, maf_adapter.MAFAdapter())
+
+    direct_tool_path = next(
+        path for path in graph.paths if path.mode == "direct-tool"
+    )
+    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.covered is False
+    assert direct_tool_path.pre_action_seam is None
+    assert "pre-action-seam" not in direct_tool_path.nodes
+    assert "tool-service" in direct_tool_path.nodes
+
+    assert (
+        "MED-001",
+        "direct-tool path for notifications.send lacks pre-action mediation",
+    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_duplicate_dispatch_definitions_bypass_evidence_wins_over_mediated_one(
+    tmp_path: Path,
+):
+    """When the same dispatch function name is defined in more than one
+    candidate module, an evidenced bypass anywhere among them must win
+    over a mediated duplicate — never a false ``pass`` just because the
+    *first*-scanned file happened to be the mediated one. The mediated
+    definition lives in a file that sorts alphabetically *before* the
+    bypassing one specifically so a "return on first match" scanner would
+    get this wrong.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "a_mediated.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def orders_cancel(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def batch_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(action="orders.cancel", **kwargs)
+                return tool_service.orders_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (app_dir / "z_bypass.py").write_text(
+        textwrap.dedent(
+            """
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                # A second, later-sorted definition of the same dispatch
+                # name that bypasses mediation entirely.
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    batch_path = next(path for path in graph.paths if path.mode == "batch")
+    assert batch_path.status == "must-fix"
+    assert batch_path.covered is False
+    assert batch_path.pre_action_seam is None
+
+    assert (
+        "MED-001",
+        "batch path for orders.cancel lacks pre-action mediation",
+    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_ast_files_are_parsed_once_per_assessment_not_per_action_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Static evidence for every ``(action, mode)`` pair is read from a
+    parse-once-per-file index built for the whole ``build_mediation_graph``
+    call, not re-parsed from disk on every action/mode combination — three
+    actions times five required modes must not mean fifteen re-parses of
+    the one file that implements all of them.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+              - id: orders.refund
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+              - id: orders.void
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def handle(self, **kwargs):
+                    return {"ok": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+
+
+            def direct_tool_orders_refund(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+
+
+            def direct_tool_orders_void(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    assert len(actions) == 3  # 3 actions x 5 required modes = 15 lookups
+
+    parse_calls: list[Path] = []
+    original_parse = mediation._parse_python
+
+    def counting_parse(path: Path):
+        parse_calls.append(path)
+        return original_parse(path)
+
+    monkeypatch.setattr(mediation, "_parse_python", counting_parse)
+
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    assert len(graph.paths) == 15
+    # Exactly one parse per distinct candidate file for the whole
+    # assessment, regardless of how many (action, mode) pairs consult it.
+    assert len(parse_calls) == 1
+
+
+def test_known_runtime_paths_ignores_declarations_that_escape_the_project_root(
+    tmp_path_factory: pytest.TempPathFactory,
+):
+    """A declared ``known_runtime_paths`` entry that resolves outside the
+    project root must be dropped rather than trusted — even when the
+    escaping file would (if wrongly scanned) supply mediated evidence that
+    could mask a real, in-root bypass.
+    """
+    root = tmp_path_factory.mktemp("mediation-root")
+    outside = tmp_path_factory.mktemp("mediation-outside")
+
+    escape_file = outside / "escape.py"
+    escape_file.write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def orders_cancel(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def batch_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.orders_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    app_dir = root / "app"
+    app_dir.mkdir()
+    (app_dir / "real.py").write_text(
+        textwrap.dedent(
+            """
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    relative_escape = Path(os.path.relpath(escape_file, root)).as_posix()
+    assert relative_escape.startswith("..")
+
+    action = _action_record(
+        "orders.cancel",
+        consequence="write",
+        execution_modes=("batch",),
+        known_runtime_paths=(relative_escape, "app/real.py"),
+    )
+    graph = build_mediation_graph(root, (action,), maf_adapter.MAFAdapter())
+
+    batch_path = next(path for path in graph.paths if path.mode == "batch")
+    assert batch_path.status == "must-fix"
+    assert batch_path.covered is False
+    assert not any(
+        "escape.py" in ref for ref in batch_path.evidence_refs
+    )
+    assert any("real.py" in ref for ref in batch_path.evidence_refs)
+
+
+def test_malformed_python_source_degrades_to_not_verified_without_crashing(
+    tmp_path: Path,
+):
+    """A candidate module that is not even syntactically valid Python must
+    never crash the assessor — it is treated exactly like "no evidence in
+    this file", leaving the mode ``not-verified`` when no other candidate
+    supplies evidence, never a false ``pass`` or an unhandled exception.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: reports.export
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "broken.py").write_text(
+        "def direct_tool_reports_export(:\n    return 1\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    direct_tool_path = next(
+        path for path in graph.paths if path.mode == "direct-tool"
+    )
+    assert direct_tool_path.status == "not-verified"
+    assert direct_tool_path.covered is False
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
+
+
+def test_malformed_equivalent_control_yaml_degrades_to_no_control_not_a_crash(
+    tmp_path: Path,
+):
+    """A registry file that is not even valid YAML must never crash the
+    equivalent-control reader either — it degrades to "no equivalent
+    control declared", so a genuine static-evidence bypass is still
+    reported exactly as ``must-fix``, never silently swallowed by a
+    raised exception nor wrongly credited with a control that could not
+    actually be parsed. Actions are constructed directly here (bypassing
+    ``inventory.build_action_inventory``, which is the strict, authoritative
+    registry parser and is expected to reject this file on its own) so the
+    equivalent-control reader's own independent degradation path is what
+    is under test.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        "tools: [ { id: payments.settle, consequence: write\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _Provider:
+                def settle(self, **kwargs):
+                    return {"settled": True}
+
+
+            provider = _Provider()
+
+
+            def direct_tool_payments_settle(**kwargs):
+                return provider.settle(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    action = _action_record(
+        "payments.settle",
+        consequence="write",
+        execution_modes=("direct-tool",),
+    )
+
+    graph = build_mediation_graph(tmp_path, (action,), maf_adapter.MAFAdapter())
+
+    direct_tool_path = next(
+        path for path in graph.paths if path.mode == "direct-tool"
+    )
+    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.covered is False
+    assert direct_tool_path.equivalent_control_ref is None
+
+
+def test_med002_status_is_must_fix_when_any_uncovered_path_is_a_proven_bypass(
+    tmp_path: Path,
+):
+    """``MED-002``'s own ``status`` must reflect ``must-fix`` — not
+    ``not-verified`` — whenever at least one of the uncovered families it
+    aggregates is a proven bypass rather than merely indeterminate, even
+    when other uncovered families for the same action have no evidence at
+    all.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                # No pre-action seam at all: a proven bypass.
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    by_mode = {path.mode: path for path in graph.paths}
+    assert by_mode["batch"].status == "must-fix"
+    for mode in ("interactive", "background", "subagent", "direct-tool"):
+        assert by_mode[mode].status == "not-verified"
+
+    med002 = next(f for f in graph.findings if f.finding_id == "MED-002")
+    assert med002.status == "must-fix"
 
 
 # ---------------------------------------------------------------------------
