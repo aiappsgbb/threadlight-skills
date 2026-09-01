@@ -45,7 +45,10 @@ exactly like a deny/transform outcome:
 - if the ledger proves the tool was never reached (fail-closed), the
   probe still passes — a process dying, hanging, or reporting nonsense
   is not itself a violation as long as it also never let the action
-  through;
+  through — but only once the ledger also proves a *visible operational
+  audit signal* was recorded for that action; a "start" record alone,
+  with no corroborating audit event, is never enough to grant a pass on
+  silence alone, and instead raises :class:`ProbeToolingError`;
 - if the ledger proves the tool *was* reached anyway (fail-open) for a
   fault whose own contract forbids invocation on a normal completion
   (deny/crash/timeout/malformed-verdict), that is unconditionally a
@@ -58,24 +61,51 @@ exactly like a deny/transform outcome:
   well-formed self-report can be compared against the ledger's argument
   hash to confirm the transform was correct (see ``ENF-001`` below), so
   this is truthfully reported as ``not-verified`` rather than a
-  fabricated ``ENF-002``;
+  fabricated ``ENF-002`` — and the same truthful ``not-verified``
+  outcome applies when the ledger proves the tool was *never* reached
+  for a transform-family fault's incomplete run, since reaching the
+  tool was never itself forbidden and an incomplete run proves nothing
+  either way;
 - a clean but *inconsistent* self-report from a completed, well-formed
-  run (the seam claims ``deny`` while the ledger proves invocation, or
-  claims ``transform`` while the argument hash the tool received does
-  not match what was reported) maps to ``ENF-001``; that is the one
-  case where a self-report is compared against the ledger rather than
-  a ledger-only judgment, precisely because the run completed normally
-  with a recognized decision. Even then, a completed self-report is
-  never trusted on its own: it must additionally be corroborated by a
-  matching ``start``/``decision`` ledger record and at least one audit
-  id, or the outcome is unobservable and raises
-  :class:`ProbeToolingError` — a self-report the ledger cannot
-  corroborate at all is indistinguishable from a stub that never really
-  drove the dispatch seam;
+  run maps to ``ENF-001``: the seam claims ``deny`` while the ledger
+  proves invocation, claims ``transform`` while the argument hash the
+  tool received does not match what was reported, while the ledger
+  proves *more than one* invocation for the action (an extra raw
+  invocation this fixture never admits to), or while the self-reported
+  invocation count disagrees with how many invocation records the
+  ledger actually holds. That is the one case where a self-report is
+  compared against the ledger rather than a ledger-only judgment,
+  precisely because the run completed normally with a recognized
+  decision. Even then, a completed self-report is never trusted on its
+  own: it must additionally be corroborated by a matching
+  ``start``/``decision`` ledger record and at least one audit id, or the
+  outcome is unobservable and raises :class:`ProbeToolingError` — a
+  self-report the ledger cannot corroborate at all is indistinguishable
+  from a stub that never really drove the dispatch seam;
 - an outcome that is genuinely unobservable (the child failed *and* the
   ledger recorded nothing at all, not even a ``start`` record) raises
   :class:`ProbeToolingError`, since neither a pass nor a specific finding
   can be proven from no evidence at all.
+
+A non-passing probe's finding is only ever produced when it proves a
+concrete, truthful violation (``ENF-001``/``ENF-002``); a ``not-verified``
+probe — one whose outcome genuinely cannot be confirmed either way —
+never produces any finding at all, exactly like a pass, rather than
+being mislabeled as a violation it never actually proved.
+
+Every ledger "invocation" record carries both the hash the synthetic
+tool actually received and a hash of the case's original (pre-transform)
+arguments — still payload-free, just two hashes rather than one — so a
+genuine transform (the two hashes differing) can be told apart from a
+raw, untransformed invocation (the two hashes matching) without ever
+needing the payload itself.
+
+This module also never mutates the target repository: an
+``observation_ledger`` whose parent directory does not yet exist is
+created only for the duration of one probe run and removed again
+afterward (if left empty), and an ``observation_ledger`` path that would
+resolve — following any symlink along the way — outside the target
+root is rejected outright as an unsafe contract.
 
 CTK/upstream conformance evidence is tracked separately elsewhere in the
 assessor and never substitutes for these application-path probes.
@@ -168,6 +198,23 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
     # "tool_not_invoked" here is nominal only, like the fail-open
     # variants above.
     "stub": "tool_not_invoked",
+    # A no-evidence fail-closed regression: crashes immediately after
+    # only a "start" record, with no audit event recorded at all.
+    # Proves a pass is never granted on silence alone — always raises
+    # ``ProbeToolingError`` — so "tool_not_invoked" here is nominal
+    # only, like "stub" above.
+    "silent_crash": "tool_not_invoked",
+    # A transform-family regression that invokes the tool *twice* (once
+    # correctly transformed, once with the raw arguments) while still
+    # self-reporting a single clean invocation. Never expected to pass
+    # — always a completed ENF-001 finding.
+    "double_invoke_transform": "tool_received_transformed_arguments",
+    # A transform-family regression that crashes before ever invoking
+    # the tool at all. Never expected to pass or fail — always
+    # truthfully "not-verified", since an incomplete run of a fault
+    # whose normal completion is supposed to reach the tool proves
+    # nothing either way.
+    "crash_before_transform_invoke": "tool_received_transformed_arguments",
 }
 
 # Human-readable, stable reason codes recorded on a *passing* probe,
@@ -368,6 +415,16 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             "probe contract 'observation_ledger' must be a relative path "
             f"inside the target root; got {observation_ledger!r}"
         )
+    resolved_root = root_path.resolve()
+    resolved_ledger_dir = (root_path / ledger_relative).parent.resolve()
+    try:
+        resolved_ledger_dir.relative_to(resolved_root)
+    except ValueError as error:
+        raise ProbeContractError(
+            "probe contract 'observation_ledger' directory resolves "
+            "outside the target root (symlink escape?); got "
+            f"{observation_ledger!r}"
+        ) from error
 
     actions = raw.get("actions")
     if (
@@ -392,6 +449,41 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
     )
 
 
+def _missing_ancestor_dirs(ledger_dir: Path) -> List[Path]:
+    """Return *ledger_dir* and any ancestors that do not yet exist.
+
+    Ordered deepest-first — exactly the directories a subsequent
+    ``mkdir(parents=True)`` would create. Used so a probe run can clean
+    up, once it is done, only the specific directories it actually
+    created — never a directory that already existed before the run
+    (the loop stops the moment it reaches one), and never anything
+    outside the target root (``load_probe_contract`` already rejects an
+    ``observation_ledger`` whose directory would resolve outside root
+    before this is ever called).
+    """
+    missing: List[Path] = []
+    current = ledger_dir
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    return missing
+
+
+def _remove_created_dirs(created_dirs: List[Path]) -> None:
+    """Best-effort remove *created_dirs* (deepest-first), only if empty.
+
+    Never forces a removal: if a directory is not empty (this run's own
+    ledger file was not the only thing in it, for whatever reason) its
+    ``rmdir()`` simply fails and is silently skipped, so this can never
+    destroy anything a probe run did not itself create.
+    """
+    for directory in created_dirs:
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+
+
 def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
     """Drive one probe *case* through the target's real dispatch seam.
 
@@ -399,7 +491,10 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
     action or fault the contract/harness does not know about, then runs
     the isolated-subprocess protocol described in the module docstring.
     Never mutates the target repository or any customer state — the
-    contract's ``side_effect_mode`` guarantees that.
+    contract's ``side_effect_mode`` guarantees that, ``load_probe_contract``
+    rejects an ``observation_ledger`` that would resolve outside *root*,
+    and any directory this call itself has to create to hold the
+    observation ledger is removed again once the run completes.
     """
     root_path = Path(root).resolve()
     contract = load_probe_contract(root_path)
@@ -415,6 +510,7 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
         raise ProbeContractError("ProbeCase.arguments must be a mapping")
 
     ledger_dir = root_path / Path(contract["observation_ledger"]).parent
+    created_dirs = _missing_ancestor_dirs(ledger_dir)
     try:
         ledger_dir.mkdir(parents=True, exist_ok=True)
         ledger_fd, ledger_name = tempfile.mkstemp(
@@ -424,6 +520,7 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
         )
         os.close(ledger_fd)
     except OSError as error:
+        _remove_created_dirs(created_dirs)
         raise ProbeToolingError(
             f"cannot create the exclusive observation ledger for probe "
             f"{case.probe_id!r}: {error}"
@@ -434,6 +531,7 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
         outcome = _dispatch_child(root_path, contract, case, ledger_path)
     finally:
         ledger_path.unlink(missing_ok=True)
+        _remove_created_dirs(created_dirs)
 
     return _build_probe_result(case, outcome)
 
@@ -458,16 +556,22 @@ def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
 def findings_from_probes(probes: Tuple[ProbeResult, ...]) -> Tuple[Finding, ...]:
     """Turn non-passing probe results into catalog findings.
 
-    A passing (or ``not-applicable``) probe never produces a finding. A
-    probe's ``reason_code`` is expected to already be the exact catalog
-    finding ID (``ENF-001``/``ENF-002``) once it did not pass; anything
+    A passing, ``not-applicable``, or ``not-verified`` probe never
+    produces a finding: only ``must-fix``/``should-fix`` probes that
+    proved a concrete, truthful violation do. ``not-verified`` in
+    particular is never mislabeled as ``ENF-001`` (or any other
+    catalog finding) merely because its ``reason_code`` is
+    unrecognized — an outcome that genuinely cannot be confirmed either
+    way is never turned into an invented violation. A probe's
+    ``reason_code`` is expected to already be the exact catalog finding
+    ID (``ENF-001``/``ENF-002``) once it *did* fail to pass; anything
     else is defensively mapped to ``ENF-001`` rather than silently
-    dropped, since an unrecognized non-passing probe is never simply
-    ignored.
+    dropped, since an unrecognized non-passing, non-not-verified probe
+    is never simply ignored.
     """
     findings = []
     for probe in probes:
-        if probe.status in ("pass", "not-applicable"):
+        if probe.status in ("pass", "not-applicable", "not-verified"):
             continue
         template = _FINDING_TEMPLATES.get(probe.reason_code)
         finding_id = probe.reason_code if template is not None else "ENF-001"
@@ -517,6 +621,36 @@ def _completed_report_is_ledger_supported(
     return has_start and has_matching_decision and has_audit_id
 
 
+def _abnormal_evidence_refs(case: ProbeCase, outcome: Mapping[str, object]) -> Tuple[str, ...]:
+    """Payload-free evidence for an abnormal (crash/timeout/malformed) outcome.
+
+    Never inferred from silence: collects the invocation argument hash
+    (when the tool was reached), every durable ``"audit"`` ledger event
+    id recorded for *case*'s action (the only channel that survives a
+    killed child — the self-report's ``AUDIT_EVENTS`` drain never
+    happens for one), and, when the child *did* complete with a
+    well-formed report (a malformed-verdict completion), its own
+    self-reported audit ids too. An empty result here means no visible
+    operational signal was ever recorded, which ``_build_probe_result``
+    treats as insufficient for a pass — never a reason to fabricate one.
+    """
+    refs = set()
+    invocation_hash = outcome.get("invocation_argument_hash")
+    if invocation_hash:
+        refs.add(invocation_hash)
+    for event in outcome["events"]:
+        if event.get("event") == "audit" and event.get("action_id") == case.action_id:
+            audit_id = event.get("audit_id")
+            if audit_id:
+                refs.add(audit_id)
+    report = outcome["child_report"]
+    if report is not None:
+        for audit_id in report.get("audit_ids", ()):
+            if audit_id:
+                refs.add(audit_id)
+    return tuple(sorted(refs))
+
+
 def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> ProbeResult:
     expected = _EXPECTED_BY_FAULT[case.fault]
     invoked = bool(outcome["invoked"])
@@ -548,11 +682,38 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             )
 
         decision = report["decision"]
+        original_argument_hash = None
         if decision == "deny":
             observed = "tool_invoked_despite_deny" if invoked else "tool_not_invoked"
         else:  # decision == "transform"
-            if not invoked:
+            # Never trust the self-reported invocation count, and never
+            # judge only the first (or last) recorded invocation: count
+            # every ledger "invocation" event for this action and
+            # compare both that count and the reported count against
+            # it. Exactly one recorded invocation, matching the
+            # self-report, is the only shape a correct transform can
+            # ever take — zero, or more than one (an extra raw
+            # invocation this fixture never admits to), or a
+            # self-reported count that disagrees with the ledger, are
+            # all a completed-report/ledger mismatch (ENF-001), never a
+            # false pass.
+            invocation_events = [
+                event
+                for event in outcome["events"]
+                if event.get("event") == "invocation"
+                and event.get("action_id") == case.action_id
+            ]
+            ledger_invocation_count = len(invocation_events)
+            if invocation_events:
+                original_argument_hash = invocation_events[0].get(
+                    "original_argument_hash"
+                )
+            if ledger_invocation_count == 0:
                 observed = "tool_not_invoked"
+            elif ledger_invocation_count > 1:
+                observed = "multiple_tool_invocations"
+            elif report.get("invocation_count") != ledger_invocation_count:
+                observed = "invocation_count_mismatch"
             elif outcome.get("invocation_argument_hash") != report.get(
                 "argument_hash"
             ):
@@ -570,7 +731,11 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             sorted(
                 {
                     ref
-                    for ref in (report.get("argument_hash"), *report.get("audit_ids", ()))
+                    for ref in (
+                        report.get("argument_hash"),
+                        original_argument_hash,
+                        *report.get("audit_ids", ()),
+                    )
                     if ref
                 }
             )
@@ -626,18 +791,53 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             observed = "tool_invoked_despite_fault"
             status = "must-fix"
             reason_code = "ENF-002"
+        evidence_refs = _abnormal_evidence_refs(case, outcome)
     else:
         observed = "tool_not_invoked"
-        status = "pass" if observed == expected else "must-fix"
-        reason_code = (
-            _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
-            if status == "pass"
-            else "ENF-001"
-        )
+        if expected == _TRANSFORM_EXPECTED_OUTCOME:
+            # A transform-family fault's incomplete run that never even
+            # reached the tool proves nothing either way: reaching the
+            # tool is what a *correct* run of this fault is supposed to
+            # do, so an incomplete run that never got that far can
+            # neither confirm a pass nor be blamed for a violation it
+            # never demonstrably committed. Truthfully "not-verified",
+            # exactly like the invoked-but-incomplete case above — never
+            # a fabricated ENF-001 must-fix.
+            status = "not-verified"
+            reason_code = _NOT_VERIFIED_REASON
+            evidence_refs = _abnormal_evidence_refs(case, outcome)
+        elif observed == expected:
+            # A candidate fail-closed pass (deny/crash/timeout/
+            # malformed-verdict families) is never granted on silence
+            # alone: it must be backed by a visible operational audit
+            # signal the ledger recorded (or, for a well-formed but
+            # malformed-verdict completion, the self-reported audit
+            # ids) — a "start" record by itself is not evidence of
+            # anything beyond "the process began". No success fallback:
+            # if neither exists, the outcome cannot be proven
+            # fail-closed with confidence, and this raises
+            # ProbeToolingError instead of silently becoming a pass.
+            evidence_refs = _abnormal_evidence_refs(case, outcome)
+            if not evidence_refs:
+                raise ProbeToolingError(
+                    f"probe {case.probe_id!r} appears fail-closed (the "
+                    "tool was never reached) but the observation ledger "
+                    "recorded no visible operational audit signal to "
+                    "corroborate it — a pass is never granted on "
+                    "silence alone"
+                )
+            status = "pass"
+            reason_code = _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
+        else:
+            # Defensive fallback, not currently reachable for any known
+            # fault: every non-transform-family fault's "expected" value
+            # is exactly "tool_not_invoked", which is also what
+            # "observed" is unconditionally set to right above whenever
+            # "invoked" is false.
+            status = "must-fix"
+            reason_code = "ENF-001"
+            evidence_refs = _abnormal_evidence_refs(case, outcome)
 
-    evidence_refs = tuple(
-        sorted({ref for ref in (outcome.get("invocation_argument_hash"),) if ref})
-    )
     return ProbeResult(
         probe_id=case.probe_id,
         action_id=case.action_id,

@@ -26,6 +26,35 @@ arguments, but then hangs past ``timeout_ms`` instead of ever reporting a
 decision, proving the harness must not fabricate a fail-open finding
 merely because a transform-family fault's own contract expects the tool
 to be reached.
+
+Every real decision (every fault except ``stub``) durably mirrors its
+audit event to the observation ledger, not only to the in-memory
+``AUDIT_EVENTS`` sink, via ``_record_audit_with_ledger``: the sink is
+only ever drained by the parent *after* ``dispatch_probe`` returns
+normally, so a crashed or killed child's audit trail would otherwise
+never surface at all. ``raise`` and ``sleep`` record that ledger audit
+event immediately before crashing/hanging, proving a visible operational
+signal was recorded even though the process never gets to complete —
+this is what lets a fail-closed crash/timeout probe pass on real
+evidence rather than on silence. ``silent_crash`` deliberately omits
+that audit record (crashes right after only a "start" record) to prove
+the opposite: a "start" record alone is never enough evidence for a
+pass. ``double_invoke_transform`` and ``crash_before_transform_invoke``
+are further deliberately negative transform-family regressions: the
+former invokes the tool twice (once correctly transformed, once with
+the raw/untransformed arguments) while still self-reporting a single
+clean invocation, proving the harness counts the ledger's own
+invocation records rather than trusting a self-reported count; the
+latter crashes before ever invoking the tool at all, proving an
+incomplete transform-family run is truthfully unverified, never a
+fabricated policy-violation finding.
+
+Every ledger "invocation" record carries both the hash of the
+arguments the synthetic tool actually received and a hash of the
+case's original, pre-transform arguments — still payload-free, never
+the raw values — so the harness can prove a transform actually changed
+something (the two hashes differ) without ever needing the payload
+itself.
 """
 from __future__ import annotations
 
@@ -75,6 +104,27 @@ def _record_audit(action_id: str, decision: str) -> str:
     return audit_id
 
 
+def _record_audit_with_ledger(ledger_path: str, action_id: str, decision: str) -> str:
+    """Record an audit event both in-memory and durably in the ledger.
+
+    ``AUDIT_EVENTS`` is only ever drained by the parent harness *after*
+    ``dispatch_probe`` returns normally — a crashed or killed child's
+    in-memory audit trail never surfaces at all. Mirroring the same
+    event to the observation ledger (flushed and fsynced immediately, by
+    ``_append_ledger``) is what lets a parent that has to kill this
+    process still prove a visible operational audit signal was recorded
+    before it died. Every real decision uses this instead of the bare
+    ``_record_audit`` — except ``stub``, which deliberately keeps using
+    the ledger-free version to prove a self-report is never trusted
+    without a corroborating ledger record.
+    """
+    audit_id = _record_audit(action_id, decision)
+    _append_ledger(
+        ledger_path, "audit", action_id=action_id, decision=decision, audit_id=audit_id
+    )
+    return audit_id
+
+
 def _transform_arguments(arguments: Mapping[str, object]) -> dict:
     """Apply the same authorized-policy transform every transform fault uses.
 
@@ -92,17 +142,30 @@ def _transform_arguments(arguments: Mapping[str, object]) -> dict:
 
 
 def _synthetic_tool_invoke(
-    ledger_path: str, action_id: str, arguments: Mapping[str, object]
+    ledger_path: str,
+    action_id: str,
+    arguments: Mapping[str, object],
+    original_arguments: Mapping[str, object],
 ) -> str:
     """The synthetic (never real) side-effecting tool service.
 
-    Records only that it was reached and a hash of what it received —
-    never the arguments themselves — so the parent can prove reach
-    without ever seeing (or needing) the payload.
+    Records only that it was reached, a hash of what it actually
+    received, and a hash of the case's original (pre-transform)
+    arguments — never the arguments themselves — so the parent can
+    prove reach, and prove a transform actually changed something (the
+    two hashes differ), without ever seeing or needing the payload.
+    For a fault that invokes with the raw arguments directly (no
+    transform), *arguments* and *original_arguments* are the same
+    mapping, so both hashes are identical.
     """
     argument_hash = _canonical_hash(dict(arguments))
+    original_argument_hash = _canonical_hash(dict(original_arguments))
     _append_ledger(
-        ledger_path, "invocation", action_id=action_id, argument_hash=argument_hash
+        ledger_path,
+        "invocation",
+        action_id=action_id,
+        argument_hash=argument_hash,
+        original_argument_hash=original_argument_hash,
     )
     return argument_hash
 
@@ -142,7 +205,7 @@ def dispatch_probe(
     _append_ledger(ledger_path, "start", action_id=action_id, fault=fault)
 
     if fault == "deny":
-        _record_audit(action_id, "deny")
+        _record_audit_with_ledger(ledger_path, action_id, "deny")
         _append_ledger(ledger_path, "decision", action_id=action_id, decision="deny")
         return {
             "decision": "deny",
@@ -153,8 +216,10 @@ def dispatch_probe(
 
     if fault == "transform":
         transformed = _transform_arguments(arguments)
-        argument_hash = _synthetic_tool_invoke(ledger_path, action_id, transformed)
-        _record_audit(action_id, "transform")
+        argument_hash = _synthetic_tool_invoke(
+            ledger_path, action_id, transformed, arguments
+        )
+        _record_audit_with_ledger(ledger_path, action_id, "transform")
         _append_ledger(
             ledger_path, "decision", action_id=action_id, decision="transform"
         )
@@ -177,17 +242,75 @@ def dispatch_probe(
         # so a timeout afterwards is unverified, never a manufactured
         # violation.
         transformed = _transform_arguments(arguments)
-        _synthetic_tool_invoke(ledger_path, action_id, transformed)
+        _synthetic_tool_invoke(ledger_path, action_id, transformed, arguments)
         time.sleep(10.0)
         raise AssertionError("unreachable: the probe harness should time out first")
 
+    if fault == "double_invoke_transform":
+        # Deliberately buggy seam: reaches the tool *twice* — once with
+        # the raw, untransformed arguments (a policy-bypass leak), then
+        # again with the correctly transformed arguments — yet still
+        # self-reports a single clean "transform" decision with the
+        # correctly transformed hash and a (lying) invocation_count of
+        # 1. Proves the harness counts the ledger's own recorded
+        # invocation events for the action rather than trusting a
+        # self-reported count or only the first/last recorded hash: an
+        # extra raw invocation this fixture never admits to must still
+        # never be laundered into a clean pass.
+        _synthetic_tool_invoke(ledger_path, action_id, arguments, arguments)
+        transformed = _transform_arguments(arguments)
+        argument_hash = _synthetic_tool_invoke(
+            ledger_path, action_id, transformed, arguments
+        )
+        _record_audit_with_ledger(ledger_path, action_id, "transform")
+        _append_ledger(
+            ledger_path, "decision", action_id=action_id, decision="transform"
+        )
+        return {
+            "decision": "transform",
+            "invocation_count": 1,
+            "argument_hash": argument_hash,
+            "exception_class": None,
+        }
+
+    if fault == "crash_before_transform_invoke":
+        # A transform-family regression that crashes *before* ever
+        # reaching the tool — never applies the transform, never
+        # invokes anything, never reports a decision. A transform-
+        # family fault's own contract expects the tool to be reached
+        # on a normal completion, so an incomplete run that never even
+        # got that far proves nothing either way: not a pass (the
+        # transform never demonstrably happened), and never a
+        # fabricated ENF-001/ENF-002 finding either, since no ledger
+        # evidence contradicts anything this fault ever claimed to do.
+        raise RuntimeError("synthetic interceptor crash before transform invocation")
+
     if fault == "raise":
         # Interceptor crashes before ever reaching the tool: fail-closed.
+        # Records a durable audit event first — the in-memory
+        # AUDIT_EVENTS sink is only ever drained after a normal return,
+        # so without this the crash would leave no visible operational
+        # signal at all for the harness to corroborate a pass against.
+        _record_audit_with_ledger(ledger_path, action_id, "crash-detected")
         raise RuntimeError("synthetic interceptor crash (fail-closed)")
+
+    if fault == "silent_crash":
+        # Deliberately minimal-evidence regression: crashes immediately
+        # after the unconditional "start" record above, recording no
+        # audit signal at all — unlike "raise", which durably records
+        # one before crashing. Proves the harness never grants a
+        # fail-closed pass on silence alone: a "start" record by itself
+        # is not a visible operational audit signal, so this must raise
+        # ProbeToolingError rather than fabricate a pass.
+        raise RuntimeError("synthetic interceptor crash with no audit signal")
 
     if fault == "sleep":
         # Interceptor hangs well past the probe contract's timeout_ms, so
         # the parent must kill this process to observe anything at all.
+        # Records a durable audit event first, for the same reason
+        # "raise" does: a killed process's in-memory audit trail would
+        # otherwise never surface to the parent at all.
+        _record_audit_with_ledger(ledger_path, action_id, "timeout-detected")
         time.sleep(10.0)
         raise AssertionError("unreachable: the probe harness should time out first")
 
@@ -200,7 +323,7 @@ def dispatch_probe(
         # not something this dispatch seam gets to decide quietly on its
         # own. The tool is still never invoked for this fault.
         decision = "not-a-real-verdict"
-        _record_audit(action_id, decision)
+        _record_audit_with_ledger(ledger_path, action_id, decision)
         _append_ledger(
             ledger_path,
             "decision",
@@ -220,7 +343,7 @@ def dispatch_probe(
         # reaches the tool with the raw arguments, and only then crashes.
         # This proves the harness can detect fail-open behavior from the
         # ledger even though this process never gets to report anything.
-        _synthetic_tool_invoke(ledger_path, action_id, arguments)
+        _synthetic_tool_invoke(ledger_path, action_id, arguments, arguments)
         raise RuntimeError("synthetic interceptor fail-open after invocation")
 
     if fault == "timeout_fail_open":
@@ -228,7 +351,7 @@ def dispatch_probe(
         # the interceptor hangs well past timeout_ms. Proves a timed-out
         # dispatch is still ENF-002 whenever the ledger proves fail-open,
         # not only when it happens to also crash outright.
-        _synthetic_tool_invoke(ledger_path, action_id, arguments)
+        _synthetic_tool_invoke(ledger_path, action_id, arguments, arguments)
         time.sleep(10.0)
         raise AssertionError("unreachable: the probe harness should time out first")
 
@@ -238,9 +361,11 @@ def dispatch_probe(
         # Proves a malformed verdict is still ENF-002 whenever the
         # ledger proves fail-open, not only when it also happens to
         # block the tool.
-        argument_hash = _synthetic_tool_invoke(ledger_path, action_id, arguments)
+        argument_hash = _synthetic_tool_invoke(
+            ledger_path, action_id, arguments, arguments
+        )
         decision = "not-a-real-verdict"
-        _record_audit(action_id, decision)
+        _record_audit_with_ledger(ledger_path, action_id, decision)
         _append_ledger(
             ledger_path,
             "decision",
@@ -259,8 +384,8 @@ def dispatch_probe(
         # Deliberately buggy seam: it invokes the tool anyway but still
         # (incorrectly) self-reports a clean deny. Proves the harness
         # trusts the ledger over the seam's own self-report.
-        _synthetic_tool_invoke(ledger_path, action_id, arguments)
-        _record_audit(action_id, "deny")
+        _synthetic_tool_invoke(ledger_path, action_id, arguments, arguments)
+        _record_audit_with_ledger(ledger_path, action_id, "deny")
         _append_ledger(ledger_path, "decision", action_id=action_id, decision="deny")
         return {
             "decision": "deny",

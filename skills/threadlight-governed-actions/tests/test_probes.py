@@ -31,6 +31,7 @@ Run with:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -199,10 +200,231 @@ def test_slow_correct_transform_timeout_is_not_verified_not_fabricated_fail_open
     assert result.reason_code != "ENF-001"
     assert result.observed != "tool_invoked_despite_fault"
 
+    # A "not-verified" probe never produces a finding — exactly like a
+    # pass — since its outcome genuinely cannot be confirmed either way
+    # and is never turned into an invented violation.
+    assert findings_from_probes((result,)) == ()
+
+
+def test_double_invoke_transform_is_enf_001_not_a_laundered_pass(fixture_root: Path):
+    # The fixture invokes the tool *twice* (once raw, once correctly
+    # transformed) but self-reports a single clean invocation with the
+    # correctly transformed hash. The harness must count the ledger's
+    # own invocation records for the action rather than trust the
+    # self-reported count or only the last recorded hash, so this extra
+    # raw invocation the fixture never admits to must never be
+    # laundered into a clean pass.
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "double-invoke-transform",
+            "payments.refund",
+            "double_invoke_transform",
+            {"amount": 7},
+        ),
+    )
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-001"
+    assert result.observed not in (
+        "tool_received_transformed_arguments",
+        "tool_not_invoked",
+    )
+
     findings = findings_from_probes((result,))
-    assert len(findings) == 1
-    assert findings[0].status == "not-verified"
-    assert findings[0].reason_code == result.reason_code
+    assert [(finding.finding_id, finding.status) for finding in findings] == [
+        ("ENF-001", "must-fix")
+    ]
+
+
+def test_crash_before_transform_invoke_is_not_verified_never_a_finding(
+    fixture_root: Path,
+):
+    # A transform-family fault that crashes *before* ever reaching the
+    # tool proves nothing either way: reaching the tool is what a
+    # correct run of this fault is supposed to do, so an incomplete run
+    # that never even got that far can neither confirm a pass nor be
+    # blamed for a violation it never demonstrably committed.
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "crash-before-transform-invoke",
+            "payments.refund",
+            "crash_before_transform_invoke",
+            {"amount": 7},
+        ),
+    )
+    assert result.status == "not-verified"
+    assert result.reason_code != "ENF-001"
+    assert result.reason_code != "ENF-002"
+    assert result.observed == "tool_not_invoked"
+
+    assert findings_from_probes((result,)) == ()
+
+
+def test_fail_closed_crash_and_timeout_passes_carry_visible_audit_evidence(
+    fixture_root: Path,
+):
+    # A fail-closed crash/timeout pass is never granted on silence
+    # alone: it must be backed by a visible operational audit signal
+    # the ledger recorded. Both "raise" and "sleep" durably mirror an
+    # audit event to the ledger immediately before crashing/hanging, so
+    # a passing probe for either must carry nonempty evidence_refs.
+    root = fixture_root / "interceptor-failure"
+    crash = run_application_probe(
+        root, ProbeCase("crash", "payments.refund", "raise", {"amount": 7})
+    )
+    timeout = run_application_probe(
+        root, ProbeCase("timeout", "payments.refund", "sleep", {"amount": 7})
+    )
+    for result in (crash, timeout):
+        assert result.status == "pass"
+        assert result.evidence_refs
+
+
+def test_silent_crash_with_no_audit_signal_raises_probe_tooling_error(
+    fixture_root: Path,
+):
+    # The fixture crashes immediately after only a "start" record, with
+    # no audit event recorded at all. A "start" record alone is not a
+    # visible operational audit signal, so a pass must never be granted
+    # on that silence — this must raise ProbeToolingError instead.
+    with pytest.raises(ProbeToolingError):
+        run_application_probe(
+            fixture_root / "interceptor-failure",
+            ProbeCase("silent-crash", "payments.refund", "silent_crash", {"amount": 7}),
+        )
+
+
+def _canonical_hash(value: object) -> str:
+    text = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_transform_evidence_records_both_original_and_transformed_hashes(
+    fixture_root: Path,
+):
+    # A transform pass's evidence must include both the hash of what
+    # the tool actually received (the transformed arguments) and a hash
+    # of the case's original, pre-transform arguments — payload-free,
+    # never the raw values themselves — so a transform can be proven to
+    # have actually changed something without ever needing the payload.
+    original_arguments = {"amount": 7}
+    transformed_arguments = {"amount": 5}
+    expected_original_hash = _canonical_hash(original_arguments)
+    expected_transformed_hash = _canonical_hash(transformed_arguments)
+
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "transform", "payments.refund", "transform", dict(original_arguments)
+        ),
+    )
+    assert result.status == "pass"
+    assert expected_original_hash != expected_transformed_hash
+    assert expected_original_hash in result.evidence_refs
+    assert expected_transformed_hash in result.evidence_refs
+
+
+def test_load_probe_contract_rejects_observation_ledger_symlink_escape(
+    tmp_path: Path,
+):
+    # An ``observation_ledger`` whose directory resolves — following a
+    # symlink along the way — outside the target root must be rejected
+    # outright as an unsafe contract, even though the lexical path
+    # itself (``governance/probe-ledger.jsonl``) never contains ``..``.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "governance").symlink_to(outside, target_is_directory=True)
+    (outside / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:dispatch_probe",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "timeout_ms": 100,
+                "side_effect_mode": "synthetic",
+                "observation_ledger": "governance/probe-ledger.jsonl",
+                "actions": ["payments.refund"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProbeContractError):
+        load_probe_contract(root)
+
+
+def test_probe_run_cleans_up_newly_created_nested_ledger_directories(
+    tmp_path: Path,
+):
+    # A minimal, fully self-contained fixture whose contract's
+    # ``observation_ledger`` points at a nested directory that does not
+    # exist yet. The probe run must create it for the duration of the
+    # run and remove it again afterward — leaving the pre-existing
+    # ``governance`` directory (which holds the contract itself) and
+    # everything else in the target root untouched.
+    root = tmp_path / "cleanup-target"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "__init__.py").write_text("", encoding="utf-8")
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+
+AUDIT_EVENTS = []
+
+
+def dispatch_probe(case, ledger_path):
+    action_id = case["action_id"]
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "start", "action_id": action_id}) + "\\n"
+        )
+    AUDIT_EVENTS.append(
+        {"audit_id": "audit-0001", "action_id": action_id, "decision": "deny"}
+    )
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "action_id": action_id, "decision": "deny"}
+            )
+            + "\\n"
+        )
+    return {
+        "decision": "deny",
+        "invocation_count": 0,
+        "argument_hash": None,
+        "exception_class": None,
+    }
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:dispatch_probe",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "timeout_ms": 1000,
+                "side_effect_mode": "synthetic",
+                "observation_ledger": "governance/nested/deep/probe-ledger.jsonl",
+                "actions": ["payments.refund"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_application_probe(
+        root, ProbeCase("deny", "payments.refund", "deny", {"amount": 7})
+    )
+    assert result.status == "pass"
+
+    assert not (governance_dir / "nested").exists()
+    assert governance_dir.is_dir()
+    assert (governance_dir / "probe-contract.json").is_file()
 
 
 def test_ledger_less_self_report_raises_probe_tooling_error(fixture_root: Path):
