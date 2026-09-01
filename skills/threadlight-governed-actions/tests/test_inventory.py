@@ -154,9 +154,14 @@ def test_conformant_fixture_actions_and_implementation_refs_are_populated(
 def test_undeclared_or_unclassified_action_is_must_fix(tmp_path: Path) -> None:
     write_fixture_with_python_tool(tmp_path, "mail.send")
     result = inventory.build_action_inventory(tmp_path)
+    # No ``specs/SPEC.md`` exists at all here, so every SAFE declaration
+    # also defaults to ``not-verified`` (never an inferred pass), adding a
+    # third, distinct ACT-001 finding alongside the two action-specific
+    # ones for the undeclared, unclassified ``mail.send`` action.
     assert {(f.finding_id, f.status) for f in result.findings} == {
         ("ACT-001", "must-fix"),
         ("ACT-002", "must-fix"),
+        ("ACT-001", "not-verified"),
     }
     assert result.actions[0].action_id == "mail.send"
     assert result.actions[0].consequence is None
@@ -640,14 +645,21 @@ def test_spec_only_action_appears_exactly_once_with_findings(tmp_path: Path) -> 
     assert action.declaration_refs == ()
     assert action.implementation_refs == ()
 
+    # No SAFE checklist section is present in this fixture's SPEC, so every
+    # SAFE key defaults to not-verified (never inferred as a pass), adding
+    # the single aggregate ACT-001 SAFE finding (affected_actions=(), since
+    # SAFE declarations are a property of section 8, not of one action)
+    # alongside the two per-action findings for the undeclared,
+    # unclassified `reports.export` action.
     assert {(f.finding_id, f.status) for f in result.findings} == {
         ("ACT-001", "must-fix"),
         ("ACT-002", "must-fix"),
+        ("ACT-001", "not-verified"),
     }
-    # Exactly one finding per catalog ID for this single action — it must
-    # not be double-reported or silently dropped.
-    assert len(result.findings) == 2
-    for finding in result.findings:
+    assert len(result.findings) == 3
+    per_action_findings = [f for f in result.findings if f.affected_actions]
+    assert len(per_action_findings) == 2
+    for finding in per_action_findings:
         assert finding.affected_actions == ("reports.export",)
 
 
@@ -703,7 +715,12 @@ def test_python_tool_registered_under_alias_resolves_to_canonical_action(
     action = result.actions[0]
     assert action.implementation_refs == ("app_agent.py",)
     assert action.source == "python+registry"
-    assert result.findings == ()
+    # No SPEC.md is written by this fixture, so every SAFE key defaults to
+    # not-verified — the resolved action itself is still clean, but the
+    # single aggregate ACT-001 SAFE finding still fires for the agent.
+    assert {(f.finding_id, f.status, f.reason_code) for f in result.findings} == {
+        ("ACT-001", "not-verified", "safe-declaration-not-verified"),
+    }
 
 
 def test_spec_mention_of_alias_resolves_approval_to_canonical_action(
@@ -778,3 +795,243 @@ def test_ambiguous_alias_is_not_silently_resolved_to_either_action(
         "orders.cancel",
         "orders.delete",
     }
+
+
+# ---------------------------------------------------------------------------
+# Missing/not-verified SAFE declarations emit a single, deterministic
+# ACT-001 ``not-verified`` finding (never an inferred pass) — distinct from
+# the per-action ACT-001 ``must-fix`` used for an unclassified consequence.
+# ---------------------------------------------------------------------------
+
+
+def test_missing_safe_declaration_emits_act_001_not_verified_finding(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [{"id": "docs.readonly", "consequence": "read", "execution_modes": ["interactive"]}],
+    )
+    write_fixture_with_python_tool(tmp_path, "docs.readonly")
+    # Only some SAFE checklist items are declared/checked; the rest are
+    # missing entirely, and one is present but unchecked.
+    write_spec(
+        tmp_path,
+        "\n".join(
+            [
+                "- [x] authorization",
+                "- [ ] approval",
+                "- [x] idempotency-or-transaction",
+            ]
+        ),
+    )
+    result = inventory.build_action_inventory(tmp_path)
+
+    safe_findings = [
+        f
+        for f in result.findings
+        if f.finding_id == "ACT-001" and f.status == "not-verified"
+    ]
+    assert len(safe_findings) == 1
+    finding = safe_findings[0]
+    assert finding.reason_code == "safe-declaration-not-verified"
+    # Deterministic: every not-verified SAFE key is named, in the fixed
+    # catalog order, regardless of dict/set iteration order.
+    assert "approval" in finding.summary
+    assert "output-mediation" in finding.summary
+    assert "audit" in finding.summary
+    assert "authorization" not in finding.summary
+    assert "idempotency-or-transaction" not in finding.summary
+
+
+def test_all_safe_declarations_pass_emits_no_act_001_safe_finding(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [{"id": "docs.readonly", "consequence": "read", "execution_modes": ["interactive"]}],
+    )
+    write_fixture_with_python_tool(tmp_path, "docs.readonly")
+    write_spec(
+        tmp_path,
+        "\n".join(
+            [
+                "- [x] authorization",
+                "- [x] approval",
+                "- [x] idempotency-or-transaction",
+                "- [x] output-mediation",
+                "- [x] audit",
+            ]
+        ),
+    )
+    result = inventory.build_action_inventory(tmp_path)
+    assert not any(
+        f.finding_id == "ACT-001" and f.status == "not-verified" for f in result.findings
+    )
+
+
+def test_conformant_fixture_declares_all_safe_requirements_and_has_no_findings(
+    fixture_root: Path,
+) -> None:
+    result = inventory.build_action_inventory(fixture_root / "conformant-maf")
+    assert dict(result.safe_requirements) == {
+        "authorization": "pass",
+        "approval": "pass",
+        "idempotency-or-transaction": "pass",
+        "output-mediation": "pass",
+        "audit": "pass",
+    }
+    assert result.findings == ()
+
+
+def test_undeclared_action_with_no_spec_reports_safe_not_verified_too(
+    tmp_path: Path,
+) -> None:
+    """Regression guard: without any ``specs/SPEC.md`` at all, every SAFE
+    key defaults to ``not-verified`` (never an inferred pass), so the
+    single aggregate ACT-001 SAFE finding fires alongside the two
+    action-specific findings for an undeclared, unclassified action."""
+    write_fixture_with_python_tool(tmp_path, "mail.send")
+    result = inventory.build_action_inventory(tmp_path)
+    assert {(f.finding_id, f.status, f.reason_code) for f in result.findings} == {
+        ("ACT-001", "must-fix", "unclassified-consequence"),
+        ("ACT-002", "must-fix", "source-mismatch"),
+        ("ACT-001", "not-verified", "safe-declaration-not-verified"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-alias detection normalizes alias keys, so case-only variants
+# claimed by different actions are still reliably flagged as ambiguous
+# (ACT-002 duplicate-alias) and remain unresolved.
+# ---------------------------------------------------------------------------
+
+
+def test_case_variant_duplicate_alias_is_normalized_and_flagged(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["Orders.Remove"],
+            },
+            {
+                "id": "orders.delete",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            },
+        ],
+    )
+    result = inventory.build_action_inventory(tmp_path)
+    duplicate_alias_findings = [
+        f for f in result.findings if f.reason_code == "duplicate-alias"
+    ]
+    assert len(duplicate_alias_findings) == 1
+    assert set(duplicate_alias_findings[0].affected_actions) == {
+        "orders.cancel",
+        "orders.delete",
+    }
+
+
+def test_case_variant_ambiguous_alias_is_never_resolved(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["Orders.Remove"],
+            },
+            {
+                "id": "orders.delete",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            },
+        ],
+    )
+    write_fixture_with_python_tool(tmp_path, "orders.remove")
+    result = inventory.build_action_inventory(tmp_path)
+    assert {action.action_id for action in result.actions} == {
+        "orders.cancel",
+        "orders.delete",
+        "orders.remove",
+    }
+    by_id = {action.action_id: action for action in result.actions}
+    assert by_id["orders.cancel"].implementation_refs == ()
+    assert by_id["orders.delete"].implementation_refs == ()
+    assert by_id["orders.remove"].implementation_refs == ("app_agent.py",)
+
+
+# ---------------------------------------------------------------------------
+# Direct coverage: action IDs normalize to lowercase; policy IDs are
+# sorted and deduplicated (never lowercased, per the plan's explicit
+# distinction between action-ID and policy-ID normalization).
+# ---------------------------------------------------------------------------
+
+
+def test_registry_action_id_is_normalized_to_lowercase(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "Payments.REFUND",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+            }
+        ],
+    )
+    registry = inventory.parse_action_registries(tmp_path)
+    assert set(registry) == {"payments.refund"}
+    assert registry["payments.refund"].action_id == "payments.refund"
+
+
+def test_python_tool_name_is_normalized_to_lowercase(tmp_path: Path) -> None:
+    module = tmp_path / "app_agent.py"
+    module.write_text(
+        textwrap.dedent(
+            """\
+            def tool(*, name):
+                def decorator(func):
+                    return func
+                return decorator
+
+
+            @tool(name="Mail.SEND")
+            def mail_send():
+                return None
+            """
+        ),
+        encoding="utf-8",
+    )
+    assert inventory.discover_python_tools(tmp_path) == {"mail.send"}
+
+
+def test_policy_ids_are_sorted_and_deduplicated(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "policy_ids": [
+                    "policy.write",
+                    "policy.audit",
+                    "policy.write",
+                    "policy.approval",
+                ],
+            }
+        ],
+    )
+    registry = inventory.parse_action_registries(tmp_path)
+    assert registry["payments.refund"].policy_ids == (
+        "policy.approval",
+        "policy.audit",
+        "policy.write",
+    )

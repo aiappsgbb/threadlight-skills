@@ -451,21 +451,33 @@ def parse_action_registries(root: Path) -> Dict[str, ActionRecord]:
     return merged
 
 
-def _build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
-    """Map each *unambiguous* registry alias to its one canonical action ID.
+def _alias_owner_map(registry: Mapping[str, ActionRecord]) -> Dict[str, Set[str]]:
+    """Map each normalized registry alias to the set of action IDs claiming it.
 
     Alias strings are compared case-insensitively (normalized the same way
-    as an action ID) since discovered Python/SPEC identifiers are always
-    lowercase-normalized before being looked up here. An alias claimed by
-    more than one action is ambiguous — that ambiguity is already reported
-    separately as an ``ACT-002`` ``duplicate-alias`` finding — and is
-    deliberately excluded from the returned index: guessing which of the
-    two actions it refers to would itself be an invented mapping.
+    as an action ID), since discovered Python/SPEC identifiers are always
+    lowercase-normalized before being looked up. This single map is the
+    shared source of truth for both alias *resolution* (an alias claimed
+    by exactly one action) and alias *ambiguity reporting* (an alias
+    claimed by more than one action) so the two can never diverge.
     """
     owners: Dict[str, Set[str]] = {}
     for action_id, record in registry.items():
         for alias in record.aliases:
             owners.setdefault(_normalize_action_id(alias), set()).add(action_id)
+    return owners
+
+
+def _build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
+    """Map each *unambiguous* registry alias to its one canonical action ID.
+
+    An alias claimed by more than one action is ambiguous — that ambiguity
+    is already reported separately as an ``ACT-002`` ``duplicate-alias``
+    finding — and is deliberately excluded from the returned index:
+    guessing which of the two actions it refers to would itself be an
+    invented mapping.
+    """
+    owners = _alias_owner_map(registry)
     return {
         alias: next(iter(candidate_owners))
         for alias, candidate_owners in owners.items()
@@ -766,13 +778,12 @@ def build_action_inventory(root: Path) -> InventoryResult:
         )
         actions.append(record)
 
-    # Duplicate aliases: the same alias string claimed by two or more
-    # distinct canonical actions is ambiguous and is reported (never
-    # silently resolved to either action).
-    alias_owners: Dict[str, Set[str]] = {}
-    for action_id, record in registry.items():
-        for alias in record.aliases:
-            alias_owners.setdefault(alias, set()).add(action_id)
+    # Duplicate aliases: the same alias string (compared case-insensitively,
+    # so case-only variants are treated as the same alias) claimed by two
+    # or more distinct canonical actions is ambiguous and is reported
+    # (never silently resolved to either action). Uses the same normalized
+    # owner map as alias *resolution* so the two can never disagree.
+    alias_owners = _alias_owner_map(registry)
     for alias, owners in sorted(alias_owners.items()):
         if len(owners) <= 1:
             continue
@@ -794,6 +805,38 @@ def build_action_inventory(root: Path) -> InventoryResult:
                     "it is never guessed which action a shared alias means."
                 ),
                 affected_actions=affected,
+            )
+        )
+
+    # SAFE declarations (authorization, approval, idempotency-or-transaction,
+    # output-mediation, audit): a missing or unchecked declaration is
+    # reported as ``not-verified`` — never an inferred pass — via a single,
+    # deterministic ACT-001 finding for the whole agent (these are
+    # properties of section 8 as a whole, not of any one action), listing
+    # every not-verified key in the fixed catalog order regardless of dict
+    # iteration order.
+    not_verified_keys = tuple(
+        key for key in _SAFE_REQUIREMENT_KEYS if safe_requirements.get(key) != "pass"
+    )
+    if not_verified_keys:
+        findings.append(
+            Finding(
+                finding_id="ACT-001",
+                status="not-verified",
+                phase="design",
+                plane="runtime",
+                reason_code="safe-declaration-not-verified",
+                summary=(
+                    "SAFE declaration(s) not verified in SPEC section 8: "
+                    f"{', '.join(not_verified_keys)}."
+                ),
+                details=(
+                    "Each of authorization, approval, idempotency-or-transaction, "
+                    "output-mediation, and audit must be explicitly checked in "
+                    "SPEC section 8; a missing or unchecked declaration is "
+                    "reported as not-verified and is never inferred as a pass."
+                ),
+                affected_actions=(),
             )
         )
 
