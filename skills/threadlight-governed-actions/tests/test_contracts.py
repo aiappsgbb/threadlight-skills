@@ -10,6 +10,9 @@ import copy
 import hashlib
 import json
 import math
+import os
+import stat
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -274,6 +277,42 @@ def test_validate_payload_free_audit_permits_hash_suffixed_fields():
     canonical.validate_payload_free_audit(record)
 
 
+@pytest.mark.parametrize(
+    "mixed_case_key",
+    ["Prompt", "TOKEN", "Args", "ArGuMeNts", "Secret", "Body", "AUTHORIZATION"],
+)
+def test_validate_payload_free_audit_rejects_banned_keys_case_insensitively(
+    mixed_case_key,
+):
+    """A banned key must be caught regardless of letter casing (mixed/upper),
+    proving the comparison lower-cases the key rather than relying on the
+    caller to write it in one specific case."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record[mixed_case_key] = "should not be here"
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+def test_validate_payload_free_audit_rejects_mixed_case_banned_keys_recursively():
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record["context"] = {"Nested": {"ARGUMENTS": {"to": "user@example.com"}}}
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+@pytest.mark.parametrize(
+    "hash_key",
+    ["Input_Hash", "OUTPUT_HASH", "InputHash", "outputHash"],
+)
+def test_validate_payload_free_audit_permits_hash_suffixed_fields_any_case(hash_key):
+    """Exact (not substring) matching means a differently-cased hash field
+    such as ``Input_Hash``/``OUTPUT_HASH`` is never confused with the banned
+    ``input``/``output`` keys themselves."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record[hash_key] = f"sha256:{'5' * 64}"
+    canonical.validate_payload_free_audit(record)
+
+
 # ---------------------------------------------------------------------------
 # atomic_write_bytes / atomic_write_json
 # ---------------------------------------------------------------------------
@@ -308,6 +347,110 @@ def test_atomic_write_json_rejects_non_finite_and_leaves_no_tmp(tmp_path):
         canonical.atomic_write_json(destination, {"value": float("nan")})
     assert not destination.exists()
     assert list(tmp_path.glob(".manifest.json.*.tmp")) == []
+
+
+def test_atomic_write_bytes_creates_temp_file_in_destination_directory(
+    tmp_path, monkeypatch
+):
+    """The NamedTemporaryFile must be created with dir=destination.parent
+    (never the platform default temp dir), because os.replace is only
+    atomic when source and destination share a filesystem."""
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+    captured_dir = {}
+
+    def spying_named_temporary_file(*args, **kwargs):
+        captured_dir["dir"] = kwargs.get("dir")
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        canonical.tempfile, "NamedTemporaryFile", spying_named_temporary_file
+    )
+
+    destination = tmp_path / "manifest.json"
+    canonical.atomic_write_bytes(destination, b"data")
+
+    assert captured_dir["dir"] == destination.parent
+    assert destination.read_bytes() == b"data"
+
+
+def test_atomic_write_bytes_fsyncs_temp_file_then_parent_directory(
+    tmp_path, monkeypatch
+):
+    """Proves both fsyncs actually happen (not merely present in source):
+    the first fsync is on a regular file (the temp file, still open for
+    write), the second is on the parent directory (durability for the
+    rename itself)."""
+    real_fsync = os.fsync
+    fsync_call_is_dir = []
+
+    def spying_fsync(fd):
+        fsync_call_is_dir.append(stat.S_ISDIR(os.fstat(fd).st_mode))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(canonical.os, "fsync", spying_fsync)
+
+    destination = tmp_path / "manifest.json"
+    canonical.atomic_write_bytes(destination, b"data")
+
+    assert fsync_call_is_dir == [False, True]
+    assert destination.read_bytes() == b"data"
+
+
+def test_atomic_write_bytes_mid_write_failure_preserves_destination_and_cleans_temp(
+    tmp_path, monkeypatch
+):
+    """Injects a real OS-level failure (fsync on the temp file raising)
+    strictly after the temp file has been created and written to, but
+    before os.replace is ever called. Proves: (1) a pre-existing destination
+    file is completely untouched, (2) the temp file created for this call is
+    removed, (3) the original exception still propagates. This does not rely
+    on canonical_bytes raising first — the failure is injected inside
+    atomic_write_bytes's own write path."""
+    destination = tmp_path / "manifest.json"
+    original_content = b"original-content"
+    destination.write_bytes(original_content)
+
+    def failing_fsync(fd):
+        raise OSError("simulated mid-write fsync failure")
+
+    monkeypatch.setattr(canonical.os, "fsync", failing_fsync)
+
+    with pytest.raises(OSError, match="simulated mid-write fsync failure"):
+        canonical.atomic_write_bytes(destination, b"new-content-that-must-not-land")
+
+    assert destination.read_bytes() == original_content
+    assert list(tmp_path.glob(".manifest.json.*.tmp")) == []
+
+
+def test_atomic_write_bytes_replace_failure_removes_only_its_own_temp(
+    tmp_path, monkeypatch
+):
+    """Injects a failure in os.replace itself (the pre-replace boundary: the
+    temp file is fully written+fsynced but never lands at the destination
+    path). Proves: (1) a pre-existing destination survives untouched,
+    (2) an unrelated file that happens to match the temp-file glob pattern
+    is left alone (cleanup removes only the temp file this call created,
+    not anything else matching the pattern), (3) the original exception
+    propagates."""
+    destination = tmp_path / "manifest.json"
+    original_content = b"original-content"
+    destination.write_bytes(original_content)
+
+    unrelated_tmp = tmp_path / ".manifest.json.unrelated-leftover.tmp"
+    unrelated_tmp.write_bytes(b"do-not-touch-me")
+
+    def failing_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(canonical.os, "replace", failing_replace)
+
+    with pytest.raises(OSError, match="simulated replace failure"):
+        canonical.atomic_write_bytes(destination, b"new-content-that-must-not-land")
+
+    assert destination.read_bytes() == original_content
+    leftovers = sorted(p.name for p in tmp_path.glob(".manifest.json.*.tmp"))
+    assert leftovers == [".manifest.json.unrelated-leftover.tmp"]
+    assert unrelated_tmp.read_bytes() == b"do-not-touch-me"
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +684,55 @@ def test_no_schema_or_defs_contain_secret_or_payload_properties():
         text = (REFERENCES / filename).read_text(encoding="utf-8").lower()
         for banned in ('"secret"', '"payload"', '"prompt"', '"arguments"'):
             assert banned not in text, f"{filename} contains banned property {banned}"
+
+
+def _iter_schema_nodes(node):
+    """Yield every dict/list node reachable from *node* (including itself),
+    recursing into dict values and list items so every ``$defs`` entry and
+    every nested ``properties``/``items`` sub-schema is visited, not just the
+    document root."""
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            yield from _iter_schema_nodes(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_schema_nodes(item)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "governed-actions-manifest.schema.json",
+        "governed-actions-apply-plan.schema.json",
+    ],
+)
+def test_every_object_typed_schema_node_forbids_additional_properties(filename):
+    """Regression test for the whole schema tree, not only the root and the
+    apply-plan's ``item`` $def: every sub-schema (in ``$defs`` or inline)
+    whose ``type`` is ``"object"`` must declare
+    ``"additionalProperties": false``, so no nested object anywhere in either
+    schema can silently accept an unlisted (and potentially payload-bearing)
+    property."""
+    schema = json.loads((REFERENCES / filename).read_text(encoding="utf-8"))
+    object_nodes = [
+        node for node in _iter_schema_nodes(schema) if node.get("type") == "object"
+    ]
+    # Sanity check the walker itself is actually recursing into $defs (not
+    # just inspecting the root): both schemas have at least one nested
+    # object $def in addition to the root object itself, and the larger
+    # manifest schema has many more.
+    minimum_expected = 10 if "manifest" in filename else 2
+    assert len(object_nodes) >= minimum_expected, (
+        f"{filename}: expected at least {minimum_expected} object-typed nodes "
+        f"across $defs, found {len(object_nodes)} — the schema walker may not "
+        "be recursing"
+    )
+    for node in object_nodes:
+        assert node.get("additionalProperties") is False, (
+            f"{filename}: object-typed schema node is missing "
+            f"'additionalProperties: false': {json.dumps(node, sort_keys=True)[:200]}"
+        )
 
 
 # ---------------------------------------------------------------------------
