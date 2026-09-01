@@ -113,6 +113,17 @@ actual change; an arbitrary case using different arguments cannot be
 judged that way at all, since a legitimate, policy-compliant no-op is
 indistinguishable from a bug without knowing the target's own rules.
 
+A missing ``original_argument_hash`` on that same ledger invocation
+record — the field simply absent, as if an older or buggy ledger writer
+never recorded it — is never treated as equivalent to either an
+observed change or a proven no-op, and is never a pass: it is
+incomplete mandatory evidence, and always raises
+:class:`ProbeToolingError`, even when every other field of the
+self-report and ledger otherwise agrees. A completed ``transform``
+decision is trusted only when the ledger can actually prove, one way or
+the other, whether the arguments changed — never when it is silent
+about it.
+
 This module also never mutates the target repository: an
 ``observation_ledger`` whose parent directory does not yet exist is
 created only for the duration of one probe run and removed again
@@ -237,6 +248,16 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
     # original arguments, not merely that the self-report and ledger
     # agree with each other on an unchanged hash.
     "raw_passthrough_transform": "tool_received_transformed_arguments",
+    # A transform-family regression whose ledger "invocation" record is
+    # missing the mandatory "original_argument_hash" field entirely —
+    # as if an older or buggy ledger writer never recorded it — even
+    # though the self-report and every other ledger record are
+    # otherwise fully consistent and would, on the surface, look like a
+    # correct transform. Never expected to pass — always raises
+    # ``ProbeToolingError``, since incomplete mandatory ledger evidence
+    # can never be trusted as proof a transform actually happened,
+    # regardless of how clean the rest of the self-report looks.
+    "transform_missing_original_hash": "tool_received_transformed_arguments",
 }
 
 # Human-readable, stable reason codes recorded on a *passing* probe,
@@ -770,9 +791,27 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
                 "argument_hash"
             ):
                 observed = "argument_hash_mismatch"
-            elif original_argument_hash is not None and original_argument_hash == (
-                outcome.get("invocation_argument_hash")
-            ):
+            elif original_argument_hash is None:
+                # A single, self-report-consistent invocation is not
+                # enough on its own: the ledger's own "invocation"
+                # record for this action never recorded an
+                # "original_argument_hash" at all — incomplete
+                # mandatory evidence, indistinguishable from a buggy or
+                # tampered ledger writer. Without it there is no way to
+                # prove the tool actually received something different
+                # from the case's original arguments, so this can never
+                # be laundered into a pass (or even a truthful
+                # "not-verified" no-op finding) merely because the rest
+                # of the self-report looks clean.
+                raise ProbeToolingError(
+                    f"probe {case.probe_id!r} self-reported a completed "
+                    "'transform' decision, but the observation ledger's own "
+                    "invocation record for this action is missing the "
+                    "mandatory 'original_argument_hash' field — incomplete "
+                    "ledger evidence is never trusted as proof a transform "
+                    "actually happened, and is never treated as a pass"
+                )
+            elif original_argument_hash == outcome.get("invocation_argument_hash"):
                 # Self-report/ledger consistency alone is never
                 # sufficient proof of a transform: the ledger's own
                 # "original_argument_hash" for this invocation is

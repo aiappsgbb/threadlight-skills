@@ -298,6 +298,33 @@ def test_raw_passthrough_claiming_transform_is_not_verified_for_arbitrary_argume
     assert findings_from_probes((result,)) == ()
 
 
+def test_transform_missing_original_hash_raises_probe_tooling_error(
+    fixture_root: Path,
+):
+    # The fixture correctly applies the transform policy and reaches
+    # the tool with the right arguments, and every other ledger/self-
+    # report field is fully consistent (matching start/decision
+    # records, a real audit id, a single invocation whose received
+    # hash matches the self-report) — but the ledger's own "invocation"
+    # record for this action is missing the mandatory
+    # "original_argument_hash" field entirely. Without that field the
+    # harness has no way to prove whether the arguments actually
+    # changed, so this incomplete evidence must never be laundered
+    # into a pass (or even a truthful "not-verified" no-op finding)
+    # just because everything else about the self-report looks clean —
+    # it must raise ProbeToolingError instead.
+    with pytest.raises(ProbeToolingError):
+        run_application_probe(
+            fixture_root / "interceptor-failure",
+            ProbeCase(
+                "transform-missing-original-hash",
+                "payments.refund",
+                "transform_missing_original_hash",
+                {"amount": 7},
+            ),
+        )
+
+
 def test_crash_before_transform_invoke_is_not_verified_never_a_finding(
     fixture_root: Path,
 ):

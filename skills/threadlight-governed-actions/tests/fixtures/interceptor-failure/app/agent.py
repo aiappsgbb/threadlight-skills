@@ -56,6 +56,17 @@ raw arguments completely unchanged. Proves the harness must not treat
 self-report/ledger *consistency* alone as proof a transform happened:
 it must also prove the ledger shows the tool actually received
 something different from what the case started with.
+``transform_missing_original_hash`` is a final deliberately negative
+regression: it correctly applies the transform policy and reaches the
+tool with the right arguments, and every other ledger/self-report
+field is fully consistent, but its own "invocation" ledger record
+omits the "original_argument_hash" field entirely — as if an older or
+buggy ledger writer never recorded it. Proves the harness must never
+treat a completed transform as a pass (or even a truthful no-op
+finding) when the ledger cannot actually prove whether the arguments
+changed at all; incomplete mandatory evidence is a tooling failure,
+never a laundered pass just because everything else about the
+self-report looks clean.
 
 Every ledger "invocation" record carries both the hash of the
 arguments the synthetic tool actually received and a hash of the
@@ -306,6 +317,40 @@ def dispatch_probe(
         # something different from the case's original arguments.
         argument_hash = _synthetic_tool_invoke(
             ledger_path, action_id, arguments, arguments
+        )
+        _record_audit_with_ledger(ledger_path, action_id, "transform")
+        _append_ledger(
+            ledger_path, "decision", action_id=action_id, decision="transform"
+        )
+        return {
+            "decision": "transform",
+            "invocation_count": 1,
+            "argument_hash": argument_hash,
+            "exception_class": None,
+        }
+
+    if fault == "transform_missing_original_hash":
+        # Deliberately incomplete ledger evidence: correctly applies
+        # the transform policy and reaches the tool with the right
+        # arguments, self-reports a clean "transform" decision fully
+        # corroborated by matching ledger start/decision records and a
+        # real audit id — but its own "invocation" ledger record omits
+        # the mandatory "original_argument_hash" field entirely,
+        # exactly as if an older or buggy ledger writer never recorded
+        # it. Bypasses ``_synthetic_tool_invoke`` (which always records
+        # both hashes) to construct this incomplete record directly.
+        # Proves the harness must never treat a completed transform as
+        # a pass — or even as a truthful no-op finding — when the
+        # ledger cannot actually prove whether the arguments changed:
+        # incomplete mandatory evidence always raises
+        # ``ProbeToolingError``, never a fabricated pass.
+        transformed = _transform_arguments(arguments)
+        argument_hash = _canonical_hash(dict(transformed))
+        _append_ledger(
+            ledger_path,
+            "invocation",
+            action_id=action_id,
+            argument_hash=argument_hash,
         )
         _record_audit_with_ledger(ledger_path, action_id, "transform")
         _append_ledger(
