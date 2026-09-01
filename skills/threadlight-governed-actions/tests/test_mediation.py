@@ -108,6 +108,25 @@ def test_canonical_node_order_matches_the_approved_vocabulary():
     )
 
 
+def test_build_mediation_graph_adapter_parameter_is_typed_as_runtime_adapter():
+    """``adapter`` must be typed ``RuntimeAdapter``, not the untyped ``object``.
+
+    ``mediation.py`` uses ``from __future__ import annotations``, so this
+    reads the raw (unresolved) annotation string via
+    ``inspect.signature(..., eval_str=False)`` rather than
+    ``typing.get_type_hints``. That is deliberate: ``RuntimeAdapter`` is
+    only importable under ``TYPE_CHECKING`` here (to keep this module free
+    of any runtime dependency on ``maf_adapter``), so eagerly resolving
+    the annotation at runtime would raise ``NameError`` even when the
+    contract is correctly declared.
+    """
+    import inspect
+
+    signature = inspect.signature(build_mediation_graph)
+    adapter_param = signature.parameters["adapter"]
+    assert adapter_param.annotation == "RuntimeAdapter"
+
+
 # ---------------------------------------------------------------------------
 # build_mediation_graph: unmediated-background fixture
 # ---------------------------------------------------------------------------

@@ -65,10 +65,21 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Tuple
 
 import canonical
 from contracts import ActionRecord, Finding, PathRecord
+
+if TYPE_CHECKING:
+    # Import-time-only: this module has no runtime dependency on
+    # ``maf_adapter`` (which itself only imports this module's
+    # ``MediationGraph`` under its own ``TYPE_CHECKING`` guard), so there is
+    # no cycle in either direction. ``from __future__ import annotations``
+    # already makes every annotation in this module lazy at runtime; this
+    # import exists purely so static type checkers can resolve
+    # ``RuntimeAdapter`` as the real adapter contract instead of the
+    # untyped ``object``.
+    from maf_adapter import RuntimeAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +565,7 @@ def _build_path(
 
 
 def build_mediation_graph(
-    root: Path, actions: Tuple[ActionRecord, ...], adapter: object
+    root: Path, actions: Tuple[ActionRecord, ...], adapter: RuntimeAdapter
 ) -> MediationGraph:
     """Build the mediation-path graph for every required non-provider family.
 
