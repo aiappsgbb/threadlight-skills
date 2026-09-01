@@ -31,10 +31,22 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
+from typing import TYPE_CHECKING, Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
 
 import canonical
 from contracts import ActionRecord, DetectionEvidence, Finding, PathRecord, ProbeResult, Status
+
+if TYPE_CHECKING:
+    # Import-time-only: mediation.py does not import this module, so this
+    # carries no runtime circular-import risk, but keeping it behind
+    # TYPE_CHECKING (rather than a real top-level import) means a future
+    # change that *does* have mediation.py depend on maf_adapter can never
+    # create a cycle through this annotation. ``from __future__ import
+    # annotations`` already makes every annotation in this module lazy at
+    # runtime; this import exists purely so static type checkers can
+    # resolve ``MediationGraph`` instead of treating it as an undefined
+    # forward reference.
+    from mediation import MediationGraph
 
 
 class UpstreamPinError(ValueError):
@@ -83,7 +95,7 @@ class RuntimeAdapter(Protocol):
         self,
         target: Path,
         inventory: Tuple[ActionRecord, ...],
-        graph: "MediationGraph",
+        graph: MediationGraph,
     ) -> Tuple[Dict[str, object], ...]: ...
 
     def run_local_probe(self, case: Mapping[str, object]) -> ProbeResult: ...
@@ -681,7 +693,7 @@ class MAFAdapter:
         self,
         target: Path,
         inventory: Tuple[ActionRecord, ...],
-        graph: "MediationGraph",
+        graph: MediationGraph,
     ) -> Tuple[Dict[str, object], ...]:
         """Derive one deterministic deny-probe case per graph path.
 

@@ -1,44 +1,71 @@
 """Runtime mediation-path graph: construction and provider-path assessment.
 
-Builds the deterministic, evidence-bound graph of every consequential
-execution path an action can be reached through — interactive, batch,
-background, subagent, and direct-tool dispatch via
-:func:`build_mediation_graph`, and provider-hosted tool paths (which are
-never pre-interceptable through the same seam) via
-:func:`assess_provider_paths`. Neither function ever assigns a passing
-status by inference: a path is ``pass`` only when *positive* call evidence
-proves the pre-action seam runs before the action executes, ``must-fix``
-only when *positive* evidence proves it does not (a proven bypass), and
-``not-verified`` whenever the assessor cannot find enough evidence to
-decide either way. ``not-applicable`` is reserved for a provider-hosted
-tool whose consequence class does not require pre-interception at all
-(read-only).
+Builds the deterministic, evidence-bound graph of every required
+consequential execution family a non-provider-hosted action can be reached
+through — interactive, batch, background, subagent, and direct-tool — via
+:func:`build_mediation_graph`, and provider-hosted tool paths (which have
+no pre-tool interception point of their own) via
+:func:`assess_provider_paths`. Every one of the five non-provider families
+is always assessed for every non-exclusively-provider-hosted action,
+whether or not the target's own registry happens to declare it: MED-002
+requires each family to be *explicitly covered or evidenced absent*, and a
+family a target simply never mentions is exactly the "cannot determine"
+case that must default to ``not-verified`` rather than being silently
+skipped.
+
+Neither function ever assigns a passing status by inference: a path is
+``pass`` only when *positive* call evidence proves the pre-action seam
+runs before the action executes (or a fully-named equivalent server-side
+control is declared for it), ``must-fix`` only when *positive* evidence
+proves a state change happens with neither of those in place (a proven
+bypass), and ``not-verified`` whenever the assessor cannot find enough
+evidence — no dispatch code, no adapter observation, nothing — to decide
+either way. ``not-applicable`` is reserved for a provider-hosted tool whose
+consequence class does not require pre-interception at all (read-only).
+
+Every candidate path, wherever it came from, is subject to exactly the
+same recomputation before it is trusted. A ``RuntimeAdapter``'s own
+``discover_mediation`` output is folded in only as raw node evidence: its
+``covered``/``status``/``equivalent_control_ref`` fields are never taken
+at face value, because "adapters emit observations only and never assign
+a passing status" must hold even against an adapter that does not follow
+that rule itself. The core recomputes every verdict identically whether
+the underlying nodes came from a static AST scan of the target's own
+source or from an adapter's declared evidence, so a non-conforming
+adapter's false ``pass`` claim can never suppress a MED-001/MED-002
+finding a genuine bypass would otherwise produce. Provider-hosted-tool
+paths are excluded from this adapter merge entirely — that family is
+``assess_provider_paths``' domain exclusively, never
+``build_mediation_graph``'s.
 
 Node vocabulary and ordering are fixed (see :data:`CANONICAL_NODE_ORDER`):
 ``entry``, ``host/worker``, ``agent/subagent``, ``tool-router``,
 ``pre-action-seam``, ``approval-check``, ``tool-service``,
 ``post-action-seam``, ``output-mediator``, ``caller``, ``audit-sink``. A
 path is covered only when a pre-tool Agent Hooks/ACS call — or a declared
-equivalent server-side control — runs *before* ``tool-service``; a call
-observed only after the action has already executed (a "post-model"
-observation, e.g. an audit record written after a direct provider call) is
-never treated as pre-action control, no matter how it looks superficially.
+equivalent server-side control naming authorization, idempotency, and
+transaction-boundary evidence — is proven to apply before the state change
+represented by ``tool-service``; a control observed only after the action
+has already executed (a "post-model" observation, e.g. an audit record
+written after a direct provider call) is never treated as pre-action
+control, no matter how it looks superficially.
 
 Trust boundaries are preserved rather than inferred across: a cooperative
 host/worker process is never treated as a security boundary in its own
 right (batch/background dispatch running on a "trusted" worker still needs
-its own pre-action seam), and a downstream tool-service is expected to
-independently re-check authorization/idempotency — this module does not
-assume a host-level or caller-level check makes a service-level check
-redundant, and it never fabricates policy, approver, or threshold context
-that was not actually declared in the target repository.
+its own pre-action seam or declared equivalent control), and a downstream
+tool-service is expected to independently re-check authorization/
+idempotency/transaction constraints — this module does not assume a
+host-level or caller-level check makes a service-level check redundant,
+and it never fabricates policy, approver, or threshold context that was
+not actually declared in the target repository.
 """
 from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Set, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import canonical
 from contracts import ActionRecord, Finding, PathRecord
@@ -70,10 +97,13 @@ _GRAPH_EDGES: Tuple[Dict[str, str], ...] = tuple(
     for left, right in zip(CANONICAL_NODE_ORDER, CANONICAL_NODE_ORDER[1:])
 )
 
-# Execution modes assessed by build_mediation_graph. provider-hosted-tool is
-# assess_provider_paths' responsibility exclusively — it is never pre-
-# interceptable through the same tool-router seam these modes share.
-_NON_PROVIDER_MODES: Tuple[str, ...] = (
+# The five execution families build_mediation_graph must assess for every
+# non-exclusively-provider-hosted action, per MED-002's own requirement,
+# regardless of whether a target's registry declares any of them.
+# provider-hosted-tool is assess_provider_paths' family exclusively — it
+# is never pre-interceptable through the same tool-router seam these five
+# share, so it is never enumerated here.
+REQUIRED_NON_PROVIDER_MODES: Tuple[str, ...] = (
     "interactive",
     "batch",
     "background",
@@ -107,6 +137,24 @@ def _path_id(action_id: str, mode: str, nodes: Tuple[str, ...]) -> str:
             {"action_id": action_id, "mode": mode, "nodes": list(nodes)}
         )
     )[:16]
+
+
+def _is_exclusively_provider_hosted(action: ActionRecord) -> bool:
+    """True if *action* has no non-provider family to assess at all.
+
+    An action that declares ``provider_hosted`` and names no execution
+    mode outside ``provider-hosted-tool`` (including one that names none
+    at all) is entirely ``assess_provider_paths``' responsibility;
+    ``build_mediation_graph`` must never manufacture five spurious
+    ``not-verified`` non-provider paths (and a matching MED-002) for it.
+    An action that mixes a provider-hosted mode with a genuine non-provider
+    one is still assessed for its non-provider families here.
+    """
+    if not action.provider_hosted:
+        return False
+    return not any(
+        mode in REQUIRED_NON_PROVIDER_MODES for mode in action.execution_modes
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -269,207 +317,92 @@ def _candidate_files(root: Path, action: ActionRecord) -> Tuple[Path, ...]:
     return tuple(candidates)
 
 
-def _build_static_path(
-    root: Path, action: ActionRecord, mode: str, entry_refs: Tuple[str, ...]
-) -> PathRecord:
+def _static_evidence(
+    root: Path, action: ActionRecord, mode: str
+) -> Optional[Tuple[Tuple[str, ...], str]]:
+    """Return ``(nodes, found_relative)`` from static AST scanning, or
+    ``None`` if no matching dispatch function was found anywhere.
+    """
     function_name = _mode_action_function_name(action.action_id, mode)
-    func_node: Optional[ast.FunctionDef | ast.AsyncFunctionDef] = None
-    found_relative: Optional[str] = None
     for candidate in _candidate_files(root, action):
         tree = _parse_python(candidate)
         if tree is None:
             continue
-        node = _find_function(tree, function_name)
-        if node is not None:
-            func_node = node
-            found_relative = candidate.relative_to(root.resolve()).as_posix()
-            break
-
-    if func_node is None:
-        nodes = ("entry",)
-        return PathRecord(
-            path_id=_path_id(action.action_id, mode, nodes),
-            action_id=action.action_id,
-            mode=mode,
-            nodes=nodes,
-            pre_action_seam=None,
-            equivalent_control_ref=None,
-            covered=False,
-            status="not-verified",
-            evidence_refs=entry_refs,
-        )
-
-    trace = _trace_calls(func_node)
-    state_positions = [p for p in (trace.tool_service, trace.provider) if p is not None]
-    state_change_pos = min(state_positions) if state_positions else None
-    covered = (
-        trace.pre_action_seam is not None
-        and state_change_pos is not None
-        and trace.pre_action_seam < state_change_pos
-    )
-
-    nodes: List[str] = ["entry"]
-    if mode in ("batch", "background"):
-        nodes.append("host/worker")
-    if mode == "subagent":
-        nodes.append("agent/subagent")
-    nodes.append("tool-router")
-    if trace.pre_action_seam is not None:
-        nodes.append("pre-action-seam")
-    if trace.approval_check is not None:
-        nodes.append("approval-check")
-    nodes.append("tool-service")
-    if trace.post_action_seam is not None:
-        nodes.append("post-action-seam")
-    if trace.output_mediator is not None:
-        nodes.append("output-mediator")
-    if mode in ("interactive", "subagent"):
-        nodes.append("caller")
-    if trace.audit_sink is not None:
-        nodes.append("audit-sink")
-    nodes_tuple = tuple(nodes)
-
-    evidence_refs = tuple(sorted(set(entry_refs) | ({found_relative} if found_relative else set())))
-
-    if state_change_pos is None:
-        status = "not-verified"
-    elif covered:
-        status = "pass"
-    else:
-        status = "must-fix"
-
-    return PathRecord(
-        path_id=_path_id(action.action_id, mode, nodes_tuple),
-        action_id=action.action_id,
-        mode=mode,
-        nodes=nodes_tuple,
-        pre_action_seam=_PRE_ACTION_SEAM_CALL if trace.pre_action_seam is not None else None,
-        equivalent_control_ref=None,
-        covered=covered,
-        status=status,
-        evidence_refs=evidence_refs,
-    )
-
-
-def build_mediation_graph(
-    root: Path, actions: Tuple[ActionRecord, ...], adapter: object
-) -> MediationGraph:
-    """Build the mediation-path graph for every non-provider-hosted mode.
-
-    Paths are built from ``adapter.discover_entry_points`` (entry evidence
-    folded into every path's ``evidence_refs``), ``adapter.discover_mediation``
-    (any path an adapter itself already declares is merged in verbatim,
-    de-duplicated by ``path_id``), each action's declared
-    ``known_runtime_paths``/``implementation_refs`` (used to scope static
-    scanning), and static call evidence read from the target's own Python
-    source. The adapter only ever supplies observations — this function,
-    not the adapter, is the sole place a ``pass``/``must-fix``/
-    ``not-verified`` status is assigned.
-
-    Emits one ``MED-001`` per proven bypass path (a mode whose real
-    dispatch function was found but does not run the pre-action seam
-    before the action executes) and exactly one aggregate ``MED-002``
-    whenever any non-provider mode is not explicitly covered — whether
-    because a bypass was proven or because no dispatch evidence could be
-    found at all (``not-verified``).
-    """
-    root_path = Path(root).resolve()
-    entry_points = adapter.discover_entry_points(root_path)
-    entry_refs = tuple(
-        sorted(
-            {
-                str(entry["declaration_ref"])
-                for entry in entry_points
-                if isinstance(entry, Mapping) and entry.get("declaration_ref")
-            }
-        )
-    )
-
-    paths: List[PathRecord] = []
-    uncovered: List[PathRecord] = []
-    findings: List[Finding] = []
-
-    for action in sorted(actions, key=lambda a: a.action_id):
-        modes = tuple(mode for mode in action.execution_modes if mode in _NON_PROVIDER_MODES)
-        for mode in modes:
-            record = _build_static_path(root_path, action, mode, entry_refs)
-            paths.append(record)
-            if not record.covered:
-                uncovered.append(record)
-            if record.status == "must-fix":
-                findings.append(
-                    Finding(
-                        finding_id="MED-001",
-                        status="must-fix",
-                        phase="design",
-                        plane="runtime",
-                        reason_code="bypass",
-                        summary=(
-                            f"{mode} path for {action.action_id} lacks "
-                            "pre-action mediation"
-                        ),
-                        details=(
-                            f"The {mode} dispatch path for '{action.action_id}' "
-                            "reaches tool-service (or an equivalent direct "
-                            "provider call) without ever calling the Agent "
-                            "Hooks pre-action seam first. A control observed "
-                            "only after the action already executed is never "
-                            "treated as pre-action mediation."
-                        ),
-                        affected_actions=(action.action_id,),
-                        affected_paths=(record.path_id,),
-                        evidence_refs=record.evidence_refs,
-                    )
-                )
-
-    known_ids: Set[str] = {path.path_id for path in paths}
-    for declared_path in adapter.discover_mediation(root_path):
-        if declared_path.path_id in known_ids:
+        func_node = _find_function(tree, function_name)
+        if func_node is None:
             continue
-        paths.append(declared_path)
-        known_ids.add(declared_path.path_id)
-        if not declared_path.covered:
-            uncovered.append(declared_path)
 
-    if uncovered:
-        med002_status = (
-            "must-fix"
-            if any(path.status == "must-fix" for path in uncovered)
-            else "not-verified"
-        )
-        findings.append(
-            Finding(
-                finding_id="MED-002",
-                status=med002_status,
-                phase="design",
-                plane="runtime",
-                reason_code="coverage-incomplete",
-                summary="declared mediation coverage is incomplete",
-                details=(
-                    "One or more interactive/batch/background/subagent/"
-                    "direct-tool paths for a consequential action are "
-                    "either a proven bypass or could not be verified as "
-                    "covered; every such path must be either explicitly "
-                    "mediated or evidenced absent, never assumed covered."
-                ),
-                affected_actions=tuple(
-                    sorted({path.action_id for path in uncovered})
-                ),
-                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
-            )
-        )
+        trace = _trace_calls(func_node)
+        state_positions = [
+            p for p in (trace.tool_service, trace.provider) if p is not None
+        ]
+        state_change_pos = min(state_positions) if state_positions else None
 
-    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
-    return MediationGraph(
-        nodes=_GRAPH_NODES,
-        edges=_GRAPH_EDGES,
-        paths=tuple(paths),
-        findings=tuple(findings),
-    )
+        nodes: List[str] = ["entry"]
+        if mode in ("batch", "background"):
+            nodes.append("host/worker")
+        if mode == "subagent":
+            nodes.append("agent/subagent")
+        nodes.append("tool-router")
+        if trace.pre_action_seam is not None:
+            nodes.append("pre-action-seam")
+        if trace.approval_check is not None:
+            nodes.append("approval-check")
+        if state_change_pos is not None:
+            nodes.append("tool-service")
+        if trace.post_action_seam is not None:
+            nodes.append("post-action-seam")
+        if trace.output_mediator is not None:
+            nodes.append("output-mediator")
+        if mode in ("interactive", "subagent"):
+            nodes.append("caller")
+        if trace.audit_sink is not None:
+            nodes.append("audit-sink")
+
+        found_relative = candidate.relative_to(root.resolve()).as_posix()
+        return tuple(nodes), found_relative
+    return None
 
 
 # ---------------------------------------------------------------------------
-# Provider-hosted tool paths: declared equivalent-control evidence
+# Coverage recomputation: the one place any path's verdict is decided
+# ---------------------------------------------------------------------------
+
+
+def _recompute_coverage(
+    nodes: Tuple[str, ...], equivalent_control_applies: bool
+) -> Tuple[bool, str, bool]:
+    """Recompute ``(covered, status, covered_via_equivalent_control)``.
+
+    This is the sole place a path's verdict is decided, and it is applied
+    identically no matter where *nodes* came from — a static AST scan of
+    the target's own source, or a ``RuntimeAdapter``'s declared
+    observation. Any externally-supplied ``covered``/``status`` is never
+    consulted here at all; only the node evidence itself is.
+
+    - No ``tool-service`` node at all means no evidence a state change was
+      ever reached: indeterminate, ``not-verified``.
+    - ``tool-service`` reached with ``pre-action-seam`` proven to precede
+      it: ``pass``.
+    - ``tool-service`` reached without that ordering, but a fully-named
+      equivalent server-side control applies: ``pass``, credited to the
+      equivalent control rather than to a client-side seam.
+    - ``tool-service`` reached with neither: a proven bypass, ``must-fix``.
+    """
+    if "tool-service" not in nodes:
+        return False, "not-verified", False
+
+    service_index = nodes.index("tool-service")
+    seam_index = nodes.index("pre-action-seam") if "pre-action-seam" in nodes else None
+    if seam_index is not None and seam_index < service_index:
+        return True, "pass", False
+    if equivalent_control_applies:
+        return True, "pass", True
+    return False, "must-fix", False
+
+
+# ---------------------------------------------------------------------------
+# Declared equivalent server-side control (shared by both graph builders)
 # ---------------------------------------------------------------------------
 
 
@@ -529,6 +462,245 @@ def _is_complete_equivalent_control(control: Optional[Mapping[str, object]]) -> 
     return True
 
 
+def _serialize_control(control: Mapping[str, object]) -> str:
+    return ";".join(
+        f"{key}={control[key]}" for key in _REQUIRED_EQUIVALENT_CONTROL_REFS
+    )
+
+
+def _equivalent_control_applies(
+    root: Path, action: ActionRecord
+) -> Tuple[bool, Optional[Mapping[str, object]]]:
+    """Whether a fully-named equivalent control is declared for *action*.
+
+    Only relevant for side-effecting actions (read actions have no state
+    to protect, so a "control" over them is meaningless); consequence is
+    read directly from the registry, never inferred.
+    """
+    if action.consequence not in _SIDE_EFFECTING_CONSEQUENCES:
+        return False, None
+    control = _equivalent_control_for(root, action.action_id)
+    return _is_complete_equivalent_control(control), control
+
+
+# ---------------------------------------------------------------------------
+# build_mediation_graph
+# ---------------------------------------------------------------------------
+
+
+def _build_path(
+    root: Path,
+    action: ActionRecord,
+    mode: str,
+    entry_refs: Tuple[str, ...],
+    adapter_declared: Optional[PathRecord],
+) -> PathRecord:
+    """Build the single, authoritative path for one ``(action, mode)`` pair.
+
+    Static call evidence from the target's own source takes precedence:
+    if a matching dispatch function is found, its node evidence is used.
+    Only when no such function can be found at all does an adapter's own
+    declared observation for the same ``(action_id, mode)`` — if any —
+    supply the node evidence instead. Either way, ``covered``/``status``/
+    ``equivalent_control_ref`` are always recomputed by this function from
+    the node evidence and independently-checked equivalent-control
+    evidence; nothing supplied by the adapter is ever trusted verbatim. If
+    neither source has anything, the path is ``not-verified`` — evidence
+    absent, not falsely assumed passing or failing.
+    """
+    static = _static_evidence(root, action, mode)
+    if static is not None:
+        nodes, found_relative = static
+        evidence_refs = tuple(
+            sorted(set(entry_refs) | {found_relative})
+        )
+    elif adapter_declared is not None:
+        nodes = adapter_declared.nodes
+        evidence_refs = tuple(sorted(set(entry_refs) | set(adapter_declared.evidence_refs)))
+    else:
+        nodes = ("entry",)
+        return PathRecord(
+            path_id=_path_id(action.action_id, mode, nodes),
+            action_id=action.action_id,
+            mode=mode,
+            nodes=nodes,
+            pre_action_seam=None,
+            equivalent_control_ref=None,
+            covered=False,
+            status="not-verified",
+            evidence_refs=entry_refs,
+        )
+
+    control_applies, control = _equivalent_control_applies(root, action)
+    covered, status, via_control = _recompute_coverage(nodes, control_applies)
+
+    pre_action_seam: Optional[str] = None
+    if "pre-action-seam" in nodes:
+        pre_action_seam = _PRE_ACTION_SEAM_CALL
+        if static is None and adapter_declared is not None:
+            pre_action_seam = adapter_declared.pre_action_seam or _PRE_ACTION_SEAM_CALL
+
+    return PathRecord(
+        path_id=_path_id(action.action_id, mode, nodes),
+        action_id=action.action_id,
+        mode=mode,
+        nodes=nodes,
+        pre_action_seam=pre_action_seam,
+        equivalent_control_ref=(_serialize_control(control) if via_control and control else None),
+        covered=covered,
+        status=status,
+        evidence_refs=evidence_refs,
+    )
+
+
+def build_mediation_graph(
+    root: Path, actions: Tuple[ActionRecord, ...], adapter: object
+) -> MediationGraph:
+    """Build the mediation-path graph for every required non-provider family.
+
+    Every one of the five required families — interactive, batch,
+    background, subagent, direct-tool — is assessed for every action that
+    is not exclusively provider-hosted, whether or not the target's own
+    registry declares that family: MED-002 requires each to be explicitly
+    covered or evidenced absent, so a family the registry never mentions
+    is exactly the "cannot determine" case, not one to silently skip.
+
+    Paths are built from static call evidence read from the target's own
+    Python source first; only when no matching dispatch function can be
+    found at all does an adapter-declared observation (from
+    ``adapter.discover_mediation``, excluding the ``provider-hosted-tool``
+    family, which is ``assess_provider_paths``' domain exclusively) supply
+    node evidence instead. ``adapter.discover_entry_points`` evidence is
+    folded into every path's ``evidence_refs``. Wherever the node evidence
+    came from, ``covered``/``status``/``equivalent_control_ref`` are
+    always recomputed by this function alone — an adapter's own claims for
+    those fields are never trusted, so a non-conforming adapter's false
+    ``pass`` cannot suppress a genuine bypass's MED-001/MED-002 findings.
+
+    Emits one ``MED-001`` per proven bypass path (a family whose real
+    dispatch function was found, or whose adapter-declared evidence
+    proves, a state change with no pre-action seam and no declared
+    equivalent server-side control ahead of it) and exactly one aggregate
+    ``MED-002`` whenever any family is not explicitly covered — whether
+    because a bypass was proven or because no evidence at all could be
+    found (``not-verified``). ``MED-002`` always carries the evidence
+    references for every uncovered family it aggregates.
+    """
+    root_path = Path(root).resolve()
+    entry_points = adapter.discover_entry_points(root_path)
+    entry_refs = tuple(
+        sorted(
+            {
+                str(entry["declaration_ref"])
+                for entry in entry_points
+                if isinstance(entry, Mapping) and entry.get("declaration_ref")
+            }
+        )
+    )
+
+    adapter_declared_by_key: Dict[Tuple[str, str], PathRecord] = {}
+    for declared_path in adapter.discover_mediation(root_path):
+        if declared_path.mode == "provider-hosted-tool":
+            # Provider-hosted paths are assess_provider_paths' family
+            # exclusively; build_mediation_graph never touches them, even
+            # if an adapter declares one.
+            continue
+        key = (declared_path.action_id, declared_path.mode)
+        adapter_declared_by_key.setdefault(key, declared_path)
+
+    paths: List[PathRecord] = []
+    uncovered: List[PathRecord] = []
+    findings: List[Finding] = []
+
+    for action in sorted(actions, key=lambda a: a.action_id):
+        if _is_exclusively_provider_hosted(action):
+            continue
+        for mode in REQUIRED_NON_PROVIDER_MODES:
+            record = _build_path(
+                root_path,
+                action,
+                mode,
+                entry_refs,
+                adapter_declared_by_key.get((action.action_id, mode)),
+            )
+            paths.append(record)
+            if not record.covered:
+                uncovered.append(record)
+            if record.status == "must-fix":
+                findings.append(
+                    Finding(
+                        finding_id="MED-001",
+                        status="must-fix",
+                        phase="design",
+                        plane="runtime",
+                        reason_code="bypass",
+                        summary=(
+                            f"{mode} path for {action.action_id} lacks "
+                            "pre-action mediation"
+                        ),
+                        details=(
+                            f"The {mode} dispatch path for '{action.action_id}' "
+                            "reaches tool-service (or an equivalent direct "
+                            "provider call) without ever calling the Agent "
+                            "Hooks pre-action seam first, and no fully-named "
+                            "equivalent server-side control is declared for "
+                            "it either. A control observed only after the "
+                            "action already executed is never treated as "
+                            "pre-action mediation."
+                        ),
+                        affected_actions=(action.action_id,),
+                        affected_paths=(record.path_id,),
+                        evidence_refs=record.evidence_refs,
+                    )
+                )
+
+    if uncovered:
+        med002_status = (
+            "must-fix"
+            if any(path.status == "must-fix" for path in uncovered)
+            else "not-verified"
+        )
+        med002_evidence = tuple(
+            sorted(set().union(*(path.evidence_refs for path in uncovered)))
+        ) or entry_refs
+        findings.append(
+            Finding(
+                finding_id="MED-002",
+                status=med002_status,
+                phase="design",
+                plane="runtime",
+                reason_code="coverage-incomplete",
+                summary="declared mediation coverage is incomplete",
+                details=(
+                    "One or more interactive/batch/background/subagent/"
+                    "direct-tool paths for a consequential action are "
+                    "either a proven bypass or could not be verified as "
+                    "covered; every required family must be either "
+                    "explicitly mediated or evidenced absent, never "
+                    "assumed covered."
+                ),
+                affected_actions=tuple(
+                    sorted({path.action_id for path in uncovered})
+                ),
+                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
+                evidence_refs=med002_evidence,
+            )
+        )
+
+    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
+    return MediationGraph(
+        nodes=_GRAPH_NODES,
+        edges=_GRAPH_EDGES,
+        paths=tuple(paths),
+        findings=tuple(findings),
+    )
+
+
+# ---------------------------------------------------------------------------
+# assess_provider_paths
+# ---------------------------------------------------------------------------
+
+
 def assess_provider_paths(
     root: Path, actions: Tuple[ActionRecord, ...]
 ) -> MediationGraph:
@@ -543,7 +715,9 @@ def assess_provider_paths(
     complete evidence is ``MED-003``/``must-fix``/``unsupported``. A
     read-only provider-hosted tool has no state to protect, so it is
     ``not-applicable`` instead — never a false ``must-fix``, and never a
-    silently-assumed ``pass``.
+    silently-assumed ``pass``. This family is assessed here exclusively;
+    ``build_mediation_graph`` never builds or recomputes a
+    ``provider-hosted-tool`` path.
     """
     root_path = Path(root).resolve()
     paths: List[PathRecord] = []
@@ -570,9 +744,7 @@ def assess_provider_paths(
                 status = "pass"
                 covered = True
                 assert control is not None  # narrowed by control_complete
-                equivalent_control_ref = ";".join(
-                    f"{key}={control[key]}" for key in _REQUIRED_EQUIVALENT_CONTROL_REFS
-                )
+                equivalent_control_ref = _serialize_control(control)
             else:
                 status = "must-fix"
                 covered = False
