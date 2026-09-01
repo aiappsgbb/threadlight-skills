@@ -12,7 +12,9 @@ another:
   governance metadata; and
 - Python source, walked with ``ast`` (never imported/executed) to find
   ``@tool``/``@function_tool``/``@kernel_function``-decorated functions and
-  ``register_tool(...)`` calls.
+  ``register_tool(...)`` calls, excluding any hidden directory and any
+  vendored/scratch tree (``.git``, a venv, ``node_modules``,
+  ``site-packages``, ``__pycache__``, ``build``, ``dist``).
 
 Nothing here infers a consequence class from a name or verb, invents an
 authorization/approval/policy rule, or executes target repository code.
@@ -119,6 +121,14 @@ _RECOGNIZED_DECORATORS: frozenset = frozenset(
     {"tool", "function_tool", "kernel_function"}
 )
 _RECOGNIZED_CALLS: frozenset = frozenset({"register_tool"})
+
+# Vendored/scratch directory names excluded from Python AST discovery,
+# regardless of nesting depth. Hidden directories (any path segment
+# starting with ".", e.g. ".git", ".venv") are excluded separately in
+# ``_is_excluded_python_path`` and do not need to be repeated here.
+_EXCLUDED_PYTHON_DIR_NAMES: frozenset = frozenset(
+    {"venv", "node_modules", "site-packages", "__pycache__", "build", "dist"}
+)
 
 # Level-2 markdown heading: exactly two ``#`` characters (a third ``#``
 # would make it level-3), followed by whitespace and the heading text.
@@ -251,14 +261,96 @@ def _load_registry_entries(path: Path) -> list:
     document = _load_registry_document(path)
     if document is None:
         return []
-    if not isinstance(document, Mapping) or "tools" not in document:
+    if not isinstance(document, Mapping):
         raise InventoryError(
             f"registry file {path} must be a mapping with a top-level 'tools' list"
         )
+    if "tools" not in document:
+        # A mapping with no top-level 'tools' key is a non-registry agent
+        # definition (e.g. a MAF agent.yaml declaring only name/model/
+        # instructions), not a malformed registry — it simply contributes
+        # zero registry-declared actions. Any resulting source gap (an
+        # action mentioned only in Python or SPEC) still surfaces through
+        # the normal ACT-001/ACT-002 findings; nothing here invents a
+        # registry entry to fill it in.
+        return []
     tools = document["tools"]
     if not isinstance(tools, list):
         raise InventoryError(f"registry file {path}: 'tools' must be a list")
     return tools
+
+
+def _coerce_string_values(
+    raw: object, *, field: str, action_id: str, source_desc: str
+) -> Tuple[str, ...]:
+    """Return *raw* normalized to a tuple of string values.
+
+    Accepts ``None`` (empty), a single string (a one-element tuple), or a
+    list/tuple of strings. A mapping, a bare non-string scalar (e.g. a
+    bool or a number), or a list/tuple containing any non-string member
+    is a contradictory declaration: it raises :class:`InventoryError`
+    naming the offending field, the action, and the declaring path,
+    rather than silently iterating a mapping's keys, raising a raw
+    ``TypeError`` for a non-iterable scalar, or stringifying a value that
+    was never actually a string.
+    """
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return (raw,)
+    if isinstance(raw, Mapping) or not isinstance(raw, (list, tuple)):
+        raise InventoryError(
+            f"{source_desc}: action '{action_id}' field '{field}' must be a "
+            f"string or a list of strings, got {type(raw).__name__}"
+        )
+    values: list[str] = []
+    for member in raw:
+        if not isinstance(member, str):
+            raise InventoryError(
+                f"{source_desc}: action '{action_id}' field '{field}' has a "
+                f"non-string member {member!r} ({type(member).__name__})"
+            )
+        values.append(member)
+    return tuple(values)
+
+
+def _coerce_optional_bool(
+    raw: object, *, field: str, action_id: str, source_desc: str, default: Optional[bool]
+) -> Optional[bool]:
+    """Return *raw* as a boolean (or *default* when absent).
+
+    A present-but-non-boolean value (e.g. the string ``"true"`` or the
+    integer ``1``) is a contradictory declaration: it raises
+    :class:`InventoryError` naming the field/action/path rather than
+    silently coercing a truthy/falsy value.
+    """
+    if raw is None:
+        return default
+    if not isinstance(raw, bool):
+        raise InventoryError(
+            f"{source_desc}: action '{action_id}' field '{field}' must be a boolean"
+        )
+    return raw
+
+
+def _coerce_optional_display_name(
+    raw: object, *, action_id: str, source_desc: str
+) -> str:
+    """Return *raw* as the action's display name, falling back to *action_id*.
+
+    An explicit ``null``/``None`` is treated exactly like an absent field
+    (falls back to *action_id*) rather than silently becoming the literal
+    string ``"None"``. A present value that is not a string is a
+    contradictory declaration and raises :class:`InventoryError`.
+    """
+    if raw is None:
+        return action_id
+    if not isinstance(raw, str):
+        raise InventoryError(
+            f"{source_desc}: action '{action_id}' field 'display_name' must "
+            f"be a string, got {type(raw).__name__}"
+        )
+    return raw
 
 
 def _normalize_consequence(
@@ -274,12 +366,12 @@ def _normalize_consequence(
     preserved as ``secondary_consequences`` rather than discarded. An
     unrecognized string is never silently dropped or coerced: it raises.
     """
-    if raw is None:
-        return None, ()
-    values = [raw] if isinstance(raw, str) else list(raw)
+    values = _coerce_string_values(
+        raw, field="consequence", action_id=action_id, source_desc=source_desc
+    )
     normalized: list[str] = []
     for value in values:
-        text = str(value).strip().lower()
+        text = value.strip().lower()
         if text not in contracts.CONSEQUENCE_CLASSES:
             raise InventoryError(
                 f"{source_desc}: action '{action_id}' declares unknown "
@@ -297,12 +389,12 @@ def _normalize_consequence(
 
 
 def _normalize_modes(raw: object, action_id: str, source_desc: str) -> Tuple[str, ...]:
-    if raw is None:
-        return ()
-    values = [raw] if isinstance(raw, str) else list(raw)
+    values = _coerce_string_values(
+        raw, field="execution_modes", action_id=action_id, source_desc=source_desc
+    )
     normalized: Set[str] = set()
     for value in values:
-        text = str(value).strip().lower()
+        text = value.strip().lower()
         if text not in contracts.EXECUTION_MODES:
             raise InventoryError(
                 f"{source_desc}: action '{action_id}' declares unknown "
@@ -313,11 +405,13 @@ def _normalize_modes(raw: object, action_id: str, source_desc: str) -> Tuple[str
     return tuple(sorted(normalized))
 
 
-def _normalize_string_list(raw: object) -> Tuple[str, ...]:
-    if raw is None:
-        return ()
-    values = [raw] if isinstance(raw, str) else list(raw)
-    return tuple(sorted({str(value).strip() for value in values}))
+def _normalize_string_list(
+    raw: object, *, field: str, action_id: str, source_desc: str
+) -> Tuple[str, ...]:
+    values = _coerce_string_values(
+        raw, field=field, action_id=action_id, source_desc=source_desc
+    )
+    return tuple(sorted({value.strip() for value in values}))
 
 
 def _schema_hash(raw: object) -> Optional[str]:
@@ -342,32 +436,47 @@ def _build_registry_action_record(
     execution_modes = _normalize_modes(
         raw_entry.get("execution_modes"), action_id, source_desc
     )
-    aliases = _normalize_string_list(raw_entry.get("aliases"))
-    policy_ids = _normalize_string_list(raw_entry.get("policy_ids"))
+    aliases = _normalize_string_list(
+        raw_entry.get("aliases"), field="aliases", action_id=action_id, source_desc=source_desc
+    )
+    policy_ids = _normalize_string_list(
+        raw_entry.get("policy_ids"),
+        field="policy_ids",
+        action_id=action_id,
+        source_desc=source_desc,
+    )
 
-    reversible = raw_entry.get("reversible")
-    if reversible is not None and not isinstance(reversible, bool):
-        raise InventoryError(
-            f"{source_desc}: action '{action_id}' 'reversible' must be a boolean"
-        )
-    approval_required = raw_entry.get("approval_required")
-    if approval_required is not None and not isinstance(approval_required, bool):
-        raise InventoryError(
-            f"{source_desc}: action '{action_id}' 'approval_required' must be a boolean"
-        )
-    provider_hosted = raw_entry.get("provider_hosted", False)
-    if not isinstance(provider_hosted, bool):
-        raise InventoryError(
-            f"{source_desc}: action '{action_id}' 'provider_hosted' must be a boolean"
-        )
+    reversible = _coerce_optional_bool(
+        raw_entry.get("reversible"),
+        field="reversible",
+        action_id=action_id,
+        source_desc=source_desc,
+        default=None,
+    )
+    approval_required = _coerce_optional_bool(
+        raw_entry.get("approval_required"),
+        field="approval_required",
+        action_id=action_id,
+        source_desc=source_desc,
+        default=None,
+    )
+    provider_hosted = _coerce_optional_bool(
+        raw_entry.get("provider_hosted"),
+        field="provider_hosted",
+        action_id=action_id,
+        source_desc=source_desc,
+        default=False,
+    )
 
     owner = raw_entry.get("owner")
     compensation_ref = raw_entry.get("compensation_ref")
-    display_name = raw_entry.get("display_name", action_id)
+    display_name = _coerce_optional_display_name(
+        raw_entry.get("display_name"), action_id=action_id, source_desc=source_desc
+    )
 
     return ActionRecord(
         action_id=action_id,
-        display_name=str(display_name),
+        display_name=display_name,
         aliases=aliases,
         owner=str(owner) if owner is not None else None,
         declaration_refs=(declaration_ref,),
@@ -543,18 +652,59 @@ def _literal_name_kwarg(call: ast.Call) -> Optional[str]:
     return None
 
 
+def _is_excluded_python_path(relative_path: Path) -> bool:
+    """True if *relative_path* lies under a vendored/scratch Python tree.
+
+    Excludes any hidden path segment (starting with ``.``, e.g. ``.git``,
+    ``.venv``) and any segment matching a known vendored/build/scratch
+    directory name (``venv``, ``node_modules``, ``site-packages``,
+    ``__pycache__``, ``build``, ``dist``), at any depth. A phantom
+    ``@tool``/``register_tool`` decorator living in a dependency's own
+    source tree or a build artifact is never treated as evidence of a
+    real governed action.
+    """
+    return any(
+        part.startswith(".") or part in _EXCLUDED_PYTHON_DIR_NAMES
+        for part in relative_path.parts
+    )
+
+
+def _parse_python_source(source: str, filename: str) -> ast.AST:
+    """Thin wrapper around ``ast.parse`` isolated for testability.
+
+    Kept as its own module-level function (rather than calling
+    ``ast.parse`` inline) so error-path tests can substitute a fake here
+    without monkeypatching the shared stdlib ``ast`` module itself, which
+    would also affect pytest's own internals (e.g. assertion rewriting).
+    """
+    return ast.parse(source, filename=filename)
+
+
 def _discover_python_tool_refs(root: Path) -> Dict[str, Tuple[str, ...]]:
     root_path = Path(root).resolve()
     refs: Dict[str, Set[str]] = {}
     for py_file in sorted(root_path.rglob("*.py")):
+        relative_path = py_file.relative_to(root_path)
+        if _is_excluded_python_path(relative_path):
+            # Vendored/scratch trees (hidden directories, .git, a venv,
+            # node_modules, site-packages, __pycache__, build, dist) are
+            # never a source of trustworthy tool declarations: a phantom
+            # decorator living there must not surface as a real action.
+            continue
         try:
             source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(py_file))
-        except (OSError, SyntaxError, UnicodeDecodeError):
+            tree = _parse_python_source(source, str(py_file))
+        except (
+            OSError,
+            SyntaxError,
+            UnicodeDecodeError,
+            MemoryError,
+            RecursionError,
+        ):
             # Not a source of trustworthy tool declarations; skip rather
             # than fail the whole inventory over one unparsable file.
             continue
-        relative = py_file.relative_to(root_path).as_posix()
+        relative = relative_path.as_posix()
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for decorator in node.decorator_list:
@@ -582,9 +732,13 @@ def discover_python_tools(root: Path) -> Set[str]:
 
     Recognizes ``@tool``/``@function_tool``/``@kernel_function`` decorators
     (bare or called) and ``register_tool(...)`` calls, anywhere under
-    *root*. Only a literal ``name=`` string keyword or (for a decorator with
-    no such keyword) the decorated function's own name is accepted — never
-    a computed or non-literal value.
+    *root* except inside a hidden directory or a vendored/scratch tree
+    (``.git``, a venv, ``node_modules``, ``site-packages``,
+    ``__pycache__``, ``build``, ``dist``) — see
+    :func:`_is_excluded_python_path`. Only a literal ``name=`` string
+    keyword or (for a decorator with no such keyword) the decorated
+    function's own name is accepted — never a computed or non-literal
+    value.
     """
     return set(_discover_python_tool_refs(root))
 

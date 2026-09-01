@@ -46,7 +46,17 @@ def write_fixture_with_python_tool(root: Path, action_id: str) -> Path:
     the "Python-only" scenario the design calls out as both undeclared
     (missing from any registry) and unclassified (no explicit consequence).
     """
-    module = root / "app_agent.py"
+    return write_python_tool_at(root, "app_agent.py", action_id)
+
+
+def write_python_tool_at(root: Path, relative_path: str, action_id: str) -> Path:
+    """Write a ``@tool``-decorated Python file at an arbitrary relative path.
+
+    Used to plant a phantom decorator inside a vendored/scratch tree (e.g.
+    ``.venv/lib/pkg.py``) to prove such trees are excluded from discovery.
+    """
+    module = root / relative_path
+    module.parent.mkdir(parents=True, exist_ok=True)
     func_name = action_id.replace(".", "_").replace("-", "_")
     module.write_text(
         textwrap.dedent(
@@ -1035,3 +1045,317 @@ def test_policy_ids_are_sorted_and_deduplicated(tmp_path: Path) -> None:
         "policy.audit",
         "policy.write",
     )
+
+
+# ---------------------------------------------------------------------------
+# Vendored/scratch Python trees are excluded from AST discovery: a phantom
+# decorator planted in .git, a venv, node_modules, site-packages,
+# __pycache__, build, dist, or any other hidden directory is never treated
+# as evidence of a real governed action.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        ".git/hooks/phantom.py",
+        ".venv/lib/python3/site-packages/phantom.py",
+        "venv/lib/python3/site-packages/phantom.py",
+        "node_modules/some-pkg/phantom.py",
+        "site-packages/phantom.py",
+        "__pycache__/phantom.py",
+        "build/phantom.py",
+        "dist/phantom.py",
+        ".cache/phantom.py",
+        "nested/.hidden/phantom.py",
+    ],
+)
+def test_python_tools_in_vendored_or_hidden_trees_are_ignored(
+    tmp_path: Path, relative_path: str
+) -> None:
+    write_python_tool_at(tmp_path, relative_path, "phantom.action")
+    assert inventory.discover_python_tools(tmp_path) == set()
+
+
+def test_python_tool_outside_vendored_tree_is_still_discovered(tmp_path: Path) -> None:
+    # Regression guard: excluding vendored trees must not accidentally
+    # exclude ordinary application source living alongside them.
+    write_python_tool_at(tmp_path, "app/agent.py", "real.action")
+    write_python_tool_at(tmp_path, ".venv/lib/phantom.py", "phantom.action")
+    assert inventory.discover_python_tools(tmp_path) == {"real.action"}
+
+
+def test_build_action_inventory_ignores_phantom_tool_in_vendored_tree(
+    tmp_path: Path,
+) -> None:
+    write_python_tool_at(tmp_path, "node_modules/pkg/phantom.py", "phantom.action")
+    result = inventory.build_action_inventory(tmp_path)
+    # No real action is ever discovered from the vendored tree; the only
+    # finding present is the aggregate SAFE-declaration one (no SPEC.md is
+    # written by this test either), never one naming "phantom.action".
+    assert result.actions == ()
+    assert not any("phantom.action" in f.affected_actions for f in result.findings)
+
+
+# ---------------------------------------------------------------------------
+# Centralized strict string-or-list validation: consequence, aliases,
+# execution_modes, and policy_ids each accept only a single string or a
+# list/tuple of strings. A mapping, a bare scalar (e.g. a bool or number),
+# or a list containing a non-string member is a contradictory declaration
+# that raises InventoryError naming the field and the declaring registry
+# path — never a raw TypeError and never silent key/str coercion.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "field, bad_value",
+    [
+        ("consequence", {"not": "a string or list"}),
+        ("consequence", True),
+        ("consequence", 3.14),
+        ("aliases", {"alias": "orders.remove"}),
+        ("aliases", 42),
+        ("execution_modes", {"interactive": True}),
+        ("execution_modes", False),
+        ("policy_ids", {"policy.write": True}),
+        ("policy_ids", 7),
+    ],
+)
+def test_mapping_or_scalar_field_raises_inventory_error_with_context(
+    tmp_path: Path, field: str, bad_value: object
+) -> None:
+    entry = {
+        "id": "some.action",
+        "consequence": "write",
+        "execution_modes": ["interactive"],
+    }
+    entry[field] = bad_value
+    write_registry(tmp_path, [entry])
+    with pytest.raises(inventory.InventoryError) as excinfo:
+        inventory.parse_action_registries(tmp_path)
+    message = str(excinfo.value)
+    assert field in message
+    assert "some.action" in message
+    assert "agent.yaml" in message
+
+
+@pytest.mark.parametrize(
+    "field, bad_list",
+    [
+        ("consequence", ["write", 7]),
+        ("aliases", ["orders.remove", 3]),
+        ("execution_modes", ["interactive", None]),
+        ("policy_ids", ["policy.write", ["nested", "list"]]),
+    ],
+)
+def test_list_with_non_string_member_raises_inventory_error_with_context(
+    tmp_path: Path, field: str, bad_list: list
+) -> None:
+    entry = {
+        "id": "some.action",
+        "consequence": "write",
+        "execution_modes": ["interactive"],
+    }
+    entry[field] = bad_list
+    write_registry(tmp_path, [entry])
+    with pytest.raises(inventory.InventoryError) as excinfo:
+        inventory.parse_action_registries(tmp_path)
+    message = str(excinfo.value)
+    assert field in message
+    assert "some.action" in message
+
+
+def test_string_or_list_helper_accepts_single_string_and_list(tmp_path: Path) -> None:
+    # Positive control: a single string and a list of strings both remain
+    # accepted for every one of these fields (no regression from the
+    # centralization).
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "single.string.fields",
+                "consequence": "write",
+                "execution_modes": "interactive",
+                "aliases": "single.alias",
+                "policy_ids": "policy.one",
+            }
+        ],
+    )
+    registry = inventory.parse_action_registries(tmp_path)
+    record = registry["single.string.fields"]
+    assert record.consequence == "write"
+    assert record.execution_modes == ("interactive",)
+    assert record.aliases == ("single.alias",)
+    assert record.policy_ids == ("policy.one",)
+
+
+# ---------------------------------------------------------------------------
+# Boolean fields (reversible, approval_required, provider_hosted) raise
+# InventoryError with field/path context for a non-boolean value, never a
+# silent truthy/falsy coercion.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "field, bad_value",
+    [
+        ("reversible", "false"),
+        ("reversible", 0),
+        ("approval_required", "true"),
+        ("approval_required", 1),
+        ("provider_hosted", "no"),
+        ("provider_hosted", 0),
+    ],
+)
+def test_boolean_field_raises_inventory_error_with_context(
+    tmp_path: Path, field: str, bad_value: object
+) -> None:
+    entry = {
+        "id": "some.action",
+        "consequence": "write",
+        "execution_modes": ["interactive"],
+    }
+    entry[field] = bad_value
+    write_registry(tmp_path, [entry])
+    with pytest.raises(inventory.InventoryError) as excinfo:
+        inventory.parse_action_registries(tmp_path)
+    message = str(excinfo.value)
+    assert field in message
+    assert "some.action" in message
+
+
+# ---------------------------------------------------------------------------
+# display_name: an explicit null is treated the same as an absent field
+# (falls back to the action ID) rather than silently becoming the literal
+# string "None"; a non-string value still raises InventoryError.
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_null_display_name_falls_back_to_action_id(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "display_name": None,
+            }
+        ],
+    )
+    registry = inventory.parse_action_registries(tmp_path)
+    assert registry["payments.refund"].display_name == "payments.refund"
+
+
+def test_non_string_display_name_raises_inventory_error(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "display_name": ["Refund", "Payment"],
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError) as excinfo:
+        inventory.parse_action_registries(tmp_path)
+    message = str(excinfo.value)
+    assert "display_name" in message
+    assert "payments.refund" in message
+
+
+# ---------------------------------------------------------------------------
+# A mapping agent.yaml with no top-level 'tools' key is a non-registry
+# agent definition (e.g. a MAF agent.yaml declaring only name/model), not
+# an aborting error; present-but-malformed 'tools' still raises.
+# ---------------------------------------------------------------------------
+
+
+def test_mapping_agent_yaml_without_tools_key_is_not_a_registry(tmp_path: Path) -> None:
+    (tmp_path / "agent.yaml").write_text(
+        "name: Contoso Claims Assistant\nmodel: gpt-4\ninstructions: Be helpful.\n",
+        encoding="utf-8",
+    )
+    registry = inventory.parse_action_registries(tmp_path)
+    assert registry == {}
+
+
+def test_source_gap_from_non_registry_agent_yaml_still_surfaces_as_finding(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "agent.yaml").write_text(
+        "name: Contoso Claims Assistant\nmodel: gpt-4\n", encoding="utf-8"
+    )
+    write_fixture_with_python_tool(tmp_path, "mail.send")
+    result = inventory.build_action_inventory(tmp_path)
+    assert result.actions[0].action_id == "mail.send"
+    assert result.actions[0].source == "python"
+    assert any(
+        f.finding_id == "ACT-002" and "mail.send" in f.affected_actions
+        for f in result.findings
+    )
+
+
+def test_present_but_malformed_tools_key_still_raises_inventory_error(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "agent.yaml").write_text(
+        "name: Contoso Claims Assistant\ntools: not-a-list\n", encoding="utf-8"
+    )
+    with pytest.raises(inventory.InventoryError):
+        inventory.parse_action_registries(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Target Python parsing tolerates SyntaxError/UnicodeDecodeError/
+# MemoryError/RecursionError as skipped/unreadable evidence, consistent
+# with the existing OSError-skip behavior.
+# ---------------------------------------------------------------------------
+
+
+def test_syntax_error_in_target_python_file_is_skipped(tmp_path: Path) -> None:
+    (tmp_path / "broken.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
+    write_fixture_with_python_tool(tmp_path, "good.action")
+    assert inventory.discover_python_tools(tmp_path) == {"good.action"}
+
+
+def test_undecodable_python_file_is_skipped(tmp_path: Path) -> None:
+    (tmp_path / "binary.py").write_bytes(b"\xff\xfe\x00\x01broken")
+    write_fixture_with_python_tool(tmp_path, "good.action")
+    assert inventory.discover_python_tools(tmp_path) == {"good.action"}
+
+
+def test_recursion_error_while_parsing_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "deep.py").write_text("x = 1\n", encoding="utf-8")
+    write_fixture_with_python_tool(tmp_path, "good.action")
+
+    real_parse = inventory._parse_python_source
+
+    def fake_parse(source: str, filename: str):
+        if filename.endswith("deep.py"):
+            raise RecursionError("maximum recursion depth exceeded")
+        return real_parse(source, filename)
+
+    monkeypatch.setattr(inventory, "_parse_python_source", fake_parse)
+    assert inventory.discover_python_tools(tmp_path) == {"good.action"}
+
+
+def test_memory_error_while_parsing_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "huge.py").write_text("x = 1\n", encoding="utf-8")
+    write_fixture_with_python_tool(tmp_path, "good.action")
+
+    real_parse = inventory._parse_python_source
+
+    def fake_parse(source: str, filename: str):
+        if filename.endswith("huge.py"):
+            raise MemoryError("simulated out-of-memory during parse")
+        return real_parse(source, filename)
+
+    monkeypatch.setattr(inventory, "_parse_python_source", fake_parse)
+    assert inventory.discover_python_tools(tmp_path) == {"good.action"}
