@@ -1,0 +1,168 @@
+{
+  "schema": "threadlight-governed-actions-finding-catalog/v1",
+  "description": "Fixed taxonomy of findings threadlight-governed-actions can emit: consequential-action inventory, mediation-path coverage, enforcement, approval, output payload-freedom, audit-trail completeness, pin integrity, GitHub Copilot coding-agent change-plane posture, and operational alerting. Agent Hooks is cooperative/alpha and never a security boundary; conformance is never certification; not-verified never becomes pass on its own — 'unsupported' is a reason_code the assessor records, never a status.",
+  "findings": [
+    {
+      "finding_id": "ACT-001",
+      "category": "consequential-inventory",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A consequential action (write/external-egress/irreversible) is invocable but not present in the declared action inventory.",
+      "remediation": "Declare the action (name, consequence class, reversibility, execution modes) so it can be mediated and audited; do not leave consequential actions undeclared."
+    },
+    {
+      "finding_id": "ACT-002",
+      "category": "consequential-inventory",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A declared action is missing metadata (consequence class, reversibility, or compensation reference) needed for downstream policy and approval decisions.",
+      "remediation": "Complete the action's declaration with an explicit consequence class, reversibility flag, and compensation reference where reversible=false."
+    },
+    {
+      "finding_id": "MED-001",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A discovered execution path reaches a consequential action without passing through any interceptor/policy seam.",
+      "remediation": "Route the path through the declared pre-action seam (Agent Hooks or an equivalent interceptor) before the action executes."
+    },
+    {
+      "finding_id": "MED-002",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "Path tracing could not conclusively determine whether a route to a consequential action is mediated (e.g. dynamic dispatch or subagent delegation); recorded not-verified rather than assumed covered.",
+      "remediation": "Add a deterministic probe case or static reference that lets the assessor confirm coverage instead of leaving it ambiguous."
+    },
+    {
+      "finding_id": "MED-003",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A path without a direct interceptor seam instead relies on an equivalent compensating control (e.g. a provider-hosted tool allow-list) that has not been independently verified.",
+      "remediation": "Provide evidence (references, live verification, or a probe result) for the claimed equivalent control, or add a direct seam."
+    },
+    {
+      "finding_id": "ENF-001",
+      "category": "enforcement",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "No enforcement seam (Agent Hooks or a declared equivalent) is wired for at least one execution mode a consequential action runs under.",
+      "remediation": "Wire the enforcement seam for every execution mode the action supports, including subagent and provider-hosted-tool modes."
+    },
+    {
+      "finding_id": "ENF-002",
+      "category": "enforcement",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Agent Hooks is cooperative and can be bypassed by a caller that skips the hook, and no compensating control (allow-list, network policy, provider-side restriction) was found for that bypass surface.",
+      "remediation": "Add a compensating control for the bypass surface; do not rely on Agent Hooks alone as the security boundary."
+    },
+    {
+      "finding_id": "APR-001",
+      "category": "approval",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "An action flagged approval_required has no verifiable approval-redemption evidence in the audit trail prior to execution.",
+      "remediation": "Record an approval_redemption_hash in the audit trail before the action is permitted to execute, and verify it is checked at the enforcement seam."
+    },
+    {
+      "finding_id": "OUT-001",
+      "category": "output",
+      "plane": "both",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Evidence, audit records, or manifest content captured by the assessor contains prompt/argument/output/secret payload material instead of hashes or structural references.",
+      "remediation": "Replace payload content with hashes/references (e.g. input_hash/output_hash) so evidence stays payload-free."
+    },
+    {
+      "finding_id": "AUD-001",
+      "category": "audit",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A consequential-action invocation has no corresponding payload-free audit record (event_id, decision, and hash chain), making the decision unauditable after the fact.",
+      "remediation": "Emit one payload-free audit record per consequential-action decision, including policy_hash/action_hash and delivery_status."
+    },
+    {
+      "finding_id": "PIN-001",
+      "category": "pin",
+      "plane": "both",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A pinned dependency, specification, or probe-suite version referenced by the assessment no longer matches the version/hash recorded at capture time (pin drift).",
+      "remediation": "Re-pin to the current version/hash and re-run the assessment, or restore the originally pinned version."
+    },
+    {
+      "finding_id": "GHCP-001",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Workflow files that can modify the repository or trigger a deployment (including GitHub Copilot coding-agent workflows) are not enumerated with content hashes in the change-plane inventory.",
+      "remediation": "Enumerate every change-plane workflow file with its repository-relative path and content hash."
+    },
+    {
+      "finding_id": "GHCP-002",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A change-plane identity (CI/CD, GitHub Copilot coding agent, or similar) could not be confirmed to have least-privilege scoping evidence.",
+      "remediation": "Record the identity's kind and scope evidence, and narrow its permissions to only what the change-plane workflow requires."
+    },
+    {
+      "finding_id": "GHCP-003",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A branch the change-plane deploys from lacks required review/status-check gating evidence.",
+      "remediation": "Enable branch protection (required reviews and status checks) on every branch the change-plane can deploy from."
+    },
+    {
+      "finding_id": "GHCP-004",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A change-plane workflow references secrets/tokens in a way the assessor could not confirm stays out of logs and artifacts.",
+      "remediation": "Confirm secret handling (masking, scoped injection) for the workflow, or restructure it so secrets never reach logs/artifacts."
+    },
+    {
+      "finding_id": "GHCP-005",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "Evidence suggests the same identity/session that authored a change-plane action could also approve or merge it, without an independent reviewer.",
+      "remediation": "Require an independent reviewer/approver distinct from the change author before the change-plane action can proceed."
+    },
+    {
+      "finding_id": "GHCP-006",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A previously hashed change-plane workflow or policy artifact no longer matches its current content, so cached conformance claims about it are stale.",
+      "remediation": "Re-hash the workflow/policy artifact and re-verify any conformance claim that depended on it."
+    },
+    {
+      "finding_id": "OPS-001",
+      "category": "alerts",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "No alerting/notification path was found for enforcement failures, hook errors, or audit delivery_status failures, so governance-relevant failures go unmonitored.",
+      "remediation": "Add alerting on enforcement errors, non-delivered audit records, and abnormal interceptor_duration_ms so failures are noticed rather than silently accumulating."
+    }
+  ]
+}

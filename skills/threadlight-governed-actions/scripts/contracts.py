@@ -1,0 +1,198 @@
+"""Typed contracts for threadlight-governed-actions.
+
+Frozen dataclasses describing the assessor's read-only observations: source
+provenance, action/path inventories, evidence references, probe results, and
+the structured findings the assessor emits. Nothing here executes an action,
+mutates a target repository, or carries a prompt/argument/output/secret
+payload — see ``canonical.py`` for the payload-free audit guard and the
+canonical-hashing / atomic-write helpers used to bind evidence to exact file
+bytes.
+
+threadlight-governed-actions is read-only and observational: Agent Hooks is
+cooperative/alpha and is never treated as a security boundary here, and
+nothing in this module invents customer-specific policy, thresholds,
+approvers, identities, or risk appetite — those are supplied by the target
+repository/deployment and only ever referenced, never fabricated.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Literal, Mapping, Optional, Tuple
+
+
+SCHEMA_VERSION = "1.0.0"
+ASSESSOR_VERSION = "0.1.0"
+SKILL_VERSION = "0.1.0"
+
+SUPPORTED_PHASES: Tuple[str, ...] = ("design", "pre-deploy", "post-deploy")
+CONSEQUENCE_CLASSES: Tuple[str, ...] = (
+    "read",
+    "write",
+    "external-egress",
+    "irreversible",
+)
+EXECUTION_MODES: Tuple[str, ...] = (
+    "interactive",
+    "batch",
+    "background",
+    "subagent",
+    "direct-tool",
+    "provider-hosted-tool",
+)
+STATUSES: Tuple[str, ...] = (
+    "pass",
+    "must-fix",
+    "should-fix",
+    "not-verified",
+    "not-applicable",
+)
+VERDICTS: Tuple[str, ...] = ("governed", "partial", "ungoverned")
+
+
+class UnsafeTargetError(ValueError):
+    """Raised when an assessment target is unsafe to read or reference.
+
+    For example: a path that escapes the assessment root, or a live-mode
+    request aimed at a target that was not explicitly opted into staging.
+    """
+
+
+Phase = Literal["design", "pre-deploy", "post-deploy"]
+Status = Literal["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
+Consequence = Literal["read", "write", "external-egress", "irreversible"]
+
+
+@dataclass(frozen=True)
+class SourceRef:
+    repository: str
+    commit: str
+    dirty: bool
+
+
+@dataclass(frozen=True)
+class EvidenceRef:
+    evidence_id: str
+    kind: str
+    source: str
+    sha256: str
+    collected_at: Optional[str]
+    freshness_seconds: Optional[int]
+    live_verified: bool
+    phase: Phase
+    repository: str
+    source_commit: str
+    target_environment: Optional[str]
+    policy_set_sha256: Optional[str]
+
+
+@dataclass(frozen=True)
+class Finding:
+    finding_id: str
+    status: Status
+    phase: Phase
+    plane: Literal["runtime", "change", "both"]
+    reason_code: str
+    summary: str
+    details: str
+    affected_actions: Tuple[str, ...] = ()
+    affected_paths: Tuple[str, ...] = ()
+    evidence_refs: Tuple[str, ...] = ()
+    remediation_ids: Tuple[str, ...] = ()
+    residual_risk_ref: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ActionRecord:
+    action_id: str
+    display_name: str
+    aliases: Tuple[str, ...]
+    owner: Optional[str]
+    declaration_refs: Tuple[str, ...]
+    implementation_refs: Tuple[str, ...]
+    input_schema_sha256: Optional[str]
+    output_schema_sha256: Optional[str]
+    source: str
+    consequence: Optional[Consequence]
+    secondary_consequences: Tuple[Consequence, ...]
+    reversible: Optional[bool]
+    compensation_ref: Optional[str]
+    execution_modes: Tuple[str, ...]
+    provider_hosted: bool
+    approval_required: Optional[bool]
+    policy_ids: Tuple[str, ...] = ()
+    known_runtime_paths: Tuple[str, ...] = ()
+    inventory_status: Status = "not-verified"
+
+
+@dataclass(frozen=True)
+class PathRecord:
+    path_id: str
+    action_id: str
+    mode: str
+    nodes: Tuple[str, ...]
+    pre_action_seam: Optional[str]
+    equivalent_control_ref: Optional[str]
+    covered: bool
+    status: Status
+    evidence_refs: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DetectionEvidence:
+    detected: bool
+    references: Tuple[str, ...]
+    ambiguity: Optional[str]
+
+
+@dataclass(frozen=True)
+class AdapterObservations:
+    entry_points: Tuple[Dict[str, object], ...]
+    actions: Tuple[ActionRecord, ...]
+    mediation: Tuple[PathRecord, ...]
+    probe_cases: Tuple[Dict[str, object], ...]
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    probe_id: str
+    action_id: Optional[str]
+    path_id: Optional[str]
+    status: Status
+    reason_code: str
+    expected: str
+    observed: str
+    evidence_refs: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AssessmentOptions:
+    root: Path
+    phase: Phase
+    emit: bool = False
+    gate: bool = False
+    live_github: bool = False
+    live_azure: bool = False
+    staging: bool = False
+    repository: Optional[str] = None
+    default_branch: Optional[str] = None
+    subscription: Optional[str] = None
+    staging_resource_group: Optional[str] = None
+    deploy_identity: Optional[str] = None
+    now: str = "1970-01-01T00:00:00Z"
+
+
+@dataclass(frozen=True)
+class AssessmentResult:
+    source: SourceRef
+    actions: Tuple[ActionRecord, ...]
+    paths: Tuple[PathRecord, ...]
+    probes: Tuple[ProbeResult, ...]
+    findings: Tuple[Finding, ...]
+    evidence: Tuple[EvidenceRef, ...]
+    policy_hashes: Tuple[Mapping[str, object], ...] = field(default_factory=tuple)
+    pins: Mapping[str, object] = field(default_factory=dict)
+    conformance_claims: Tuple[Mapping[str, object], ...] = ()
+    conformance_reports: Tuple[Mapping[str, object], ...] = ()
+    change_plane: Mapping[str, object] = field(default_factory=dict)
+    residual_risks: Tuple[Mapping[str, object], ...] = ()

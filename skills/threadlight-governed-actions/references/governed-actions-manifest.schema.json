@@ -1,0 +1,746 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threadlight.dev/schemas/governed-actions-manifest-1.0.0.json",
+  "title": "threadlight-governed-actions manifest",
+  "description": "Emitted by threadlight-governed-actions (read-only assessor). Records the assessor's own observations of a target repository/deployment's consequential-action inventory, mediation-path coverage, enforcement, approvals, output/audit payload-freedom, pin integrity, and change-plane posture. Conformance recorded here is never a certification, and Agent Hooks (where referenced) is cooperative/alpha and never a security boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "assessor",
+    "phase",
+    "captured_at",
+    "source",
+    "pins",
+    "policy_hashes",
+    "action_inventory",
+    "mediation_paths",
+    "conformance",
+    "change_plane",
+    "findings",
+    "evidence",
+    "freshness",
+    "residual_risks",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "threadlight-governed-actions-manifest/v1"
+    },
+    "assessor": {
+      "$ref": "#/$defs/assessor"
+    },
+    "phase": {
+      "$ref": "#/$defs/phase"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "pins": {
+      "$ref": "#/$defs/pins"
+    },
+    "policy_hashes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/policyHash"
+      }
+    },
+    "action_inventory": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "mediation_paths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      }
+    },
+    "conformance": {
+      "$ref": "#/$defs/conformance"
+    },
+    "change_plane": {
+      "$ref": "#/$defs/changePlane"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
+    "freshness": {
+      "$ref": "#/$defs/freshness"
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/residualRisk"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Full 40-character lowercase-hex git commit SHA."
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["design", "pre-deploy", "post-deploy"]
+    },
+    "plane": {
+      "type": "string",
+      "enum": ["runtime", "change", "both"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
+    },
+    "consequence": {
+      "type": "string",
+      "enum": ["read", "write", "external-egress", "irreversible"]
+    },
+    "executionMode": {
+      "type": "string",
+      "enum": [
+        "interactive",
+        "batch",
+        "background",
+        "subagent",
+        "direct-tool",
+        "provider-hosted-tool"
+      ]
+    },
+    "assessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "adapter"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string",
+          "description": "Name of the framework/runtime adapter used to gather this evidence (e.g. 'generic', 'agent-framework')."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "dirty"],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dependencies", "specifications", "probe_suite"],
+      "properties": {
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pin"
+          }
+        },
+        "specifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pin"
+          }
+        },
+        "probe_suite": {
+          "$ref": "#/$defs/pin"
+        }
+      }
+    },
+    "policyHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "kind",
+        "source",
+        "sha256",
+        "collected_at",
+        "freshness_seconds",
+        "live_verified",
+        "phase",
+        "repository",
+        "source_commit",
+        "target_environment",
+        "policy_set_sha256"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "collected_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "freshness_seconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "live_verified": {
+          "type": "boolean"
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "source_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "target_environment": {
+          "type": ["string", "null"]
+        },
+        "policy_set_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "status",
+        "phase",
+        "plane",
+        "reason_code",
+        "summary",
+        "details",
+        "affected_actions",
+        "affected_paths",
+        "evidence_refs",
+        "remediation_ids",
+        "residual_risk_ref"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        },
+        "plane": {
+          "$ref": "#/$defs/plane"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "details": {
+          "type": "string"
+        },
+        "affected_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remediation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "residual_risk_ref": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "display_name",
+        "aliases",
+        "owner",
+        "declaration_refs",
+        "implementation_refs",
+        "input_schema_sha256",
+        "output_schema_sha256",
+        "source",
+        "consequence",
+        "secondary_consequences",
+        "reversible",
+        "compensation_ref",
+        "execution_modes",
+        "provider_hosted",
+        "approval_required",
+        "policy_ids",
+        "known_runtime_paths",
+        "inventory_status"
+      ],
+      "properties": {
+        "action_id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "declaration_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "implementation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "input_schema_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "output_schema_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "string"
+        },
+        "consequence": {
+          "enum": ["read", "write", "external-egress", "irreversible", null]
+        },
+        "secondary_consequences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/consequence"
+          }
+        },
+        "reversible": {
+          "type": ["boolean", "null"]
+        },
+        "compensation_ref": {
+          "type": ["string", "null"]
+        },
+        "execution_modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/executionMode"
+          }
+        },
+        "provider_hosted": {
+          "type": "boolean"
+        },
+        "approval_required": {
+          "type": ["boolean", "null"]
+        },
+        "policy_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "known_runtime_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inventory_status": {
+          "$ref": "#/$defs/status"
+        }
+      }
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path_id",
+        "action_id",
+        "mode",
+        "nodes",
+        "pre_action_seam",
+        "equivalent_control_ref",
+        "covered",
+        "status",
+        "evidence_refs"
+      ],
+      "properties": {
+        "path_id": {
+          "type": "string"
+        },
+        "action_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pre_action_seam": {
+          "type": ["string", "null"]
+        },
+        "equivalent_control_ref": {
+          "type": ["string", "null"]
+        },
+        "covered": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probe_id",
+        "action_id",
+        "path_id",
+        "status",
+        "reason_code",
+        "expected",
+        "observed",
+        "evidence_refs"
+      ],
+      "properties": {
+        "probe_id": {
+          "type": "string"
+        },
+        "action_id": {
+          "type": ["string", "null"]
+        },
+        "path_id": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "expected": {
+          "type": "string"
+        },
+        "observed": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conformanceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "description", "status", "evidence_refs"],
+      "properties": {
+        "claim_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conformanceReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report_id", "tool", "version", "generated_at", "summary", "evidence_refs"],
+      "properties": {
+        "report_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claims", "reports", "application_probes"],
+      "description": "Conformance claims/reports recorded here are the assessor's own read-only observations. Conformance is never certification.",
+      "properties": {
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conformanceClaim"
+          }
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conformanceReport"
+          }
+        },
+        "application_probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/probe"
+          }
+        }
+      }
+    },
+    "changePlaneWorkflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "changePlaneIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind"],
+      "properties": {
+        "identity": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      }
+    },
+    "changePlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflows", "identities"],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/changePlaneWorkflow"
+          }
+        },
+        "identities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/changePlaneIdentity"
+          }
+        }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "valid_for_hours", "oldest_source_at", "expires_at"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["fresh", "stale", "expired"]
+        },
+        "valid_for_hours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "oldest_source_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "residualRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["residual_risk_id", "finding_id", "description"],
+      "properties": {
+        "residual_risk_id": {
+          "type": "string"
+        },
+        "finding_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "pass", "must_fix", "should_fix", "not_verified", "not_applicable"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["governed", "partial", "ungoverned"]
+        },
+        "pass": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "must_fix": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "should_fix": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_verified": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_applicable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
