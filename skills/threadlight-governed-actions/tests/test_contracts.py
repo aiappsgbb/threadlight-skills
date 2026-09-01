@@ -6,8 +6,10 @@ one: schema conformance is the whole point of these tests, so a missing
 ``jsonschema`` install must fail collection loudly (a normal
 ``ModuleNotFoundError`` at import time) rather than silently downgrade
 every schema-validation test into a no-op/skip that still reports green.
-Installing it (Task 15 will wire this into CI) is:
-    pip install jsonschema
+The RFC 3339 ``date-time`` format checker is likewise required, not
+optional — see the module-level assertion below. Installing it (Task 15
+will wire this into CI) is:
+    pip install "jsonschema[format]"
 
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_contracts.py -q
@@ -39,6 +41,21 @@ REFERENCES = Path(__file__).resolve().parent.parent / "references"
 # attached) in addition to the enforceable "pattern" constraint each
 # timestamp $def also carries.
 _FORMAT_CHECKER = jsonschema.FormatChecker()
+
+# Loud, not silent: without the ``date-time`` checker registered (which
+# requires the ``jsonschema[format]`` extra, e.g. via ``rfc3339-validator``),
+# every "format": "date-time" assertion below would silently become a no-op
+# — the tests would keep reporting green while validating nothing about
+# RFC 3339 shape via format checking (the "pattern" constraint on each
+# timestamp $def still applies independently, but this module's format-
+# checking coverage would quietly stop being real). Fail collection
+# immediately instead of masking that gap.
+assert "date-time" in _FORMAT_CHECKER.checkers, (
+    "installed jsonschema lacks a 'date-time' format checker; install "
+    '`pip install "jsonschema[format]"` (which pulls in rfc3339-validator) '
+    "so format assertions in these tests actually validate rather than "
+    "silently no-op"
+)
 
 
 def _validator_for(schema):
@@ -340,6 +357,25 @@ def test_hash_files_dedupes_equivalent_path_spellings(tmp_path):
     assert result["files"][0]["path"] == "policy.json"
 
 
+def test_hash_files_raises_canonicalization_error_for_missing_file(tmp_path):
+    """A read failure (the file simply doesn't exist) must surface as a
+    :class:`canonical.CanonicalizationError` carrying the offending path,
+    not a raw ``FileNotFoundError`` — hash_files' contract is that every
+    failure mode is a ``CanonicalizationError``, so callers only ever need
+    to catch one exception type."""
+    with pytest.raises(canonical.CanonicalizationError, match="policy.json"):
+        canonical.hash_files(tmp_path, [Path("policy.json")])
+
+
+def test_hash_files_raises_canonicalization_error_for_directory_path(tmp_path):
+    """Passing a directory (not a file) must also normalize to
+    ``CanonicalizationError`` with path context, rather than leaking the
+    raw ``IsADirectoryError``/``PermissionError`` os.read_bytes raises."""
+    (tmp_path / "a-directory").mkdir()
+    with pytest.raises(canonical.CanonicalizationError, match="a-directory"):
+        canonical.hash_files(tmp_path, [Path("a-directory")])
+
+
 # ---------------------------------------------------------------------------
 # validate_payload_free_audit
 # ---------------------------------------------------------------------------
@@ -449,6 +485,93 @@ def test_validate_payload_free_audit_permits_hash_suffixed_fields_any_case(hash_
     ``input``/``output`` keys themselves."""
     record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
     record[hash_key] = f"sha256:{'5' * 64}"
+    canonical.validate_payload_free_audit(record)
+
+
+@pytest.mark.parametrize(
+    "banned_key",
+    [
+        "password",
+        "passwd",
+        "api_key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "credential",
+        "credentials",
+        "secrets",
+        "cookie",
+        "content",
+        "message",
+    ],
+)
+def test_validate_payload_free_audit_rejects_raw_secret_and_content_keys(banned_key):
+    """Common raw secret/credential/content field names must be rejected
+    just like the original prompt/argument/output taxonomy — a governed
+    action audit trail must never carry a literal password, API key,
+    session cookie, or free-text message/content body."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record[banned_key] = "should not be here"
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+@pytest.mark.parametrize(
+    "mixed_case_key",
+    [
+        "Password",
+        "PASSWD",
+        "Api_Key",
+        "APIKEY",
+        "Access_Token",
+        "REFRESH_TOKEN",
+        "Credential",
+        "Credentials",
+        "SECRETS",
+        "Cookie",
+        "Content",
+        "MESSAGE",
+    ],
+)
+def test_validate_payload_free_audit_rejects_secret_and_content_keys_case_insensitively(
+    mixed_case_key,
+):
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record[mixed_case_key] = "should not be here"
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+def test_validate_payload_free_audit_rejects_new_banned_keys_recursively():
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record["context"] = {"nested": {"api_key": "sk-should-not-be-here"}}
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+@pytest.mark.parametrize(
+    "hash_key",
+    [
+        "password_hash",
+        "Passwd_Hash",
+        "API_KEY_HASH",
+        "access_token_hash",
+        "RefreshTokenHash",
+        "credential_hash",
+        "credentials_hash",
+        "secrets_hash",
+        "cookie_hash",
+        "content_hash",
+        "message_hash",
+    ],
+)
+def test_validate_payload_free_audit_permits_hash_suffixed_new_banned_keys(hash_key):
+    """Exact-match matching must keep applying to the newly added
+    secret/content keys too: a derived hash field like ``password_hash`` or
+    ``content_hash`` is a structural reference, not the raw secret/content
+    itself, and must remain explicitly permitted."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record[hash_key] = f"sha256:{'6' * 64}"
     canonical.validate_payload_free_audit(record)
 
 
@@ -847,6 +970,61 @@ def test_manifest_schema_accepts_populated_document_exercising_every_major_def()
     _validate(_populated_manifest(), REFERENCES / "governed-actions-manifest.schema.json")
 
 
+def test_manifest_schema_rejects_residual_risk_with_unknown_finding_id():
+    """``residualRisk.finding_id`` must be bound to the fixed 18-ID finding
+    catalog (via ``$defs/findingId``), not left as an arbitrary free-form
+    string, so a residual risk can never silently reference a finding_id
+    that doesn't exist in the taxonomy."""
+    document = _populated_manifest()
+    document["residual_risks"][0]["finding_id"] = "NOT-A-REAL-FINDING-ID"
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
+def test_manifest_schema_accepts_residual_risk_with_catalog_finding_id():
+    document = _populated_manifest()
+    document["residual_risks"][0]["finding_id"] = "ACT-002"
+    _validate(document, REFERENCES / "governed-actions-manifest.schema.json")
+
+
+@pytest.mark.parametrize(
+    "status_array",
+    ["pass", "must_fix", "should_fix", "not_verified", "not_applicable"],
+)
+def test_manifest_schema_rejects_summary_status_array_with_unknown_finding_id(
+    status_array,
+):
+    """Every ``summary.<status>`` array element must also be bound to the
+    fixed 18-ID finding catalog via ``$defs/findingId`` — a summary bucket
+    is a partition of finding IDs, not an arbitrary string list."""
+    document = _populated_manifest()
+    document["summary"][status_array] = ["NOT-A-REAL-FINDING-ID"]
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
+@pytest.mark.parametrize(
+    "status_array",
+    ["pass", "must_fix", "should_fix", "not_verified", "not_applicable"],
+)
+def test_manifest_schema_accepts_summary_status_array_with_catalog_finding_id(
+    status_array,
+):
+    document = _populated_manifest()
+    document["summary"][status_array] = ["ACT-002"]
+    _validate(document, REFERENCES / "governed-actions-manifest.schema.json")
+
+
 @pytest.mark.parametrize(
     "collection,index,missing_key",
     [
@@ -961,6 +1139,16 @@ def test_timestamp_def_has_enforceable_rfc3339_pattern(filename):
         f"{filename}: $defs.timestamp must carry an enforceable 'pattern', "
         "not rely solely on the optional 'format' annotation"
     )
+
+
+def test_installed_jsonschema_has_date_time_format_checker():
+    """Documents (as a real, listed test — not just a module-level
+    assertion at collection time) that this environment's ``jsonschema``
+    actually enforces ``format: date-time``. If this ever regresses (e.g. a
+    dependency change drops ``rfc3339-validator``), every
+    ``_validator_for(...)`` format-assertion check in this module would
+    silently become a no-op rather than failing loudly."""
+    assert "date-time" in _FORMAT_CHECKER.checkers
 
 
 @pytest.mark.parametrize(
@@ -1100,14 +1288,29 @@ def test_apply_plan_schema_item_requires_all_listed_fields():
     assert item_def["additionalProperties"] is False
 
 
-def test_no_schema_or_defs_contain_secret_or_payload_properties():
+def test_no_schema_property_key_collides_with_the_runtime_banned_key_set():
+    """Structural check, not a text substring scan: walk every schema node's
+    actual ``properties`` keys (via :func:`_iter_schema_nodes`, reused below
+    for the additionalProperties sweep) and assert none of them collides
+    with :data:`canonical._BANNED_KEYS` — the exact same set
+    ``validate_payload_free_audit`` enforces at runtime. Checking against
+    the real runtime set (instead of a second hardcoded string list here)
+    means this test cannot silently drift out of sync whenever the banned
+    -key set changes."""
     for filename in (
         "governed-actions-manifest.schema.json",
         "governed-actions-apply-plan.schema.json",
     ):
-        text = (REFERENCES / filename).read_text(encoding="utf-8").lower()
-        for banned in ('"secret"', '"payload"', '"prompt"', '"arguments"'):
-            assert banned not in text, f"{filename} contains banned property {banned}"
+        schema = json.loads((REFERENCES / filename).read_text(encoding="utf-8"))
+        for node in _iter_schema_nodes(schema):
+            properties = node.get("properties")
+            if not isinstance(properties, dict):
+                continue
+            for key in properties:
+                assert key.lower() not in canonical._BANNED_KEYS, (
+                    f"{filename} declares banned property {key!r} "
+                    f"(collides with canonical._BANNED_KEYS)"
+                )
 
 
 def _iter_schema_nodes(node):

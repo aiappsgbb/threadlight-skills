@@ -716,7 +716,7 @@
           "type": "string"
         },
         "finding_id": {
-          "type": "string"
+          "$ref": "#/$defs/findingId"
         },
         "description": {
           "type": "string"
@@ -735,31 +735,31 @@
         "pass": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/findingId"
           }
         },
         "must_fix": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/findingId"
           }
         },
         "should_fix": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/findingId"
           }
         },
         "not_verified": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/findingId"
           }
         },
         "not_applicable": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/findingId"
           }
         }
       }

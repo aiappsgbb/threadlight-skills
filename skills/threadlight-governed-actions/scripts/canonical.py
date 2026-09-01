@@ -33,16 +33,28 @@ _BANNED_KEYS = frozenset(
     {
         "prompt",
         "messages",
+        "message",
         "arguments",
         "args",
         "input",
         "output",
         "result",
         "secret",
+        "secrets",
         "token",
         "authorization",
         "body",
         "payload",
+        "password",
+        "passwd",
+        "api_key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "credential",
+        "credentials",
+        "cookie",
+        "content",
     }
 )
 
@@ -129,6 +141,23 @@ def hash_files(root: Path, paths: Iterable[Path]) -> dict[str, object]:
     ``set_sha256`` is invariant to both the order and the duplication of the
     input, and only ever depends on the distinct set of (path, bytes) pairs
     actually hashed.
+
+    Every input path is resolved with ``Path.resolve()``, which follows
+    symlinks to their real target. A symlink whose real target lies within
+    *root* is therefore hashed under its *resolved* (real) repository-
+    relative path rather than the symlink's own nominal path — hashing a
+    symlink and hashing its target directly produce the identical entry.
+    This is deliberate, not silently permissive: it means a symlink cannot
+    be used to record a distinct nominal path for the same underlying file,
+    and only a symlink whose real target actually escapes *root* is
+    rejected as an escape (the same rejection any other escaping path gets).
+
+    Any failure to actually read a file's bytes (it doesn't exist, it's a
+    directory, a permission error, or any other OS-level read failure) is
+    translated into a :class:`CanonicalizationError` naming the offending
+    repository-relative path, rather than leaking a raw
+    ``OSError``/``FileNotFoundError``/``IsADirectoryError`` — hash_files has
+    exactly one failure-mode exception type callers need to handle.
     """
     root_path = Path(root).resolve()
     entries_by_path: dict[str, dict[str, object]] = {}
@@ -148,7 +177,12 @@ def hash_files(root: Path, paths: Iterable[Path]) -> dict[str, object]:
         relative_posix = relative.as_posix()
         if relative_posix in entries_by_path:
             continue
-        data = absolute.read_bytes()
+        try:
+            data = absolute.read_bytes()
+        except OSError as error:
+            raise CanonicalizationError(
+                f"cannot read file to hash: {relative_posix!r} ({error})"
+            ) from error
         entries_by_path[relative_posix] = {
             "path": relative_posix,
             "sha256": f"sha256:{sha256_hex(data)}",
@@ -172,10 +206,13 @@ def validate_payload_free_audit(record: Mapping[str, object]) -> None:
     Walks every nested mapping and sequence in *record* and raises
     :class:`PayloadExposureError` the moment a key case-insensitively equals
     one of the banned payload-carrying names (``prompt``, ``messages``,
-    ``arguments``, ``args``, ``input``, ``output``, ``result``, ``secret``,
-    ``token``, ``authorization``, ``body``, ``payload``). Matching is exact
-    key equality, not substring, so derived hash fields such as
-    ``input_hash``/``output_hash`` are explicitly permitted.
+    ``message``, ``arguments``, ``args``, ``input``, ``output``, ``result``,
+    ``secret``, ``secrets``, ``token``, ``authorization``, ``body``,
+    ``payload``, ``password``, ``passwd``, ``api_key``, ``apikey``,
+    ``access_token``, ``refresh_token``, ``credential``, ``credentials``,
+    ``cookie``, ``content``). Matching is exact key equality, not
+    substring, so derived hash fields such as ``input_hash``/``output_hash``/
+    ``password_hash``/``content_hash`` are explicitly permitted.
 
     Fails closed on structure: a nested value that is not JSON-native
     (mapping, list/tuple, string, int, float, bool, or ``None``) — for
