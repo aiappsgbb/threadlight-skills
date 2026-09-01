@@ -3,21 +3,22 @@
 
 Exercises ``probes.run_application_probe`` against the ``interceptor-
 failure`` fixture: a synthetic ``app.agent`` dispatch seam exhibiting
-deny, transform, crash, timeout, malformed-verdict, and two deliberately
-negative (fail-open, self-report-mismatch) behaviors. Every probe here
-runs the fixture's dispatch callable in a real isolated subprocess — this
-file never mocks the dispatch seam itself, only supplies the synthetic
-fixture it drives.
+deny, transform, crash, timeout, malformed-verdict, and several
+deliberately negative (fail-open, self-report-mismatch) behaviors. Every
+probe here runs the fixture's dispatch callable in a real isolated
+subprocess — this file never mocks the dispatch seam itself, only
+supplies the synthetic fixture it drives.
 
-Only a *completed*, well-formed deny/transform report can ever earn a
-pass. A crash, timeout, malformed (unparseable) output, or malformed
-verdict is never rewarded as enforcement merely because it happened to
-also block the tool this run — those always classify as a completed
-``ENF-002`` must-fix finding when the ledger is observable at all;
-``ENF-001`` is reserved for a *completed* run whose own self-reported
-deny/transform decision contradicts what the ledger proves. An outcome
-that is genuinely unobservable (the child failed and the ledger recorded
-nothing at all) raises ``ProbeToolingError`` instead of any finding.
+A crash, timeout, malformed (unparseable) output, or malformed verdict is
+judged from the observation ledger exactly like a deny/transform outcome:
+fail-closed (the ledger proves the tool was never reached) still passes,
+and fail-open (the ledger proves the tool was reached anyway) is always a
+completed ``ENF-002`` must-fix finding, regardless of which abnormal
+shape produced it. ``ENF-001`` is reserved for a *completed*, well-formed
+run whose own self-reported deny/transform decision contradicts what the
+ledger proves. An outcome that is genuinely unobservable (the child
+failed and the ledger recorded nothing at all) raises
+``ProbeToolingError`` instead of any finding.
 
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_probes.py -q
@@ -87,81 +88,83 @@ def test_load_probe_contract_rejects_non_synthetic_side_effect_mode(tmp_path: Pa
 
 
 @pytest.mark.parametrize(
-    ("probe_id", "fault", "expected", "status", "reason_code"),
+    ("probe_id", "fault", "expected"),
     [
-        ("deny", "deny", "tool_not_invoked", "pass", None),
-        (
-            "transform",
-            "transform",
-            "tool_received_transformed_arguments",
-            "pass",
-            None,
-        ),
-        # A crash, a timeout, and a malformed verdict are never a
-        # *deliberate* enforcement decision — they are operational
-        # failures at the dispatch seam. Even though the ledger proves
-        # the tool was never reached in these runs, an abnormally
-        # terminated (or semantically invalid) probe can never be
-        # trusted as proof of reliable enforcement, so all three are
-        # unconditionally a completed ENF-002 must-fix finding.
-        ("crash", "raise", "tool_not_invoked", "must-fix", "ENF-002"),
-        ("timeout", "sleep", "tool_not_invoked", "must-fix", "ENF-002"),
-        ("malformed-verdict", "invalid", "tool_not_invoked", "must-fix", "ENF-002"),
+        ("deny", "deny", "tool_not_invoked"),
+        ("transform", "transform", "tool_received_transformed_arguments"),
+        ("crash", "raise", "tool_not_invoked"),
+        ("timeout", "sleep", "tool_not_invoked"),
+        ("malformed-verdict", "invalid", "tool_not_invoked"),
     ],
 )
 def test_application_dispatch_enforces_probe(
-    fixture_root: Path,
-    probe_id: str,
-    fault: str,
-    expected: str,
-    status: str,
-    reason_code: str,
+    fixture_root: Path, probe_id: str, fault: str, expected: str
 ):
     result = run_application_probe(
         fixture_root / "interceptor-failure",
         ProbeCase(probe_id, "payments.refund", fault, {"amount": 7}),
     )
     assert result.expected == expected
-    assert result.status == status
-    if reason_code is not None:
-        assert result.reason_code == reason_code
+    assert result.status == "pass"
 
 
-def test_malformed_verdict_is_always_a_completed_enf_002_finding(
+def test_malformed_verdict_passes_when_ledger_proves_fail_closed(
     fixture_root: Path,
 ):
+    # The fixture reports its malformed verdict as the literal
+    # out-of-schema decision string, never normalized to a clean "deny"
+    # — but the ledger proves the tool was never reached, so this is a
+    # fail-closed outcome and still passes. A malformed/unparseable
+    # verdict is judged the same way a crash or timeout is: by what the
+    # ledger proves happened, not by whether the self-report happens to
+    # look tidy.
     result = run_application_probe(
         fixture_root / "interceptor-failure",
         ProbeCase("malformed-verdict", "payments.refund", "invalid", {"amount": 7}),
     )
     assert isinstance(result, ProbeResult)
-    assert result.status == "must-fix"
-    assert result.reason_code == "ENF-002"
+    assert result.status == "pass"
+    assert result.observed == "tool_not_invoked"
 
-    findings = findings_from_probes((result,))
-    assert [(finding.finding_id, finding.status) for finding in findings] == [
-        ("ENF-002", "must-fix")
-    ]
+    assert findings_from_probes((result,)) == ()
 
 
-def test_crash_and_timeout_are_always_completed_enf_002_findings_even_fail_closed(
+def test_crash_timeout_and_malformed_verdict_fail_open_variants_are_enf_002(
     fixture_root: Path,
 ):
+    # Fail-open variants of crash/timeout/malformed-verdict: the fixture
+    # reaches the tool *first*, then crashes/hangs/reports a malformed
+    # verdict. Proves ENF-002 is reachable for every abnormal-
+    # termination shape whenever the ledger proves fail-open — not only
+    # for the generic "fail_open" (crash-after-invoke) control case.
     root = fixture_root / "interceptor-failure"
-    crash = run_application_probe(
-        root, ProbeCase("crash", "payments.refund", "raise", {"amount": 7})
+    crash_fail_open = run_application_probe(
+        root, ProbeCase("crash-fail-open", "payments.refund", "fail_open", {"amount": 7})
     )
-    timeout = run_application_probe(
-        root, ProbeCase("timeout", "payments.refund", "sleep", {"amount": 7})
+    timeout_fail_open = run_application_probe(
+        root,
+        ProbeCase(
+            "timeout-fail-open", "payments.refund", "timeout_fail_open", {"amount": 7}
+        ),
     )
-    for result in (crash, timeout):
-        # The ledger proves the tool was never reached (fail-closed) for
-        # both of these faults, yet neither is rewarded with "pass": an
-        # abnormal (crashed/timed-out) dispatch is never trusted as a
-        # deliberate enforcement decision.
-        assert result.observed != "tool_invoked_despite_fault"
+    malformed_fail_open = run_application_probe(
+        root,
+        ProbeCase(
+            "malformed-fail-open",
+            "payments.refund",
+            "malformed_fail_open",
+            {"amount": 7},
+        ),
+    )
+    for result in (crash_fail_open, timeout_fail_open, malformed_fail_open):
+        assert result.observed == "tool_invoked_despite_fault"
         assert result.status == "must-fix"
         assert result.reason_code == "ENF-002"
+
+    findings = findings_from_probes(
+        (crash_fail_open, timeout_fail_open, malformed_fail_open)
+    )
+    assert [finding.finding_id for finding in findings] == ["ENF-002"] * 3
 
 
 def test_deliberate_fail_open_is_a_completed_enf_002_finding_not_a_tooling_error(
@@ -247,32 +250,20 @@ def test_run_application_probe_rejects_unknown_fault(fixture_root: Path):
         )
 
 
-def test_run_enforcement_probe_set_covers_the_standard_suite(fixture_root: Path):
+def test_run_enforcement_probe_set_covers_the_standard_suite_and_all_pass(
+    fixture_root: Path,
+):
     results = run_enforcement_probe_set(fixture_root / "interceptor-failure")
     assert len(results) == 5
-    by_probe_id = {result.probe_id: result for result in results}
-    assert set(by_probe_id) == {
+    assert {result.probe_id for result in results} == {
         "deny",
         "transform",
         "crash",
         "timeout",
         "malformed-verdict",
     }
-
-    # Only a completed, well-formed deny/transform report ever passes;
-    # the interceptor-failure fixture's crash/timeout/malformed-verdict
-    # faults are real enforcement gaps in this fixture (that is exactly
-    # what the fixture's name means), and the standard suite must
-    # surface all three as completed ENF-002 must-fix findings rather
-    # than certifying a crashed/timed-out/malformed run as a pass.
-    assert by_probe_id["deny"].status == "pass"
-    assert by_probe_id["transform"].status == "pass"
-    for probe_id in ("crash", "timeout", "malformed-verdict"):
-        assert by_probe_id[probe_id].status == "must-fix"
-        assert by_probe_id[probe_id].reason_code == "ENF-002"
-
-    findings = findings_from_probes(results)
-    assert [finding.finding_id for finding in findings] == ["ENF-002"] * 3
+    assert all(result.status == "pass" for result in results)
+    assert findings_from_probes(results) == ()
 
 
 def test_unobservable_outcome_raises_probe_tooling_error(tmp_path: Path):
@@ -312,19 +303,20 @@ def test_enforcement_probe_classification_is_stable_under_repeated_runs(
     # ``timeout_ms`` boundary: repeated runs of both the fast
     # (deny/transform) and slow (timeout) faults must classify
     # identically every time, never flake into the wrong bucket because
-    # the child was merely slow to start.
+    # the child was merely slow to start. The standard suite's
+    # crash/timeout/malformed-verdict faults are all fail-closed in this
+    # fixture, so they must consistently pass, never spuriously flip to
+    # ENF-002 because a slow machine ate into the fault's own budget.
     root = fixture_root / "interceptor-failure"
     for _ in range(10):
         results = run_enforcement_probe_set(root)
         by_probe_id = {result.probe_id: result for result in results}
         assert by_probe_id["deny"].status == "pass"
         assert by_probe_id["transform"].status == "pass"
-        assert by_probe_id["crash"].status == "must-fix"
-        assert by_probe_id["crash"].reason_code == "ENF-002"
-        assert by_probe_id["timeout"].status == "must-fix"
-        assert by_probe_id["timeout"].reason_code == "ENF-002"
-        assert by_probe_id["malformed-verdict"].status == "must-fix"
-        assert by_probe_id["malformed-verdict"].reason_code == "ENF-002"
+        assert by_probe_id["crash"].status == "pass"
+        assert by_probe_id["timeout"].status == "pass"
+        assert by_probe_id["malformed-verdict"].status == "pass"
+        assert findings_from_probes(results) == ()
 
 
 def test_probe_run_leaves_no_stray_ledger_file(fixture_root: Path):

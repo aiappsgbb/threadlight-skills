@@ -38,24 +38,25 @@ output); it otherwise reports nothing more than an invocation count, an
 argument hash, a decision, an exception class, and audit event IDs —
 never a raw argument or tool output.
 
-Only a *completed*, well-formed deny/transform report can ever earn a
-pass:
+A crash, a timeout, unparseable/malformed stdout, or a well-formed but
+semantically invalid ("malformed") verdict is judged from the ledger,
+exactly like a deny/transform outcome:
 
-- a clean but *inconsistent* self-report from a completed run (the seam
-  claims ``deny`` while the ledger proves invocation, or claims
-  ``transform`` while the argument hash the tool received does not match
-  what was reported) maps to ``ENF-001``; it is the one case where a
-  self-report is trusted enough to be compared against the ledger at
-  all, precisely because the run completed normally;
-- a crash, a timeout, unparseable/malformed stdout, or a well-formed but
-  semantically invalid ("malformed") verdict is never a *deliberate*
-  enforcement decision — it is an operational failure at the dispatch
-  seam. Whether or not the ledger happens to also prove the tool was
-  reached (fail-open) or never reached (fail-closed) this run, an
-  abnormally terminated or semantically invalid probe can never be
-  trusted as proof of reliable enforcement, so it unconditionally maps
-  to a completed ``ENF-002`` must-fix probe result — never a tooling
-  exception; and
+- if the ledger proves the tool was never reached (fail-closed), the
+  probe still passes — a process dying, hanging, or reporting nonsense
+  is not itself a violation as long as it also never let the action
+  through;
+- if the ledger proves the tool *was* reached anyway (fail-open), that
+  is unconditionally a completed ``ENF-002`` must-fix finding — never a
+  tooling exception — regardless of which abnormal shape (crash,
+  timeout, malformed output, malformed verdict) produced it;
+- a clean but *inconsistent* self-report from a completed, well-formed
+  run (the seam claims ``deny`` while the ledger proves invocation, or
+  claims ``transform`` while the argument hash the tool received does
+  not match what was reported) maps to ``ENF-001``; that is the one
+  case where a self-report is compared against the ledger rather than
+  a ledger-only judgment, precisely because the run completed normally
+  with a recognized decision;
 - an outcome that is genuinely unobservable (the child failed *and* the
   ledger recorded nothing at all, not even a ``start`` record) raises
   :class:`ProbeToolingError`, since neither a pass nor a specific finding
@@ -118,11 +119,9 @@ _CHILD_READY_MARKER: bytes = b"PROBE-CHILD-READY\n"
 # (well under a few hundred milliseconds) never comes close to it.
 _CHILD_READY_TIMEOUT_S: float = 5.0
 
-# What a passing probe must observe, keyed by ``ProbeCase.fault``. For
-# the crash/timeout/malformed-verdict faults this documents the ledger
-# outcome a fail-closed run happens to produce; it is informational
-# only; those three faults never pass regardless (see
-# ``_build_probe_result``).
+# What a passing probe must observe, keyed by ``ProbeCase.fault``. Also
+# doubles as the harness's registry of recognized fault names (see
+# ``run_application_probe``'s validation).
 _EXPECTED_BY_FAULT: Mapping[str, str] = {
     "deny": "tool_not_invoked",
     "transform": "tool_received_transformed_arguments",
@@ -131,16 +130,29 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
     "invalid": "tool_not_invoked",
     "fail_open": "tool_not_invoked",
     "mismatch": "tool_not_invoked",
+    # Deliberately negative fail-open variants of the crash/timeout/
+    # malformed-verdict faults: the fixture invokes the tool *first*,
+    # then crashes/hangs/reports a malformed verdict. These prove that
+    # ENF-002 is reachable for every abnormal-termination shape, not
+    # only the generic ``fail_open`` (crash-after-invoke) case — never
+    # expected to pass, so "tool_not_invoked" here is nominal only.
+    "timeout_fail_open": "tool_not_invoked",
+    "malformed_fail_open": "tool_not_invoked",
 }
 
 # Human-readable, stable reason codes recorded on a *passing* probe,
 # keyed by ``ProbeCase.fault``. Never a catalog finding ID: those are
 # reserved for probes that did not pass (see ``_FINDING_TEMPLATES``).
-# Only a completed, well-formed deny/transform report can ever pass, so
-# only those two faults appear here.
+# A crash/timeout/malformed-verdict probe still passes when the ledger
+# proves fail-closed (the tool was never reached) — the process dying
+# or reporting nonsense is not itself a violation as long as it also
+# never let the action through.
 _PASS_REASON_BY_FAULT: Mapping[str, str] = {
     "deny": "deny-enforced",
     "transform": "transform-enforced",
+    "raise": "crash-blocked",
+    "sleep": "timeout-blocked",
+    "invalid": "malformed-verdict-blocked",
 }
 
 _DEFAULT_PASS_REASON = "application-probe-enforced"
@@ -187,23 +199,23 @@ _FINDING_TEMPLATES: Mapping[str, Mapping[str, object]] = MappingProxyType(
                 "phase": "pre-deploy",
                 "plane": "runtime",
                 "summary": (
-                    "an application-path probe ended abnormally (crash, "
-                    "timeout, malformed output, or malformed verdict) and "
-                    "can never be trusted as proof of enforcement"
+                    "a probe fault proves the tool service is reachable "
+                    "despite a condition that should have blocked it "
+                    "(fail-open)"
                 ),
                 "details": (
                     "Agent Hooks is cooperative and can be bypassed by a "
                     "caller that skips the hook. This application-path "
                     "probe drove a crash, timeout, malformed-output, or "
-                    "malformed-verdict condition; the observation ledger "
-                    "is the only trustworthy witness left for what "
-                    "happened. Even when it proves the tool was never "
-                    "reached this run, a dispatch that failed to "
-                    "complete normally — or reported a decision outside "
-                    "its recognized deny/transform schema — is never "
-                    "rewarded as if it were a deliberate, reliable "
-                    "enforcement decision. Only a completed, well-formed "
-                    "deny or transform report can ever earn a pass."
+                    "malformed-verdict condition that should have blocked "
+                    "the action, and the observation ledger proves the "
+                    "synthetic tool service was reached anyway, with no "
+                    "compensating control found for that bypass surface. "
+                    "A crash/timeout/malformed outcome that the ledger "
+                    "instead proves was fail-closed (the tool was never "
+                    "reached) is not itself a violation; only fail-open — "
+                    "the tool being invoked despite the fault — earns "
+                    "this finding."
                 ),
             }
         ),
@@ -484,11 +496,12 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
     # wrote unparseable output, or completed but reported a
     # semantically invalid ("malformed") verdict. Only the ledger can
     # prove reality here — a killed, crashed, or schema-violating child
-    # is never trusted to self-report — and an abnormal run is *never*
-    # a passing probe, regardless of whether the ledger happens to also
-    # show the tool was reached (fail-open) or never reached
-    # (fail-closed): a crash/timeout/malformed result is an operational
-    # failure, not a deliberate, reliable enforcement decision.
+    # is never trusted to self-report. Fail-closed (the ledger proves
+    # the tool was never reached) still passes: a process dying or
+    # reporting nonsense is not itself a violation as long as it also
+    # never let the action through. Fail-open (the ledger proves the
+    # tool *was* reached despite the fault) is always ENF-002 —
+    # unconditionally, regardless of which abnormal shape produced it.
     if not outcome["ledger_observable"]:
         raise ProbeToolingError(
             f"probe {case.probe_id!r} outcome is unobservable: the child "
@@ -497,11 +510,19 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             "ever reached"
         )
 
-    observed = (
-        "tool_invoked_despite_fault"
-        if invoked
-        else "tool_not_invoked_despite_abnormal_dispatch"
-    )
+    if invoked:
+        observed = "tool_invoked_despite_fault"
+        status = "must-fix"
+        reason_code = "ENF-002"
+    else:
+        observed = "tool_not_invoked"
+        status = "pass" if observed == expected else "must-fix"
+        reason_code = (
+            _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
+            if status == "pass"
+            else "ENF-001"
+        )
+
     evidence_refs = tuple(
         sorted({ref for ref in (outcome.get("invocation_argument_hash"),) if ref})
     )
@@ -509,8 +530,8 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
         probe_id=case.probe_id,
         action_id=case.action_id,
         path_id=None,
-        status="must-fix",
-        reason_code="ENF-002",
+        status=status,
+        reason_code=reason_code,
         expected=expected,
         observed=observed,
         evidence_refs=evidence_refs,

@@ -171,6 +171,38 @@ def dispatch_probe(
         _synthetic_tool_invoke(ledger_path, action_id, arguments)
         raise RuntimeError("synthetic interceptor fail-open after invocation")
 
+    if fault == "timeout_fail_open":
+        # Fail-open variant of "sleep": the tool is reached *first*, then
+        # the interceptor hangs well past timeout_ms. Proves a timed-out
+        # dispatch is still ENF-002 whenever the ledger proves fail-open,
+        # not only when it happens to also crash outright.
+        _synthetic_tool_invoke(ledger_path, action_id, arguments)
+        time.sleep(10.0)
+        raise AssertionError("unreachable: the probe harness should time out first")
+
+    if fault == "malformed_fail_open":
+        # Fail-open variant of "invalid": the tool is reached *first*,
+        # and only then does the interceptor report a malformed verdict.
+        # Proves a malformed verdict is still ENF-002 whenever the
+        # ledger proves fail-open, not only when it also happens to
+        # block the tool.
+        argument_hash = _synthetic_tool_invoke(ledger_path, action_id, arguments)
+        decision = "not-a-real-verdict"
+        _record_audit(action_id, decision)
+        _append_ledger(
+            ledger_path,
+            "decision",
+            action_id=action_id,
+            decision=decision,
+            note="malformed-verdict-fail-open",
+        )
+        return {
+            "decision": decision,
+            "invocation_count": 1,
+            "argument_hash": argument_hash,
+            "exception_class": None,
+        }
+
     if fault == "mismatch":
         # Deliberately buggy seam: it invokes the tool anyway but still
         # (incorrectly) self-reports a clean deny. Proves the harness
