@@ -75,15 +75,36 @@ def canonical_bytes(value: object) -> bytes:
     ``sort_keys=True``, ``ensure_ascii=False``, ``allow_nan=False`` and
     compact ``(",", ":")`` separators, so the same logical value always
     produces the same bytes (and therefore the same hash).
+
+    Any value ``json.dumps`` itself cannot serialize — an unsupported type
+    (``TypeError``), a circular reference (``ValueError``), or nesting deep
+    enough to blow the interpreter's recursion limit (``RecursionError``) —
+    is translated into a :class:`CanonicalizationError` with a useful
+    message rather than leaking an unrelated built-in exception type to
+    callers who only expect canonicalization failures.
     """
-    _reject_non_finite(value)
-    text = json.dumps(
-        value,
-        sort_keys=True,
-        ensure_ascii=False,
-        allow_nan=False,
-        separators=(",", ":"),
-    )
+    try:
+        _reject_non_finite(value)
+        text = json.dumps(
+            value,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+    except CanonicalizationError:
+        # Already a precise, specific failure (e.g. the non-finite-float
+        # check) — propagate as-is instead of re-wrapping with a vaguer
+        # message below.
+        raise
+    except RecursionError as error:
+        raise CanonicalizationError(
+            "value is nested too deeply (or is circular) to canonicalize"
+        ) from error
+    except (TypeError, ValueError) as error:
+        raise CanonicalizationError(
+            f"value cannot be canonicalized to JSON: {error}"
+        ) from error
     return text.encode("utf-8")
 
 
@@ -99,12 +120,18 @@ def hash_files(root: Path, paths: Iterable[Path]) -> dict[str, object]:
     to the exact SHA-256 of the file's raw bytes — no normalization, no
     re-serialization. A path that resolves outside *root* is rejected rather
     than silently hashed, since a hash over the wrong file (or one outside
-    the repository) would be worse than no hash at all. The returned
-    ``set_sha256`` is the SHA-256 of the canonical bytes of the (sorted)
-    file-entry list, so the whole set can be pinned with one value.
+    the repository) would be worse than no hash at all.
+
+    Behaves like a *set* of files, not a list: the same repository-relative
+    path supplied more than once (whether as a literal duplicate, via a
+    ``./`` prefix, or via a different but equivalent path spelling) is
+    de-duplicated to a single entry, and the result is sorted by path — so
+    ``set_sha256`` is invariant to both the order and the duplication of the
+    input, and only ever depends on the distinct set of (path, bytes) pairs
+    actually hashed.
     """
     root_path = Path(root).resolve()
-    entries: list[dict[str, object]] = []
+    entries_by_path: dict[str, dict[str, object]] = {}
     for raw_path in paths:
         candidate = Path(raw_path)
         absolute = (
@@ -118,18 +145,25 @@ def hash_files(root: Path, paths: Iterable[Path]) -> dict[str, object]:
             raise CanonicalizationError(
                 f"path escapes assessment root: {raw_path!r}"
             ) from error
+        relative_posix = relative.as_posix()
+        if relative_posix in entries_by_path:
+            continue
         data = absolute.read_bytes()
-        entries.append(
-            {"path": relative.as_posix(), "sha256": f"sha256:{sha256_hex(data)}"}
-        )
+        entries_by_path[relative_posix] = {
+            "path": relative_posix,
+            "sha256": f"sha256:{sha256_hex(data)}",
+        }
 
-    entries.sort(key=lambda entry: entry["path"])
+    entries = sorted(entries_by_path.values(), key=lambda entry: entry["path"])
     set_digest = sha256_hex(canonical_bytes(entries))
     return {
         "algorithm": "sha256",
         "files": entries,
         "set_sha256": f"sha256:{set_digest}",
     }
+
+
+_JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
 
 
 def validate_payload_free_audit(record: Mapping[str, object]) -> None:
@@ -142,6 +176,14 @@ def validate_payload_free_audit(record: Mapping[str, object]) -> None:
     ``token``, ``authorization``, ``body``, ``payload``). Matching is exact
     key equality, not substring, so derived hash fields such as
     ``input_hash``/``output_hash`` are explicitly permitted.
+
+    Fails closed on structure: a nested value that is not JSON-native
+    (mapping, list/tuple, string, int, float, bool, or ``None``) — for
+    example a ``set`` or an arbitrary object — is itself rejected with
+    :class:`PayloadExposureError` rather than silently skipped, since such a
+    value cannot be proven payload-free (it cannot even be recursed into or
+    canonically serialized) and an audit record must never contain content
+    the assessor cannot fully account for.
     """
     _check_payload_free(record, "$")
 
@@ -160,6 +202,14 @@ def _check_payload_free(value: object, location: str) -> None:
     if isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
             _check_payload_free(item, f"{location}[{index}]")
+        return
+    if not isinstance(value, _JSON_SCALAR_TYPES):
+        raise PayloadExposureError(
+            f"{location} is not a JSON-native value "
+            f"(found {type(value).__name__}); audit records must contain "
+            "only JSON-native mappings, sequences, and scalars so they can "
+            "be proven payload-free"
+        )
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
@@ -168,8 +218,13 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     Writes to a ``NamedTemporaryFile`` in the same directory as *path* (so
     the final ``os.replace`` is same-filesystem and therefore atomic),
     fsyncs the temp file's contents, replaces the destination, then fsyncs
-    the parent directory so the rename itself is durable. Any error removes
-    only the temp file (never the destination) and re-raises.
+    the parent directory so the rename itself is durable. ``os.replace`` is
+    the commit point: once it returns, the destination holds the new
+    content; the mandatory parent-directory fsync afterwards is durability
+    for that already-committed rename, not part of the commit decision
+    itself, and any error there still propagates rather than being
+    swallowed. Any error removes only the temp file (never the destination)
+    and re-raises.
     """
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)

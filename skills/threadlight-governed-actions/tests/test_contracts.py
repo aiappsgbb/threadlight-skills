@@ -1,6 +1,14 @@
 """Tests for threadlight-governed-actions contracts, canonicalization, and
 the two Task-1 JSON Schemas (manifest + apply-plan) plus the finding catalog.
 
+``jsonschema`` is a hard dependency of this test module, not an optional
+one: schema conformance is the whole point of these tests, so a missing
+``jsonschema`` install must fail collection loudly (a normal
+``ModuleNotFoundError`` at import time) rather than silently downgrade
+every schema-validation test into a no-op/skip that still reports green.
+Installing it (Task 15 will wire this into CI) is:
+    pip install jsonschema
+
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_contracts.py -q
 """
@@ -13,8 +21,10 @@ import math
 import os
 import stat
 import tempfile
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 import canonical
@@ -23,13 +33,17 @@ import contracts
 
 REFERENCES = Path(__file__).resolve().parent.parent / "references"
 
+# A single validator-construction helper used everywhere in this module so
+# every schema check enables format assertions (Draft 2020-12 treats
+# "format" as an annotation-only keyword unless a FormatChecker is
+# attached) in addition to the enforceable "pattern" constraint each
+# timestamp $def also carries.
+_FORMAT_CHECKER = jsonschema.FormatChecker()
 
-def _jsonschema():
-    try:
-        import jsonschema
-    except ModuleNotFoundError:
-        return None
-    return jsonschema
+
+def _validator_for(schema):
+    jsonschema.Draft202012Validator.check_schema(schema)
+    return jsonschema.Draft202012Validator(schema, format_checker=_FORMAT_CHECKER)
 
 
 # ---------------------------------------------------------------------------
@@ -66,13 +80,69 @@ def test_public_constants_match_spec():
     assert contracts.VERDICTS == ("governed", "partial", "ungoverned")
 
 
+def _manifest_schema():
+    return json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _apply_plan_schema():
+    return json.loads(
+        (REFERENCES / "governed-actions-apply-plan.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_manifest_schema_phase_enum_matches_contracts_supported_phases():
+    schema = _manifest_schema()
+    assert tuple(schema["$defs"]["phase"]["enum"]) == contracts.SUPPORTED_PHASES
+
+
+def test_manifest_schema_status_enum_matches_contracts_statuses():
+    schema = _manifest_schema()
+    assert tuple(schema["$defs"]["status"]["enum"]) == contracts.STATUSES
+
+
+def test_manifest_schema_consequence_enum_matches_contracts_consequence_classes():
+    schema = _manifest_schema()
+    assert (
+        tuple(schema["$defs"]["consequence"]["enum"])
+        == contracts.CONSEQUENCE_CLASSES
+    )
+
+
+def test_manifest_schema_execution_mode_enum_matches_contracts_execution_modes():
+    schema = _manifest_schema()
+    assert (
+        tuple(schema["$defs"]["executionMode"]["enum"]) == contracts.EXECUTION_MODES
+    )
+
+
+def test_manifest_schema_summary_verdict_enum_matches_contracts_verdicts():
+    schema = _manifest_schema()
+    verdict_property = _find_summary_verdict_enum(schema)
+    assert tuple(verdict_property) == contracts.VERDICTS
+
+
+def _find_summary_verdict_enum(schema):
+    return schema["$defs"]["summary"]["properties"]["verdict"]["enum"]
+
+
+def test_apply_plan_schema_status_enum_matches_contracts_statuses():
+    schema = _apply_plan_schema()
+    assert tuple(schema["$defs"]["status"]["enum"]) == contracts.STATUSES
+
+
 def test_unsafe_target_error_is_value_error():
     assert issubclass(contracts.UnsafeTargetError, ValueError)
 
 
 def test_frozen_dataclasses_are_immutable():
     source = contracts.SourceRef(repository="o/r", commit="a" * 40, dirty=False)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         source.commit = "b" * 40  # type: ignore[misc]
 
 
@@ -162,6 +232,31 @@ def test_canonical_bytes_is_utf8_and_ascii_preserving():
     )
 
 
+def test_canonical_bytes_rejects_unsupported_type():
+    """A type json.dumps cannot serialize (e.g. a set) must surface as a
+    CanonicalizationError, not an unrelated TypeError leaking straight out
+    of json.dumps."""
+    with pytest.raises(canonical.CanonicalizationError):
+        canonical.canonical_bytes({"value": {1, 2, 3}})
+
+
+def test_canonical_bytes_rejects_circular_reference():
+    """A self-referencing container must surface as a
+    CanonicalizationError, not the raw ValueError json.dumps raises for
+    circular references."""
+    circular: dict[str, object] = {}
+    circular["self"] = circular
+    with pytest.raises(canonical.CanonicalizationError):
+        canonical.canonical_bytes(circular)
+
+
+def test_canonical_bytes_rejects_circular_reference_nested_in_list():
+    circular_list: list[object] = []
+    circular_list.append(circular_list)
+    with pytest.raises(canonical.CanonicalizationError):
+        canonical.canonical_bytes({"items": circular_list})
+
+
 # ---------------------------------------------------------------------------
 # sha256_hex
 # ---------------------------------------------------------------------------
@@ -199,6 +294,50 @@ def test_hash_files_rejects_paths_that_escape_root(tmp_path):
     outside.write_bytes(b"{}")
     with pytest.raises(canonical.CanonicalizationError):
         canonical.hash_files(tmp_path, [outside])
+
+
+def test_hash_files_set_sha256_is_invariant_to_input_order(tmp_path):
+    """hash_files behaves like a *set* of files: the same files supplied in
+    a different order must produce the same set_sha256 (and the same
+    sorted files list), because the set of files hashed — not the order
+    they were passed in — is what the digest binds."""
+    (tmp_path / "a.json").write_bytes(b'{"a":1}')
+    (tmp_path / "b.json").write_bytes(b'{"b":2}')
+
+    forward = canonical.hash_files(tmp_path, [Path("a.json"), Path("b.json")])
+    reverse = canonical.hash_files(tmp_path, [Path("b.json"), Path("a.json")])
+
+    assert forward["files"] == reverse["files"]
+    assert forward["set_sha256"] == reverse["set_sha256"]
+
+
+def test_hash_files_dedupes_duplicate_input_paths(tmp_path):
+    """Passing the same repository-relative path twice must not double-
+    count it in the file list or change set_sha256 relative to passing it
+    once — hash_files is a set of (path, bytes) pairs, not a list."""
+    (tmp_path / "policy.json").write_bytes(b'{"effect":"deny"}\n')
+
+    once = canonical.hash_files(tmp_path, [Path("policy.json")])
+    duplicated = canonical.hash_files(
+        tmp_path, [Path("policy.json"), Path("policy.json"), Path("policy.json")]
+    )
+
+    assert duplicated["files"] == once["files"]
+    assert len(duplicated["files"]) == 1
+    assert duplicated["set_sha256"] == once["set_sha256"]
+
+
+def test_hash_files_dedupes_equivalent_path_spellings(tmp_path):
+    """A ``./``-prefixed spelling of the same repository-relative path must
+    collapse to the same single entry as the bare spelling."""
+    (tmp_path / "policy.json").write_bytes(b'{"effect":"deny"}\n')
+
+    result = canonical.hash_files(
+        tmp_path, [Path("policy.json"), Path("./policy.json")]
+    )
+
+    assert len(result["files"]) == 1
+    assert result["files"][0]["path"] == "policy.json"
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +449,36 @@ def test_validate_payload_free_audit_permits_hash_suffixed_fields_any_case(hash_
     ``input``/``output`` keys themselves."""
     record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
     record[hash_key] = f"sha256:{'5' * 64}"
+    canonical.validate_payload_free_audit(record)
+
+
+def test_validate_payload_free_audit_fails_closed_on_non_json_native_value():
+    """A nested value that is not JSON-native (a set here, which is also
+    unordered and therefore could never be hashed/canonicalized
+    deterministically) must be rejected rather than silently skipped just
+    because it isn't a dict/list/tuple the recursive walk knows how to
+    descend into — an audit record must only ever contain content the
+    validator can fully account for."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record["context"] = {"tags": {"a", "b", "c"}}
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+def test_validate_payload_free_audit_fails_closed_on_non_json_native_value_in_list():
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record["context"] = [object()]
+    with pytest.raises(canonical.PayloadExposureError):
+        canonical.validate_payload_free_audit(record)
+
+
+@pytest.mark.parametrize("scalar", ["text", 1, 1.5, True, False, None])
+def test_validate_payload_free_audit_permits_json_native_scalars(scalar):
+    """Sanity check for the fail-closed rule above: every JSON-native
+    scalar type must remain explicitly permitted, not accidentally swept
+    into the new non-JSON-native rejection."""
+    record = copy.deepcopy(COMPLETE_AUDIT_RECORD)
+    record["context"] = {"value": scalar}
     canonical.validate_payload_free_audit(record)
 
 
@@ -523,12 +692,149 @@ def _minimal_apply_plan():
     }
 
 
+def _sha(digit):
+    return f"sha256:{digit * 64}"
+
+
+def _populated_manifest():
+    """A manifest with every top-level collection non-empty, exercising
+    every major ``$def`` (action, path, probe, conformanceClaim,
+    conformanceReport, evidenceRef, finding, policyHash, changePlane*,
+    residualRisk) at least once, so schema drift in a nested def is
+    caught even when the minimal fixture's empty arrays would hide it."""
+    document = _minimal_manifest()
+    document["pins"]["dependencies"] = [{"name": "jsonschema", "version": "4.26.0"}]
+    document["pins"]["specifications"] = [
+        {"name": "governed-actions-manifest", "version": "1.0.0"}
+    ]
+    document["policy_hashes"] = [{"path": "policy.json", "sha256": _sha("1")}]
+    document["action_inventory"] = [
+        {
+            "action_id": "send_email",
+            "display_name": "Send Email",
+            "aliases": ["email.send"],
+            "owner": "platform-team",
+            "declaration_refs": ["src/actions/send_email.py:12"],
+            "implementation_refs": ["src/actions/send_email.py:40"],
+            "input_schema_sha256": _sha("2"),
+            "output_schema_sha256": _sha("3"),
+            "source": "static-scan",
+            "consequence": "external-egress",
+            "secondary_consequences": ["write"],
+            "reversible": False,
+            "compensation_ref": None,
+            "execution_modes": ["interactive", "batch"],
+            "provider_hosted": False,
+            "approval_required": True,
+            "policy_ids": ["policy-1"],
+            "known_runtime_paths": ["path-1"],
+            "inventory_status": "pass",
+        }
+    ]
+    document["mediation_paths"] = [
+        {
+            "path_id": "path-1",
+            "action_id": "send_email",
+            "mode": "interactive",
+            "nodes": ["cli", "agent", "action"],
+            "pre_action_seam": "policy-gate",
+            "equivalent_control_ref": None,
+            "covered": True,
+            "status": "pass",
+            "evidence_refs": ["evidence-1"],
+        }
+    ]
+    document["conformance"] = {
+        "claims": [
+            {
+                "claim_id": "claim-1",
+                "description": "hooks fire before send_email",
+                "status": "pass",
+                "evidence_refs": ["evidence-1"],
+            }
+        ],
+        "reports": [
+            {
+                "report_id": "report-1",
+                "tool": "governed-actions-probe-suite",
+                "version": "0.1.0",
+                "generated_at": "2026-01-01T00:00:00Z",
+                "summary": "1 probe run, 1 pass",
+                "evidence_refs": ["evidence-1"],
+            }
+        ],
+        "application_probes": [
+            {
+                "probe_id": "probe-1",
+                "action_id": "send_email",
+                "path_id": "path-1",
+                "status": "pass",
+                "reason_code": "hook-observed",
+                "expected": "hook fires before send",
+                "observed": "hook fired before send",
+                "evidence_refs": ["evidence-1"],
+            }
+        ],
+    }
+    document["change_plane"]["workflows"] = [
+        {"path": ".github/workflows/deploy.yml", "sha256": _sha("4")}
+    ]
+    document["change_plane"]["identities"] = [
+        {"identity": "deploy-bot", "kind": "service-principal"}
+    ]
+    document["findings"] = [
+        {
+            "finding_id": "ACT-001",
+            "status": "must-fix",
+            "phase": "design",
+            "plane": "runtime",
+            "reason_code": "no-inventory",
+            "summary": "no action inventory found",
+            "details": "static scan found zero declared actions",
+            "affected_actions": ["send_email"],
+            "affected_paths": ["path-1"],
+            "evidence_refs": ["evidence-1"],
+            "remediation_ids": [],
+            "residual_risk_ref": None,
+        }
+    ]
+    document["evidence"] = [
+        {
+            "evidence_id": "evidence-1",
+            "kind": "static-scan",
+            "source": "src/actions/send_email.py",
+            "sha256": _sha("5"),
+            "collected_at": "2026-01-01T00:00:00Z",
+            "freshness_seconds": 0,
+            "live_verified": False,
+            "phase": "design",
+            "repository": "o/r",
+            "source_commit": "a" * 40,
+            "target_environment": None,
+            "policy_set_sha256": _sha("6"),
+        }
+    ]
+    document["residual_risks"] = [
+        {
+            "residual_risk_id": "risk-1",
+            "finding_id": "ACT-001",
+            "description": "no compensating control identified yet",
+        }
+    ]
+    document["summary"] = {
+        "verdict": "partial",
+        "pass": [],
+        "must_fix": ["ACT-001"],
+        "should_fix": [],
+        "not_verified": [],
+        "not_applicable": [],
+    }
+    return document
+
+
 def _validate(document, schema_path):
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    jsonschema = _jsonschema()
-    if jsonschema is not None:
-        jsonschema.Draft202012Validator.check_schema(schema)
-        jsonschema.Draft202012Validator(schema).validate(document)
+    _validator_for(schema).validate(document)
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["additionalProperties"] is False
 
@@ -537,19 +843,66 @@ def test_manifest_schema_is_draft_2020_12_and_accepts_minimal_document():
     _validate(_minimal_manifest(), REFERENCES / "governed-actions-manifest.schema.json")
 
 
+def test_manifest_schema_accepts_populated_document_exercising_every_major_def():
+    _validate(_populated_manifest(), REFERENCES / "governed-actions-manifest.schema.json")
+
+
+@pytest.mark.parametrize(
+    "collection,index,missing_key",
+    [
+        ("action_inventory", 0, "consequence"),
+        ("mediation_paths", 0, "status"),
+        ("evidence", 0, "sha256"),
+        ("findings", 0, "reason_code"),
+    ],
+)
+def test_manifest_schema_rejects_nested_object_missing_required_property(
+    collection, index, missing_key
+):
+    document = _populated_manifest()
+    del document[collection][index][missing_key]
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
+@pytest.mark.parametrize(
+    "collection,index",
+    [
+        ("action_inventory", 0),
+        ("mediation_paths", 0),
+        ("evidence", 0),
+        ("findings", 0),
+    ],
+)
+def test_manifest_schema_rejects_nested_object_with_unknown_property(
+    collection, index
+):
+    document = _populated_manifest()
+    document[collection][index]["unexpected_extra_field"] = "nope"
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
 def test_manifest_schema_rejects_unknown_root_property():
     schema = json.loads(
         (REFERENCES / "governed-actions-manifest.schema.json").read_text(
             encoding="utf-8"
         )
     )
-    jsonschema = _jsonschema()
-    if jsonschema is None:
-        pytest.skip("jsonschema not installed")
     document = _minimal_manifest()
     document["unexpected_field"] = "nope"
     with pytest.raises(jsonschema.exceptions.ValidationError):
-        jsonschema.Draft202012Validator(schema).validate(document)
+        _validator_for(schema).validate(document)
 
 
 def test_manifest_schema_requires_all_listed_root_fields():
@@ -589,6 +942,82 @@ def test_manifest_schema_defines_required_defs():
     assert schema["$defs"]["sha256"]["pattern"] == "^sha256:[0-9a-f]{64}$"
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "governed-actions-manifest.schema.json",
+        "governed-actions-apply-plan.schema.json",
+    ],
+)
+def test_timestamp_def_has_enforceable_rfc3339_pattern(filename):
+    """The RFC 3339 constraint must be *enforceable* on its own — a regex
+    "pattern" on the $def — rather than depending entirely on the
+    validator having format assertions enabled, since "format" is only an
+    annotation (a no-op) unless a FormatChecker is attached."""
+    schema = json.loads((REFERENCES / filename).read_text(encoding="utf-8"))
+    timestamp_def = schema["$defs"]["timestamp"]
+    assert timestamp_def["format"] == "date-time"
+    assert "pattern" in timestamp_def, (
+        f"{filename}: $defs.timestamp must carry an enforceable 'pattern', "
+        "not rely solely on the optional 'format' annotation"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_timestamp",
+    [
+        "2026-01-01",  # missing time-of-day
+        "2026/01/01T00:00:00Z",  # wrong date separators
+        "2026-01-01 00:00:00Z",  # space instead of 'T'
+        "2026-01-01T00:00:00",  # missing UTC designator/offset
+        "not-a-timestamp",
+        "",
+    ],
+)
+def test_manifest_schema_rejects_malformed_captured_at(bad_timestamp):
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document = _minimal_manifest()
+    document["captured_at"] = bad_timestamp
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
+@pytest.mark.parametrize(
+    "good_timestamp",
+    [
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:00:00.123Z",
+        "2026-01-01T00:00:00+02:00",
+        "2026-01-01T00:00:00-05:30",
+    ],
+)
+def test_manifest_schema_accepts_valid_rfc3339_captured_at(good_timestamp):
+    schema = json.loads(
+        (REFERENCES / "governed-actions-manifest.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document = _minimal_manifest()
+    document["captured_at"] = good_timestamp
+    _validator_for(schema).validate(document)
+
+
+def test_apply_plan_schema_rejects_malformed_captured_at():
+    schema = json.loads(
+        (REFERENCES / "governed-actions-apply-plan.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document = _minimal_apply_plan()
+    document["captured_at"] = "2026-01-01 00:00:00"
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        _validator_for(schema).validate(document)
+
+
 def test_apply_plan_schema_is_draft_2020_12_and_accepts_minimal_document():
     _validate(
         _minimal_apply_plan(), REFERENCES / "governed-actions-apply-plan.schema.json"
@@ -618,19 +1047,14 @@ def test_apply_plan_schema_rejects_self_applying_true():
             encoding="utf-8"
         )
     )
-    jsonschema = _jsonschema()
-    if jsonschema is None:
-        pytest.skip("jsonschema not installed")
     document = _minimal_apply_plan()
     document["self_applying"] = True
     with pytest.raises(jsonschema.exceptions.ValidationError):
-        jsonschema.Draft202012Validator(schema).validate(document)
+        _validator_for(schema).validate(document)
 
 
 def _validate_document(document, schema):
-    jsonschema = _jsonschema()
-    if jsonschema is not None:
-        jsonschema.Draft202012Validator(schema).validate(document)
+    _validator_for(schema).validate(document)
 
 
 def test_apply_plan_schema_item_requires_all_listed_fields():
@@ -782,3 +1206,39 @@ def test_finding_catalog_entries_have_required_fields():
         assert entry["plane"] in ("runtime", "change", "both")
         assert entry["summary"]
         assert entry["remediation"]
+
+
+def test_finding_catalog_gate_equals_severity_is_must_fix():
+    """The catalog gate flag is a derived value, not an independently
+    editable one: an entry blocks release (``gate: true``) if and only if
+    its severity is ``must-fix``. Drifting these apart would let a
+    should-fix finding silently start gating, or a must-fix finding
+    silently stop gating."""
+    catalog = json.loads(
+        (REFERENCES / "finding-catalog.json").read_text(encoding="utf-8")
+    )
+    for entry in catalog["findings"]:
+        assert entry["gate"] == (entry["severity"] == "must-fix"), entry["finding_id"]
+
+
+def test_finding_catalog_ids_match_manifest_schema_finding_id_enum():
+    catalog = json.loads(
+        (REFERENCES / "finding-catalog.json").read_text(encoding="utf-8")
+    )
+    catalog_ids = {entry["finding_id"] for entry in catalog["findings"]}
+    schema = _manifest_schema()
+    schema_ids = set(schema["$defs"]["findingId"]["enum"])
+    assert catalog_ids == EXPECTED_FINDING_IDS
+    assert schema_ids == EXPECTED_FINDING_IDS
+
+
+def test_finding_catalog_ids_match_apply_plan_schema_finding_id_enum():
+    catalog = json.loads(
+        (REFERENCES / "finding-catalog.json").read_text(encoding="utf-8")
+    )
+    catalog_ids = {entry["finding_id"] for entry in catalog["findings"]}
+    schema = _apply_plan_schema()
+    schema_ids = set(schema["$defs"]["findingId"]["enum"])
+    assert catalog_ids == EXPECTED_FINDING_IDS
+    assert schema_ids == EXPECTED_FINDING_IDS
+

@@ -34,8 +34,7 @@
       "$ref": "#/$defs/phase"
     },
     "captured_at": {
-      "type": "string",
-      "format": "date-time"
+      "$ref": "#/$defs/timestamp"
     },
     "source": {
       "$ref": "#/$defs/source"
@@ -127,6 +126,36 @@
         "subagent",
         "direct-tool",
         "provider-hosted-tool"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 date-time (e.g. 2026-01-01T00:00:00Z or with a numeric UTC offset). The pattern enforces the RFC 3339 shape directly so validation is not silently a no-op when a validator is built without format assertions enabled.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "findingId": {
+      "type": "string",
+      "description": "Bound to the fixed threadlight-governed-actions finding catalog (references/finding-catalog.json) — exactly these 18 finding_id values exist in this taxonomy.",
+      "enum": [
+        "ACT-001",
+        "ACT-002",
+        "MED-001",
+        "MED-002",
+        "MED-003",
+        "ENF-001",
+        "ENF-002",
+        "APR-001",
+        "OUT-001",
+        "AUD-001",
+        "PIN-001",
+        "GHCP-001",
+        "GHCP-002",
+        "GHCP-003",
+        "GHCP-004",
+        "GHCP-005",
+        "GHCP-006",
+        "OPS-001"
       ]
     },
     "assessor": {
@@ -241,8 +270,7 @@
           "$ref": "#/$defs/sha256"
         },
         "collected_at": {
-          "type": ["string", "null"],
-          "format": "date-time"
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
         },
         "freshness_seconds": {
           "type": ["integer", "null"],
@@ -264,8 +292,7 @@
           "type": ["string", "null"]
         },
         "policy_set_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^sha256:[0-9a-f]{64}$"
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
         }
       }
     },
@@ -288,7 +315,7 @@
       ],
       "properties": {
         "finding_id": {
-          "type": "string"
+          "$ref": "#/$defs/findingId"
         },
         "status": {
           "$ref": "#/$defs/status"
@@ -390,18 +417,16 @@
           }
         },
         "input_schema_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^sha256:[0-9a-f]{64}$"
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
         },
         "output_schema_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^sha256:[0-9a-f]{64}$"
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
         },
         "source": {
           "type": "string"
         },
         "consequence": {
-          "enum": ["read", "write", "external-egress", "irreversible", null]
+          "anyOf": [{ "$ref": "#/$defs/consequence" }, { "type": "null" }]
         },
         "secondary_consequences": {
           "type": "array",
@@ -574,8 +599,7 @@
           "type": "string"
         },
         "generated_at": {
-          "type": "string",
-          "format": "date-time"
+          "$ref": "#/$defs/timestamp"
         },
         "summary": {
           "type": "string"
@@ -676,12 +700,10 @@
           "minimum": 1
         },
         "oldest_source_at": {
-          "type": ["string", "null"],
-          "format": "date-time"
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
         },
         "expires_at": {
-          "type": ["string", "null"],
-          "format": "date-time"
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
         }
       }
     },
