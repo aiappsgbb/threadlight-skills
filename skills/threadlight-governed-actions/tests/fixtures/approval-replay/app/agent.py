@@ -8,18 +8,23 @@ itself, never invented here: this fixture is only the synthetic
 backend a real approval service would delegate that one atomic
 primitive to.
 
-``redeem`` never decides accept/replay/mismatch on its own: it only
-guarantees the persistent, on-disk nonce ledger holds at *most* one
-``{"nonce": ..., "digest": ...}`` record per nonce, appended exactly
-once — the first time that nonce is ever seen — under an exclusive OS
-file lock spanning the whole read-then-append critical section, so a
-second call for an already-recorded nonce (whatever digest it
-supplies this time) leaves the ledger completely untouched.
-``run_approval_probe`` independently reads that same ledger both
-before and after calling ``redeem`` to determine, from the ledger's
-own contents rather than this function's return value, exactly what
-happened: a first-time acceptance, a byte-identical replay, or a
-mismatched (mutated-field) reuse of the same nonce.
+``redeem`` never decides replay-vs-mismatch on its own — that binding
+comparison is ``run_approval_probe``'s job — but it *does* directly
+and durably record, per attempt, whether this specific redemption was
+accepted: it appends exactly one
+``{"nonce": ..., "digest": ..., "accepted": bool}`` record every
+single time it is called, under an exclusive OS file lock spanning
+the whole read-check-append critical section, atomically granting
+``accepted: true`` to the first-ever attempt for a given nonce and
+``accepted: false`` to every attempt after that nonce already has an
+accepted record — regardless of how many callers race for the same
+nonce concurrently. ``run_approval_probe`` reads this same ledger both
+before and after calling ``redeem`` and trusts *only* the newly
+appended record's own explicit ``accepted`` field as the directly
+observed outcome of this call — never an inference drawn merely from
+how the record count changed, which a fail-open store that silently
+overwrote a prior record in place (rather than truly appending) could
+otherwise fool.
 
 Nothing here ever carries a raw approval argument payload: only the
 caller-supplied canonical digest (itself a hash, never the underlying
@@ -41,15 +46,24 @@ def redeem(nonce: str, digest: str, ledger_path: str) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             handle.seek(0)
-            already_seen = any(
-                json.loads(line).get("nonce") == nonce
+            existing = [
+                json.loads(line)
                 for line in handle.read().splitlines()
                 if line.strip()
+            ]
+            already_accepted = any(
+                record.get("nonce") == nonce and record.get("accepted") is True
+                for record in existing
             )
-            if not already_seen:
-                handle.write(json.dumps({"nonce": nonce, "digest": digest}) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            accepted = not already_accepted
+            handle.write(
+                json.dumps(
+                    {"nonce": nonce, "digest": digest, "accepted": accepted}
+                )
+                + "\n"
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 

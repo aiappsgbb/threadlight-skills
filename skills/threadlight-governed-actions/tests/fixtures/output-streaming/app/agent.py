@@ -12,9 +12,11 @@ verdicts:
 - ``stream``: incremental (chunked) release. ``probes.run_output_probe``
   only ever trusts this as fully mediated when the probe contract
   itself declares an explicit, nonzero ``exposure_bound_bytes`` and
-  ``chunk_mediation: true`` *and* every chunk this fixture actually
-  released is independently proven, from the ledger, to have been
-  mediated and within that declared bound.
+  ``chunk_mediation: true`` *and* every single release event the
+  ledger records — every chunk, with no unmediated trailing release
+  event of any kind — is independently proven mediated and the
+  *total* bytes ever released across the whole stream stays within
+  that declared bound.
 
 Every event this fixture records to the ledger is a byte *count*
 (``bytes``) and a boolean mediation flag, never actual output content,
@@ -48,6 +50,12 @@ def emit_output(verdict: str, ledger_path: str) -> None:
                 json.dumps({"event": "egress", "bytes": _TOTAL_OUTPUT_BYTES}) + "\n"
             )
         elif verdict == "stream":
+            # Fully-mediated incremental release: every single byte
+            # of the protected output leaves only as a mediated
+            # chunk — never followed by a raw, unmediated bulk
+            # ``egress`` event of any kind, which would otherwise be
+            # exactly the kind of undeclared, unmediated exposure the
+            # probe must catch.
             remaining = _TOTAL_OUTPUT_BYTES
             while remaining > 0:
                 chunk_bytes = min(_CHUNK_SIZE_BYTES, remaining)
@@ -58,9 +66,6 @@ def emit_output(verdict: str, ledger_path: str) -> None:
                     )
                     + "\n"
                 )
-            handle.write(
-                json.dumps({"event": "egress", "bytes": _TOTAL_OUTPUT_BYTES}) + "\n"
-            )
         else:
             raise ValueError(f"unknown output verdict: {verdict!r}")
         handle.flush()

@@ -31,13 +31,24 @@ The approval/output/audit probes below exercise ``run_approval_probe``
 against the ``approval-replay`` fixture (a synthetic, service-side
 atomic nonce store), ``run_output_probe`` against the
 ``output-streaming`` fixture (a synthetic buffered/streaming output
-mediator), and ``run_privacy_probe_set`` (a fixed, in-code sample of a
-payload-free and a payload-bearing audit record). Every approval
-scenario that proves the anti-replay/binding control worked — a
-first-time acceptance, a replay, a mutated-field reuse, or an expired
-attempt rejected before ever reaching the nonce store — is itself a
-*passing* probe; only a genuine violation (the ledger proving a
-non-atomic double acceptance) is ``must-fix`` with reason ``APR-001``.
+mediator), and ``run_privacy_probe_set`` (which drives one fixed,
+synthetic dispatch call of its own against the *same real* target and
+independently validates whatever its own ``audit_sink`` actually
+produced). Every approval scenario that proves the anti-replay/binding
+control worked — a first-time acceptance, a replay, a mutated-field
+reuse, or an expired attempt rejected before ever reaching the nonce
+store — is itself a *passing* probe; only a genuine violation (the
+ledger failing to durably record exactly one new attempt, or its own
+newly appended record directly reporting a fail-open acceptance of a
+replay or mutated binding) is ``must-fix`` with reason ``APR-001``.
+Payload-freeness of the decision-audit trail (``AUD-001``) is judged
+*only* by ``run_privacy_probe_set``, never by ``run_approval_probe`` or
+``run_output_probe`` themselves, so an audit violation can never mask,
+or be masked by, either probe's own independent finding. Both
+``redeem``/``emit_output`` dispatch calls always run isolated in a
+sanitized, bounded child subprocess, exactly like Task 5's own
+enforcement-probe dispatch, so a hung or crashed target can never hang
+or kill the assessor.
 
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_probes.py -q
@@ -47,6 +58,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import threading
+import time
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
@@ -922,13 +935,15 @@ def test_approval_binds_to_transformed_arguments_not_raw_arguments(
 def test_approval_probe_reports_apr_001_when_ledger_proves_non_atomic_reuse(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
-    # A deliberately broken nonce store: it always appends a fresh
-    # record instead of atomically rejecting an already-consumed
-    # nonce. ``run_approval_probe`` must never trust the fixture's own
-    # silence about this — it independently proves the violation from
-    # the ledger's own contents (more records after the call than
-    # before, for the same nonce) and reports the catalog's ``APR-001``
-    # must-fix finding rather than a laundered pass.
+    # A deliberately broken, fail-open nonce store: it always grants
+    # ``accepted: true``, even to an attempt for a nonce that already
+    # has an accepted record. ``run_approval_probe`` must never trust
+    # the fixture's own self-reported ``accepted`` field blindly for
+    # this case either — it cross-checks each new record's ``accepted``
+    # value against the ledger's *own* prior history for that nonce,
+    # and reports the catalog's ``APR-001`` must-fix finding the moment
+    # a second attempt is fail-open-accepted rather than a laundered
+    # pass.
     root = tmp_path / "broken-nonce-store"
     app_dir = root / "app"
     app_dir.mkdir(parents=True)
@@ -941,7 +956,9 @@ AUDIT_EVENTS = []
 
 def redeem(nonce, digest, ledger_path):
     with open(ledger_path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"nonce": nonce, "digest": digest}) + "\\n")
+        handle.write(
+            json.dumps({"nonce": nonce, "digest": digest, "accepted": True}) + "\\n"
+        )
 ''',
         encoding="utf-8",
     )
@@ -962,12 +979,108 @@ def redeem(nonce, digest, ledger_path):
     replayed = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:01Z")
 
     assert approved.status == "pass"
+    assert approved.observed == "approval_accepted"
     assert replayed.status == "must-fix"
     assert replayed.reason_code == "APR-001"
-    assert replayed.observed == "nonce_reuse_not_atomic"
+    assert replayed.observed == "fail_open_replay_or_mutation_accepted"
 
     findings = findings_from_probes((approved, replayed))
     assert [(f.finding_id, f.status) for f in findings] == [("APR-001", "must-fix")]
+
+
+def test_approval_probe_dispatch_hang_does_not_hang_the_assessor(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # Req5: a target whose ``redeem`` hangs indefinitely must not be
+    # able to hang the assessor — the bounded child subprocess is
+    # killed at its own dispatch timeout, and since nothing was ever
+    # durably recorded to the ledger, the probe truthfully reports a
+    # must-fix outcome rather than a fabricated pass.
+    root = tmp_path / "approval-hanging-dispatch"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import time
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, ledger_path):
+    time.sleep(3600)
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    started = time.monotonic()
+    result = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+    elapsed = time.monotonic() - started
+    assert elapsed < probes._TASK6_DISPATCH_TIMEOUT_S + 30
+    assert result.status == "must-fix"
+    assert result.reason_code == "APR-001"
+    assert result.observed == "nonce_redemption_not_recorded"
+
+
+def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
+    approval_root: Path,
+):
+    # Req4: proves the fixture's own service-side nonce store is
+    # genuinely atomic under real concurrency, not merely
+    # sequentially-correct — many concurrent redemption attempts for
+    # the exact same nonce/digest must yield exactly one durably
+    # accepted record in the shared ledger, however many total attempt
+    # records are appended.
+    contract = probes.load_approval_contract(approval_root)
+    ledger_path = approval_root / str(contract["nonce_ledger"])
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+
+    nonce = "nonce-concurrent-0001"
+    digest = "sha256:" + "c" * 64
+    worker_count = 8
+    barrier = threading.Barrier(worker_count)
+    errors = []
+
+    def worker() -> None:
+        try:
+            barrier.wait(timeout=10)
+            probes._dispatch_task6_child(
+                approval_root,
+                str(contract["dispatch"]),
+                str(contract["audit_sink"]),
+                (nonce, digest, str(ledger_path)),
+            )
+        except Exception as error:  # pragma: no cover - surfaced via errors list
+            errors.append(error)
+
+    threads = [threading.Thread(target=worker) for _ in range(worker_count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors, errors
+
+    records = [
+        json.loads(line)
+        for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(records) == worker_count
+    accepted_records = [record for record in records if record.get("accepted") is True]
+    assert len(accepted_records) == 1
+    assert all(record["nonce"] == nonce for record in records)
 
 
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
@@ -1086,22 +1199,357 @@ def emit_output(verdict, ledger_path):
     assert result.observed == "unmediated_or_oversized_chunk_release"
 
 
+def test_output_probe_rejects_stream_exceeding_total_exposure_across_many_chunks(
+    tmp_path: Path,
+):
+    # Req1/req2: the exposure bound is a *total* budget across every
+    # release event, not a per-chunk ceiling re-checked in isolation.
+    # Three individually-within-bound, properly mediated 40-byte chunks
+    # summing to 120 bytes must still be rejected against a declared
+    # 96-byte total bound — many small chunks can never launder
+    # unlimited total exposure.
+    root = tmp_path / "output-many-small-chunks"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        for _ in range(3):
+            handle.write(
+                json.dumps({"event": "chunk", "bytes": 40, "mediated": True}) + "\\n"
+            )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+                "exposure_bound_bytes": 96,
+                "chunk_mediation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="stream")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "unmediated_or_oversized_chunk_release"
+
+
+def test_output_probe_rejects_stream_with_trailing_unmediated_egress(
+    tmp_path: Path,
+):
+    # Req1/req2: reproduces the exact false-pass this redesign fixes —
+    # properly mediated chunks within the declared bound, followed by
+    # one additional *unmediated* egress event the old per-chunk-only
+    # check never even inspected. Counting every release event (both
+    # ``chunk`` and ``egress``) as egress means this trailing leak
+    # alone must fail the whole stream.
+    root = tmp_path / "output-trailing-unmediated-egress"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        for _ in range(3):
+            handle.write(
+                json.dumps({"event": "chunk", "bytes": 32, "mediated": True}) + "\\n"
+            )
+        handle.write(json.dumps({"event": "egress", "bytes": 8}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+                "exposure_bound_bytes": 96,
+                "chunk_mediation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="stream")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "unmediated_or_oversized_chunk_release"
+
+
+def test_output_probe_rejects_allow_verdict_with_incidental_chunk_event(
+    tmp_path: Path,
+):
+    # Req2: an "allow" (buffered) verdict must only ever release via a
+    # single buffered, non-incremental event. Any incidental ``chunk``
+    # event recorded under an ``allow`` verdict — even one that would
+    # individually look mediated and within-bound — proves incremental
+    # release without the declared stream posture ``allow`` never
+    # grants, and must reject as OUT-001 rather than pass by omission.
+    root = tmp_path / "output-allow-with-chunk"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        handle.write(
+            json.dumps({"event": "chunk", "bytes": 8, "mediated": True}) + "\\n"
+        )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="allow")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "incremental_release_without_declared_stream_posture"
+
+
+def test_output_probe_reports_out_001_when_no_evidence_is_ever_recorded(
+    tmp_path: Path,
+):
+    # A dispatch callable that runs to completion but writes nothing
+    # to the ledger at all — no verdict record, no release record —
+    # is genuinely unobservable evidence, not a fabricated pass.
+    root = tmp_path / "output-no-evidence"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    pass
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="deny")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "no_verdict_evidence_recorded"
+
+
+def test_output_probe_dispatch_hang_does_not_hang_the_assessor(tmp_path: Path):
+    # Req5: a target whose dispatch callable hangs indefinitely must
+    # not be able to hang (or otherwise take down) the assessor — the
+    # bounded child subprocess is killed at its own dispatch timeout,
+    # and the probe returns a sane must-fix outcome from whatever
+    # ledger evidence (none) was actually recorded.
+    root = tmp_path / "output-hanging-dispatch"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import time
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    time.sleep(3600)
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    started = time.monotonic()
+    result = run_output_probe(root, verdict="deny")
+    elapsed = time.monotonic() - started
+    assert elapsed < probes._TASK6_DISPATCH_TIMEOUT_S + 30
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "no_verdict_evidence_recorded"
+
+
 def test_output_probe_rejects_unknown_verdict(fixture_root: Path):
     with pytest.raises(ProbeContractError):
         run_output_probe(fixture_root / "output-streaming", verdict="bogus")
 
 
-def test_audit_probe_rejects_payload_bearing_record(fixture_root: Path):
-    findings = findings_from_probes(run_privacy_probe_set(fixture_root))
+def test_audit_probe_rejects_payload_bearing_record(tmp_path: Path):
+    # A target whose nonce store behaves correctly but whose audit
+    # sink leaks a raw argument payload: ``run_privacy_probe_set``
+    # drives its own fixed synthetic redemption against this real
+    # target and independently validates the real ``AUDIT_EVENTS`` it
+    # actually produced, rather than trusting a declared ``audit_sink``
+    # as a dead, unchecked seam.
+    root = tmp_path / "audit-probe-set-leaky"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"nonce": nonce, "digest": digest, "accepted": True}) + "\\n"
+        )
+    AUDIT_EVENTS.append(
+        {
+            "audit_id": f"audit-approval-{nonce}",
+            "event": "approval_redemption_attempt",
+            "arguments": {"amount": 7, "currency": "USD"},
+        }
+    )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = findings_from_probes(run_privacy_probe_set(root))
     assert [(f.finding_id, f.status) for f in findings] == [("AUD-001", "must-fix")]
+
+    # Never mutates the target: the real, declared nonce ledger is
+    # never created by this probe set's own private, temporary
+    # dispatch, and no stray artifacts are left behind in governance/.
+    assert not (root / "governance" / "nonce-ledger.jsonl").exists()
+    assert list(governance_dir.iterdir()) == [governance_dir / "probe-contract.json"]
 
 
 def test_audit_probe_passes_payload_free_record(fixture_root: Path):
-    results = run_privacy_probe_set(fixture_root)
+    # Drives its own synthetic call against the real, checked-in,
+    # conformant approval-replay fixture and independently validates
+    # what it actually produced.
+    results = run_privacy_probe_set(fixture_root / "approval-replay")
     passing = [result for result in results if result.status == "pass"]
     assert passing
     assert all(result.observed == "payload_free_audit_record" for result in passing)
     assert findings_from_probes(tuple(passing)) == ()
+
+    # Never mutates the real, checked-in fixture.
+    assert not (
+        fixture_root / "approval-replay" / "governance" / "nonce-ledger.jsonl"
+    ).exists()
+    assert list(
+        (fixture_root / "approval-replay" / "governance").iterdir()
+    ) == [fixture_root / "approval-replay" / "governance" / "probe-contract.json"]
+
+
+def test_audit_probe_set_assesses_real_output_target_evidence(fixture_root: Path):
+    # Same non-hardcoded-sample proof, for the output-mediation family:
+    # drives its own synthetic "deny" call against the real,
+    # checked-in, conformant output-streaming fixture.
+    results = run_privacy_probe_set(fixture_root / "output-streaming")
+    passing = [result for result in results if result.status == "pass"]
+    assert passing
+    assert all(result.observed == "payload_free_audit_record" for result in passing)
+    assert findings_from_probes(tuple(passing)) == ()
+    assert not (
+        fixture_root / "output-streaming" / "governance" / "output-ledger.jsonl"
+    ).exists()
+
+
+def test_audit_probe_set_is_idempotent_and_never_mutates_target(fixture_root: Path):
+    root = fixture_root / "approval-replay"
+    first = run_privacy_probe_set(root)
+    second = run_privacy_probe_set(root)
+    summarize = lambda results: [  # noqa: E731
+        (r.status, r.reason_code, r.observed) for r in results
+    ]
+    assert summarize(first) == summarize(second)
+    assert not (root / "governance" / "nonce-ledger.jsonl").exists()
+    assert list((root / "governance").iterdir()) == [
+        root / "governance" / "probe-contract.json"
+    ]
+
+
+def test_audit_probe_set_rejects_root_with_no_recognized_contract(tmp_path: Path):
+    root = tmp_path / "not-a-task6-target"
+    (root / "governance").mkdir(parents=True)
+    (root / "governance" / "probe-contract.json").write_text(
+        json.dumps({"dispatch": "app.agent:noop", "audit_sink": "app.agent:EVENTS"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ProbeContractError):
+        run_privacy_probe_set(root)
 
 
 def test_output_probe_never_unconditionally_passes_allow_before_verdict(
@@ -1196,17 +1644,18 @@ def emit_output(verdict, ledger_path):
     assert result.observed == "nonzero_bytes_egressed_on_deny"
 
 
-def test_approval_probe_reports_aud_001_when_audit_sink_leaks_payload(
+def test_approval_probe_never_masks_audit_leak_and_privacy_probe_set_reports_it(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
     # The nonce store itself behaves correctly (atomic, one-time
-    # redemption identical to the checked-in fixture), but its audit
-    # sink leaks a raw argument payload. ``run_approval_probe`` must
-    # actually validate the drained ``AUDIT_EVENTS`` through the
-    # payload-free auditor rather than treating a declared
-    # ``audit_sink`` as a dead, unchecked seam — and the audit
-    # violation must override whatever the anti-replay evidence would
-    # otherwise have concluded.
+    # redemption identical to the checked-in fixture, using the
+    # conformant explicit ``accepted`` field), but its audit sink
+    # leaks a raw argument payload. ``run_approval_probe`` never judges
+    # audit-sink payload-freeness at all — it reports its own,
+    # unmasked anti-replay verdict — while a companion
+    # ``run_privacy_probe_set`` call against the very same root
+    # independently reports the leak as ``AUD-001``. Neither finding
+    # ever masks the other.
     root = tmp_path / "approval-leaky-audit"
     app_dir = root / "app"
     app_dir.mkdir(parents=True)
@@ -1224,15 +1673,19 @@ def redeem(nonce, digest, ledger_path):
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             handle.seek(0)
-            already_seen = any(
+            already_accepted = any(
                 json.loads(line).get("nonce") == nonce
+                and json.loads(line).get("accepted") is True
                 for line in handle.read().splitlines()
                 if line.strip()
             )
-            if not already_seen:
-                handle.write(json.dumps({"nonce": nonce, "digest": digest}) + "\\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            accepted = not already_accepted
+            handle.write(
+                json.dumps({"nonce": nonce, "digest": digest, "accepted": accepted})
+                + "\\n"
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
@@ -1259,17 +1712,35 @@ def redeem(nonce, digest, ledger_path):
         encoding="utf-8",
     )
 
-    result = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
-    assert result.status == "must-fix"
-    assert result.reason_code == "AUD-001"
-    assert result.observed == "payload_bearing_audit_event"
+    approval_result = run_approval_probe(
+        root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    assert approval_result.status == "pass"
+    assert approval_result.reason_code == probes._APPROVAL_PASS_REASON
+    assert approval_result.observed == "approval_accepted"
+
+    audit_results = run_privacy_probe_set(root)
+    audit_findings = findings_from_probes(audit_results)
+    assert [(f.finding_id, f.status) for f in audit_findings] == [
+        ("AUD-001", "must-fix")
+    ]
+
+    # Aggregating both together surfaces both independently: the audit
+    # violation never masks (and is never masked by) the approval
+    # probe's own passing verdict.
+    combined = findings_from_probes((approval_result,) + audit_results)
+    assert [(f.finding_id, f.status) for f in combined] == [("AUD-001", "must-fix")]
 
 
-def test_output_probe_reports_aud_001_when_audit_sink_leaks_payload(tmp_path: Path):
+def test_output_probe_never_masks_audit_leak_and_privacy_probe_set_reports_it(
+    tmp_path: Path,
+):
     # Otherwise-correct, well-ordered output mediation (verdict
     # recorded before the denial's zero-byte egress) is still a
-    # violation when the audit trail it produced leaks raw output
-    # content.
+    # target whose audit trail leaks raw output content —
+    # ``run_output_probe`` never judges that at all; it reports its
+    # own unmasked mediation verdict, while a companion
+    # ``run_privacy_probe_set`` call independently reports ``AUD-001``.
     root = tmp_path / "output-leaky-audit"
     app_dir = root / "app"
     app_dir.mkdir(parents=True)
@@ -1310,10 +1781,19 @@ def emit_output(verdict, ledger_path):
         encoding="utf-8",
     )
 
-    result = run_output_probe(root, verdict="deny")
-    assert result.status == "must-fix"
-    assert result.reason_code == "AUD-001"
-    assert result.observed == "payload_bearing_audit_event"
+    output_result = run_output_probe(root, verdict="deny")
+    assert output_result.status == "pass"
+    assert output_result.reason_code == probes._OUTPUT_PASS_REASON
+    assert output_result.observed == "zero_bytes_egressed"
+
+    audit_results = run_privacy_probe_set(root)
+    audit_findings = findings_from_probes(audit_results)
+    assert [(f.finding_id, f.status) for f in audit_findings] == [
+        ("AUD-001", "must-fix")
+    ]
+
+    combined = findings_from_probes((output_result,) + audit_results)
+    assert [(f.finding_id, f.status) for f in combined] == [("AUD-001", "must-fix")]
 
 
 def test_finding_templates_agree_with_catalog_plane_for_shared_ids():

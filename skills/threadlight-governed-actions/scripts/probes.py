@@ -135,14 +135,15 @@ CTK/upstream conformance evidence is tracked separately elsewhere in the
 assessor and never substitutes for these application-path probes.
 
 Task 6 adds three further, independent probe families below (approval
-anti-replay, output mediation, and payload-free audit). Unlike the
-application-path probes above, these run the target's fixture callables
-in-process rather than in an isolated subprocess: anti-replay's own
-persistent, service-side nonce ledger must survive across sequential
-calls within one test, which an isolated subprocess offers no simpler
-way to prove than a real, fixed-path ledger file already gives it
-in-process, and neither probe family carries an analogous crash/hang/
-lying-child threat model requiring subprocess isolation. See
+anti-replay, output mediation, and payload-free audit). Their
+``redeem``/``emit_output`` dispatch seams run in the exact same kind of
+isolated, sanitized subprocess as the application-path probes above —
+a target whose dispatch seam hangs, exits the interpreter, or crashes
+outright can never hang or kill this assessor process itself. Anti-
+replay's own persistent, service-side nonce ledger is still a real,
+fixed-path file on disk that survives across sequential calls within
+one test; the isolation only changes *how* the dispatch callable is
+invoked, never where its evidence is durably recorded. See
 ``run_approval_probe``, ``run_output_probe``, and
 ``run_privacy_probe_set`` for each family's own docstring.
 """
@@ -155,6 +156,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -1322,6 +1324,158 @@ def _run_as_child() -> None:
 # Task 6: approval anti-replay, output mediation, and payload-free audit
 # ----------------------------------------------------------------------
 
+# The Task 6 isolated child's own argv sentinel, mirroring Task 5's
+# ``--child`` — a distinct value so ``python3 probes.py --child`` and
+# ``python3 probes.py --task6-child`` can never be confused with one
+# another.
+_TASK6_CHILD_ARG = "--task6-child"
+
+# A generous, harness-level bound on the Task 6 dispatch callable's own
+# execution, applied only *after* the ready marker is observed (see
+# ``_dispatch_task6_child``). Task 6 probe contracts declare no
+# ``timeout_ms`` of their own — every fixture call is a single,
+# synchronous, synthetic operation expected to complete near-instantly
+# — so this fixed bound exists solely to keep a hung or wedged target
+# from ever blocking a probe run forever.
+_TASK6_DISPATCH_TIMEOUT_S: float = 2.0
+
+
+def _dispatch_task6_child(
+    root_path: Path,
+    dispatch_ref: str,
+    audit_sink_ref: str,
+    args: Tuple[str, ...],
+) -> Mapping[str, object]:
+    """Invoke a Task 6 fixture's dispatch callable in an isolated child.
+
+    Mirrors ``_dispatch_child`` above: a sanitized, allow-listed
+    environment (never the parent's own ``os.environ``), a fixed-length
+    ready marker written only after the dispatch callable is resolved
+    and *before* it is ever invoked, and a hard harness-level timeout
+    applied only once that marker is observed — so a target whose
+    ``redeem``/``emit_output`` seam hangs, crashes, or exits the
+    interpreter outright can never hang or kill this assessor process
+    itself.
+
+    Whatever the target durably wrote to its own declared, file-based
+    ledger before any such fault is the *only* evidence this function's
+    caller ever trusts for that ledger's contents — never this
+    function's own return value. This also drains and relays the
+    resolved ``audit_sink`` list's contents back to the parent as
+    plain, unjudged records (under ``"audit_records"``, or ``None`` when
+    the child never got far enough to report them): the untrusted
+    child never decides payload-freeness itself, it only hands back
+    what it collected, exactly like the ledger file itself.
+    """
+    stdin_payload = {
+        "dispatch": dispatch_ref,
+        "audit_sink": audit_sink_ref,
+        "args": list(args),
+    }
+    stdin_bytes = canonical.canonical_bytes(stdin_payload)
+
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PYTHONHASHSEED": "0",
+        "PYTHONPATH": str(root_path),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONIOENCODING": "utf-8",
+    }
+
+    try:
+        process = subprocess.Popen(  # noqa: S603 - fixed, trusted argv; no shell
+            [sys.executable, str(THIS_FILE), _TASK6_CHILD_ARG],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            cwd=str(root_path),
+        )
+    except OSError as error:
+        raise ProbeToolingError(
+            f"cannot start the isolated Task 6 probe subprocess: {error}"
+        ) from error
+
+    try:
+        assert process.stdin is not None  # narrows Optional for mypy/readers
+        process.stdin.write(stdin_bytes)
+        process.stdin.close()
+    except (OSError, ValueError):
+        # A child that crashed before ever reading stdin can close its
+        # end of the pipe first; the ready-handshake wait below still
+        # correctly resolves this to an abnormal/unobservable outcome.
+        pass
+
+    child_error: Optional[str] = None
+    audit_records: Optional[list] = None
+
+    ready = _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S)
+    if not ready:
+        process.kill()
+        _reap_killed_child(process)
+        child_error = "startup_failed"
+    else:
+        try:
+            stdout_bytes, _stderr_bytes = process.communicate(
+                timeout=_TASK6_DISPATCH_TIMEOUT_S
+            )
+        except subprocess.TimeoutExpired:
+            process.kill()
+            _reap_killed_child(process)
+            child_error = "timeout"
+        else:
+            if process.returncode == 0:
+                try:
+                    parsed = json.loads(stdout_bytes.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    child_error = "malformed_output"
+                else:
+                    if isinstance(parsed, list):
+                        audit_records = parsed
+                    else:
+                        child_error = "malformed_output"
+            else:
+                child_error = "nonzero_exit"
+
+    return {"audit_records": audit_records, "child_error": child_error}
+
+
+def _run_task6_as_child() -> None:
+    """Isolated-subprocess entry point for Task 6's dispatch callables.
+
+    Reads the canonical JSON payload from stdin, imports and resolves
+    the fixture's ``dispatch`` callable, signals readiness, invokes it
+    with the given positional *args*, then drains its declared
+    ``audit_sink`` list and writes it — verbatim, unvalidated — as a
+    canonical JSON array to stdout. Payload-freeness judgment is never
+    made here: this untrusted child only relays what it observed, and
+    the trusted parent process is the only place that ever calls
+    ``canonical.validate_payload_free_audit`` on it.
+    """
+    raw = sys.stdin.buffer.read()
+    payload = json.loads(raw.decode("utf-8"))
+    dispatch_ref = str(payload["dispatch"])
+    audit_sink_ref = str(payload["audit_sink"])
+    args = payload["args"]
+
+    dispatch_module_name, dispatch_attr = dispatch_ref.split(":", 1)
+    dispatch_module = importlib.import_module(dispatch_module_name)
+    dispatch = getattr(dispatch_module, dispatch_attr)
+
+    # Import/resolution is finished: signal readiness *before* invoking
+    # the dispatch callable so the parent's harness-level timeout clock
+    # starts from here, not from process launch.
+    sys.stdout.buffer.write(_CHILD_READY_MARKER)
+    sys.stdout.buffer.flush()
+
+    dispatch(*args)
+
+    audit_module_name, audit_attr = audit_sink_ref.split(":", 1)
+    audit_module = importlib.import_module(audit_module_name)
+    audit_events = list(getattr(audit_module, audit_attr))
+    sys.stdout.buffer.write(canonical.canonical_bytes(audit_events))
+    sys.stdout.flush()
+
 
 @dataclass(frozen=True)
 class ApprovalBinding:
@@ -1408,40 +1562,24 @@ _RECOGNIZED_OUTPUT_VERDICTS: Tuple[str, ...] = ("deny", "allow", "stream")
 
 _AUDIT_EXPECTED = "audit_record_payload_free"
 _AUDIT_PASS_REASON = "payload-free-audit-enforced"
+_AUDIT_PROBE_ID = "payload-free-audit"
+_AUDIT_NOT_VERIFIED_REASON = "audit-probe-outcome-not-verified"
 
-# Two fixed, in-module sample decision-audit records: one payload-free
-# (only ids, decisions, and derived hashes — never a raw argument), one
-# deliberately payload-bearing (a raw ``arguments`` field) so
-# ``run_privacy_probe_set`` always has exactly one of each to prove both
-# that its validator actually rejects a real violation and that a
-# well-formed record still passes. Business policy is never invented
-# here — both are synthetic, and the *only* judgment made is whether
-# ``canonical.validate_payload_free_audit`` accepts or rejects them.
-_AUDIT_PROBE_SAMPLES: Tuple[Tuple[str, Mapping[str, object]], ...] = (
-    (
-        "payload-free-audit-record",
-        MappingProxyType(
-            {
-                "audit_id": "audit-payments-refund-0001",
-                "action_id": "payments.refund",
-                "decision": "transform",
-                "argument_hash": "sha256:" + "c" * 64,
-                "approval_digest": "sha256:" + "d" * 64,
-            }
-        ),
-    ),
-    (
-        "payload-bearing-audit-record",
-        MappingProxyType(
-            {
-                "audit_id": "audit-payments-refund-0002",
-                "action_id": "payments.refund",
-                "decision": "transform",
-                "arguments": {"amount": 7, "currency": "USD"},
-            }
-        ),
-    ),
-)
+# Fixed, deterministic, synthetic arguments for ``run_privacy_probe_set``'s
+# own single driven dispatch call against an approval-family target —
+# arbitrary but stable so every run drives exactly the same case; never
+# a real approval, and never the target's own declared, checked-in
+# ledger (see the private temporary ledger construction below).
+_AUDIT_PROBE_NONCE = "audit-probe-nonce"
+_AUDIT_PROBE_DIGEST = "sha256:" + "0" * 64
+
+# Fixed, deterministic verdict for ``run_privacy_probe_set``'s own
+# single driven dispatch call against an output-family target — "deny"
+# is chosen because it is always a recognized verdict regardless of
+# what a given output-mediation fixture happens to declare (a "stream"
+# verdict's own validity depends on contract fields this probe set has
+# no business inspecting; "deny" never does).
+_AUDIT_PROBE_VERDICT = "deny"
 
 
 def _validate_relative_ledger_path(root_path: Path, field_name: str, value: object) -> str:
@@ -1477,6 +1615,7 @@ def _validate_relative_ledger_path(root_path: Path, field_name: str, value: obje
 
 
 def _validate_dispatch_and_audit_sink_refs(raw: Mapping[str, object]) -> None:
+    module_names = {}
     for key in ("dispatch", "audit_sink"):
         value = raw.get(key)
         if not isinstance(value, str) or ":" not in value:
@@ -1484,6 +1623,13 @@ def _validate_dispatch_and_audit_sink_refs(raw: Mapping[str, object]) -> None:
                 f"probe contract {key!r} must be an importable 'module:attr' "
                 f"reference string; got {value!r}"
             )
+        module_names[key] = value.split(":", 1)[0]
+    if module_names["dispatch"] != module_names["audit_sink"]:
+        raise ProbeContractError(
+            "probe contract 'dispatch' and 'audit_sink' must share the "
+            f"same module for a Task 6 probe; got "
+            f"{module_names['dispatch']!r} and {module_names['audit_sink']!r}"
+        )
 
 
 def _load_raw_contract(root_path: Path) -> Mapping[str, object]:
@@ -1578,58 +1724,6 @@ def load_output_contract(root: Path) -> Mapping[str, object]:
     )
 
 
-def _import_fixture_module(root: Path, module_name: str):
-    """Import *module_name* fresh from *root*, purging any stale cache.
-
-    Both Task 6 fixture families reuse the same top-level module path
-    (``app.agent``) across different fixture roots. A plain
-    ``importlib.import_module`` would silently return whatever the
-    interpreter already had cached in ``sys.modules`` from a previous
-    fixture root's import — the wrong module entirely. This purges every
-    ``sys.modules`` entry for *module_name*'s top-level package and all
-    of its submodules first, temporarily prepends *root* to ``sys.path``
-    so the import actually resolves against the given fixture root, and
-    removes that path entry again afterward.
-    """
-    root_str = str(root)
-    top_level = module_name.split(".", 1)[0]
-    for name in list(sys.modules):
-        if name == top_level or name.startswith(top_level + "."):
-            del sys.modules[name]
-    sys.path.insert(0, root_str)
-    try:
-        return importlib.import_module(module_name)
-    finally:
-        sys.path.remove(root_str)
-
-
-def _resolve_dispatch_and_audit_sink(root_path: Path, contract: Mapping[str, object]):
-    """Import the contract's fixture module once, returning both seams.
-
-    ``dispatch`` and ``audit_sink`` must name the same module: importing
-    it only once and fetching both attributes from that single module
-    object is what lets a fixture's in-memory ``AUDIT_EVENTS`` list
-    (appended by ``dispatch``) actually be observed by this same call —
-    re-importing per reference would purge and reload the module between
-    the two lookups, silently losing whatever the first import just
-    appended.
-    """
-    dispatch_ref = str(contract["dispatch"])
-    audit_ref = str(contract["audit_sink"])
-    dispatch_module_name, dispatch_attr = dispatch_ref.split(":", 1)
-    audit_module_name, audit_attr = audit_ref.split(":", 1)
-    if dispatch_module_name != audit_module_name:
-        raise ProbeContractError(
-            "probe contract 'dispatch' and 'audit_sink' must share the "
-            f"same module for an in-process Task 6 probe; got "
-            f"{dispatch_module_name!r} and {audit_module_name!r}"
-        )
-    module = _import_fixture_module(root_path, dispatch_module_name)
-    dispatch = getattr(module, dispatch_attr)
-    audit_events = getattr(module, audit_attr)
-    return dispatch, audit_events
-
-
 def _read_nonce_records(ledger_path: Path) -> List[Mapping[str, object]]:
     """Read the approval anti-replay nonce ledger's JSONL records.
 
@@ -1638,52 +1732,6 @@ def _read_nonce_records(ledger_path: Path) -> List[Mapping[str, object]]:
     ``_read_ledger_events``'s tolerant, best-effort line parsing.
     """
     return _read_ledger_events(ledger_path)
-
-
-def _find_payload_bearing_audit_event(
-    audit_events,
-) -> Optional[Mapping[str, object]]:
-    """Return the first drained audit event that fails payload-free validation.
-
-    Actually validates every event a fixture's dispatch call appended
-    to its declared ``audit_sink`` through
-    ``canonical.validate_payload_free_audit`` — the same validator
-    Task 5's application-path probes already use. Declaring an
-    ``audit_sink`` in a probe contract is never sufficient on its own;
-    a fixture whose audit trail leaks a raw payload must be caught, not
-    silently trusted just because the seam is named. Returns ``None``
-    when every drained event is payload-free.
-    """
-    for record in audit_events:
-        try:
-            canonical.validate_payload_free_audit(record)
-        except canonical.PayloadExposureError:
-            return record
-    return None
-
-
-def _audit_violation_result(
-    probe_id: str, action_id: Optional[str], record: Mapping[str, object]
-) -> ProbeResult:
-    """Build the ``AUD-001`` override result for a leaking audit event.
-
-    A payload-bearing audit record takes priority over whatever the
-    approval or output probe's own control logic would otherwise have
-    concluded: even a correctly enforced anti-replay or output-
-    mediation control is still a genuine violation if the audit trail
-    it produced along the way leaked a raw payload.
-    """
-    audit_id = record.get("audit_id")
-    return ProbeResult(
-        probe_id=probe_id,
-        action_id=action_id,
-        path_id=None,
-        status="must-fix",
-        reason_code="AUD-001",
-        expected=_AUDIT_EXPECTED,
-        observed="payload_bearing_audit_event",
-        evidence_refs=(str(audit_id),) if audit_id else (),
-    )
 
 
 def _first_event_index(events, event_type: str) -> Optional[int]:
@@ -1702,8 +1750,10 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     replay rejected, a mutated-field reuse rejected, or an expired
     binding rejected before ever touching the nonce store — exactly like
     Task 5's enforcement probes, where "pass" means "proven safe", not
-    merely "approved". Only a genuine violation (the ledger itself
-    proving a non-atomic double acceptance) is ``must-fix`` with reason
+    merely "approved". Only a genuine violation — the ledger failing to
+    durably record exactly one new attempt, or the ledger's own
+    redemption record itself directly reporting a fail-open acceptance
+    of a replay or a mutated binding — is ``must-fix`` with reason
     ``APR-001``.
 
     Expiry is checked *first*, using plain string comparison against
@@ -1713,27 +1763,40 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     (``now >= expires_at`` counts as expired; a window's own expiry
     instant is exclusive, never valid).
 
-    This never blindly trusts the fixture's ``dispatch`` (a synthetic
-    atomic ``redeem(nonce, digest, ledger_path)``) return value: it
-    reads the persistent, on-disk nonce ledger both before and after
-    calling it and independently determines, from the ledger's own
-    contents, whether this is a first-time acceptance (no prior record,
-    exactly one record now, matching this digest), a replay (a prior
-    record whose digest matches this one), a binding mismatch (a prior
-    record whose digest does not match — covering every mutated field:
-    subject, role, target, tenant, policy, action, or arguments, and a
-    reused nonce whose original approval was bound to different,
-    pre-transform arguments), or a proven non-atomic reuse (the ledger
-    grew an extra record for a nonce that already had one) — never a
-    self-reported outcome the fixture itself could fabricate.
+    ``dispatch`` (a synthetic, service-side atomic
+    ``redeem(nonce, digest, ledger_path)``) always runs isolated in a
+    sanitized, bounded child subprocess (see
+    ``_dispatch_task6_child``), so a hung or crashed target can never
+    hang or kill this assessor — but its own in-process return value
+    (and even whether it ever completed at all) is never trusted
+    either way. The persistent, on-disk nonce ledger is read both
+    before and after that call, and this only ever *observes* the
+    outcome the ledger's own newly appended record reports for itself
+    via its explicit ``accepted`` field — it never infers accept,
+    replay, or mismatch merely from how the record count changed, nor
+    from comparing digests itself, which a fail-open store that
+    silently granted a replay or a mutated binding could otherwise
+    mask. A first-ever attempt for a nonce must itself durably record
+    ``accepted: true`` to pass; once a nonce already has one accepted
+    record, any later attempt reporting ``accepted: true`` again is a
+    proven fail-open acceptance (``APR-001``) regardless of whether it
+    is a byte-identical replay or a mutated binding, and only a
+    genuinely rejected (``accepted: false``) later attempt passes —
+    distinguished as a replay (digest matches the original accepted
+    record) or a binding mismatch (it does not, covering every mutated
+    field: subject, role, target, tenant, policy, action, or
+    arguments, including a reused nonce whose original approval was
+    bound to different, pre-transform arguments). A ledger that does
+    not grow by exactly one durable record for this single attempt —
+    no growth at all (a hung/crashed target, or a hang bounded by the
+    dispatch child's own timeout), or more than one record appended —
+    can never be trusted as a proven pass either.
 
-    Every audit event the fixture's ``redeem`` call actually drained
-    into its declared ``audit_sink`` is itself validated through
-    ``canonical.validate_payload_free_audit`` before any anti-replay
-    judgment is trusted: a payload-bearing audit record overrides
-    whatever the nonce-ledger evidence would otherwise conclude, and is
-    reported as ``AUD-001`` instead — a declared ``audit_sink`` that is
-    never actually checked would make audit delegation dead code.
+    Payload-freeness of whatever the fixture's ``redeem`` call drained
+    into its declared ``audit_sink`` is never judged here at all —
+    that is ``run_privacy_probe_set``'s job alone, precisely so an
+    audit-trail violation (``AUD-001``) can never mask, or be masked
+    by, this probe's own independent anti-replay finding.
     """
     root_path = Path(root).resolve()
     contract = load_approval_contract(root_path)
@@ -1753,48 +1816,61 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     digest = approval_digest(binding)
     nonce_ledger_path = root_path / contract["nonce_ledger"]
 
-    before_matches = [
-        record
-        for record in _read_nonce_records(nonce_ledger_path)
-        if record.get("nonce") == binding.nonce
-    ]
+    before_records = _read_nonce_records(nonce_ledger_path)
+    prior_accepted_digest: Optional[str] = None
+    for record in before_records:
+        if record.get("nonce") == binding.nonce and record.get("accepted") is True:
+            prior_accepted_digest = record.get("digest")
+            break
+    prior_accepted_for_nonce = prior_accepted_digest is not None
 
-    dispatch, audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
-    dispatch(binding.nonce, digest, str(nonce_ledger_path))
+    _dispatch_task6_child(
+        root_path,
+        str(contract["dispatch"]),
+        str(contract["audit_sink"]),
+        (binding.nonce, digest, str(nonce_ledger_path)),
+    )
 
-    audit_violation = _find_payload_bearing_audit_event(audit_events)
-    if audit_violation is not None:
-        return _audit_violation_result(
-            _APPROVAL_PROBE_ID, binding.action_id, audit_violation
+    after_records = _read_nonce_records(nonce_ledger_path)
+
+    new_record_count = len(after_records) - len(before_records)
+    if new_record_count != 1:
+        observed = (
+            "nonce_reuse_not_atomic"
+            if new_record_count > 1
+            else "nonce_redemption_not_recorded"
         )
-
-    after_matches = [
-        record
-        for record in _read_nonce_records(nonce_ledger_path)
-        if record.get("nonce") == binding.nonce
-    ]
-
-    if not before_matches:
-        if len(after_matches) == 1 and after_matches[0].get("digest") == digest:
-            observed = "approval_accepted"
-            status = "pass"
-            reason_code = _APPROVAL_PASS_REASON
-        else:
-            observed = "nonce_redemption_not_recorded"
-            status = "must-fix"
-            reason_code = "APR-001"
-    elif len(after_matches) > len(before_matches):
-        observed = "nonce_reuse_not_atomic"
         status = "must-fix"
         reason_code = "APR-001"
     else:
-        recorded_digest = after_matches[0].get("digest") if after_matches else None
-        if recorded_digest == digest:
-            observed = "replay_rejected"
+        new_record = after_records[-1]
+        if new_record.get("nonce") != binding.nonce:
+            observed = "nonce_redemption_not_recorded"
+            status = "must-fix"
+            reason_code = "APR-001"
         else:
-            observed = "binding_mismatch_rejected"
-        status = "pass"
-        reason_code = _APPROVAL_PASS_REASON
+            accepted_now = new_record.get("accepted") is True
+            if not prior_accepted_for_nonce:
+                if accepted_now:
+                    observed = "approval_accepted"
+                    status = "pass"
+                    reason_code = _APPROVAL_PASS_REASON
+                else:
+                    observed = "nonce_redemption_not_recorded"
+                    status = "must-fix"
+                    reason_code = "APR-001"
+            elif accepted_now:
+                observed = "fail_open_replay_or_mutation_accepted"
+                status = "must-fix"
+                reason_code = "APR-001"
+            else:
+                observed = (
+                    "replay_rejected"
+                    if prior_accepted_digest == digest
+                    else "binding_mismatch_rejected"
+                )
+                status = "pass"
+                reason_code = _APPROVAL_PASS_REASON
 
     return ProbeResult(
         probe_id=_APPROVAL_PROBE_ID,
@@ -1815,31 +1891,54 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     anything else raises :class:`ProbeContractError`. Every verdict is
     first checked for *ordering*, never assumed: this probe locates the
     ledger's own ``"verdict_received"`` record and proves no
-    ``"egress"``/``"chunk"`` release event precedes it (or exists at
-    all when no such record was ever written) — a release recorded
-    before the verdict is itself always a ``must-fix`` regardless of
-    which verdict eventually followed, so ``"allow"`` is never an
-    unconditional pass. Once ordering is proven, ``"deny"`` only passes
-    when the *total* bytes ever released — ``"egress"`` events *and*
-    every ``"chunk"`` event's bytes both counted, so a denial cannot be
-    laundered into a pass merely by leaking bytes framed as chunks
-    instead of a single egress record — is zero; ``"allow"`` passes for
-    the buffered posture releasing the complete output only after the
-    verdict is known; ``"stream"`` (incremental release) only ever
-    passes when the probe contract itself declares an explicit, nonzero
-    ``exposure_bound_bytes`` and ``chunk_mediation: true`` *and* the
-    observation ledger independently proves every released chunk was
-    mediated and within that declared bound — a contract that omits
-    either declaration rejects the stream verdict as ``OUT-001`` before
-    the dispatch seam is ever invoked at all (proven by fixtures whose
-    dispatch callable raises if ever called in that case).
+    ``"egress"``/``"chunk"`` release event precedes it — a release
+    recorded before the verdict is itself always a ``must-fix``
+    regardless of which verdict eventually followed, so ``"allow"`` is
+    never an unconditional pass. A ledger that never even records a
+    ``"verdict_received"`` event at all — including a hung or crashed
+    dispatch call that never got far enough to write anything, bounded
+    by the isolated dispatch child's own timeout rather than ever
+    hanging this assessor — is likewise never a silent pass; it is
+    reported as ``OUT-001`` on its own lack of evidence.
 
-    Every audit event the fixture's dispatch call actually drained into
-    its declared ``audit_sink`` is itself validated through
-    ``canonical.validate_payload_free_audit`` before any mediation
-    judgment is trusted: a payload-bearing audit record overrides
-    whatever the ledger evidence would otherwise conclude, and is
-    reported as ``AUD-001`` instead.
+    Once ordering is proven, ``"deny"`` only passes when the *total*
+    bytes ever released — every ``"egress"`` event *and* every
+    ``"chunk"`` event's bytes, both counted, so a denial cannot be
+    laundered into a pass merely by leaking bytes framed as chunks
+    instead of a single egress record — is zero. ``"allow"`` passes for
+    the buffered posture releasing the complete output only after the
+    verdict is known — but only when every recorded release event is a
+    single, buffered ``"egress"``; an ``"allow"`` verdict whose ledger
+    shows even one incidental ``"chunk"`` event is itself an
+    undeclared incremental release, since ``"allow"`` never declares an
+    exposure bound or chunk mediation the way ``"stream"`` must, and is
+    rejected as ``OUT-001`` rather than laundered through unconditionally.
+    ``"stream"`` (incremental release) only ever passes when the probe
+    contract itself declares an explicit, nonzero ``exposure_bound_bytes``
+    and ``chunk_mediation: true`` *and* the observation ledger
+    independently proves every single release event of either kind —
+    every ``"chunk"`` and every ``"egress"`` — is itself individually
+    mediated (``mediated: true``, a positive integer byte count) *and*
+    that their combined total across the whole stream never exceeds
+    that declared bound; a contract that omits either declaration
+    rejects the stream verdict as ``OUT-001`` before the dispatch seam
+    is ever invoked at all (proven by fixtures whose dispatch callable
+    raises if ever called in that case), and a single trailing raw,
+    unmediated release event is always enough to fail an otherwise
+    fully-mediated stream, since counting every release event (not
+    just ``"chunk"``-typed ones) toward both the mediation check and
+    the total-exposure budget is what actually proves no egress has
+    happened outside the declared, mediated posture.
+
+    ``dispatch`` always runs isolated in a sanitized, bounded child
+    subprocess (see ``_dispatch_task6_child``); only the persistent,
+    on-disk observation ledger it durably wrote before any hang, crash,
+    or fault is ever trusted as evidence — never the subprocess's own
+    completion status. Payload-freeness of whatever it drained into
+    its declared ``audit_sink`` is never judged here at all — that is
+    ``run_privacy_probe_set``'s job alone, so an audit-trail violation
+    (``AUD-001``) can never mask, or be masked by, this probe's own
+    independent mediation finding.
 
     Resets (deletes) the fixture's ledger file before calling dispatch
     and again afterward, so a fixture's ledger — checked in once and
@@ -1880,18 +1979,16 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     try:
         ledger_dir.mkdir(parents=True, exist_ok=True)
         ledger_path.unlink(missing_ok=True)
-        dispatch, audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
-        dispatch(verdict, str(ledger_path))
+        _dispatch_task6_child(
+            root_path,
+            str(contract["dispatch"]),
+            str(contract["audit_sink"]),
+            (verdict, str(ledger_path)),
+        )
         events = _read_ledger_events(ledger_path)
     finally:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs(created_dirs)
-
-    audit_violation = _find_payload_bearing_audit_event(audit_events)
-    if audit_violation is not None:
-        return _audit_violation_result(
-            _OUTPUT_PROBE_ID, contract["action_id"], audit_violation
-        )
 
     verdict_index = _first_event_index(events, "verdict_received")
     release_indices = [
@@ -1899,40 +1996,61 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         for index, event in enumerate(events)
         if event.get("event") in ("egress", "chunk")
     ]
-    premature_release = any(
+
+    if verdict_index is None and not release_indices:
+        observed = "no_verdict_evidence_recorded"
+        status = "must-fix"
+    elif any(
         verdict_index is None or index < verdict_index for index in release_indices
-    )
-
-    egress_bytes = sum(
-        int(event.get("bytes", 0)) for event in events if event.get("event") == "egress"
-    )
-    chunk_events = [event for event in events if event.get("event") == "chunk"]
-    chunk_bytes = sum(int(event.get("bytes", 0)) for event in chunk_events)
-    total_released_bytes = egress_bytes + chunk_bytes
-
-    if premature_release:
+    ):
         observed = "output_released_before_verdict"
         status = "must-fix"
     elif verdict == "deny":
-        if total_released_bytes == 0:
+        egress_bytes = sum(
+            int(event.get("bytes", 0))
+            for event in events
+            if event.get("event") == "egress"
+        )
+        chunk_bytes = sum(
+            int(event.get("bytes", 0))
+            for event in events
+            if event.get("event") == "chunk"
+        )
+        if egress_bytes + chunk_bytes == 0:
             observed = "zero_bytes_egressed"
             status = "pass"
         else:
             observed = "nonzero_bytes_egressed_on_deny"
             status = "must-fix"
     elif verdict == "allow":
-        observed = "buffered_release_after_verdict"
-        status = "pass"
+        if any(event.get("event") == "chunk" for event in events):
+            observed = "incremental_release_without_declared_stream_posture"
+            status = "must-fix"
+        else:
+            observed = "buffered_release_after_verdict"
+            status = "pass"
     else:  # verdict == "stream"; bound/mediation already validated above
         exposure_bound_bytes = contract["exposure_bound_bytes"]
-        chunk_mediated_within_bound = bool(chunk_events) and all(
-            event.get("mediated") is True
-            and isinstance(event.get("bytes"), int)
-            and not isinstance(event.get("bytes"), bool)
-            and 0 < event["bytes"] <= exposure_bound_bytes
-            for event in chunk_events
-        )
-        if chunk_mediated_within_bound:
+        release_events = [
+            event for event in events if event.get("event") in ("egress", "chunk")
+        ]
+        total_released_bytes = 0
+        every_release_mediated_and_positive = bool(release_events)
+        for event in release_events:
+            raw_bytes = event.get("bytes")
+            is_valid_positive_int = (
+                isinstance(raw_bytes, int)
+                and not isinstance(raw_bytes, bool)
+                and raw_bytes > 0
+            )
+            if not is_valid_positive_int or event.get("mediated") is not True:
+                every_release_mediated_and_positive = False
+                continue
+            total_released_bytes += raw_bytes
+        if (
+            every_release_mediated_and_positive
+            and total_released_bytes <= exposure_bound_bytes
+        ):
             observed = "chunk_mediated_within_bound"
             status = "pass"
         else:
@@ -1952,64 +2070,201 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     )
 
 
-def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
-    """Prove the decision audit trail never carries a raw payload.
 
-    Delegates payload-freeness judgment entirely to
-    ``canonical.validate_payload_free_audit`` — the same validator
-    Task 5's application-path probes already use to police their own
-    ``AUDIT_EVENTS`` drain — rather than reinventing a second
-    banned-key policy here. Runs it against two fixed, in-module sample
-    audit records (one payload-free, one deliberately payload-bearing
-    via a raw ``arguments`` field), so this probe set always proves both
-    that a real violation is actually caught (``AUD-001``) and that a
-    well-formed record still passes. *root* is accepted for interface
-    symmetry with the other Task 6 probes (and to leave room for a
-    future evidence path) but these fixed samples never depend on
-    anything on disk.
+def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
+    """Prove *root*'s own real decision-audit trail never carries a raw payload.
+
+    Detects whether *root* is an approval-anti-replay or an
+    output-mediation Task 6 fixture — whichever probe contract loads
+    successfully — and drives exactly one fixed, deterministic,
+    synthetic dispatch call of its own, isolated in the same
+    sanitized, bounded child subprocess every other Task 6 probe uses
+    (see ``_dispatch_task6_child``), into a freshly created, exclusive,
+    private temporary ledger file under *root*'s own ``governance``
+    directory — never the target's real, declared, checked-in
+    ``nonce_ledger``/``observation_ledger`` path — which is always
+    removed again afterward, in every case, along with the private
+    directory that held it. Rejects a ``governance`` directory that
+    resolves outside *root* (a symlink escape) before ever creating
+    anything.
+
+    Every audit record the target's own ``audit_sink`` actually
+    produced during that single driven call — the real target's own
+    evidence, drained and relayed by the isolated child, never a fixed
+    in-module sample — is then independently validated through
+    ``canonical.validate_payload_free_audit``, so a conformant target
+    passes and a target whose audit trail leaks a raw payload is
+    reported as ``AUD-001``. When the child never got far enough to
+    relay anything at all (a hang bounded by the dispatch child's own
+    timeout, a crash, or malformed output), this is reported as
+    ``not-verified`` rather than silently passing or fabricating a
+    violation without evidence.
+
+    This never mutates *root*: the probe's own driven call always
+    lands in a private temporary ledger, cleaned up again regardless of
+    outcome, and never touches the contract's own declared ledger path
+    at all. Calling this repeatedly against the same *root* always
+    drives the exact same fixed synthetic call into a brand new private
+    temporary ledger and never depends on, or perturbs, anything left
+    behind by a previous call — it is safe to run idempotently, even
+    directly against a real, checked-in fixture root.
+
+    This is also the *only* place ``AUD-001`` is ever produced: neither
+    ``run_approval_probe`` nor ``run_output_probe`` judges audit-sink
+    payload-freeness at all, so calling this alongside either of them
+    always surfaces both findings independently — an audit-trail
+    violation here can never mask, or be masked by, an ``APR-001``/
+    ``OUT-001`` finding those probes report on their own.
     """
-    del root  # interface symmetry only; these samples are fixed in-module
-    results = []
-    for probe_id, record in _AUDIT_PROBE_SAMPLES:
-        action_id = record.get("action_id")
-        action_id = str(action_id) if action_id else None
-        audit_id = str(record["audit_id"])
+    root_path = Path(root).resolve()
+
+    approval_contract: Optional[Mapping[str, object]] = None
+    output_contract: Optional[Mapping[str, object]] = None
+    try:
+        approval_contract = load_approval_contract(root_path)
+    except ProbeContractError:
         try:
-            canonical.validate_payload_free_audit(record)
-        except canonical.PayloadExposureError:
+            output_contract = load_output_contract(root_path)
+        except ProbeContractError as error:
+            raise ProbeContractError(
+                f"{root_path} is neither a recognized approval-anti-replay "
+                "nor output-mediation Task 6 probe contract; "
+                "run_privacy_probe_set has no real target audit evidence to "
+                "assess"
+            ) from error
+
+    contract = approval_contract if approval_contract is not None else output_contract
+    assert contract is not None  # one of the two branches above always set it
+
+    governance_dir = root_path / "governance"
+    resolved_governance_dir = governance_dir.resolve()
+    try:
+        resolved_governance_dir.relative_to(root_path)
+    except ValueError as error:
+        raise ProbeContractError(
+            "probe contract's governance directory resolves outside the "
+            "target root (symlink escape?)"
+        ) from error
+
+    private_dir = governance_dir / f".privacy-probe-{uuid.uuid4().hex}"
+    private_dir.mkdir(parents=False, exist_ok=False)
+    descriptor, raw_ledger_path = tempfile.mkstemp(
+        dir=str(private_dir), prefix="ledger-", suffix=".jsonl"
+    )
+    os.close(descriptor)
+    ledger_path = Path(raw_ledger_path)
+
+    try:
+        if approval_contract is not None:
+            args: Tuple[str, ...] = (
+                _AUDIT_PROBE_NONCE,
+                _AUDIT_PROBE_DIGEST,
+                str(ledger_path),
+            )
+        else:
+            args = (_AUDIT_PROBE_VERDICT, str(ledger_path))
+
+        dispatch_result = _dispatch_task6_child(
+            root_path, str(contract["dispatch"]), str(contract["audit_sink"]), args
+        )
+    finally:
+        ledger_path.unlink(missing_ok=True)
+        try:
+            private_dir.rmdir()
+        except OSError:
+            pass
+
+    action_id: Optional[str] = None
+    if output_contract is not None:
+        contract_action_id = contract.get("action_id")
+        action_id = str(contract_action_id) if contract_action_id else None
+
+    audit_records = dispatch_result["audit_records"]
+    if audit_records is None:
+        return (
+            ProbeResult(
+                probe_id=_AUDIT_PROBE_ID,
+                action_id=action_id,
+                path_id=None,
+                status="not-verified",
+                reason_code=_AUDIT_NOT_VERIFIED_REASON,
+                expected=_AUDIT_EXPECTED,
+                observed="audit_evidence_unavailable",
+                evidence_refs=(),
+            ),
+        )
+
+    results = []
+    for record in audit_records:
+        if not isinstance(record, Mapping):
             results.append(
                 ProbeResult(
-                    probe_id=probe_id,
+                    probe_id=_AUDIT_PROBE_ID,
                     action_id=action_id,
                     path_id=None,
                     status="must-fix",
                     reason_code="AUD-001",
                     expected=_AUDIT_EXPECTED,
                     observed="payload_bearing_audit_record",
-                    evidence_refs=(audit_id,),
+                    evidence_refs=(),
+                )
+            )
+            continue
+        audit_id = record.get("audit_id")
+        audit_id_text = str(audit_id) if audit_id else None
+        try:
+            canonical.validate_payload_free_audit(record)
+        except canonical.PayloadExposureError:
+            results.append(
+                ProbeResult(
+                    probe_id=_AUDIT_PROBE_ID,
+                    action_id=action_id,
+                    path_id=None,
+                    status="must-fix",
+                    reason_code="AUD-001",
+                    expected=_AUDIT_EXPECTED,
+                    observed="payload_bearing_audit_record",
+                    evidence_refs=(audit_id_text,) if audit_id_text else (),
                 )
             )
         else:
             results.append(
                 ProbeResult(
-                    probe_id=probe_id,
+                    probe_id=_AUDIT_PROBE_ID,
                     action_id=action_id,
                     path_id=None,
                     status="pass",
                     reason_code=_AUDIT_PASS_REASON,
                     expected=_AUDIT_EXPECTED,
                     observed="payload_free_audit_record",
-                    evidence_refs=(audit_id,),
+                    evidence_refs=(audit_id_text,) if audit_id_text else (),
                 )
             )
+
+    if not results:
+        results.append(
+            ProbeResult(
+                probe_id=_AUDIT_PROBE_ID,
+                action_id=action_id,
+                path_id=None,
+                status="not-verified",
+                reason_code=_AUDIT_NOT_VERIFIED_REASON,
+                expected=_AUDIT_EXPECTED,
+                observed="audit_evidence_unavailable",
+                evidence_refs=(),
+            )
+        )
     return tuple(results)
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--child":
         _run_as_child()
+    elif len(sys.argv) > 1 and sys.argv[1] == _TASK6_CHILD_ARG:
+        _run_task6_as_child()
     else:
         raise SystemExit(
-            "probes.py is a library module; its child entry point is only "
-            "ever invoked internally by run_application_probe"
+            "probes.py is a library module; its child entry points are only "
+            "ever invoked internally by run_application_probe and the "
+            "Task 6 approval/output probes"
         )
