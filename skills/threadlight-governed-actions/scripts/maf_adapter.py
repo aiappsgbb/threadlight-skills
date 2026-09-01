@@ -309,19 +309,6 @@ def _discover_provider_hosted_actions(root: Path) -> Tuple[ActionRecord, ...]:
 # Upstream pin: load + exact-tuple comparison
 # ---------------------------------------------------------------------------
 
-_REQUIRED_PIN_KEYS: Tuple[str, ...] = (
-    "pin_schema_version",
-    "status",
-    "agent_hooks",
-    "sdk",
-    "ctk",
-    "maf",
-    "acs",
-    "conformance_report",
-    "conformance_python",
-    "drift_policy",
-)
-
 # The exact flat tuple keys `compare_upstream_tuple` observes and compares.
 _OBSERVED_TUPLE_KEYS: Tuple[str, ...] = (
     "agent-hooks-spec",
@@ -340,12 +327,18 @@ _PIN_DRIFT_DETAILS = (
 
 
 def load_upstream_pin(path: Path) -> Mapping[str, object]:
-    """Load and structurally validate the complete tested tuple pin file.
+    """Load and deeply validate the complete tested tuple pin file.
 
     Raises :class:`UpstreamPinError` if the file cannot be read, is not
-    valid JSON, is not a JSON object, or is missing any of the top-level
-    keys the pin format requires. Returns an immutable mapping view of the
-    parsed pin — never silently repaired or partially trusted.
+    valid JSON, is not a JSON object, or is missing/mistyped any required
+    top-level or nested field the pin format requires (every leaf under
+    ``agent_hooks``/``sdk``/``ctk``/``maf``/``acs``/``conformance_report``
+    is checked, not just top-level key presence). Every error message
+    includes the dotted path to the offending field (e.g.
+    ``"agent_hooks.spec_version"``) — a malformed pin never surfaces as a
+    raw ``KeyError``/``AttributeError`` from somewhere downstream. Returns
+    an immutable mapping view of the parsed pin — never silently repaired
+    or partially trusted.
     """
     pin_path = Path(path)
     try:
@@ -364,13 +357,97 @@ def load_upstream_pin(path: Path) -> Mapping[str, object]:
         raise UpstreamPinError(
             f"upstream pin file {pin_path} must contain a JSON object"
         )
-    missing = [key for key in _REQUIRED_PIN_KEYS if key not in data]
-    if missing:
-        raise UpstreamPinError(
-            f"upstream pin file {pin_path} is missing required key(s): "
-            f"{', '.join(missing)}"
-        )
+    _validate_pin_shape(data, pin_path)
     return MappingProxyType(dict(data))
+
+
+def _validate_pin_shape(data: Mapping[str, object], pin_path: Path) -> None:
+    """Deeply validate every required nested mapping/leaf/type the pin
+    format requires, raising :class:`UpstreamPinError` with dotted-path
+    context for the first problem found.
+
+    This exists so a malformed or incomplete pin is rejected up front, at
+    the trust boundary, rather than surfacing later as a raw
+    ``KeyError``/``AttributeError`` out of :func:`_expected_tuple_from_pin`
+    or any other code that flattens the pin's nested structure.
+    """
+
+    def fail(field_path: str, message: str) -> None:
+        raise UpstreamPinError(
+            f"upstream pin file {pin_path}: '{field_path}' {message}"
+        )
+
+    def require_mapping(
+        container: Mapping[str, object], key: str, field_path: str
+    ) -> Mapping[str, object]:
+        if key not in container:
+            fail(field_path, "is required and was not found")
+        value = container[key]
+        if not isinstance(value, Mapping):
+            fail(field_path, f"must be a JSON object, got {type(value).__name__}")
+        return value
+
+    def require(
+        container: Mapping[str, object],
+        key: str,
+        field_path: str,
+        expected_type,
+        allow_none: bool = False,
+    ) -> None:
+        if key not in container:
+            fail(field_path, "is required and was not found")
+        value = container[key]
+        if allow_none and value is None:
+            return
+        # bool is an int subtype in Python; vector counters must be real ints.
+        if expected_type is int and isinstance(value, bool):
+            fail(field_path, f"must be int, got {type(value).__name__}")
+        if not isinstance(value, expected_type):
+            fail(field_path, f"must be {expected_type.__name__}, got {type(value).__name__}")
+
+    require(data, "pin_schema_version", "pin_schema_version", str)
+    require(data, "status", "status", str)
+    require(data, "conformance_python", "conformance_python", str)
+    require(data, "drift_policy", "drift_policy", str)
+
+    agent_hooks = require_mapping(data, "agent_hooks", "agent_hooks")
+    for key in ("spec", "spec_version", "repository", "repository_commit", "spec_blob_sha"):
+        require(agent_hooks, key, f"agent_hooks.{key}", str)
+
+    sdk = require_mapping(data, "sdk", "sdk")
+    for key in ("distribution", "version", "source_commit", "artifact", "artifact_sha256"):
+        require(sdk, key, f"sdk.{key}", str)
+
+    ctk = require_mapping(data, "ctk", "ctk")
+    require(ctk, "vector_source_commit", "ctk.vector_source_commit", str)
+    for key in ("total_vectors", "applicable_vectors", "passed_vectors", "skipped_vectors"):
+        require(ctk, key, f"ctk.{key}", int)
+
+    maf = require_mapping(data, "maf", "maf")
+    for key in ("distribution", "version", "source_commit", "integration_status"):
+        require(maf, key, f"maf.{key}", str)
+    integration_packages = require_mapping(
+        maf, "integration_packages", "maf.integration_packages"
+    )
+    if not integration_packages:
+        fail("maf.integration_packages", "must be a nonempty mapping")
+    for package_name, package_version in integration_packages.items():
+        if not isinstance(package_name, str) or not isinstance(package_version, str):
+            fail(
+                "maf.integration_packages",
+                "must map each package name (str) to a version (str)",
+            )
+
+    acs = require_mapping(data, "acs", "acs")
+    require(acs, "policy_schema", "acs.policy_schema", str, allow_none=True)
+    require(acs, "status", "acs.status", str)
+
+    conformance_report = require_mapping(
+        data, "conformance_report", "conformance_report"
+    )
+    for key in ("repository_commit", "path", "blob_sha", "claim"):
+        require(conformance_report, key, f"conformance_report.{key}", str)
+    require(conformance_report, "certification", "conformance_report.certification", bool)
 
 
 def _expected_tuple_from_pin(pin: Mapping[str, object]) -> Dict[str, str]:
@@ -476,30 +553,71 @@ class MAFAdapter:
 
         Prefers an explicit ``governance/installed-packages.json`` evidence
         file — the assessor's own recorded observation of what is actually
-        installed/pinned for this target — read verbatim as the six-key
-        flat tuple :func:`compare_upstream_tuple` expects. When that file is
-        absent, every key is reported as the literal string
-        ``"not-verified"`` rather than guessed: a resolved package version
-        alone can never stand in for the source commit, spec revision,
-        artifact hash, or CTK vector source the tuple actually requires.
+        installed/pinned for this target. That file is read only through
+        repository containment (a symlink cannot be used to smuggle in an
+        observed tuple from outside *target*), must parse as a JSON object,
+        and is strictly projected to exactly the six known observed-tuple
+        keys (:data:`_OBSERVED_TUPLE_KEYS`) — any other key present in the
+        file (payload, secrets, unrelated metadata) is ignored and never
+        flows into the returned evidence. Every required key must be
+        present with a string value; a present-but-incomplete or
+        wrong-typed file is treated as corrupt evidence and rejected rather
+        than silently treated as absent. When the file is absent entirely,
+        every key is reported as the literal string ``"not-verified"``
+        rather than guessed: a resolved package version alone can never
+        stand in for the source commit, spec revision, artifact hash, or
+        CTK vector source the tuple actually requires.
         """
         root = Path(target).resolve()
-        recorded_path = root / "governance" / "installed-packages.json"
-        if recorded_path.is_file():
-            try:
-                data = json.loads(recorded_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        recorded_relative = Path("governance") / "installed-packages.json"
+        recorded_path = root / recorded_relative
+        if not recorded_path.is_file():
+            return {key: "not-verified" for key in _OBSERVED_TUPLE_KEYS}
+
+        resolved = recorded_path.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError as error:
+            raise UpstreamPinError(
+                f"{recorded_relative} escapes the repository root (possibly "
+                "via a symlink) and cannot be trusted as installed-packages "
+                "evidence"
+            ) from error
+
+        try:
+            text = resolved.read_text(encoding="utf-8")
+        except OSError as error:
+            raise UpstreamPinError(
+                f"cannot read recorded installed-packages evidence "
+                f"{recorded_relative}: {error}"
+            ) from error
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise UpstreamPinError(
+                f"{recorded_relative} is not valid JSON: {error}"
+            ) from error
+        if not isinstance(data, Mapping):
+            raise UpstreamPinError(
+                f"{recorded_relative} must contain a JSON object mapping "
+                "each tuple key to its observed value"
+            )
+
+        observed: Dict[str, str] = {}
+        for key in _OBSERVED_TUPLE_KEYS:
+            if key not in data:
                 raise UpstreamPinError(
-                    "cannot read recorded installed-packages evidence "
-                    f"{recorded_path}: {error}"
-                ) from error
-            if not isinstance(data, Mapping):
-                raise UpstreamPinError(
-                    f"{recorded_path} must contain a JSON object mapping "
-                    "each tuple key to its observed value"
+                    f"{recorded_relative} is missing required tuple key "
+                    f"'{key}'"
                 )
-            return {str(key): str(value) for key, value in data.items()}
-        return {key: "not-verified" for key in _OBSERVED_TUPLE_KEYS}
+            value = data[key]
+            if not isinstance(value, str):
+                raise UpstreamPinError(
+                    f"{recorded_relative} tuple key '{key}' must be a "
+                    f"string, got {type(value).__name__}"
+                )
+            observed[key] = value
+        return observed
 
     def discover_entry_points(self, target: Path) -> Tuple[Dict[str, object], ...]:
         root = Path(target).resolve()
@@ -576,11 +694,12 @@ class MAFAdapter:
         paths = getattr(graph, "paths", None) or ()
         cases = []
         for path in paths:
+            path_id = getattr(path, "path_id", None)
             cases.append(
                 {
-                    "probe_id": f"maf-deny-{path.action_id}-{path.mode}",
+                    "probe_id": f"maf-deny-{path.action_id}-{path.mode}-{path_id}",
                     "action_id": path.action_id,
-                    "path_id": getattr(path, "path_id", None),
+                    "path_id": path_id,
                     "mode": path.mode,
                     "probe_kind": "deny",
                 }

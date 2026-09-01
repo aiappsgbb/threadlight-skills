@@ -4,8 +4,15 @@ Exercises ``inputs.resolve_inputs`` (required ``specs/SPEC.md`` for design and
 pre-deploy, a nonempty runtime/tool declaration set for pre-deploy,
 deterministic discovery of every input category, and explicit recording of
 unavailable optional capabilities) and ``inputs.allowlisted_evidence_path``
-(rejecting absolute paths, ``..`` traversal, symlink escapes, and
-payload-bearing evidence JSON).
+(rejecting absolute paths, ``..`` traversal, and symlink escapes).
+
+``allowlisted_evidence_path`` is a *path* safety gate only: it never parses
+or inspects file content, so legitimate eval/policy JSON containing
+``prompt``/``input``/``output`` keys is discovered like any other file
+rather than rejected as "payload-bearing". Content-level payload validation
+belongs only to code that actually embeds a file's parsed content into
+assessor-produced evidence (see ``maf_adapter.MAFAdapter.resolved_tuple``),
+never to generic path discovery.
 
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_inputs.py \
@@ -265,34 +272,6 @@ def test_missing_github_and_azure_capabilities_are_explicit_not_omitted(
 # ---------------------------------------------------------------------------
 
 
-def test_malformed_policy_json_raises_with_path_and_finding_ids(tmp_path: Path):
-    write_spec(tmp_path)
-    (tmp_path / "governance").mkdir()
-    (tmp_path / "governance" / "probe-contract.json").write_text(
-        "{not valid json", encoding="utf-8"
-    )
-    with pytest.raises(InputResolutionError) as excinfo:
-        resolve_inputs(tmp_path, "design")
-    message = str(excinfo.value)
-    assert "governance/probe-contract.json" in message
-    assert "MED-001" in message
-
-
-def test_payload_bearing_policy_json_raises_with_path_and_finding_ids(
-    tmp_path: Path,
-):
-    write_spec(tmp_path)
-    (tmp_path / "governance").mkdir()
-    (tmp_path / "governance" / "probe-contract.json").write_text(
-        json.dumps({"id": "probe-1", "secret": "sk-live-abc"}), encoding="utf-8"
-    )
-    with pytest.raises(InputResolutionError) as excinfo:
-        resolve_inputs(tmp_path, "design")
-    message = str(excinfo.value)
-    assert "governance/probe-contract.json" in message
-    assert "MED-001" in message
-
-
 def test_unreadable_evidence_file_raises_with_path_and_finding_ids(tmp_path: Path):
     write_spec(tmp_path)
     (tmp_path / "governance").mkdir()
@@ -309,8 +288,52 @@ def test_unreadable_evidence_file_raises_with_path_and_finding_ids(tmp_path: Pat
         blocked.chmod(0o644)
 
 
+def test_resolve_inputs_accepts_realistic_eval_and_policy_json_with_prompt_and_schema_keys(
+    tmp_path: Path,
+):
+    """A path-safe discovery pass must never abort on legitimate content.
+
+    Real eval/policy evidence routinely carries ``prompt``/``input``/
+    ``output``/``input_schema`` keys (that is what an eval report or a
+    probe contract *is*). ``resolve_inputs`` only ever records the paths of
+    these files — it never embeds their content into evidence — so their
+    content must never be inspected or rejected during discovery.
+    """
+    write_spec(tmp_path)
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "id": "probe-1",
+                "prompt": "issue a refund for order 42",
+                "input_schema": {"type": "object", "properties": {"order_id": {}}},
+                "output": {"status": "denied"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "evals").mkdir()
+    (tmp_path / "evals" / "eval-report.json").write_text(
+        json.dumps(
+            {
+                "id": "eval-1",
+                "prompt": "attempt an unapproved payment",
+                "input": {"amount": 500},
+                "output": {"result": "blocked"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_inputs(tmp_path, "design")
+
+    assert Path("governance/probe-contract.json") in resolved.policy_files
+    assert Path("evals/eval-report.json") in resolved.test_and_report_files
+
+
 # ---------------------------------------------------------------------------
-# allowlisted_evidence_path: reject absolute/../symlink-escape/payload JSON
+# allowlisted_evidence_path: reject absolute/../symlink-escape; path-only,
+# content is never parsed or inspected
 # ---------------------------------------------------------------------------
 
 
@@ -340,17 +363,47 @@ def test_allowlisted_evidence_path_rejects_symlink_escape(tmp_path: Path):
         shutil.rmtree(outside, ignore_errors=True)
 
 
-def test_allowlisted_evidence_path_rejects_payload_bearing_json(tmp_path: Path):
-    candidate = tmp_path / "evidence.json"
-    candidate.write_text(json.dumps({"prompt": "do the thing"}), encoding="utf-8")
-    with pytest.raises(InputResolutionError, match="payload"):
-        allowlisted_evidence_path(tmp_path, Path("evidence.json"))
-
-
 def test_allowlisted_evidence_path_accepts_a_clean_relative_file(tmp_path: Path):
     candidate = tmp_path / "evidence.json"
     candidate.write_text(json.dumps({"id": "e-1", "sha256": "sha256:abc"}), encoding="utf-8")
     resolved = allowlisted_evidence_path(tmp_path, Path("evidence.json"))
+    assert resolved == candidate.resolve()
+
+
+def test_allowlisted_evidence_path_accepts_json_with_prompt_and_schema_keys(
+    tmp_path: Path,
+):
+    """Regression: realistic eval/policy JSON must never be rejected.
+
+    ``allowlisted_evidence_path`` only validates the *path* (absolute/../
+    symlink-escape/existence/readability); it must never parse the file to
+    reject it for carrying ``prompt``/``input``/``output`` keys, which is
+    exactly what real eval and policy evidence looks like.
+    """
+    candidate = tmp_path / "evidence.json"
+    candidate.write_text(
+        json.dumps(
+            {
+                "prompt": "do the thing",
+                "input_schema": {"type": "object"},
+                "output": {"result": "denied"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    resolved = allowlisted_evidence_path(tmp_path, Path("evidence.json"))
+    assert resolved == candidate.resolve()
+
+
+def test_allowlisted_evidence_path_does_not_validate_json_syntax(tmp_path: Path):
+    """Path-only allowlisting never parses content, so invalid JSON text is
+    accepted like any other readable file — a downstream consumer that
+    actually needs the parsed content is responsible for its own parse
+    error handling.
+    """
+    candidate = tmp_path / "not-actually-json.json"
+    candidate.write_text("{not valid json", encoding="utf-8")
+    resolved = allowlisted_evidence_path(tmp_path, Path("not-actually-json.json"))
     assert resolved == candidate.resolve()
 
 

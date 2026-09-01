@@ -40,10 +40,20 @@ the repository":
 
 Every discovered candidate is passed through :func:`allowlisted_evidence_path`
 before it is trusted: an absolute path, a ``..`` traversal, a symlink that
-resolves outside the target root, an unreadable file, or a payload-bearing
-JSON evidence file all raise :class:`InputResolutionError` naming the exact
-repository-relative path and the finding IDs that category feeds — a parse
-failure never gets silently dropped from an otherwise "successful" result.
+resolves outside the target root, or an unreadable file all raise
+:class:`InputResolutionError` naming the exact repository-relative path and
+the finding IDs that category feeds — a resolution failure never gets
+silently dropped from an otherwise "successful" result.
+
+``allowlisted_evidence_path`` is a *path* safety gate only: it never parses
+or inspects a candidate's content. ``resolve_inputs`` only ever records file
+*paths* in :class:`ResolvedInputs` (never embedded content), so real
+eval/policy evidence that legitimately carries ``prompt``/``input``/
+``output``/schema keys is discovered like any other file rather than
+rejected. Content-level payload validation belongs only to code that
+actually embeds a file's parsed content into assessor-produced evidence
+(see ``maf_adapter.MAFAdapter.resolved_tuple``) — never to generic path
+discovery.
 
 Live evidence (GitHub branch/ruleset/required-check/environment state, Azure
 role assignment and federated identity state) is out of scope for this
@@ -54,13 +64,11 @@ missing key would read as "not applicable" instead of "not attempted here".
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Iterable, Mapping, Optional, Set, Tuple
 
-import canonical
 import contracts
 from contracts import Phase
 
@@ -71,8 +79,7 @@ class InputResolutionError(ValueError):
     Examples: ``specs/SPEC.md`` absent for ``design``/``pre-deploy``; no
     registry or Python tool declaration at all for ``pre-deploy``; a
     discovered evidence candidate that is absolute, escapes the target root
-    (directly or via a symlink), cannot be read, or (for JSON evidence)
-    fails to parse or carries payload-bearing content. Callers must fix the
+    (directly or via a symlink), or cannot be read. Callers must fix the
     target or the input, not have the resolver paper over it.
     """
 
@@ -350,10 +357,17 @@ def allowlisted_evidence_path(target: Path, candidate: Path) -> Path:
     *target* — following any symlink to its real target — and rejected if
     that real target lies outside *target* (a symlink cannot be used to
     smuggle evidence in from outside the repository). The resolved path
-    must exist and be readable; a JSON file must parse and must be free of
-    payload-bearing keys (``canonical.validate_payload_free_audit``) —
-    prompts, arguments, outputs, secrets, and tokens are never acceptable
-    evidence content.
+    must exist and be readable.
+
+    This is a *path* safety gate only: it never parses or inspects the
+    candidate's content. ``resolve_inputs`` only ever records file paths
+    (never embedded content), so this function must never reject a file
+    for what it contains — a real eval/policy evidence file legitimately
+    carries ``prompt``/``input``/``output``/schema keys, and a config file
+    with a ``.json`` extension need not even be valid JSON to have its path
+    safely allowlisted. A component that actually parses and embeds a
+    file's content into assessor-produced evidence is responsible for its
+    own content validation (see ``maf_adapter.MAFAdapter.resolved_tuple``).
 
     Returns the resolved (symlink-followed) absolute :class:`Path` on
     success. Every rejection raises :class:`InputResolutionError` naming the
@@ -385,26 +399,11 @@ def allowlisted_evidence_path(target: Path, candidate: Path) -> Path:
         raise InputResolutionError(f"evidence path does not exist: {rel_display}")
 
     try:
-        data = resolved.read_bytes()
+        resolved.read_bytes()
     except OSError as error:
         raise InputResolutionError(
             f"cannot read evidence path {rel_display}: {error}"
         ) from error
-
-    if resolved.suffix == ".json":
-        try:
-            value = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise InputResolutionError(
-                f"evidence path {rel_display} is not valid JSON: {error}"
-            ) from error
-        try:
-            canonical.validate_payload_free_audit(value)
-        except canonical.PayloadExposureError as error:
-            raise InputResolutionError(
-                f"evidence path {rel_display} contains payload-bearing "
-                f"content and cannot be used as evidence: {error}"
-            ) from error
 
     return resolved
 
