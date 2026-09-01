@@ -15,6 +15,17 @@ parent that kills this process mid-fault can still read back exactly how
 far it got. Ledger records and the ``dispatch_probe`` return value never
 carry the raw ``arguments`` payload, only a canonical SHA-256 hash of
 whatever the synthetic tool actually received.
+
+Two faults are deliberately dishonest about that discipline, on purpose:
+``stub`` never writes to the ledger at all (not even a "start" record)
+while still returning a clean, well-formed self-report, proving the
+harness must never trust a self-report that the ledger does not
+corroborate. ``slow_correct_transform`` correctly applies the same
+transform policy as ``transform`` and reaches the tool with the right
+arguments, but then hangs past ``timeout_ms`` instead of ever reporting a
+decision, proving the harness must not fabricate a fail-open finding
+merely because a transform-family fault's own contract expects the tool
+to be reached.
 """
 from __future__ import annotations
 
@@ -64,6 +75,22 @@ def _record_audit(action_id: str, decision: str) -> str:
     return audit_id
 
 
+def _transform_arguments(arguments: Mapping[str, object]) -> dict:
+    """Apply the same authorized-policy transform every transform fault uses.
+
+    Refunds above the synthetic $5 pre-authorized ceiling are capped
+    before the tool is ever called — never passed through verbatim.
+    Shared by ``transform`` and ``slow_correct_transform`` so both apply
+    the identical, correct policy.
+    """
+    transformed = dict(arguments)
+    if isinstance(transformed.get("amount"), (int, float)) and not isinstance(
+        transformed.get("amount"), bool
+    ):
+        transformed["amount"] = min(transformed["amount"], 5)
+    return transformed
+
+
 def _synthetic_tool_invoke(
     ledger_path: str, action_id: str, arguments: Mapping[str, object]
 ) -> str:
@@ -96,6 +123,22 @@ def dispatch_probe(
     fault = str(case["fault"])
     arguments = case["arguments"]
 
+    if fault == "stub":
+        # Deliberately buggy seam: never writes anything to the
+        # observation ledger at all — not even a "start" record — yet
+        # still returns a well-formed, self-reported "deny" decision
+        # backed by a real audit event. Proves a self-report is never
+        # trusted merely because it looks clean and carries an audit
+        # id: without a correlated ledger start/decision record the
+        # harness must treat this as unobservable, never a pass.
+        _record_audit(action_id, "deny")
+        return {
+            "decision": "deny",
+            "invocation_count": 0,
+            "argument_hash": None,
+            "exception_class": None,
+        }
+
     _append_ledger(ledger_path, "start", action_id=action_id, fault=fault)
 
     if fault == "deny":
@@ -109,14 +152,7 @@ def dispatch_probe(
         }
 
     if fault == "transform":
-        transformed = dict(arguments)
-        # Authorized policy: refunds above the synthetic $5 pre-authorized
-        # ceiling are capped before the tool is ever called — never
-        # passed through verbatim.
-        if isinstance(transformed.get("amount"), (int, float)) and not isinstance(
-            transformed.get("amount"), bool
-        ):
-            transformed["amount"] = min(transformed["amount"], 5)
+        transformed = _transform_arguments(arguments)
         argument_hash = _synthetic_tool_invoke(ledger_path, action_id, transformed)
         _record_audit(action_id, "transform")
         _append_ledger(
@@ -128,6 +164,22 @@ def dispatch_probe(
             "argument_hash": argument_hash,
             "exception_class": None,
         }
+
+    if fault == "slow_correct_transform":
+        # Correctly applies the *same* transform policy as "transform"
+        # (caps the refund amount at the synthetic $5 ceiling) and
+        # reaches the tool with those correctly transformed arguments —
+        # then hangs well past timeout_ms before it can ever report a
+        # decision. Proves the harness must not fabricate a fail-open
+        # ENF-002 finding merely because a transform-family fault's own
+        # contract expects the tool to be reached on a normal
+        # completion: reaching the tool is not itself forbidden here,
+        # so a timeout afterwards is unverified, never a manufactured
+        # violation.
+        transformed = _transform_arguments(arguments)
+        _synthetic_tool_invoke(ledger_path, action_id, transformed)
+        time.sleep(10.0)
+        raise AssertionError("unreachable: the probe harness should time out first")
 
     if fault == "raise":
         # Interceptor crashes before ever reaching the tool: fail-closed.

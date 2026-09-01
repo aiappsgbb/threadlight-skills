@@ -11,14 +11,20 @@ supplies the synthetic fixture it drives.
 
 A crash, timeout, malformed (unparseable) output, or malformed verdict is
 judged from the observation ledger exactly like a deny/transform outcome:
-fail-closed (the ledger proves the tool was never reached) still passes,
-and fail-open (the ledger proves the tool was reached anyway) is always a
-completed ``ENF-002`` must-fix finding, regardless of which abnormal
-shape produced it. ``ENF-001`` is reserved for a *completed*, well-formed
-run whose own self-reported deny/transform decision contradicts what the
-ledger proves. An outcome that is genuinely unobservable (the child
-failed and the ledger recorded nothing at all) raises
-``ProbeToolingError`` instead of any finding.
+fail-closed (the ledger proves the tool was never reached) still passes.
+Fail-open (the ledger proves the tool was reached anyway) is a completed
+``ENF-002`` must-fix finding *only* for a fault whose own contract forbids
+invocation on a normal completion (deny/crash/timeout/malformed-verdict);
+for a transform-family fault, whose own contract expects invocation on a
+normal completion, an incomplete run that reached the tool is truthfully
+``not-verified`` instead — never a fabricated fail-open finding. ``ENF-001``
+is reserved for a *completed*, well-formed run whose own self-reported
+deny/transform decision contradicts what the ledger proves, and even then
+only when that self-report is itself corroborated by a matching ledger
+start/decision record and at least one audit id. An outcome that is
+genuinely unobservable — the child failed and the ledger recorded nothing
+at all, *or* the child completed but the ledger does not corroborate its
+self-report — raises ``ProbeToolingError`` instead of any finding.
 
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_probes.py -q
@@ -165,6 +171,53 @@ def test_crash_timeout_and_malformed_verdict_fail_open_variants_are_enf_002(
         (crash_fail_open, timeout_fail_open, malformed_fail_open)
     )
     assert [finding.finding_id for finding in findings] == ["ENF-002"] * 3
+
+
+def test_slow_correct_transform_timeout_is_not_verified_not_fabricated_fail_open(
+    fixture_root: Path,
+):
+    # The fixture correctly applies the transform policy and reaches
+    # the tool with the correctly transformed arguments, then hangs
+    # past timeout_ms before it can ever report a decision. A
+    # transform-family fault's own contract *expects* the tool to be
+    # reached on a normal completion, so the ledger proving reach here
+    # is not itself proof of fail-open: only a completed self-report
+    # could confirm the transform was correct, and this run never
+    # produced one. The truthful classification is "not-verified", not
+    # a fabricated ENF-002.
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "slow-correct-transform",
+            "payments.refund",
+            "slow_correct_transform",
+            {"amount": 7},
+        ),
+    )
+    assert result.status == "not-verified"
+    assert result.reason_code != "ENF-002"
+    assert result.reason_code != "ENF-001"
+    assert result.observed != "tool_invoked_despite_fault"
+
+    findings = findings_from_probes((result,))
+    assert len(findings) == 1
+    assert findings[0].status == "not-verified"
+    assert findings[0].reason_code == result.reason_code
+
+
+def test_ledger_less_self_report_raises_probe_tooling_error(fixture_root: Path):
+    # The fixture returns a clean, well-formed "deny" report backed by
+    # a real audit id, but never writes a single record to the
+    # observation ledger — not even a "start" record. A self-report is
+    # never trusted on its own, no matter how clean it looks: without a
+    # correlated ledger start/decision record this is exactly as
+    # unobservable as a crashed child that left no ledger evidence, and
+    # must raise ProbeToolingError rather than ever becoming a pass.
+    with pytest.raises(ProbeToolingError):
+        run_application_probe(
+            fixture_root / "interceptor-failure",
+            ProbeCase("stub", "payments.refund", "stub", {"amount": 7}),
+        )
 
 
 def test_deliberate_fail_open_is_a_completed_enf_002_finding_not_a_tooling_error(

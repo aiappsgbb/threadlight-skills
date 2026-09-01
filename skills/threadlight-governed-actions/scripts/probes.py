@@ -46,17 +46,32 @@ exactly like a deny/transform outcome:
   probe still passes — a process dying, hanging, or reporting nonsense
   is not itself a violation as long as it also never let the action
   through;
-- if the ledger proves the tool *was* reached anyway (fail-open), that
-  is unconditionally a completed ``ENF-002`` must-fix finding — never a
-  tooling exception — regardless of which abnormal shape (crash,
-  timeout, malformed output, malformed verdict) produced it;
+- if the ledger proves the tool *was* reached anyway (fail-open) for a
+  fault whose own contract forbids invocation on a normal completion
+  (deny/crash/timeout/malformed-verdict), that is unconditionally a
+  completed ``ENF-002`` must-fix finding — never a tooling exception —
+  regardless of which abnormal shape produced it;
+- if the ledger proves the tool was reached for a fault whose own
+  contract instead *expects* invocation on a normal completion (a
+  transform-family fault), an incomplete run is never enough on its own
+  to prove either a pass or a fail-open violation: only a completed,
+  well-formed self-report can be compared against the ledger's argument
+  hash to confirm the transform was correct (see ``ENF-001`` below), so
+  this is truthfully reported as ``not-verified`` rather than a
+  fabricated ``ENF-002``;
 - a clean but *inconsistent* self-report from a completed, well-formed
   run (the seam claims ``deny`` while the ledger proves invocation, or
   claims ``transform`` while the argument hash the tool received does
   not match what was reported) maps to ``ENF-001``; that is the one
   case where a self-report is compared against the ledger rather than
   a ledger-only judgment, precisely because the run completed normally
-  with a recognized decision;
+  with a recognized decision. Even then, a completed self-report is
+  never trusted on its own: it must additionally be corroborated by a
+  matching ``start``/``decision`` ledger record and at least one audit
+  id, or the outcome is unobservable and raises
+  :class:`ProbeToolingError` — a self-report the ledger cannot
+  corroborate at all is indistinguishable from a stub that never really
+  drove the dispatch seam;
 - an outcome that is genuinely unobservable (the child failed *and* the
   ledger recorded nothing at all, not even a ``start`` record) raises
   :class:`ProbeToolingError`, since neither a pass nor a specific finding
@@ -138,6 +153,21 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
     # expected to pass, so "tool_not_invoked" here is nominal only.
     "timeout_fail_open": "tool_not_invoked",
     "malformed_fail_open": "tool_not_invoked",
+    # A transform-family regression: correctly transforms, reaches the
+    # tool, then hangs before ever reporting a decision. Its "expected"
+    # value matters here only as informational metadata (what a clean
+    # completed run of this fault would look like) — an incomplete run
+    # is classified as "not-verified", never a fabricated pass or
+    # fail-open, since reaching the tool is exactly what a correct run
+    # of a transform-family fault is supposed to do (see
+    # ``_TRANSFORM_EXPECTED_OUTCOME`` in ``_build_probe_result``).
+    "slow_correct_transform": "tool_received_transformed_arguments",
+    # A ledger-less self-report regression: never writes anything to
+    # the ledger, yet returns a clean, well-formed "deny" report. Never
+    # expected to pass — it always raises ``ProbeToolingError`` — so
+    # "tool_not_invoked" here is nominal only, like the fail-open
+    # variants above.
+    "stub": "tool_not_invoked",
 }
 
 # Human-readable, stable reason codes recorded on a *passing* probe,
@@ -156,6 +186,26 @@ _PASS_REASON_BY_FAULT: Mapping[str, str] = {
 }
 
 _DEFAULT_PASS_REASON = "application-probe-enforced"
+
+# The reason code recorded when an abnormal outcome reached the tool but
+# cannot be judged a fail-open violation, because the fault's own
+# contract expects invocation on a normal completion (see
+# ``_TRANSFORM_EXPECTED_OUTCOME``). Deliberately not a catalog finding ID
+# (``ENF-001``/``ENF-002``): ``findings_from_probes`` still surfaces it
+# (its status is ``not-verified``, never dropped like a pass), but it is
+# never mistaken for a confirmed ``must-fix`` violation.
+_NOT_VERIFIED_REASON = "enforcement-probe-outcome-not-verified"
+
+# The single "expected" value shared by every fault whose own normal,
+# completed run is supposed to reach the tool (only "transform" and its
+# regression variants such as "slow_correct_transform"). Used by the
+# abnormal-outcome branch of ``_build_probe_result`` to decide whether
+# reaching the tool at all is inherently forbidden for a given fault
+# (deny/crash/timeout/malformed-verdict families) or merely what a
+# correct run of it is expected to do (the transform family) — in the
+# latter case an incomplete run cannot be judged fail-open from the
+# ledger alone.
+_TRANSFORM_EXPECTED_OUTCOME = "tool_received_transformed_arguments"
 
 # The standard deterministic enforcement-probe suite: one (probe_id,
 # fault) pair per required probe from section 7.3 of the design spec,
@@ -439,6 +489,34 @@ def findings_from_probes(probes: Tuple[ProbeResult, ...]) -> Tuple[Finding, ...]
     return tuple(findings)
 
 
+def _completed_report_is_ledger_supported(
+    case: ProbeCase, report: Mapping[str, object], events: List[Mapping[str, object]]
+) -> bool:
+    """Whether a completed child's self-report is corroborated by the ledger.
+
+    A completed, well-formed report is only ever trusted alongside a
+    matching ``start`` record for *case*'s action and a ``decision``
+    record whose ``decision`` field agrees with what the report claims,
+    plus at least one audit id on the report itself. A self-report with
+    none of that correlated evidence is indistinguishable from a stub
+    that never actually drove the dispatch seam, and must never be
+    treated as observable on its own — see ``_build_probe_result``.
+    """
+    decision = report.get("decision")
+    has_start = any(
+        event.get("event") == "start" and event.get("action_id") == case.action_id
+        for event in events
+    )
+    has_matching_decision = any(
+        event.get("event") == "decision"
+        and event.get("action_id") == case.action_id
+        and event.get("decision") == decision
+        for event in events
+    )
+    has_audit_id = bool(report.get("audit_ids"))
+    return has_start and has_matching_decision and has_audit_id
+
+
 def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> ProbeResult:
     expected = _EXPECTED_BY_FAULT[case.fault]
     invoked = bool(outcome["invoked"])
@@ -453,6 +531,22 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
     # the same abnormal-run handling below rather than trusted as a
     # clean pass merely because the process happened to exit zero.
     if report is not None and report.get("decision") in _RECOGNIZED_DECISIONS:
+        # Even a well-formed, recognized-decision self-report is never
+        # sufficient by itself: it must be corroborated by a matching
+        # ledger start/decision record and at least one audit id, or
+        # the outcome is unobservable — no different, in principle,
+        # from a crashed child that recorded no ledger evidence at all.
+        if not _completed_report_is_ledger_supported(
+            case, report, outcome["events"]
+        ):
+            raise ProbeToolingError(
+                f"probe {case.probe_id!r} self-reported "
+                f"{report.get('decision')!r} but the observation ledger "
+                "does not corroborate it with a matching start/decision "
+                "record and at least one audit id — a self-report is "
+                "never trusted on its own"
+            )
+
         decision = report["decision"]
         if decision == "deny":
             observed = "tool_invoked_despite_deny" if invoked else "tool_not_invoked"
@@ -499,9 +593,7 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
     # is never trusted to self-report. Fail-closed (the ledger proves
     # the tool was never reached) still passes: a process dying or
     # reporting nonsense is not itself a violation as long as it also
-    # never let the action through. Fail-open (the ledger proves the
-    # tool *was* reached despite the fault) is always ENF-002 —
-    # unconditionally, regardless of which abnormal shape produced it.
+    # never let the action through.
     if not outcome["ledger_observable"]:
         raise ProbeToolingError(
             f"probe {case.probe_id!r} outcome is unobservable: the child "
@@ -511,9 +603,29 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
         )
 
     if invoked:
-        observed = "tool_invoked_despite_fault"
-        status = "must-fix"
-        reason_code = "ENF-002"
+        if expected == _TRANSFORM_EXPECTED_OUTCOME:
+            # This fault's own contract expects the tool to be reached
+            # on a normal completion (a transform-family fault) — the
+            # ledger proving reach is not itself proof of fail-open,
+            # since reaching the tool was never forbidden in the first
+            # place. Only a completed, well-formed self-report can be
+            # compared against the ledger's argument hash to confirm
+            # the transform was actually correct; an incomplete run
+            # cannot prove that either way. Fabricating ENF-002 here
+            # would falsely accuse a run that may well have transformed
+            # correctly and only failed afterwards.
+            observed = "tool_invoked_but_outcome_unverified"
+            status = "not-verified"
+            reason_code = _NOT_VERIFIED_REASON
+        else:
+            # This fault's own contract forbids invocation on a normal
+            # completion (deny/crash/timeout/malformed-verdict
+            # families) — the ledger proving reach anyway is always a
+            # completed fail-open finding, unconditionally, regardless
+            # of which abnormal shape produced it.
+            observed = "tool_invoked_despite_fault"
+            status = "must-fix"
+            reason_code = "ENF-002"
     else:
         observed = "tool_not_invoked"
         status = "pass" if observed == expected else "must-fix"
@@ -606,7 +718,7 @@ def _dispatch_child(
         # is never charged against the contract's application timeout,
         # and the ledger-based classification below decides the rest.
         process.kill()
-        process.communicate()
+        _reap_killed_child(process)
         child_error = "startup_failed"
     else:
         try:
@@ -617,7 +729,7 @@ def _dispatch_child(
             exit_code = process.returncode
         except subprocess.TimeoutExpired:
             process.kill()
-            process.communicate()
+            stdout_bytes = _reap_killed_child(process)
             child_error = "timeout"
 
     events = _read_ledger_events(ledger_path)
@@ -650,7 +762,29 @@ def _dispatch_child(
         "invoked": invoked,
         "ledger_observable": bool(events),
         "invocation_argument_hash": invocation_argument_hash,
+        "events": events,
     }
+
+
+def _reap_killed_child(process: "subprocess.Popen[bytes]") -> bytes:
+    """Drain and reap an already-killed *process*, bounded defensively.
+
+    Once a process has been killed, draining its pipes and reaping its
+    exit status should return almost instantly — but this is bounded by
+    the same generous, harness-level startup allowance rather than left
+    to block forever, in case of an exceptional wedged pipe. Any bytes
+    that could not be drained within the bound are simply discarded:
+    the process is already dead, and the ledger — not stdout — is what
+    the classification in ``_build_probe_result`` trusts for a killed
+    child.
+    """
+    try:
+        stdout_bytes, _stderr_bytes = process.communicate(
+            timeout=_CHILD_READY_TIMEOUT_S
+        )
+        return stdout_bytes
+    except subprocess.TimeoutExpired:
+        return b""
 
 
 def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) -> bool:
@@ -681,9 +815,12 @@ def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) 
     if reader.is_alive():
         # Still blocked reading after the generous startup bound: kill
         # the child so the pipe closes, then wait for the read to
-        # actually unblock before touching its result.
+        # actually unblock before touching its result — bounded
+        # defensively rather than joined forever, in case an
+        # exceptional wedged pipe ever kept it from unblocking even
+        # after the kill.
         process.kill()
-        reader.join()
+        reader.join(timeout_s)
 
     if not result or not isinstance(result[0], (bytes, bytearray)):
         return False
