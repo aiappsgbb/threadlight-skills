@@ -15,6 +15,16 @@ stdin, and a hard timeout at the subprocess boundary. The contract's
 ``side_effect_mode`` must be ``synthetic`` or ``dry-run`` — never
 ``live`` — so nothing here can mutate customer state.
 
+That hard timeout applies only to the fault-under-test, never to
+interpreter/import startup: the child writes a fixed-length ready marker
+to stdout the moment it has finished importing the dispatch callable,
+*before* ever invoking it, and the parent's ``timeout_ms`` clock starts
+only once that marker is observed. A separate, generous harness-level
+startup bound still keeps a hung or crashed-before-ready child from
+blocking a probe run forever — it is just never charged against the
+probe contract's own timeout budget, so process-startup jitter can never
+make an otherwise-fast probe misclassify as a timeout.
+
 The dispatch callable and the synthetic tool service it may call both
 append payload-free ``start``/``invocation``/``decision`` records to an
 exclusive, per-run temporary observation ledger. That ledger is the
@@ -23,22 +33,29 @@ self-report: a crashed, timed-out, or lying child process still leaves
 behind whatever it managed to write before the fault happened, so a
 parent that has to kill the child can still prove whether the tool
 service was ever reached. The child's own stdout report is used only
-when it is present, well-formed, *and* consistent with the ledger; it
-otherwise reports nothing more than an invocation count, an argument
-hash, a decision, an exception class, and audit event IDs — never a raw
-argument or tool output.
+when the child completed normally (exited zero and produced well-formed
+output); it otherwise reports nothing more than an invocation count, an
+argument hash, a decision, an exception class, and audit event IDs —
+never a raw argument or tool output.
 
-A denied or transformed action that nonetheless reaches the tool service
-(whether self-reported honestly or only provable via the ledger after a
-crash/timeout/malformed result) is never a passing probe:
+Only a *completed*, well-formed deny/transform report can ever earn a
+pass:
 
-- a clean but *inconsistent* self-report (the seam claims ``deny`` while
-  the ledger proves invocation, or claims ``transform`` while the
-  argument hash the tool received does not match what was reported) maps
-  to ``ENF-001``;
-- a crash, timeout, or malformed output/verdict that the ledger proves
-  nonetheless reached the tool (fail-open) maps to ``ENF-002``, as a
-  completed ``must-fix`` probe result — never a tooling exception; and
+- a clean but *inconsistent* self-report from a completed run (the seam
+  claims ``deny`` while the ledger proves invocation, or claims
+  ``transform`` while the argument hash the tool received does not match
+  what was reported) maps to ``ENF-001``; it is the one case where a
+  self-report is trusted enough to be compared against the ledger at
+  all, precisely because the run completed normally;
+- a crash, a timeout, unparseable/malformed stdout, or a well-formed but
+  semantically invalid ("malformed") verdict is never a *deliberate*
+  enforcement decision — it is an operational failure at the dispatch
+  seam. Whether or not the ledger happens to also prove the tool was
+  reached (fail-open) or never reached (fail-closed) this run, an
+  abnormally terminated or semantically invalid probe can never be
+  trusted as proof of reliable enforcement, so it unconditionally maps
+  to a completed ``ENF-002`` must-fix probe result — never a tooling
+  exception; and
 - an outcome that is genuinely unobservable (the child failed *and* the
   ledger recorded nothing at all, not even a ``start`` record) raises
   :class:`ProbeToolingError`, since neither a pass nor a specific finding
@@ -55,10 +72,11 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Optional, Tuple
+from typing import List, Mapping, Optional, Tuple
 
 import canonical
 from contracts import Finding, ProbeResult
@@ -79,7 +97,32 @@ _REQUIRED_REPORT_KEYS: Tuple[str, ...] = (
     "exception_class",
 )
 
-# What a passing probe must observe, keyed by ``ProbeCase.fault``.
+# The only decision values a *completed* child report is ever allowed to
+# claim. Anything else — even from a well-formed, exit-zero JSON
+# envelope — is exactly what "malformed verdict" means at the
+# governance level, and is never treated as a clean pass.
+_RECOGNIZED_DECISIONS: Tuple[str, ...] = ("deny", "transform")
+
+# A fixed-length sentinel the isolated child writes to stdout the moment
+# it has finished interpreter/import startup and resolved the dispatch
+# callable — *before* ever invoking it. The parent's application-level
+# ``timeout_ms`` boundary starts only once this marker is observed, so
+# process-startup jitter is never charged against the probe's
+# fault-under-test time budget (see ``_dispatch_child``).
+_CHILD_READY_MARKER: bytes = b"PROBE-CHILD-READY\n"
+
+# A generous, harness-level bound on interpreter/import startup itself —
+# independent of, and never carved out of, the contract's own
+# ``timeout_ms``. It exists only so a child that hangs or crashes before
+# ever becoming ready cannot block a probe run forever; ordinary startup
+# (well under a few hundred milliseconds) never comes close to it.
+_CHILD_READY_TIMEOUT_S: float = 5.0
+
+# What a passing probe must observe, keyed by ``ProbeCase.fault``. For
+# the crash/timeout/malformed-verdict faults this documents the ledger
+# outcome a fail-closed run happens to produce; it is informational
+# only; those three faults never pass regardless (see
+# ``_build_probe_result``).
 _EXPECTED_BY_FAULT: Mapping[str, str] = {
     "deny": "tool_not_invoked",
     "transform": "tool_received_transformed_arguments",
@@ -93,12 +136,11 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
 # Human-readable, stable reason codes recorded on a *passing* probe,
 # keyed by ``ProbeCase.fault``. Never a catalog finding ID: those are
 # reserved for probes that did not pass (see ``_FINDING_TEMPLATES``).
+# Only a completed, well-formed deny/transform report can ever pass, so
+# only those two faults appear here.
 _PASS_REASON_BY_FAULT: Mapping[str, str] = {
     "deny": "deny-enforced",
     "transform": "transform-enforced",
-    "raise": "crash-blocked",
-    "sleep": "timeout-blocked",
-    "invalid": "malformed-verdict-blocked",
 }
 
 _DEFAULT_PASS_REASON = "application-probe-enforced"
@@ -145,18 +187,23 @@ _FINDING_TEMPLATES: Mapping[str, Mapping[str, object]] = MappingProxyType(
                 "phase": "pre-deploy",
                 "plane": "runtime",
                 "summary": (
-                    "a probe fault proves the tool service is reachable "
-                    "despite a condition that should have blocked it "
-                    "(fail-open)"
+                    "an application-path probe ended abnormally (crash, "
+                    "timeout, malformed output, or malformed verdict) and "
+                    "can never be trusted as proof of enforcement"
                 ),
                 "details": (
                     "Agent Hooks is cooperative and can be bypassed by a "
                     "caller that skips the hook. This application-path "
-                    "probe drove a crash, timeout, or malformed-output "
-                    "condition that should have blocked the action, and "
-                    "the observation ledger proves the synthetic tool "
-                    "service was reached anyway, with no compensating "
-                    "control found for that bypass surface."
+                    "probe drove a crash, timeout, malformed-output, or "
+                    "malformed-verdict condition; the observation ledger "
+                    "is the only trustworthy witness left for what "
+                    "happened. Even when it proves the tool was never "
+                    "reached this run, a dispatch that failed to "
+                    "complete normally — or reported a decision outside "
+                    "its recognized deny/transform schema — is never "
+                    "rewarded as if it were a deliberate, reliable "
+                    "enforcement decision. Only a completed, well-formed "
+                    "deny or transform report can ever earn a pass."
                 ),
             }
         ),
@@ -385,11 +432,19 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
     invoked = bool(outcome["invoked"])
     report = outcome["child_report"]
 
-    if report is not None:
-        decision = report.get("decision")
+    # A *completed* child (exited zero, produced a well-formed JSON
+    # envelope) is the only run whose own self-report is ever trusted at
+    # all — and even then, only when its decision is one of the
+    # recognized deny/transform values. A well-formed envelope whose
+    # decision falls outside that schema is exactly what "malformed
+    # verdict" means at the governance level, and is classified with
+    # the same abnormal-run handling below rather than trusted as a
+    # clean pass merely because the process happened to exit zero.
+    if report is not None and report.get("decision") in _RECOGNIZED_DECISIONS:
+        decision = report["decision"]
         if decision == "deny":
             observed = "tool_invoked_despite_deny" if invoked else "tool_not_invoked"
-        elif decision == "transform":
+        else:  # decision == "transform"
             if not invoked:
                 observed = "tool_not_invoked"
             elif outcome.get("invocation_argument_hash") != report.get(
@@ -398,8 +453,6 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
                 observed = "argument_hash_mismatch"
             else:
                 observed = "tool_received_transformed_arguments"
-        else:
-            observed = f"unknown_decision:{decision}"
 
         status = "pass" if observed == expected else "must-fix"
         reason_code = (
@@ -427,9 +480,15 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             evidence_refs=evidence_refs,
         )
 
-    # The child's own report is unusable (it crashed, timed out, or wrote
-    # unparseable/malformed output) — only the ledger can prove reality,
-    # since a killed or crashed process is never trusted to self-report.
+    # Every other outcome is abnormal: the child crashed, timed out,
+    # wrote unparseable output, or completed but reported a
+    # semantically invalid ("malformed") verdict. Only the ledger can
+    # prove reality here — a killed, crashed, or schema-violating child
+    # is never trusted to self-report — and an abnormal run is *never*
+    # a passing probe, regardless of whether the ledger happens to also
+    # show the tool was reached (fail-open) or never reached
+    # (fail-closed): a crash/timeout/malformed result is an operational
+    # failure, not a deliberate, reliable enforcement decision.
     if not outcome["ledger_observable"]:
         raise ProbeToolingError(
             f"probe {case.probe_id!r} outcome is unobservable: the child "
@@ -438,19 +497,11 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             "ever reached"
         )
 
-    if invoked:
-        observed = "tool_invoked_despite_fault"
-        status = "must-fix"
-        reason_code = "ENF-002"
-    else:
-        observed = "tool_not_invoked"
-        status = "pass" if observed == expected else "must-fix"
-        reason_code = (
-            _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
-            if status == "pass"
-            else "ENF-001"
-        )
-
+    observed = (
+        "tool_invoked_despite_fault"
+        if invoked
+        else "tool_not_invoked_despite_abnormal_dispatch"
+    )
     evidence_refs = tuple(
         sorted({ref for ref in (outcome.get("invocation_argument_hash"),) if ref})
     )
@@ -458,8 +509,8 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
         probe_id=case.probe_id,
         action_id=case.action_id,
         path_id=None,
-        status=status,
-        reason_code=reason_code,
+        status="must-fix",
+        reason_code="ENF-002",
         expected=expected,
         observed=observed,
         evidence_refs=evidence_refs,
@@ -514,15 +565,39 @@ def _dispatch_child(
     child_error: Optional[str] = None
     exit_code: Optional[int] = None
     stdout_bytes = b""
+
     try:
-        stdout_bytes, _stderr_bytes = process.communicate(
-            input=stdin_bytes, timeout=contract["timeout_ms"] / 1000.0
-        )
-        exit_code = process.returncode
-    except subprocess.TimeoutExpired:
+        assert process.stdin is not None  # narrows Optional for mypy/readers
+        process.stdin.write(stdin_bytes)
+        process.stdin.close()
+    except (OSError, ValueError):
+        # A child that crashed before ever reading stdin (e.g. an
+        # unresolvable dispatch reference) can close its end of the pipe
+        # first; the ready-handshake wait below still correctly resolves
+        # this to an abnormal/unobservable outcome.
+        pass
+
+    ready = _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S)
+    if not ready:
+        # Never became ready within the generous, harness-level startup
+        # bound — hung, crashed, or produced something other than the
+        # exact marker before ever reaching the dispatch callable. This
+        # is never charged against the contract's application timeout,
+        # and the ledger-based classification below decides the rest.
         process.kill()
         process.communicate()
-        child_error = "timeout"
+        child_error = "startup_failed"
+    else:
+        try:
+            remaining_stdout, _stderr_bytes = process.communicate(
+                timeout=contract["timeout_ms"] / 1000.0
+            )
+            stdout_bytes = remaining_stdout
+            exit_code = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            child_error = "timeout"
 
     events = _read_ledger_events(ledger_path)
     invoked = any(event.get("event") == "invocation" for event in events)
@@ -556,6 +631,42 @@ def _dispatch_child(
         "invocation_argument_hash": invocation_argument_hash,
     }
 
+
+def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) -> bool:
+    """Block until *process* writes the exact ready marker to stdout.
+
+    Runs the (blocking) fixed-length read in a background thread so it
+    can be bounded by *timeout_s* even though the underlying read itself
+    cannot be interrupted directly; a hung or crashed child still
+    reliably unblocks the thread once ``process.kill()`` closes its end
+    of the pipe. Returns ``True`` only if exactly the expected marker
+    bytes were read — never on a short read (early EOF) or any other
+    content.
+    """
+    assert process.stdout is not None  # narrows Optional for mypy/readers
+    marker_length = len(_CHILD_READY_MARKER)
+    result: List[object] = []
+
+    def _read_marker() -> None:
+        try:
+            result.append(process.stdout.read(marker_length))
+        except (OSError, ValueError) as error:  # pragma: no cover - defensive
+            result.append(error)
+
+    reader = threading.Thread(target=_read_marker, daemon=True)
+    reader.start()
+    reader.join(timeout_s)
+
+    if reader.is_alive():
+        # Still blocked reading after the generous startup bound: kill
+        # the child so the pipe closes, then wait for the read to
+        # actually unblock before touching its result.
+        process.kill()
+        reader.join()
+
+    if not result or not isinstance(result[0], (bytes, bytearray)):
+        return False
+    return bytes(result[0]) == _CHILD_READY_MARKER
 
 def _read_ledger_events(ledger_path: Path) -> list:
     try:
@@ -620,6 +731,13 @@ def _run_as_child() -> None:
     dispatch_module_name, dispatch_attr = dispatch_ref.split(":", 1)
     dispatch_module = importlib.import_module(dispatch_module_name)
     dispatch = getattr(dispatch_module, dispatch_attr)
+
+    # Interpreter/import startup is finished and the dispatch callable is
+    # resolved: signal readiness *before* invoking it so the parent's
+    # application-level timeout clock starts from here, not from process
+    # launch. Nothing about this fault under test has happened yet.
+    sys.stdout.buffer.write(_CHILD_READY_MARKER)
+    sys.stdout.buffer.flush()
 
     result = dispatch(case_payload, ledger_path)
 

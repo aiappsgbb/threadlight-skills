@@ -141,10 +141,13 @@ def dispatch_probe(
 
     if fault == "invalid":
         # An unknown/schema-invalid verdict from a (synthetic) policy
-        # engine. Malformed verdicts deny by default rather than being
-        # interpreted permissively.
-        verdict = "not-a-real-verdict"
-        decision = "deny" if verdict not in ("allow", "transform") else verdict
+        # engine, reported exactly as received — this fixture never
+        # normalizes it to a clean "deny" itself. Whether an
+        # out-of-schema verdict is ever trustworthy is a governance
+        # decision for the harness (see ``probes._build_probe_result``),
+        # not something this dispatch seam gets to decide quietly on its
+        # own. The tool is still never invoked for this fault.
+        decision = "not-a-real-verdict"
         _record_audit(action_id, decision)
         _append_ledger(
             ledger_path,
