@@ -1,0 +1,8 @@
+{
+  "dispatch": "app.agent:dispatch_probe",
+  "audit_sink": "app.agent:AUDIT_EVENTS",
+  "timeout_ms": 100,
+  "side_effect_mode": "synthetic",
+  "observation_ledger": "governance/probe-ledger.jsonl",
+  "actions": ["payments.refund"]
+}
