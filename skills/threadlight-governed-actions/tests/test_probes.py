@@ -236,6 +236,68 @@ def test_double_invoke_transform_is_enf_001_not_a_laundered_pass(fixture_root: P
     ]
 
 
+def test_raw_passthrough_claiming_transform_is_enf_001_for_reference_arguments(
+    fixture_root: Path,
+):
+    # The fixture self-reports a clean "transform" decision, fully
+    # corroborated by matching ledger start/decision records and a
+    # real audit id, but never actually applies the transform policy
+    # at all: the tool receives the raw arguments completely
+    # unchanged. Self-report/ledger *consistency* alone is never proof
+    # a transform happened — the ledger's own recorded original vs.
+    # received argument hashes must actually differ. These are the
+    # standard deterministic transform probe's reference arguments
+    # ({"amount": 7}), which this harness's own fixed contract knows
+    # require an actual change, so an unchanged hash here is a
+    # definite ENF-001 violation, never merely unconfirmed.
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "raw-passthrough-transform",
+            "payments.refund",
+            "raw_passthrough_transform",
+            {"amount": 7},
+        ),
+    )
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-001"
+    assert result.observed not in (
+        "tool_received_transformed_arguments",
+        "tool_not_invoked",
+    )
+
+    findings = findings_from_probes((result,))
+    assert [(finding.finding_id, finding.status) for finding in findings] == [
+        ("ENF-001", "must-fix")
+    ]
+
+
+def test_raw_passthrough_claiming_transform_is_not_verified_for_arbitrary_arguments(
+    fixture_root: Path,
+):
+    # The exact same self-report/ledger-consistent-but-unchanged-hash
+    # shape as above, but for arguments this generic harness has no
+    # fixed reference contract for (unlike the standard {"amount": 7}
+    # case). Whether a no-op was actually required for these
+    # particular arguments is a business-policy question this harness
+    # never embeds, so the truthful outcome is "not-verified", never a
+    # fabricated ENF-001.
+    result = run_application_probe(
+        fixture_root / "interceptor-failure",
+        ProbeCase(
+            "raw-passthrough-transform-arbitrary",
+            "payments.refund",
+            "raw_passthrough_transform",
+            {"amount": 3},
+        ),
+    )
+    assert result.status == "not-verified"
+    assert result.reason_code != "ENF-001"
+    assert result.reason_code != "ENF-002"
+
+    assert findings_from_probes((result,)) == ()
+
+
 def test_crash_before_transform_invoke_is_not_verified_never_a_finding(
     fixture_root: Path,
 ):

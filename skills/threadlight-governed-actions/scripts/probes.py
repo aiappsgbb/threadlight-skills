@@ -98,7 +98,20 @@ tool actually received and a hash of the case's original (pre-transform)
 arguments — still payload-free, just two hashes rather than one — so a
 genuine transform (the two hashes differing) can be told apart from a
 raw, untransformed invocation (the two hashes matching) without ever
-needing the payload itself.
+needing the payload itself. A completed ``transform`` decision is only
+ever trusted when those two hashes actually *differ*: self-report and
+ledger agreeing with each other on an unchanged hash is never, by
+itself, proof that a transform happened, since a buggy (or malicious)
+seam could pass the raw arguments straight through while still
+claiming ``transform``. Whether identical hashes are then a definite
+``ENF-001`` violation or a truthfully ``not-verified`` outcome depends
+on whether the *case's own arguments* are known — by this harness's
+fixed reference-argument contract (never by embedding the target's own
+transform *policy*, which is business logic that belongs to the
+application under test, not to this generic harness) — to require an
+actual change; an arbitrary case using different arguments cannot be
+judged that way at all, since a legitimate, policy-compliant no-op is
+indistinguishable from a bug without knowing the target's own rules.
 
 This module also never mutates the target repository: an
 ``observation_ledger`` whose parent directory does not yet exist is
@@ -215,6 +228,15 @@ _EXPECTED_BY_FAULT: Mapping[str, str] = {
     # whose normal completion is supposed to reach the tool proves
     # nothing either way.
     "crash_before_transform_invoke": "tool_received_transformed_arguments",
+    # A transform-family regression that self-reports a clean
+    # "transform" decision, corroborated by a matching ledger record,
+    # yet never actually applies the transform policy: it invokes the
+    # tool with the raw, completely unchanged arguments. Never expected
+    # to pass — proves the harness requires the ledger to show the
+    # tool actually received something different from the case's
+    # original arguments, not merely that the self-report and ledger
+    # agree with each other on an unchanged hash.
+    "raw_passthrough_transform": "tool_received_transformed_arguments",
 }
 
 # Human-readable, stable reason codes recorded on a *passing* probe,
@@ -267,6 +289,36 @@ _ENFORCEMENT_PROBE_SUITE: Tuple[Tuple[str, str], ...] = (
 )
 
 _ENFORCEMENT_PROBE_ARGUMENTS: Mapping[str, object] = MappingProxyType({"amount": 7})
+
+# The exact reference arguments the standard, deterministic transform
+# probe (``run_enforcement_probe_set``) always exercises. Documented, by
+# construction of the synthetic fixture's own $5 pre-authorized refund
+# ceiling, to require an actual change on any correct transform
+# completion — a completed "transform" decision whose ledger proves the
+# tool received these particular arguments completely unchanged is
+# therefore a definite, provable enforcement failure, never merely an
+# unconfirmed possibility. This harness deliberately never embeds the
+# fixture's own transform *policy* (the $5 cap itself is business logic
+# that belongs to the target application, not the generic probe
+# harness) — it only knows, by the design contract of its own fixed
+# reference case, that these particular arguments are transform-
+# triggering. An arbitrary probe case using different arguments is not
+# known by this generic harness to require a change at all (whether a
+# transform is a legitimate no-op depends on business policy this
+# module never embeds), so the identical no-op evidence there is
+# truthfully "not-verified" instead of an invented violation — see
+# ``_build_probe_result``.
+_TRANSFORM_REQUIRED_REFERENCE_ARGUMENTS: Mapping[str, object] = _ENFORCEMENT_PROBE_ARGUMENTS
+
+# Observed values for a completed "transform" decision whose ledger
+# proves the tool received arguments byte-identical to the case's
+# original, pre-transform arguments (no observable change at all) —
+# split into a definite violation (the case is known, by this module's
+# own reference-argument contract, to require a change) versus a
+# truthfully unconfirmed one (an arbitrary case this generic harness
+# cannot independently know required any change).
+_TRANSFORM_NO_OP_REQUIRED_OBSERVED = "tool_received_unchanged_required_arguments"
+_TRANSFORM_NO_OP_UNVERIFIED_OBSERVED = "tool_received_unverified_unchanged_arguments"
 
 _FINDING_TEMPLATES: Mapping[str, Mapping[str, object]] = MappingProxyType(
     {
@@ -718,15 +770,44 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
                 "argument_hash"
             ):
                 observed = "argument_hash_mismatch"
+            elif original_argument_hash is not None and original_argument_hash == (
+                outcome.get("invocation_argument_hash")
+            ):
+                # Self-report/ledger consistency alone is never
+                # sufficient proof of a transform: the ledger's own
+                # "original_argument_hash" for this invocation is
+                # byte-identical to the hash the tool actually
+                # received, meaning nothing observably changed at all.
+                # Whether that is a definite violation or merely
+                # unconfirmed depends on whether this case's own
+                # arguments are known — by this harness's fixed
+                # reference-argument contract, not by embedding any
+                # fixture-specific transform policy — to require an
+                # actual change.
+                if dict(case.arguments) == dict(
+                    _TRANSFORM_REQUIRED_REFERENCE_ARGUMENTS
+                ):
+                    observed = _TRANSFORM_NO_OP_REQUIRED_OBSERVED
+                else:
+                    observed = _TRANSFORM_NO_OP_UNVERIFIED_OBSERVED
             else:
                 observed = "tool_received_transformed_arguments"
 
-        status = "pass" if observed == expected else "must-fix"
-        reason_code = (
-            _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
-            if status == "pass"
-            else "ENF-001"
-        )
+        if observed == _TRANSFORM_NO_OP_UNVERIFIED_OBSERVED:
+            # Truthfully unconfirmed, never an invented ENF-001: this
+            # generic harness cannot know whether an arbitrary case's
+            # arguments were already policy-compliant (a legitimate
+            # no-op) or the transform was simply never applied (a real
+            # bug) without embedding the target's own business rules.
+            status = "not-verified"
+            reason_code = _NOT_VERIFIED_REASON
+        else:
+            status = "pass" if observed == expected else "must-fix"
+            reason_code = (
+                _PASS_REASON_BY_FAULT.get(case.fault, _DEFAULT_PASS_REASON)
+                if status == "pass"
+                else "ENF-001"
+            )
         evidence_refs = tuple(
             sorted(
                 {

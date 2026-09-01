@@ -47,7 +47,15 @@ clean invocation, proving the harness counts the ledger's own
 invocation records rather than trusting a self-reported count; the
 latter crashes before ever invoking the tool at all, proving an
 incomplete transform-family run is truthfully unverified, never a
-fabricated policy-violation finding.
+fabricated policy-violation finding. ``raw_passthrough_transform`` is a
+further deliberately negative regression, fully self-report/ledger
+consistent yet still wrong: it self-reports a clean "transform"
+decision, corroborated by every ledger record the harness checks, but
+never actually applies the transform policy — the tool receives the
+raw arguments completely unchanged. Proves the harness must not treat
+self-report/ledger *consistency* alone as proof a transform happened:
+it must also prove the ledger shows the tool actually received
+something different from what the case started with.
 
 Every ledger "invocation" record carries both the hash of the
 arguments the synthetic tool actually received and a hash of the
@@ -284,6 +292,31 @@ def dispatch_probe(
         # fabricated ENF-001/ENF-002 finding either, since no ledger
         # evidence contradicts anything this fault ever claimed to do.
         raise RuntimeError("synthetic interceptor crash before transform invocation")
+
+    if fault == "raw_passthrough_transform":
+        # Deliberately buggy seam: self-reports a clean, well-formed
+        # "transform" decision, fully corroborated by matching ledger
+        # start/decision records and a real audit id, yet never
+        # actually applies the transform policy at all — it invokes
+        # the tool with the raw, completely unchanged arguments (both
+        # the transformed and original hashes it records are
+        # identical). Proves the harness must not treat self-report/
+        # ledger *consistency* alone as proof of a transform: it must
+        # also prove the ledger shows the tool actually received
+        # something different from the case's original arguments.
+        argument_hash = _synthetic_tool_invoke(
+            ledger_path, action_id, arguments, arguments
+        )
+        _record_audit_with_ledger(ledger_path, action_id, "transform")
+        _append_ledger(
+            ledger_path, "decision", action_id=action_id, decision="transform"
+        )
+        return {
+            "decision": "transform",
+            "invocation_count": 1,
+            "argument_hash": argument_hash,
+            "exception_class": None,
+        }
 
     if fault == "raise":
         # Interceptor crashes before ever reaching the tool: fail-closed.
