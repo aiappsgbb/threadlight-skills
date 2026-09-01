@@ -1,0 +1,8 @@
+{
+  "dispatch": "app.agent:emit_output",
+  "audit_sink": "app.agent:AUDIT_EVENTS",
+  "observation_ledger": "governance/output-ledger.jsonl",
+  "action_id": "support.transcript-export",
+  "exposure_bound_bytes": 32,
+  "chunk_mediation": true
+}

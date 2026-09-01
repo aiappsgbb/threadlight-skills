@@ -1,0 +1,5 @@
+{
+  "dispatch": "app.agent:redeem",
+  "audit_sink": "app.agent:AUDIT_EVENTS",
+  "nonce_ledger": "governance/nonce-ledger.jsonl"
+}

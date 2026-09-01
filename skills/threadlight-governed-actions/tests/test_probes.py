@@ -1,5 +1,6 @@
 """Tests for threadlight-governed-actions' hermetic enforcement probes
-(Task 5).
+(Task 5) and approval anti-replay, output mediation, and payload-free
+audit probes (Task 6).
 
 Exercises ``probes.run_application_probe`` against the ``interceptor-
 failure`` fixture: a synthetic ``app.agent`` dispatch seam exhibiting
@@ -26,6 +27,18 @@ genuinely unobservable — the child failed and the ledger recorded nothing
 at all, *or* the child completed but the ledger does not corroborate its
 self-report — raises ``ProbeToolingError`` instead of any finding.
 
+The approval/output/audit probes below exercise ``run_approval_probe``
+against the ``approval-replay`` fixture (a synthetic, service-side
+atomic nonce store), ``run_output_probe`` against the
+``output-streaming`` fixture (a synthetic buffered/streaming output
+mediator), and ``run_privacy_probe_set`` (a fixed, in-code sample of a
+payload-free and a payload-bearing audit record). Every approval
+scenario that proves the anti-replay/binding control worked — a
+first-time acceptance, a replay, a mutated-field reuse, or an expired
+attempt rejected before ever reaching the nonce store — is itself a
+*passing* probe; only a genuine violation (the ledger proving a
+non-atomic double acceptance) is ``must-fix`` with reason ``APR-001``.
+
 Run with:
     python3 -m pytest skills/threadlight-governed-actions/tests/test_probes.py -q
 """
@@ -33,20 +46,26 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import FrozenInstanceError
+import shutil
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
 from contracts import Finding, ProbeResult
 from probes import (
+    ApprovalBinding,
     ProbeCase,
     ProbeContractError,
     ProbeToolingError,
+    approval_digest,
     findings_from_probes,
     load_probe_contract,
     run_application_probe,
+    run_approval_probe,
     run_enforcement_probe_set,
+    run_output_probe,
+    run_privacy_probe_set,
 )
 
 
@@ -56,6 +75,37 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 @pytest.fixture
 def fixture_root() -> Path:
     return FIXTURES_DIR
+
+
+@pytest.fixture
+def approval_binding() -> ApprovalBinding:
+    return ApprovalBinding(
+        target_scope="account:synthetic-001",
+        requesting_subject="subject:pseudonymous-requester",
+        approving_subject="subject:pseudonymous-approver",
+        approving_role="role:synthetic-reviewer",
+        tenant="tenant:synthetic-001",
+        policy_id="policy:refund-v1",
+        policy_hash="sha256:" + "a" * 64,
+        action_id="payments.refund",
+        arguments={"amount": 7, "currency": "USD"},
+        issued_at="2026-09-01T12:00:00Z",
+        expires_at="2026-09-01T12:05:00Z",
+        nonce="nonce-0001",
+    )
+
+
+@pytest.fixture
+def approval_root(tmp_path: Path) -> Path:
+    # A fresh, isolated copy of the checked-in fixture per test: the
+    # anti-replay nonce ledger is deliberately *persistent* across
+    # separate ``run_approval_probe`` calls within one test (that is
+    # the whole point — atomic one-time redemption), so each test must
+    # start from its own untouched nonce space rather than share one
+    # with every other test in this module.
+    destination = tmp_path / "approval-replay"
+    shutil.copytree(FIXTURES_DIR / "approval-replay", destination)
+    return destination
 
 
 def test_probe_case_is_frozen():
@@ -692,3 +742,348 @@ def test_probe_run_leaves_no_stray_ledger_file(fixture_root: Path):
     )
     after = set(governance_dir.iterdir())
     assert after == before
+
+
+# --------------------------------------------------------------------
+# Task 6: approval anti-replay, output mediation, and payload-free audit
+# --------------------------------------------------------------------
+
+
+def test_approval_binding_is_frozen(approval_binding: ApprovalBinding):
+    with pytest.raises(FrozenInstanceError):
+        approval_binding.nonce = "other"  # type: ignore[misc]
+
+
+def test_approval_is_single_use_and_bound_to_canonical_action(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    approved = run_approval_probe(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    replayed = run_approval_probe(
+        approval_root, approval_binding, now="2026-09-01T12:00:01Z"
+    )
+    mutated = run_approval_probe(
+        approval_root,
+        replace(approval_binding, arguments={"amount": 8, "currency": "USD"}),
+        now="2026-09-01T12:00:02Z",
+    )
+    assert [p.status for p in (approved, replayed, mutated)] == [
+        "pass",
+        "pass",
+        "pass",
+    ]
+    assert approved.observed == "approval_accepted"
+    assert replayed.observed == "replay_rejected"
+    assert mutated.observed == "binding_mismatch_rejected"
+
+    findings = findings_from_probes((approved, replayed, mutated))
+    assert findings == ()
+
+
+def test_approval_rejects_expired_binding(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    # A binding submitted after its own ``expires_at`` must be rejected
+    # before the nonce store is ever consulted at all — a fresh, never-
+    # before-seen nonce still fails, purely on expiry.
+    expired_binding = replace(approval_binding, nonce="nonce-expired-0001")
+    result = run_approval_probe(
+        approval_root, expired_binding, now="2026-09-01T12:05:01Z"
+    )
+    assert result.status == "pass"
+    assert result.observed == "expired_rejected"
+    assert findings_from_probes((result,)) == ()
+
+
+def test_approval_binding_at_exact_expiry_instant_is_rejected(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    # ``now`` equal to (not just past) ``expires_at`` is still expired —
+    # an approval window is exclusive of its own expiry instant.
+    boundary_binding = replace(approval_binding, nonce="nonce-boundary-0001")
+    result = run_approval_probe(
+        approval_root, boundary_binding, now=boundary_binding.expires_at
+    )
+    assert result.status == "pass"
+    assert result.observed == "expired_rejected"
+
+
+@pytest.mark.parametrize(
+    "field,new_value",
+    [
+        ("requesting_subject", "subject:attacker"),
+        ("approving_subject", "subject:rogue-approver"),
+        ("approving_role", "role:unauthorized"),
+        ("target_scope", "account:synthetic-999"),
+        ("tenant", "tenant:synthetic-999"),
+        ("policy_id", "policy:refund-v2"),
+        ("policy_hash", "sha256:" + "b" * 64),
+        ("action_id", "payments.transfer"),
+        ("arguments", {"amount": 999, "currency": "USD"}),
+    ],
+)
+def test_approval_rejects_every_mutated_field_reusing_the_same_nonce(
+    approval_root: Path,
+    approval_binding: ApprovalBinding,
+    field: str,
+    new_value: object,
+):
+    # "Mutated action" per the design spec: an approval for one
+    # canonical action hash cannot authorize changed arguments, target,
+    # tenant, actor, policy version, or (here) action itself. Every one
+    # of subject/role/target/tenant/policy/action/args is exercised as
+    # its own mutation reusing the exact same, already-consumed nonce.
+    approved = run_approval_probe(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    mutated = run_approval_probe(
+        approval_root,
+        replace(approval_binding, **{field: new_value}),
+        now="2026-09-01T12:00:01Z",
+    )
+    assert approved.status == "pass"
+    assert approved.observed == "approval_accepted"
+    assert mutated.status == "pass"
+    assert mutated.observed == "binding_mismatch_rejected"
+
+
+def test_approval_digest_ignores_argument_key_order(
+    approval_binding: ApprovalBinding,
+):
+    reordered = replace(
+        approval_binding, arguments={"currency": "USD", "amount": 7}
+    )
+    assert dict(approval_binding.arguments) != list(reordered.arguments.items())
+    assert approval_digest(approval_binding) == approval_digest(reordered)
+
+
+def test_approval_digest_changes_when_any_bound_field_changes(
+    approval_binding: ApprovalBinding,
+):
+    baseline = approval_digest(approval_binding)
+    for field, new_value in (
+        ("target_scope", "account:synthetic-999"),
+        ("requesting_subject", "subject:attacker"),
+        ("approving_subject", "subject:rogue-approver"),
+        ("approving_role", "role:unauthorized"),
+        ("tenant", "tenant:synthetic-999"),
+        ("policy_id", "policy:refund-v2"),
+        ("policy_hash", "sha256:" + "b" * 64),
+        ("action_id", "payments.transfer"),
+        ("arguments", {"amount": 999, "currency": "USD"}),
+        ("issued_at", "2026-09-01T12:00:01Z"),
+        ("expires_at", "2026-09-01T12:05:01Z"),
+        ("nonce", "nonce-9999"),
+    ):
+        mutated = replace(approval_binding, **{field: new_value})
+        assert approval_digest(mutated) != baseline, field
+
+
+def test_approval_binds_to_transformed_arguments_not_raw_arguments(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    # "Transform-before-approval binding": when a pre-action seam
+    # transforms arguments before requesting approval, the approval
+    # must be bound to the already-transformed (final) arguments, never
+    # to the original raw ones — an attempt to redeem the same nonce
+    # with the pre-transform raw arguments must be rejected exactly
+    # like any other mutated-field reuse.
+    transformed_binding = replace(
+        approval_binding,
+        arguments={"amount": 5, "currency": "USD"},
+        nonce="nonce-transform-0001",
+    )
+    approved = run_approval_probe(
+        approval_root, transformed_binding, now="2026-09-01T12:00:00Z"
+    )
+    raw_binding = replace(transformed_binding, arguments={"amount": 7, "currency": "USD"})
+    raw_replay = run_approval_probe(
+        approval_root, raw_binding, now="2026-09-01T12:00:01Z"
+    )
+    assert approved.status == "pass"
+    assert approved.observed == "approval_accepted"
+    assert raw_replay.status == "pass"
+    assert raw_replay.observed == "binding_mismatch_rejected"
+
+
+def test_approval_probe_reports_apr_001_when_ledger_proves_non_atomic_reuse(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # A deliberately broken nonce store: it always appends a fresh
+    # record instead of atomically rejecting an already-consumed
+    # nonce. ``run_approval_probe`` must never trust the fixture's own
+    # silence about this — it independently proves the violation from
+    # the ledger's own contents (more records after the call than
+    # before, for the same nonce) and reports the catalog's ``APR-001``
+    # must-fix finding rather than a laundered pass.
+    root = tmp_path / "broken-nonce-store"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"nonce": nonce, "digest": digest}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    approved = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+    replayed = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:01Z")
+
+    assert approved.status == "pass"
+    assert replayed.status == "must-fix"
+    assert replayed.reason_code == "APR-001"
+    assert replayed.observed == "nonce_reuse_not_atomic"
+
+    findings = findings_from_probes((approved, replayed))
+    assert [(f.finding_id, f.status) for f in findings] == [("APR-001", "must-fix")]
+
+
+def test_output_is_buffered_until_output_verdict(fixture_root: Path):
+    result = run_output_probe(fixture_root / "output-streaming", verdict="deny")
+    assert result.status == "pass"
+    assert result.observed == "zero_bytes_egressed"
+    assert findings_from_probes((result,)) == ()
+
+
+def test_output_probe_allows_buffered_release_after_verdict(fixture_root: Path):
+    result = run_output_probe(fixture_root / "output-streaming", verdict="allow")
+    assert result.status == "pass"
+    assert result.observed == "buffered_release_after_verdict"
+
+
+def test_output_probe_passes_when_stream_is_chunk_mediated_within_declared_bound(
+    fixture_root: Path,
+):
+    result = run_output_probe(fixture_root / "output-streaming", verdict="stream")
+    assert result.status == "pass"
+    assert result.observed == "chunk_mediated_within_bound"
+    assert findings_from_probes((result,)) == ()
+
+
+def test_output_probe_rejects_incremental_stream_without_declared_bound(
+    tmp_path: Path,
+):
+    # Incremental output only ever passes with an *explicit*, nonzero
+    # exposure bound and evidenced chunk-level mediation declared in
+    # the probe contract; a contract that omits both must reject a
+    # "stream" verdict as OUT-001 without ever even invoking the
+    # dispatch callable (a raise here would fail the test if it were).
+    root = tmp_path / "output-missing-bound"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    raise AssertionError(
+        "dispatch must never be invoked for an undeclared exposure bound"
+    )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="stream")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "incremental_output_without_declared_bound"
+
+    findings = findings_from_probes((result,))
+    assert [(f.finding_id, f.status) for f in findings] == [("OUT-001", "must-fix")]
+
+
+def test_output_probe_rejects_oversized_unmediated_chunk_release(tmp_path: Path):
+    # A contract that *does* declare a bound and chunk mediation, but
+    # whose fixture actually releases an oversized, unmediated chunk
+    # anyway, must still be caught: the harness independently verifies
+    # the ledger's own chunk evidence against the declared bound rather
+    # than trusting the contract's declaration alone.
+    root = tmp_path / "output-oversized-chunk"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "chunk", "bytes": 64, "mediated": False}) + "\\n"
+        )
+        handle.write(json.dumps({"event": "egress", "bytes": 64}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+                "exposure_bound_bytes": 16,
+                "chunk_mediation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="stream")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "unmediated_or_oversized_chunk_release"
+
+
+def test_output_probe_rejects_unknown_verdict(fixture_root: Path):
+    with pytest.raises(ProbeContractError):
+        run_output_probe(fixture_root / "output-streaming", verdict="bogus")
+
+
+def test_audit_probe_rejects_payload_bearing_record(fixture_root: Path):
+    findings = findings_from_probes(run_privacy_probe_set(fixture_root))
+    assert [(f.finding_id, f.status) for f in findings] == [("AUD-001", "must-fix")]
+
+
+def test_audit_probe_passes_payload_free_record(fixture_root: Path):
+    results = run_privacy_probe_set(fixture_root)
+    passing = [result for result in results if result.status == "pass"]
+    assert passing
+    assert all(result.observed == "payload_free_audit_record" for result in passing)
+    assert findings_from_probes(tuple(passing)) == ()
