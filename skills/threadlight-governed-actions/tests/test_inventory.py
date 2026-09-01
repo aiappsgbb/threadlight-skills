@@ -618,3 +618,163 @@ def test_registry_only_irreversible_action_without_implementation_is_must_fix(
     act_002 = [f for f in result.findings if f.finding_id == "ACT-002"]
     assert len(act_002) == 1
     assert act_002[0].status == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# SPEC-declared action IDs must join the union, not disappear (fix 1).
+# A SPEC-only action (named in section 8 but declared in neither a
+# registry nor Python) still gets exactly one inventory entry and the
+# expected ACT-001 (unclassified) + ACT-002 (source-mismatch) findings.
+# ---------------------------------------------------------------------------
+
+
+def test_spec_only_action_appears_exactly_once_with_findings(tmp_path: Path) -> None:
+    write_spec(tmp_path, "Requires approval: `reports.export`.")
+    result = inventory.build_action_inventory(tmp_path)
+
+    assert [action.action_id for action in result.actions] == ["reports.export"]
+    action = result.actions[0]
+    assert action.consequence is None
+    assert action.approval_required is True
+    assert action.source == "spec"
+    assert action.declaration_refs == ()
+    assert action.implementation_refs == ()
+
+    assert {(f.finding_id, f.status) for f in result.findings} == {
+        ("ACT-001", "must-fix"),
+        ("ACT-002", "must-fix"),
+    }
+    # Exactly one finding per catalog ID for this single action — it must
+    # not be double-reported or silently dropped.
+    assert len(result.findings) == 2
+    for finding in result.findings:
+        assert finding.affected_actions == ("reports.export",)
+
+
+def test_spec_only_action_never_disappears_when_merged_with_other_sources(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [{"id": "alpha.only", "consequence": "read", "execution_modes": ["interactive"]}],
+    )
+    write_fixture_with_python_tool(tmp_path, "beta.only")
+    write_spec(tmp_path, "Requires approval: `gamma.only`.")
+
+    result = inventory.build_action_inventory(tmp_path)
+
+    assert [action.action_id for action in result.actions] == [
+        "alpha.only",
+        "beta.only",
+        "gamma.only",
+    ]
+    by_id = {action.action_id: action for action in result.actions}
+    assert by_id["alpha.only"].source == "registry"
+    assert by_id["beta.only"].source == "python"
+    assert by_id["gamma.only"].source == "spec"
+
+
+# ---------------------------------------------------------------------------
+# A discovered SPEC/Python ID that matches a registry alias resolves to the
+# canonical action ID (fix 2) — no phantom alias action, no false "missing
+# implementation" finding for the canonical action.
+# ---------------------------------------------------------------------------
+
+
+def test_python_tool_registered_under_alias_resolves_to_canonical_action(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            }
+        ],
+    )
+    write_fixture_with_python_tool(tmp_path, "orders.remove")
+
+    result = inventory.build_action_inventory(tmp_path)
+
+    assert [action.action_id for action in result.actions] == ["orders.cancel"]
+    action = result.actions[0]
+    assert action.implementation_refs == ("app_agent.py",)
+    assert action.source == "python+registry"
+    assert result.findings == ()
+
+
+def test_spec_mention_of_alias_resolves_approval_to_canonical_action(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            }
+        ],
+    )
+    write_fixture_with_python_tool(tmp_path, "orders.cancel")
+    write_spec(tmp_path, "Requires approval: `orders.remove`.")
+
+    result = inventory.build_action_inventory(tmp_path)
+
+    assert [action.action_id for action in result.actions] == ["orders.cancel"]
+    action = result.actions[0]
+    assert action.approval_required is True
+    assert action.source == "python+registry+spec"
+
+
+def test_ambiguous_alias_is_not_silently_resolved_to_either_action(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            },
+            {
+                "id": "orders.delete",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove"],
+            },
+        ],
+    )
+    write_fixture_with_python_tool(tmp_path, "orders.remove")
+
+    result = inventory.build_action_inventory(tmp_path)
+
+    # The alias is ambiguous (claimed by two actions), so the discovered
+    # "orders.remove" implementation is never guessed onto either one —
+    # it surfaces as its own action instead of vanishing or being
+    # misattributed.
+    assert {action.action_id for action in result.actions} == {
+        "orders.cancel",
+        "orders.delete",
+        "orders.remove",
+    }
+    by_id = {action.action_id: action for action in result.actions}
+    assert by_id["orders.cancel"].implementation_refs == ()
+    assert by_id["orders.delete"].implementation_refs == ()
+    assert by_id["orders.remove"].implementation_refs == ("app_agent.py",)
+    assert by_id["orders.remove"].consequence is None
+
+    duplicate_alias_findings = [
+        f for f in result.findings if f.reason_code == "duplicate-alias"
+    ]
+    assert len(duplicate_alias_findings) == 1
+    assert set(duplicate_alias_findings[0].affected_actions) == {
+        "orders.cancel",
+        "orders.delete",
+    }

@@ -22,6 +22,16 @@ consequence, a missing SAFE declaration) becomes an explicit
 status — never a silently-assumed ``pass``. Contradictory declarations
 (conflicting duplicate IDs, an unrecognized consequence string) raise
 :class:`InventoryError` rather than being silently merged or guessed at.
+
+Every ID named by any of the three sources — including a SPEC-only or
+Python-only mention with no counterpart elsewhere — joins the merged
+union exactly once; none of them are ever silently dropped. A discovered
+Python or SPEC identifier that matches one of a registry action's
+declared aliases resolves to that action's canonical ID rather than
+becoming a separate phantom action, but only when the alias is
+unambiguous (claimed by exactly one action) and does not collide with
+another action's own registered ID — an ambiguous or colliding alias is
+left unresolved rather than guessed at.
 """
 from __future__ import annotations
 
@@ -441,6 +451,61 @@ def parse_action_registries(root: Path) -> Dict[str, ActionRecord]:
     return merged
 
 
+def _build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
+    """Map each *unambiguous* registry alias to its one canonical action ID.
+
+    Alias strings are compared case-insensitively (normalized the same way
+    as an action ID) since discovered Python/SPEC identifiers are always
+    lowercase-normalized before being looked up here. An alias claimed by
+    more than one action is ambiguous — that ambiguity is already reported
+    separately as an ``ACT-002`` ``duplicate-alias`` finding — and is
+    deliberately excluded from the returned index: guessing which of the
+    two actions it refers to would itself be an invented mapping.
+    """
+    owners: Dict[str, Set[str]] = {}
+    for action_id, record in registry.items():
+        for alias in record.aliases:
+            owners.setdefault(_normalize_action_id(alias), set()).add(action_id)
+    return {
+        alias: next(iter(candidate_owners))
+        for alias, candidate_owners in owners.items()
+        if len(candidate_owners) == 1
+    }
+
+
+def _canonicalize_action_id(
+    raw_id: str, registry: Mapping[str, ActionRecord], alias_index: Mapping[str, str]
+) -> str:
+    """Resolve a discovered (Python/SPEC) *raw_id* to its canonical action ID.
+
+    An ID that is itself a registered canonical action ID is always
+    returned unchanged — a real registered action is never folded into
+    someone else's alias, even if its own ID string happens to also be
+    used as an alias elsewhere. Otherwise, an unambiguous registry alias
+    match resolves to the one action that owns it. Anything else (no
+    match at all, or an alias claimed by more than one action) is
+    returned unchanged rather than guessed at.
+    """
+    if raw_id in registry:
+        return raw_id
+    return alias_index.get(raw_id, raw_id)
+
+
+def _canonicalize_ref_map(
+    refs: Mapping[str, Tuple[str, ...]],
+    registry: Mapping[str, ActionRecord],
+    alias_index: Mapping[str, str],
+) -> Dict[str, Tuple[str, ...]]:
+    """Resolve every key of a discovered ``action_id -> paths`` map to its
+    canonical action ID (see :func:`_canonicalize_action_id`), merging the
+    path sets of any raw IDs that resolve to the same canonical ID."""
+    merged: Dict[str, Set[str]] = {}
+    for raw_id, paths in refs.items():
+        canonical_id = _canonicalize_action_id(raw_id, registry, alias_index)
+        merged.setdefault(canonical_id, set()).update(paths)
+    return {action_id: tuple(sorted(paths)) for action_id, paths in merged.items()}
+
+
 # ---------------------------------------------------------------------------
 # Python tool discovery (static AST only — never imported/executed)
 # ---------------------------------------------------------------------------
@@ -595,29 +660,49 @@ def build_action_inventory(root: Path) -> InventoryResult:
     root_path = Path(root)
 
     registry = parse_action_registries(root_path)
-    python_refs = _discover_python_tool_refs(root_path)
+    alias_index = _build_alias_index(registry)
+
+    raw_python_refs = _discover_python_tool_refs(root_path)
+    python_refs = _canonicalize_ref_map(raw_python_refs, registry, alias_index)
 
     spec_path = root_path / "specs" / "SPEC.md"
     section_text = _read_section_8_text(spec_path)
-    spec_action_ids = _extract_action_ids(section_text)
+    raw_spec_action_ids = _extract_action_ids(section_text)
+    spec_action_ids = {
+        _canonicalize_action_id(action_id, registry, alias_index)
+        for action_id in raw_spec_action_ids
+    }
     spec_section_sha256 = _sha256_prefixed(section_text.encode("utf-8"))
     safe_requirements = _parse_safe_requirements(section_text)
 
     findings: list[Finding] = []
     actions: list[ActionRecord] = []
 
-    all_ids = set(registry) | set(python_refs)
+    # SPEC-declared IDs join the union alongside registry/Python IDs so a
+    # SPEC-only action (named in section 8 but declared in neither a
+    # registry nor Python) still gets exactly one inventory entry rather
+    # than silently disappearing.
+    all_ids = set(registry) | set(python_refs) | spec_action_ids
     for action_id in sorted(all_ids):
         in_registry = action_id in registry
         in_python = action_id in python_refs
-        sources = [name for name, present in (("python", in_python), ("registry", in_registry)) if present]
+        in_spec = action_id in spec_action_ids
+        sources = [
+            name
+            for name, present in (
+                ("python", in_python),
+                ("registry", in_registry),
+                ("spec", in_spec),
+            )
+            if present
+        ]
         source = "+".join(sorted(sources))
 
         base = registry[action_id] if in_registry else _empty_action_record(action_id, source)
         implementation_refs = python_refs.get(action_id, ())
 
         approval_required = base.approval_required
-        if approval_required is None and action_id in spec_action_ids:
+        if approval_required is None and in_spec:
             approval_required = True
 
         is_must_fix = False
@@ -648,7 +733,12 @@ def build_action_inventory(root: Path) -> InventoryResult:
         if not (in_registry and in_python):
             severity = _drift_severity([base.consequence])
             is_must_fix = is_must_fix or severity == "must-fix"
-            missing = "Python implementation" if in_registry else "registry declaration"
+            missing_labels = []
+            if not in_registry:
+                missing_labels.append("a registry declaration")
+            if not in_python:
+                missing_labels.append("a Python implementation")
+            missing = " and ".join(missing_labels)
             findings.append(
                 Finding(
                     finding_id="ACT-002",
@@ -656,7 +746,7 @@ def build_action_inventory(root: Path) -> InventoryResult:
                     phase="design",
                     plane="runtime",
                     reason_code="source-mismatch",
-                    summary=f"Action '{action_id}' is missing a {missing}.",
+                    summary=f"Action '{action_id}' is missing {missing}.",
                     details=(
                         f"Action '{action_id}' was found via source set "
                         f"{{{source}}}; a declared action needs both a "
