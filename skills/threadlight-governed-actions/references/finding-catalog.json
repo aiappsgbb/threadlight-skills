@@ -77,11 +77,11 @@
     {
       "finding_id": "OUT-001",
       "category": "output",
-      "plane": "both",
+      "plane": "runtime",
       "severity": "must-fix",
       "gate": true,
-      "summary": "Evidence, audit records, or manifest content captured by the assessor contains prompt/argument/output/secret payload material instead of hashes or structural references.",
-      "remediation": "Replace payload content with hashes/references (e.g. input_hash/output_hash) so evidence stays payload-free."
+      "summary": "Protected output is not mediated before release: it is released before its governing verdict is known, or an incremental (streaming) release has no declared, ledger-proven exposure bound and chunk mediation.",
+      "remediation": "Buffer protected output until the verdict is known (a denied verdict must release zero bytes), and bound and chunk-mediate any incremental release instead of streaming it unmediated."
     },
     {
       "finding_id": "AUD-001",

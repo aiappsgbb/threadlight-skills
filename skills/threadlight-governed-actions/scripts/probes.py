@@ -1640,6 +1640,60 @@ def _read_nonce_records(ledger_path: Path) -> List[Mapping[str, object]]:
     return _read_ledger_events(ledger_path)
 
 
+def _find_payload_bearing_audit_event(
+    audit_events,
+) -> Optional[Mapping[str, object]]:
+    """Return the first drained audit event that fails payload-free validation.
+
+    Actually validates every event a fixture's dispatch call appended
+    to its declared ``audit_sink`` through
+    ``canonical.validate_payload_free_audit`` — the same validator
+    Task 5's application-path probes already use. Declaring an
+    ``audit_sink`` in a probe contract is never sufficient on its own;
+    a fixture whose audit trail leaks a raw payload must be caught, not
+    silently trusted just because the seam is named. Returns ``None``
+    when every drained event is payload-free.
+    """
+    for record in audit_events:
+        try:
+            canonical.validate_payload_free_audit(record)
+        except canonical.PayloadExposureError:
+            return record
+    return None
+
+
+def _audit_violation_result(
+    probe_id: str, action_id: Optional[str], record: Mapping[str, object]
+) -> ProbeResult:
+    """Build the ``AUD-001`` override result for a leaking audit event.
+
+    A payload-bearing audit record takes priority over whatever the
+    approval or output probe's own control logic would otherwise have
+    concluded: even a correctly enforced anti-replay or output-
+    mediation control is still a genuine violation if the audit trail
+    it produced along the way leaked a raw payload.
+    """
+    audit_id = record.get("audit_id")
+    return ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=None,
+        status="must-fix",
+        reason_code="AUD-001",
+        expected=_AUDIT_EXPECTED,
+        observed="payload_bearing_audit_event",
+        evidence_refs=(str(audit_id),) if audit_id else (),
+    )
+
+
+def _first_event_index(events, event_type: str) -> Optional[int]:
+    """Return the index of the first ledger event of *event_type*, or ``None``."""
+    for index, event in enumerate(events):
+        if event.get("event") == event_type:
+            return index
+    return None
+
+
 def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeResult:
     """Prove one approval binding's anti-replay control at time *now*.
 
@@ -1672,6 +1726,14 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     pre-transform arguments), or a proven non-atomic reuse (the ledger
     grew an extra record for a nonce that already had one) — never a
     self-reported outcome the fixture itself could fabricate.
+
+    Every audit event the fixture's ``redeem`` call actually drained
+    into its declared ``audit_sink`` is itself validated through
+    ``canonical.validate_payload_free_audit`` before any anti-replay
+    judgment is trusted: a payload-bearing audit record overrides
+    whatever the nonce-ledger evidence would otherwise conclude, and is
+    reported as ``AUD-001`` instead — a declared ``audit_sink`` that is
+    never actually checked would make audit delegation dead code.
     """
     root_path = Path(root).resolve()
     contract = load_approval_contract(root_path)
@@ -1697,8 +1759,14 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
         if record.get("nonce") == binding.nonce
     ]
 
-    dispatch, _audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
+    dispatch, audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
     dispatch(binding.nonce, digest, str(nonce_ledger_path))
+
+    audit_violation = _find_payload_bearing_audit_event(audit_events)
+    if audit_violation is not None:
+        return _audit_violation_result(
+            _APPROVAL_PROBE_ID, binding.action_id, audit_violation
+        )
 
     after_matches = [
         record
@@ -1744,11 +1812,20 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     """Prove protected output is mediated according to *verdict*.
 
     Recognizes exactly ``"deny"``, ``"allow"``, and ``"stream"`` —
-    anything else raises :class:`ProbeContractError`. ``"deny"`` only
-    passes when zero bytes were ever egressed (the buffer-until-verdict
-    posture releasing nothing at all); ``"allow"`` passes for the same
-    buffered posture releasing the complete output only after the
-    verdict is known. ``"stream"`` (incremental release) only ever
+    anything else raises :class:`ProbeContractError`. Every verdict is
+    first checked for *ordering*, never assumed: this probe locates the
+    ledger's own ``"verdict_received"`` record and proves no
+    ``"egress"``/``"chunk"`` release event precedes it (or exists at
+    all when no such record was ever written) — a release recorded
+    before the verdict is itself always a ``must-fix`` regardless of
+    which verdict eventually followed, so ``"allow"`` is never an
+    unconditional pass. Once ordering is proven, ``"deny"`` only passes
+    when the *total* bytes ever released — ``"egress"`` events *and*
+    every ``"chunk"`` event's bytes both counted, so a denial cannot be
+    laundered into a pass merely by leaking bytes framed as chunks
+    instead of a single egress record — is zero; ``"allow"`` passes for
+    the buffered posture releasing the complete output only after the
+    verdict is known; ``"stream"`` (incremental release) only ever
     passes when the probe contract itself declares an explicit, nonzero
     ``exposure_bound_bytes`` and ``chunk_mediation: true`` *and* the
     observation ledger independently proves every released chunk was
@@ -1756,6 +1833,13 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     either declaration rejects the stream verdict as ``OUT-001`` before
     the dispatch seam is ever invoked at all (proven by fixtures whose
     dispatch callable raises if ever called in that case).
+
+    Every audit event the fixture's dispatch call actually drained into
+    its declared ``audit_sink`` is itself validated through
+    ``canonical.validate_payload_free_audit`` before any mediation
+    judgment is trusted: a payload-bearing audit record overrides
+    whatever the ledger evidence would otherwise conclude, and is
+    reported as ``AUD-001`` instead.
 
     Resets (deletes) the fixture's ledger file before calling dispatch
     and again afterward, so a fixture's ledger — checked in once and
@@ -1796,20 +1880,41 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     try:
         ledger_dir.mkdir(parents=True, exist_ok=True)
         ledger_path.unlink(missing_ok=True)
-        dispatch, _audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
+        dispatch, audit_events = _resolve_dispatch_and_audit_sink(root_path, contract)
         dispatch(verdict, str(ledger_path))
         events = _read_ledger_events(ledger_path)
     finally:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs(created_dirs)
 
+    audit_violation = _find_payload_bearing_audit_event(audit_events)
+    if audit_violation is not None:
+        return _audit_violation_result(
+            _OUTPUT_PROBE_ID, contract["action_id"], audit_violation
+        )
+
+    verdict_index = _first_event_index(events, "verdict_received")
+    release_indices = [
+        index
+        for index, event in enumerate(events)
+        if event.get("event") in ("egress", "chunk")
+    ]
+    premature_release = any(
+        verdict_index is None or index < verdict_index for index in release_indices
+    )
+
     egress_bytes = sum(
         int(event.get("bytes", 0)) for event in events if event.get("event") == "egress"
     )
     chunk_events = [event for event in events if event.get("event") == "chunk"]
+    chunk_bytes = sum(int(event.get("bytes", 0)) for event in chunk_events)
+    total_released_bytes = egress_bytes + chunk_bytes
 
-    if verdict == "deny":
-        if egress_bytes == 0:
+    if premature_release:
+        observed = "output_released_before_verdict"
+        status = "must-fix"
+    elif verdict == "deny":
+        if total_released_bytes == 0:
             observed = "zero_bytes_egressed"
             status = "pass"
         else:

@@ -52,6 +52,7 @@ from pathlib import Path
 
 import pytest
 
+import probes
 from contracts import Finding, ProbeResult
 from probes import (
     ApprovalBinding,
@@ -70,6 +71,9 @@ from probes import (
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+CATALOG_PATH = (
+    Path(__file__).resolve().parent.parent / "references" / "finding-catalog.json"
+)
 
 
 @pytest.fixture
@@ -854,7 +858,15 @@ def test_approval_digest_ignores_argument_key_order(
     reordered = replace(
         approval_binding, arguments={"currency": "USD", "amount": 7}
     )
-    assert dict(approval_binding.arguments) != list(reordered.arguments.items())
+    # Proves the two bindings' arguments genuinely differ in iteration
+    # order (not merely comparing incomparable types, which would be
+    # true regardless of order and prove nothing) while remaining
+    # value-equal as mappings — making the digest equality below a real
+    # proof of key-order independence.
+    assert list(approval_binding.arguments.items()) != list(
+        reordered.arguments.items()
+    )
+    assert dict(approval_binding.arguments) == dict(reordered.arguments)
     assert approval_digest(approval_binding) == approval_digest(reordered)
 
 
@@ -1044,6 +1056,9 @@ AUDIT_EVENTS = []
 def emit_output(verdict, ledger_path):
     with open(ledger_path, "a", encoding="utf-8") as handle:
         handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        handle.write(
             json.dumps({"event": "chunk", "bytes": 64, "mediated": False}) + "\\n"
         )
         handle.write(json.dumps({"event": "egress", "bytes": 64}) + "\\n")
@@ -1087,3 +1102,235 @@ def test_audit_probe_passes_payload_free_record(fixture_root: Path):
     assert passing
     assert all(result.observed == "payload_free_audit_record" for result in passing)
     assert findings_from_probes(tuple(passing)) == ()
+
+
+def test_output_probe_never_unconditionally_passes_allow_before_verdict(
+    tmp_path: Path,
+):
+    # An "allow" verdict releasing output *before* its own governing
+    # verdict is ever recorded to the ledger must never be an
+    # unconditional pass: ``run_output_probe`` proves no egress/chunk
+    # event precedes the ledger's own ``verdict_received`` record,
+    # using the ledger's event ordering, not just its final tallies.
+    root = tmp_path / "output-premature-allow"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"event": "egress", "bytes": 96}) + "\\n")
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="allow")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "output_released_before_verdict"
+
+
+def test_output_probe_treats_leaked_chunk_bytes_as_egress_on_deny(tmp_path: Path):
+    # A buggy fixture that reports zero bytes on its "egress" event
+    # while still leaking the actual output through a "chunk" event
+    # must not be laundered into a pass: chunk bytes count toward the
+    # released total exactly like egress bytes do.
+    root = tmp_path / "output-deny-chunk-leak"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        handle.write(
+            json.dumps({"event": "chunk", "bytes": 40, "mediated": True}) + "\\n"
+        )
+        handle.write(json.dumps({"event": "egress", "bytes": 0}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="deny")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "nonzero_bytes_egressed_on_deny"
+
+
+def test_approval_probe_reports_aud_001_when_audit_sink_leaks_payload(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # The nonce store itself behaves correctly (atomic, one-time
+    # redemption identical to the checked-in fixture), but its audit
+    # sink leaks a raw argument payload. ``run_approval_probe`` must
+    # actually validate the drained ``AUDIT_EVENTS`` through the
+    # payload-free auditor rather than treating a declared
+    # ``audit_sink`` as a dead, unchecked seam — and the audit
+    # violation must override whatever the anti-replay evidence would
+    # otherwise have concluded.
+    root = tmp_path / "approval-leaky-audit"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import fcntl
+import json
+import os
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, ledger_path):
+    with open(ledger_path, "a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.seek(0)
+            already_seen = any(
+                json.loads(line).get("nonce") == nonce
+                for line in handle.read().splitlines()
+                if line.strip()
+            )
+            if not already_seen:
+                handle.write(json.dumps({"nonce": nonce, "digest": digest}) + "\\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    AUDIT_EVENTS.append(
+        {
+            "audit_id": f"audit-approval-{nonce}",
+            "event": "approval_redemption_attempt",
+            "arguments": {"amount": 7, "currency": "USD"},
+        }
+    )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+    assert result.status == "must-fix"
+    assert result.reason_code == "AUD-001"
+    assert result.observed == "payload_bearing_audit_event"
+
+
+def test_output_probe_reports_aud_001_when_audit_sink_leaks_payload(tmp_path: Path):
+    # Otherwise-correct, well-ordered output mediation (verdict
+    # recorded before the denial's zero-byte egress) is still a
+    # violation when the audit trail it produced leaks raw output
+    # content.
+    root = tmp_path / "output-leaky-audit"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        handle.write(json.dumps({"event": "egress", "bytes": 0}) + "\\n")
+
+    AUDIT_EVENTS.append(
+        {
+            "audit_id": "audit-output-deny",
+            "event": "output_mediation_decision",
+            "output": "denied content",
+        }
+    )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="deny")
+    assert result.status == "must-fix"
+    assert result.reason_code == "AUD-001"
+    assert result.observed == "payload_bearing_audit_event"
+
+
+def test_finding_templates_agree_with_catalog_plane_for_shared_ids():
+    # The design's finding-ID taxonomy (design spec §13.2) is the
+    # single source of truth for each finding's "plane". This proves
+    # ``probes._FINDING_TEMPLATES`` and the checked-in
+    # ``references/finding-catalog.json`` never silently drift apart
+    # on that fixed classification for any finding id both define.
+    catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    catalog_planes = {
+        entry["finding_id"]: entry["plane"] for entry in catalog["findings"]
+    }
+    shared_ids = set(catalog_planes) & set(probes._FINDING_TEMPLATES)
+    assert shared_ids  # sanity: the two sources do overlap
+    mismatches = {
+        finding_id: (probes._FINDING_TEMPLATES[finding_id]["plane"], catalog_planes[finding_id])
+        for finding_id in shared_ids
+        if probes._FINDING_TEMPLATES[finding_id]["plane"] != catalog_planes[finding_id]
+    }
+    assert mismatches == {}
