@@ -282,20 +282,30 @@ def _mode_action_function_name(action_id: str, mode: str) -> str:
 
 def _index_functions_by_name(
     tree: ast.Module,
-) -> Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"]:
-    """Index every function definition in *tree* by name, first-wins.
+) -> Dict[str, Tuple["ast.FunctionDef | ast.AsyncFunctionDef", ...]]:
+    """Index *every* function definition in *tree* by name, in source order.
+
+    A file can legally define the same dispatch name more than once (a
+    stale copy left behind alongside a newer one, a stub above a real
+    implementation, ...); every one of those definitions is kept — not
+    just the first found by ``ast.walk`` — so :func:`_static_evidence` can
+    reduce them itself rather than silently discarding all but one. Nodes
+    sharing a name are ordered by ``(lineno, col_offset)`` so the *last*
+    entry is always the definition whose name binding a caller would
+    actually resolve at runtime (Python's own "later ``def`` rebinds the
+    name" semantics), regardless of ``ast.walk``'s own traversal order.
 
     Built once per file (see :func:`_build_ast_index`) rather than walked
     afresh for every ``(action, mode)`` lookup that might need it.
     """
-    functions: Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"] = {}
+    functions: Dict[str, List["ast.FunctionDef | ast.AsyncFunctionDef"]] = {}
     for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name not in functions
-        ):
-            functions[node.name] = node
-    return functions
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            functions.setdefault(node.name, []).append(node)
+    return {
+        name: tuple(sorted(nodes, key=lambda n: (n.lineno, n.col_offset)))
+        for name, nodes in functions.items()
+    }
 
 
 def _call_qualified_name(call: ast.Call) -> Optional[str]:
@@ -307,19 +317,69 @@ def _call_qualified_name(call: ast.Call) -> Optional[str]:
     return None
 
 
-def _iter_calls_in_order(node: ast.AST):
-    """Yield every ``ast.Call`` under *node* in (approximate) source order.
+# Statement/expression types under which a nested call might not actually
+# execute at runtime — an ``if``/``elif``/``else`` branch, a ternary
+# expression's branch, a ``try``/``except``/``finally`` block, or a
+# ``while``/``for``/``async for`` loop body (which can run zero times).
+# Every call reached only through one of these is "conditional"; a
+# ``with`` block is deliberately excluded because its body always executes
+# once its context manager is entered.
+_CONDITIONAL_NODE_TYPES: Tuple[type, ...] = (
+    ast.If,
+    ast.IfExp,
+    ast.Try,
+    ast.While,
+    ast.For,
+    ast.AsyncFor,
+)
+
+
+def _iter_calls_in_order(node: ast.AST, conditional: bool = False):
+    """Yield ``(call, conditional)`` pairs for every ``ast.Call`` under
+    *node*, in (approximate) source order.
 
     A pre-order walk: a call is yielded before recursing into its own
     arguments, which is exactly source order for the simple sequential
     statements ("call this, then call that") this scanner is designed to
     read. Good enough to determine relative ordering between the seam call
     and the state-changing call within one dispatch function's body.
+
+    Two structural exclusions keep this from being tricked into crediting
+    a call that a dispatch function's own straight-line execution never
+    actually makes:
+
+    - Nested ``def``/``async def``/``lambda`` bodies are never descended
+      into. A call made only when such a closure is itself later invoked
+      is invisible to this scanner and never credited to the *outer*
+      dispatch function's own trace — the closure might never be called
+      at all, or called from somewhere this scanner cannot see.
+    - ``conditional`` is ``True`` for every call reached only through a
+      branch that might not execute (see :data:`_CONDITIONAL_NODE_TYPES`),
+      so a genuinely unconditional call and one that only "sometimes" runs
+      can be told apart by the caller.
     """
+    # Guard against a nested closure passed in directly as *node* itself
+    # (not just as a child encountered mid-walk): a top-level statement
+    # in a dispatch function's own body can itself be a ``def``/``async
+    # def``/``lambda``, and its entire subtree must be invisible here too.
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        return
+
+    # A node's own children (e.g. an ``If``'s ``test``/``body``/``orelse``
+    # statements) are conditional whenever *this* node is itself one of
+    # the conditional container types — not whenever a child happens to
+    # be one, which would miss every call directly inside the branch
+    # (only a *nested* conditional inside that branch would ever be
+    # detected). Propagating from ``node`` downward means the whole
+    # subtree of a conditional container is correctly marked, however
+    # deep the calls inside it are nested.
+    here_conditional = conditional or isinstance(node, _CONDITIONAL_NODE_TYPES)
     for child in ast.iter_child_nodes(node):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
         if isinstance(child, ast.Call):
-            yield child
-        yield from _iter_calls_in_order(child)
+            yield child, here_conditional
+        yield from _iter_calls_in_order(child, here_conditional)
 
 
 @dataclass
@@ -334,16 +394,46 @@ class _CallTrace:
 
 
 def _trace_calls(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> _CallTrace:
+    """Trace one dispatch function's own recognized calls, in source order.
+
+    State-changing evidence (``tool_service``/``provider``/
+    ``output_mediator``/``audit_sink``) is recorded the same way whether
+    the call is reached unconditionally or only through one branch — a
+    bypass that triggers under just one ``if``/``while``/``for`` path is
+    still a real bypass, and under-reporting it would be its own false
+    pass in the other direction.
+
+    Mediation-seam evidence (``pre_action_seam``, ``approval_check``,
+    ``post_action_seam``) is different: crediting a call found only
+    inside a conditional branch would let one branch's incidental call
+    make the *whole* dispatch function look unconditionally mediated, so
+    only a genuinely unconditional occurrence of those three ever sets the
+    corresponding trace field. If the first occurrence found is
+    conditional, tracing continues past it in case a later, truly
+    unconditional occurrence of the same call exists.
+    """
     trace = _CallTrace()
     position = 0
     for statement in func_node.body:
-        for call in _iter_calls_in_order(statement):
+        for call, conditional in _iter_calls_in_order(statement):
             qualified = _call_qualified_name(call)
-            if qualified == _PRE_ACTION_SEAM_CALL and trace.pre_action_seam is None:
+            if (
+                qualified == _PRE_ACTION_SEAM_CALL
+                and not conditional
+                and trace.pre_action_seam is None
+            ):
                 trace.pre_action_seam = position
-            elif qualified == _APPROVAL_CHECK_CALL and trace.approval_check is None:
+            elif (
+                qualified == _APPROVAL_CHECK_CALL
+                and not conditional
+                and trace.approval_check is None
+            ):
                 trace.approval_check = position
-            elif qualified == _POST_ACTION_SEAM_CALL and trace.post_action_seam is None:
+            elif (
+                qualified == _POST_ACTION_SEAM_CALL
+                and not conditional
+                and trace.post_action_seam is None
+            ):
                 trace.post_action_seam = position
             elif (
                 qualified is not None
@@ -383,6 +473,12 @@ def _candidate_files(root: Path, action: ActionRecord) -> Tuple[Path, ...]:
     file under *root* (excluding vendored/hidden trees). A declared path
     that resolves outside *root* — including via a symlink — is dropped
     rather than trusted.
+
+    Called at most once per action for a whole :func:`build_mediation_graph`
+    assessment (see :func:`_collect_candidate_files_by_action`) rather than
+    once per ``(action, mode)`` pair, since its answer never varies by
+    mode and the root-wide fallback branch performs a real filesystem
+    walk.
     """
     declared = tuple(action.known_runtime_paths) or tuple(action.implementation_refs)
     if not declared:
@@ -401,16 +497,34 @@ def _candidate_files(root: Path, action: ActionRecord) -> Tuple[Path, ...]:
     return tuple(candidates)
 
 
-_AstIndex = Dict[Path, Dict[str, "ast.FunctionDef | ast.AsyncFunctionDef"]]
+def _collect_candidate_files_by_action(
+    root: Path, actions: Tuple[ActionRecord, ...]
+) -> Dict[str, Tuple[Path, ...]]:
+    """Resolve every action's candidate files exactly once per assessment.
+
+    ``_candidate_files`` falls back to a full ``root.rglob("*.py")`` walk
+    for any action that declares no ``known_runtime_paths``/
+    ``implementation_refs`` of its own. Recomputing that walk for every
+    one of the five required modes of every such action — the same,
+    action-independent answer five times over — is pure repeated
+    filesystem work for a result that never changes within one
+    assessment, so it is computed exactly once per action here and reused
+    by every mode's lookup (see :func:`_static_evidence`).
+    """
+    return {action.action_id: _candidate_files(root, action) for action in actions}
+
+
+_AstIndex = Dict[Path, Dict[str, Tuple["ast.FunctionDef | ast.AsyncFunctionDef", ...]]]
 
 
 def _build_ast_index(
-    root: Path, actions: Tuple[ActionRecord, ...]
+    actions: Tuple[ActionRecord, ...],
+    candidates_by_action: Mapping[str, Tuple[Path, ...]],
 ) -> _AstIndex:
     """Parse and index every candidate file's functions exactly once.
 
-    Collects the union of every file :func:`_candidate_files` could ever
-    return for any of *actions* (whether from declared
+    Collects the union of every file already resolved for any of *actions*
+    in *candidates_by_action* (whether from declared
     ``known_runtime_paths``/``implementation_refs`` or the root-wide
     fallback scan), then parses and indexes each distinct file exactly
     once. Built fresh for one :func:`build_mediation_graph` call and
@@ -422,7 +536,7 @@ def _build_ast_index(
     """
     all_candidates: "Dict[Path, None]" = {}
     for action in actions:
-        for candidate in _candidate_files(root, action):
+        for candidate in candidates_by_action[action.action_id]:
             all_candidates.setdefault(candidate, None)
 
     index: _AstIndex = {}
@@ -434,8 +548,94 @@ def _build_ast_index(
     return index
 
 
+def _node_evidence(
+    func_node: "ast.FunctionDef | ast.AsyncFunctionDef", mode: str
+) -> Tuple[Tuple[str, ...], bool]:
+    """Return ``(nodes, is_bypass)`` for one already-located dispatch
+    function definition, from its own traced calls alone.
+
+    ``is_bypass`` is true exactly when this definition's own body reaches
+    a state change (``tool_service.*``/``provider.*``) without a
+    pre-action seam call proven to precede it — the same test
+    :func:`_recompute_coverage` applies, computed early so duplicate
+    definitions of the same dispatch name can be reduced (see
+    :func:`_best_definition_evidence`) before a single ``(nodes,
+    found_relative)`` result is chosen for the whole file.
+    """
+    trace = _trace_calls(func_node)
+    state_positions = [
+        p for p in (trace.tool_service, trace.provider) if p is not None
+    ]
+    state_change_pos = min(state_positions) if state_positions else None
+    # A pre-action-seam call only counts when its own source position
+    # actually precedes the first state-changing call — a call to
+    # ``agent_hooks.pre_tool_call`` made *after* the state change has
+    # already run is a post-hoc observation (like a trailing audit
+    # record), never pre-action mediation, no matter how it looks in
+    # the canonical, structurally-ordered node list below.
+    seam_precedes_service = (
+        trace.pre_action_seam is not None
+        and state_change_pos is not None
+        and trace.pre_action_seam < state_change_pos
+    )
+
+    nodes: List[str] = ["entry"]
+    if mode in ("batch", "background"):
+        nodes.append("host/worker")
+    if mode == "subagent":
+        nodes.append("agent/subagent")
+    nodes.append("tool-router")
+    if trace.pre_action_seam is not None and (
+        state_change_pos is None or seam_precedes_service
+    ):
+        nodes.append("pre-action-seam")
+    if trace.approval_check is not None:
+        nodes.append("approval-check")
+    if state_change_pos is not None:
+        nodes.append("tool-service")
+    if trace.post_action_seam is not None:
+        nodes.append("post-action-seam")
+    if trace.output_mediator is not None:
+        nodes.append("output-mediator")
+    if mode in ("interactive", "subagent"):
+        nodes.append("caller")
+    if trace.audit_sink is not None:
+        nodes.append("audit-sink")
+
+    is_bypass = state_change_pos is not None and not seam_precedes_service
+    return tuple(nodes), is_bypass
+
+
+def _best_definition_evidence(
+    func_nodes: Tuple["ast.FunctionDef | ast.AsyncFunctionDef", ...], mode: str
+) -> Tuple[Tuple[str, ...], bool]:
+    """Reduce every same-named definition within one file to one verdict.
+
+    Any evidenced bypass among the definitions always wins over a
+    mediated one, regardless of definition order: Python's own "the last
+    ``def`` rebinds the name" runtime semantics do not make an earlier
+    bypass safe, because whichever definition actually executes at any
+    given moment (before or after a later redefinition lands), a bypass
+    anywhere in this set is real, exploitable behavior. Only when *none*
+    of the definitions is a bypass is the *last* one (by source position,
+    i.e. the actual name binding a caller would resolve at runtime) used —
+    matching real Python semantics rather than assuming an earlier,
+    possibly-incomplete definition (e.g. a stub with no dispatch logic
+    yet) is the one that matters.
+    """
+    evaluated = [_node_evidence(node, mode) for node in func_nodes]
+    for nodes, is_bypass in evaluated:
+        if is_bypass:
+            return nodes, is_bypass
+    return evaluated[-1]
+
+
 def _static_evidence(
-    root: Path, action: ActionRecord, mode: str, ast_index: _AstIndex
+    root: Path,
+    action: ActionRecord,
+    mode: str,
+    ast_index: _AstIndex,
+    candidate_files: Tuple[Path, ...],
 ) -> Optional[Tuple[Tuple[str, ...], str]]:
     """Return ``(nodes, found_relative)`` from static AST scanning, or
     ``None`` if no matching dispatch function was found anywhere.
@@ -443,69 +643,36 @@ def _static_evidence(
     Every candidate file is scanned — not just the first one where the
     dispatch function name is found — because the *same* dispatch name can
     be defined more than once across a target's modules (e.g. a legacy
-    mediated implementation left behind alongside a newer bypassing one).
-    Whenever any candidate's evidence proves a bypass (a state change with
-    no pre-action seam actually preceding it), that bypass evidence always
-    wins over a duplicate's mediated evidence — a real bypass is never
-    masked just because a differently-named or earlier-sorted file happens
-    to look clean. Only when no candidate shows a bypass does the first
-    match (in ``_candidate_files``' deterministic order) supply the node
-    evidence, matching prior behavior when there is no such ambiguity.
+    mediated implementation left behind alongside a newer bypassing one),
+    and (via :func:`_best_definition_evidence`) more than once *within*
+    one module too. Whenever any candidate's evidence proves a bypass (a
+    state change with no pre-action seam actually preceding it, and never
+    inferred from a closure that is merely defined but never proven
+    called, or from a call reached only through a conditional branch —
+    see :func:`_trace_calls`), that bypass evidence always wins over a
+    duplicate's mediated evidence — a real bypass is never masked just
+    because a differently-named or earlier-sorted file happens to look
+    clean. Only when no candidate shows a bypass does the first file (in
+    ``candidate_files``' deterministic order) supply the node evidence,
+    matching prior behavior when there is no such ambiguity. ``ast_index``
+    and ``candidate_files`` are both built once for the whole
+    :func:`build_mediation_graph` assessment and reused here rather than
+    re-parsed/re-walked per lookup.
     """
     function_name = _mode_action_function_name(action.action_id, mode)
     matches: List[Tuple[Tuple[str, ...], str, bool]] = []
 
-    for candidate in _candidate_files(root, action):
+    for candidate in candidate_files:
         functions = ast_index.get(candidate)
         if not functions:
             continue
-        func_node = functions.get(function_name)
-        if func_node is None:
+        func_nodes = functions.get(function_name)
+        if not func_nodes:
             continue
 
-        trace = _trace_calls(func_node)
-        state_positions = [
-            p for p in (trace.tool_service, trace.provider) if p is not None
-        ]
-        state_change_pos = min(state_positions) if state_positions else None
-        # A pre-action-seam call only counts when its own source position
-        # actually precedes the first state-changing call — a call to
-        # ``agent_hooks.pre_tool_call`` made *after* the state change has
-        # already run is a post-hoc observation (like a trailing audit
-        # record), never pre-action mediation, no matter how it looks in
-        # the canonical, structurally-ordered node list below.
-        seam_precedes_service = (
-            trace.pre_action_seam is not None
-            and state_change_pos is not None
-            and trace.pre_action_seam < state_change_pos
-        )
-
-        nodes: List[str] = ["entry"]
-        if mode in ("batch", "background"):
-            nodes.append("host/worker")
-        if mode == "subagent":
-            nodes.append("agent/subagent")
-        nodes.append("tool-router")
-        if trace.pre_action_seam is not None and (
-            state_change_pos is None or seam_precedes_service
-        ):
-            nodes.append("pre-action-seam")
-        if trace.approval_check is not None:
-            nodes.append("approval-check")
-        if state_change_pos is not None:
-            nodes.append("tool-service")
-        if trace.post_action_seam is not None:
-            nodes.append("post-action-seam")
-        if trace.output_mediator is not None:
-            nodes.append("output-mediator")
-        if mode in ("interactive", "subagent"):
-            nodes.append("caller")
-        if trace.audit_sink is not None:
-            nodes.append("audit-sink")
-
+        nodes, is_bypass = _best_definition_evidence(func_nodes, mode)
         found_relative = candidate.relative_to(root.resolve()).as_posix()
-        is_bypass = state_change_pos is not None and not seam_precedes_service
-        matches.append((tuple(nodes), found_relative, is_bypass))
+        matches.append((nodes, found_relative, is_bypass))
 
     if not matches:
         return None
@@ -648,6 +815,7 @@ def _build_path(
     entry_refs: Tuple[str, ...],
     adapter_declared: Optional[PathRecord],
     ast_index: _AstIndex,
+    candidate_files: Tuple[Path, ...],
 ) -> PathRecord:
     """Build the single, authoritative path for one ``(action, mode)`` pair.
 
@@ -660,11 +828,13 @@ def _build_path(
     the node evidence and independently-checked equivalent-control
     evidence; nothing supplied by the adapter is ever trusted verbatim. If
     neither source has anything, the path is ``not-verified`` — evidence
-    absent, not falsely assumed passing or failing. ``ast_index`` is the
-    shared, parse-once-per-file index built by :func:`_build_ast_index`
-    for the whole :func:`build_mediation_graph` call.
+    absent, not falsely assumed passing or failing. ``ast_index`` and
+    ``candidate_files`` are the shared, once-per-assessment index and
+    file list built by :func:`_build_ast_index` and
+    :func:`_collect_candidate_files_by_action` for the whole
+    :func:`build_mediation_graph` call.
     """
-    static = _static_evidence(root, action, mode, ast_index)
+    static = _static_evidence(root, action, mode, ast_index, candidate_files)
     if static is not None:
         nodes, found_relative = static
         evidence_refs = tuple(
@@ -733,6 +903,15 @@ def build_mediation_graph(
     those fields are never trusted, so a non-conforming adapter's false
     ``pass`` cannot suppress a genuine bypass's MED-001/MED-002 findings.
 
+    Candidate-file discovery (:func:`_collect_candidate_files_by_action`)
+    and AST parsing/indexing (:func:`_build_ast_index`) are each performed
+    exactly once per action for the whole assessment — not once per
+    ``(action, mode)`` pair — and every candidate module with a matching
+    dispatch name is scanned rather than stopping at the first match,
+    across files and (via :func:`_best_definition_evidence`) within one
+    file's own duplicate definitions: any evidenced bypass anywhere always
+    wins over a mediated duplicate.
+
     Emits one ``MED-001`` per proven bypass path (a family whose real
     dispatch function was found, or whose adapter-declared evidence
     proves, a state change with no pre-action seam and no declared
@@ -769,15 +948,21 @@ def build_mediation_graph(
         for action in sorted(actions, key=lambda a: a.action_id)
         if not _is_exclusively_provider_hosted(action)
     )
-    # Parsed and indexed once for the whole assessment below, then reused
-    # for every (action, mode) lookup — see _build_ast_index.
-    ast_index = _build_ast_index(root_path, non_provider_actions)
+    # Candidate-file discovery and AST parsing/indexing are each performed
+    # once per action for the whole assessment below, then reused for
+    # every (action, mode) lookup — see _collect_candidate_files_by_action
+    # and _build_ast_index.
+    candidates_by_action = _collect_candidate_files_by_action(
+        root_path, non_provider_actions
+    )
+    ast_index = _build_ast_index(non_provider_actions, candidates_by_action)
 
     paths: List[PathRecord] = []
     uncovered: List[PathRecord] = []
     findings: List[Finding] = []
 
     for action in non_provider_actions:
+        candidate_files = candidates_by_action[action.action_id]
         for mode in REQUIRED_NON_PROVIDER_MODES:
             record = _build_path(
                 root_path,
@@ -786,6 +971,7 @@ def build_mediation_graph(
                 entry_refs,
                 adapter_declared_by_key.get((action.action_id, mode)),
                 ast_index,
+                candidate_files,
             )
             paths.append(record)
             if not record.covered:

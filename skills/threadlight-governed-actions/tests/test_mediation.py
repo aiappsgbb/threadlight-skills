@@ -643,24 +643,408 @@ def test_post_hoc_pre_action_seam_call_does_not_cover_a_bypass_path(
     ``CANONICAL_NODE_ORDER``. Coverage must come from each call's actual
     source position, not merely from both node names being present
     somewhere in the path.
+
+    Uses the ``unmediated-background`` fixture's own ``background`` mode,
+    whose dispatch function genuinely calls ``agent_hooks.pre_tool_call``
+    — but only after ``provider.charge_refund`` has already executed the
+    effect (see that fixture's own docstring) — rather than a dedicated
+    fixture, so Task 4's declared fixture set stays exactly the two named
+    fixtures (``unmediated-background``, ``provider-hosted-side-effect``).
     """
-    root = fixture_root / "post-hoc-seam-bypass"
+    root = fixture_root / "unmediated-background"
+    source = (root / "app" / "agent.py").read_text(encoding="utf-8")
+    assert "agent_hooks.pre_tool_call" in source.split("def background_payments_refund")[1].split("def ")[0]
+
     actions = inventory.build_action_inventory(root).actions
     graph = build_mediation_graph(root, actions, maf_adapter.MAFAdapter())
 
-    direct_tool_path = next(
-        path for path in graph.paths if path.mode == "direct-tool"
+    background_path = next(
+        path for path in graph.paths if path.mode == "background"
     )
-    assert direct_tool_path.status == "must-fix"
-    assert direct_tool_path.covered is False
-    assert direct_tool_path.pre_action_seam is None
-    assert "pre-action-seam" not in direct_tool_path.nodes
-    assert "tool-service" in direct_tool_path.nodes
+    assert background_path.status == "must-fix"
+    assert background_path.covered is False
+    assert background_path.pre_action_seam is None
+    assert "pre-action-seam" not in background_path.nodes
+    assert "tool-service" in background_path.nodes
 
     assert (
         "MED-001",
-        "direct-tool path for notifications.send lacks pre-action mediation",
+        "background path for payments.refund lacks pre-action mediation",
     ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_pre_action_seam_call_inside_a_nested_closure_is_not_credited(
+    tmp_path: Path,
+):
+    """A pre-action-seam call that exists only inside a nested closure
+    defined by the dispatch function — never proven to actually be
+    invoked — must never be credited to the *outer* dispatch function's
+    own call trace. The closure could be dead code, a callback stored for
+    later, or invoked from somewhere this scanner cannot see; none of
+    those possibilities make the outer function's own direct provider
+    call mediated.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                def _unused_helper():
+                    # Defined, but never called below. A call that only
+                    # exists inside this closure's own body must never be
+                    # credited to direct_tool_orders_cancel's own trace.
+                    agent_hooks.pre_tool_call(**kwargs)
+
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    assert path.status == "must-fix"
+    assert path.covered is False
+    assert path.pre_action_seam is None
+    assert "pre-action-seam" not in path.nodes
+    assert "tool-service" in path.nodes
+
+    assert (
+        "MED-001",
+        "direct-tool path for orders.cancel lacks pre-action mediation",
+    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass(
+    tmp_path: Path,
+):
+    """A pre-action-seam call reached only through an ``if`` branch that
+    might not execute must never be treated as unconditional coverage —
+    the branch could be skipped entirely at runtime while the direct
+    provider call below it always runs, which is exactly the bypass this
+    scanner exists to catch.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                if kwargs.get("flag"):
+                    # This seam call only runs on one branch; it must not
+                    # be trusted to always run before the provider call.
+                    agent_hooks.pre_tool_call(**kwargs)
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    assert path.status == "must-fix"
+    assert path.covered is False
+    assert path.pre_action_seam is None
+    assert "pre-action-seam" not in path.nodes
+    assert "tool-service" in path.nodes
+
+    assert (
+        "MED-001",
+        "direct-tool path for orders.cancel lacks pre-action mediation",
+    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definition(
+    tmp_path: Path,
+):
+    """When the *same file* defines the same dispatch name twice, an
+    evidenced bypass among the definitions must win even when it is not
+    the last (i.e. not the one whose name binding a caller would actually
+    resolve at runtime) — a bypass anywhere in that set is real,
+    exploitable behavior regardless of which definition currently "wins"
+    the name.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def orders_cancel(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                # First definition in the file: bypasses mediation.
+                return provider.cancel_order(**kwargs)
+
+
+            def batch_orders_cancel(**kwargs):
+                # Second, later (actual-binding) definition: fully
+                # mediated. The earlier bypass above must still win.
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.orders_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    path = next(p for p in graph.paths if p.mode == "batch")
+    assert path.status == "must-fix"
+    assert path.covered is False
+    assert path.pre_action_seam is None
+
+    assert (
+        "MED-001",
+        "batch path for orders.cancel lacks pre-action mediation",
+    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+
+def test_within_file_duplicate_dispatch_uses_actual_last_binding_when_no_bypass(
+    tmp_path: Path,
+):
+    """When *no* duplicate definition of a dispatch name is a bypass, the
+    *last* definition (the one whose name binding a caller would actually
+    resolve at runtime) supplies the evidence — not an earlier, merely
+    incomplete stub that never reaches a state change at all.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def orders_cancel(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def batch_orders_cancel(**kwargs):
+                # First definition: a stub with no dispatch logic yet, no
+                # state-changing call at all.
+                return {"status": "todo"}
+
+
+            def batch_orders_cancel(**kwargs):
+                # Second (last, actual-binding) definition: the real,
+                # fully mediated implementation.
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.orders_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    path = next(p for p in graph.paths if p.mode == "batch")
+    assert path.status == "pass"
+    assert path.covered is True
+    assert path.pre_action_seam is not None
+    assert "pre-action-seam" in path.nodes
+    assert "tool-service" in path.nodes
+    assert path.nodes.index("pre-action-seam") < path.nodes.index("tool-service")
+
+
+def test_candidate_file_discovery_is_memoized_once_per_action_not_per_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """``_candidate_files`` — which falls back to a real ``root.rglob``
+    filesystem walk when an action declares no ``known_runtime_paths`` —
+    must be called at most once per action for the whole assessment, not
+    once per ``(action, mode)`` pair: three actions each assessed across
+    five required modes must mean three candidate-file lookups, not
+    fifteen.
+    """
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+              - id: orders.refund
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+              - id: orders.void
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def handle(self, **kwargs):
+                    return {"ok": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+
+
+            def direct_tool_orders_refund(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+
+
+            def direct_tool_orders_void(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.handle(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    assert len(actions) == 3  # 3 actions x 5 required modes = 15 lookups
+
+    discovery_calls: list[str] = []
+    original_candidate_files = mediation._candidate_files
+
+    def counting_candidate_files(root, action):
+        discovery_calls.append(action.action_id)
+        return original_candidate_files(root, action)
+
+    monkeypatch.setattr(mediation, "_candidate_files", counting_candidate_files)
+
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    assert len(graph.paths) == 15
+    # Exactly one candidate-file lookup per action for the whole
+    # assessment, regardless of how many modes consult it.
+    assert len(discovery_calls) == 3
+    assert sorted(discovery_calls) == ["orders.cancel", "orders.refund", "orders.void"]
 
 
 def test_duplicate_dispatch_definitions_bypass_evidence_wins_over_mediated_one(

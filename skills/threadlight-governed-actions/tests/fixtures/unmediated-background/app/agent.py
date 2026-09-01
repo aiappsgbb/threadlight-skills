@@ -11,9 +11,12 @@ governed ``tool_service`` executes it. Batch and background dispatch call
 the raw payment-provider client directly instead — bypassing both the seam
 and ``tool_service`` entirely — which is exactly the unmediated background/
 batch path Task 4's fixture must exhibit. Background dispatch also proves
-"post-model observation alone never counts": it still records to
-``audit_sink`` *after* the direct provider call, but that trailing audit
-record is not a pre-action control and must not make the path covered.
+"post-model observation alone never counts" twice over: it calls the real
+pre-action-seam function, ``agent_hooks.pre_tool_call``, and records to
+``audit_sink``, but both calls happen only *after* the direct provider call
+has already executed the effect — a genuine, real seam call reached too
+late is still a post-hoc observation, not pre-action control, and must not
+make the path covered.
 
 This module is never imported or executed by the assessor — it only needs
 to be valid Python source for static AST inspection.
@@ -99,10 +102,16 @@ def batch_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
 def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
     """Background refund: calls the payment provider directly, bypassing mediation.
 
-    The trailing ``audit_sink.record`` call below is a post-model
-    observation only; it must never be treated as pre-action mediation.
+    The trailing ``agent_hooks.pre_tool_call`` and ``audit_sink.record``
+    calls below are both post-model observations only: even though a real
+    call to the pre-action seam function literally appears in this
+    function's body, it is reached only *after* the provider call has
+    already executed the effect, so it must never be treated as pre-action
+    mediation — coverage depends on each call's actual source position,
+    not merely on both node names appearing somewhere in the trace.
     """
     result = provider.charge_refund(payment_id, amount)
+    agent_hooks.pre_tool_call("payments.refund", "background")
     audit_sink.record("payments.refund", "background")
     return result
 
