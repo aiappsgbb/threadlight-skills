@@ -156,9 +156,10 @@ _MANDATORY_RESIDUAL_RISKS: Tuple[Dict[str, object], ...] = (
         "description": (
             "Live evidence (branch protection, required checks, identity "
             "separation) is only as current as its own collection "
-            "timestamp; evidence older than this manifest's freshness "
-            "window is recorded not-verified rather than assumed to still "
-            "hold true."
+            "timestamp; evidence missing a trustworthy timestamp, or older "
+            "than this manifest's freshness window, is reported with a "
+            "stale or expired freshness status rather than assumed to "
+            "still hold true."
         ),
     },
     {
@@ -348,14 +349,28 @@ def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
 
 
 def _evidence_to_dict(ref: EvidenceRef) -> Dict[str, object]:
+    # A ``collected_at`` that is present but does not parse as a genuine
+    # RFC 3339 instant (e.g. a calendar-impossible date) is untrustworthy:
+    # it is degraded to the schema's own "absent" representation (``None``)
+    # rather than passed through raw, which would otherwise leave a
+    # manifest that can never validate against the timestamp format. The
+    # same degradation also clears the fields that would otherwise imply a
+    # timestamp could be trusted (``freshness_seconds``, ``live_verified``).
+    collected_at = ref.collected_at
+    freshness_seconds = ref.freshness_seconds
+    live_verified = ref.live_verified
+    if collected_at is not None and _try_parse_rfc3339(collected_at) is None:
+        collected_at = None
+        freshness_seconds = None
+        live_verified = False
     return {
         "evidence_id": ref.evidence_id,
         "kind": ref.kind,
         "source": ref.source,
         "sha256": ref.sha256,
-        "collected_at": ref.collected_at,
-        "freshness_seconds": ref.freshness_seconds,
-        "live_verified": ref.live_verified,
+        "collected_at": collected_at,
+        "freshness_seconds": freshness_seconds,
+        "live_verified": live_verified,
         "phase": ref.phase,
         "repository": ref.repository,
         "source_commit": ref.source_commit,
@@ -480,12 +495,47 @@ def _sorted_reports(reports: Sequence[Mapping[str, object]]) -> List[Dict[str, o
 
 # ---------------------------------------------------------------------------
 # Timestamp / freshness derivation -- never a wall-clock read.
+#
+# Every RFC 3339 timestamp is parsed to an aware ``datetime`` before it is
+# ever compared, sorted, or added to: two evidence timestamps written in
+# different UTC offsets (or with different fractional-second precision)
+# must order by the actual instant they name, never by an accidental
+# lexical string comparison that can silently disagree with it. A raw,
+# unparseable ``collected_at`` (one that matches the schema's own
+# ``pattern`` but is not a real calendar instant, e.g. a nonexistent
+# 30th of February, or one that fails to parse for any other reason) is
+# never allowed to escape as an uncaught ``ValueError`` here -- it is
+# instead treated exactly like a *missing* ``collected_at``: excluded from
+# every timestamp aggregation so freshness degrades conservatively (to the
+# schema's own ``stale``/``null`` vocabulary) rather than crashing or
+# silently trusting an untrustworthy value.
 # ---------------------------------------------------------------------------
 
 
 def _parse_rfc3339(value: str) -> datetime:
     text = value[:-1] + "+00:00" if value.endswith("Z") else value
-    return datetime.fromisoformat(text)
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _try_parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
+    """Parse *value* to an aware ``datetime``, or ``None`` if it is absent
+    or cannot be parsed as a real RFC 3339 instant.
+
+    Never raises: any parsing failure (``ValueError`` for a nonexistent
+    calendar date/time such as a leap-day-31st, ``OverflowError`` for a
+    year outside the platform's representable range, or ``TypeError`` for
+    a non-string) is caught and reported as ``None`` -- an untrustworthy or
+    absent timestamp look identical to every caller downstream.
+    """
+    if not value:
+        return None
+    try:
+        return _parse_rfc3339(value)
+    except (ValueError, OverflowError, TypeError):
+        return None
 
 
 def _format_rfc3339(moment: datetime) -> str:
@@ -493,17 +543,34 @@ def _format_rfc3339(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
-def _add_hours(timestamp: str, hours: int) -> str:
-    return _format_rfc3339(_parse_rfc3339(timestamp) + timedelta(hours=hours))
+def _add_hours(moment: datetime, hours: int) -> datetime:
+    return moment + timedelta(hours=hours)
 
 
-def _collected_timestamps(result: AssessmentResult) -> List[str]:
-    return sorted(ref.collected_at for ref in result.evidence if ref.collected_at)
+def _trustworthy_timestamp_pairs(result: AssessmentResult) -> List[Tuple[datetime, str]]:
+    """Every evidence ``collected_at`` that parses to a real instant,
+    paired with its own original (never reformatted) string, sorted by
+    ``(instant, original string)``.
+
+    Sorting by the parsed instant first (not the raw string) is what makes
+    ``fresh``/``expired``/``oldest_source_at`` correct regardless of
+    per-entry UTC-offset or fractional-second spelling; the original
+    string is kept as a deterministic tiebreaker for entries that name the
+    identical instant in different but equivalent spellings, so which
+    input ordering the caller happened to supply evidence in never changes
+    which exact string is chosen to render.
+    """
+    pairs: List[Tuple[datetime, str]] = []
+    for ref in result.evidence:
+        instant = _try_parse_rfc3339(ref.collected_at)
+        if instant is not None:
+            pairs.append((instant, ref.collected_at))
+    pairs.sort(key=lambda pair: (pair[0], pair[1]))
+    return pairs
 
 
-def _captured_at(result: AssessmentResult) -> str:
-    timestamps = _collected_timestamps(result)
-    return timestamps[-1] if timestamps else FALLBACK_TIMESTAMP
+def _captured_at_from_pairs(pairs: Sequence[Tuple[datetime, str]]) -> str:
+    return pairs[-1][1] if pairs else FALLBACK_TIMESTAMP
 
 
 def _phase_for(result: AssessmentResult) -> str:
@@ -513,27 +580,32 @@ def _phase_for(result: AssessmentResult) -> str:
     return max(phases, key=contracts.SUPPORTED_PHASES.index)
 
 
-def _freshness(result: AssessmentResult, captured_at: str) -> Dict[str, object]:
-    timestamps = _collected_timestamps(result)
-    if not timestamps:
-        # No required evidence carries a trustworthy collection timestamp:
-        # freshness cannot be proven, so this is recorded as conservatively
-        # as the schema's fixed status vocabulary allows -- "stale" rather
-        # than an invented "fresh" -- instead of a fabricated window.
+def _freshness_from_pairs(
+    pairs: Sequence[Tuple[datetime, str]], captured_instant: Optional[datetime]
+) -> Dict[str, object]:
+    if not pairs:
+        # No required evidence carries a trustworthy collection timestamp
+        # (either none was ever supplied, or every supplied value failed to
+        # parse as a real instant): freshness cannot be proven, so this is
+        # recorded as conservatively as the schema's fixed status
+        # vocabulary allows -- "stale" rather than an invented "fresh" --
+        # instead of a fabricated window.
         return {
             "status": "stale",
             "valid_for_hours": FRESHNESS_VALID_FOR_HOURS,
             "oldest_source_at": None,
             "expires_at": None,
         }
-    oldest_source_at = timestamps[0]
-    expires_at = _add_hours(oldest_source_at, FRESHNESS_VALID_FOR_HOURS)
-    status = "fresh" if captured_at <= expires_at else "expired"
+    oldest_instant, oldest_source_at = pairs[0]
+    expires_instant = _add_hours(oldest_instant, FRESHNESS_VALID_FOR_HOURS)
+    status = (
+        "fresh" if captured_instant is not None and captured_instant <= expires_instant else "expired"
+    )
     return {
         "status": status,
         "valid_for_hours": FRESHNESS_VALID_FOR_HOURS,
         "oldest_source_at": oldest_source_at,
-        "expires_at": expires_at,
+        "expires_at": _format_rfc3339(expires_instant),
     }
 
 
@@ -600,7 +672,9 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     residual_risks = _assemble_residual_risks(result)
     risk_ids = {str(entry["residual_risk_id"]) for entry in residual_risks}
     findings = [_finding_to_dict(finding, risk_ids) for finding in _sorted_findings(result.findings)]
-    captured_at = _captured_at(result)
+    timestamp_pairs = _trustworthy_timestamp_pairs(result)
+    captured_at = _captured_at_from_pairs(timestamp_pairs)
+    captured_instant = timestamp_pairs[-1][0] if timestamp_pairs else None
 
     return {
         "schema": MANIFEST_SCHEMA,
@@ -628,7 +702,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
         "change_plane": _normalize_change_plane(result.change_plane, result.source.repository),
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
-        "freshness": _freshness(result, captured_at),
+        "freshness": _freshness_from_pairs(timestamp_pairs, captured_instant),
         "residual_risks": residual_risks,
         "summary": _summary(findings, result.source.dirty),
     }
@@ -763,6 +837,27 @@ def _residual_risk_row(risk: Dict[str, object]) -> str:
     return "- `{residual_risk_id}` (ref: {finding_id}): {description}".format(**risk)
 
 
+_EVIDENCE_INDEX_HEADER = "| Evidence ID | Kind | Source | SHA-256 | Collected At | Live Verified |"
+_EVIDENCE_INDEX_DIVIDER = "| --- | --- | --- | --- | --- | --- |"
+
+
+def _evidence_index_row(entry: Dict[str, object]) -> str:
+    # Exactly evidence_id/kind/source/sha256/collected_at/live_verified --
+    # never repository/source_commit/phase/target_environment/
+    # policy_set_sha256/freshness_seconds, and never a probe or action
+    # payload value: this is a customer-facing evidence *index*, not a
+    # re-export of the full internal evidence record.
+    collected_at = entry["collected_at"] if entry["collected_at"] is not None else "unknown"
+    return "| {} | {} | {} | {} | {} | {} |".format(
+        entry["evidence_id"],
+        entry["kind"],
+        entry["source"],
+        entry["sha256"],
+        collected_at,
+        entry["live_verified"],
+    )
+
+
 def _remediation_row(item: Dict[str, object]) -> str:
     owner = item["owner"] if item["owner"] else "unassigned"
     return (
@@ -781,13 +876,18 @@ def _remediation_row(item: Dict[str, object]) -> str:
 def render_evidence_pack(result: AssessmentResult) -> str:
     """Render *result* into the customer-facing Markdown evidence pack.
 
-    Contains, in order, exactly the ten required section headings design
-    section 12.1 calls for. The pass/fail matrix's columns are exactly
-    ``ID | Plane | Control | Status | Reason | Evidence | Remediation``,
-    with runtime (``plane: runtime``) and GitHub Copilot change-plane
-    (``plane: change``) rows independently gated by their own status. No
-    probe's raw ``expected``/``observed`` free text is ever rendered here
-    -- only its status, reason code, and evidence references.
+    Contains, in order, the ten required section headings design section
+    12.1 calls for, plus an additional ``## Evidence index`` immediately
+    before the pass/fail matrix (whose own ``Evidence`` column cites these
+    same evidence IDs) that lists every manifest evidence entry sorted by
+    ``evidence_id`` with exactly its ``kind``/``source``/``sha256``/
+    ``collected_at``/``live_verified`` -- never any other field, and never
+    a payload. The pass/fail matrix's columns are exactly ``ID | Plane |
+    Control | Status | Reason | Evidence | Remediation``, with runtime
+    (``plane: runtime``) and GitHub Copilot change-plane (``plane:
+    change``) rows independently gated by their own status. No probe's raw
+    ``expected``/``observed`` free text is ever rendered here -- only its
+    status, reason code, and evidence references.
     """
     manifest = build_manifest(result)
     apply_plan = build_apply_plan(result)
@@ -890,6 +990,16 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         "- {} required workflow file(s) evidenced, {} identity/identities "
         "recorded.".format(len(change_plane["workflows"]), len(change_plane["identities"]))
     )
+    lines.append("")
+
+    lines.append("## Evidence index")
+    lines.append("")
+    lines.append(_EVIDENCE_INDEX_HEADER)
+    lines.append(_EVIDENCE_INDEX_DIVIDER)
+    if manifest["evidence"]:
+        lines.extend(_evidence_index_row(entry) for entry in manifest["evidence"])
+    else:
+        lines.append("| none | none | none | none | none | none |")
     lines.append("")
 
     lines.append("## Pass/fail matrix")

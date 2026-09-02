@@ -583,6 +583,97 @@ def test_freshness_no_trustworthy_timestamp_is_not_fresh():
     assert manifest["freshness"]["oldest_source_at"] is None
 
 
+# Two RFC 3339 strings whose *lexical* order disagrees with their actual
+# chronological order: "A" names an earlier UTC instant (2025-12-31T22:30:00Z)
+# than "B" (2025-12-31T23:00:00Z), yet the plain strings sort the other way
+# round ("2025-12-31T23:00:00Z" < "2026-01-01T00:30:00+02:00" lexically).
+_INSTANT_EARLIER_BUT_LEXICALLY_LATER = "2026-01-01T00:30:00+02:00"  # == 2025-12-31T22:30:00Z
+_INSTANT_LATER_BUT_LEXICALLY_EARLIER = "2025-12-31T23:00:00Z"  # == 2025-12-31T23:00:00Z
+# A schema-``pattern``-valid but calendar-impossible timestamp: no such date
+# as February 30th exists, so ``datetime.fromisoformat`` raises ``ValueError``.
+_MALFORMED_COLLECTED_AT = "2026-02-30T10:00:00Z"
+
+
+def test_freshness_orders_by_actual_instant_not_lexical_string():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [
+        _evidence("EVID-a", collected_at=_INSTANT_EARLIER_BUT_LEXICALLY_LATER),
+        _evidence("EVID-b", collected_at=_INSTANT_LATER_BUT_LEXICALLY_EARLIER),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    # The chronologically *earliest* instant is EVID-a's timestamp, even
+    # though its string sorts lexically after EVID-b's -- oldest_source_at
+    # must reflect the real instant, not the raw string order.
+    assert manifest["freshness"]["oldest_source_at"] == _INSTANT_EARLIER_BUT_LEXICALLY_LATER
+    # The chronologically *latest* instant is EVID-b's timestamp -- captured_at
+    # must likewise reflect the real instant, not the raw string order.
+    assert manifest["captured_at"] == _INSTANT_LATER_BUT_LEXICALLY_EARLIER
+
+
+def test_freshness_instant_ordering_is_independent_of_evidence_list_order():
+    findings = [_finding("MED-001", "pass")]
+    forward = _base_result(
+        findings=findings,
+        evidence=[
+            _evidence("EVID-a", collected_at=_INSTANT_EARLIER_BUT_LEXICALLY_LATER),
+            _evidence("EVID-b", collected_at=_INSTANT_LATER_BUT_LEXICALLY_EARLIER),
+        ],
+    )
+    reversed_ = _base_result(
+        findings=findings,
+        evidence=[
+            _evidence("EVID-b", collected_at=_INSTANT_LATER_BUT_LEXICALLY_EARLIER),
+            _evidence("EVID-a", collected_at=_INSTANT_EARLIER_BUT_LEXICALLY_LATER),
+        ],
+    )
+    manifest_forward = render.build_manifest(forward)
+    manifest_reversed = render.build_manifest(reversed_)
+    assert manifest_forward["freshness"] == manifest_reversed["freshness"]
+    assert manifest_forward["captured_at"] == manifest_reversed["captured_at"]
+
+
+def test_manifest_tolerates_malformed_collected_at_without_raising():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT)]
+    result = _base_result(findings=findings, evidence=evidence)
+    # Must not raise ValueError (or any other exception) building the manifest.
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # The malformed timestamp is untrustworthy for freshness purposes, so it
+    # is excluded exactly as if collected_at had been absent/None.
+    assert manifest["freshness"]["status"] == "stale"
+    assert manifest["freshness"]["oldest_source_at"] is None
+    assert manifest["freshness"]["expires_at"] is None
+    assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
+    # A calendar-impossible collected_at can never validate against the
+    # manifest schema's timestamp format, so it is degraded to the
+    # schema's own "absent" representation (None) -- never raw garbage,
+    # and never a fabricated/normalized real timestamp either.
+    evidence_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-bad")
+    assert evidence_entry["collected_at"] is None
+    assert evidence_entry["freshness_seconds"] is None
+    assert evidence_entry["live_verified"] is False
+
+
+def test_manifest_mixed_valid_and_invalid_collected_at_uses_only_valid():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [
+        _evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT),
+        _evidence("EVID-good", collected_at=_COLLECTED_AT_EARLY),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "stale"
+    assert manifest["freshness"]["oldest_source_at"] == _COLLECTED_AT_EARLY
+    assert manifest["captured_at"] == _COLLECTED_AT_EARLY
+    bad_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-bad")
+    good_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-good")
+    assert bad_entry["collected_at"] is None
+    assert good_entry["collected_at"] == _COLLECTED_AT_EARLY
+
+
 # ---------------------------------------------------------------------------
 # write_artifacts
 # ---------------------------------------------------------------------------
@@ -794,3 +885,91 @@ def test_write_artifacts_never_writes_probe_payload_values(tmp_path):
     evidence_text = evidence_path.read_text()
     assert "SENTINEL-EXPECTED-PAYLOAD" not in evidence_text
     assert "SENTINEL-OBSERVED-PAYLOAD" not in evidence_text
+
+
+def test_write_artifacts_tolerates_malformed_collected_at_without_raising(tmp_path):
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    # Must complete the full three-artifact transaction without raising
+    # ArtifactWriteError (or any other exception): a calendar-impossible
+    # (but regex-pattern-valid) collected_at is degraded to an absent
+    # timestamp before schema validation, so the write always succeeds.
+    render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+    assert manifest_path.exists()
+    assert evidence_path.exists()
+    assert apply_plan_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["freshness"]["status"] == "stale"
+
+
+# ---------------------------------------------------------------------------
+# Evidence index
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_pack_has_evidence_index_heading_in_required_order():
+    text = render.render_evidence_pack(_full_result())
+    # The eleventh heading must sit logically before the pass/fail matrix
+    # (whose own Evidence column cites these same IDs) without disturbing
+    # the required order of the ten mandatory headings around it.
+    headings_with_index = _REQUIRED_HEADINGS[:7] + ("## Evidence index",) + _REQUIRED_HEADINGS[7:]
+    positions = [text.index(heading) for heading in headings_with_index]
+    assert positions == sorted(positions)
+    # All ten originally-required headings remain, in their original order.
+    original_positions = [text.index(heading) for heading in _REQUIRED_HEADINGS]
+    assert original_positions == sorted(original_positions)
+
+
+def test_evidence_pack_evidence_index_lists_every_evidence_id_sorted():
+    result = _full_result()
+    manifest = render.build_manifest(result)
+    text = render.render_evidence_pack(result)
+    index_start = text.index("## Evidence index")
+    index_section = text[index_start : text.index("## Pass/fail matrix")]
+    expected_ids = sorted(entry["evidence_id"] for entry in manifest["evidence"])
+    assert expected_ids  # sanity: the fixture has evidence
+    found_ids = [line for line in expected_ids if line in index_section]
+    assert found_ids == expected_ids
+    # Row order in the rendered section must match manifest's sorted order.
+    positions = [index_section.index(evidence_id) for evidence_id in expected_ids]
+    assert positions == sorted(positions)
+
+
+def test_evidence_pack_evidence_index_has_only_the_five_allowed_fields():
+    result = _full_result()
+    manifest = render.build_manifest(result)
+    text = render.render_evidence_pack(result)
+    index_start = text.index("## Evidence index")
+    index_section = text[index_start : text.index("## Pass/fail matrix")]
+    for entry in manifest["evidence"]:
+        assert entry["kind"] in index_section
+        assert entry["source"] in index_section
+        assert entry["sha256"] in index_section
+        if entry["collected_at"] is not None:
+            assert entry["collected_at"] in index_section
+    # Fields excluded from the customer-facing index must never appear
+    # anywhere in the evidence-index section (no repository/source_commit/
+    # phase/target_environment/policy_set_sha256/freshness_seconds).
+    assert _REPOSITORY not in index_section
+    assert _COMMIT not in index_section
+    assert "design" not in index_section  # phase value, never rendered here
+    assert "freshness_seconds" not in index_section
+    assert "policy_set_sha256" not in index_section
+    assert "target_environment" not in index_section
+
+
+def test_evidence_pack_evidence_index_never_contains_probe_payload_values():
+    text = render.render_evidence_pack(_full_result())
+    index_start = text.index("## Evidence index")
+    index_section = text[index_start : text.index("## Pass/fail matrix")]
+    assert "SENTINEL-EXPECTED-PAYLOAD" not in index_section
+    assert "SENTINEL-OBSERVED-PAYLOAD" not in index_section
+
