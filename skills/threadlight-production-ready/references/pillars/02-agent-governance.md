@@ -37,6 +37,47 @@ for the recon evidence and design rationale.
 | `AGT-004` | Policy ruleset carries a pinned semver `version:` (not `latest`, not absent) | `should-fix` if missing |
 | `AGT-005` | A CI workflow runs the toolkit (`agt verify` / `lint-policy` / `test`) so a policy regression fails the pipeline | `should-fix` if no gate |
 | `AGT-006` | Telemetry sink configured so policy decisions are auditable | `should-fix` if absent |
+| `AGT-007` | **Aggregate** roll-up of the `threadlight-governed-actions` runtime verdict — see below | `not-verified` if no trustworthy manifest |
+
+### `AGT-007` — governed-actions runtime evidence (aggregate)
+
+`threadlight-governed-actions` owns the detailed consequential-action
+assessment. production-ready never re-runs any of it and never imports the
+assessor; it reads that skill's `tests/governed-actions-manifest.json` and rolls
+the **runtime** domain up into this single finding.
+
+`AGT-007` owns nine child findings — `ACT-001`, `ACT-002` (action inventory),
+`MED-001`, `MED-002`, `MED-003` (mediation paths), `ENF-001`, `ENF-002`
+(enforcement), `PIN-001` (pin integrity), and `OPS-001` (operational alerting).
+`OPS-001` is a `both`-plane finding, so it is the one child shared with the
+change plane: it also feeds `SUP-014` in pillar 9. Every other child maps here
+and nowhere else.
+
+The aggregate takes the **worst** status among those children —
+`must-fix` > `not-verified` > `should-fix` > `pass` > `not-applicable` — and
+names which of them are open. It deliberately does **not** restate the child
+findings as production-ready findings: the child IDs do not appear in this
+skill's catalog, and the manifest stays the single source of truth for detail,
+remediation, and residual risk.
+
+**Trust limits.** The manifest is untrusted repository content. Before a single
+child status is believed, production-ready independently re-derives what it can:
+the `threadlight-governed-actions-manifest/v1` schema and exact top-level shape,
+a supported assessor name and version (no forward trust for an unreviewed
+future assessor), a `pre-deploy`/`post-deploy` phase, a clean source matching
+the repository and commit actually under assessment, **recomputed** policy
+hashes and policy-set digest matched against what each relied-upon evidence
+entry binds to, a single target environment consistent with the selected azd
+environment, an intact freshness window, resolvable evidence references, and a
+`summary` that agrees exactly with the findings it summarises. Anything missing,
+malformed, stale, dirty, or mismatched makes `AGT-007` `not-verified` with the
+reason attached — never `pass`, and never a `must-fix` manufactured from
+evidence we could not stand behind. `summary.verdict` alone is never believed.
+
+**Conformance is not certification.** A trusted, all-`pass` manifest means the
+assessor ran against this exact repository state and raised nothing in the
+runtime domain. It is a scoped, expiring conformance record — not a
+certification, not an audit, and (like every finding here) advisory.
 
 ### Live (tier 1)
 

@@ -31,6 +31,57 @@ changed under us today".
 | `SUP-011` | Each MCP server resolves from a **known registry or source** (npm, PyPI, a named container registry, or an explicit remote URL) | `should-fix` if unresolvable |
 | `SUP-012` | An **`mcp-lock.json`** is committed and matches the current MCP server/tool surface (versions, digests, tool descriptor + input-schema hashes) | `must-fix` on pinned-server drift; `should-fix` if absent or unpinned drift |
 | `SUP-013` | No MCP server config commits **inline credentials** (api keys / tokens / connection strings in `env` or `headers`) — use injected secrets | `must-fix` if found |
+| `SUP-014` | **Aggregate** roll-up of the `threadlight-governed-actions` change-plane verdict — see below | `not-verified` if no trustworthy manifest |
+
+### `SUP-014` — governed-actions change-plane evidence (aggregate)
+
+The change plane is the second way a consequential action reaches production:
+not through the running agent, but through an automated coding agent that opens
+pull requests against this repository. `threadlight-governed-actions` owns that
+assessment in full. production-ready never re-runs any of its probes and never
+imports the assessor; it reads that skill's
+`tests/governed-actions-manifest.json` and rolls the **change** domain up into
+this single finding.
+
+`SUP-014` owns seven child findings — `GHCP-001` … `GHCP-006` (GitHub Copilot
+coding-agent governance: allow-listing, review requirements, firewall/network
+egress, secret exposure, workflow permissions, and branch protection) plus
+`OPS-001` (operational alerting). `OPS-001` is a `both`-plane finding, so it is
+the one child shared with the runtime domain: it also feeds `AGT-007` in
+pillar 2. The `GHCP-*` children map here and nowhere else.
+
+The aggregate takes the **worst** status among those children —
+`must-fix` > `not-verified` > `should-fix` > `pass` > `not-applicable` — and
+names which are open. The child findings are deliberately **not** restated as
+production-ready findings: their IDs never enter this skill's catalog, and the
+governed-actions manifest stays the single source of truth for the detail.
+
+**Trust limits.** The manifest is untrusted repository content — which matters
+especially here, since a compromised change plane is exactly the thing that
+could edit the manifest that claims the change plane is fine. So none of its
+claims are taken on faith. Before any child status is believed, production-ready
+re-derives what it can for itself: the `threadlight-governed-actions-manifest/v1`
+schema and exact top-level shape, a supported assessor name and version (no
+forward trust for an unreviewed future assessor), a `pre-deploy`/`post-deploy`
+phase, a clean (`dirty: false`) source whose repository and commit match the
+repository and commit under assessment, **recomputed** policy hashes and a
+re-derived policy-set digest matched against what every relied-upon evidence
+entry binds itself to, a single target environment consistent with the selected
+azd environment, an intact freshness window (`expires_at` must equal
+`oldest_source_at + valid_for_hours`, and both capture and this run must fall
+inside it), resolvable evidence references collected no later than capture and
+phase-consistent with the findings citing them, and a `summary` that agrees
+exactly with the findings it summarises.
+
+Anything missing, malformed, stale, dirty, or mismatched on source, repository,
+commit, policy set, environment, or binding makes `SUP-014` `not-verified` with
+the reason attached — never `pass`, and never a `must-fix` manufactured from
+evidence we could not stand behind. `summary.verdict` alone is never believed.
+
+**Conformance is not certification.** A trusted, all-`pass` manifest means the
+assessor ran against this exact repository state and raised nothing about the
+change plane. It is a scoped, expiring conformance record — not a certification,
+not a supply-chain attestation, and advisory like every other finding here.
 
 ### Live (tier 1)
 
