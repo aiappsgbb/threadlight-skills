@@ -2925,3 +2925,129 @@ def test_evidence_pack_bare_email_autolink_does_not_affect_non_email_at_signs():
     text = render.render_evidence_pack(result)
     assert "@some-handle" in text
 
+
+# ---------------------------------------------------------------------------
+# Quality rereview: HTML character-entity references must be neutralized
+# too, or every character/literal-syntax escape above can be bypassed by an
+# assessment string spelling its trigger characters as an entity reference
+# instead of typing them literally. GitHub Flavored Markdown's extended
+# autolink extension in particular is applied to *already entity-decoded*
+# text -- so a decimal (``&#64;``), hexadecimal (``&#x40;``/``&#X40;``), or
+# named (``&commat;``) reference for "@" placed ahead of a dotted domain
+# reconstitutes a live bare-email autolink trigger even though the literal
+# input string never contains an unescaped "@" byte. The fix must neutralize
+# every "&"-led reference in the *input* before this module introduces any
+# "&"-led escape of its own (``&lt;``/``&gt;``), so the entities this module
+# itself inserts are never re-escaped (double-escaped).
+#
+# Because this module escapes every literal "&" in the input to "&amp;",
+# any well-formed entity reference the input carried (e.g. "&#64;") can
+# only ever survive *prefixed* by that inserted "amp;" (i.e. as
+# "&amp;#64;") -- the bare, unprefixed reference "&#64;" can never appear
+# on its own, since the input's only "&" byte was consumed rewriting it
+# to "&amp;". These tests assert directly on that substring invariant,
+# which flips from failing to passing exactly when the ampersand
+# neutralization fix is present (unlike simulating a full, generic
+# entity-decode, which is unnecessary to prove the fix and would not
+# discriminate the untreated named entities from the treated ones).
+# ---------------------------------------------------------------------------
+
+_HOSTILE_ENTITY_DECIMAL_EMAIL = "contact user&#64;bar_baz.evil.example for access"
+_HOSTILE_ENTITY_HEX_LOWER_EMAIL = "contact user&#x40;bar_baz.evil.example for access"
+_HOSTILE_ENTITY_HEX_UPPER_EMAIL = "contact user&#X40;bar_baz.evil.example for access"
+_HOSTILE_ENTITY_NAMED_COMMAT_EMAIL = "contact user&commat;bar_baz.evil.example for access"
+_HOSTILE_ENTITY_NAMED_COMMAT_EMAIL_UPPERCASE = (
+    "contact User&COMMAT;Bar_Baz.EVIL.EXAMPLE for access"
+)
+
+
+@pytest.mark.parametrize(
+    "hostile_text,bare_entity",
+    [
+        (_HOSTILE_ENTITY_DECIMAL_EMAIL, "&#64;"),
+        (_HOSTILE_ENTITY_HEX_LOWER_EMAIL, "&#x40;"),
+        (_HOSTILE_ENTITY_HEX_UPPER_EMAIL, "&#X40;"),
+        (_HOSTILE_ENTITY_NAMED_COMMAT_EMAIL, "&commat;"),
+        (_HOSTILE_ENTITY_NAMED_COMMAT_EMAIL_UPPERCASE, "&COMMAT;"),
+    ],
+)
+def test_evidence_pack_neutralizes_html_entity_email_autolink_bypass(
+    hostile_text, bare_entity
+):
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    # The rendered pack must never contain the bare, well-formed entity
+    # reference for "@" the input carried -- a downstream renderer's
+    # entity decode would reconstitute a bare-email autolink trigger
+    # from it even though this string never contains a literal,
+    # unescaped "@" byte. It may only ever appear prefixed by this
+    # module's own "&amp;" escape.
+    assert bare_entity not in matrix_section
+    assert "&amp;" + bare_entity[1:] in matrix_section
+    # The value must still be readable, safe literal text.
+    assert "bar_baz" in matrix_section.lower()
+    assert "evil.example" in matrix_section.lower()
+
+
+_HOSTILE_ENTITY_DECIMAL_LT_GT = "before &#60;script&#62;danger&#60;/script&#62; after"
+_HOSTILE_ENTITY_HEX_LT_GT = "before &#x3c;script&#x3e;danger&#x3c;/script&#x3e; after"
+_HOSTILE_ENTITY_HEX_UPPER_LT_GT = (
+    "before &#X3C;script&#X3E;danger&#X3C;/script&#X3E; after"
+)
+_HOSTILE_ENTITY_NAMED_LT_GT = "before &lt;script&gt;danger&lt;/script&gt; after"
+
+
+@pytest.mark.parametrize(
+    "hostile_text,bare_open,bare_close",
+    [
+        (_HOSTILE_ENTITY_DECIMAL_LT_GT, "&#60;", "&#62;"),
+        (_HOSTILE_ENTITY_HEX_LT_GT, "&#x3c;", "&#x3e;"),
+        (_HOSTILE_ENTITY_HEX_UPPER_LT_GT, "&#X3C;", "&#X3E;"),
+        (_HOSTILE_ENTITY_NAMED_LT_GT, "&lt;", "&gt;"),
+    ],
+)
+def test_evidence_pack_neutralizes_html_entity_raw_html_bypass(
+    hostile_text, bare_open, bare_close
+):
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    # A downstream renderer's entity decode would reconstitute a literal
+    # "<script>" open tag from an entity-encoded "<"/">" pair -- the bare
+    # reference must never survive, only this module's own "&amp;"-
+    # prefixed rewrite of it.
+    assert bare_open not in matrix_section
+    assert bare_close not in matrix_section
+    assert "&amp;" + bare_open[1:] in matrix_section
+    assert "&amp;" + bare_close[1:] in matrix_section
+    assert "script" in matrix_section.lower()  # visible text remains readable
+    assert "danger" in matrix_section.lower()
+
+
+def test_evidence_pack_escapes_literal_ampersand_as_readable_text():
+    # An ordinary, non-hostile literal "&" (e.g. "R&D") must still be
+    # escaped the same way -- the fix applies uniformly regardless of
+    # whether the "&" happens to precede entity-shaped text -- and once
+    # a compliant renderer decodes this module's own "&amp;" escape, it
+    # renders back to a plain, readable "&".
+    result = _base_result(findings=_escaping_finding("R&D findings only"))
+    text = render.render_evidence_pack(result)
+    assert "&amp;D findings only" in text
+    assert "R&D findings only" not in text
+
+
+def test_evidence_pack_does_not_double_escape_own_lt_gt_entities():
+    # This module's own "&lt;"/"&gt;" escapes for a literal "<"/">" must
+    # never be re-escaped into "&amp;lt;"/"&amp;gt;" by the new
+    # ampersand-neutralization step -- the ampersand step must run before
+    # "<"/">" are turned into entities, not after.
+    result = _base_result(findings=_escaping_finding("value <10 and >5"))
+    text = render.render_evidence_pack(result)
+    assert "&amp;lt;" not in text
+    assert "&amp;gt;" not in text
+    assert "&lt;10" in text
+    assert "&gt;5" in text
+

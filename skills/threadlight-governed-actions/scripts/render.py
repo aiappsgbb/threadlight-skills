@@ -1052,31 +1052,46 @@ def _md_escape_inline(value: object) -> str:
 
     Collapses any embedded newline/carriage-return -- which could
     otherwise inject a forged extra table row or a spurious new heading
-    line into the rendered pack -- to a single space. A literal backslash
-    is escaped *first*, before any other character below, so a value
-    ending in a backslash immediately before one of the characters this
-    function itself escapes next can never combine with this function's
-    own inserted escape backslash to look like an escaped backslash
-    followed by unescaped, live syntax. ``[``, ``]``, ``(``, and ``)`` are
-    then backslash-escaped: CommonMark/GFM require all of literal,
-    unescaped brackets *and* parentheses to recognize either inline-link
-    (``[text](url)``), image (``![alt](src)``), or reference-link
-    (``[text][ref]``) syntax, so escaping every one of them makes every
-    form -- regardless of URL scheme, including ``javascript:`` -- inert
-    text rather than a clickable link or an image that would load an
-    external resource. ``|`` is escaped (would otherwise split a table row
-    into extra cells). A backtick is replaced with a plain apostrophe
-    (would otherwise let the value break out of an inline code span this
-    module wraps identifier-like values in elsewhere). ``<``/``>`` are
-    HTML-entity-escaped, which defeats both a raw HTML tag and an
-    angle-bracket autolink (``<https://...>``): neither can ever open or
-    close once escaped. Finally, a bare ``scheme://``/``www.`` run, or a
-    bare ``local@domain.tld``-shaped email address (in any letter case)
-    -- either of which GitHub Flavored Markdown's extended autolink
-    extension can turn into a live link with no brackets or angle
-    brackets present at all -- has its trigger substring broken with a
-    backslash so the exact literal text it matches against no longer
-    appears.
+    line into the rendered pack -- to a single space. Every literal ``&``
+    in the *input* is then escaped to ``&amp;`` -- before any other
+    escaping step below, and in particular before this function
+    introduces any ``&``-led escape of its own -- so that a decimal
+    (``&#64;``), hexadecimal (``&#x40;``/``&#X40;``, either case), or
+    named (``&commat;``, ``&lt;``, ``&NewLine;``, ...) character
+    reference smuggled in by an assessment string can never be decoded by
+    a downstream CommonMark/GFM renderer back into a live metacharacter
+    (``@``, ``<``, a newline, ...) ahead of that renderer's own
+    autolink/raw-HTML recognition -- GitHub Flavored Markdown's extended
+    autolink extension in particular scans *already entity-decoded* text,
+    so an un-neutralized entity reference is a complete bypass of every
+    literal-character escape this function applies below. Because this
+    step runs first and touches only ``&`` characters already present in
+    the input, it can never re-escape (double-escape) an ``&lt;``/
+    ``&gt;`` this function itself inserts further down. A literal
+    backslash is escaped next, before any other character below, so a
+    value ending in a backslash immediately before one of the characters
+    this function itself escapes next can never combine with this
+    function's own inserted escape backslash to look like an escaped
+    backslash followed by unescaped, live syntax. ``[``, ``]``, ``(``,
+    and ``)`` are then backslash-escaped: CommonMark/GFM require all of
+    literal, unescaped brackets *and* parentheses to recognize either
+    inline-link (``[text](url)``), image (``![alt](src)``), or
+    reference-link (``[text][ref]``) syntax, so escaping every one of
+    them makes every form -- regardless of URL scheme, including
+    ``javascript:`` -- inert text rather than a clickable link or an
+    image that would load an external resource. ``|`` is escaped (would
+    otherwise split a table row into extra cells). A backtick is replaced
+    with a plain apostrophe (would otherwise let the value break out of
+    an inline code span this module wraps identifier-like values in
+    elsewhere). ``<``/``>`` are HTML-entity-escaped, which defeats both a
+    raw HTML tag and an angle-bracket autolink (``<https://...>``):
+    neither can ever open or close once escaped. Finally, a bare
+    ``scheme://``/``www.`` run, or a bare ``local@domain.tld``-shaped
+    email address (in any letter case) -- either of which GitHub Flavored
+    Markdown's extended autolink extension can turn into a live link with
+    no brackets or angle brackets present at all -- has its trigger
+    substring broken with a backslash so the exact literal text it
+    matches against no longer appears.
 
     All of this keeps the value fully human-readable; it is applied to
     every assessment-influenceable string this module ever interpolates
@@ -1086,6 +1101,7 @@ def _md_escape_inline(value: object) -> str:
     """
     text = str(value)
     text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("&", "&amp;")
     text = text.replace("\\", "\\\\")
     text = text.replace("[", "\\[").replace("]", "\\]")
     text = text.replace("(", "\\(").replace(")", "\\)")
