@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import stat
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Tuple
 
@@ -193,6 +194,7 @@ def _base_result(
     findings: Sequence[contracts.Finding] = (),
     evidence: Sequence[contracts.EvidenceRef] = (),
     dirty: bool = False,
+    residual_risks: Sequence[Dict[str, object]] = (),
 ) -> contracts.AssessmentResult:
     return contracts.AssessmentResult(
         source=_source(dirty=dirty),
@@ -234,7 +236,7 @@ def _base_result(
             ),
             "identities": ({"identity": "deploy-identity", "kind": "managed-identity"},),
         },
-        residual_risks=(),
+        residual_risks=tuple(residual_risks),
     )
 
 
@@ -1171,3 +1173,659 @@ def test_evidence_pack_evidence_index_never_contains_probe_payload_values():
     assert "SENTINEL-EXPECTED-PAYLOAD" not in index_section
     assert "SENTINEL-OBSERVED-PAYLOAD" not in index_section
 
+
+# ---------------------------------------------------------------------------
+# Hardening round: preflight rejection (issue 1)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_rejects_root_as_destination(tmp_path):
+    result = _full_result()
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            Path("."),
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    assert not (tmp_path / "docs").exists()
+
+
+def test_write_artifacts_rejects_existing_directory_at_destination(tmp_path):
+    result = _full_result()
+    (tmp_path / "tests" / "governed-actions-manifest.json").mkdir(parents=True)
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    # Preflight rejects before any staging: no other artifact was written.
+    assert not (tmp_path / "docs").exists()
+    assert not (tmp_path / "tests" / "governed-actions-apply-plan.json").exists()
+
+
+def test_write_artifacts_rejects_existing_fifo_at_destination(tmp_path):
+    result = _full_result()
+    (tmp_path / "tests").mkdir()
+    fifo_path = tmp_path / "tests" / "governed-actions-manifest.json"
+    os.mkfifo(fifo_path)
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    # The FIFO itself is left completely untouched.
+    assert stat.S_ISFIFO(fifo_path.lstat().st_mode)
+    assert not (tmp_path / "docs").exists()
+
+
+def test_write_artifacts_rejects_duplicate_destinations(tmp_path):
+    result = _full_result()
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    assert not (tmp_path / "tests").exists()
+
+
+def test_write_artifacts_rejects_nested_destinations(tmp_path):
+    result = _full_result()
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            Path("tests"),
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    assert not (tmp_path / "tests").exists()
+    assert not (tmp_path / "docs").exists()
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: symlink-swap TOCTOU (issue 2)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_detects_parent_symlink_swap_mid_transaction(tmp_path):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+
+    other_findings = [_finding("MED-001", "pass")]
+    other_result = _base_result(findings=other_findings, dirty=False)
+
+    tests_dir = manifest_path.parent
+    assert tests_dir == apply_plan_path.parent  # both artifacts share this parent
+    tests_dir_saved = tests_dir.parent / f"{tests_dir.name}-saved-by-attacker"
+    attacker_target = tmp_path.parent / f"{tmp_path.name}-attacker-target"
+    attacker_target.mkdir()
+
+    calls = {"count": 0}
+    swap_done = {"value": False}
+
+    def _replace(src: Path, dst: Path) -> None:
+        calls["count"] += 1
+        os.replace(src, dst)
+        # Immediately after the manifest's own backup-aside step lands
+        # (the very first replace() call), an attacker swaps the shared
+        # tests/ directory for a symlink pointing outside the assessed
+        # root, before the apply-plan artifact -- which lives under that
+        # very same directory -- is ever touched.
+        if calls["count"] == 1 and not swap_done["value"]:
+            tests_dir.rename(tests_dir_saved)
+            tests_dir.symlink_to(attacker_target, target_is_directory=True)
+            swap_done["value"] = True
+
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            other_result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+            replace=_replace,
+        )
+
+    # Revalidation immediately before every step must have caught the
+    # swap and failed closed -- no artifact bytes were ever written
+    # through the symlink into the attacker-controlled directory.
+    assert not list(attacker_target.iterdir())
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: rollback failures are never swallowed (issue 3)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_rollback_failure_is_not_swallowed(tmp_path, monkeypatch):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+    prior_manifest_bytes = manifest_path.read_bytes()
+    prior_evidence_bytes = evidence_path.read_bytes()
+    prior_apply_plan_bytes = apply_plan_path.read_bytes()
+
+    other_findings = [_finding("MED-001", "pass")]
+    other_result = _base_result(findings=other_findings, dirty=False)
+
+    original_fsync_dir = render._fsync_dir
+    fsync_calls = []
+
+    def _spy_fsync_dir(directory: Path) -> None:
+        fsync_calls.append(Path(directory))
+        original_fsync_dir(directory)
+
+    monkeypatch.setattr(render, "_fsync_dir", _spy_fsync_dir)
+
+    backup_of_manifest: Dict[str, Optional[Path]] = {"path": None}
+    calls = {"count": 0}
+
+    def _replace(src: Path, dst: Path) -> None:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            # This is the manifest's backup-aside call: replace(dest, backup).
+            backup_of_manifest["path"] = Path(dst)
+        if calls["count"] == 6:
+            # Fail the very last (apply-plan) commit replace, so all three
+            # backups already exist and every one of them enters rollback.
+            raise OSError("synthetic forward failure on apply-plan commit")
+        recorded = backup_of_manifest["path"]
+        if recorded is not None and src == recorded and dst == manifest_path:
+            # Force the manifest's own backup restoration to fail too, so
+            # rollback of the whole transaction cannot fully succeed.
+            raise OSError("synthetic restore failure for manifest backup")
+        os.replace(src, dst)
+
+    with pytest.raises(render.ArtifactWriteError) as excinfo:
+        render.write_artifacts(
+            tmp_path,
+            other_result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+            replace=_replace,
+        )
+
+    message = str(excinfo.value)
+    assert "ROLLBACK DID NOT FULLY RESTORE" in message
+
+    # Evidence and apply-plan rollbacks succeeded: restored byte-for-byte.
+    assert evidence_path.read_bytes() == prior_evidence_bytes
+    assert apply_plan_path.read_bytes() == prior_apply_plan_bytes
+
+    # Manifest's own rollback failed: the newer (partially-applied)
+    # content is left live rather than silently discarded, and its
+    # backup -- the only remaining copy of the prior content -- is
+    # preserved on disk for manual recovery, never deleted.
+    assert manifest_path.read_bytes() != prior_manifest_bytes
+    backup_path = backup_of_manifest["path"]
+    assert backup_path is not None
+    assert backup_path.exists(), "backup for the failed restore must be preserved"
+    assert backup_path.read_bytes() == prior_manifest_bytes
+
+    # _fsync_dir is still invoked for every artifact whose rollback
+    # succeeded, despite the manifest's own rollback failing.
+    assert Path(evidence_path.parent) in fsync_calls
+    assert Path(apply_plan_path.parent) in fsync_calls
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: staging lives inside cleanup scope (issue 4)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_cleans_up_earlier_staged_files_when_a_later_stage_fails(
+    tmp_path, monkeypatch
+):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+
+    original_stage = render._stage_temp_file
+    staged_paths = []
+    call_count = {"value": 0}
+
+    def _spy_stage(root_fd, root_resolved, dest, data):
+        call_count["value"] += 1
+        if call_count["value"] == 2:
+            raise OSError("synthetic staging failure for the second artifact")
+        temp = original_stage(root_fd, root_resolved, dest, data)
+        staged_paths.append(temp)
+        return temp
+
+    monkeypatch.setattr(render, "_stage_temp_file", _spy_stage)
+
+    with pytest.raises(render.ArtifactWriteError) as excinfo:
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+
+    assert "synthetic staging failure" in str(excinfo.value)
+    assert len(staged_paths) == 1  # only the first artifact staged before the failure
+    assert not staged_paths[0].exists(), "earlier staged temp file must be cleaned up"
+    assert not manifest_path.exists()
+    assert not evidence_path.exists()
+    assert not apply_plan_path.exists()
+    for path in (manifest_path, evidence_path, apply_plan_path):
+        if path.parent.exists():
+            leftovers = [entry for entry in path.parent.iterdir() if entry.name.startswith(".")]
+            assert leftovers == [], f"leftover staging files: {leftovers}"
+
+
+def test_stage_temp_file_removes_partial_temp_on_write_failure(tmp_path, monkeypatch):
+    root_resolved = tmp_path.resolve()
+    dest = root_resolved / "tests" / "governed-actions-manifest.json"
+
+    def _failing_fsync(_fd):
+        raise OSError("synthetic fsync failure")
+
+    monkeypatch.setattr(os, "fsync", _failing_fsync)
+    root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(render.ArtifactWriteError):
+            render._stage_temp_file(root_fd, root_resolved, dest, b"{}\n")
+    finally:
+        os.close(root_fd)
+
+    tests_dir = root_resolved / "tests"
+    assert tests_dir.is_dir()  # created by the fd-based mkdir before the failure
+    leftovers = list(tests_dir.glob(".*"))
+    assert leftovers == [], f"leftover staging files: {leftovers}"
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: fractional RFC 3339 precision preserved (issue 5)
+# ---------------------------------------------------------------------------
+
+
+def test_freshness_expires_at_preserves_fractional_seconds():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-frac", collected_at="2026-01-01T00:00:00.123456Z")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    freshness = manifest["freshness"]
+    assert freshness["oldest_source_at"] == "2026-01-01T00:00:00.123456Z"
+    # 24h (FRESHNESS_VALID_FOR_HOURS) later, fractional precision retained
+    # rather than being silently truncated to whole seconds -- so the
+    # rendered timestamp can never contradict the freshness computation
+    # actually performed against the full-precision instant.
+    assert freshness["expires_at"] == "2026-01-02T00:00:00.123456Z"
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: production schema validation uses FormatChecker (issue 6)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_rejects_impossible_date_in_conformance_report(tmp_path):
+    result = _full_result(
+        conformance_reports=(
+            {
+                "report_id": "REPORT-001",
+                "tool": "governed-actions-ctk",
+                "version": "0.1.0",
+                # Shape-valid (matches the timestamp regex) but calendar-
+                # impossible -- only a format-aware validator catches this.
+                "generated_at": _MALFORMED_COLLECTED_AT,
+                "summary": "conformance test kit run",
+                "evidence_refs": ("EVID-report-001",),
+            },
+        ),
+    )
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+    assert not manifest_path.exists()
+    assert not evidence_path.exists()
+    assert not apply_plan_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: set-like nested fields are sorted (issue 7)
+# ---------------------------------------------------------------------------
+
+
+def _action_with_sets(action_id: str, **overrides) -> contracts.ActionRecord:
+    defaults = dict(
+        action_id=action_id,
+        display_name=f"Action {action_id}",
+        aliases=(),
+        owner=None,
+        declaration_refs=(),
+        implementation_refs=(),
+        input_schema_sha256=_sha256_of(f"{action_id}-input-schema"),
+        output_schema_sha256=_sha256_of(f"{action_id}-output-schema"),
+        source="declared",
+        consequence="write",
+        secondary_consequences=(),
+        reversible=False,
+        compensation_ref=None,
+        execution_modes=(),
+        provider_hosted=False,
+        approval_required=None,
+        policy_ids=(),
+        known_runtime_paths=(),
+        inventory_status="pass",
+    )
+    defaults.update(overrides)
+    return contracts.ActionRecord(**defaults)
+
+
+def test_manifest_action_set_like_fields_sorted_and_order_independent():
+    forward = dict(
+        aliases=("beta", "alpha", "gamma"),
+        secondary_consequences=("write", "external-egress"),
+        execution_modes=("interactive", "direct-tool", "batch"),
+        policy_ids=("policy-b", "policy-a"),
+        known_runtime_paths=("path/b.py", "path/a.py"),
+        declaration_refs=("src/b.py", "src/a.py"),
+        implementation_refs=("src/b_impl.py", "src/a_impl.py"),
+    )
+    reordered = dict(
+        aliases=("gamma", "alpha", "beta"),
+        secondary_consequences=("external-egress", "write"),
+        execution_modes=("batch", "interactive", "direct-tool"),
+        policy_ids=("policy-a", "policy-b"),
+        known_runtime_paths=("path/a.py", "path/b.py"),
+        declaration_refs=("src/a.py", "src/b.py"),
+        implementation_refs=("src/a_impl.py", "src/b_impl.py"),
+    )
+    findings = [_finding("MED-001", "pass")]
+    result_forward = _base_result(actions=[_action_with_sets("act-1", **forward)], findings=findings)
+    result_reordered = _base_result(
+        actions=[_action_with_sets("act-1", **reordered)], findings=findings
+    )
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    rendered = manifest_forward["action_inventory"][0]
+    assert rendered["aliases"] == sorted(rendered["aliases"])
+    assert rendered["execution_modes"] == sorted(rendered["execution_modes"])
+    assert rendered["policy_ids"] == sorted(rendered["policy_ids"])
+    assert rendered["known_runtime_paths"] == sorted(rendered["known_runtime_paths"])
+    assert rendered["declaration_refs"] == sorted(rendered["declaration_refs"])
+    assert rendered["implementation_refs"] == sorted(rendered["implementation_refs"])
+    assert rendered["secondary_consequences"] == sorted(rendered["secondary_consequences"])
+
+
+def test_manifest_path_evidence_refs_sorted_and_nodes_stay_ordered():
+    action = _action("act-1")
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-a"), _evidence("EVID-b")]
+
+    def _make_path(evidence_refs: Tuple[str, ...]) -> contracts.PathRecord:
+        return contracts.PathRecord(
+            path_id="path-1",
+            action_id="act-1",
+            mode="runtime",
+            nodes=("entrypoint", "handler"),
+            pre_action_seam="hook:pre",
+            equivalent_control_ref=None,
+            covered=True,
+            status="pass",
+            evidence_refs=evidence_refs,
+        )
+
+    result_forward = _base_result(
+        actions=[action],
+        paths=[_make_path(("EVID-b", "EVID-a"))],
+        findings=findings,
+        evidence=evidence,
+    )
+    result_reordered = _base_result(
+        actions=[action],
+        paths=[_make_path(("EVID-a", "EVID-b"))],
+        findings=findings,
+        evidence=evidence,
+    )
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    rendered_path = manifest_forward["mediation_paths"][0]
+    assert rendered_path["evidence_refs"] == ["EVID-a", "EVID-b"]
+    # nodes is an ORDERED path chain and must never be sorted.
+    assert rendered_path["nodes"] == ["entrypoint", "handler"]
+
+
+def test_manifest_probe_evidence_refs_sorted_and_order_independent():
+    action = _action("act-1")
+    path = _path("path-1", "act-1")
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-a"), _evidence("EVID-b"), _evidence(f"EVID-{path.path_id}")]
+
+    def _make_probe(evidence_refs: Tuple[str, ...]) -> contracts.ProbeResult:
+        return contracts.ProbeResult(
+            probe_id="probe-1",
+            action_id="act-1",
+            path_id="path-1",
+            status="pass",
+            reason_code="ok",
+            expected="e",
+            observed="o",
+            evidence_refs=evidence_refs,
+        )
+
+    result_forward = _base_result(
+        actions=[action],
+        paths=[path],
+        probes=[_make_probe(("EVID-b", "EVID-a"))],
+        findings=findings,
+        evidence=evidence,
+    )
+    result_reordered = _base_result(
+        actions=[action],
+        paths=[path],
+        probes=[_make_probe(("EVID-a", "EVID-b"))],
+        findings=findings,
+        evidence=evidence,
+    )
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    rendered_probe = manifest_forward["conformance"]["application_probes"][0]
+    assert rendered_probe["evidence_refs"] == ["EVID-a", "EVID-b"]
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: residual-risk id collisions are rejected (issue 8)
+# ---------------------------------------------------------------------------
+
+
+def test_build_manifest_rejects_residual_risk_collision_with_mandatory_id():
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(
+        findings=findings,
+        residual_risks=(
+            {
+                "residual_risk_id": "RISK-LIVE-EVIDENCE-FRESHNESS",
+                "finding_id": "MED-001",
+                "description": "a customer tried to overwrite this module's own trust disclaimer",
+            },
+        ),
+    )
+    with pytest.raises(render.ReservedResidualRiskIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_residual_risk_collision_with_catch_all_id():
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(
+        findings=findings,
+        residual_risks=(
+            {
+                "residual_risk_id": "RISK-BOUNDED-ASSESSMENT-SCOPE",
+                "finding_id": "MED-001",
+                "description": "attempted catch-all overwrite",
+            },
+        ),
+    )
+    with pytest.raises(render.ReservedResidualRiskIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_duplicate_extra_residual_risk_ids():
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(
+        findings=findings,
+        residual_risks=(
+            {"residual_risk_id": "RISK-CUSTOM-001", "finding_id": "MED-001", "description": "first"},
+            {
+                "residual_risk_id": "RISK-CUSTOM-001",
+                "finding_id": "MED-001",
+                "description": "second, duplicate id",
+            },
+        ),
+    )
+    with pytest.raises(render.ReservedResidualRiskIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_accepts_non_colliding_customer_residual_risk():
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(
+        findings=findings,
+        residual_risks=(
+            {
+                "residual_risk_id": "RISK-CUSTOM-001",
+                "finding_id": "MED-001",
+                "description": "a genuinely customer-specific risk",
+            },
+        ),
+    )
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    ids = {entry["residual_risk_id"] for entry in manifest["residual_risks"]}
+    assert "RISK-CUSTOM-001" in ids
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: context-aware Markdown escaping (issue 9)
+# ---------------------------------------------------------------------------
+
+_HOSTILE_TEXT = "pwn|ed\ninjected `code` <b>bold</b>"
+
+
+def test_evidence_pack_matrix_escapes_hostile_finding_summary():
+    findings = [
+        contracts.Finding(
+            finding_id="MED-001",
+            status="pass",
+            phase="design",
+            plane="runtime",
+            reason_code="reason",
+            summary=_HOSTILE_TEXT,
+            details="details",
+            affected_actions=(),
+            affected_paths=(),
+            evidence_refs=(),
+            remediation_ids=(),
+            residual_risk_ref=None,
+        )
+    ]
+    result = _base_result(findings=findings)
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    table_lines = [line for line in matrix_section.splitlines() if line.startswith("|")]
+    # Exactly header + divider + one data row: a hostile summary must
+    # never inject an extra pipe-delimited column or a forged extra row
+    # via an embedded newline.
+    assert len(table_lines) == 3
+    # Column-delimiter pipes only, excluding any backslash-escaped literal
+    # ``|`` that came from the hostile content itself.
+    delimiter_pipes = table_lines[2].replace("\\|", "").count("|")
+    assert delimiter_pipes == 8  # 7 columns => 8 pipe delimiters
+    assert "\ninjected" not in text
+    assert "<b>bold</b>" not in text
+    assert "&lt;b&gt;bold&lt;/b&gt;" in text
+    assert "pwn\\|ed" in text
+
+
+def test_evidence_pack_action_inventory_escapes_hostile_display_name():
+    action = _action_with_sets("act-1", display_name=_HOSTILE_TEXT)
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(actions=[action], findings=findings)
+    text = render.render_evidence_pack(result)
+    inventory_start = text.index("## Runtime action inventory")
+    inventory_section = text[inventory_start : text.index("## Runtime mediation graph")]
+    assert "\ninjected" not in inventory_section
+    assert "<b>bold</b>" not in inventory_section
+    assert "&lt;b&gt;bold&lt;/b&gt;" in inventory_section
+    assert "pwn\\|ed" in inventory_section
+
+
+def test_evidence_pack_residual_risk_register_escapes_hostile_description():
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(
+        findings=findings,
+        residual_risks=(
+            {
+                "residual_risk_id": "RISK-CUSTOM-002",
+                "finding_id": "MED-001",
+                "description": _HOSTILE_TEXT,
+            },
+        ),
+    )
+    text = render.render_evidence_pack(result)
+    register_start = text.index("## Residual-risk register")
+    register_section = text[register_start : text.index("## Remediation plan")]
+    assert "\ninjected" not in register_section
+    assert "<b>bold</b>" not in register_section
+    assert "&lt;b&gt;bold&lt;/b&gt;" in register_section
+    assert "pwn\\|ed" in register_section
+
+
+def test_evidence_pack_remediation_plan_escapes_hostile_owner():
+    action = _action_with_sets("act-1", owner=_HOSTILE_TEXT)
+    findings = [_finding("ACT-001", "must-fix", affected_actions=("act-1",))]
+    result = _base_result(actions=[action], findings=findings)
+    text = render.render_evidence_pack(result)
+    plan_start = text.index("## Remediation plan")
+    plan_section = text[plan_start:]
+    assert "\ninjected" not in plan_section
+    assert "<b>bold</b>" not in plan_section
+    assert "&lt;b&gt;bold&lt;/b&gt;" in plan_section
+    assert "pwn\\|ed" in plan_section

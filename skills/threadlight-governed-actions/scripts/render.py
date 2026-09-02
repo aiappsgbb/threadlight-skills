@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
+import stat
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
@@ -213,6 +214,24 @@ _ALL_RISK_IDS_ORDER_HINT = tuple(
     entry["residual_risk_id"] for entry in _MANDATORY_RESIDUAL_RISKS
 ) + (_CATCH_ALL_RESIDUAL_RISK["residual_risk_id"],)
 
+#: This module's own reserved, authoritative residual-risk ids -- the
+#: mandatory baseline risks plus the catch-all. Their wording is a trust
+#: disclaimer this assessor makes about *itself*, never customer data, so
+#: an assessment-supplied ``residual_risks`` entry must never be able to
+#: silently overwrite one.
+_RESERVED_RESIDUAL_RISK_IDS: frozenset = frozenset(_ALL_RISK_IDS_ORDER_HINT)
+
+
+class ReservedResidualRiskIdError(ValueError):
+    """Raised when an :class:`~contracts.AssessmentResult` supplies its own
+    ``residual_risks`` entry whose ``residual_risk_id`` collides with one of
+    this module's reserved ids (or duplicates another assessment-supplied
+    entry's id). Collisions are rejected rather than silently merged or
+    renamed: this module's own authoritative trust disclaimers -- and every
+    other residual-risk entry's identity -- must never be ambiguous or
+    overwritable by assessment/customer data.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Remediation-kind table
@@ -308,22 +327,22 @@ def _action_to_dict(action: ActionRecord) -> Dict[str, object]:
     return {
         "action_id": action.action_id,
         "display_name": action.display_name,
-        "aliases": list(action.aliases),
+        "aliases": sorted(action.aliases),
         "owner": action.owner,
-        "declaration_refs": list(action.declaration_refs),
-        "implementation_refs": list(action.implementation_refs),
+        "declaration_refs": sorted(action.declaration_refs),
+        "implementation_refs": sorted(action.implementation_refs),
         "input_schema_sha256": action.input_schema_sha256,
         "output_schema_sha256": action.output_schema_sha256,
         "source": action.source,
         "consequence": action.consequence,
-        "secondary_consequences": list(action.secondary_consequences),
+        "secondary_consequences": sorted(action.secondary_consequences),
         "reversible": action.reversible,
         "compensation_ref": action.compensation_ref,
-        "execution_modes": list(action.execution_modes),
+        "execution_modes": sorted(action.execution_modes),
         "provider_hosted": action.provider_hosted,
         "approval_required": action.approval_required,
-        "policy_ids": list(action.policy_ids),
-        "known_runtime_paths": list(action.known_runtime_paths),
+        "policy_ids": sorted(action.policy_ids),
+        "known_runtime_paths": sorted(action.known_runtime_paths),
         "inventory_status": action.inventory_status,
     }
 
@@ -333,12 +352,13 @@ def _path_to_dict(path: PathRecord) -> Dict[str, object]:
         "path_id": path.path_id,
         "action_id": path.action_id,
         "mode": path.mode,
+        # ``nodes`` is the path's own ordered node chain, never sorted.
         "nodes": list(path.nodes),
         "pre_action_seam": path.pre_action_seam,
         "equivalent_control_ref": path.equivalent_control_ref,
         "covered": path.covered,
         "status": path.status,
-        "evidence_refs": list(path.evidence_refs),
+        "evidence_refs": sorted(path.evidence_refs),
     }
 
 
@@ -351,7 +371,7 @@ def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
         "reason_code": probe.reason_code,
         "expected": probe.expected,
         "observed": probe.observed,
-        "evidence_refs": list(probe.evidence_refs),
+        "evidence_refs": sorted(probe.evidence_refs),
     }
 
 
@@ -421,8 +441,23 @@ def _assemble_residual_risks(result: AssessmentResult) -> List[Dict[str, object]
         str(entry["residual_risk_id"]): dict(entry) for entry in _MANDATORY_RESIDUAL_RISKS
     }
     merged[str(_CATCH_ALL_RESIDUAL_RISK["residual_risk_id"])] = dict(_CATCH_ALL_RESIDUAL_RISK)
+    seen_extra_ids: Set[str] = set()
     for extra in result.residual_risks:
-        merged[str(extra["residual_risk_id"])] = dict(extra)
+        risk_id = str(extra["residual_risk_id"])
+        if risk_id in _RESERVED_RESIDUAL_RISK_IDS:
+            raise ReservedResidualRiskIdError(
+                "assessment-supplied residual_risks entry reuses this "
+                f"module's reserved, authoritative id {risk_id!r}; this "
+                "assessor's own trust disclaimers can never be overwritten "
+                "by assessment/customer data"
+            )
+        if risk_id in seen_extra_ids:
+            raise ReservedResidualRiskIdError(
+                "assessment-supplied residual_risks entries must have "
+                f"distinct residual_risk_id values, got a duplicate: {risk_id!r}"
+            )
+        seen_extra_ids.add(risk_id)
+        merged[risk_id] = dict(extra)
     return sorted(merged.values(), key=lambda entry: str(entry["residual_risk_id"]))
 
 
@@ -552,7 +587,16 @@ def _try_parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
 
 
 def _format_rfc3339(moment: datetime) -> str:
+    # Whole-second instants render without a fractional part (unchanged,
+    # byte-identical to every existing fixture); an instant that carries
+    # sub-second precision keeps it, so a computed timestamp such as
+    # ``expires_at`` (derived by adding ``valid_for_hours`` to an evidence
+    # entry's own fractional ``collected_at``) can never silently disagree
+    # with the freshness this manifest itself computes from that same
+    # instant.
     moment = moment.astimezone(timezone.utc)
+    if moment.microsecond:
+        return moment.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
     return moment.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
@@ -803,32 +847,80 @@ def build_apply_plan(result: AssessmentResult) -> Dict[str, object]:
 # render_evidence_pack
 # ---------------------------------------------------------------------------
 
+
+def _md_escape_inline(value: object) -> str:
+    """Sanitize *value* for inclusion in a single rendered Markdown table
+    cell, list item, or heading-adjacent line.
+
+    Collapses any embedded newline/carriage-return -- which could
+    otherwise inject a forged extra table row or a spurious new heading
+    line into the rendered pack -- to a single space, escapes ``|`` (which
+    would otherwise split a table row into extra cells), and replaces any
+    backtick with a plain apostrophe and any ``<``/``>`` with their HTML
+    entities (which would otherwise let an assessment-/customer-
+    influenceable string break out of an inline code span or inject raw
+    HTML), all while keeping the value fully human-readable. Applied to
+    every assessment-influenceable string this module ever interpolates
+    into a table cell, list item, or heading-adjacent line; this module
+    never renders a probe's raw ``expected``/``observed`` payload value
+    here at all, so there is nothing to leak through this escaping.
+    """
+    text = str(value)
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("|", "\\|")
+    text = text.replace("`", "'")
+    text = text.replace("<", "&lt;").replace(">", "&gt;")
+    return text
+
+
+def _md_code_span(value: object) -> str:
+    """Wrap an escaped, identifier-like *value* in a Markdown inline code
+    span. :func:`_md_escape_inline` already replaces any embedded
+    backtick, so the delimiters this function adds can never be broken out
+    of by the interpolated value.
+    """
+    return f"`{_md_escape_inline(value)}`"
+
+
 _MATRIX_HEADER = "| ID | Plane | Control | Status | Reason | Evidence | Remediation |"
 _MATRIX_DIVIDER = "| --- | --- | --- | --- | --- | --- | --- |"
 
 
 def _matrix_row(finding: Dict[str, object], remediation: Optional[Dict[str, object]]) -> str:
     remediation_text = remediation["remediation_kind"] if remediation else "none"
-    evidence_text = ", ".join(str(ref) for ref in finding["evidence_refs"]) or "none"
+    evidence_text = ", ".join(_md_escape_inline(ref) for ref in finding["evidence_refs"]) or "none"
     return "| {} | {} | {} | {} | {} | {} | {} |".format(
-        finding["finding_id"],
-        finding["plane"],
-        str(finding["summary"]).replace("|", "/"),
-        finding["status"],
-        finding["reason_code"],
+        _md_escape_inline(finding["finding_id"]),
+        _md_escape_inline(finding["plane"]),
+        _md_escape_inline(finding["summary"]),
+        _md_escape_inline(finding["status"]),
+        _md_escape_inline(finding["reason_code"]),
         evidence_text,
-        remediation_text,
+        _md_escape_inline(remediation_text),
     )
 
 
 def _action_row(action: Dict[str, object]) -> str:
-    return "- `{action_id}` ({display_name}): consequence={consequence}, reversible={reversible}, inventory_status={inventory_status}".format(
-        **action
+    return (
+        "- {action_id} ({display_name}): consequence={consequence}, "
+        "reversible={reversible}, inventory_status={inventory_status}".format(
+            action_id=_md_code_span(action["action_id"]),
+            display_name=_md_escape_inline(action["display_name"]),
+            consequence=_md_escape_inline(action["consequence"]),
+            reversible=action["reversible"],
+            inventory_status=_md_escape_inline(action["inventory_status"]),
+        )
     )
 
 
 def _path_row(path: Dict[str, object]) -> str:
-    return "- `{path_id}` action=`{action_id}` mode={mode} covered={covered} status={status}".format(**path)
+    return "- {path_id} action={action_id} mode={mode} covered={covered} status={status}".format(
+        path_id=_md_code_span(path["path_id"]),
+        action_id=_md_code_span(path["action_id"]),
+        mode=_md_escape_inline(path["mode"]),
+        covered=path["covered"],
+        status=_md_escape_inline(path["status"]),
+    )
 
 
 def _probe_row(probe: Dict[str, object]) -> str:
@@ -836,18 +928,27 @@ def _probe_row(probe: Dict[str, object]) -> str:
     # is customer-facing evidence, and this assessor never surfaces a raw
     # probe payload value in a rendered artifact -- only the hash-bound
     # status/evidence trail.
-    return "- `{probe_id}` action=`{action_id}` path=`{path_id}` status={status} reason={reason_code} evidence={evidence}".format(
-        probe_id=probe["probe_id"],
-        action_id=probe["action_id"],
-        path_id=probe["path_id"],
-        status=probe["status"],
-        reason_code=probe["reason_code"],
-        evidence=", ".join(str(ref) for ref in probe["evidence_refs"]) or "none",
+    return (
+        "- {probe_id} action={action_id} path={path_id} status={status} "
+        "reason={reason_code} evidence={evidence}".format(
+            probe_id=_md_code_span(probe["probe_id"]),
+            action_id=_md_code_span(probe["action_id"]),
+            path_id=_md_code_span(probe["path_id"]),
+            status=_md_escape_inline(probe["status"]),
+            reason_code=_md_escape_inline(probe["reason_code"]),
+            evidence=(
+                ", ".join(_md_escape_inline(ref) for ref in probe["evidence_refs"]) or "none"
+            ),
+        )
     )
 
 
 def _residual_risk_row(risk: Dict[str, object]) -> str:
-    return "- `{residual_risk_id}` (ref: {finding_id}): {description}".format(**risk)
+    return "- {residual_risk_id} (ref: {finding_id}): {description}".format(
+        residual_risk_id=_md_code_span(risk["residual_risk_id"]),
+        finding_id=_md_escape_inline(risk["finding_id"]),
+        description=_md_escape_inline(risk["description"]),
+    )
 
 
 _EVIDENCE_INDEX_HEADER = "| Evidence ID | Kind | Source | SHA-256 | Collected At | Live Verified |"
@@ -862,11 +963,11 @@ def _evidence_index_row(entry: Dict[str, object]) -> str:
     # re-export of the full internal evidence record.
     collected_at = entry["collected_at"] if entry["collected_at"] is not None else "unknown"
     return "| {} | {} | {} | {} | {} | {} |".format(
-        entry["evidence_id"],
-        entry["kind"],
-        entry["source"],
-        entry["sha256"],
-        collected_at,
+        _md_escape_inline(entry["evidence_id"]),
+        _md_escape_inline(entry["kind"]),
+        _md_escape_inline(entry["source"]),
+        _md_escape_inline(entry["sha256"]),
+        _md_escape_inline(collected_at),
         entry["live_verified"],
     )
 
@@ -874,16 +975,19 @@ def _evidence_index_row(entry: Dict[str, object]) -> str:
 def _remediation_row(item: Dict[str, object]) -> str:
     owner = item["owner"] if item["owner"] else "unassigned"
     return (
-        "- `{finding_id}` [{status}/{plane}] kind={remediation_kind} owner={owner} "
+        "- {finding_id} [{status}/{plane}] kind={remediation_kind} owner={owner} "
         "evidence_required={evidence_required}".format(
-            finding_id=item["finding_id"],
-            status=item["status"],
-            plane=item["plane"],
-            remediation_kind=item["remediation_kind"],
-            owner=owner,
-            evidence_required=", ".join(str(ref) for ref in item["evidence_required"]) or "none",
+            finding_id=_md_code_span(item["finding_id"]),
+            status=_md_escape_inline(item["status"]),
+            plane=_md_escape_inline(item["plane"]),
+            remediation_kind=_md_escape_inline(item["remediation_kind"]),
+            owner=_md_escape_inline(owner),
+            evidence_required=(
+                ", ".join(_md_escape_inline(ref) for ref in item["evidence_required"]) or "none"
+            ),
         )
     )
+
 
 
 def render_evidence_pack(result: AssessmentResult) -> str:
@@ -930,7 +1034,11 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         )
     )
     lines.append(
-        "- Source: `{repository}` @ `{commit}` (dirty: {dirty}).".format(**manifest["source"])
+        "- Source: {repository} @ {commit} (dirty: {dirty}).".format(
+            repository=_md_code_span(manifest["source"]["repository"]),
+            commit=_md_code_span(manifest["source"]["commit"]),
+            dirty=manifest["source"]["dirty"],
+        )
     )
     lines.append(
         "- Agent Hooks is cooperative/alpha and is never treated as this "
@@ -998,7 +1106,7 @@ def render_evidence_pack(result: AssessmentResult) -> str:
     lines.append("## GitHub Copilot change plane")
     lines.append("")
     change_plane = manifest["change_plane"]
-    lines.append("- Repository: `{}`.".format(change_plane["repository"]))
+    lines.append("- Repository: {}.".format(_md_code_span(change_plane["repository"])))
     lines.append(
         "- {} required workflow file(s) evidenced, {} identity/identities "
         "recorded.".format(len(change_plane["workflows"]), len(change_plane["identities"]))
@@ -1056,7 +1164,14 @@ def _validate_against_schema(instance: Mapping[str, object], schema_file: str) -
 
     schema = _load_schema(schema_file)
     jsonschema.Draft202012Validator.check_schema(schema)
-    validator = jsonschema.Draft202012Validator(schema)
+    # ``format_checker`` must be supplied explicitly: ``jsonschema`` never
+    # enforces ``"format": "date-time"`` (or any other format assertion) by
+    # default, so without it a calendar-impossible date (e.g. a leap-day
+    # 31st) that nonetheless matches the schema's own shape ``pattern``
+    # would silently pass production validation -- exactly the same
+    # ``jsonschema.FormatChecker()`` this module's own tests already use to
+    # assert validity, so production and test validation never disagree.
+    validator = jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
     errors = sorted(validator.iter_errors(instance), key=lambda error: list(error.path))
     if errors:
         first = errors[0]
@@ -1103,33 +1218,207 @@ def _resolve_destination(root: Path, relative: Path) -> Path:
     return resolved
 
 
-def _stage_temp_file(directory: Path, name_hint: str, data: bytes) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="wb",
-        dir=directory,
-        prefix=f".{name_hint}.",
-        suffix=".stage",
-        delete=False,
-    ) as handle:
-        temp_path = Path(handle.name)
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    return temp_path
+def _lstat_or_none(path: Path) -> Optional[os.stat_result]:
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        return None
+
+
+def _is_nested(outer: Path, inner: Path) -> bool:
+    """True if *inner* is *outer* itself or lives underneath it."""
+    try:
+        inner.relative_to(outer)
+        return True
+    except ValueError:
+        return False
+
+
+def _preflight_destinations(root_resolved: Path, dests: Sequence[Path]) -> None:
+    """Reject unsafe destinations before any staging begins.
+
+    Rejects: the assessed root itself as a destination; a destination that
+    already exists but is not a plain regular file (a directory, symlink,
+    device, FIFO, or socket -- this assessor only ever replaces a plain
+    file it previously wrote, and never no-follow-resolves a leaf symlink
+    here so a symlink is never silently written through); exact duplicate
+    destinations; and any pair of destinations where one is an ancestor
+    directory of the other (which would make "restore the complete prior
+    artifact set" ambiguous, since replacing one could delete or recreate
+    the other's parent). All of this runs *before* any file is staged, so
+    a rejected call never touches disk at all.
+    """
+    seen: List[Path] = []
+    for dest in dests:
+        if dest == root_resolved:
+            raise ArtifactWriteError(
+                f"artifact destination must not be the assessed root itself: {dest}"
+            )
+        info = _lstat_or_none(dest)
+        if info is not None and not stat.S_ISREG(info.st_mode):
+            raise ArtifactWriteError(
+                "artifact destination already exists and is not a plain "
+                f"file (refusing to replace a directory/symlink/special "
+                f"file): {dest}"
+            )
+        for other in seen:
+            if dest == other:
+                raise ArtifactWriteError(
+                    f"artifact destinations must be distinct, got a duplicate: {dest}"
+                )
+            if _is_nested(dest, other) or _is_nested(other, dest):
+                raise ArtifactWriteError(
+                    "artifact destinations must not nest inside one another "
+                    f"(one is an ancestor directory of the other): {dest} and {other}"
+                )
+        seen.append(dest)
+
+
+def _open_verified_dir_fd(root_fd: int, parts: Sequence[str], display: Path) -> int:
+    """Walk *parts* (directory-component names only) from *root_fd*,
+    opening each with ``O_NOFOLLOW`` so a symlink at any level -- including
+    one swapped in after an earlier check ran -- raises instead of being
+    silently traversed. A missing directory is created under the
+    already-verified parent and then re-opened with the same no-follow
+    flags, so a symlink raced into the gap between "not found" and
+    "create" is still caught. The caller owns the returned fd and must
+    close it.
+    """
+    current_fd = os.dup(root_fd)
+    try:
+        for part in parts:
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            try:
+                next_fd = os.open(part, flags, dir_fd=current_fd)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, dir_fd=current_fd)
+                except FileExistsError:
+                    pass
+                try:
+                    next_fd = os.open(part, flags, dir_fd=current_fd)
+                except OSError as error:
+                    raise ArtifactWriteError(
+                        "could not create/verify artifact directory under "
+                        f"the assessed root: {display} ({error})"
+                    ) from error
+            except OSError as error:
+                raise ArtifactWriteError(
+                    "artifact directory path is unsafe (not a plain "
+                    f"directory -- e.g. a symlink): {display} ({error})"
+                ) from error
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except BaseException:
+        os.close(current_fd)
+        raise
+
+
+def _verify_leaf_absent_or_regular(parent_fd: int, name: str, display: Path) -> None:
+    """No-follow check that *name* under *parent_fd* is either absent or a
+    plain regular file -- never a directory, symlink, device, FIFO, or
+    socket.
+    """
+    try:
+        info = os.lstat(name, dir_fd=parent_fd)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(info.st_mode):
+        raise ArtifactWriteError(
+            "artifact destination already exists and is not a plain file "
+            f"(refusing to replace a directory/symlink/special file): {display}"
+        )
+
+
+def _revalidate_destination(root_fd: int, root_resolved: Path, dest: Path) -> int:
+    """Immediately before every stage/backup/replace step, re-walk *dest*'s
+    full path from the anchored *root_fd* with no-follow opens, so a
+    parent directory (or the leaf itself) that was swapped to a symlink,
+    directory, or other special file after an earlier check is caught and
+    this call fails closed rather than silently writing through it.
+
+    Returns an open, verified dir_fd for *dest*'s immediate parent
+    directory; the caller owns it and must close it.
+    """
+    parts = dest.relative_to(root_resolved).parts
+    if not parts:
+        raise ArtifactWriteError(
+            f"artifact destination must not be the assessed root itself: {dest}"
+        )
+    parent_fd = _open_verified_dir_fd(root_fd, parts[:-1], dest.parent)
+    try:
+        _verify_leaf_absent_or_regular(parent_fd, parts[-1], dest)
+    except BaseException:
+        os.close(parent_fd)
+        raise
+    return parent_fd
+
+
+def _stage_temp_file(root_fd: int, root_resolved: Path, dest: Path, data: bytes) -> Path:
+    """Stage *data* as a new, race-resistant temp file next to *dest*.
+
+    Traverses to *dest*'s parent directory purely through verified,
+    no-follow dir-fd opens anchored at *root_fd* (never re-resolving the
+    directory by path), then creates a randomly named temp file with
+    ``O_CREAT | O_EXCL | O_NOFOLLOW`` under that verified parent fd, so
+    staging itself never re-opens a path that could have been swapped to a
+    symlink in between. On any write/fsync failure the partial temp file
+    is removed and the failure is re-raised as a bounded
+    :class:`ArtifactWriteError` (never a raw, unbounded exception).
+    """
+    parts = dest.relative_to(root_resolved).parts
+    if not parts:
+        raise ArtifactWriteError(
+            f"artifact destination must not be the assessed root itself: {dest}"
+        )
+    parent_fd = _open_verified_dir_fd(root_fd, parts[:-1], dest.parent)
+    try:
+        name = parts[-1]
+        candidate: Optional[str] = None
+        fd: Optional[int] = None
+        for _attempt in range(8):
+            candidate = f".{name}.{uuid.uuid4().hex}.stage"
+            try:
+                fd = os.open(
+                    candidate,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                    0o600,
+                    dir_fd=parent_fd,
+                )
+                break
+            except FileExistsError:
+                candidate = None
+                continue
+        if fd is None or candidate is None:
+            raise ArtifactWriteError(
+                f"could not allocate a unique staging name for {dest}"
+            )
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException as error:
+            try:
+                os.unlink(candidate, dir_fd=parent_fd)
+            except OSError:
+                pass
+            raise ArtifactWriteError(
+                f"failed to stage artifact bytes for {dest}: {error}"
+            ) from error
+        return dest.parent / candidate
+    finally:
+        os.close(parent_fd)
 
 
 def _unique_backup_path(dest: Path) -> Path:
-    with tempfile.NamedTemporaryFile(
-        mode="wb",
-        dir=dest.parent,
-        prefix=f".{dest.name}.",
-        suffix=".bak",
-        delete=False,
-    ) as handle:
-        backup_path = Path(handle.name)
-    backup_path.unlink()
-    return backup_path
+    # A pure name generator with no filesystem interaction: collision
+    # probability with a random UUID4 hex suffix is negligible, and this
+    # avoids the create-then-unlink round trip (itself a small window for
+    # a race) a filesystem-backed unique-name allocator would otherwise
+    # need.
+    return dest.parent / f".{dest.name}.{uuid.uuid4().hex}.bak"
 
 
 def _fsync_dir(directory: Path) -> None:
@@ -1157,19 +1446,38 @@ def write_artifacts(
     this emission step only -- ``manifest_sha256`` is always computed and
     bound over the newline-free canonical value, never the on-disk bytes,
     so appending this single POSIX-friendly trailing newline for file
-    emission never changes any hash. Bytes for all three artifacts are
-    then staged as temp files in their own destination directories (same
-    filesystem, so the later replace is atomic), any existing artifact at
-    each destination is moved aside to a unique backup name, and only then
-    are all three temp files replaced onto their destinations. If any step
-    of the backup or replace phase fails, every backup already made is
-    restored and every destination this call itself newly created is
-    removed, before :class:`ArtifactWriteError` is raised -- the on-disk
-    artifact set is left exactly as it was found, never a mix of old and
-    new generations. Backups are deleted only once
-    every replacement has succeeded.
+    emission never changes any hash.
+
+    Before any staging, all three destinations are preflight-checked (not
+    the assessed root itself, no existing non-regular-file leaf, no
+    duplicates, no ancestor/descendant nesting). Bytes are then staged as
+    new, randomly named temp files reached purely through verified,
+    no-follow directory-fd traversal anchored at the assessed root (so
+    staging itself cannot be tricked into writing through a symlink); any
+    existing artifact at each destination is moved aside to a unique
+    backup name, and only then are all three temp files replaced onto
+    their destinations. Immediately before every backup-aside or
+    commit-replace step (the two places this call still must go through
+    the injectable, path-based *replace* callable rather than a dir-fd
+    operation) the full destination path is re-walked with the same
+    no-follow verification, so a parent directory or leaf swapped to a
+    symlink/directory/special file after an earlier check still fails
+    closed rather than being silently written through.
+
+    If any step of the staging, backup, or replace phase fails, every
+    backup already made is restored, every destination this call itself
+    newly created is removed, and every staged temp file is cleaned up,
+    before :class:`ArtifactWriteError` is raised -- the on-disk artifact
+    set is left exactly as it was found, never a mix of old and new
+    generations. If restoring a backup itself fails, that failure is never
+    swallowed: the backup file is preserved (never deleted) for manual
+    recovery, a successfully restored file's parent directory is fsynced,
+    and the raised :class:`ArtifactWriteError` explicitly states that
+    rollback did not fully restore the prior artifact set rather than
+    claiming it did. Backups are deleted only once every replacement in
+    the whole transaction has succeeded.
     """
-    root = Path(root).resolve()
+    root_resolved = Path(root).resolve()
     manifest = build_manifest(result)
     evidence_pack = render_evidence_pack(result)
     apply_plan = build_apply_plan(result)
@@ -1179,56 +1487,109 @@ def write_artifacts(
 
     destinations = (
         (
-            _resolve_destination(root, manifest_path),
+            _resolve_destination(root_resolved, manifest_path),
             canonical.canonical_bytes(manifest) + b"\n",
         ),
-        (_resolve_destination(root, evidence_path), evidence_pack.encode("utf-8")),
+        (_resolve_destination(root_resolved, evidence_path), evidence_pack.encode("utf-8")),
         (
-            _resolve_destination(root, apply_plan_path),
+            _resolve_destination(root_resolved, apply_plan_path),
             canonical.canonical_bytes(apply_plan) + b"\n",
         ),
     )
 
-    staged: List[Tuple[Path, Path]] = []
-    for dest, data in destinations:
-        temp = _stage_temp_file(dest.parent, dest.name, data)
-        staged.append((dest, temp))
+    _preflight_destinations(root_resolved, [dest for dest, _data in destinations])
 
-    backups: List[Tuple[Path, Path]] = []
-    created_without_backup: List[Path] = []
+    root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        for dest, _temp in staged:
-            if dest.exists():
-                backup = _unique_backup_path(dest)
-                replace(dest, backup)
-                backups.append((dest, backup))
+        staged: List[Tuple[Path, Path]] = []
+        try:
+            for dest, data in destinations:
+                temp = _stage_temp_file(root_fd, root_resolved, dest, data)
+                staged.append((dest, temp))
+        except BaseException as error:
+            for _dest, temp in staged:
+                try:
+                    Path(temp).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            if isinstance(error, ArtifactWriteError):
+                raise
+            raise ArtifactWriteError(
+                f"failed to stage governed-actions artifacts: {error}"
+            ) from error
 
-        for dest, temp in staged:
-            replace(temp, dest)
-            if not any(existing_dest == dest for existing_dest, _ in backups):
-                created_without_backup.append(dest)
-            _fsync_dir(dest.parent)
-    except BaseException as error:
-        for dest in created_without_backup:
-            try:
-                dest.unlink(missing_ok=True)
-            except OSError:
-                pass
-        for dest, backup in backups:
-            try:
-                replace(backup, dest)
-            except OSError:
-                pass
-        for _dest, temp in staged:
-            try:
-                Path(temp).unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise ArtifactWriteError(
-            f"failed to write governed-actions artifacts: {error}"
-        ) from error
+        backups: List[Tuple[Path, Path]] = []
+        created_without_backup: List[Path] = []
+        try:
+            for dest, _temp in staged:
+                parent_fd = _revalidate_destination(root_fd, root_resolved, dest)
+                os.close(parent_fd)
+                if dest.exists():
+                    backup = _unique_backup_path(dest)
+                    replace(dest, backup)
+                    backups.append((dest, backup))
 
-    for _dest, backup in backups:
-        Path(backup).unlink(missing_ok=True)
+            for dest, temp in staged:
+                parent_fd = _revalidate_destination(root_fd, root_resolved, dest)
+                os.close(parent_fd)
+                replace(temp, dest)
+                if not any(existing_dest == dest for existing_dest, _ in backups):
+                    created_without_backup.append(dest)
+                _fsync_dir(dest.parent)
+        except BaseException as error:
+            rollback_errors: List[str] = []
+            for dest in created_without_backup:
+                try:
+                    dest.unlink(missing_ok=True)
+                except OSError as unlink_error:
+                    rollback_errors.append(
+                        f"could not remove newly created artifact {dest}: {unlink_error}"
+                    )
+            for dest, backup in backups:
+                try:
+                    replace(backup, dest)
+                except OSError as restore_error:
+                    # Never delete the backup when its own restore fails:
+                    # it is the only remaining copy of the prior artifact,
+                    # and is preserved here for manual recovery.
+                    rollback_errors.append(
+                        f"could not restore prior artifact at {dest} from "
+                        f"backup {backup} (backup preserved for manual "
+                        f"recovery): {restore_error}"
+                    )
+                    continue
+                try:
+                    _fsync_dir(dest.parent)
+                except OSError as fsync_error:
+                    rollback_errors.append(
+                        f"restored {dest} from backup {backup} but could not "
+                        f"fsync its parent directory (backup preserved for "
+                        f"manual verification): {fsync_error}"
+                    )
+                    continue
+                try:
+                    Path(backup).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            for _dest, temp in staged:
+                try:
+                    Path(temp).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            if rollback_errors:
+                raise ArtifactWriteError(
+                    "failed to write governed-actions artifacts AND ROLLBACK "
+                    "DID NOT FULLY RESTORE the prior artifact set -- manual "
+                    f"recovery required: {error}; rollback errors: "
+                    + "; ".join(rollback_errors)
+                ) from error
+            raise ArtifactWriteError(
+                f"failed to write governed-actions artifacts: {error}"
+            ) from error
 
-    return tuple(dest for dest, _ in staged)  # type: ignore[return-value]
+        for _dest, backup in backups:
+            Path(backup).unlink(missing_ok=True)
+
+        return tuple(dest for dest, _ in staged)  # type: ignore[return-value]
+    finally:
+        os.close(root_fd)
