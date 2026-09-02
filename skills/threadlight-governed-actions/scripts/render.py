@@ -155,11 +155,16 @@ _MANDATORY_RESIDUAL_RISKS: Tuple[Dict[str, object], ...] = (
         "finding_id": "GHCP-002",
         "description": (
             "Live evidence (branch protection, required checks, identity "
-            "separation) is only as current as its own collection "
-            "timestamp; evidence missing a trustworthy timestamp, or older "
-            "than this manifest's freshness window, is reported with a "
-            "stale or expired freshness status rather than assumed to "
-            "still hold true."
+            "separation) is only as current as its own trustworthy "
+            "collection timestamp. An evidence entry whose collected_at "
+            "is missing or does not parse as a real instant is rendered "
+            "with collected_at null and live_verified false, and is "
+            "excluded from this manifest's freshness computation entirely. "
+            "When no evidence carries a trustworthy timestamp, "
+            "freshness.status is reported stale; when the oldest "
+            "trustworthy timestamp falls outside this manifest's freshness "
+            "window, freshness.status is reported expired -- neither is "
+            "ever assumed to still be fresh."
         ),
     },
     {
@@ -1138,16 +1143,22 @@ def write_artifacts(
     """Render and atomically write the three governed-actions artifacts.
 
     Every value is rendered and schema-validated (and checked payload-free)
-    entirely in memory before any file on disk is touched. Bytes for all
-    three artifacts are then staged as temp files in their own destination
-    directories (same filesystem, so the later replace is atomic), any
-    existing artifact at each destination is moved aside to a unique
-    backup name, and only then are all three temp files replaced onto
-    their destinations. If any step of the backup or replace phase fails,
-    every backup already made is restored and every destination this call
-    itself newly created is removed, before :class:`ArtifactWriteError` is
-    raised -- the on-disk artifact set is left exactly as it was found,
-    never a mix of old and new generations. Backups are deleted only once
+    entirely in memory before any file on disk is touched. The two JSON
+    artifacts (manifest, apply plan) are written as their newline-free
+    canonical JSON bytes with exactly one trailing ``b"\\n"`` appended at
+    this emission step only -- ``manifest_sha256`` is always computed and
+    bound over the newline-free canonical value, never the on-disk bytes,
+    so appending this single POSIX-friendly trailing newline for file
+    emission never changes any hash. Bytes for all three artifacts are
+    then staged as temp files in their own destination directories (same
+    filesystem, so the later replace is atomic), any existing artifact at
+    each destination is moved aside to a unique backup name, and only then
+    are all three temp files replaced onto their destinations. If any step
+    of the backup or replace phase fails, every backup already made is
+    restored and every destination this call itself newly created is
+    removed, before :class:`ArtifactWriteError` is raised -- the on-disk
+    artifact set is left exactly as it was found, never a mix of old and
+    new generations. Backups are deleted only once
     every replacement has succeeded.
     """
     root = Path(root).resolve()
@@ -1159,9 +1170,15 @@ def write_artifacts(
     _validate_apply_plan(apply_plan)
 
     destinations = (
-        (_resolve_destination(root, manifest_path), canonical.canonical_bytes(manifest)),
+        (
+            _resolve_destination(root, manifest_path),
+            canonical.canonical_bytes(manifest) + b"\n",
+        ),
         (_resolve_destination(root, evidence_path), evidence_pack.encode("utf-8")),
-        (_resolve_destination(root, apply_plan_path), canonical.canonical_bytes(apply_plan)),
+        (
+            _resolve_destination(root, apply_plan_path),
+            canonical.canonical_bytes(apply_plan) + b"\n",
+        ),
     )
 
     staged: List[Tuple[Path, Path]] = []

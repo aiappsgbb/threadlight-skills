@@ -674,6 +674,48 @@ def test_manifest_mixed_valid_and_invalid_collected_at_uses_only_valid():
     assert good_entry["collected_at"] == _COLLECTED_AT_EARLY
 
 
+def _live_evidence_freshness_risk(manifest: Dict[str, object]) -> Dict[str, object]:
+    return next(
+        risk
+        for risk in manifest["residual_risks"]
+        if risk["residual_risk_id"] == "RISK-LIVE-EVIDENCE-FRESHNESS"
+    )
+
+
+def test_residual_risk_live_evidence_freshness_wording_is_precise():
+    description = _live_evidence_freshness_risk(render.build_manifest(_full_result()))["description"]
+    # The freshness status enum is strictly fresh/stale/expired -- this
+    # description must never claim a status the schema cannot emit.
+    assert "not-verified" not in description
+    # Precisely names the per-entry degradation (never overclaims a
+    # single vague "not fresh" outcome): a missing/invalid collected_at
+    # becomes collected_at=null, live_verified=false, and is excluded from
+    # the freshness computation entirely.
+    assert "collected_at" in description
+    assert "null" in description
+    assert "live_verified" in description
+    assert "false" in description
+    assert "excluded" in description
+    # Precisely distinguishes the two possible non-fresh outcomes: no
+    # trustworthy timestamp at all -> stale; a trustworthy timestamp that
+    # falls outside the freshness window -> expired.
+    assert "stale" in description
+    assert "expired" in description
+
+
+def test_residual_risk_live_evidence_freshness_wording_matches_stale_case():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    assert manifest["freshness"]["status"] == "stale"
+    # The description's claims are exercised, not just asserted in the
+    # abstract: this fixture's only evidence has an invalid collected_at,
+    # is excluded from freshness, and the manifest is truthfully "stale".
+    description = _live_evidence_freshness_risk(manifest)["description"]
+    assert "stale" in description
+
+
 # ---------------------------------------------------------------------------
 # write_artifacts
 # ---------------------------------------------------------------------------
@@ -908,6 +950,56 @@ def test_write_artifacts_tolerates_malformed_collected_at_without_raising(tmp_pa
     assert apply_plan_path.exists()
     manifest = json.loads(manifest_path.read_text())
     assert manifest["freshness"]["status"] == "stale"
+
+
+def test_write_artifacts_json_files_end_with_exactly_one_trailing_newline(tmp_path):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+    manifest = render.build_manifest(result)
+    apply_plan = render.build_apply_plan(result)
+    # The on-disk bytes must be exactly the newline-free canonical JSON
+    # bytes plus a single trailing b"\n" -- never zero, never two or more.
+    manifest_bytes = manifest_path.read_bytes()
+    apply_plan_bytes = apply_plan_path.read_bytes()
+    assert manifest_bytes == canonical.canonical_bytes(manifest) + b"\n"
+    assert apply_plan_bytes == canonical.canonical_bytes(apply_plan) + b"\n"
+    assert manifest_bytes.count(b"\n") == 1
+    assert apply_plan_bytes.count(b"\n") == 1
+    assert not manifest_bytes.endswith(b"\n\n")
+    assert not apply_plan_bytes.endswith(b"\n\n")
+
+
+def test_write_artifacts_trailing_newline_does_not_change_manifest_sha256(tmp_path):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+    manifest_bytes_with_newline = manifest_path.read_bytes()
+    assert manifest_bytes_with_newline.endswith(b"\n")
+    # The hash bound into the apply plan is over the canonical (newline-
+    # free) manifest bytes -- stripping the single trailing newline this
+    # function appended at emission time must recover exactly that value.
+    canonical_manifest_bytes = manifest_bytes_with_newline[:-1]
+    recomputed_hash = f"sha256:{canonical.sha256_hex(canonical_manifest_bytes)}"
+    apply_plan_bytes_with_newline = apply_plan_path.read_bytes()
+    assert apply_plan_bytes_with_newline.endswith(b"\n")
+    apply_plan = json.loads(apply_plan_bytes_with_newline[:-1])
+    assert apply_plan["manifest_sha256"] == recomputed_hash
+    # Also equals the in-memory manifest_sha256 computed straight from
+    # build_manifest/build_apply_plan (no round trip through disk at all).
+    assert apply_plan["manifest_sha256"] == render.build_apply_plan(result)["manifest_sha256"]
 
 
 # ---------------------------------------------------------------------------
