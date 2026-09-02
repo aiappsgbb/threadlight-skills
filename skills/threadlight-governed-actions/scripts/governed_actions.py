@@ -623,15 +623,23 @@ def _bind_probe_evidence(
     ``evidence_refs``/``evidence_items`` (and, through
     :func:`probes.findings_from_probes`, every finding derived from it)
     is updated to cite that rewritten id, so no dangling original id
-    survives once it was ever ambiguous. Only when a rewritten id would
-    itself collide with a *different* id's already-bound, differently
-    provenanced evidence -- meaning safe disambiguation is not possible
-    -- is that one probe's citation instead downgraded to not-verified
-    through the same ``probe-evidence-unresolved`` semantics, never
-    reused as if it were safe. An id cited by only one distinct
-    (kind, source, sha256) tuple, however many probes share it, is
-    left exactly as it was: real repeated identical provenance is
-    still deduplicated to a single evidence entry.
+    survives once it was ever ambiguous. The same collision check is
+    unconditional -- applied to *every* candidate final id, whether it
+    is such a rewrite or an ordinary, never-rewritten literal id --
+    because a probe's literal, target-controlled id can just as easily
+    collide with a *different* id's already-bound, differently
+    provenanced evidence, in either processing order: a rewrite bound
+    first and a later literal citation matching it verbatim is exactly
+    as unsafe to reuse as two rewrites colliding with each other. Only
+    when the final id would collide with such already-bound, differently
+    provenanced evidence -- meaning safe disambiguation or reuse is not
+    possible -- is that one probe's citation instead downgraded to
+    not-verified through the same ``probe-evidence-unresolved``
+    semantics, never reused as if it were safe. An id cited by only one
+    distinct (kind, source, sha256) tuple, however many probes share it
+    or in whatever order they are processed, is left exactly as it was:
+    real repeated identical provenance is still deduplicated to a single
+    evidence entry.
     """
     policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
     findings: List[contracts.Finding] = []
@@ -685,18 +693,26 @@ def _bind_probe_evidence(
             final_id = ref
             if ref in conflicting_ids:
                 final_id = _disambiguated_evidence_id(ref, item)
-                existing = evidence_by_id.get(final_id)
-                if existing is not None and (
-                    existing.kind,
-                    existing.source,
-                    existing.sha256,
-                ) != (item.kind, item.source, item.sha256):
-                    # The deterministic rewrite would collide with a
-                    # different id's already-bound, differently
-                    # provenanced evidence -- never safe to reuse, so
-                    # this probe's citation is downgraded instead.
-                    unresolvable = True
-                    break
+            # Unconditional: whether *final_id* is the literal cited id
+            # or its deterministic disambiguation, it must never be
+            # silently accepted just because some earlier probe already
+            # bound that same string -- a probe whose own literal,
+            # never-rewritten id happens to collide with another id's
+            # rewrite (or vice versa, in either processing order) is
+            # exactly as unsafe to reuse as two conflicting rewrites
+            # colliding with each other.
+            existing = evidence_by_id.get(final_id)
+            if existing is not None and (
+                existing.kind,
+                existing.source,
+                existing.sha256,
+            ) != (item.kind, item.source, item.sha256):
+                # *final_id* would collide with a different id's
+                # already-bound, differently provenanced evidence --
+                # never safe to reuse, so this probe's citation is
+                # downgraded instead.
+                unresolvable = True
+                break
             rewritten_refs.append(final_id)
             rewritten_items.append(replace(item, evidence_id=final_id))
 

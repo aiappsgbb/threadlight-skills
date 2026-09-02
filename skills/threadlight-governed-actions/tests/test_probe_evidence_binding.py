@@ -721,3 +721,64 @@ def test_conflicting_id_fails_closed_when_canonical_rewrite_would_collide(tmp_pa
     evidence_by_id = {ref.evidence_id: ref for ref in evidence}
     assert (evidence_by_id[ref_b].kind, evidence_by_id[ref_b].source, evidence_by_id[ref_b].sha256) == other_tuple
     assert evidence_by_id[disambiguated_id].sha256 == preexisting_tuple[2]
+
+
+def test_conflicting_id_fails_closed_when_literal_probe_arrives_after_the_rewrite(tmp_path: Path):
+    # Same fixture as
+    # test_conflicting_id_fails_closed_when_canonical_rewrite_would_collide,
+    # but with the non-conflicting, literal-id probe processed *last*
+    # instead of first. Once "deny" has already been rewritten to
+    # disambiguated_id and bound into evidence_by_id, "pre-existing"
+    # citing that exact string literally must never be silently
+    # accepted as a dedup of "deny"'s evidence just because
+    # `final_id in evidence_by_id` was already true: the two disagree
+    # on (kind, source, sha256), so "pre-existing" must itself be
+    # downgraded through probe-evidence-unresolved -- never bound to
+    # "deny"'s artifact -- regardless of which probe happened to bind
+    # the id first.
+    colliding_tuple = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "a" * 64)
+    disambiguated_id = governed_actions._disambiguated_evidence_id(
+        "audit-0001",
+        contracts.ProbeEvidence(evidence_id="audit-0001", kind=colliding_tuple[0], source=colliding_tuple[1], sha256=colliding_tuple[2]),
+    )
+    preexisting_tuple = ("static-file-hash", "specs/SPEC.md", "sha256:" + "f" * 64)
+    probe_pre = _synthetic_probe("pre-existing", disambiguated_id, preexisting_tuple)
+    probe_a = _synthetic_probe("deny", "audit-0001", colliding_tuple)
+    other_tuple = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "b" * 64)
+    probe_b = _synthetic_probe("transform", "audit-0001", other_tuple)
+
+    source = contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False)
+    options = contracts.AssessmentOptions(root=Path("."), phase="pre-deploy", now=NOW)
+    # Only the ordering changes: the literal-id probe now arrives after
+    # both conflicting probes have already been resolved and bound.
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe_a, probe_b, probe_pre), source, options, ()
+    )
+
+    by_probe_id = {probe.probe_id: probe for probe in kept}
+    # "deny" resolves its rewrite first (nothing bound yet) and is kept
+    # passing, bound to its own real provenance.
+    assert by_probe_id["deny"].status == "pass"
+    ref_deny = by_probe_id["deny"].evidence_refs[0]
+    assert ref_deny == disambiguated_id
+    # "pre-existing" cites that same literal string but with different,
+    # real provenance -- it must be downgraded, never silently folded
+    # into "deny"'s already-bound entry.
+    assert by_probe_id["pre-existing"].status == "not-verified"
+    assert by_probe_id["pre-existing"].reason_code == "probe-evidence-unresolved"
+    assert by_probe_id["pre-existing"].evidence_refs == ()
+    downgraded = [f for f in findings if f.reason_code == "probe-evidence-unresolved"]
+    assert len(downgraded) == 1
+    assert downgraded[0].affected_actions == ("payments.refund",)
+    # The evidence actually published under disambiguated_id must be
+    # "deny"'s real provenance, never invented or overwritten by the
+    # rejected "pre-existing" citation.
+    evidence_by_id = {ref.evidence_id: ref for ref in evidence}
+    assert (
+        evidence_by_id[disambiguated_id].kind,
+        evidence_by_id[disambiguated_id].source,
+        evidence_by_id[disambiguated_id].sha256,
+    ) == colliding_tuple
+    assert by_probe_id["transform"].status == "pass"
+    ref_b = by_probe_id["transform"].evidence_refs[0]
+    assert (evidence_by_id[ref_b].kind, evidence_by_id[ref_b].source, evidence_by_id[ref_b].sha256) == other_tuple
