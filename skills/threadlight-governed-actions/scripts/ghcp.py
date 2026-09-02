@@ -36,7 +36,9 @@ live proof.
 """
 from __future__ import annotations
 
+import hashlib
 import re
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
@@ -86,22 +88,45 @@ _APPLICATION_PROBE_MARKER_RE = re.compile(r"application[-_ ]probe", re.IGNORECAS
 # push over a protected ref, or an administrative override of branch
 # protection/required reviews. Matched conservatively (favoring a false
 # positive over a missed bypass) against actual `run:`/`if:` command text
-# only -- never a step name or a YAML comment.
+# only -- never a step name or a YAML comment. Each candidate marker is
+# additionally checked for a *negation* cue, and for a detection/inspection
+# context (a `grep`/`rg`/`awk` command merely searching for the marker
+# rather than issuing it), immediately preceding it on the same line --
+# see `_has_bypass_commands`. The generic standalone `--force`/`--admin`
+# flags used by countless unrelated CLI tools are deliberately *not*
+# matched on their own: only bound to the specific `git push`/`merge`
+# command shape that actually bypasses this change plane.
 _BYPASS_MARKER_PATTERNS: Tuple[str, ...] = (
     r"\[skip ci\]",
     r"\[ci skip\]",
     r"\[skip actions\]",
     r"\[actions skip\]",
     r"\*\*\*no_ci\*\*\*",
-    r"--force(?:-with-lease)?\b",
-    r"\bgit\s+push\b[^\n]*(?:-f\b|--force)",
+    r"\bgit\s+push\b[^\n]*(?:-f\b|--force(?:-with-lease)?\b)",
     r"\bbypass\b",
     r"\badmin[-_ ]?merge\b",
-    r"--admin\b",
+    r"\b(?:gh\s+pr\s+merge|pr\s+merge)\b[^\n]*--admin\b",
 )
 _BYPASS_MARKER_RE = tuple(
     re.compile(pattern, re.IGNORECASE) for pattern in _BYPASS_MARKER_PATTERNS
 )
+
+# A negation cue appearing *before* a bypass marker on the same line (a
+# policy comment, a lint check's own descriptive echo, ...) means the line
+# is talking *about* the bypass, not issuing it -- e.g. "must never use
+# git push --force" or "reviewers should not admin-merge".
+_NEGATION_CUE_RE = re.compile(
+    r"\b(?:not|never|don'?t|does\s?n'?t|won'?t|shouldn'?t|wouldn'?t|"
+    r"can'?t|cannot|must\s+not|disallow(?:s|ed|ing)?|"
+    r"prevent(?:s|ed|ing)?|block(?:s|ed|ing)?|reject(?:s|ed|ing)?|"
+    r"forbid(?:s|den|ding)?|without)\b",
+    re.IGNORECASE,
+)
+
+# A detection/inspection command searching *for* the marker text (to
+# confirm its absence, most commonly) rather than a step that actually
+# issues it -- e.g. `grep -q '[skip ci]' ... || echo clean`.
+_DETECTION_CONTEXT_RE = re.compile(r"\b(?:grep|rg|ripgrep|awk)\b", re.IGNORECASE)
 
 # Rule 6 (permissions half): scopes that actually grant repository write
 # access and therefore count toward the "too many write scopes" and
@@ -148,7 +173,46 @@ _REQUIRED_CODEOWNERS_PATTERNS: Tuple[str, ...] = (
     "tests/governed-actions-apply-plan.json",
 )
 
-_OWNERSHIP_FILENAMES: Tuple[str, ...] = ("CODEOWNERS", ".github/CODEOWNERS")
+# Every location GitHub itself recognizes a CODEOWNERS file at.
+_OWNERSHIP_FILENAMES: Tuple[str, ...] = (
+    "CODEOWNERS",
+    ".github/CODEOWNERS",
+    "docs/CODEOWNERS",
+)
+
+# A CODEOWNERS pattern line establishes real ownership only when followed
+# by at least one owner token that is actually shaped like a GitHub
+# username/team (`@user`, `@org/team`) or an email address -- a bare
+# pattern with no owner (or garbage after it) names no one responsible and
+# confers no real coverage, however complete the pattern itself looks.
+_CODEOWNERS_OWNER_TOKEN_RE = re.compile(
+    r"^(?:@[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+    r"(?:/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?"
+    r"|[^@\s]+@[^@\s]+\.[^@\s]+)$"
+)
+
+# Static bounds on the YAML this module will ever attempt to parse -- a
+# malicious or merely corrupted workflow file must be converted into a
+# `ChangePlaneError`/per-file finding, never allowed to hang or exhaust
+# memory, regardless of how it is crafted.
+_MAX_WORKFLOW_FILE_BYTES = 1_000_000  # 1 MB: far larger than any real workflow
+_MAX_YAML_CONSTRUCTED_NODES = 20_000
+_MAX_YAML_NESTING_DEPTH = 100
+
+# Azure secret-credential shapes that can appear directly in a step's
+# `run:` shell text or an `env:` block -- not only a `with:` input -- so
+# rule 5's secret-credential scan is never confined to `azure/login`'s or
+# a deploy action's own declared inputs. Matched against variable/flag
+# *names*, never a value, so a finding can report *that* a secret-shaped
+# credential is used without ever echoing the credential itself.
+_SECRET_ENV_VAR_NAME_RE = re.compile(
+    r"\b(?:AZURE|ARM)_(?:CLIENT_SECRET|PASSWORD|CREDENTIALS)\b", re.IGNORECASE
+)
+_AZ_LOGIN_SECRET_FLAG_RE = re.compile(
+    r"\baz\s+login\b[^\n]*--(?:password|service-principal-secret)\b",
+    re.IGNORECASE,
+)
+_PUBLISH_PROFILE_RUN_RE = re.compile(r"publish[-_]profile", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -185,7 +249,60 @@ class ChangePlaneResult:
 # ---------------------------------------------------------------------------
 
 
+def _bounded_yaml_loader_class(yaml_module):
+    """Build a `SafeLoader` subclass that bounds node count and nesting depth.
+
+    Plain `SafeLoader` has no limit on how many nodes it will construct or
+    how deeply it will recurse, so a crafted workflow file (a "billion
+    laughs" alias-expansion bomb, or merely deep nesting) can exhaust
+    memory or the call stack before ever reaching `_load_workflow_document`'s
+    own callers. Every `construct_object` call -- including one triggered by
+    resolving a YAML alias back to an already-defined anchor, which is
+    exactly how alias-expansion amplification happens even though the
+    anchor itself is only defined once -- counts against the node budget,
+    and `compose_node`'s recursion is wrapped to enforce a depth budget.
+    Either budget being exceeded raises `yaml.YAMLError`, the same failure
+    type this loader's caller already translates into `ChangePlaneError`.
+    """
+
+    class _BoundedSafeLoader(yaml_module.SafeLoader):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._ghcp_node_count = 0
+            self._ghcp_depth = 0
+
+        def construct_object(self, node, deep=False):
+            self._ghcp_node_count += 1
+            if self._ghcp_node_count > _MAX_YAML_CONSTRUCTED_NODES:
+                raise yaml_module.YAMLError(
+                    "workflow YAML exceeds the maximum constructed-node bound"
+                )
+            return super().construct_object(node, deep=deep)
+
+        def compose_node(self, parent, index):
+            self._ghcp_depth += 1
+            if self._ghcp_depth > _MAX_YAML_NESTING_DEPTH:
+                raise yaml_module.YAMLError(
+                    "workflow YAML exceeds the maximum nesting-depth bound"
+                )
+            try:
+                return super().compose_node(parent, index)
+            finally:
+                self._ghcp_depth -= 1
+
+    return _BoundedSafeLoader
+
+
 def _load_workflow_document(path: Path) -> object:
+    try:
+        file_size = path.stat().st_size
+    except OSError as error:
+        raise ChangePlaneError(f"cannot stat workflow file {path}: {error}") from error
+    if file_size > _MAX_WORKFLOW_FILE_BYTES:
+        raise ChangePlaneError(
+            f"workflow file {path} exceeds the maximum allowed size "
+            f"({file_size} > {_MAX_WORKFLOW_FILE_BYTES} bytes)"
+        )
     try:
         raw_text = path.read_text(encoding="utf-8")
     except OSError as error:
@@ -198,9 +315,13 @@ def _load_workflow_document(path: Path) -> object:
             f"({path}); install it with `pip install pyyaml`"
         ) from error
     try:
-        document = yaml.safe_load(raw_text)
+        document = yaml.load(raw_text, Loader=_bounded_yaml_loader_class(yaml))
     except yaml.YAMLError as error:
         raise ChangePlaneError(f"invalid YAML in workflow file {path}: {error}") from error
+    except RecursionError as error:  # pragma: no cover - defense in depth
+        raise ChangePlaneError(
+            f"workflow file {path} is nested too deeply to parse"
+        ) from error
     if not isinstance(document, Mapping):
         raise ChangePlaneError(f"workflow file {path} must parse to a mapping")
     return document
@@ -222,15 +343,38 @@ def _trigger_names(document: Mapping) -> Tuple[str, ...]:
     return ()
 
 
-def _walk(node: object):
-    """Yield every mapping found anywhere in a nested document."""
+def _walk(node: object, _seen: Optional[Set[int]] = None):
+    """Yield every mapping found anywhere in a nested document.
+
+    Traverses the document as the *DAG* it can actually be -- a YAML
+    anchor referenced by more than one alias parses to the identical
+    Python object at every use site, not a distinct copy -- rather than
+    as a tree: each container is visited at most once, keyed by object
+    identity. This is both the semantically correct behavior for an
+    aliased document (an aliased step block should not be double-counted
+    just because two jobs reuse it) and a load-bearing safety property:
+    building an aliased document is cheap thanks to PyYAML's own
+    construction-time memoization, so `_load_workflow_document`'s node
+    budget alone would not stop a subsequent *un*-memoized walk of the
+    resulting object graph from costing exponential time in the alias
+    nesting depth. Memoizing here caps this walk at the same constructed-
+    node bound the loader already enforces.
+    """
+    if _seen is None:
+        _seen = set()
     if isinstance(node, Mapping):
+        if id(node) in _seen:
+            return
+        _seen.add(id(node))
         yield node
         for value in node.values():
-            yield from _walk(value)
+            yield from _walk(value, _seen)
     elif isinstance(node, list):
+        if id(node) in _seen:
+            return
+        _seen.add(id(node))
         for item in node:
-            yield from _walk(item)
+            yield from _walk(item, _seen)
 
 
 def _all_steps(document: Mapping) -> List[Mapping]:
@@ -298,9 +442,24 @@ def _has_bypass_commands(document: Mapping) -> bool:
     Checked conservatively against real command/condition text only, never
     a step name or comment, so this can only under-detect a bypass phrased
     in some other way -- never flag a workflow for merely mentioning one.
+
+    Two further false-positive guards apply per match, scoped to the text
+    preceding the marker on its own line: a *negation* cue (a policy
+    comment or lint step's own echo describing the bypass in order to
+    forbid it, e.g. "must never use git push --force") and a *detection*
+    context (a `grep`/`rg`/`awk` command searching for the marker's
+    literal text to confirm its absence, rather than a step issuing it)
+    each mean the line is talking about the bypass, not performing it.
     """
     joined = "\n".join(_run_command_texts(document) + _conditional_texts(document))
-    return any(pattern.search(joined) for pattern in _BYPASS_MARKER_RE)
+    for pattern in _BYPASS_MARKER_RE:
+        for match in pattern.finditer(joined):
+            line_start = joined.rfind("\n", 0, match.start()) + 1
+            prefix = joined[line_start : match.start()]
+            if _NEGATION_CUE_RE.search(prefix) or _DETECTION_CONTEXT_RE.search(prefix):
+                continue
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -383,52 +542,9 @@ def _permissions_status(document: Mapping) -> Status:
     return "pass"
 
 
-def _grants_id_token_write(document: Mapping) -> bool:
-    def _grants(value: object) -> bool:
-        return (
-            isinstance(value, Mapping)
-            and str(value.get("id-token", "")).strip().lower() == "write"
-        )
-
-    if _grants(document.get("permissions")):
-        return True
-    jobs = document.get("jobs")
-    if isinstance(jobs, Mapping):
-        for job in jobs.values():
-            if isinstance(job, Mapping) and _grants(job.get("permissions")):
-                return True
-    return False
-
-
 # ---------------------------------------------------------------------------
 # Azure login / OIDC (rule 5)
 # ---------------------------------------------------------------------------
-
-
-def _azure_login_steps(document: Mapping) -> List[Mapping]:
-    return [
-        step
-        for step in _all_steps(document)
-        if str(step.get("uses", "")).split("@", 1)[0].strip().lower() == "azure/login"
-    ]
-
-
-def _azure_deploy_action_steps(document: Mapping) -> List[Mapping]:
-    """Every step whose ``uses:`` references one of the known Azure
-    deployment actions (:data:`_DEPLOY_ACTION_MARKERS` -- ``azure/webapps-
-    deploy``, ``azure/functions-action``, ``azure/arm-deploy``, ...).
-
-    These actions can authenticate directly with their own secret input
-    (most commonly ``publish-profile`` or ``creds``) without any
-    ``azure/login`` step ever appearing in the workflow at all, so rule 5's
-    secret-credential scan must inspect them too, not just ``azure/login``.
-    """
-    return [
-        step
-        for step in _all_steps(document)
-        if str(step.get("uses", "")).split("@", 1)[0].strip().lower()
-        in _DEPLOY_ACTION_MARKERS
-    ]
 
 
 def _has_secret_credential_input(step: Mapping) -> bool:
@@ -444,23 +560,149 @@ def _has_secret_credential_input(step: Mapping) -> bool:
     return bool(keys_lower & set(_SECRET_LOGIN_KEYS))
 
 
+def _env_key_names(document: Mapping) -> Tuple[str, ...]:
+    """Every key name declared in an ``env:`` block anywhere in the
+    document -- workflow-level, job-level, or step-level -- checked only
+    against variable *names*, never a value, so a secret-shaped credential
+    can be reported without ever echoing the credential itself."""
+    names: List[str] = []
+
+    def _collect(env: object) -> None:
+        if isinstance(env, Mapping):
+            names.extend(str(key) for key in env.keys())
+
+    _collect(document.get("env"))
+    jobs = document.get("jobs")
+    if isinstance(jobs, Mapping):
+        for job in jobs.values():
+            if not isinstance(job, Mapping):
+                continue
+            _collect(job.get("env"))
+            steps = job.get("steps")
+            if isinstance(steps, list):
+                for step in steps:
+                    if isinstance(step, Mapping):
+                        _collect(step.get("env"))
+    return tuple(names)
+
+
+def _has_secret_azure_run_or_env(document: Mapping) -> bool:
+    """True if the workflow authenticates to Azure with a long-lived
+    secret *outside* any action's own declared ``with:`` inputs: a step
+    shelling out to ``az login`` with a raw ``--password``/
+    ``--service-principal-secret`` flag, a raw ``publish-profile`` deploy
+    command, or an ``env:`` block (at any scope) declaring a variable
+    named like an Azure/ARM client secret, password, or credentials blob.
+    Every check matches variable *names* or fixed command flags only --
+    never a secret's actual value -- so this can report *that* a secret-
+    shaped credential path exists without ever echoing the credential
+    itself.
+    """
+    run_texts = _run_command_texts(document)
+    if any(_AZ_LOGIN_SECRET_FLAG_RE.search(text) for text in run_texts):
+        return True
+    if any(_PUBLISH_PROFILE_RUN_RE.search(text) for text in run_texts):
+        return True
+    return any(_SECRET_ENV_VAR_NAME_RE.search(name) for name in _env_key_names(document))
+
+
+def _job_steps(document: Mapping) -> List[Tuple[Mapping, Mapping]]:
+    """Every ``(job, step)`` pair in the document, preserving which job
+    each step belongs to. Required wherever a check depends on a step's
+    job-scoped *effective* permissions: GitHub Actions permissions are not
+    additive across jobs -- a job's own ``permissions:`` block, if
+    present, completely replaces the workflow-level default for that job
+    rather than merging with it, so which job a step lives in changes
+    which permissions actually apply to it.
+    """
+    pairs: List[Tuple[Mapping, Mapping]] = []
+    jobs = document.get("jobs")
+    if isinstance(jobs, Mapping):
+        for job in jobs.values():
+            if not isinstance(job, Mapping):
+                continue
+            steps = job.get("steps")
+            if isinstance(steps, list):
+                for step in steps:
+                    if isinstance(step, Mapping):
+                        pairs.append((job, step))
+    return pairs
+
+
+def _azure_login_job_steps(document: Mapping) -> List[Tuple[Mapping, Mapping]]:
+    return [
+        (job, step)
+        for job, step in _job_steps(document)
+        if str(step.get("uses", "")).split("@", 1)[0].strip().lower() == "azure/login"
+    ]
+
+
+def _azure_deploy_action_job_steps(document: Mapping) -> List[Tuple[Mapping, Mapping]]:
+    """Every ``(job, step)`` pair whose step references one of the known
+    Azure deployment actions (:data:`_DEPLOY_ACTION_MARKERS` --
+    ``azure/webapps-deploy``, ``azure/functions-action``,
+    ``azure/arm-deploy``, ...).
+
+    These actions can authenticate directly with their own secret input
+    (most commonly ``publish-profile`` or ``creds``) without any
+    ``azure/login`` step ever appearing in the workflow at all, so rule
+    5's secret-credential scan must inspect them too, not just
+    ``azure/login``.
+    """
+    return [
+        (job, step)
+        for job, step in _job_steps(document)
+        if str(step.get("uses", "")).split("@", 1)[0].strip().lower()
+        in _DEPLOY_ACTION_MARKERS
+    ]
+
+
+def _effective_job_permissions(document: Mapping, job: Mapping) -> object:
+    """A job's *effective* permissions: its own ``permissions:`` block if
+    it declares one at all, otherwise the workflow-level default -- never
+    a merge of the two, matching GitHub Actions' own override semantics.
+    """
+    job_permissions = job.get("permissions")
+    if job_permissions is not None:
+        return job_permissions
+    return document.get("permissions")
+
+
+def _job_grants_id_token_write(document: Mapping, job: Mapping) -> bool:
+    value = _effective_job_permissions(document, job)
+    return (
+        isinstance(value, Mapping)
+        and str(value.get("id-token", "")).strip().lower() == "write"
+    )
+
+
 def _oidc_status(
     document: Mapping,
-    login_steps: Sequence[Mapping],
-    deploy_action_steps: Sequence[Mapping],
+    login_job_steps: Sequence[Tuple[Mapping, Mapping]],
+    deploy_action_job_steps: Sequence[Tuple[Mapping, Mapping]],
 ) -> Status:
+    # A raw `az login`/publish-profile secret path, or a secret-shaped env
+    # var declared anywhere, is rejected regardless of which step or job
+    # it lives in -- the secret is the change-plane risk, independent of
+    # which action (if any) happens to be the one authenticating.
+    if _has_secret_azure_run_or_env(document):
+        return "must-fix"
     # A deployment action authenticating directly with its own secret
     # input (e.g. `azure/webapps-deploy`'s `publish-profile`) is rejected
     # even when no `azure/login` step exists anywhere in the workflow --
     # the secret is the change-plane risk, not which action happens to
     # read it.
-    if any(_has_secret_credential_input(step) for step in deploy_action_steps):
+    if any(_has_secret_credential_input(step) for _job, step in deploy_action_job_steps):
         return "must-fix"
-    if not login_steps:
+    if not login_job_steps:
         return "pass"  # nothing else to assess: rule 5 is not-applicable, not a finding
-    if not _grants_id_token_write(document):
-        return "must-fix"
-    for step in login_steps:
+    for job, step in login_job_steps:
+        # `id-token: write` must be granted in *this* login step's own
+        # job -- a sibling job granting it is not evidence this job's
+        # `azure/login` step can actually mint an OIDC token, since job
+        # permissions do not merge across jobs.
+        if not _job_grants_id_token_write(document, job):
+            return "must-fix"
         with_block = step.get("with")
         if not isinstance(with_block, Mapping):
             return "must-fix"
@@ -472,8 +714,8 @@ def _oidc_status(
     return "pass"
 
 
-def _identity_ref(login_steps: Sequence[Mapping]) -> Optional[str]:
-    for step in login_steps:
+def _identity_ref(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Optional[str]:
+    for _job, step in login_job_steps:
         with_block = step.get("with")
         if not isinstance(with_block, Mapping):
             continue
@@ -510,10 +752,39 @@ def _has_untrusted_checkout(document: Mapping) -> bool:
     return False
 
 
+def _push_targets_branches(document: Mapping) -> bool:
+    """True unless the ``push`` trigger is scoped to tags only.
+
+    GitHub Actions treats a ``push`` trigger that filters on ``tags``/
+    ``tags-ignore`` but declares no ``branches``/``branches-ignore`` filter
+    as restricted to tag pushes alone -- it never fires for an ordinary
+    branch push at all, so rule 1's "direct push to a protected branch"
+    concern (GHCP-001) does not apply. Any other shape -- no filters at
+    all, an explicit ``branches`` filter alongside (or instead of) a tags
+    filter, or the bare/list ``on: push`` form -- can fire for a branch
+    push and is treated as targeting branches.
+    """
+    triggers = document.get("on", document.get(True))
+    push_value: object = None
+    if isinstance(triggers, Mapping):
+        push_value = triggers.get("push")
+    elif triggers == "push":
+        return True
+    elif isinstance(triggers, Sequence) and not isinstance(triggers, str):
+        return "push" in (str(item) for item in triggers)
+    if push_value is None:
+        return "push" in _trigger_names(document)
+    if not isinstance(push_value, Mapping):
+        return True  # `push:` with no filters (null/empty) fires for any branch
+    has_tag_filter = "tags" in push_value or "tags-ignore" in push_value
+    has_branch_filter = "branches" in push_value or "branches-ignore" in push_value
+    return has_branch_filter or not has_tag_filter
+
+
 def _pr_gate_status(document: Mapping, triggers: Tuple[str, ...], is_deploy: bool) -> Status:
     if "pull_request_target" in triggers and _has_untrusted_checkout(document):
         return "must-fix"
-    if "push" in triggers and is_deploy:
+    if "push" in triggers and is_deploy and _push_targets_branches(document):
         return "must-fix"
     if _has_bypass_commands(document):
         return "must-fix"
@@ -555,8 +826,8 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     triggers = _trigger_names(document)
     is_deploy = _is_deploy_workflow(document)
     sha_pins, sha_violations = _sha_pin_status(document)
-    login_steps = _azure_login_steps(document)
-    deploy_action_steps = _azure_deploy_action_steps(document)
+    login_job_steps = _azure_login_job_steps(document)
+    deploy_action_job_steps = _azure_deploy_action_job_steps(document)
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -564,9 +835,9 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         pr_gate=_pr_gate_status(document, triggers, is_deploy),
         permissions=_permissions_status(document),
         sha_pins=sha_pins,
-        oidc_wif=_oidc_status(document, login_steps, deploy_action_steps),
+        oidc_wif=_oidc_status(document, login_job_steps, deploy_action_job_steps),
         ci_probes=_ci_probes_static_status(document, triggers),
-        identity_ref=_identity_ref(login_steps),
+        identity_ref=_identity_ref(login_job_steps),
         sha_violations=sha_violations,
     )
 
@@ -593,12 +864,22 @@ def _find_ownership_file(root: Path) -> Optional[Path]:
 
 
 def _parse_codeowners_patterns(path: Path) -> Set[str]:
+    """Every pattern in a CODEOWNERS file that actually names at least one
+    real owner -- a ``@user``/``@org/team`` GitHub reference or an email
+    address following the pattern on the same line. A pattern with no
+    owner token (or only unrecognized text after it) names no one
+    responsible and confers no real ownership coverage, however complete
+    the pattern itself looks, so it is not counted.
+    """
     patterns: Set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        patterns.add(stripped.split()[0])
+        tokens = stripped.split()
+        pattern, owners = tokens[0], tokens[1:]
+        if any(_CODEOWNERS_OWNER_TOKEN_RE.match(owner) for owner in owners):
+            patterns.add(pattern)
     return patterns
 
 
@@ -801,6 +1082,93 @@ def _distinct_identities_confirmed(live_azure: Optional[Mapping]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _rel(root: Path, path: object) -> str:
+    """A finding's ``affected_paths`` entry as a repository-relative,
+    POSIX-style path -- never the absolute filesystem path this module
+    happened to read the file from, which would leak the assessment
+    host's own directory layout into evidence meant to describe the
+    repository itself. Falls back to the path as given if it does not
+    actually resolve under ``root`` (should not happen for any path this
+    module discovers itself, but never worth raising over)."""
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return candidate.as_posix()
+
+
+def _reject_workflow_symlink_escape(root: Path, path: Path) -> None:
+    """Reject a workflow file that is itself a symlink, or that resolves
+    -- following any symlinked ancestor directory -- outside ``root``.
+
+    A symlinked workflow file could otherwise be used to make this module
+    read and hash an arbitrary file elsewhere on the host under the guise
+    of a workflow. Deliberately conservative: *any* symlink is rejected,
+    even one that would currently resolve to stay within ``root``, since
+    a symlink's target can change between this check and any later read
+    of it (a classic time-of-check/time-of-use gap).
+    """
+    if path.is_symlink():
+        raise ChangePlaneError(f"workflow file {path} is a symlink, not a real file")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise ChangePlaneError(f"cannot resolve workflow file {path}: {error}") from error
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise ChangePlaneError(
+            f"workflow file {path} resolves outside the assessment root"
+        ) from error
+
+
+def _unreadable_workflow_assessment(path: Path, reason: str) -> WorkflowAssessment:
+    """A conservative, "must-fix everything" stand-in for a workflow file
+    this module could not safely read, parse, or bound at all (oversized,
+    an alias/nesting bomb, a symlink escape, malformed YAML, ...).
+
+    Never introduces a new finding id: it surfaces through the exact same
+    GHCP-001..GHCP-006 offender scans every other workflow's assessment
+    does, since a file this module cannot safely inspect can never be
+    treated as passing any check it feeds. ``triggers=()`` so it is never
+    counted as the passing pull_request-triggered workflow rule 3
+    requires; ``sha_violations`` still names *why* it could not be
+    assessed, surfacing the failure's cause in GHCP-004's reported detail
+    text.
+    """
+    return WorkflowAssessment(
+        path=path,
+        triggers=(),
+        is_deploy=False,
+        pr_gate="must-fix",
+        permissions="must-fix",
+        sha_pins="must-fix",
+        oidc_wif="must-fix",
+        ci_probes="must-fix",
+        identity_ref=None,
+        sha_violations=(f"{path.name}: {reason}",),
+    )
+
+
+def _assess_workflow_or_flag(root: Path, path: Path) -> Tuple[WorkflowAssessment, bool]:
+    """Assess one workflow file, converting *any* failure to safely
+    reject, read, or parse it into a conservative "must-fix everything"
+    stand-in assessment rather than letting it crash the entire
+    repository assessment -- one bad workflow file must never erase every
+    other workflow's real results.
+
+    Returns ``(assessment, safe_to_hash)``: ``safe_to_hash`` is ``False``
+    for a file this module rejected before or during parsing, so it is
+    excluded from the workflow-set evidence hash rather than
+    re-attempting to read it there too.
+    """
+    try:
+        _reject_workflow_symlink_escape(root, path)
+        return assess_workflow(path), True
+    except ChangePlaneError as error:
+        return _unreadable_workflow_assessment(path, str(error)), False
+
+
 def assess_change_plane(
     root: Path,
     live_github: Optional[Mapping] = None,
@@ -818,20 +1186,36 @@ def assess_change_plane(
     an inferred ``pass`` -- static files alone can never prove a branch
     protection rule or a required-check list is actually enforced on
     GitHub, nor that two Azure principals are genuinely distinct.
+
+    A workflow file this module cannot safely read, parse, or bound
+    (oversized, a YAML alias/nesting bomb, a symlink escaping the
+    repository, malformed YAML, ...) never raises out of this function
+    and never erases the rest of the assessment: it is converted into a
+    conservative "must-fix everything" stand-in that still surfaces
+    through GHCP-001..GHCP-006 like any other failing workflow, while
+    every other discovered workflow is still assessed and reported
+    normally.
     """
     root = Path(root).resolve()
-    workflow_paths = _discover_workflow_files(root)
-    assessments = tuple(assess_workflow(path) for path in workflow_paths)
+    discovered_paths = _discover_workflow_files(root)
+    assessments_list: List[WorkflowAssessment] = []
+    safe_workflow_paths: List[Path] = []
+    for path in discovered_paths:
+        assessment, safe_to_hash = _assess_workflow_or_flag(root, path)
+        assessments_list.append(assessment)
+        if safe_to_hash:
+            safe_workflow_paths.append(path)
+    assessments = tuple(assessments_list)
 
     findings: List[Finding] = []
     evidence: List[EvidenceRef] = []
     controls: Dict[str, "Status | bool"] = {}
 
-    _assess_pr_gate(assessments, findings, controls)
+    _assess_pr_gate(root, assessments, findings, controls)
     _assess_codeowners(root, assessments, live_github, findings, controls)
     _assess_ci_probes(root, assessments, findings, controls)
-    _assess_actions_and_permissions(assessments, findings, controls)
-    _assess_oidc(assessments, findings, controls)
+    _assess_actions_and_permissions(root, assessments, findings, controls)
+    _assess_oidc(root, assessments, findings, controls)
     _assess_identity_separation(assessments, live_azure, findings, controls)
 
     # Rule 7: this plane never claims to intercept GitHub Copilot's own
@@ -839,8 +1223,8 @@ def assess_change_plane(
     # supply chain a change travels through. Set unconditionally.
     controls["ghcp_internal_loop_intercepted"] = False
 
-    if workflow_paths:
-        workflow_evidence = _workflow_set_evidence(root, workflow_paths)
+    if safe_workflow_paths:
+        workflow_evidence = _workflow_set_evidence(root, tuple(safe_workflow_paths))
         if workflow_evidence is not None:
             evidence.append(workflow_evidence)
 
@@ -857,26 +1241,35 @@ def assess_change_plane(
 
 
 def _find_git_dir(root: Path) -> Optional[Path]:
-    """Walk upward from ``root`` for a real ``.git`` directory, or a
-    ``.git`` file pointing at a worktree/submodule's real gitdir. Purely a
-    filesystem read -- this module never shells out to git."""
-    start = root if root.is_dir() else root.parent
-    for candidate in (start, *start.parents):
-        git_path = candidate / ".git"
-        if git_path.is_dir():
-            return git_path
-        if git_path.is_file():
-            try:
-                content = git_path.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if not content.startswith("gitdir:"):
-                continue
-            gitdir = Path(content.split(":", 1)[1].strip())
-            if not gitdir.is_absolute():
-                gitdir = (candidate / gitdir).resolve()
-            if gitdir.is_dir():
-                return gitdir
+    """A real ``.git`` directory (or a ``.git`` file pointing at a
+    worktree/submodule's real gitdir) belonging to ``root`` itself -- or
+    ``None`` if ``root`` is not itself a git checkout.
+
+    Deliberately checks only ``root``, never an ancestor directory: a
+    target that happens to live *inside* some unrelated outer git
+    repository (for example a bare fixture directory nested under this
+    project's own checkout) is not that outer repository, and attributing
+    its provenance to the outer repo's remote/commit would be exactly the
+    kind of fabricated evidence this module must never produce. Purely a
+    filesystem read -- this module never shells out to git.
+    """
+    if not root.is_dir():
+        return None
+    git_path = root / ".git"
+    if git_path.is_dir():
+        return git_path
+    if git_path.is_file():
+        try:
+            content = git_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not content.startswith("gitdir:"):
+            return None
+        gitdir = Path(content.split(":", 1)[1].strip())
+        if not gitdir.is_absolute():
+            gitdir = (root / gitdir).resolve()
+        if gitdir.is_dir():
+            return gitdir
     return None
 
 
@@ -976,6 +1369,123 @@ def _resolve_commit_sha(git_dir: Path) -> Optional[str]:
     return None
 
 
+def _decode_git_index_varint(data: bytes, offset: int) -> Tuple[int, int]:
+    """Decode one of git index-format-4's path-compression variable-width
+    integers starting at ``offset``, returning ``(value, next_offset)``.
+    Uses git's own MSB-continuation encoding (each continuation byte adds
+    one before shifting in the next 7 bits) -- not standard LEB128 -- per
+    ``Documentation/technical/index-format.txt``.
+    """
+    byte = data[offset]
+    offset += 1
+    value = byte & 0x7F
+    while byte & 0x80:
+        byte = data[offset]
+        offset += 1
+        value = ((value + 1) << 7) + (byte & 0x7F)
+    return value, offset
+
+
+def _read_git_index_entries(git_dir: Path) -> Optional[Dict[str, Tuple[int, str]]]:
+    """Read every staged file's ``(size, blob sha1)`` from a real,
+    on-disk ``.git/index``, keyed by its repository-relative POSIX path --
+    purely a binary-format read, never a ``git`` subprocess.
+
+    Supports index format versions 2, 3, and 4. Version 4's path-
+    compression scheme is fully decoded rather than treated as
+    unparseable, since it has been git's own default for years and
+    refusing to parse it would make dirty-working-tree detection inert
+    in most real repositories. Returns ``None`` if the index cannot be
+    read or does not parse as a recognized, well-formed index -- callers
+    must treat that exactly like an unconfirmable clean state, never like
+    an empty repository.
+    """
+    index_path = git_dir / "index"
+    if not index_path.is_file():
+        return None
+    try:
+        data = index_path.read_bytes()
+    except OSError:
+        return None
+    if len(data) < 12 or data[:4] != b"DIRC":
+        return None
+    try:
+        version, entry_count = struct.unpack(">II", data[4:12])
+        if version not in (2, 3, 4):
+            return None
+        entries: Dict[str, Tuple[int, str]] = {}
+        offset = 12
+        previous_path = ""
+        for _ in range(entry_count):
+            entry_start = offset
+            fields = struct.unpack(">10I", data[offset : offset + 40])
+            offset += 40
+            sha1_hex = data[offset : offset + 20].hex()
+            offset += 20
+            flags = struct.unpack(">H", data[offset : offset + 2])[0]
+            offset += 2
+            if flags & 0x4000 and version >= 3:
+                offset += 2  # extended flags -- not needed for a dirty check
+            if version >= 4:
+                strip_length, offset = _decode_git_index_varint(data, offset)
+                nul_index = data.index(b"\x00", offset)
+                suffix = data[offset:nul_index].decode("utf-8")
+                offset = nul_index + 1
+                path = previous_path[: len(previous_path) - strip_length] + suffix
+                previous_path = path
+            else:
+                nul_index = data.index(b"\x00", offset)
+                path = data[offset:nul_index].decode("utf-8")
+                entry_length = nul_index - entry_start + 1
+                padding = (8 - (entry_length % 8)) % 8
+                offset = nul_index + 1 + padding
+            entries[path] = (fields[9], sha1_hex)
+    except (struct.error, IndexError, UnicodeDecodeError, ValueError):
+        return None
+    return entries
+
+
+def _git_blob_sha1(data: bytes) -> str:
+    """The git blob object id git itself would assign to ``data`` --
+    ``sha1("blob {len}\\0" + data)`` -- computed only to compare against
+    the index's own recorded blob id for a dirty-working-tree check, not
+    used as evidence of anything beyond that comparison."""
+    header = f"blob {len(data)}\0".encode("utf-8")
+    return hashlib.sha1(header + data).hexdigest()
+
+
+def _workflow_set_is_clean(
+    git_dir: Path, root: Path, workflow_paths: Tuple[Path, ...]
+) -> bool:
+    """True only if every workflow file's on-disk bytes match the exact
+    blob git's own index has staged for it -- i.e. the working tree is not
+    dirty with respect to these specific files.
+
+    Any index-parse failure, a missing index entry, or a content mismatch
+    is treated as "not confirmed clean", never as "confirmed clean": this
+    check only ever makes evidence *more* conservative, never fabricates a
+    clean result it cannot actually verify. This intentionally only
+    catches *unstaged* working-tree-vs-index drift, not a staged-but-
+    uncommitted index-vs-HEAD difference, which would require parsing
+    commit/tree objects.
+    """
+    entries = _read_git_index_entries(git_dir)
+    if entries is None:
+        return False
+    for path in workflow_paths:
+        entry = entries.get(path.relative_to(root).as_posix())
+        if entry is None:
+            return False
+        _recorded_size, recorded_sha1 = entry
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return False
+        if _git_blob_sha1(data) != recorded_sha1:
+            return False
+    return True
+
+
 def _workflow_set_evidence(
     root: Path, workflow_paths: Tuple[Path, ...]
 ) -> Optional[EvidenceRef]:
@@ -984,16 +1494,32 @@ def _workflow_set_evidence(
     source_commit = _resolve_commit_sha(git_dir) if git_dir else None
     # ``EvidenceRef.repository``/``source_commit`` are required, non-``None``
     # fields; when trustworthy values cannot be read straight from real,
-    # on-disk git metadata this evidence entry is omitted entirely rather
-    # than filled with a directory-name guess or an all-zero placeholder
-    # SHA -- an assessor must never fabricate the evidence it reports.
-    if repository is None or source_commit is None:
+    # on-disk git metadata -- including when the working tree is dirty
+    # with respect to the very files being hashed, since pairing
+    # `source_commit` with a hash of *uncommitted* bytes would misrepresent
+    # what is actually recorded at that commit -- this evidence entry is
+    # omitted entirely rather than filled with a directory-name guess, an
+    # all-zero placeholder SHA, or a commit reference the on-disk bytes
+    # don't actually match. An assessor must never fabricate the evidence
+    # it reports.
+    if git_dir is None or repository is None or source_commit is None:
         return None
-    hashed = canonical.hash_files(root, workflow_paths)
+    if not _workflow_set_is_clean(git_dir, root, workflow_paths):
+        return None
+    try:
+        hashed = canonical.hash_files(root, workflow_paths)
+    except canonical.CanonicalizationError:
+        return None
     return EvidenceRef(
         evidence_id="ghcp-workflows",
         kind="file-set",
-        source="/".join(sorted(str(path.relative_to(root)) for path in workflow_paths)),
+        # Joined with `\n`, not `/`: the separator must never collide with
+        # a character a real repository-relative path can itself contain,
+        # or two joined paths (`"a/b.yml"`, `"c.yml"`) would be
+        # indistinguishable from a single nested one (`"a/b.yml/c.yml"`).
+        source="\n".join(
+            sorted(path.relative_to(root).as_posix() for path in workflow_paths)
+        ),
         sha256=str(hashed["set_sha256"]),
         collected_at=None,
         freshness_seconds=None,
@@ -1010,6 +1536,7 @@ def _workflow_set_evidence(
 
 
 def _assess_pr_gate(
+    root: Path,
     assessments: Tuple[WorkflowAssessment, ...],
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
@@ -1033,7 +1560,7 @@ def _assess_pr_gate(
                 "reach a protected branch or a live environment without "
                 "going through a pull request at all."
             ),
-            affected_paths=tuple(str(a.path) for a in offenders),
+            affected_paths=tuple(_rel(root, a.path) for a in offenders),
         )
     )
 
@@ -1063,11 +1590,10 @@ def _assess_codeowners(
                     "coverage is missing or unavailable."
                 ),
                 details=(
-                    "No `CODEOWNERS` or `.github/CODEOWNERS` file was found "
-                    "at the repository root or under `.github/`. A file with "
-                    "any other name (for example `CODEOWNERS.absent`) is "
-                    "never treated as ownership evidence, however complete "
-                    "its declared patterns look."
+                    "No `CODEOWNERS`, `.github/CODEOWNERS`, or `docs/CODEOWNERS` "
+                    "file was found. A file with any other name (for example "
+                    "`CODEOWNERS.absent`) is never treated as ownership "
+                    "evidence, however complete its declared patterns look."
                 ),
             )
         )
@@ -1095,10 +1621,10 @@ def _assess_codeowners(
                     "coverage is missing or unavailable."
                 ),
                 details=(
-                    f"{ownership_path} does not declare a pattern covering: "
-                    f"{', '.join(missing)}."
+                    f"{ownership_path} does not declare an owned pattern "
+                    f"covering: {', '.join(missing)}."
                 ),
-                affected_paths=(str(ownership_path),),
+                affected_paths=(_rel(root, ownership_path),),
             )
         )
         return
@@ -1130,7 +1656,7 @@ def _assess_codeowners(
                 "never prove a branch protection rule or required-check "
                 "list is actually enforced."
             ),
-            affected_paths=(str(ownership_path),),
+            affected_paths=(_rel(root, ownership_path),),
         )
     )
 
@@ -1158,36 +1684,51 @@ def _assess_ci_probes(
         )
         return
 
-    offenders = tuple(a for a in pr_workflows if a.ci_probes == "must-fix")
-    if offenders:
-        controls["ghcp_ci_probes"] = "must-fix"
+    eval_suite_files = _discover_eval_suite_files(root)
+    eval_directories = (
+        _eval_suite_directories(root, eval_suite_files) if eval_suite_files else set()
+    )
+
+    def _satisfies_required_ci(assessment: "WorkflowAssessment") -> bool:
+        if assessment.ci_probes != "pass":
+            return False
+        if not eval_directories:
+            return True
+        return _eval_runner_referenced((assessment,), eval_directories)
+
+    # Rule 3 requires that *at least one* pull_request-triggered workflow
+    # runs the full required CI -- CTK, an application probe, and (if the
+    # repo ships one) the eval suite's own exact runner command -- not
+    # that *every* PR workflow does. A repo can legitimately run other,
+    # benign PR-triggered workflows (linting, docs previews, ...)
+    # alongside its real gating CI; those must never fail this check on
+    # their own as long as some workflow actually gates the change.
+    if any(_satisfies_required_ci(a) for a in pr_workflows):
+        controls["ghcp_ci_probes"] = "pass"
+        return
+
+    controls["ghcp_ci_probes"] = "must-fix"
+    ctk_probe_offenders = tuple(a for a in pr_workflows if a.ci_probes == "must-fix")
+    if len(ctk_probe_offenders) == len(pr_workflows):
         findings.append(
             _ci_probes_finding(
                 "missing-ctk-or-application-probe",
-                "One or more pull_request-triggered workflows omit a CTK "
-                "run, a governed application-probe run, or both.",
-                tuple(str(a.path) for a in offenders),
+                "No pull_request-triggered workflow runs both a CTK and a "
+                "governed application-probe.",
+                tuple(_rel(root, a.path) for a in pr_workflows),
             )
         )
         return
 
-    eval_suite_files = _discover_eval_suite_files(root)
-    if eval_suite_files:
-        eval_directories = _eval_suite_directories(root, eval_suite_files)
-        if not _eval_runner_referenced(pr_workflows, eval_directories):
-            controls["ghcp_ci_probes"] = "must-fix"
-            findings.append(
-                _ci_probes_finding(
-                    "missing-eval-suite-runner",
-                    "The repository ships an eval suite under `**/evals/**` "
-                    "but no pull_request-triggered workflow's run command "
-                    "references its exact directory path.",
-                    tuple(str(path) for path in eval_suite_files),
-                )
-            )
-            return
-
-    controls["ghcp_ci_probes"] = "pass"
+    findings.append(
+        _ci_probes_finding(
+            "missing-eval-suite-runner",
+            "The repository ships an eval suite under `**/evals/**` but no "
+            "pull_request-triggered workflow that runs CTK and an "
+            "application probe also references its exact directory path.",
+            tuple(_rel(root, path) for path in eval_suite_files),
+        )
+    )
 
 
 def _ci_probes_finding(reason_code: str, details: str, affected_paths: Tuple[str, ...]) -> Finding:
@@ -1207,6 +1748,7 @@ def _ci_probes_finding(reason_code: str, details: str, affected_paths: Tuple[str
 
 
 def _assess_actions_and_permissions(
+    root: Path,
     assessments: Tuple[WorkflowAssessment, ...],
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
@@ -1226,15 +1768,15 @@ def _assess_actions_and_permissions(
             "Action reference(s) not pinned to an exact 40-character lowercase "
             f"commit SHA: {', '.join(refs)}."
         )
-        affected_paths.extend(str(a.path) for a in sha_offenders)
+        affected_paths.extend(_rel(root, a.path) for a in sha_offenders)
     if permission_offenders:
         details_parts.append(
             "Workflow or job permissions are missing, implicit, or "
             "`write-all` (not explicit least privilege) in: "
-            + ", ".join(str(a.path) for a in permission_offenders)
+            + ", ".join(_rel(root, a.path) for a in permission_offenders)
             + "."
         )
-        affected_paths.extend(str(a.path) for a in permission_offenders)
+        affected_paths.extend(_rel(root, a.path) for a in permission_offenders)
 
     findings.append(
         Finding(
@@ -1254,6 +1796,7 @@ def _assess_actions_and_permissions(
 
 
 def _assess_oidc(
+    root: Path,
     assessments: Tuple[WorkflowAssessment, ...],
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
@@ -1274,13 +1817,14 @@ def _assess_oidc(
                 "One or more `azure/login` steps, or Azure deployment "
                 "action steps (`azure/webapps-deploy`, `azure/functions-"
                 "action`, `azure/arm-deploy`, ...), read a client secret, "
-                "password, publish profile, or service-principal secret, "
-                "or an `azure/login` step is not backed by an explicit "
-                "`permissions: id-token: write` grant, instead of "
-                "authenticating via OpenID Connect / workload identity "
-                "federation."
+                "password, publish profile, or service-principal secret "
+                "-- as an input, a `run:` command flag, or an `env:` "
+                "variable name -- or an `azure/login` step is not backed "
+                "by an explicit `permissions: id-token: write` grant in "
+                "that same job, instead of authenticating via OpenID "
+                "Connect / workload identity federation."
             ),
-            affected_paths=tuple(str(a.path) for a in offenders),
+            affected_paths=tuple(_rel(root, a.path) for a in offenders),
         )
     )
 

@@ -819,16 +819,47 @@ def test_non_git_root_yields_no_fabricated_evidence(tmp_path):
     assert result.evidence == ()
 
 
-def test_real_git_checkout_resolves_genuine_repository_and_commit():
+def test_fixture_without_its_own_git_checkout_yields_no_evidence():
+    """`unprotected-ghcp` has no `.git` of its own. Provenance evidence
+    must never be attributed to whatever ancestor repository happens to
+    contain the fixture on disk (this development repo itself) -- only a
+    target that is genuinely its own git checkout root can ever produce
+    evidence."""
     root = FIXTURES_DIR / "unprotected-ghcp"
     result = assess_change_plane(root, live_github=None, live_azure=None)
-    actual_head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    assert result.evidence == ()
+
+
+def _init_git_repo(root: Path) -> str:
+    """Turn ``root`` into a real, standalone git repository with a single
+    commit of its current contents, returning that commit's full SHA."""
+    run = lambda *args: subprocess.run(  # noqa: E731 - local test helper
+        args, cwd=root, capture_output=True, text=True, check=True
+    )
+    run("git", "init", "--quiet")
+    run("git", "config", "user.email", "ghcp-test@example.com")
+    run("git", "config", "user.name", "GHCP Test")
+    run(
+        "git",
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/octo-org/octo-repo.git",
+    )
+    run("git", "add", "-A")
+    run("git", "commit", "--quiet", "-m", "initial commit")
+    return run("git", "rev-parse", "HEAD").stdout.strip()
+
+
+def test_genuine_standalone_git_checkout_resolves_real_repository_and_commit(
+    tmp_path,
+):
+    """A target directory that *is* its own git checkout root -- unlike
+    the `unprotected-ghcp` fixture above -- still resolves genuine,
+    non-fabricated `repository`/`source_commit` evidence."""
+    root = _write_clean_repo(tmp_path)
+    actual_head = _init_git_repo(root)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
     assert len(result.evidence) == 1
     workflow_evidence = result.evidence[0]
     assert workflow_evidence.source_commit == actual_head
@@ -1240,3 +1271,773 @@ def test_codeowners_unrelated_patterns_still_flagged_missing(tmp_path):
     assert "GHCP-002" in {f.finding_id for f in result.findings}
     finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
     assert finding.status == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 1: rule 5's secret-credential scan also covers `run:` commands
+# and `env:` blocks directly -- a raw `az login --password`/
+# `--service-principal-secret` shell command, a raw `publish-profile` deploy
+# invocation, or a secret-shaped `AZURE_`/`ARM_` env var name -- never just
+# an action's declared `with:` inputs. Every check matches names/flags only,
+# never a credential's actual value.
+# ---------------------------------------------------------------------------
+
+
+def test_raw_az_login_password_flag_in_run_command_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Azure login
+                    run: |
+                      az login --service-principal --username $ARM_CLIENT_ID --password ${{ secrets.ARM_CLIENT_SECRET }} --tenant $ARM_TENANT_ID
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_secret_shaped_env_var_name_alone_is_must_fix_without_login_step(tmp_path):
+    """A secret-shaped Azure/ARM env var name is rejected even with no
+    `azure/login` step or deploy action anywhere in the workflow -- the
+    secret itself is the change-plane risk."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                env:
+                  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - run: echo deploying
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_raw_publish_profile_run_command_without_deploy_action_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - run: az webapp deploy --publish-profile-file profile.publishsettings
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_secret_env_var_detection_never_leaks_the_actual_secret_value(tmp_path):
+    """The scan flags a secret-shaped env var *name*; the literal secret
+    value written into the workflow file must never surface anywhere in
+    the finding text this module produces."""
+    root = tmp_path / "leak-check-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "deploy.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                env:
+                  AZURE_CLIENT_SECRET: totally-real-hunter2-secret-value
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - run: echo deploying
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-005")
+    assert "totally-real-hunter2-secret-value" not in finding.details
+    assert "totally-real-hunter2-secret-value" not in " ".join(finding.affected_paths)
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 2: rule 3 requires that *at least one* pull_request-triggered
+# workflow runs the full required CI (CTK, application probe, and an eval
+# suite's exact runner command if one exists) -- not that every single
+# PR-triggered workflow does. A benign PR workflow (lint, docs preview, ...)
+# alongside a real gating workflow must never fail this check on its own.
+# ---------------------------------------------------------------------------
+
+
+def _write_workflow(root: Path, filename: str, body: str) -> Path:
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    path = workflow_dir / filename
+    path.write_text(textwrap.dedent(body), encoding="utf-8")
+    return path
+
+
+def test_benign_pr_workflow_alongside_gating_workflow_still_passes(tmp_path):
+    root = tmp_path / "quantifier-repo"
+    _write_workflow(
+        root,
+        "lint.yml",
+        """\
+        name: Lint
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo lint only, no ctk or probe here
+        """,
+    )
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+def test_every_pr_workflow_missing_ctk_or_probe_is_still_must_fix(tmp_path):
+    root = tmp_path / "quantifier-all-fail-repo"
+    _write_workflow(
+        root,
+        "lint.yml",
+        """\
+        name: Lint
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo lint only
+        """,
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-003")
+    assert finding.reason_code == "missing-ctk-or-application-probe"
+
+
+def test_eval_suite_runner_required_from_some_ctk_probe_passing_workflow(tmp_path):
+    """Even when a PR workflow's `ci_probes` already passes, rule 3 still
+    requires *some* CTK/probe-passing PR workflow to also reference the
+    repo's eval suite's exact directory -- a passing CTK/probe workflow
+    that ignores the eval suite entirely does not satisfy rule 3 on its
+    own."""
+    root = tmp_path / "quantifier-eval-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-003")
+    assert finding.reason_code == "missing-eval-suite-runner"
+
+
+def test_one_workflow_covering_ctk_probe_and_eval_runner_passes_with_benign_sibling(
+    tmp_path,
+):
+    root = tmp_path / "quantifier-eval-pass-repo"
+    _write_workflow(
+        root,
+        "lint.yml",
+        """\
+        name: Lint
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo lint only, no ctk or probe here
+        """,
+    )
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK, application probes, and evals
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+                  pytest evals
+        """,
+    )
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 3: a CODEOWNERS pattern with no real owner token confers no
+# ownership coverage; `docs/CODEOWNERS` is recognized alongside the root and
+# `.github/` locations GitHub itself supports.
+# ---------------------------------------------------------------------------
+
+
+def test_codeowners_pattern_without_owner_token_grants_no_coverage(tmp_path):
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/**",  # no owner token at all
+            "policies/**",
+            "tests/**",
+            ".github/workflows/governed-actions.yml",
+            "tests/governed-actions-manifest.json",
+            "tests/governed-actions-apply-plan.json",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "codeowners-incomplete-coverage"
+
+
+def test_docs_codeowners_location_is_a_recognized_ownership_file(tmp_path):
+    root = tmp_path / "docs-codeowners-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    docs_dir = root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # Static coverage is fully satisfied via `docs/CODEOWNERS` -- absent
+    # live branch-protection evidence, the finding can only ever land on
+    # "not-verified", never the "must-fix" a wrongly-unrecognized
+    # ownership file location would produce.
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "branch-protection-not-verified-statically"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 4: rule 1's direct-push finding exempts a push trigger
+# restricted to tags only (`on.push.tags`/`tags-ignore` with no
+# `branches`/`branches-ignore` filter) -- a tag push can never itself
+# deliver an unreviewed change to a protected branch. Any `branches` filter
+# (with or without a `tags` filter alongside it) keeps the finding.
+# ---------------------------------------------------------------------------
+
+
+def _push_deploy_workflow(tmp_path: Path, on_push_lines: Sequence[str]) -> Path:
+    """``on_push_lines`` are already fully indented ``push:`` sub-mapping
+    lines (e.g. ``"    tags:"``, ``"      - 'v*'"``), written verbatim
+    beneath ``on:\\n  push:`` -- built with plain concatenation rather
+    than a shared ``textwrap.dedent`` block, since mixing differently-
+    indented literal and templated text under one shared dedent silently
+    breaks the common-prefix calculation.
+    """
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    text = "\n".join(
+        [
+            "name: Deploy",
+            "on:",
+            "  push:",
+            *on_push_lines,
+            "permissions:",
+            "  contents: read",
+            "jobs:",
+            "  deploy:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c",
+            "",
+        ]
+    )
+    workflow_path.write_text(text, encoding="utf-8")
+    return workflow_path
+
+
+def test_push_trigger_restricted_to_tags_only_is_exempt(tmp_path):
+    workflow = _push_deploy_workflow(tmp_path, ["    tags:", "      - 'v*'"])
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "pass"
+
+
+def test_push_trigger_with_branches_filter_is_still_flagged(tmp_path):
+    workflow = _push_deploy_workflow(tmp_path, ["    branches:", "      - main"])
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "must-fix"
+
+
+def test_push_trigger_with_both_tags_and_branches_is_still_flagged(tmp_path):
+    workflow = _push_deploy_workflow(
+        tmp_path,
+        ["    tags:", "      - 'v*'", "    branches:", "      - main"],
+    )
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "must-fix"
+
+
+def test_bare_push_trigger_with_no_filters_is_still_flagged(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on: push
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 5 (adversarial): a negation cue or a detection/inspection
+# command preceding a bypass marker on the same line means the line talks
+# *about* the bypass rather than issuing it; a generic `--force`/`--admin`
+# flag unrelated to `git push`/`gh pr merge` is never itself a bypass.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "run_command",
+    [
+        "echo 'this pipeline must never bypass required checks'",
+        "echo 'reviewers should not admin-merge this repository'",
+        "grep -rq '\\[skip ci\\]' CHANGELOG.md && echo marker-present",
+    ],
+)
+def test_negation_or_detection_context_bypass_text_is_not_flagged(tmp_path, run_command):
+    workflow = _workflow_with_run_command(tmp_path, run_command)
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "pass"
+
+
+@pytest.mark.parametrize(
+    "run_command",
+    [
+        "docker rm --force my-container",
+        "rm --force /tmp/scratch-file",
+        "aws iam create-user --user-name admin-bot",
+    ],
+)
+def test_generic_force_or_admin_flag_outside_bound_context_is_not_flagged(
+    tmp_path, run_command
+):
+    workflow = _workflow_with_run_command(tmp_path, run_command)
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 6: `id-token: write` must be granted in the *same job* as the
+# `azure/login` step it backs -- a sibling job granting it (or a workflow-
+# level default a job's own permissions block overrides away) is never
+# evidence that this job's login step can actually mint an OIDC token.
+# ---------------------------------------------------------------------------
+
+
+def test_id_token_write_in_sibling_job_only_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              grant-id-token-elsewhere:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - run: echo unrelated job
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_id_token_write_inherited_from_workflow_default_in_same_job_passes(tmp_path):
+    """A login job with no permissions block of its own inherits the
+    workflow-level default -- if that default grants `id-token: write`,
+    the login step's own (only) job does carry the grant, so this passes."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              other:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - run: echo unrelated job with its own explicit permissions
+              deploy:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 7: `affected_paths` are always repository-relative, never the
+# absolute filesystem path this module happened to read a file from.
+# ---------------------------------------------------------------------------
+
+
+def test_affected_paths_are_repository_relative(fixture_root):
+    root = fixture_root / "unprotected-ghcp"
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.findings, "expected at least one finding to inspect"
+    resolved_root = str(root.resolve())
+    for finding in result.findings:
+        for affected_path in finding.affected_paths:
+            assert not affected_path.startswith("/"), affected_path
+            assert resolved_root not in affected_path, affected_path
+            assert not Path(affected_path).is_absolute(), affected_path
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 8: workflow-set evidence accounts for a dirty working tree --
+# an uncommitted change to a workflow file means its on-disk bytes are no
+# longer what the recorded `source_commit` actually contains, so evidence
+# must be omitted rather than paired with a commit it doesn't match.
+# ---------------------------------------------------------------------------
+
+
+def test_dirty_workflow_file_yields_no_evidence(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    _init_git_repo(root)
+    # Modify the already-committed workflow file without committing again.
+    workflow_path = root / ".github" / "workflows" / "ci.yml"
+    workflow_path.write_text(
+        workflow_path.read_text(encoding="utf-8") + "\n# an uncommitted local edit\n",
+        encoding="utf-8",
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.evidence == ()
+
+
+def test_clean_working_tree_still_yields_evidence(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    _init_git_repo(root)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert len(result.evidence) == 1
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix 9: a workflow file this module cannot safely read, parse, or
+# bound (oversized, a deeply-nested YAML bomb, a symlink escaping the
+# repository, malformed YAML) is converted into a contained, per-file
+# finding, never a crash -- and never erases any other workflow's own,
+# independently-computed results.
+# ---------------------------------------------------------------------------
+
+
+def test_oversized_workflow_file_is_contained_alongside_a_good_workflow(tmp_path):
+    root = tmp_path / "oversized-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    huge_path = root / ".github" / "workflows" / "huge.yml"
+    huge_path.write_text("# padding\n" + ("x" * (2 * 1024 * 1024)), encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # The oversized file never crashes the assessment, and the good
+    # workflow's own passing CI-probe coverage still satisfies rule 3.
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+def test_deeply_nested_yaml_workflow_is_contained_not_crashed(tmp_path):
+    root = tmp_path / "yaml-bomb-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    bomb_path = root / ".github" / "workflows" / "bomb.yml"
+    bomb_path.write_text("bomb: " + ("[" * 150) + ("]" * 150) + "\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+def test_symlinked_workflow_file_is_rejected_not_dereferenced(tmp_path):
+    root = tmp_path / "symlink-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    outside_target = tmp_path / "outside-secret.yml"
+    outside_target.write_text("name: Outside\non:\n  push:\n", encoding="utf-8")
+    symlink_path = root / ".github" / "workflows" / "linked.yml"
+    symlink_path.symlink_to(outside_target)
+
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # Never crashes, and the good workflow's own CI-probe coverage still
+    # satisfies rule 3 despite the rejected symlinked file sitting
+    # alongside it.
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+    # The rejected symlink still surfaces as a finding somewhere (it is a
+    # conservative "must-fix everything" stand-in), never silently ignored.
+    assert any(
+        "linked.yml" in " ".join(f.affected_paths) for f in result.findings
+    )
+
+
+def test_malformed_yaml_workflow_is_contained_alongside_a_good_workflow(tmp_path):
+    root = tmp_path / "malformed-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    malformed_path = root / ".github" / "workflows" / "malformed.yml"
+    malformed_path.write_text("name: Broken\non: [pull_request\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
