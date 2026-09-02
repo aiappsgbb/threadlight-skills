@@ -96,19 +96,36 @@ _SECRET_LOGIN_KEYS: Tuple[str, ...] = (
     "publish-profile",
 )
 
-# Every shape a `pull_request_target`-triggered checkout's `ref:` can take
-# that actually resolves to the pull request's own, potentially attacker-
-# controlled head content rather than the trusted base branch: the full
-# `github.event.pull_request.head` object path (covers both its `.ref`
-# and `.sha` fields via substring), the `github.head_ref` shorthand
+# Every shape a `pull_request_target`-triggered checkout's `ref:` *or*
+# `repository:` input can take that actually resolves to the pull
+# request's own, potentially attacker-controlled head content or head
+# repository fork rather than the trusted base branch/repository: the
+# full `github.event.pull_request.head` object path (covers its `.ref`,
+# `.sha`, `.repo.full_name`, `.repo.clone_url`, ... fields via
+# substring -- an attacker's own fork repository is exactly as
+# untrusted as their own head ref/sha), the `github.head_ref` shorthand
 # context variable (only ever populated for pull_request/
 # pull_request_target events, and always attacker-controlled), and a
 # literal `refs/pull/...` ref (the fork PR's own ref namespace, whether
-# `/head` or `/merge`).
+# `/head` or `/merge`). Checking out the trusted base ref from an
+# attacker-controlled `repository:` fork (or vice versa) is just as
+# untrusted as either alone -- both the ref *and* the repository must
+# stay on the trusted base for a `pull_request_target` checkout to be
+# safe.
 _UNTRUSTED_CHECKOUT_REF_MARKERS: Tuple[str, ...] = (
     "github.event.pull_request.head",
     "github.head_ref",
     "refs/pull/",
+)
+
+# A raw `git fetch`/`checkout`/`clone`/`pull` command run directly in a
+# `run:` step is an "equivalent checkout mechanism" to `actions/
+# checkout`'s own `ref:`/`repository:` inputs -- it can resolve exactly
+# the same attacker-controlled head content or fork repository without
+# ever going through the checkout action at all, and rule 1 must catch
+# it just as conservatively.
+_UNTRUSTED_CHECKOUT_RUN_COMMAND_RE = re.compile(
+    r"\bgit\s+(?:fetch|checkout|clone|pull)\b", re.IGNORECASE
 )
 
 _CTK_MARKER_RE = re.compile(r"\bctk\b", re.IGNORECASE)
@@ -205,10 +222,14 @@ _REQUIRED_CODEOWNERS_PATTERNS: Tuple[str, ...] = (
     "tests/governed-actions-apply-plan.json",
 )
 
-# Every location GitHub itself recognizes a CODEOWNERS file at.
+# Every location GitHub itself recognizes a CODEOWNERS file at, in
+# GitHub's own precedence order: ``.github/CODEOWNERS`` is consulted
+# first, then the repository root ``CODEOWNERS``, then ``docs/
+# CODEOWNERS`` -- the first one present is the one GitHub actually
+# uses, and `_find_ownership_file` must check them in this exact order.
 _OWNERSHIP_FILENAMES: Tuple[str, ...] = (
-    "CODEOWNERS",
     ".github/CODEOWNERS",
+    "CODEOWNERS",
     "docs/CODEOWNERS",
 )
 
@@ -735,10 +756,30 @@ def _job_grants_id_token_write(document: Mapping, job: Mapping) -> bool:
     )
 
 
+def _has_azure_deploy_evidence(
+    document: Mapping, deploy_action_job_steps: Sequence[Tuple[Mapping, Mapping]]
+) -> bool:
+    """True only when this workflow is specifically an *Azure* deployment
+    -- a known Azure deploy-action step, or a raw `az`/`azd` CLI deploy
+    command run directly -- never merely a job whose id/name happens to
+    say "deploy" (which `_is_deploy_workflow`'s generic heuristic also
+    matches, including for entirely non-Azure targets). Rule 5's "no
+    login evidence" downgrade must fire only for a workflow this module
+    can actually tell is deploying to Azure; a job named "deploy" that
+    ships to some unrelated platform is not itself evidence of anything
+    OIDC/WIF-related.
+    """
+    if deploy_action_job_steps:
+        return True
+    run_text = "\n".join(_run_command_texts(document))
+    return bool(_DEPLOY_RUN_COMMAND_RE.search(run_text))
+
+
 def _oidc_status(
     document: Mapping,
     login_job_steps: Sequence[Tuple[Mapping, Mapping]],
     deploy_action_job_steps: Sequence[Tuple[Mapping, Mapping]],
+    azure_deploy_evidence: bool,
 ) -> Status:
     # A raw `az login`/publish-profile secret path, or a secret-shaped env
     # var declared anywhere, is rejected regardless of which step or job
@@ -754,6 +795,16 @@ def _oidc_status(
     if any(_has_secret_credential_input(step) for _job, step in deploy_action_job_steps):
         return "must-fix"
     if not login_job_steps:
+        if azure_deploy_evidence:
+            # This workflow demonstrably deploys to Azure -- via a known
+            # deploy action or a raw az/azd CLI command -- yet declares no
+            # visible `azure/login` step confirming *how* it authenticates
+            # at all. Absence of a secret-shaped credential is not itself
+            # proof of OIDC/WIF: it is equally consistent with a
+            # federated identity this module simply cannot see evidence
+            # of here, or a login step this static scan missed entirely.
+            # Either way this can never be inferred as a `pass`.
+            return "not-verified"
         return "pass"  # nothing else to assess: rule 5 is not-applicable, not a finding
     for job, step in login_job_steps:
         # `id-token: write` must be granted in *this* login step's own
@@ -773,6 +824,27 @@ def _oidc_status(
     return "pass"
 
 
+_SAFE_IDENTITY_REF_RE = re.compile(r"^\$\{\{.*\}\}$", re.DOTALL)
+
+
+def _redact_identity_ref(value: str) -> str:
+    """A workflow's own literal ``client-id``/``creds`` text, safe to
+    retain and render anywhere in this module's evidence only when it
+    is itself a ``${{ ... }}`` expression -- almost always
+    ``secrets.*``, but also a safe context/env reference -- never an
+    actual inline credential value. Rule 6 must never retain or render
+    an inline (non-expression) value: it is replaced here with a short,
+    non-reversible fingerprint, so two occurrences of the very same
+    inline value can still be recognized as equal across a report
+    without the underlying credential ever appearing in any finding,
+    log, or report.
+    """
+    if _SAFE_IDENTITY_REF_RE.match(value.strip()):
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    return f"<inline-identity-value-redacted:sha256:{digest}>"
+
+
 def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[str, ...]:
     """Every distinct client-id/creds reference from *every* ``azure/
     login`` step in a workflow -- not merely its first one. A workflow
@@ -780,6 +852,13 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
     multiple login steps within one job), and rule 6's identity-
     separation check must inspect all of them, not just the first
     login step it happens to encounter.
+
+    A value that is not itself a ``${{ ... }}`` expression -- an inline
+    credential a developer mistakenly hardcoded instead of referencing
+    a secret -- is redacted before it is ever returned: this is the
+    single point every identity-separation finding's text is ultimately
+    built from, so redacting here keeps an inline credential from ever
+    being retained or rendered anywhere downstream.
     """
     refs: List[str] = []
     for _job, step in login_job_steps:
@@ -789,7 +868,7 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
         for key in ("client-id", "creds"):
             value = with_block.get(key)
             if value:
-                refs.append(str(value))
+                refs.append(_redact_identity_ref(str(value)))
     seen: Set[str] = set()
     unique: List[str] = []
     for ref in refs:
@@ -823,16 +902,36 @@ def _is_deploy_workflow(document: Mapping) -> bool:
 
 
 def _has_untrusted_checkout(document: Mapping) -> bool:
+    """True if any step -- an `actions/checkout` step's own `ref:` *or*
+    `repository:` input, or a raw `git fetch`/`checkout`/`clone`/`pull`
+    command run directly (an equivalent checkout mechanism) -- resolves
+    to the pull request's own, potentially attacker-controlled head
+    content or head repository fork, rather than staying on the
+    trusted base branch *and* base repository. A `pull_request_target`
+    checkout is only ever safe when *both* stay trusted: an
+    attacker-controlled `repository:` fork checked out at an
+    otherwise-trusted-looking `ref:` is just as dangerous as an
+    attacker-controlled `ref:` on the trusted repository, since either
+    one alone hands `pull_request_target`'s elevated permissions/
+    secrets to content the pull request's author actually controls.
+    """
     for step in _all_steps(document):
         uses = str(step.get("uses", "")).split("@", 1)[0].strip().lower()
-        if uses != "actions/checkout":
-            continue
-        with_block = step.get("with")
-        if not isinstance(with_block, Mapping):
-            continue
-        ref_value = str(with_block.get("ref", ""))
-        if any(marker in ref_value for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
-            return True
+        if uses == "actions/checkout":
+            with_block = step.get("with")
+            if isinstance(with_block, Mapping):
+                for key in ("ref", "repository"):
+                    value = str(with_block.get(key, ""))
+                    if any(
+                        marker in value for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS
+                    ):
+                        return True
+        run_text = step.get("run")
+        if isinstance(run_text, str) and _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(
+            run_text
+        ):
+            if any(marker in run_text for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
+                return True
     return False
 
 
@@ -879,16 +978,93 @@ def _pr_gate_status(document: Mapping, triggers: Tuple[str, ...], is_deploy: boo
 # CI CTK / application-probe presence (rule 3, per-workflow half)
 # ---------------------------------------------------------------------------
 
+# A line that only *echoes*, *prints*, or heredoc-emits text (rather than
+# actually invoking a real command) is never evidence that whatever
+# marker it happens to contain was genuinely run -- a step faking CTK/
+# application-probe/eval-runner evidence with a bare `echo "ctk
+# application-probe"` line must not satisfy rule 3.
+_INERT_RUN_LINE_RE = re.compile(r"^(?:echo\b|printf\b|print\s*\()", re.IGNORECASE)
+
+
+def _is_statically_disabled(step: Mapping, job: Optional[Mapping]) -> bool:
+    """True only if a step's own `if:` (or its containing job's `if:`) is
+    a literal, statically-false condition -- YAML's bare `false`/`0`, or
+    an equivalent quoted string -- never a guess about a dynamic
+    expression this module cannot evaluate. A step or job with no `if:`
+    key at all, or one whose condition depends on runtime context this
+    module cannot resolve, is never treated as disabled: only a
+    condition that can *never* evaluate true, however GitHub actually
+    runs it, is excluded.
+    """
+    candidates: List[object] = [step.get("if")]
+    if isinstance(job, Mapping):
+        candidates.append(job.get("if"))
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if isinstance(candidate, bool):
+            if candidate is False:
+                return True
+            continue
+        text = str(candidate).strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+            text = text[1:-1].strip()
+        if text.lower() in ("false", "0"):
+            return True
+    return False
+
+
+def _governance_relevant_run_text(run: str) -> str:
+    """A step's own ``run:`` text, with shell comment lines and bare
+    output-only (``echo``/``printf``/``print(...)``) lines stripped --
+    what remains is the only part of a step's command text rule 3's
+    CTK/application-probe/eval-runner checks may ever treat as evidence
+    something was actually invoked.
+    """
+    kept_lines = [
+        line
+        for line in run.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+        and not _INERT_RUN_LINE_RE.match(line.strip())
+    ]
+    return "\n".join(kept_lines)
+
+
+def _governance_relevant_run_command_texts(document: Mapping) -> Tuple[str, ...]:
+    """Every step's actual, execution-reachable ``run:`` shell command
+    text -- mirrors `_run_command_texts`, but additionally excludes a
+    step (or its containing job) that is statically disabled, and
+    strips comment/echo-only lines from what remains. Used only for
+    rule 3's CTK/application-probe and eval-suite-runner presence
+    checks: a step this module can tell will never actually execute, or
+    a line that only prints or comments on a marker rather than really
+    running it, must never satisfy either check.
+    """
+    texts: List[str] = []
+    for job, step in _job_steps(document):
+        if _is_statically_disabled(step, job):
+            continue
+        run = step.get("run")
+        if not isinstance(run, str):
+            continue
+        kept = _governance_relevant_run_text(run)
+        if kept:
+            texts.append(kept)
+    return tuple(texts)
+
 
 def _ci_probes_static_status(document: Mapping, triggers: Tuple[str, ...]) -> Status:
     if "pull_request" not in triggers:
         return "pass"  # rule 3 only binds required (PR-triggered) CI
-    # Deliberately searched against the actual `run:` command text only --
-    # never a step `name`, a `uses:` reference, or a YAML comment: a step
-    # merely *named* "Run CTK" whose command never runs it, or a fixture
-    # docstring mentioning "CTK" while describing why it is intentionally
-    # absent, must never count as evidence that a step actually runs it.
-    text = "\n".join(_run_command_texts(document))
+    # Deliberately searched against the actual, execution-reachable
+    # `run:` command text only -- never a step `name`, a `uses:`
+    # reference, a YAML comment, a disabled/always-false step, or a bare
+    # `echo`/`printf` line: a step merely *named* "Run CTK" whose command
+    # never runs it, a fixture docstring mentioning "CTK" while
+    # describing why it is intentionally absent, an `if: false`-guarded
+    # step, or an `echo "ctk application-probe"` line, must never count
+    # as evidence a step actually runs one.
+    text = "\n".join(_governance_relevant_run_command_texts(document))
     if _CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text):
         return "pass"
     return "must-fix"
@@ -919,7 +1095,12 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         pr_gate=_pr_gate_status(document, triggers, is_deploy),
         permissions=_permissions_status(document),
         sha_pins=sha_pins,
-        oidc_wif=_oidc_status(document, login_job_steps, deploy_action_job_steps),
+        oidc_wif=_oidc_status(
+            document,
+            login_job_steps,
+            deploy_action_job_steps,
+            _has_azure_deploy_evidence(document, deploy_action_job_steps),
+        ),
         ci_probes=_ci_probes_static_status(document, triggers),
         identity_refs=_identity_refs(login_job_steps),
         sha_violations=sha_violations,
@@ -1098,18 +1279,23 @@ def _path_token_pattern(relative_path: Path) -> "re.Pattern[str]":
 def _eval_runner_referenced(
     pr_workflows: Sequence["WorkflowAssessment"], eval_directories: Set[Path]
 ) -> bool:
-    """True only if a pull_request-triggered workflow's actual ``run:``
-    command text references one of ``eval_directories`` as a whole,
-    boundary-delimited path token -- never merely because the word "evals"
-    (or an unrelated path that happens to contain it) appears anywhere in
-    the document.
+    """True only if a pull_request-triggered workflow's actual,
+    execution-reachable ``run:`` command text references one of
+    ``eval_directories`` as a whole, boundary-delimited path token --
+    never merely because the word "evals" (or an unrelated path that
+    happens to contain it) appears anywhere in the document, and never
+    from a disabled/always-false step or a comment/echo-only line that
+    merely mentions the path rather than actually invoking a runner
+    against it.
     """
     if not eval_directories:
         return False
     run_text = "\n".join(
         text
         for assessment in pr_workflows
-        for text in _run_command_texts(_load_workflow_document(assessment.path))
+        for text in _governance_relevant_run_command_texts(
+            _load_workflow_document(assessment.path)
+        )
     )
     return any(
         _path_token_pattern(directory).search(run_text) for directory in eval_directories
@@ -1173,12 +1359,41 @@ def _environment_protection_confirmed(
     return True
 
 
+def _job_satisfies_ci_probes(job: Mapping) -> bool:
+    """True only if this specific job's own steps -- never a sibling
+    job's -- actually run both a CTK and an application probe, using
+    the same execution-reachability rules as `_ci_probes_static_status`
+    (excluding a disabled/always-false step and comment/echo-only
+    lines).
+    """
+    texts: List[str] = []
+    steps = job.get("steps")
+    if isinstance(steps, list):
+        for step in steps:
+            if not isinstance(step, Mapping):
+                continue
+            if _is_statically_disabled(step, job):
+                continue
+            run = step.get("run")
+            if not isinstance(run, str):
+                continue
+            kept = _governance_relevant_run_text(run)
+            if kept:
+                texts.append(kept)
+    text = "\n".join(texts)
+    return bool(_CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text))
+
+
 def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> Set[str]:
-    """Job ids/names of every pull_request-triggered workflow whose own
-    static CTK/application-probe presence already passed -- the set of
-    check names GitHub's required-status-check list would need to name for
-    a branch-protection rule to actually be enforcing this repo's real
-    gating CI, not merely *some* unrelated status check.
+    """Job ids/names of *only* the specific job(s), within a passing
+    pull_request-triggered workflow, whose own steps actually run both a
+    CTK and an application probe -- never every job in that workflow
+    file. A branch-protection required-status-check list must name the
+    real gating job GitHub reports the check under; an unrelated
+    sibling job (lint, docs-preview, ...) that merely lives alongside
+    the real gating job in the same file is not itself evidence of
+    anything, and naming it in required-status-checks would never
+    actually enforce this repo's real gating CI.
     """
     names: Set[str] = set()
     for assessment in assessments:
@@ -1187,7 +1402,15 @@ def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> 
         if assessment.ci_probes != "pass":
             continue
         document = _load_workflow_document(assessment.path)
-        names.update(label.strip().lower() for label in _job_ids_and_names(document))
+        jobs = document.get("jobs")
+        if not isinstance(jobs, Mapping):
+            continue
+        for job_id, job in jobs.items():
+            if not isinstance(job, Mapping) or not _job_satisfies_ci_probes(job):
+                continue
+            names.add(str(job_id).strip().lower())
+            if job.get("name"):
+                names.add(str(job["name"]).strip().lower())
     return names
 
 
@@ -1207,16 +1430,27 @@ def _branch_protection_confirmed(
     declared_environments: Set[str] = frozenset(),
 ) -> bool:
     """True only if live evidence proves the default branch is
-    *substantively* protected -- reviews required, required checks
-    naming this repo's real gating CI, admins not exempt, force pushes
+    *substantively* protected -- reviews required (from real,
+    API-shaped data: CODEOWNER review explicitly required *and* a
+    positive required approving-review count), required checks naming
+    this repo's real gating CI, admins not exempt, force pushes
     disallowed, and no named bypass allowance -- plus, "as available",
     that any GitHub Environment a deploy job actually uses is itself
     reported protected. A required-status-check list that merely names
-    *some* check, or a protection rule that exempts admins or still
-    allows a forced push, can never be resolved into a `pass` -- each
-    is exactly the kind of gap static files alone could never see, and
+    *some* check, a protection rule that exempts admins or still
+    allows a forced push, or a `required_pull_request_reviews` object
+    that never actually turns on CODEOWNER review or requires at least
+    one approval, can never be resolved into a `pass` -- each is
+    exactly the kind of gap static files alone could never see, and
     this function exists precisely so live evidence -- when supplied --
     is actually held to that full standard rather than a partial one.
+
+    ``required_pull_request_reviews`` can also be reported as a bare
+    boolean by a simplified test fixture (rather than GitHub's own
+    nested object shape); that simplified form is deliberately still
+    accepted at face value -- it stays conservative (any falsy value
+    still fails closed) but is never held to the CODEOWNER-review/
+    approval-count checks a real API response can actually supply.
     """
     if not live_github:
         return False
@@ -1227,20 +1461,31 @@ def _branch_protection_confirmed(
     rule = branch_protection.get(default_branch)
     if not isinstance(rule, Mapping):
         return False
-    if not bool(rule.get("required_pull_request_reviews")):
-        return False
-    if not _protection_flag_enabled(rule.get("enforce_admins")):
-        return False
-    if _protection_flag_enabled(rule.get("allow_force_pushes")):
-        return False
     reviews = rule.get("required_pull_request_reviews")
+    if not reviews:
+        return False
     if isinstance(reviews, Mapping):
+        # Real, API-shaped evidence must explicitly turn on CODEOWNER
+        # review and require at least one approval -- a mapping present
+        # for some other reason (e.g. only `dismiss_stale_reviews`) is
+        # not itself proof reviews are actually required at all.
+        if not reviews.get("require_code_owner_reviews"):
+            return False
+        approving_count = reviews.get("required_approving_review_count")
+        if not isinstance(approving_count, int) or isinstance(approving_count, bool):
+            return False
+        if approving_count <= 0:
+            return False
         bypass = reviews.get("bypass_pull_request_allowances")
         if isinstance(bypass, Mapping):
             if any(bypass.get(key) for key in ("users", "teams", "apps")):
                 return False
         elif bypass:
             return False
+    if not _protection_flag_enabled(rule.get("enforce_admins")):
+        return False
+    if _protection_flag_enabled(rule.get("allow_force_pushes")):
+        return False
     required_status_checks = rule.get("required_status_checks")
     contexts = (
         required_status_checks.get("contexts")
@@ -1309,14 +1554,38 @@ def _rel(root: Path, path: object) -> str:
     POSIX-style path -- never the absolute filesystem path this module
     happened to read the file from, which would leak the assessment
     host's own directory layout into evidence meant to describe the
-    repository itself. Falls back to the path as given if it does not
-    actually resolve under ``root`` (should not happen for any path this
-    module discovers itself, but never worth raising over)."""
+    repository itself.
+
+    A path resolving outside ``root`` altogether (a symlink escaping the
+    repository is the only way this module's own discovery can hand this
+    function such a path) still relativizes against the *unresolved*
+    candidate as a fallback; only if even that fails does this return
+    just the file's own name -- never an absolute path, under any
+    circumstance.
+    """
     candidate = Path(path)
     try:
         return candidate.resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
-        return candidate.as_posix()
+        pass
+    try:
+        return candidate.relative_to(Path(root)).as_posix()
+    except ValueError:
+        return candidate.name
+
+
+def _rel_unresolved(root: Path, path: Path) -> str:
+    """A path's own repository-relative location under ``root``, without
+    ever following a symlink to compute it -- used only for error text
+    about a path this module has deliberately *not* resolved yet (a
+    symlink it is rejecting, or one whose resolution itself failed).
+    Falls back to just the file name, never the absolute path, if
+    ``path`` does not turn out to sit directly under ``root``.
+    """
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
 
 
 def _reject_workflow_symlink_escape(root: Path, path: Path) -> None:
@@ -1331,16 +1600,23 @@ def _reject_workflow_symlink_escape(root: Path, path: Path) -> None:
     of it (a classic time-of-check/time-of-use gap).
     """
     if path.is_symlink():
-        raise ChangePlaneError(f"workflow file {path} is a symlink, not a real file")
+        raise ChangePlaneError(
+            f"workflow file {_rel_unresolved(root, path)} is a symlink, "
+            "not a real file"
+        )
     try:
         resolved = path.resolve(strict=True)
     except OSError as error:
-        raise ChangePlaneError(f"cannot resolve workflow file {path}: {error}") from error
+        raise ChangePlaneError(
+            f"cannot resolve workflow file {_rel_unresolved(root, path)}: "
+            f"{error}"
+        ) from error
     try:
         resolved.relative_to(root)
     except ValueError as error:
         raise ChangePlaneError(
-            f"workflow file {path} resolves outside the assessment root"
+            f"workflow file {_rel_unresolved(root, path)} resolves outside "
+            "the assessment root"
         ) from error
 
 
@@ -1939,8 +2215,8 @@ def _assess_codeowners(
                     "coverage is missing or unavailable."
                 ),
                 details=(
-                    f"{ownership_path} does not declare an owned pattern "
-                    f"covering: {', '.join(missing)}."
+                    f"{_rel(root, ownership_path)} does not declare an owned "
+                    f"pattern covering: {', '.join(missing)}."
                 ),
                 affected_paths=(_rel(root, ownership_path),),
             )
@@ -1972,11 +2248,11 @@ def _assess_codeowners(
                 "coverage is missing or unavailable."
             ),
             details=(
-                f"{ownership_path} declares complete static coverage, but no "
-                "live GitHub branch-protection evidence was supplied "
-                "(`live_github` is None or incomplete); static files can "
-                "never prove a branch protection rule or required-check "
-                "list is actually enforced."
+                f"{_rel(root, ownership_path)} declares complete static "
+                "coverage, but no live GitHub branch-protection evidence "
+                "was supplied (`live_github` is None or incomplete); static "
+                "files can never prove a branch protection rule or "
+                "required-check list is actually enforced."
             ),
             affected_paths=(_rel(root, ownership_path),),
         )
