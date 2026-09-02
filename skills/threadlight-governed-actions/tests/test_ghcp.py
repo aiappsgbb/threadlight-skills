@@ -5897,3 +5897,652 @@ def test_malformed_yaml_finding_never_leaks_source_snippet_or_secret(tmp_path):
     # A sanitized error class is still surfaced -- the finding is not
     # emptied of all diagnostic value, only of raw source content.
     assert "Error" in combined
+
+
+# ---------------------------------------------------------------------------
+# Approval review, item 1: a `with:` input name is resolved case-
+# insensitively, exactly like GitHub Actions' own runner does -- every
+# declared `with:` entry is exposed to the invoked action as an
+# `INPUT_<NAME>` environment variable built by uppercasing the literal
+# YAML key, and `@actions/core`'s own `getInput()` uppercases the name it
+# looks up the identical way, so `Client-Id:`, `CLIENT-ID:`, and
+# `client-id:` all resolve to the exact same actual input regardless of
+# a workflow author's chosen letter case.
+# ---------------------------------------------------------------------------
+
+
+def _workflow_with_cased_client_id_key(tmp_path: Path, key: str) -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                    with:
+                      {key}: ${{{{ secrets.AZURE_CLIENT_ID }}}}
+                      tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                      subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return workflow_path
+
+
+def test_identity_refs_recognizes_mixed_case_client_id_with_key(tmp_path):
+    workflow = _workflow_with_cased_client_id_key(tmp_path, "Client-Id")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{secrets.AZURE_CLIENT_ID}}",)
+
+
+def test_identity_refs_recognizes_uppercase_client_id_with_key(tmp_path):
+    workflow = _workflow_with_cased_client_id_key(tmp_path, "CLIENT-ID")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{secrets.AZURE_CLIENT_ID}}",)
+
+
+def test_job_scoped_identity_refs_recognizes_mixed_case_client_id_key(tmp_path):
+    """The job-scoped bucketing rule 6 relies on (deploy vs. non-deploy
+    identities) must resolve a differently-cased `with:` key exactly like
+    the workflow-level identity extraction does, or a mixed-case deploy
+    identity would silently vanish from the identity-separation check."""
+    root = tmp_path / "mixed-case-identity-repo"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+          id-token: write
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+              id-token: write
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  Client-Id: ${{ secrets.DEPLOY_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+              id-token: write
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  Client-Id: ${{ secrets.DEPLOY_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
+    assert result.deploy_identity_refs
+    assert result.non_deploy_identity_refs
+    assert set(result.deploy_identity_refs) & set(result.non_deploy_identity_refs)
+
+
+def test_pull_request_target_checkout_flags_mixed_case_ref_key(tmp_path):
+    """`actions/checkout`'s own `ref:` input, spelled with a different
+    letter case, must still fail closed under `pull_request_target` when
+    it resolves to an attacker-controlled value."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      Ref: ${{ github.event.pull_request.head.sha }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_checkout_flags_uppercase_repository_key(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+                      ref: ${{ github.event.pull_request.head.sha }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_secret_login_still_detected_regardless_of_with_key_case(tmp_path):
+    """No regression: presence-only checks (`_has_secret_credential_input`,
+    the OIDC `client-id`/`tenant-id` presence check) were already
+    case-insensitive before this change and must remain so."""
+    root = tmp_path / "cased-secret-login-repo"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  Creds: ${{ secrets.AZURE_CREDENTIALS }}
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
+    assert result.oidc_wif == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# Approval review, item 2: CODEOWNERS coverage must extend to a repo's own,
+# actually-discovered infrastructure/Infrastructure-as-Code (IaC) surface --
+# conventional top-level directories (`infra/`, `infrastructure/`,
+# `terraform/`, `bicep/`), individual `.tf`/`.bicep` files anywhere in the
+# tree, and genuine ARM JSON templates (sniffed by their own `$schema`) --
+# without ever inventing a requirement for an infra category this repo
+# simply does not have.
+# ---------------------------------------------------------------------------
+
+
+def _write_codeowners(root: Path, patterns: Sequence[str]) -> None:
+    root.joinpath("CODEOWNERS").write_text(
+        "\n".join(f"{pattern} @octo-org/governance" for pattern in patterns) + "\n",
+        encoding="utf-8",
+    )
+
+
+_CLEAN_CODEOWNERS_PATTERNS = (
+    "src/governance/**",
+    "policies/**",
+    "tests/**",
+    ".github/workflows/governed-actions.yml",
+    "tests/governed-actions-manifest.json",
+    "tests/governed-actions-apply-plan.json",
+)
+
+
+def test_infra_directory_with_no_codeowners_coverage_is_must_fix(tmp_path):
+    root = tmp_path / "infra-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "infra").mkdir(parents=True)
+    (root / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "infra/**" in finding.details
+
+
+def test_infra_directory_with_codeowners_coverage_clears_ghcp_002(tmp_path):
+    root = tmp_path / "infra-covered-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "infra").mkdir(parents=True)
+    (root / "infra" / "main.bicep").write_text("param location string\n", encoding="utf-8")
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS + ("infra/**",))
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+def test_nested_terraform_file_requires_its_own_top_level_directory(tmp_path):
+    root = tmp_path / "terraform-nested-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "deploy" / "modules").mkdir(parents=True)
+    (root / "deploy" / "modules" / "network.tf").write_text(
+        "resource \"azurerm_virtual_network\" \"vnet\" {}\n", encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "deploy/**" in finding.details
+
+
+def test_arm_template_json_requires_its_own_containing_directory(tmp_path):
+    root = tmp_path / "arm-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "templates").mkdir(parents=True)
+    (root / "templates" / "azuredeploy.json").write_text(
+        json.dumps(
+            {
+                "$schema": (
+                    "https://schema.management.azure.com/schemas/2019-04-01/"
+                    "deploymentTemplate.json#"
+                ),
+                "contentVersion": "1.0.0.0",
+                "resources": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "templates/**" in finding.details
+
+
+def test_unrelated_json_file_is_never_mistaken_for_an_arm_template(tmp_path):
+    """A `.json` file with no ARM `$schema` marker -- an ordinary config
+    file, say -- must never manufacture a CODEOWNERS requirement."""
+    root = tmp_path / "plain-json-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "config").mkdir(parents=True)
+    (root / "config" / "settings.json").write_text(
+        json.dumps({"featureFlags": {"beta": True}}), encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+def test_repo_with_no_infrastructure_at_all_has_no_behavior_change(tmp_path):
+    """The core conservatism requirement: a repository with no
+    infra/IaC surface at all must produce the exact same CODEOWNERS
+    result as before this feature existed -- discovery must add zero
+    requirements, never subtract from or otherwise alter the fixed
+    baseline patterns (here, still `not-verified` on live-only branch
+    protection, never `must-fix` from a manufactured infra requirement)."""
+    root = _write_clean_repo(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "branch-protection-not-verified-statically"
+
+
+def test_vendored_infra_named_directory_is_not_mistaken_for_repo_infrastructure(
+    tmp_path,
+):
+    """A vendored dependency's own `infra/`-named directory, nested deep
+    inside an excluded tree, must never manufacture a requirement for
+    this repository's own CODEOWNERS file."""
+    root = tmp_path / "vendored-infra-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    (root / "node_modules" / "some-pkg" / "infra").mkdir(parents=True)
+    (root / "node_modules" / "some-pkg" / "infra" / "main.bicep").write_text(
+        "param location string\n", encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Approval review, item 3: GHCP-006 must additionally catch a
+# production-environment deploy identity that is also used for a
+# staging/development-environment deploy -- a dimension the coarser
+# build-vs-deploy bucketing cannot see when both jobs are themselves
+# deploy jobs. An unrecognized/custom environment name must never be
+# guessed into either tier, and must never itself invent a must-fix.
+# ---------------------------------------------------------------------------
+
+
+def _write_environment_tier_repo(
+    tmp_path: Path, *, prod_env: str, other_env: str, shared_identity: bool
+) -> Path:
+    root = tmp_path / "env-tier-repo"
+    identity_a = "${{ secrets.SHARED_CLIENT_ID }}"
+    identity_b = (
+        identity_a if shared_identity else "${{ secrets.OTHER_CLIENT_ID }}"
+    )
+    _write_workflow(
+        root,
+        "deploy.yml",
+        f"""\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+          id-token: write
+        jobs:
+          deploy-prod:
+            runs-on: ubuntu-latest
+            environment: {prod_env}
+            permissions:
+              contents: read
+              id-token: write
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  client-id: {identity_a}
+                  tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                  subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+          deploy-other:
+            runs-on: ubuntu-latest
+            environment: {other_env}
+            permissions:
+              contents: read
+              id-token: write
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  client-id: {identity_b}
+                  tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                  subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+        """,
+    )
+    return root
+
+
+def test_production_identity_shared_with_staging_is_must_fix(tmp_path):
+    root = _write_environment_tier_repo(
+        tmp_path, prod_env="production", other_env="staging", shared_identity=True
+    )
+    workflow = root / ".github" / "workflows" / "deploy.yml"
+    result = assess_workflow(workflow)
+    from ghcp import _assess_identity_separation
+
+    findings: list = []
+    controls: dict = {}
+    _assess_identity_separation((result,), None, findings, controls)
+    assert controls["ghcp_identity_separation"] == "must-fix"
+    finding = next(f for f in findings if f.finding_id == "GHCP-006")
+    assert finding.reason_code == "production-environment-identity-overlap"
+
+
+def test_prod_alias_shared_with_dev_alias_is_must_fix(tmp_path):
+    """`prod`/`dev` are recognized aliases for the same two tiers as
+    `production`/`development`."""
+    root = _write_environment_tier_repo(
+        tmp_path, prod_env="prod", other_env="dev", shared_identity=True
+    )
+    workflow = root / ".github" / "workflows" / "deploy.yml"
+    result = assess_workflow(workflow)
+    from ghcp import _assess_identity_separation
+
+    findings: list = []
+    controls: dict = {}
+    _assess_identity_separation((result,), None, findings, controls)
+    assert controls["ghcp_identity_separation"] == "must-fix"
+    finding = next(f for f in findings if f.finding_id == "GHCP-006")
+    assert finding.reason_code == "production-environment-identity-overlap"
+
+
+def test_production_identity_distinct_from_staging_is_not_flagged_by_tier_check(
+    tmp_path,
+):
+    root = _write_environment_tier_repo(
+        tmp_path, prod_env="production", other_env="staging", shared_identity=False
+    )
+    workflow = root / ".github" / "workflows" / "deploy.yml"
+    result = assess_workflow(workflow)
+    from ghcp import _assess_identity_separation
+
+    findings: list = []
+    controls: dict = {}
+    _assess_identity_separation((result,), None, findings, controls)
+    assert not any(
+        f.reason_code == "production-environment-identity-overlap" for f in findings
+    )
+
+
+def test_unrecognized_custom_environment_name_is_never_guessed_into_a_tier(
+    tmp_path,
+):
+    """A custom environment name (e.g. `qa`) sharing an identity with a
+    `staging` deploy must never be flagged by this specific
+    production-vs-non-production check -- it simply falls outside both
+    recognized tiers."""
+    root = _write_environment_tier_repo(
+        tmp_path, prod_env="qa", other_env="staging", shared_identity=True
+    )
+    workflow = root / ".github" / "workflows" / "deploy.yml"
+    result = assess_workflow(workflow)
+    from ghcp import _assess_identity_separation
+
+    findings: list = []
+    controls: dict = {}
+    _assess_identity_separation((result,), None, findings, controls)
+    assert not any(
+        f.reason_code == "production-environment-identity-overlap" for f in findings
+    )
+
+
+def test_environment_tier_helper_never_guesses_unknown_names():
+    from ghcp import _environment_tier
+
+    assert _environment_tier("production") == "production"
+    assert _environment_tier("Prod") == "production"
+    assert _environment_tier("staging") == "non-production"
+    assert _environment_tier("Development") == "non-production"
+    assert _environment_tier("qa") is None
+    assert _environment_tier("uat") is None
+    assert _environment_tier("") is None
+
+
+def test_deploy_job_without_declared_environment_is_unaffected_by_tier_check(
+    tmp_path,
+):
+    """A deploy job that declares no `environment:` at all contributes
+    nothing to `environment_identity_refs`, and must therefore never be
+    considered by the production-vs-non-production tier check -- it only
+    ever falls through to the existing deploy/non-deploy comparison."""
+    root = tmp_path / "no-environment-repo"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+          id-token: write
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+              id-token: write
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
+    assert result.environment_identity_refs == ()
+

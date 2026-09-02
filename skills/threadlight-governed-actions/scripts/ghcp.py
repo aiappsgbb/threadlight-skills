@@ -331,6 +331,37 @@ _REQUIRED_CODEOWNERS_PATTERNS: Tuple[str, ...] = (
     "tests/governed-actions-apply-plan.json",
 )
 
+# Top-level directory names conventionally used for Infrastructure-as-
+# Code in a repository. Deliberately matched only at the repository
+# root -- a nested directory elsewhere that merely happens to share one
+# of these names (a vendored dependency's own `infra/` folder, say) is
+# not this repository's own infrastructure surface, and requiring
+# CODEOWNERS coverage for it would be a false positive.
+_INFRASTRUCTURE_DIRECTORY_NAMES: Tuple[str, ...] = (
+    "infra",
+    "infrastructure",
+    "terraform",
+    "bicep",
+)
+
+# File suffixes that unambiguously mark a file as Infrastructure-as-Code
+# regardless of which directory it lives in: Terraform's own `.tf`/
+# `.tf.json`, and Azure's own Bicep template format.
+_IAC_FILE_SUFFIXES: Tuple[str, ...] = (".tf", ".tf.json", ".bicep")
+
+# The exact `$schema` substring every genuine ARM (Azure Resource
+# Manager) JSON template declares -- a far more reliable, conservative
+# signal than guessing from a `.json` file's name or directory alone,
+# which would false-positive on every unrelated JSON file in the repo.
+_ARM_TEMPLATE_SCHEMA_RE = re.compile(
+    r'"\$schema"\s*:\s*"[^"]*deploymentTemplate\.json', re.IGNORECASE
+)
+
+# Only ever sniffed for the fixed, tiny `$schema` marker above -- never
+# fully parsed/loaded -- so an arbitrarily large `.json` file elsewhere
+# in the tree can never make this scan slow or memory-heavy.
+_ARM_TEMPLATE_SNIFF_BYTES = 4096
+
 # Every location GitHub itself recognizes a CODEOWNERS file at, in
 # GitHub's own precedence order: ``.github/CODEOWNERS`` is consulted
 # first, then the repository root ``CODEOWNERS``, then ``docs/
@@ -424,6 +455,7 @@ class WorkflowAssessment:
     sha_violations: Tuple[str, ...]
     deploy_identity_refs: Tuple[str, ...] = ()
     non_deploy_identity_refs: Tuple[str, ...] = ()
+    environment_identity_refs: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -760,6 +792,36 @@ def _permissions_status(document: Mapping) -> Status:
 # ---------------------------------------------------------------------------
 
 
+def _with_input_value(with_block: Mapping, key: str) -> object:
+    """The value declared for ``key`` in a step's ``with:`` block,
+    matched case-insensitively -- GitHub Actions itself resolves a
+    `with:` input name case-insensitively in practice: every declared
+    `with:` entry is exposed to the invoked action as an
+    ``INPUT_<NAME>`` environment variable built by uppercasing the
+    literal YAML key exactly as written, and an action's own
+    ``@actions/core`` ``getInput()`` helper uppercases the name it is
+    asked to read the very same way before looking that variable up --
+    so a workflow author spelling a security-relevant input as
+    ``Client-Id:``, ``CLIENT-ID:``, or ``client-id:`` all resolve to
+    the exact same actual input, regardless of which casing this
+    module happens to compare against. Comparing a `with:` key by
+    exact, case-sensitive text would silently miss a security-relevant
+    input (``ref``, ``repository``, ``client-id``, ``creds``,
+    ``publish-profile``, ...) declared in a different letter case.
+    Returns ``None`` if no key case-insensitively equal to ``key``
+    exists in ``with_block`` at all. The *first* case-insensitive match
+    (in the block's own declared order) is returned if more than one
+    such key is somehow present -- YAML itself does not allow a
+    genuinely duplicate key within one mapping, so this only matters
+    for an already-malformed document.
+    """
+    target = key.strip().lower()
+    for actual_key, value in with_block.items():
+        if str(actual_key).strip().lower() == target:
+            return value
+    return None
+
+
 def _has_secret_credential_input(step: Mapping) -> bool:
     """True if a step's ``with:`` block sets any key in
     :data:`_SECRET_LOGIN_KEYS` (``creds``, ``client-secret``, ``password``,
@@ -1094,7 +1156,7 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
         if not isinstance(with_block, Mapping):
             continue
         for key in ("client-id", "creds"):
-            value = with_block.get(key)
+            value = _with_input_value(with_block, key)
             if value:
                 refs.append(_redact_identity_ref(str(value)))
     return _dedupe_preserve_order(refs)
@@ -1199,10 +1261,73 @@ def _job_scoped_identity_refs(
                 if not isinstance(with_block, Mapping):
                     continue
                 for key in ("client-id", "creds"):
-                    value = with_block.get(key)
+                    value = _with_input_value(with_block, key)
                     if value:
                         bucket.append(_redact_identity_ref(str(value)))
     return _dedupe_preserve_order(deploy_refs), _dedupe_preserve_order(other_refs)
+
+
+def _job_environment_name(job: Mapping) -> Optional[str]:
+    """The GitHub Environment name a single job declares via its own
+    ``environment:`` key (a bare string, or a mapping's ``name:``), or
+    ``None`` if the job declares no environment at all."""
+    environment = job.get("environment")
+    if isinstance(environment, Mapping):
+        environment = environment.get("name")
+    if isinstance(environment, str) and environment.strip():
+        return environment.strip()
+    return None
+
+
+def _environment_scoped_identity_refs(
+    document: Mapping,
+) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+    """Every ``(environment_name, identity_refs)`` pair from every job
+    that declares *both* its own GitHub ``environment:`` name *and* at
+    least one ``azure/login`` client-id/creds reference.
+
+    Declaring a named ``environment:`` is itself unambiguous
+    deployment-target evidence, independent of whether that job also
+    separately satisfies the generic :func:`_is_deploy_job` name/uses
+    heuristic -- a job named merely ``deploy`` with no declared
+    environment tells rule 6 nothing about *which* environment tier it
+    targets, while a job that explicitly says ``environment: production``
+    (regardless of its own job id) does. Rule 6 needs this
+    environment-tier-scoped view specifically to catch a production
+    identity that is also used for a staging/development deploy, which
+    the coarser build-vs-deploy bucketing in
+    :func:`_job_scoped_identity_refs` cannot distinguish.
+    """
+    pairs: List[Tuple[str, Tuple[str, ...]]] = []
+    jobs = document.get("jobs")
+    if not isinstance(jobs, Mapping):
+        return ()
+    for job in jobs.values():
+        if not isinstance(job, Mapping):
+            continue
+        environment_name = _job_environment_name(job)
+        if environment_name is None:
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        refs: List[str] = []
+        for step in steps:
+            if not isinstance(step, Mapping):
+                continue
+            uses = str(step.get("uses", "")).split("@", 1)[0].strip().lower()
+            if uses != "azure/login":
+                continue
+            with_block = step.get("with")
+            if not isinstance(with_block, Mapping):
+                continue
+            for key in ("client-id", "creds"):
+                value = _with_input_value(with_block, key)
+                if value:
+                    refs.append(_redact_identity_ref(str(value)))
+        if refs:
+            pairs.append((environment_name, tuple(_dedupe_preserve_order(refs))))
+    return tuple(pairs)
 
 
 def _normalize_indexed_github_expression(text: str) -> str:
@@ -1415,7 +1540,7 @@ def _has_untrusted_checkout(document: Mapping) -> bool:
             with_block = step.get("with")
             if isinstance(with_block, Mapping):
                 for key in ("ref", "repository"):
-                    raw_value = with_block.get(key)
+                    raw_value = _with_input_value(with_block, key)
                     if not raw_value:
                         continue
                     if not _checkout_value_is_provably_trusted(
@@ -1636,6 +1761,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     login_job_steps = _azure_login_job_steps(document)
     deploy_action_job_steps = _azure_deploy_action_job_steps(document)
     deploy_identity_refs, non_deploy_identity_refs = _job_scoped_identity_refs(document)
+    environment_identity_refs = _environment_scoped_identity_refs(document)
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -1654,6 +1780,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         sha_violations=sha_violations,
         deploy_identity_refs=deploy_identity_refs,
         non_deploy_identity_refs=non_deploy_identity_refs,
+        environment_identity_refs=environment_identity_refs,
     )
 
 
@@ -2014,6 +2141,72 @@ def _eval_suite_directories(root: Path, eval_files: Tuple[Path, ...]) -> Set[Pat
             if part == "evals":
                 directories.add(Path(*relative.parts[: index + 1]))
     return directories
+
+
+def _looks_like_arm_template(path: Path) -> bool:
+    """True if ``path`` -- sniffed for only its first
+    :data:`_ARM_TEMPLATE_SNIFF_BYTES` bytes, never fully parsed -- looks
+    like a genuine Azure Resource Manager (ARM) JSON template: one
+    declaring the ``$schema`` every real ARM template carries. Guessing
+    from a `.json` file's name or directory alone would false-positive
+    on every unrelated JSON file in the repository; this content sniff
+    is deliberately narrow instead.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            head = handle.read(_ARM_TEMPLATE_SNIFF_BYTES)
+    except OSError:
+        return False
+    return bool(_ARM_TEMPLATE_SCHEMA_RE.search(head))
+
+
+def _discover_infrastructure_codeowners_requirements(root: Path) -> Tuple[str, ...]:
+    """Every additional CODEOWNERS requirement this repository's own,
+    actually-present infrastructure/Infrastructure-as-Code (IaC) surface
+    calls for -- deterministic and conservative: a fixed set of
+    conventional top-level directory names
+    (:data:`_INFRASTRUCTURE_DIRECTORY_NAMES`) is checked for existence at
+    the repository root only, and the whole tree (excluding hidden and
+    vendored/scratch directories, per :data:`_EXCLUDED_DIR_NAMES`) is
+    scanned for an individual Terraform/Bicep file
+    (:data:`_IAC_FILE_SUFFIXES`) or a genuine ARM JSON template (sniffed
+    via :func:`_looks_like_arm_template`), each reported as its own
+    containing top-level directory (or, for a file sitting directly at
+    the repository root, that exact file's own name) so CODEOWNERS
+    coverage can be required for precisely the infrastructure surface
+    this repository actually declares.
+
+    Returns an empty tuple -- never inventing a requirement -- for a
+    repository with no infrastructure/IaC surface at all; a category
+    this repository has no matching directory or file for is simply
+    absent from the result, not silently required anyway.
+    """
+    if not root.is_dir():
+        return ()
+    discovered: Set[str] = set()
+    for name in _INFRASTRUCTURE_DIRECTORY_NAMES:
+        if (root / name).is_dir():
+            discovered.add(f"{name}/**")
+    for candidate in root.rglob("*"):
+        if not candidate.is_file():
+            continue
+        relative = candidate.relative_to(root)
+        if any(
+            part.startswith(".") or part in _EXCLUDED_DIR_NAMES
+            for part in relative.parts
+        ):
+            continue
+        name_lower = candidate.name.lower()
+        is_iac = any(name_lower.endswith(suffix) for suffix in _IAC_FILE_SUFFIXES)
+        if not is_iac and name_lower.endswith(".json"):
+            is_iac = _looks_like_arm_template(candidate)
+        if not is_iac:
+            continue
+        if len(relative.parts) == 1:
+            discovered.add(relative.as_posix())
+        else:
+            discovered.add(f"{relative.parts[0]}/**")
+    return tuple(sorted(discovered))
 
 
 def _path_token_pattern(relative_path: Path) -> "re.Pattern[str]":
@@ -3056,9 +3249,12 @@ def _assess_codeowners(
         return
 
     entries = _parse_codeowners_entries(ownership_path)
+    required_patterns = _REQUIRED_CODEOWNERS_PATTERNS + (
+        _discover_infrastructure_codeowners_requirements(root)
+    )
     missing = tuple(
         requirement
-        for requirement in _REQUIRED_CODEOWNERS_PATTERNS
+        for requirement in required_patterns
         if not _codeowners_requirement_owned(entries, requirement)
     )
     if missing:
@@ -3331,6 +3527,31 @@ def _assess_oidc(
 
 # --- GHCP-006: build/test/deploy identity separation -------------------
 
+# GitHub Environment names recognized as the "production" tier and the
+# "non-production" (staging/development) tier respectively -- narrow and
+# fixed deliberately: an unrecognized or custom environment name (e.g.
+# `"qa"`, `"uat"`, a team-specific name) must never be *guessed* into
+# either tier, per this check's own conservatism requirement. A name
+# outside both sets simply never participates in this specific
+# production-vs-non-production comparison at all.
+_PRODUCTION_ENVIRONMENT_NAMES: frozenset = frozenset({"production", "prod"})
+_LOWER_ENVIRONMENT_NAMES: frozenset = frozenset(
+    {"staging", "stage", "development", "dev"}
+)
+
+
+def _environment_tier(name: str) -> Optional[str]:
+    """``"production"``, ``"non-production"``, or ``None`` for a GitHub
+    Environment name outside both recognized tiers -- an unrecognized or
+    custom name is deliberately left unclassified rather than guessed
+    into either tier."""
+    normalized = name.strip().lower()
+    if normalized in _PRODUCTION_ENVIRONMENT_NAMES:
+        return "production"
+    if normalized in _LOWER_ENVIRONMENT_NAMES:
+        return "non-production"
+    return None
+
 
 def _assess_identity_separation(
     assessments: Tuple[WorkflowAssessment, ...],
@@ -3338,6 +3559,39 @@ def _assess_identity_separation(
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
 ) -> None:
+    production_identities: Set[str] = set()
+    non_production_identities: Set[str] = set()
+    for a in assessments:
+        for environment_name, refs in a.environment_identity_refs:
+            tier = _environment_tier(environment_name)
+            if tier == "production":
+                production_identities.update(refs)
+            elif tier == "non-production":
+                non_production_identities.update(refs)
+
+    environment_tier_shared = production_identities & non_production_identities
+    if environment_tier_shared:
+        controls["ghcp_identity_separation"] = "must-fix"
+        findings.append(
+            Finding(
+                finding_id="GHCP-006",
+                status="must-fix",
+                phase="pre-deploy",
+                plane="change",
+                reason_code="production-environment-identity-overlap",
+                summary=(
+                    "Build/test/deploy identities are shared, over-broad, or "
+                    "not evidenced."
+                ),
+                details=(
+                    "A production-environment deploy identity is also used "
+                    "for a staging/development-environment deploy: "
+                    f"{', '.join(sorted(environment_tier_shared))}."
+                ),
+            )
+        )
+        return
+
     deploy_identities = {
         ref for a in assessments for ref in a.deploy_identity_refs
     }
