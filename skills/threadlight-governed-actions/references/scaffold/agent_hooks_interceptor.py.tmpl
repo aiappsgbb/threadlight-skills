@@ -1,0 +1,161 @@
+"""Starter Agent Hooks interceptor scaffold (Task 11 bounded MAF scaffold).
+
+============================================================================
+ THIS IS A SCAFFOLD, NOT A FINISHED CONTROL. READ THIS BEFORE WIRING IT IN.
+============================================================================
+
+What this file is:
+
+- A deny-by-default starting point that reads the sibling
+  ``policies/governed-actions.policy.yaml`` file (also scaffolded empty --
+  ``rules: []``, ``approvers: []``) and returns ``"deny"`` for *every*
+  action id until a customer adds a matching rule to that policy. No
+  rule, threshold, approver, tenant id, role assignment, or deployment
+  target is invented here or in the policy file: this scaffold authors
+  none of that. A customer's own governance/security team, working with
+  the ``foundry-agt`` skill, is responsible for turning the empty policy
+  into a real one.
+- Framework-neutral: this module has no dependency on any particular
+  agent runtime. It is meant to be called from wherever a customer's own
+  runtime exposes a pre-tool-call (or equivalent) extension point --
+  including, but not limited to, an Agent Hooks-compliant
+  ``agent_hooks.pre_tool_call``/``agent_hooks.require_approval`` seam.
+
+What this file explicitly is NOT:
+
+- It is **not a security boundary**. Agent Hooks (``AGENT-HOOKS-0.1``,
+  spec version ``0.1.0-alpha``) is a Draft, alpha-stage specification
+  that defines a **cooperative** hook contract: a compliant runtime
+  *chooses* to call hook points and *chooses* to honor their results.
+  Nothing in this scaffold -- or in Agent Hooks itself -- can prevent,
+  sandbox, or contain an action a hostile or buggy runtime declines to
+  route through this interceptor. Treat "this file exists and is wired
+  in" as necessary, never sufficient, evidence of enforcement.
+- It is **not wired into anything by this scaffold**. Writing this file
+  does not, by itself, make any runtime call it. A customer must still
+  register ``evaluate()`` (or an equivalent call) at their own runtime's
+  actual pre-tool-call seam; until they do, this file is inert.
+- It is **not a complete policy engine**. It supports exactly one
+  matching strategy (exact ``action_id`` match against ``policy["rules"]``)
+  and one deny-by-default fallback. Anything more (conditions, scopes,
+  time windows, approval routing, ...) is customer policy-authoring
+  scope, again delegated to ``foundry-agt`` -- not invented here.
+
+Every conclusion the threadlight-governed-actions assessor reaches about
+mediation coverage is independent of whether this file exists: scaffolding
+it does not, on its own, change any assessor finding from ``must-fix``/
+``not-verified`` to ``pass``.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Mapping, Optional, Sequence
+
+#: The scaffolded, customer-owned policy file this interceptor reads.
+#: Relative to the project root -- never an absolute, environment-, or
+#: target-supplied path -- so this module always reads the one policy
+#: file the customer's own repository declares, never one it is told
+#: about at runtime.
+POLICY_RELATIVE_PATH = Path("policies") / "governed-actions.policy.yaml"
+
+#: The decision returned for every action id until a customer adds a
+#: matching rule. Deny-by-default: consequential actions are never
+#: implicitly allowed just because no rule mentions them yet.
+_DEFAULT_DECISION = "deny"
+
+
+class PolicyLoadError(RuntimeError):
+    """Raised when the scaffolded policy file cannot be read or parsed.
+
+    Deliberately fails closed: a caller catching this and falling back to
+    "allow" would silently defeat the deny-by-default contract this
+    scaffold exists to provide.
+    """
+
+
+def _load_policy(policy_path: Path) -> Mapping[str, object]:
+    """Read and parse *policy_path* as YAML.
+
+    Lazily imports ``pyyaml`` (the same convention this skill's other
+    modules use) so this file can be imported even before that dependency
+    is installed; it is only required once a hook actually fires.
+    """
+    try:
+        import yaml
+    except ImportError as error:  # pragma: no cover - environment-dependent
+        raise PolicyLoadError(
+            "pyyaml is required to parse the governed-actions policy "
+            f"({policy_path}); install it with `pip install pyyaml`"
+        ) from error
+    try:
+        text = policy_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise PolicyLoadError(
+            f"could not read governed-actions policy at {policy_path}: {error}"
+        ) from error
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise PolicyLoadError(
+            f"governed-actions policy at {policy_path} is not valid YAML: {error}"
+        ) from error
+    if document is None:
+        return {}
+    if not isinstance(document, Mapping):
+        raise PolicyLoadError(
+            f"governed-actions policy at {policy_path} must be a YAML mapping"
+        )
+    return document
+
+
+def _matching_rule(rules: Sequence[object], action_id: str) -> Optional[Mapping[str, object]]:
+    for rule in rules:
+        if isinstance(rule, Mapping) and rule.get("action_id") == action_id:
+            return rule
+    return None
+
+
+def evaluate(action_id: str, *, project_root: Optional[Path] = None) -> Mapping[str, object]:
+    """Return this scaffold's decision for *action_id*.
+
+    Deny-by-default: if the scaffolded policy's ``rules`` list contains no
+    entry whose ``action_id`` exactly matches, this returns
+    ``{"decision": "deny", ...}`` unconditionally -- never "allow", and
+    never a decision derived from the action id's own name, shape, or any
+    other heuristic. Only an explicit, customer-authored rule can change
+    the outcome for a given action id.
+    """
+    root = Path(project_root) if project_root is not None else Path.cwd()
+    policy = _load_policy(root / POLICY_RELATIVE_PATH)
+    rules = policy.get("rules") or []
+    if not isinstance(rules, Sequence) or isinstance(rules, (str, bytes)):
+        rules = []
+    rule = _matching_rule(rules, action_id)
+    if rule is None:
+        return {
+            "decision": _DEFAULT_DECISION,
+            "action_id": action_id,
+            "reason": "no customer rule matches this action id; deny-by-default",
+            "rule_id": None,
+        }
+    return {
+        "decision": rule.get("decision", _DEFAULT_DECISION),
+        "action_id": action_id,
+        "reason": "matched an explicit customer-authored rule",
+        "rule_id": rule.get("id"),
+    }
+
+
+def pre_tool_call(action_id: str, *, project_root: Optional[Path] = None) -> Mapping[str, object]:
+    """Cooperative pre-tool-call hook entry point.
+
+    A customer's own runtime is responsible for calling this (or an
+    equivalent) before actually invoking *action_id* and for actually
+    honoring a ``"deny"`` decision by not proceeding -- this scaffold
+    cannot enforce either half of that on a runtime's behalf. Naming this
+    function ``pre_tool_call`` intentionally mirrors the Agent Hooks
+    cooperative pre-tool-call seam so a customer wiring it in can find
+    the one intended integration point at a glance; it is not itself an
+    Agent Hooks SDK call.
+    """
+    return evaluate(action_id, project_root=project_root)

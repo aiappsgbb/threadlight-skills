@@ -48,6 +48,7 @@ import maf_adapter
 import mediation
 import probes
 import render
+import scaffold
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -135,9 +136,26 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target", default=".", help="path to the assessed project (default: .)")
     parser.add_argument(
         "--phase",
-        required=True,
+        required=False,
+        default=None,
         choices=contracts.SUPPORTED_PHASES,
-        help="lifecycle phase to assess",
+        help="lifecycle phase to assess; required unless --scaffold/--confirm-scaffold is given",
+    )
+    parser.add_argument(
+        "--scaffold",
+        choices=scaffold.SUPPORTED_SCAFFOLD_KINDS,
+        default=None,
+        help=(
+            "write the bounded, double-opt-in governance scaffold "
+            "(SCAFFOLD_FILES) into --target instead of assessing it; "
+            "requires --confirm-scaffold as well"
+        ),
+    )
+    parser.add_argument(
+        "--confirm-scaffold",
+        dest="confirm_scaffold",
+        action="store_true",
+        help="the second, explicit opt-in required together with --scaffold",
     )
     parser.add_argument(
         "--emit",
@@ -194,13 +212,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
     Raises :class:`ArgumentError`/:class:`ValueError` (never calls
     ``sys.exit``) for both a plain argparse usage error and this CLI's
-    one cross-flag prerequisite: ``--phase post-deploy`` requires
-    ``--staging-resource-group`` naming an explicit, non-production
-    staging resource group, since post-deploy must never be run,
-    even read-only, against an unnamed or ambiguous target environment.
+    cross-flag prerequisites:
+
+    - ``--phase`` is required unless ``--scaffold`` and/or
+      ``--confirm-scaffold`` was given -- the two scaffold flags' own
+      double opt-in is enforced later, by :func:`scaffold.scaffold`
+      itself, never here.
+    - ``--phase post-deploy`` requires ``--staging-resource-group``
+      naming an explicit, non-production staging resource group, since
+      post-deploy must never be run, even read-only, against an unnamed
+      or ambiguous target environment.
     """
     parser = _build_parser()
     namespace = parser.parse_args(list(argv) if argv is not None else None)
+    scaffold_requested = namespace.scaffold is not None or namespace.confirm_scaffold
+    if not scaffold_requested and namespace.phase is None:
+        raise ArgumentError(
+            "--phase is required (unless --scaffold/--confirm-scaffold is given)"
+        )
     if namespace.phase == "post-deploy" and not namespace.staging_resource_group:
         raise ArgumentError(
             "--phase post-deploy requires --staging-resource-group naming an "
@@ -969,7 +998,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     rationale):
 
     - ``0``: assessment completed; if ``--gate`` was set, the selected
-      phase's requirements passed.
+      phase's requirements passed. When ``--scaffold``/``--confirm-scaffold``
+      was given instead, ``0`` means the bounded governance scaffold was
+      written and nothing else in this docstring's phase-assessment
+      description applies to that run.
     - ``1``: ``--gate`` failed because a must-fix (or, outside design, a
       remaining not-verified) finding remains; any artifacts ``--emit``
       requested were still validly written.
@@ -979,7 +1011,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
       parsing or assessment (this codebase's own convention already
       makes essentially every "malformed/missing prerequisite" error a
       ``ValueError`` subclass, so no additional per-module special-casing
-      is required here).
+      is required here). This also covers
+      :class:`scaffold.ScaffoldRefusedError` (itself a ``ValueError``
+      subclass) for a scaffold request that was refused -- e.g. only one
+      of ``--scaffold``/``--confirm-scaffold`` given, or an unsafe target.
     - ``3``: an assessor/adapter/probe/artifact failure -- every
       exception that is not one of the above, whether a *declared*
       tool failure (e.g. :class:`render.ArtifactWriteError`) or a
@@ -994,6 +1029,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except (argparse.ArgumentError, ArgumentError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+
+    if namespace.scaffold is not None or namespace.confirm_scaffold:
+        # Explicit scaffold CLI path -- an entirely separate mode from
+        # phase assessment. Never reaches `_options_from_namespace`/
+        # `assess()`/`render.write_artifacts` below: the two code paths
+        # do not share a call site, so a normal lifecycle-phase run can
+        # never invoke `scaffold.scaffold`, and a scaffold run never
+        # performs a phase assessment.
+        try:
+            written = scaffold.scaffold(
+                Path(namespace.target), namespace.scaffold, namespace.confirm_scaffold
+            )
+        except (argparse.ArgumentError, ArgumentError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        except Exception as error:  # noqa: BLE001 - deliberately broad; see docstring.
+            print(f"{type(error).__name__}: {error}", file=sys.stderr)
+            return 3
+        for path in written:
+            print(path)
+        return 0
 
     options = _options_from_namespace(namespace)
 
