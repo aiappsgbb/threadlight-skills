@@ -2200,7 +2200,12 @@ def test_manifest_probes_with_tied_primary_key_still_order_independent():
     assert len(manifest_forward["conformance"]["application_probes"]) == 2
 
 
-def test_manifest_evidence_with_tied_primary_key_still_order_independent():
+def test_manifest_rejects_evidence_with_tied_primary_key_regardless_of_order():
+    # Evidence identity is now uniqueness-constrained by this module (see
+    # DuplicateEvidenceIdError): two entries sharing an evidence_id are
+    # never tolerated and tie-broken deterministically the way every
+    # other record-list sort is -- they are rejected outright, in either
+    # input order, before any manifest is even assembled.
     findings = [_finding("MED-001", "pass")]
 
     def _tied_evidence(source: str) -> contracts.EvidenceRef:
@@ -2225,13 +2230,10 @@ def test_manifest_evidence_with_tied_primary_key_still_order_independent():
     result_forward = _base_result(findings=findings, evidence=[evidence_a, evidence_b])
     result_reordered = _base_result(findings=findings, evidence=[evidence_b, evidence_a])
 
-    manifest_forward = render.build_manifest(result_forward)
-    manifest_reordered = render.build_manifest(result_reordered)
-    _assert_valid_manifest(manifest_forward)
-    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
-        manifest_reordered
-    )
-    assert len(manifest_forward["evidence"]) == 2
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result_forward)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result_reordered)
 
 
 def test_manifest_findings_with_tied_primary_key_still_order_independent():
@@ -2542,6 +2544,143 @@ def test_build_manifest_accepts_non_colliding_customer_residual_risk():
 
 
 # ---------------------------------------------------------------------------
+# Final rereview: duplicate evidence_id values are rejected outright (issue
+# 1) -- a trustworthy entry must never mask an untrustworthy duplicate of
+# the identical id through plain set membership.
+# ---------------------------------------------------------------------------
+
+
+def test_build_manifest_rejects_duplicate_evidence_id_valid_and_invalid():
+    # Without this rejection, a finding requiring "EVID-DUP" would look
+    # trustworthy (the set of trustworthy ids would contain "EVID-DUP"
+    # because *one* of the two same-id entries parses), even though the
+    # *other* same-id entry -- which could just as easily be the one this
+    # finding actually meant -- has no trustworthy timestamp at all.
+    findings = [_finding("MED-001", "must-fix", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_duplicate_evidence_id_both_invalid():
+    findings = [_finding("MED-001", "must-fix", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=None),
+        _evidence("EVID-DUP", collected_at="not-a-timestamp"),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_duplicate_evidence_id_both_valid():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_LATE),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_exact_duplicate_evidence_entries():
+    # Even a byte-for-byte identical duplicate (not merely a colliding id
+    # with differing fields) is rejected -- there is still no way to know
+    # which of the two identical entries a finding's reference means, and
+    # rendering must never silently collapse them into one.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-DUP",))]
+    one_evidence = _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY)
+    evidence = [one_evidence, one_evidence]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result)
+
+
+def test_build_manifest_rejects_duplicate_evidence_id_regardless_of_input_order():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-DUP",))]
+    forward = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=None),
+        _evidence("EVID-OTHER", collected_at=_COLLECTED_AT_LATE),
+    ]
+    reordered = list(reversed(forward))
+    result_forward = _base_result(findings=findings, evidence=forward)
+    result_reordered = _base_result(findings=findings, evidence=reordered)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result_forward)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_manifest(result_reordered)
+
+
+def test_build_manifest_accepts_distinct_evidence_ids():
+    # Control case: distinct ids -- even ones that share every other
+    # field -- are never rejected.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-A", "EVID-B"))]
+    evidence = [
+        _evidence("EVID-A", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-B", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    ids = [entry["evidence_id"] for entry in manifest["evidence"]]
+    assert ids == ["EVID-A", "EVID-B"]
+
+
+def test_render_evidence_pack_rejects_duplicate_evidence_id():
+    # render_evidence_pack builds its own manifest internally -- the
+    # rejection must surface there too, not only from build_manifest
+    # directly.
+    findings = [_finding("MED-001", "must-fix", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.render_evidence_pack(result)
+
+
+def test_build_apply_plan_rejects_duplicate_evidence_id():
+    findings = [_finding("MED-001", "must-fix", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.build_apply_plan(result)
+
+
+def test_write_artifacts_rejects_duplicate_evidence_id_before_any_write(tmp_path):
+    findings = [_finding("MED-001", "must-fix", evidence_refs=("EVID-DUP",))]
+    evidence = [
+        _evidence("EVID-DUP", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-DUP", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+
+    with pytest.raises(render.DuplicateEvidenceIdError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+
+    assert not manifest_path.exists()
+    assert not evidence_path.exists()
+    assert not apply_plan_path.exists()
+
+
+# ---------------------------------------------------------------------------
 # Hardening round: context-aware Markdown escaping (issue 9)
 # ---------------------------------------------------------------------------
 
@@ -2731,12 +2870,21 @@ def test_evidence_pack_neutralizes_angle_bracket_autolink():
 # ---------------------------------------------------------------------------
 # Hardening round: GFM bare-email autolinks must also be neutralized, in all
 # case variants, not just bare "http(s)://"/"www." runs (issue 5, 3rd
-# rereview)
+# rereview) -- and, per the 5th rereview, GFM's extended email autolink
+# grammar permits underscores anywhere in the domain (unlike its separate
+# www./scheme:// domain grammar, which forbids underscores in the last two
+# segments), so the neutralizing regex must not miss an underscore-domain
+# trigger such as ``foo@bar_baz.example``.
 # ---------------------------------------------------------------------------
 
 _HOSTILE_BARE_EMAIL_AUTOLINK = "contact user@evil.example for access"
 _HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE = "contact User@Evil.EXAMPLE for access"
 _HOSTILE_BARE_EMAIL_AUTOLINK_COMPLEX_LOCAL = "contact first.last+tag@evil.example for access"
+_HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN = "contact user@bar_baz.evil.example for access"
+_HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN_UPPERCASE = (
+    "contact User@BAR_BAZ.EVIL.EXAMPLE for access"
+)
+_HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_LAST_SEGMENT = "contact user@evil.exam_ple for access"
 
 
 @pytest.mark.parametrize(
@@ -2745,6 +2893,9 @@ _HOSTILE_BARE_EMAIL_AUTOLINK_COMPLEX_LOCAL = "contact first.last+tag@evil.exampl
         _HOSTILE_BARE_EMAIL_AUTOLINK,
         _HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE,
         _HOSTILE_BARE_EMAIL_AUTOLINK_COMPLEX_LOCAL,
+        _HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN,
+        _HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN_UPPERCASE,
+        _HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_LAST_SEGMENT,
     ],
 )
 def test_evidence_pack_neutralizes_bare_email_autolink(hostile_text):
@@ -2753,14 +2904,16 @@ def test_evidence_pack_neutralizes_bare_email_autolink(hostile_text):
     matrix_start = text.index("## Pass/fail matrix")
     matrix_section = text[matrix_start : text.index("## Residual-risk register")]
     # GFM's extended-autolink extension recognizes a bare
-    # ``local@domain.tld``-shaped run (case-insensitively) with no
-    # brackets at all and turns it into a live ``mailto:`` link -- the
+    # ``local@domain.tld``-shaped run (case-insensitively, and -- unlike
+    # its separate www./scheme:// domain grammar -- with underscores
+    # permitted anywhere in the domain, including its last segments) with
+    # no brackets at all and turns it into a live ``mailto:`` link -- the
     # literal, unescaped trigger substring must never survive rendering.
-    assert "user@evil.example" not in matrix_section
-    assert "User@Evil.EXAMPLE" not in matrix_section
-    assert "first.last+tag@evil.example" not in matrix_section
+    local_part, domain = hostile_text.split("@", 1)
+    domain = domain.split(" ", 1)[0]
+    local_part = local_part.rsplit(" ", 1)[-1]
+    assert f"{local_part}@{domain}" not in matrix_section
     # The value must still be readable, safe literal text (case preserved).
-    domain = hostile_text.split("@", 1)[1].split(" ", 1)[0]
     assert domain in matrix_section
 
 

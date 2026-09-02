@@ -238,6 +238,23 @@ class ReservedResidualRiskIdError(ValueError):
     """
 
 
+class DuplicateEvidenceIdError(ValueError):
+    """Raised when an :class:`~contracts.AssessmentResult` supplies two or
+    more ``evidence`` entries with the same ``evidence_id``.
+
+    The manifest schema permits this (it has no ``uniqueItems``/keyed
+    constraint on the ``evidence`` array), but this module's own freshness
+    and evidence-index logic both look an evidence id up by identity --
+    e.g. ``{ref.evidence_id for ref in result.evidence if trustworthy}`` --
+    so a duplicate id where only *one* of the two entries carries a
+    trustworthy ``collected_at`` would let that one entry's trustworthiness
+    silently mask the other, untrustworthy entry through simple set
+    membership. Rather than trying to guess which of two same-id entries
+    is authoritative, this is rejected outright, deterministically, before
+    any rendering or writing begins.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Remediation-kind table
 #
@@ -351,6 +368,28 @@ def _sorted_evidence(evidence: Sequence[EvidenceRef]) -> List[EvidenceRef]:
         evidence,
         key=lambda ref: (ref.evidence_id, _canonical_tiebreak(_evidence_to_dict(ref))),
     )
+
+
+def _reject_duplicate_evidence_ids(evidence: Sequence[EvidenceRef]) -> None:
+    """Raise :class:`DuplicateEvidenceIdError` if any two entries in
+    *evidence* share the same ``evidence_id``.
+
+    Called before anything else that would look an evidence id up by
+    identity (freshness's required-evidence check, the evidence index,
+    the pass/fail matrix's ``Evidence`` column) so a duplicate id can
+    never let one entry's trustworthiness mask another, distinct entry
+    recorded under the identical id -- whether the two are exact
+    duplicates or differ in every other field, and regardless of which
+    order the caller happened to supply them in.
+    """
+    seen: Set[str] = set()
+    for ref in evidence:
+        if ref.evidence_id in seen:
+            raise DuplicateEvidenceIdError(
+                "assessment-supplied evidence entries must have distinct "
+                f"evidence_id values, got a duplicate: {ref.evidence_id!r}"
+            )
+        seen.add(ref.evidence_id)
 
 
 def _sorted_mappings_by_canonical(items: Sequence[Mapping[str, object]], key: str) -> List[Dict[str, object]]:
@@ -842,7 +881,14 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     assessment itself supplied, so ``residual_risks`` is never empty and
     every finding's ``residual_risk_ref`` always resolves to an entry in
     it.
+
+    Raises :class:`DuplicateEvidenceIdError` before any other processing
+    if ``result.evidence`` contains two or more entries sharing the same
+    ``evidence_id`` -- the schema itself permits this, but this module's
+    identity-keyed freshness/evidence-index logic cannot safely tolerate
+    it (see that error's own docstring).
     """
+    _reject_duplicate_evidence_ids(result.evidence)
     residual_risks = _assemble_residual_risks(result)
     risk_ids = {str(entry["residual_risk_id"]) for entry in residual_risks}
     findings = [_finding_to_dict(finding, risk_ids) for finding in _sorted_findings(result.findings, risk_ids)]
@@ -979,10 +1025,22 @@ _BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
 #: even with no surrounding angle brackets -- GitHub Flavored Markdown's
 #: extended autolink extension also recognizes a bare email address like
 #: this as a live ``mailto:`` link, entirely independent of the
-#: ``scheme://``/``www.`` triggers above, and independent of the local
-#: part's letter case or the domain's.
+#: ``scheme://``/``www.`` triggers above.
+#:
+#: Modeled on GFM's own "extended email autolink" grammar (spec section
+#: on autolinks): the local part is one or more characters that are
+#: alphanumeric, or ``.``/``-``/``_``/``+`` (no requirement that it start
+#: with an alphanumeric -- GFM's own rewind-from-``@`` scan does not
+#: require that either); the domain is one or more ``.``-separated
+#: segments of alphanumeric/``-``/``_`` characters, with at least one
+#: period, and the final character must be alphanumeric (never ``-``/
+#: ``_``). Unlike GFM's separate ``www.``/``scheme://`` domain grammar
+#: (``check_domain`` in cmark-gfm), the *email* grammar does **not**
+#: reject underscores in the last two segments -- ``foo@bar_baz.example``
+#: is a real, live GFM autolink -- so this pattern deliberately allows
+#: ``_`` (and ``-``) throughout every domain segment, in any letter case.
 _BARE_EMAIL_RE = re.compile(
-    r"(?i)([a-z0-9][a-z0-9._%+\-]*)@([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)"
+    r"(?i)([a-z0-9._%+\-]+)@((?:[a-z0-9_-]+\.)+[a-z0-9_-]*[a-z0-9])"
 )
 
 
