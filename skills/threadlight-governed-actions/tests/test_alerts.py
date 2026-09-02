@@ -138,6 +138,9 @@ def test_missing_alert_class_is_should_fix(tmp_path):
         {"reason_code": 1},
         {"correlation_id": ""},
         {"correlation_id": None},
+        {"reason_code": "   "},
+        {"reason_code": "\t\n  "},
+        {"correlation_id": "   "},
     ],
 )
 def test_incomplete_definition_is_should_fix(tmp_path, patch):
@@ -145,6 +148,46 @@ def test_incomplete_definition_is_should_fix(tmp_path, patch):
     finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
     assert finding.status == "should-fix"
     assert "tuple-drift" in finding.details
+
+
+# --- Round 7, issue 2: reason_code/correlation_id must be non-blank once
+# stripped and bounded in length -- a whitespace-only value carries no
+# real identifying content, and an unbounded value cannot be trusted or
+# ever echoed back into a finding. -----------------------------------
+
+
+def test_oversized_reason_code_is_should_fix_without_echo(tmp_path):
+    oversized = "r" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"reason_code": oversized}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert oversized not in finding.details
+    assert evidence == ()
+
+
+def test_oversized_correlation_id_is_should_fix_without_echo(tmp_path):
+    oversized = "c" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"correlation_id": oversized}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert oversized not in finding.details
+    assert evidence == ()
+
+
+def test_definition_is_complete_boundary_length():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    at_max = {**base, "reason_code": "x" * alerts._MAX_ALERT_IDENTIFIER_LENGTH}
+    over_max = {**base, "reason_code": "x" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)}
+    assert alerts._definition_is_complete(at_max) is True
+    assert alerts._definition_is_complete(over_max) is False
+
+
+def test_definition_is_complete_rejects_whitespace_only_identifiers():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    assert alerts._definition_is_complete({**base, "reason_code": "   "}) is False
+    assert alerts._definition_is_complete({**base, "correlation_id": "\t\n"}) is False
 
 
 def test_definition_with_payload_field_is_should_fix(tmp_path):

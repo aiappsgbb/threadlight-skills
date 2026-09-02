@@ -60,6 +60,30 @@ _ALL_ALERT_CLASSES_TEXT = ", ".join(REQUIRED_ALERT_CLASSES)
 #: whatever actually produced it (malicious or merely corrupt).
 _MAX_ALERT_CATALOG_BYTES = 2_000_000
 
+#: A conservative *technical* safety bound on a ``reason_code``/
+#: ``correlation_id`` identifier's length -- never a business policy on
+#: how an identifier "should" be named. Every real identifier this
+#: project has ever seen is a short slug-like token; a value this long
+#: cannot be trusted as a stable identifier and is never echoed back
+#: into a finding regardless.
+_MAX_ALERT_IDENTIFIER_LENGTH = 200
+
+
+def _is_bounded_nonblank_identifier(value: object) -> bool:
+    """Whether *value* is a string this project trusts as a stable
+    ``reason_code``/``correlation_id``: a ``str`` that is not blank once
+    surrounding whitespace is stripped (a whitespace-only value carries
+    no real identifying content, even though it is technically a
+    non-empty string) and whose length stays within
+    :data:`_MAX_ALERT_IDENTIFIER_LENGTH`, this project's own fixed
+    technical safety bound rather than a customer-tunable policy value.
+    """
+    if not isinstance(value, str):
+        return False
+    if not value.strip():
+        return False
+    return len(value) <= _MAX_ALERT_IDENTIFIER_LENGTH
+
 
 def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Optional[str]]:
     """Read *root*'s ``governance/alerts.json`` catalog.
@@ -130,23 +154,23 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
 
 
 def _definition_is_complete(definition: object) -> bool:
-    """True only if *definition* is enabled, declares a non-empty, stable
+    """True only if *definition* is enabled, declares a non-blank
+    (once stripped of surrounding whitespace), length-bounded, stable
     ``reason_code``/``correlation_id`` pair, and contains no payload
     field.
 
-    Any other shape -- disabled, missing/blank/non-string identifiers, or
-    a payload-bearing key such as ``message``/``body``/``output`` -- is
-    reported incomplete rather than guessed at as acceptable.
+    Any other shape -- disabled, missing/blank/whitespace-only/
+    non-string/oversized identifiers, or a payload-bearing key such as
+    ``message``/``body``/``output`` -- is reported incomplete rather
+    than guessed at as acceptable.
     """
     if not isinstance(definition, Mapping):
         return False
     if definition.get("enabled") is not True:
         return False
-    reason_code = definition.get("reason_code")
-    if not isinstance(reason_code, str) or not reason_code:
+    if not _is_bounded_nonblank_identifier(definition.get("reason_code")):
         return False
-    correlation_id = definition.get("correlation_id")
-    if not isinstance(correlation_id, str) or not correlation_id:
+    if not _is_bounded_nonblank_identifier(definition.get("correlation_id")):
         return False
     try:
         canonical.validate_payload_free_audit(definition)

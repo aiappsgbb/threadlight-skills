@@ -2397,6 +2397,39 @@ _STAGING_CANARY_ALLOWED_HEADER_NAMES = frozenset(
 #: to record -- never any other response header, and never the body.
 _DEPLOYMENT_ID_HEADER_NAMES = ("x-deployment-id", "deployment-id")
 
+#: A fixed technical safety timeout (in seconds) this project asks the
+#: injected HTTP runner to honor for the one live request
+#: :func:`run_staging_canary` issues -- a bound against an unresponsive
+#: or slow live target hanging this assessment indefinitely, never a
+#: customer-tunable policy value. This project has no standing to make
+#: the runner actually enforce it, but it is always supplied so that any
+#: runner capable of honoring a request timeout can.
+_STAGING_CANARY_REQUEST_TIMEOUT_SECONDS = 10.0
+
+#: A fixed technical safety cap on the number of bytes of a canary
+#: response body :func:`run_staging_canary` will read and hash -- bounds
+#: the cost of hashing an adversarially large (or merely
+#: unexpectedly large) response body, never a customer content-size
+#: policy. A body at or beyond this many bytes is reported
+#: ``not-verified`` rather than hashed.
+_STAGING_CANARY_MAX_RESPONSE_BODY_BYTES = 1_048_576  # 1 MiB
+
+#: Fixed technical safety caps on a canary response's header mapping --
+#: bound the cost of iterating/searching an adversarially large or
+#: pathological header set for a deployment-id value, never a customer
+#: policy. A response whose headers exceed any of these caps is
+#: reported ``not-verified`` rather than searched.
+_STAGING_CANARY_MAX_RESPONSE_HEADER_COUNT = 64
+_STAGING_CANARY_MAX_RESPONSE_HEADER_NAME_LENGTH = 256
+_STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH = 4096
+
+#: A fixed technical safety cap on the recorded deployment-id value's
+#: length -- an oversized value is reported ``not-verified`` rather than
+#: recorded, since truncating it would still record an
+#: attacker/target-controlled value of unbounded original size as if it
+#: were trustworthy, bounded evidence.
+_STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH = 256
+
 
 def validate_post_deploy_target(phase: Phase, staging: bool, destructive: bool) -> None:
     """Refuse to let a ``post-deploy`` assessment target anything other
@@ -2463,13 +2496,26 @@ def _is_valid_http_status(value: object) -> bool:
 
 def _is_valid_canary_headers(headers: object) -> bool:
     """Whether *headers* is a mapping of plain string names to plain
-    string values -- the only shape :func:`run_staging_canary` ever
-    trusts enough to search for a deployment-id header."""
+    string values, bounded by :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_COUNT`
+    entries with each name/value within
+    :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_NAME_LENGTH`/
+    :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH` -- the only
+    shape :func:`run_staging_canary` ever trusts enough to search for a
+    deployment-id header. A header set exceeding any of these fixed
+    technical safety bounds is rejected exactly like one with the wrong
+    type, never partially processed."""
     if not isinstance(headers, Mapping):
         return False
-    return all(
-        isinstance(key, str) and isinstance(value, str) for key, value in headers.items()
-    )
+    if len(headers) > _STAGING_CANARY_MAX_RESPONSE_HEADER_COUNT:
+        return False
+    for key, value in headers.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            return False
+        if len(key) > _STAGING_CANARY_MAX_RESPONSE_HEADER_NAME_LENGTH:
+            return False
+        if len(value) > _STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH:
+            return False
+    return True
 
 
 def _parse_canary_https_url(url: object, *, what: str) -> str:
@@ -2633,6 +2679,22 @@ def run_staging_canary(
     of the call, any deployment-id-style response header, and a hash of
     the response body -- the actual body content is read only long
     enough to hash it and is never itself stored, logged, or returned.
+
+    Every request the runner is asked to make declares a fixed,
+    non-negotiable :data:`_STAGING_CANARY_REQUEST_TIMEOUT_SECONDS`
+    technical safety timeout. The response body is hashed only up to
+    :data:`_STAGING_CANARY_MAX_RESPONSE_BODY_BYTES`; the response's
+    headers are searched for a deployment-id only when they stay within
+    :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_COUNT` entries, each
+    within :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_NAME_LENGTH`/
+    :data:`_STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH`; and a
+    deployment-id longer than
+    :data:`_STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH` is never recorded.
+    Every one of these is a fixed technical safety bound against
+    unbounded processing cost, never a customer-tunable policy value;
+    exceeding any of them is reported ``not-verified`` exactly like any
+    other malformed response, and the oversized/offending raw value is
+    never echoed back.
     """
     origin = _validate_canary_contract(contract, trusted_origin)
     request = {
@@ -2640,6 +2702,7 @@ def run_staging_canary(
         "url": contract["url"],
         "headers": dict(contract.get("headers") or {}),
         "allow_redirects": False,
+        "timeout_seconds": _STAGING_CANARY_REQUEST_TIMEOUT_SECONDS,
     }
     expected_status = contract.get("expected_status")
     expected_label = f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx"
@@ -2723,6 +2786,17 @@ def run_staging_canary(
             evidence_refs=(),
         )
     deployment_id = _canary_deployment_id(headers)
+    if deployment_id is not None and len(deployment_id) > _STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed="oversized_deployment_id=True",
+            evidence_refs=(),
+        )
     raw_body = getattr(response, "body", _CANARY_RESPONSE_FIELD_MISSING)
     if raw_body is _CANARY_RESPONSE_FIELD_MISSING:
         return ProbeResult(
@@ -2747,6 +2821,17 @@ def run_staging_canary(
             evidence_refs=(),
         )
     body_bytes = raw_body if isinstance(raw_body, bytes) else raw_body.encode("utf-8")
+    if len(body_bytes) > _STAGING_CANARY_MAX_RESPONSE_BODY_BYTES:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed="oversized_response_body=True",
+            evidence_refs=(),
+        )
     response_hash = canonical.sha256_hex(body_bytes)
 
     observed = (

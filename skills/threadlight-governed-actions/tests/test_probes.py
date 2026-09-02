@@ -2798,3 +2798,120 @@ def test_unsafe_target_error_never_echoes_expected_status_value(
             trusted_origin=trusted_staging_origin,
         )
     assert _SECRET_MARKER not in str(excinfo.value)
+
+
+# --- Round 7, issue 1: bound canary execution/result -- a technical
+# request timeout must be passed to the runner, the response body must
+# be capped before it is hashed, response headers must be capped by
+# count/name-length/value-length before being searched for a
+# deployment-id, and the recorded deployment-id itself must be capped in
+# length -- every bound here is a fixed technical safety constant, never
+# a customer-tunable policy value, and every one of these limits being
+# exceeded is reported "not-verified" without ever echoing the
+# oversized/malformed raw value. ------------------------------------
+
+
+def test_staging_canary_request_includes_fixed_timeout(
+    safe_canary, fake_http_runner, trusted_staging_origin
+):
+    run_staging_canary(safe_canary, run=fake_http_runner, trusted_origin=trusted_staging_origin)
+    request = fake_http_runner.requests[0]
+    assert request["timeout_seconds"] == probes._STAGING_CANARY_REQUEST_TIMEOUT_SECONDS
+    assert isinstance(probes._STAGING_CANARY_REQUEST_TIMEOUT_SECONDS, (int, float))
+    assert probes._STAGING_CANARY_REQUEST_TIMEOUT_SECONDS > 0
+
+
+def test_staging_canary_oversized_body_is_not_verified_without_echo(
+    safe_canary, trusted_staging_origin
+):
+    oversized_body = b"A" * (probes._STAGING_CANARY_MAX_RESPONSE_BODY_BYTES + 1)
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body=oversized_body)
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert "A" * 100 not in result.observed
+    assert "response_sha256" not in result.observed
+
+
+def test_staging_canary_body_at_cap_is_still_hashed(safe_canary, trusted_staging_origin):
+    body_at_cap = b"B" * probes._STAGING_CANARY_MAX_RESPONSE_BODY_BYTES
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body=body_at_cap)
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "pass"
+    assert "response_sha256" in result.observed
+
+
+def test_staging_canary_oversized_response_header_count_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    too_many_headers = {
+        f"x-header-{i}": "v" for i in range(probes._STAGING_CANARY_MAX_RESPONSE_HEADER_COUNT + 1)
+    }
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers=too_many_headers, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+
+
+def test_staging_canary_oversized_response_header_name_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    oversized_name = "h" * (probes._STAGING_CANARY_MAX_RESPONSE_HEADER_NAME_LENGTH + 1)
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={oversized_name: "v"}, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert oversized_name not in result.observed
+
+
+def test_staging_canary_oversized_response_header_value_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    oversized_value = "v" * (probes._STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH + 1)
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={"x-header": oversized_value}, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert oversized_value not in result.observed
+
+
+def test_staging_canary_oversized_deployment_id_is_not_verified_without_echo(
+    safe_canary, trusted_staging_origin
+):
+    oversized_deployment_id = "d" * (probes._STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH + 1)
+
+    def _runner(request):
+        return _FakeHttpResponse(
+            204, headers={"X-Deployment-Id": oversized_deployment_id}, body=b""
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert oversized_deployment_id not in result.observed
+
+
+def test_staging_canary_deployment_id_at_cap_is_recorded(safe_canary, trusted_staging_origin):
+    deployment_id_at_cap = "e" * probes._STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={"X-Deployment-Id": deployment_id_at_cap}, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "pass"
+    assert deployment_id_at_cap in result.observed
