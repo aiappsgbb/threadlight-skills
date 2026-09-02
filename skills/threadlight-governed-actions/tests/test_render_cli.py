@@ -19,14 +19,16 @@ import json
 import os
 import random
 import stat
+import subprocess
 from pathlib import Path
-from typing import Callable, Dict, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import jsonschema
 import pytest
 
 import canonical
 import contracts
+import governed_actions
 import render
 
 try:
@@ -3907,3 +3909,274 @@ def test_evidence_pack_does_not_double_escape_own_lt_gt_entities():
     assert "&lt;10" in text
     assert "&gt;5" in text
 
+
+# ---------------------------------------------------------------------------
+# governed_actions CLI (Task 10)
+#
+# Exercises ``governed_actions.parse_args``, ``.resolve_source``,
+# ``.assess``, ``.exit_code``, and ``.main`` against real, minimal git
+# repositories built under ``tmp_path`` -- this module's own
+# ``resolve_source`` shells out to real ``git`` subprocesses, so a genuine
+# git checkout (not a hand-built ``SourceRef``) is required to exercise it
+# honestly.
+# ---------------------------------------------------------------------------
+
+
+def _run_git_command(args: Sequence[str], cwd: Path) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _init_governed_actions_target(
+    tmp_path: Path,
+    *,
+    remote: str = "git@github.com:acme/widget.git",
+    with_registry: bool = True,
+    spec_text: str = "# Spec\n\n## 8. Actions\n\nNo required actions declared.\n",
+) -> Path:
+    """Build a minimal, real git repository satisfying
+    ``inputs.resolve_inputs``'s design/pre-deploy prerequisites: a
+    committed ``specs/SPEC.md`` and (unless *with_registry* is False) a
+    tool registry file."""
+    root = tmp_path / "target"
+    root.mkdir()
+    _run_git_command(["init", "-q"], root)
+    _run_git_command(["config", "user.email", "governed-actions-tests@example.com"], root)
+    _run_git_command(["config", "user.name", "Governed Actions Tests"], root)
+    _run_git_command(["remote", "add", "origin", remote], root)
+    (root / "specs").mkdir()
+    (root / "specs" / "SPEC.md").write_text(spec_text, encoding="utf-8")
+    if with_registry:
+        (root / "tool-registry.json").write_text(
+            json.dumps({"tools": []}), encoding="utf-8"
+        )
+    _run_git_command(["add", "-A"], root)
+    _run_git_command(["commit", "-q", "-m", "initial commit"], root)
+    return root
+
+
+def _tracked_and_untracked_snapshot(root: Path) -> Dict[str, int]:
+    """A ``relative-path -> mtime_ns`` map for every regular file under
+    *root* (``.git`` excluded), used to prove a read-only run genuinely
+    left the project untouched."""
+    return {
+        str(path.relative_to(root)): path.stat().st_mtime_ns
+        for path in root.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(root).parts
+    }
+
+
+def _forbidden_command_runner(_command: Sequence[str]) -> subprocess.CompletedProcess:
+    """A stub ``CommandRunner`` simulating a permission-denied ``gh``/``az``
+    call: a nonzero exit and no usable stdout, without needing a real
+    ``gh``/``az`` binary in the test environment."""
+    return subprocess.CompletedProcess(
+        args=list(_command), returncode=1, stdout="", stderr="HTTP 403: Forbidden"
+    )
+
+
+def test_design_without_emit_does_not_modify_project_and_returns_0(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    before = _tracked_and_untracked_snapshot(root)
+    exit_status = governed_actions.main(["--target", str(root), "--phase", "design"])
+    assert exit_status == 0
+    assert _tracked_and_untracked_snapshot(root) == before
+
+
+def test_gate_maps_nonconforming_pre_deploy_findings_to_exit_1(tmp_path):
+    # No governance/installed-packages.json exists, so the observed
+    # upstream tuple is all "not-verified" and can never match the
+    # assessor's own pinned complete tested tuple: PIN-001/must-fix is
+    # unavoidable, and --gate must therefore fail this pre-deploy run.
+    root = _init_governed_actions_target(tmp_path)
+    exit_status = governed_actions.main(
+        ["--target", str(root), "--phase", "pre-deploy", "--gate"]
+    )
+    assert exit_status == 1
+
+
+def test_emit_writes_only_the_three_artifacts(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    before = _tracked_and_untracked_snapshot(root)
+    exit_status = governed_actions.main(
+        ["--target", str(root), "--phase", "design", "--emit"]
+    )
+    assert exit_status == 0
+    after = _tracked_and_untracked_snapshot(root)
+    new_files = set(after) - set(before)
+    assert new_files == {
+        render.DEFAULT_MANIFEST_RELATIVE_PATH.as_posix(),
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH.as_posix(),
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH.as_posix(),
+    }
+    manifest = json.loads(
+        (root / render.DEFAULT_MANIFEST_RELATIVE_PATH).read_text(encoding="utf-8")
+    )
+    _assert_valid_manifest(manifest)
+    plan = json.loads(
+        (root / render.DEFAULT_APPLY_PLAN_RELATIVE_PATH).read_text(encoding="utf-8")
+    )
+    _assert_valid_apply_plan(plan)
+    assert (root / render.DEFAULT_EVIDENCE_RELATIVE_PATH).is_file()
+
+
+def test_invalid_phase_returns_2(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    exit_status = governed_actions.main(
+        ["--target", str(root), "--phase", "not-a-real-phase"]
+    )
+    assert exit_status == 2
+
+
+def test_missing_phase_argument_returns_2(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    exit_status = governed_actions.main(["--target", str(root)])
+    assert exit_status == 2
+
+
+def test_internal_runner_failure_returns_3(tmp_path, monkeypatch, capsys):
+    root = _init_governed_actions_target(tmp_path)
+
+    def _boom(_root):
+        raise RuntimeError("simulated internal inventory failure")
+
+    monkeypatch.setattr(governed_actions.inventory, "build_action_inventory", _boom)
+    exit_status = governed_actions.main(["--target", str(root), "--phase", "design"])
+    assert exit_status == 3
+    captured = capsys.readouterr()
+    assert "RuntimeError" in captured.err
+
+
+def test_post_deploy_without_staging_resource_group_returns_2(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    exit_status = governed_actions.main(["--target", str(root), "--phase", "post-deploy"])
+    assert exit_status == 2
+
+
+def test_live_github_permission_failure_with_gate_returns_1(tmp_path, monkeypatch):
+    root = _init_governed_actions_target(tmp_path)
+    monkeypatch.setattr(
+        governed_actions, "_default_command_runner", _forbidden_command_runner
+    )
+    exit_status = governed_actions.main(
+        [
+            "--target",
+            str(root),
+            "--phase",
+            "pre-deploy",
+            "--gate",
+            "--live-github",
+            "--repo",
+            "acme/widget",
+        ]
+    )
+    assert exit_status == 1
+
+
+def test_dirty_source_is_represented_explicitly_not_hidden(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    # Modify a tracked file without committing: a real, git-detectable
+    # dirty working tree (never an untracked-only change, which
+    # ``git status --porcelain --untracked-files=no`` never reports).
+    (root / "specs" / "SPEC.md").write_text(
+        "# Spec\n\n## 8. Actions\n\nUpdated without committing.\n", encoding="utf-8"
+    )
+    exit_status = governed_actions.main(
+        ["--target", str(root), "--phase", "design", "--emit"]
+    )
+    assert exit_status == 0
+    manifest = json.loads(
+        (root / render.DEFAULT_MANIFEST_RELATIVE_PATH).read_text(encoding="utf-8")
+    )
+    assert manifest["source"]["dirty"] is True
+    assert manifest["summary"]["verdict"] != "governed"
+
+
+def test_parse_args_defaults():
+    namespace = governed_actions.parse_args(["--phase", "design"])
+    assert namespace.target == "."
+    assert namespace.phase == "design"
+    assert namespace.emit is False
+    assert namespace.gate is False
+    assert namespace.live_github is False
+    assert namespace.manifest_path == render.DEFAULT_MANIFEST_RELATIVE_PATH
+    assert namespace.evidence_path == render.DEFAULT_EVIDENCE_RELATIVE_PATH
+    assert namespace.apply_plan_path == render.DEFAULT_APPLY_PLAN_RELATIVE_PATH
+
+
+def test_parse_args_post_deploy_without_staging_resource_group_raises_value_error():
+    with pytest.raises(ValueError):
+        governed_actions.parse_args(["--phase", "post-deploy"])
+
+
+def test_resolve_source_non_git_target_is_invalid_input(tmp_path):
+    non_git_root = tmp_path / "not-a-repo"
+    non_git_root.mkdir()
+    with pytest.raises(ValueError):
+        governed_actions.resolve_source(non_git_root)
+
+
+def test_resolve_source_reports_clean_and_dirty_state(tmp_path):
+    root = _init_governed_actions_target(tmp_path)
+    clean_source = governed_actions.resolve_source(root)
+    assert clean_source.repository == "acme/widget"
+    assert len(clean_source.commit) == 40
+    assert clean_source.dirty is False
+
+    (root / "specs" / "SPEC.md").write_text("dirty change\n", encoding="utf-8")
+    dirty_source = governed_actions.resolve_source(root)
+    assert dirty_source.dirty is True
+    assert dirty_source.commit == clean_source.commit
+
+
+def test_exit_code_without_gate_is_always_0_regardless_of_findings():
+    result = _base_result(
+        findings=[_finding("ACT-001", "must-fix", phase="design")],
+        phase="design",
+    )
+    assert governed_actions.exit_code(result, gate=False) == 0
+
+
+def test_exit_code_gate_fails_on_must_fix():
+    result = _base_result(
+        findings=[_finding("PIN-001", "must-fix", phase="pre-deploy")],
+        phase="pre-deploy",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_exit_code_gate_design_ignores_not_verified():
+    result = _base_result(
+        findings=[_finding("ACT-001", "not-verified", phase="design")],
+        phase="design",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 0
+
+
+def test_exit_code_gate_pre_deploy_fails_on_not_verified():
+    result = _base_result(
+        findings=[_finding("ENF-001", "not-verified", phase="pre-deploy")],
+        phase="pre-deploy",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_exit_code_gate_pre_deploy_ignores_optional_unselected_live_not_verified():
+    result = _base_result(
+        findings=[
+            _finding(
+                "GHCP-002",
+                "not-verified",
+                phase="pre-deploy",
+                reason_code="branch-protection-not-verified-statically",
+            )
+        ],
+        phase="pre-deploy",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 0
+    assert governed_actions.exit_code(result, gate=False) == 0
