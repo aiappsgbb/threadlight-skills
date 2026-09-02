@@ -158,7 +158,7 @@
     {
       "finding_id": "OPS-001",
       "category": "alerts",
-      "plane": "runtime",
+      "plane": "both",
       "severity": "should-fix",
       "gate": false,
       "summary": "No alerting/notification path was found for enforcement failures, hook errors, or audit delivery_status failures, so governance-relevant failures go unmonitored.",

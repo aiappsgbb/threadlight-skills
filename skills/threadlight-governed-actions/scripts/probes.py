@@ -2462,6 +2462,16 @@ def _canary_deployment_id(headers: Mapping[str, object]) -> Optional[str]:
     return None
 
 
+def _status_in_2xx_4xx(status_code: object) -> bool:
+    """Whether *status_code* falls inside the documented "HTTP 2xx-4xx"
+    acceptance range this probe reports when a contract names no exact
+    ``expected_status`` -- a non-integer status (including a bare
+    ``bool``, which is technically an ``int`` subclass) or one outside
+    200-499 (for example a 5xx server error) is never accepted merely
+    because nothing more specific was asked for."""
+    return isinstance(status_code, int) and not isinstance(status_code, bool) and 200 <= status_code <= 499
+
+
 def run_staging_canary(
     contract: Mapping[str, object], run: HttpReadRunner
 ) -> ProbeResult:
@@ -2515,14 +2525,18 @@ def run_staging_canary(
         f"deployment_id={deployment_id!r} response_sha256=sha256:{response_hash}"
     )
     expected_status = contract.get("expected_status")
-    if expected_status is not None and status_code != expected_status:
+    if expected_status is not None:
+        status_matches_contract = status_code == expected_status
+    else:
+        status_matches_contract = _status_in_2xx_4xx(status_code)
+    if not status_matches_contract:
         return ProbeResult(
             probe_id="staging-canary",
             action_id=None,
             path_id=None,
             status="not-verified",
             reason_code="staging-canary-unexpected-status",
-            expected=f"HTTP {expected_status}",
+            expected=f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx",
             observed=observed,
             evidence_refs=(),
         )

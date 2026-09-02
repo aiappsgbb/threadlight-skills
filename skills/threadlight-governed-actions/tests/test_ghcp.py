@@ -7451,11 +7451,11 @@ def test_live_github_success_is_pass_with_evidence_and_no_finding(fake_runner):
     assert isinstance(result, LiveEvidenceResult)
     assert result.status == "pass"
     assert result.finding is None
-    assert len(result.evidence) == 1
-    ref = result.evidence[0]
-    assert ref.repository == "aiappsgbb/threadlight-skills"
-    assert ref.live_verified is True
-    assert ref.sha256.startswith("sha256:")
+    # collect_live_github is handed only a repository/branch identifier, never
+    # a local checkout, so it has no trustworthy 40-hex source_commit to bind
+    # -- it must never fabricate an EvidenceRef (e.g. with source_commit="")
+    # merely to have something to return.
+    assert result.evidence == ()
     assert result.data["environments"] == {"staging": {"protected": False}}
 
 
@@ -7463,6 +7463,7 @@ def test_missing_live_permissions_remain_not_verified(fake_runner_403):
     evidence = collect_live_github("owner/repo", "main", run=fake_runner_403)
     assert evidence.status == "not-verified"
     assert evidence.finding.finding_id == "GHCP-002"
+    assert evidence.evidence == ()
 
 
 def test_live_github_missing_cli_is_not_verified():
@@ -7472,6 +7473,7 @@ def test_live_github_missing_cli_is_not_verified():
     result = collect_live_github("owner/repo", "main", run=_raise_missing_cli)
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-002"
+    assert result.evidence == ()
 
 
 def test_live_github_malformed_response_is_not_verified():
@@ -7481,6 +7483,7 @@ def test_live_github_malformed_response_is_not_verified():
     result = collect_live_github("owner/repo", "main", run=_malformed)
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-002"
+    assert result.evidence == ()
 
 
 def test_live_github_never_records_raw_stderr(fake_runner_403):
@@ -7488,6 +7491,51 @@ def test_live_github_never_records_raw_stderr(fake_runner_403):
     assert "Forbidden" not in result.finding.details
     assert "Forbidden" not in json.dumps(result.data)
     assert "403" not in result.finding.details
+
+
+def test_live_github_cli_failure_retains_exit_code_and_error_class(fake_runner_403):
+    result = collect_live_github("owner/repo", "main", run=fake_runner_403)
+    assert result.data["exit_code"] == 1
+    assert result.data["error_class"] == "cli-error"
+    assert "exit code 1" in result.finding.details
+
+
+def test_live_github_oidc_endpoint_failure_is_ghcp_005():
+    runner = _FakeRunner([_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _forbidden()])
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-005"
+    assert result.evidence == ()
+
+
+@pytest.mark.parametrize(
+    "index,malformed_stdout,expected_finding_id",
+    [
+        (0, "{}", "GHCP-002"),  # rulesets must be a JSON array, not a mapping
+        (1, "[]", "GHCP-002"),  # branch protection must be a JSON object
+        (2, "[]", "GHCP-002"),  # actions/permissions/workflow must be a JSON object
+        (3, "[]", "GHCP-002"),  # environments must be a JSON object with an "environments" list
+        (4, "[]", "GHCP-005"),  # oidc customization must be a JSON object
+    ],
+)
+def test_live_github_malformed_endpoint_shape_is_not_verified(
+    index, malformed_stdout, expected_finding_id
+):
+    responses = [_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
+    responses[index] = _ok(malformed_stdout)
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == expected_finding_id
+    assert result.evidence == ()
+
+
+def test_live_github_environments_missing_key_is_not_verified():
+    responses = [_ok("[]"), _ok("{}"), _ok("{}"), _ok("{}"), _ok("{}")]
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
 
 
 @pytest.fixture
@@ -7545,6 +7593,12 @@ def test_live_azure_collects_identity_and_role_evidence(fake_azure_runner):
     ]
     assert result.status == "pass"
     assert result.finding is None
+    # collect_live_azure is handed only a subscription/resource-group/identity
+    # identifier, never a repository checkout, so it has no trustworthy 40-hex
+    # source_commit to bind an EvidenceRef to, and the subscription must never
+    # be misused as EvidenceRef.repository either -- so no evidence is ever
+    # returned by this collector.
+    assert result.evidence == ()
     for command in fake_azure_runner.commands:
         joined = " ".join(command).lower()
         assert "delete" not in joined
@@ -7559,6 +7613,7 @@ def test_live_azure_federated_credential_failure_is_ghcp_005(fake_runner_403):
     result = collect_live_azure("sub", "rg", "identity", run=fake_runner_403)
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-005"
+    assert result.evidence == ()
 
 
 def test_live_azure_role_assignment_failure_is_ghcp_006():
@@ -7577,6 +7632,71 @@ def test_live_azure_role_definition_failure_is_ghcp_006():
     assert result.finding.finding_id == "GHCP-006"
 
 
+def test_live_azure_cli_failure_retains_exit_code_and_error_class():
+    runner = _FakeRunner([_ok("[]"), _forbidden()])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.data["exit_code"] == 1
+    assert result.data["error_class"] == "cli-error"
+    assert "exit code 1" in result.finding.details
+    assert "Forbidden" not in result.finding.details
+
+
+@pytest.mark.parametrize(
+    "malformed_stdout",
+    [
+        "{}",  # federated_credentials must be a JSON array, not a mapping
+        "null",
+    ],
+)
+def test_live_azure_malformed_federated_credentials_is_ghcp_006(malformed_stdout):
+    runner = _FakeRunner([_ok(malformed_stdout)])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert result.evidence == ()
+
+
+def test_live_azure_non_list_role_assignments_is_ghcp_006():
+    runner = _FakeRunner([_ok("[]"), _ok("{}")])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert result.evidence == ()
+
+
+def test_live_azure_non_mapping_role_assignment_entry_is_ghcp_006():
+    runner = _FakeRunner([_ok("[]"), _ok(json.dumps(["not-a-mapping"]))])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+
+
+@pytest.mark.parametrize(
+    "role_assignments",
+    [
+        [{}],
+        [{"roleDefinitionName": ""}],
+        [{"roleDefinitionName": None}],
+        [{"roleDefinitionName": 123}],
+    ],
+)
+def test_live_azure_missing_or_invalid_role_definition_name_is_ghcp_006(role_assignments):
+    runner = _FakeRunner([_ok("[]"), _ok(json.dumps(role_assignments))])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+
+
+def test_live_azure_non_list_role_definition_response_is_ghcp_006():
+    runner = _FakeRunner(
+        [_ok("[]"), _ok(json.dumps([{"roleDefinitionName": "Owner"}])), _ok("{}")]
+    )
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert result.evidence == ()
+
+
 @pytest.mark.parametrize(
     "subscription,resource_group,deploy_identity",
     [("", "rg", "identity"), ("sub", "", "identity"), ("sub", "rg", "")],
@@ -7589,6 +7709,7 @@ def test_live_azure_absent_input_is_not_verified_without_running_commands(
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-006"
     assert runner.commands == []
+    assert result.evidence == ()
 
 
 def test_live_azure_missing_cli_is_not_verified():

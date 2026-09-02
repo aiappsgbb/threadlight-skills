@@ -36,14 +36,23 @@ live proof.
 
 Task 8 adds two optional, read-only *collectors* --
 :func:`collect_live_github` and :func:`collect_live_azure` -- that a
-caller may run separately and feed into ``assess_change_plane`` as
-``live_github``/``live_azure``. They are the only functions in this
-module that ever run an external command (always through an injected
-runner, never a real subprocess in a unit test), and only ever a fixed
-set of read-only ``gh api``/``az ... list`` commands: no write, no
-mutation, no secret. ``assess_change_plane`` itself remains exactly as
-described above -- purely file-based, never calling either collector on
-its own.
+caller may run separately, independently of ``assess_change_plane``.
+They are the only functions in this module that ever run an external
+command (always through an injected runner, never a real subprocess in
+a unit test), and only ever a fixed set of read-only ``gh api``/``az
+... list`` commands: no write, no mutation, no secret.
+:func:`collect_live_github`'s ``data["default_branch"]``,
+``data["branch_protection"]``, and ``data["environments"]`` are shaped
+to match exactly what ``assess_change_plane`` already reads from a
+``live_github`` mapping, so a caller *may* pass that data straight
+through as ``live_github`` if it chooses to. :func:`collect_live_azure`
+collects a materially different kind of evidence (federated-credential
+trust and role-assignment/role-definition detail) that
+``assess_change_plane``'s own ``live_azure`` parameter does not consume
+today -- this module makes no claim that collector's output can be
+passed to ``assess_change_plane`` directly. ``assess_change_plane``
+itself remains exactly as described above -- purely file-based, never
+calling either collector on its own.
 """
 from __future__ import annotations
 
@@ -54,7 +63,6 @@ import re
 import struct
 import zlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -3117,16 +3125,21 @@ class LiveEvidenceResult:
     attempt.
 
     *data* is the already-redacted, canonicalizable evidence this
-    collection actually observed. *evidence* binds that data to the
-    repository/subscription this call was told to query -- it is only
-    ever populated on a fully successful collection, since a partial or
-    failed collection has nothing trustworthy left to bind. *finding* is
-    ``None`` on a fully successful collection (exactly like every other
-    "pass" outcome in this module, which never manufactures a finding for
-    a control that fully checks out) and otherwise the single ``"not-
-    verified"`` :class:`Finding` recording, without ever exposing raw
-    command output, why the affected GHCP control cannot be confirmed
-    live.
+    collection actually observed. *evidence* is always empty: neither
+    :func:`collect_live_github` nor :func:`collect_live_azure` is ever
+    handed a local checkout to resolve a real, 40-hex ``source_commit``
+    from (their signatures take only a repository/subscription
+    identifier), so there is no trustworthy provenance either could ever
+    bind an :class:`EvidenceRef` to -- and this module must never
+    fabricate one merely to have something to return. A caller that
+    also holds real repository provenance may build its own
+    :class:`EvidenceRef` around this result's *data*; that is
+    deliberately left to the caller. *finding* is ``None`` on a fully
+    successful collection (exactly like every other "pass" outcome in
+    this module, which never manufactures a finding for a control that
+    fully checks out) and otherwise the single ``"not-verified"``
+    :class:`Finding` recording, without ever exposing raw command
+    output, why the affected GHCP control cannot be confirmed live.
     """
 
     status: Status
@@ -3135,95 +3148,88 @@ class LiveEvidenceResult:
     finding: Optional[Finding]
 
 
-def _utc_now_rfc3339() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _run_read_only_command(
     run: CommandRunner, command: List[str]
-) -> Tuple[Optional[object], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str], Optional[int]]:
     """Run *command* through the injected *run* callable and parse its
     stdout as JSON.
 
-    Returns ``(payload, None)`` on success or ``(None, error_class)`` on
-    any failure. *error_class* is always one of a small, fixed set of
-    labels (``"missing-cli"``, ``"cli-error"``, ``"malformed-json"``) --
-    never the command's raw stderr text -- so a failure can be reported,
-    and even hashed into evidence, without ever exposing whatever the
-    real CLI actually printed (which could itself carry a token, an
-    internal hostname, or other operator-only detail).
+    Returns ``(payload, None, exit_code)`` on success or
+    ``(None, error_class, exit_code)`` on failure. *error_class* is
+    always one of a small, fixed set of labels (``"missing-cli"``,
+    ``"cli-error"``, ``"malformed-json"``) -- never the command's raw
+    stderr text -- so a failure can be reported without ever exposing
+    whatever the real CLI actually printed (which could itself carry a
+    token, an internal hostname, or other operator-only detail).
+    *exit_code* is the real, numeric process exit code whenever one
+    actually exists (``None`` only when the command could never even
+    start, i.e. a missing CLI binary) -- redacting stderr must never
+    also discard the one CLI-failure detail (the exit code itself) that
+    carries no secret and is genuinely useful for triage.
     """
     try:
         completed = run(command)
     except FileNotFoundError:
-        return None, "missing-cli"
+        return None, "missing-cli", None
     except OSError:
-        return None, "cli-error"
-    if getattr(completed, "returncode", None) != 0:
-        return None, "cli-error"
+        return None, "cli-error", None
+    exit_code = getattr(completed, "returncode", None)
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        exit_code = None
+    if exit_code != 0:
+        return None, "cli-error", exit_code
     try:
         payload = json.loads(getattr(completed, "stdout", ""))
     except (TypeError, ValueError):
-        return None, "malformed-json"
-    return payload, None
+        return None, "malformed-json", exit_code
+    return payload, None, exit_code
 
 
-def _live_evidence_ref(
-    evidence_id: str, repository: str, phase: str, data: Mapping[str, object]
-) -> EvidenceRef:
-    """Build a live-evidence :class:`EvidenceRef` for a successful
-    collection.
-
-    Unlike the file-based evidence built elsewhere in this module, live
-    API/CLI evidence has no repository-relative path or committed git
-    blob to bind a ``source_commit`` to: :func:`collect_live_github` and
-    :func:`collect_live_azure` are handed only a repository/subscription
-    identifier, never a local checkout, so there is no real commit this
-    function could bind to without fabricating one. ``source_commit`` is
-    therefore left as an explicit empty sentinel -- never a plausible-
-    looking placeholder SHA -- until a caller that also holds real
-    repository provenance chooses to bind one itself. ``collected_at`` is
-    the real wall-clock moment this collection ran (not a fabricated
-    value): live evidence must be provably fresh, and the instant it was
-    actually queried is the one honest timestamp this function can
-    report.
-    """
-    canonical_data = canonical.canonical_bytes(data)
-    return EvidenceRef(
-        evidence_id=evidence_id,
-        kind="live-api-response",
-        source=evidence_id,
-        sha256=f"sha256:{canonical.sha256_hex(canonical_data)}",
-        collected_at=_utc_now_rfc3339(),
-        freshness_seconds=0,
-        live_verified=True,
-        phase=phase,
-        repository=repository,
-        source_commit="",
-        target_environment=None,
-        policy_set_sha256=None,
-    )
+def _command_failure_detail(error_class: str, exit_code: Optional[int]) -> str:
+    """A single, secret-free phrase describing *why* a read-only
+    command's result could not be used -- the numeric *exit_code*
+    (never raw stderr) plus the fixed *error_class* label."""
+    if exit_code is None:
+        return f"{error_class} (no process exit code available)"
+    return f"{error_class}, exit code {exit_code}"
 
 
-def _github_not_verified(repository: str, error_class: str) -> LiveEvidenceResult:
+def _is_json_list(payload: object) -> bool:
+    return isinstance(payload, list)
+
+
+def _is_json_mapping(payload: object) -> bool:
+    return isinstance(payload, Mapping)
+
+
+def _github_not_verified(
+    finding_id: str,
+    repository: str,
+    error_class: str,
+    exit_code: Optional[int],
+) -> LiveEvidenceResult:
+    detail = _command_failure_detail(error_class, exit_code)
     finding = Finding(
-        finding_id="GHCP-002",
+        finding_id=finding_id,
         status="not-verified",
         phase="pre-deploy",
         plane="change",
         reason_code="github-live-evidence-unavailable",
         summary=(
-            "Live GitHub branch-protection/ruleset evidence could not be "
-            "collected for the assessed repository."
+            "Live GitHub evidence could not be collected for the "
+            "assessed repository."
         ),
         details=(
             f"A read-only 'gh api' call against {repository} failed "
-            f"({error_class}); GHCP-002 cannot be confirmed from live "
+            f"({detail}); {finding_id} cannot be confirmed from live "
             "GitHub state and is reported not-verified rather than pass."
         ),
     )
     return LiveEvidenceResult(
-        status="not-verified", data={"error": error_class}, evidence=(), finding=finding
+        status="not-verified",
+        data={"error_class": error_class, "exit_code": exit_code},
+        evidence=(),
+        finding=finding,
     )
 
 
@@ -3235,20 +3241,42 @@ def _github_environment_protection(payload: object) -> Dict[str, object]:
     inferred from a non-empty ``protection_rules`` list -- a direct,
     non-fabricated transform of what GitHub itself reported, never an
     invented policy. Any entry this function cannot recognize is skipped
-    rather than guessed at.
+    rather than guessed at; the caller validates the top-level shape
+    before this is ever invoked, so a malformed *payload* is never
+    silently accepted here either.
     """
     environments: Dict[str, object] = {}
-    if isinstance(payload, Mapping):
-        entries = payload.get("environments")
-        if isinstance(entries, list):
-            for entry in entries:
-                if not isinstance(entry, Mapping):
-                    continue
-                name = entry.get("name")
-                if not isinstance(name, str):
-                    continue
-                environments[name] = {"protected": bool(entry.get("protection_rules"))}
+    entries = payload.get("environments") if isinstance(payload, Mapping) else None
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, Mapping):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+            environments[name] = {"protected": bool(entry.get("protection_rules"))}
     return environments
+
+
+def _validate_github_environments_payload(payload: object) -> bool:
+    return isinstance(payload, Mapping) and isinstance(payload.get("environments"), list)
+
+
+#: Each of ``collect_live_github``'s five endpoints, in call order, paired
+#: with the GHCP control its live evidence affects and the shape validator
+#: proving its response is actually usable (not merely valid JSON). Only
+#: the OIDC subject-customization endpoint speaks to GHCP-005 (Azure
+#: OIDC/WIF trust, from the GitHub side); every other endpoint speaks to
+#: GHCP-002 (branch protection / required reviews / rulesets) -- matching
+#: exactly the two controls the design's collector contract ever attributes
+#: a GitHub live-evidence gap to.
+_GITHUB_STEPS: Tuple[Tuple[str, str, str, Callable[[object], bool]], ...] = (
+    ("rulesets", "rulesets?includes_parents=true", "GHCP-002", _is_json_list),
+    ("branch_protection", "branches/{default_branch}/protection", "GHCP-002", _is_json_mapping),
+    ("actions_permissions_workflow", "actions/permissions/workflow", "GHCP-002", _is_json_mapping),
+    ("environments", "environments", "GHCP-002", _validate_github_environments_payload),
+    ("oidc_customization_sub", "actions/oidc/customization/sub", "GHCP-005", _is_json_mapping),
+)
 
 
 def collect_live_github(
@@ -3266,36 +3294,30 @@ def collect_live_github(
     4. ``gh api repos/{repository}/environments``
     5. ``gh api repos/{repository}/actions/oidc/customization/sub``
 
-    Collection stops at the first command that fails (a 401/403 surfaces
-    from ``gh`` as a non-zero exit, so it is indistinguishable here from
-    any other CLI error), and the whole call is reported ``"not-
-    verified"`` against GHCP-002 -- these five calls are exactly the live
-    evidence GHCP-002 (branch protection / required reviews / rulesets)
-    needs, so any missing piece leaves that control unconfirmed rather
-    than partially confirmed. A missing ``gh`` binary and an unparseable
-    response are reported the same way. This function never reports
-    ``"pass"`` from ambiguous or unreachable live state, and never
-    records a raw stderr string -- only a small fixed error-class label.
+    Collection stops at the first command that fails -- a 401/403
+    surfaces from ``gh`` as a non-zero exit, a missing ``gh`` binary as
+    ``FileNotFoundError``, and each is reported the same "not-verified"
+    way -- and also stops at the first response that parses as JSON but
+    is not shaped the way that endpoint's real GitHub API response
+    always is (for example rulesets that is not a JSON array, or an
+    environments response missing its own ``environments`` list): an
+    incomplete or unrecognized payload is exactly as unusable as no
+    payload at all, and must never be reported ``"pass"`` merely because
+    it happened to parse. Every failure is attributed to whichever GHCP
+    control that specific endpoint's live evidence affects (GHCP-002 for
+    every endpoint except the OIDC subject-customization one, which
+    affects GHCP-005), never blurred into a single generic control. This
+    function never records a raw stderr string -- only a small fixed
+    error-class label and the real numeric process exit code.
     """
-    endpoints = (
-        f"repos/{repository}/rulesets?includes_parents=true",
-        f"repos/{repository}/branches/{default_branch}/protection",
-        f"repos/{repository}/actions/permissions/workflow",
-        f"repos/{repository}/environments",
-        f"repos/{repository}/actions/oidc/customization/sub",
-    )
-    keys = (
-        "rulesets",
-        "branch_protection",
-        "actions_permissions_workflow",
-        "environments",
-        "oidc_customization_sub",
-    )
     collected: Dict[str, object] = {}
-    for key, endpoint in zip(keys, endpoints):
-        payload, error_class = _run_read_only_command(run, ["gh", "api", endpoint])
+    for key, endpoint_suffix, finding_id, validate in _GITHUB_STEPS:
+        endpoint = f"repos/{repository}/{endpoint_suffix.format(default_branch=default_branch)}"
+        payload, error_class, exit_code = _run_read_only_command(run, ["gh", "api", endpoint])
         if error_class is not None:
-            return _github_not_verified(repository, error_class)
+            return _github_not_verified(finding_id, repository, error_class, exit_code)
+        if not validate(payload):
+            return _github_not_verified(finding_id, repository, "malformed-shape", exit_code)
         collected[key] = payload
 
     data: Dict[str, object] = {
@@ -3306,13 +3328,21 @@ def collect_live_github(
         "environments": _github_environment_protection(collected["environments"]),
         "oidc_customization_sub": collected["oidc_customization_sub"],
     }
-    evidence = (_live_evidence_ref("live-github", repository, "pre-deploy", data),)
-    return LiveEvidenceResult(status="pass", data=data, evidence=evidence, finding=None)
+    return LiveEvidenceResult(status="pass", data=data, evidence=(), finding=None)
 
 
 def _azure_not_verified(
-    finding_id: str, reason_code: str, details: str, error_class: str
+    finding_id: str,
+    reason_code: str,
+    detail_prefix: str,
+    error_class: str,
+    exit_code: Optional[int] = None,
 ) -> LiveEvidenceResult:
+    detail = (
+        error_class
+        if error_class == "missing-input"
+        else _command_failure_detail(error_class, exit_code)
+    )
     finding = Finding(
         finding_id=finding_id,
         status="not-verified",
@@ -3323,21 +3353,36 @@ def _azure_not_verified(
             "Live Azure identity/role evidence could not be collected for "
             "the assessed deployment identity."
         ),
-        details=details,
+        details=f"{detail_prefix} ({detail}); {finding_id} cannot be confirmed from live Azure state and is reported not-verified rather than pass.",
     )
     return LiveEvidenceResult(
-        status="not-verified", data={"error": error_class}, evidence=(), finding=finding
+        status="not-verified",
+        data={"error_class": error_class, "exit_code": exit_code},
+        evidence=(),
+        finding=finding,
     )
 
 
-def _unique_sorted_role_names(role_assignments: object) -> Tuple[str, ...]:
+def _validate_role_assignment_role_names(role_assignments: object) -> Optional[Tuple[str, ...]]:
+    """The unique, sorted role names a real ``az role assignment list``
+    response actually names -- or ``None`` when *role_assignments* is not
+    a JSON array, contains an entry that is not itself a JSON object, or
+    contains an entry whose ``roleDefinitionName`` is missing, blank, or
+    not a string. Any of these is treated as an incomplete result, never
+    silently skipped and treated as "no role to look up": a caller that
+    cannot enumerate every real role assigned to the identity can never
+    prove least-privilege/identity-separation from what it did receive.
+    """
+    if not isinstance(role_assignments, list):
+        return None
     names: Set[str] = set()
-    if isinstance(role_assignments, list):
-        for entry in role_assignments:
-            if isinstance(entry, Mapping):
-                name = entry.get("roleDefinitionName")
-                if isinstance(name, str) and name:
-                    names.add(name)
+    for entry in role_assignments:
+        if not isinstance(entry, Mapping):
+            return None
+        name = entry.get("roleDefinitionName")
+        if not isinstance(name, str) or not name:
+            return None
+        names.add(name)
     return tuple(sorted(names))
 
 
@@ -3366,13 +3411,21 @@ def collect_live_azure(
     Every command is a read-only ``list`` call; none can mutate or carry
     a secret. A missing *subscription*/*resource_group*/*deploy_identity*
     is reported ``"not-verified"`` before any command runs at all (there
-    is nothing safe to query). A federated-credential failure is
+    is nothing safe to query). A federated-credential-list command that
+    fails outright (non-zero exit, missing CLI, unparseable output) is
     attributed to GHCP-005 -- this is exactly the OIDC/WIF evidence that
-    control needs -- while a role-assignment or role-definition failure
-    is attributed to GHCP-006 (least-privilege / identity-separation
-    evidence). This function never reports ``"pass"`` from ambiguous or
-    unreachable live state, and never records a raw stderr string or any
-    command argument beyond the identifiers the caller supplied.
+    control needs. Every other failure -- a role-assignment-list or
+    role-definition-list command that fails outright, or *any* of the
+    three commands succeeding but returning a payload that is not shaped
+    the way Azure's real CLI output always is (not a JSON array, an
+    assignment entry that is not itself a JSON object, or a missing/
+    blank/non-string ``roleDefinitionName``) -- is attributed to GHCP-006
+    (least-privilege / identity-separation evidence): an incomplete or
+    unrecognized result can never prove identities are actually separate
+    and least-privileged, so it must never be reported "pass". This
+    function never records a raw stderr string or any command argument
+    beyond the identifiers the caller supplied -- only a small fixed
+    error-class label and the real numeric process exit code.
     """
     if not subscription or not resource_group or not deploy_identity:
         return _azure_not_verified(
@@ -3380,12 +3433,11 @@ def collect_live_azure(
             "azure-live-inputs-missing",
             "collect_live_azure requires a non-empty subscription, "
             "resource group, and deploy identity before any Azure command "
-            "can safely be issued; the affected identity-separation "
-            "evidence is reported not-verified rather than pass.",
+            "can safely be issued",
             "missing-input",
         )
 
-    federated_credentials, error_class = _run_read_only_command(
+    federated_credentials, error_class, exit_code = _run_read_only_command(
         run,
         [
             "az", "identity", "federated-credential", "list",
@@ -3399,14 +3451,21 @@ def collect_live_azure(
         return _azure_not_verified(
             "GHCP-005",
             "azure-federated-credential-evidence-unavailable",
-            "A read-only 'az identity federated-credential list' call "
-            f"failed ({error_class}); GHCP-005 cannot be confirmed from "
-            "live Azure state and is reported not-verified rather than "
-            "pass.",
+            "A read-only 'az identity federated-credential list' call failed",
             error_class,
+            exit_code,
+        )
+    if not _is_json_list(federated_credentials):
+        return _azure_not_verified(
+            "GHCP-006",
+            "azure-federated-credential-evidence-malformed",
+            "A read-only 'az identity federated-credential list' call "
+            "returned a response that was not the expected JSON array",
+            "malformed-shape",
+            exit_code,
         )
 
-    role_assignments, error_class = _run_read_only_command(
+    role_assignments, error_class, exit_code = _run_read_only_command(
         run,
         [
             "az", "role", "assignment", "list",
@@ -3421,15 +3480,25 @@ def collect_live_azure(
         return _azure_not_verified(
             "GHCP-006",
             "azure-role-assignment-evidence-unavailable",
-            "A read-only 'az role assignment list' call failed "
-            f"({error_class}); GHCP-006 cannot be confirmed from live "
-            "Azure state and is reported not-verified rather than pass.",
+            "A read-only 'az role assignment list' call failed",
             error_class,
+            exit_code,
+        )
+    role_names = _validate_role_assignment_role_names(role_assignments)
+    if role_names is None:
+        return _azure_not_verified(
+            "GHCP-006",
+            "azure-role-assignment-evidence-malformed",
+            "A read-only 'az role assignment list' call returned a "
+            "response that was not the expected JSON array of objects "
+            "each naming a role",
+            "malformed-shape",
+            exit_code,
         )
 
     role_definitions: Dict[str, object] = {}
-    for role_name in _unique_sorted_role_names(role_assignments):
-        definition, error_class = _run_read_only_command(
+    for role_name in role_names:
+        definition, error_class, exit_code = _run_read_only_command(
             run,
             [
                 "az", "role", "definition", "list",
@@ -3443,10 +3512,19 @@ def collect_live_azure(
                 "GHCP-006",
                 "azure-role-definition-evidence-unavailable",
                 f"A read-only 'az role definition list' call for role "
-                f"{role_name!r} failed ({error_class}); GHCP-006 cannot be "
-                "confirmed from live Azure state and is reported "
-                "not-verified rather than pass.",
+                f"{role_name!r} failed",
                 error_class,
+                exit_code,
+            )
+        if not _is_json_list(definition):
+            return _azure_not_verified(
+                "GHCP-006",
+                "azure-role-definition-evidence-malformed",
+                f"A read-only 'az role definition list' call for role "
+                f"{role_name!r} returned a response that was not the "
+                "expected JSON array",
+                "malformed-shape",
+                exit_code,
             )
         role_definitions[role_name] = definition
 
@@ -3455,9 +3533,7 @@ def collect_live_azure(
         "role_assignments": role_assignments,
         "role_definitions": role_definitions,
     }
-    evidence = (_live_evidence_ref("live-azure", subscription, "pre-deploy", data),)
-    return LiveEvidenceResult(status="pass", data=data, evidence=evidence, finding=None)
-
+    return LiveEvidenceResult(status="pass", data=data, evidence=(), finding=None)
 
 # --- read-only git metadata resolution (never a subprocess, never a
 # fabricated placeholder) ------------------------------------------------

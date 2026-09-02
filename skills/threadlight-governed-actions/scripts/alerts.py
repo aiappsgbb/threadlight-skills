@@ -181,7 +181,7 @@ def _alert_finding(phase: Phase, status: str, reason_code: str, summary: str, de
         finding_id="OPS-001",
         status=status,  # type: ignore[arg-type]
         phase=phase,
-        plane="runtime",
+        plane="both",
         reason_code=reason_code,
         summary=summary,
         details=details,

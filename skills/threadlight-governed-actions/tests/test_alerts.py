@@ -171,3 +171,21 @@ def test_malformed_catalog_json_is_should_fix(tmp_path):
     (governance_dir / "alerts.json").write_text("not json", encoding="utf-8")
     finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
     assert finding.status == "should-fix"
+
+
+_REFERENCES = Path(__file__).resolve().parent.parent / "references"
+
+
+def test_ops_001_plane_is_both_and_matches_finding_catalog(tmp_path):
+    """OPS-001 is a design-mandated "both" (change *and* runtime) finding:
+    alert-catalog completeness is knowable from the repository at
+    pre-deploy time, but proven event loss is only ever knowable from
+    live/runtime evidence -- so the plane can never be narrowed to just
+    one. This must never drift from the project's own finding catalog."""
+    catalog = json.loads((_REFERENCES / "finding-catalog.json").read_text(encoding="utf-8"))
+    entry = next(item for item in catalog["findings"] if item["finding_id"] == "OPS-001")
+    assert entry["plane"] == "both"
+
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.plane == entry["plane"] == "both"

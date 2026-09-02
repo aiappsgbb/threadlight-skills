@@ -2300,3 +2300,28 @@ def test_staging_canary_get_method_is_also_allowed(safe_canary, fake_http_runner
     result = run_staging_canary({**safe_canary, "method": "GET"}, run=fake_http_runner)
     assert result.status == "pass"
     assert fake_http_runner.requests[0]["method"] == "GET"
+
+
+def test_staging_canary_without_expected_status_accepts_2xx_4xx_status(safe_canary):
+    # A contract that never declares an ``expected_status`` still documents
+    # (and must actually enforce) an "HTTP 2xx-4xx" acceptance range --
+    # never silently accepting *any* status merely because none was named.
+    contract = {key: value for key, value in safe_canary.items() if key != "expected_status"}
+
+    def _runner(request):
+        return _FakeHttpResponse(404, headers={}, body=b"")
+
+    result = run_staging_canary(contract, run=_runner)
+    assert result.status == "pass"
+    assert result.expected == "HTTP 2xx-4xx"
+
+
+def test_staging_canary_without_expected_status_rejects_5xx_status(safe_canary):
+    contract = {key: value for key, value in safe_canary.items() if key != "expected_status"}
+
+    def _runner(request):
+        return _FakeHttpResponse(503, headers={}, body=b"")
+
+    result = run_staging_canary(contract, run=_runner)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-unexpected-status"
