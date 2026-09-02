@@ -2443,6 +2443,17 @@ def _disallowed_canary_header(headers: object) -> Optional[str]:
     return None
 
 
+#: Sentinel distinguishing a response object that genuinely has no
+#: ``url``/``headers``/``body`` attribute at all from one that has the
+#: attribute set to some other falsy-but-present value (``None``, an
+#: empty mapping, an empty ``b""``). ``getattr(response, name, None)``
+#: cannot make that distinction, and collapsing "missing" into "present
+#: but empty" is exactly how this probe used to silently skip the
+#: response-URL same-origin check and fabricate a hash of an empty body
+#: as if that were genuinely observed evidence.
+_CANARY_RESPONSE_FIELD_MISSING = object()
+
+
 def _is_valid_http_status(value: object) -> bool:
     """Whether *value* is a plausible HTTP status code: an ``int`` (never
     a bare ``bool``, which is technically an ``int`` subclass) in the
@@ -2475,7 +2486,20 @@ def _parse_canary_https_url(url: object, *, what: str) -> str:
     """
     if not isinstance(url, str):
         raise UnsafeTargetError(f"{what} must be an https:// URL string; got {url!r}")
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+        # ``SplitResult.port`` (and, for some malformed inputs, ``urlsplit``
+        # itself) raises ``ValueError`` *lazily* -- at attribute-access
+        # time, not at parse time -- for a syntactically invalid port
+        # (out of range or non-numeric) or an unparseable host such as an
+        # unterminated IPv6 literal. That is exactly as unsafe a URL as
+        # any other shape this function already rejects, so it is caught
+        # here and translated into the same :class:`UnsafeTargetError`
+        # every other malformed-URL case raises, never left to propagate
+        # as a raw, uncaught ``ValueError``.
+        port = parsed.port
+    except ValueError as error:
+        raise UnsafeTargetError(f"{what} has a malformed URL: {error}") from error
     if parsed.scheme != "https":
         raise UnsafeTargetError(f"{what} must use https://; got {url!r}")
     if parsed.username is not None or parsed.password is not None:
@@ -2487,8 +2511,8 @@ def _parse_canary_https_url(url: object, *, what: str) -> str:
     if parsed.fragment:
         raise UnsafeTargetError(f"{what} must not contain a fragment")
     origin = f"https://{parsed.hostname}"
-    if parsed.port is not None:
-        origin += f":{parsed.port}"
+    if port is not None:
+        origin += f":{port}"
     return origin
 
 
@@ -2582,15 +2606,23 @@ def run_staging_canary(
     project never infers "is this really staging" from the contract's
     own self-asserted ``environment`` field or from a hostname that
     merely looks like staging. The outbound request always asks the
-    runner not to follow redirects; if the runner nonetheless reports a
-    final response URL, that URL must resolve to the same https origin
-    or the result is reported ``not-verified`` rather than trusted.
+    runner not to follow redirects; the response object *must* report a
+    final URL, and that URL must resolve to the same https origin, or
+    the result is reported ``not-verified`` rather than trusted.
 
-    The response itself is validated just as strictly: a non-integer or
-    out-of-range status code, a headers value that is not a mapping of
-    plain strings, or a body that is not ``bytes``/``str`` is reported
-    ``not-verified`` -- naming only the malformed value's type, never
-    the value itself -- rather than trusted at face value.
+    The response itself is validated just as strictly, and every one of
+    ``url``, ``headers``, and ``body`` must genuinely be present on the
+    response object *at all* -- a response missing one of these
+    attributes entirely is reported ``not-verified`` exactly as strictly
+    as one that supplies a malformed value for it, and this function
+    never fabricates a substitute (silently skipping the same-origin
+    check for a missing ``url``, defaulting to an empty headers mapping,
+    or hashing an empty ``b""`` body as if that were genuinely observed
+    evidence). A non-integer or out-of-range status code, a headers
+    value that is not a mapping of plain strings, or a body that is not
+    ``bytes``/``str`` is likewise reported ``not-verified`` -- naming
+    only the malformed value's type, never the value itself -- rather
+    than trusted at face value.
 
     Records only the observed HTTP status code, the wall-clock duration
     of the call, any deployment-id-style response header, and a hash of
@@ -2622,23 +2654,33 @@ def run_staging_canary(
         )
     duration_ms = (time.monotonic() - started) * 1000.0
 
-    final_url = getattr(response, "url", None)
-    if final_url is not None:
-        try:
-            final_origin = _parse_canary_https_url(final_url, what="staging canary response url")
-        except UnsafeTargetError:
-            final_origin = None
-        if final_origin != origin:
-            return ProbeResult(
-                probe_id="staging-canary",
-                action_id=None,
-                path_id=None,
-                status="not-verified",
-                reason_code="staging-canary-off-origin-redirect",
-                expected=expected_label,
-                observed="response_url_off_origin=True",
-                evidence_refs=(),
-            )
+    final_url = getattr(response, "url", _CANARY_RESPONSE_FIELD_MISSING)
+    if final_url is _CANARY_RESPONSE_FIELD_MISSING:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed="missing_response_field=url",
+            evidence_refs=(),
+        )
+    try:
+        final_origin = _parse_canary_https_url(final_url, what="staging canary response url")
+    except UnsafeTargetError:
+        final_origin = None
+    if final_origin != origin:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-off-origin-redirect",
+            expected=expected_label,
+            observed="response_url_off_origin=True",
+            evidence_refs=(),
+        )
 
     status_code = getattr(response, "status_code", None)
     if not _is_valid_http_status(status_code):
@@ -2652,8 +2694,19 @@ def run_staging_canary(
             observed=f"malformed_status_type={type(status_code).__name__}",
             evidence_refs=(),
         )
-    headers = getattr(response, "headers", None)
-    if headers is not None and not _is_valid_canary_headers(headers):
+    headers = getattr(response, "headers", _CANARY_RESPONSE_FIELD_MISSING)
+    if headers is _CANARY_RESPONSE_FIELD_MISSING:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed="missing_response_field=headers",
+            evidence_refs=(),
+        )
+    if not _is_valid_canary_headers(headers):
         return ProbeResult(
             probe_id="staging-canary",
             action_id=None,
@@ -2664,9 +2717,19 @@ def run_staging_canary(
             observed=f"malformed_headers_type={type(headers).__name__}",
             evidence_refs=(),
         )
-    headers = headers if isinstance(headers, Mapping) else {}
     deployment_id = _canary_deployment_id(headers)
-    raw_body = getattr(response, "body", b"")
+    raw_body = getattr(response, "body", _CANARY_RESPONSE_FIELD_MISSING)
+    if raw_body is _CANARY_RESPONSE_FIELD_MISSING:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed="missing_response_field=body",
+            evidence_refs=(),
+        )
     if not isinstance(raw_body, (bytes, str)):
         return ProbeResult(
             probe_id="staging-canary",

@@ -3400,18 +3400,26 @@ def _sorted_by_field(
     Primarily sorted by *field* whenever a given entry names it as a
     nonblank string; an entry missing that field (or naming it with
     something other than a nonblank string) sorts after every entry
-    that has one, ordered among themselves by that entry's own
-    canonical JSON bytes. This makes a live-evidence digest invariant
-    to whatever transient order the live API itself happened to return
-    elements in on a given call, and makes it change only when the
-    actual *set* of elements genuinely changes.
+    that has one. Every entry's own canonical JSON bytes are *always*
+    appended as a secondary tie-breaker -- even among entries that share
+    the exact same *field* value -- so two entries with a duplicate
+    ``name``/``roleDefinitionName`` (but different other content) are
+    never left to fall back on Python's merely input-order-stable sort:
+    without that tie-breaker, two live API responses that return the
+    same *set* of elements in a different transient order could still
+    produce a different sorted order (and therefore a different digest)
+    whenever any duplicate field value is present. This makes a
+    live-evidence digest invariant to whatever transient order the live
+    API itself happened to return elements in, and makes it change only
+    when the actual *set* of elements genuinely changes.
     """
 
-    def _key(entry: Mapping[str, object]) -> Tuple[int, str]:
+    def _key(entry: Mapping[str, object]) -> Tuple[int, str, str]:
         value = entry.get(field)
+        canonical_repr = canonical.canonical_bytes(entry).decode("utf-8", "replace")
         if isinstance(value, str) and value:
-            return (0, value)
-        return (1, canonical.canonical_bytes(entry).decode("utf-8", "replace"))
+            return (0, value, canonical_repr)
+        return (1, "", canonical_repr)
 
     return sorted(entries, key=_key)
 
@@ -3475,6 +3483,19 @@ def collect_live_github(
     *default_branch* scope this collection is bound to, so the digest
     itself is bound to that scope and can never be silently reused
     across a different repository or branch.
+
+    This function issues exactly the five commands above -- no
+    pagination flag or follow-up page request is ever added, matching
+    this project's fixed live-command contract. Every one of these
+    endpoints can in principle paginate on a real repository with an
+    unusually large number of rulesets/environments; when it does, ``gh
+    api`` still returns only that endpoint's first page here, and this
+    function has no way to know whether more pages existed. That is a
+    known, accepted limit of this optional evidence, not a defect: an
+    incomplete or first-page-only live result is already reported the
+    same "not-verified"/"malformed-shape" way as an outright failure
+    would be (see above), so a truncated live response can never be
+    mistaken for full live verification of a control.
     """
     collected: Dict[str, object] = {}
     for key, endpoint_suffix, finding_id, validate in _GITHUB_STEPS:
@@ -3528,6 +3549,21 @@ def _azure_not_verified(
         evidence=(),
         finding=finding,
     )
+
+
+#: A conservative *technical* safety bound on how many distinct unique
+#: role names (and therefore how many ``az role definition list``
+#: commands) :func:`collect_live_azure` will ever fan out to for one
+#: identity's role assignments -- never a customer-facing governance
+#: policy on how many roles a deployment identity may legitimately hold.
+#: A real, well-scoped staging deployment identity is never assigned
+#: anywhere near this many distinct roles in one resource group; a
+#: result that names more than this is itself an anomaly this bounded
+#: collector cannot safely process without risking runaway command
+#: fan-out against whatever ``run`` callable the caller injected, so it
+#: is reported not-verified *before* a single additional command for it
+#: is ever issued.
+_MAX_AZURE_ROLE_DEFINITION_LOOKUPS = 50
 
 
 def _validate_role_assignment_role_names(role_assignments: object) -> Optional[Tuple[str, ...]]:
@@ -3614,7 +3650,12 @@ def collect_live_azure(
     GHCP-006 (least-privilege / identity-separation evidence): an
     incomplete, ambiguous, or unrecognized result can never prove
     identities are actually separate and least-privileged, so it must
-    never be reported "pass". This function never records a raw stderr
+    never be reported "pass". A role-assignment list naming more unique
+    roles than :data:`_MAX_AZURE_ROLE_DEFINITION_LOOKUPS` -- a
+    conservative *technical* fan-out safety bound this function enforces
+    before issuing a single role-definition-list command, never an
+    invented governance policy -- is likewise attributed to GHCP-006 and
+    reported not-verified. This function never records a raw stderr
     string or any command argument beyond the identifiers the caller
     supplied -- only a small fixed error-class label and the real
     numeric process exit code.
@@ -3698,6 +3739,16 @@ def collect_live_azure(
             "each naming a role",
             "malformed-shape",
             exit_code,
+        )
+    if len(role_names) > _MAX_AZURE_ROLE_DEFINITION_LOOKUPS:
+        return _azure_not_verified(
+            "GHCP-006",
+            "azure-role-definition-fanout-exceeded",
+            "The role assignment list named more unique roles than this "
+            "collector's bounded role-definition-lookup fan-out safety "
+            f"limit allows ({len(role_names)} > "
+            f"{_MAX_AZURE_ROLE_DEFINITION_LOOKUPS})",
+            "excessive-fanout",
         )
 
     role_definitions: Dict[str, object] = {}

@@ -2180,17 +2180,42 @@ def test_finding_templates_agree_with_catalog_plane_for_shared_ids():
 # ---------------------------------------------------------------------------
 
 
+#: Sentinel meaning "the caller of ``_FakeHttpResponse`` did not name a
+#: ``url`` at all", distinct from an explicit ``url=None`` (used by the
+#: dedicated "missing url attribute" adversarial test to build a response
+#: that genuinely has no ``url`` attribute).
+_DEFAULT_FAKE_RESPONSE_URL = object()
+
+
 class _FakeHttpResponse:
-    def __init__(self, status_code, headers=None, body=b"", url=None):
+    def __init__(self, status_code, headers=None, body=b"", url=_DEFAULT_FAKE_RESPONSE_URL):
         self.status_code = status_code
         self.headers = dict(headers or {})
         self.body = body
-        # Only set ``self.url`` when a test actually cares about a final
-        # response URL, so ``getattr(response, "url", None)`` defaults
-        # to ``None`` (no redirect same-origin check at all) for every
-        # test that never supplies one.
+        # Every test's ``safe_canary``/``trusted_staging_origin`` fixture
+        # names the same fixed same-origin URL, so defaulting to it here
+        # lets every test that does not itself care about the final
+        # response URL still exercise the (mandatory) same-origin check
+        # without having to repeat it. Pass ``url=None`` explicitly to
+        # build a response that has *no* ``url`` attribute at all.
+        if url is _DEFAULT_FAKE_RESPONSE_URL:
+            url = "https://staging.example.invalid/governance/health"
         if url is not None:
             self.url = url
+
+
+class _BareHttpResponse:
+    """A response object exposing only the attributes explicitly passed
+    to it -- used to prove that a genuinely *missing*
+    ``url``/``headers``/``body`` attribute is reported ``not-verified``
+    rather than the canary silently skipping the same-origin check or
+    defaulting to an empty mapping/body and treating that fabricated
+    default as real evidence.
+    """
+
+    def __init__(self, **attrs):
+        for name, value in attrs.items():
+            setattr(self, name, value)
 
 
 class _FakeHttpRunner:
@@ -2532,3 +2557,124 @@ def test_staging_canary_rejects_boolean_expected_status(safe_canary, trusted_sta
             run=lambda request: None,
             trusted_origin=trusted_staging_origin,
         )
+
+
+# ---------------------------------------------------------------------------
+# Round 5, issue 1: a response missing ``url``/``headers``/``body``
+# entirely must never be treated the same as one that supplies an empty
+# (but present) value for it -- especially ``body``, where the previous
+# behavior computed a hash of ``b""`` and returned it as if that were a
+# genuinely observed response, when the runner never actually reported a
+# body at all.
+# ---------------------------------------------------------------------------
+
+
+def test_staging_canary_missing_url_attribute_is_not_verified_and_never_skips_origin_check(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _BareHttpResponse(status_code=204, headers={}, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert result.observed == "missing_response_field=url"
+
+
+def test_staging_canary_missing_headers_attribute_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _BareHttpResponse(
+            status_code=204,
+            body=b"",
+            url="https://staging.example.invalid/governance/health",
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert result.observed == "missing_response_field=headers"
+
+
+def test_staging_canary_missing_body_attribute_is_not_verified_and_never_fabricates_empty_hash(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _BareHttpResponse(
+            status_code=204,
+            headers={},
+            url="https://staging.example.invalid/governance/health",
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert result.observed == "missing_response_field=body"
+    # The sha256 of an empty body must never appear as fabricated "proof"
+    # that a body was actually observed.
+    empty_body_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    assert empty_body_sha256 not in result.observed
+    assert "response_sha256" not in result.observed
+
+
+def test_staging_canary_explicit_none_headers_value_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    # An explicit ``headers=None`` (attribute *present* but ``None``) is
+    # just as unusable as a missing attribute -- it must never be
+    # silently coerced into an empty mapping and treated as "no headers
+    # were sent".
+    def _runner(request):
+        return _BareHttpResponse(
+            status_code=204,
+            headers=None,
+            body=b"",
+            url="https://staging.example.invalid/governance/health",
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+
+
+# ---------------------------------------------------------------------------
+# Round 5, issue 5: a syntactically malformed port must be translated into
+# ``UnsafeTargetError`` for contract-side URLs, never left to propagate as
+# a raw, uncaught ``ValueError``; the same malformed port on a *response*
+# URL must be reported ``not-verified``, never crash.
+# ---------------------------------------------------------------------------
+
+
+def test_staging_canary_rejects_malformed_port_in_contract_url(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": "https://staging.example.invalid:99999999/governance/health"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_rejects_malformed_port_in_trusted_origin(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            safe_canary,
+            run=lambda request: None,
+            trusted_origin="https://staging.example.invalid:not-a-port",
+        )
+
+
+def test_staging_canary_malformed_port_in_response_url_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _FakeHttpResponse(
+            204,
+            headers={},
+            body=b"",
+            url="https://staging.example.invalid:99999999/governance/health",
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-off-origin-redirect"

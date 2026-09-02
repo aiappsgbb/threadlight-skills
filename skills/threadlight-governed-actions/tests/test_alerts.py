@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+import alerts
 from alerts import REQUIRED_ALERT_CLASSES, assess_alerts
 
 
@@ -217,6 +218,63 @@ def test_malformed_catalog_json_is_should_fix(tmp_path):
     (governance_dir / "alerts.json").write_text("not json", encoding="utf-8")
     finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
     assert finding.status == "should-fix"
+
+
+# --- Round 5, issue 4: bound the on-disk catalog file's bytes/nesting/
+# collection size -- a malformed or adversarially large catalog must never
+# crash this assessment with an unhandled exception. --------------------
+
+
+def test_oversized_catalog_file_is_should_fix(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    oversized = json.dumps({"padding": "x" * (alerts._MAX_ALERT_CATALOG_BYTES + 1)})
+    (governance_dir / "alerts.json").write_text(oversized, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_deeply_nested_value_in_catalog_is_should_fix_never_crashes(tmp_path):
+    # A deeply-nested value tucked inside an otherwise well-formed catalog
+    # (rather than nesting so deep it changes the catalog's own top-level
+    # JSON type) must still be rejected as unusable -- and must never
+    # crash this assessment with an unhandled RecursionError -- because
+    # ``canonical_bytes`` cannot safely canonicalize it either.
+    catalog_path = _write_catalog(tmp_path)
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    nested = json.loads("[" * 10000 + "]" * 10000)
+    catalog["extra_top_level_value"] = nested
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_deeply_nested_catalog_json_is_should_fix_never_crashes(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    deeply_nested = "[" * 100000 + "]" * 100000
+    (governance_dir / "alerts.json").write_text(deeply_nested, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_catalog_with_nonfinite_float_value_is_should_fix(tmp_path):
+    # Even a catalog whose eight required definitions all look complete
+    # must never pass if some other value in the same file is a
+    # non-finite float ``json.loads`` itself would otherwise silently
+    # accept -- the whole catalog must be canonicalizable, not merely
+    # the eight definitions this function inspects directly.
+    catalog_path = _write_catalog(tmp_path)
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["extra_top_level_value"] = "NaN-PLACEHOLDER"
+    text = json.dumps(catalog).replace('"NaN-PLACEHOLDER"', "NaN")
+    catalog_path.write_text(text, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
 
 
 # --- Issue 5: alert live-evidence validation -------------------------------

@@ -52,21 +52,48 @@ _ALERTS_CATALOG_RELATIVE_PATH = Path("governance") / "alerts.json"
 
 _ALL_ALERT_CLASSES_TEXT = ", ".join(REQUIRED_ALERT_CLASSES)
 
+#: A conservative *technical* safety bound on the on-disk alert catalog
+#: file's size -- never a business policy on how large a real catalog
+#: "should" be. A real production catalog of eight small definitions is
+#: nowhere near this size; a file this large cannot safely be read and
+#: parsed in full here without risking unbounded memory use from
+#: whatever actually produced it (malicious or merely corrupt).
+_MAX_ALERT_CATALOG_BYTES = 2_000_000
+
 
 def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Optional[str]]:
     """Read *root*'s ``governance/alerts.json`` catalog.
 
     Returns ``(catalog, None)`` on success or ``(None, problem)`` when the
-    file is missing, is not valid JSON, or is not a JSON object -- every
-    one of these is reported the same "cannot confirm the catalog is
-    complete" way; this function never guesses at a partial catalog from
-    malformed input.
+    file is missing, larger than :data:`_MAX_ALERT_CATALOG_BYTES`, is not
+    valid JSON (including JSON nested/circular deeply enough to exhaust
+    the interpreter's recursion limit while parsing), is not a JSON
+    object, or contains a value (for example a non-finite
+    ``NaN``/``Infinity`` float ``json.loads`` itself would otherwise
+    silently accept) that cannot itself be canonicalized -- every one of
+    these is reported the same "cannot confirm the catalog is complete"
+    way; this function never guesses at a partial catalog from malformed
+    input, and never lets a malformed on-disk file crash this assessment
+    with an unhandled exception.
     """
     catalog_path = root / _ALERTS_CATALOG_RELATIVE_PATH
     if not catalog_path.is_file():
         return None, (
             f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
             "was not found."
+        )
+    try:
+        file_size = catalog_path.stat().st_size
+    except OSError:
+        return None, (
+            f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
+            "could not be read."
+        )
+    if file_size > _MAX_ALERT_CATALOG_BYTES:
+        return None, (
+            f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
+            "exceeds this project's bounded catalog-size safety limit "
+            f"({file_size} > {_MAX_ALERT_CATALOG_BYTES} bytes)."
         )
     try:
         text = catalog_path.read_text(encoding="utf-8")
@@ -77,7 +104,7 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
         )
     try:
         catalog = json.loads(text)
-    except ValueError:
+    except (TypeError, ValueError, RecursionError):
         return None, (
             f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
             "is not valid JSON."
@@ -86,6 +113,14 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
         return None, (
             f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
             "must be a JSON object mapping each alert class to its definition."
+        )
+    try:
+        canonical.canonical_bytes(catalog)
+    except canonical.CanonicalizationError:
+        return None, (
+            f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
+            "contains a value that could not be canonicalized (for example a "
+            "non-finite number, a circular reference, or nesting too deep)."
         )
     return catalog, None
 

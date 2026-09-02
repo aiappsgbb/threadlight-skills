@@ -7867,6 +7867,64 @@ def test_live_azure_digest_invariant_to_role_assignment_return_order():
     assert result_a.data["collected_sha256"] == result_b.data["collected_sha256"]
 
 
+def test_live_azure_digest_invariant_to_duplicate_role_name_entry_order():
+    # Two role-assignment entries can legitimately name the *same* role
+    # (e.g. assigned at different scopes) while differing in their other
+    # fields. Sorting only by ``roleDefinitionName`` ties on those two
+    # entries, so without a content-based tie-breaker Python's merely
+    # input-order-stable sort would leave them in whatever order the
+    # live API happened to return them in -- making the digest depend on
+    # that transient order rather than only on the actual set of
+    # elements returned.
+    responses_a = [
+        _ok("[]"),
+        _ok(
+            json.dumps(
+                [
+                    {"roleDefinitionName": "Reader", "principalId": "p1"},
+                    {"roleDefinitionName": "Reader", "principalId": "p2"},
+                ]
+            )
+        ),
+        _ok(json.dumps([{"roleName": "Reader"}])),
+    ]
+    responses_b = [
+        _ok("[]"),
+        _ok(
+            json.dumps(
+                [
+                    {"roleDefinitionName": "Reader", "principalId": "p2"},
+                    {"roleDefinitionName": "Reader", "principalId": "p1"},
+                ]
+            )
+        ),
+        _ok(json.dumps([{"roleName": "Reader"}])),
+    ]
+    result_a = collect_live_azure("sub", "rg", "identity", run=_FakeRunner(responses_a))
+    result_b = collect_live_azure("sub", "rg", "identity", run=_FakeRunner(responses_b))
+    assert result_a.status == result_b.status == "pass"
+    assert result_a.data["collected_sha256"] == result_b.data["collected_sha256"]
+
+
+def test_live_azure_role_definition_fanout_cap_exceeded_is_not_verified_before_any_lookup():
+    # A role-assignment list naming more unique roles than this
+    # collector's bounded technical fan-out safety limit must be
+    # reported not-verified *before* a single ``az role definition
+    # list`` command is issued for any of them -- never partway through
+    # an unbounded fan-out.
+    unique_roles = [f"Role{i}" for i in range(ghcp._MAX_AZURE_ROLE_DEFINITION_LOOKUPS + 1)]
+    role_assignments = [{"roleDefinitionName": name} for name in unique_roles]
+    runner = _FakeRunner([_ok("[]"), _ok(json.dumps(role_assignments))])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert result.evidence == ()
+    # Exactly the federated-credential and role-assignment commands ran;
+    # no "az role definition list" fan-out was ever attempted.
+    assert len(runner.commands) == 2
+    assert all(command[:3] != ["az", "role", "definition"] for command in runner.commands)
+
+
 # --- Issue 3: collector runner hardening (timeouts, malformed JSON,
 # NaN/nonfinite floats, oversized stdout, recursion) ------------------------
 
