@@ -71,7 +71,7 @@ from pathlib import Path
 import pytest
 
 import probes
-from contracts import Finding, ProbeResult
+from contracts import Finding, ProbeResult, UnsafeTargetError
 from probes import (
     ApprovalBinding,
     ProbeCase,
@@ -85,6 +85,8 @@ from probes import (
     run_enforcement_probe_set,
     run_output_probe,
     run_privacy_probe_set,
+    run_staging_canary,
+    validate_post_deploy_target,
 )
 
 
@@ -2163,3 +2165,138 @@ def test_finding_templates_agree_with_catalog_plane_for_shared_ids():
         if probes._FINDING_TEMPLATES[finding_id]["plane"] != catalog_planes[finding_id]
     }
     assert mismatches == {}
+
+
+# ---------------------------------------------------------------------------
+# Task 8: staging-only post-deploy guards.
+#
+# ``validate_post_deploy_target`` and ``run_staging_canary`` are the only
+# two functions this project ever lets touch anything resembling a live
+# target during ``post-deploy``. Neither ever spawns a real process or
+# opens a real socket in these tests: ``run_staging_canary``'s HTTP runner
+# is always an injected test double, and every unsafe contract must be
+# rejected with :class:`UnsafeTargetError` before that runner is ever
+# invoked.
+# ---------------------------------------------------------------------------
+
+
+class _FakeHttpResponse:
+    def __init__(self, status_code, headers=None, body=b""):
+        self.status_code = status_code
+        self.headers = dict(headers or {})
+        self.body = body
+
+
+class _FakeHttpRunner:
+    def __init__(self, response):
+        self.requests = []
+        self._response = response
+
+    def __call__(self, request):
+        self.requests.append(dict(request))
+        return self._response
+
+
+@pytest.fixture
+def fake_http_runner():
+    return _FakeHttpRunner(
+        _FakeHttpResponse(204, headers={"X-Deployment-Id": "dep-123"}, body=b"")
+    )
+
+
+@pytest.fixture
+def safe_canary():
+    return {
+        "environment": "staging",
+        "destructive": False,
+        "method": "HEAD",
+        "url": "https://staging.example.invalid/governance/health",
+        "expected_status": 204,
+    }
+
+
+def test_post_deploy_refuses_non_staging_target():
+    with pytest.raises(UnsafeTargetError, match="staging"):
+        validate_post_deploy_target(phase="post-deploy", staging=False, destructive=False)
+
+
+def test_post_deploy_refuses_destructive_target_even_when_staging():
+    with pytest.raises(UnsafeTargetError):
+        validate_post_deploy_target(phase="post-deploy", staging=True, destructive=True)
+
+
+def test_post_deploy_allows_staging_nondestructive_target():
+    validate_post_deploy_target(phase="post-deploy", staging=True, destructive=False)
+
+
+def test_non_post_deploy_phase_is_unaffected_by_staging_flag():
+    # The staging-only guard is specific to the post-deploy phase; design
+    # and pre-deploy assessment never touch a live target at all, so
+    # ``staging``/``destructive`` are simply irrelevant there.
+    validate_post_deploy_target(phase="pre-deploy", staging=False, destructive=False)
+    validate_post_deploy_target(phase="design", staging=False, destructive=True)
+
+
+def test_staging_canary_allows_only_nondestructive_https_read(safe_canary, fake_http_runner):
+    result = run_staging_canary(safe_canary, run=fake_http_runner)
+    assert result.status == "pass"
+    assert fake_http_runner.requests[0]["method"] == "HEAD"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("environment", "production"),
+        ("destructive", True),
+        ("method", "POST"),
+        ("url", "http://staging.example.invalid/governance/health"),
+    ],
+)
+def test_staging_canary_rejects_unsafe_contract(field, value, safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary({**safe_canary, field: value}, run=lambda request: None)
+
+
+def test_staging_canary_rejects_request_body(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary({**safe_canary, "body": "some-body"}, run=lambda request: None)
+
+
+def test_staging_canary_rejects_query_string(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": safe_canary["url"] + "?token=abc"},
+            run=lambda request: None,
+        )
+
+
+def test_staging_canary_rejects_literal_authorization_header(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "headers": {"Authorization": "Bearer xyz"}},
+            run=lambda request: None,
+        )
+
+
+def test_staging_canary_records_status_duration_deployment_id_and_response_hash_only(
+    safe_canary, fake_http_runner
+):
+    result = run_staging_canary(safe_canary, run=fake_http_runner)
+    assert "204" in result.observed
+    assert "dep-123" in result.observed
+    assert "sha256" in result.observed
+
+
+def test_staging_canary_never_records_raw_response_body(safe_canary):
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body=b"super-secret-customer-payload")
+
+    result = run_staging_canary(safe_canary, run=_runner)
+    assert "super-secret-customer-payload" not in result.observed
+    assert "super-secret-customer-payload" not in (result.reason_code or "")
+
+
+def test_staging_canary_get_method_is_also_allowed(safe_canary, fake_http_runner):
+    result = run_staging_canary({**safe_canary, "method": "GET"}, run=fake_http_runner)
+    assert result.status == "pass"
+    assert fake_http_runner.requests[0]["method"] == "GET"

@@ -23,12 +23,20 @@ import json
 import subprocess
 import textwrap
 from pathlib import Path
-from typing import Sequence
+from typing import List, Sequence
 
 import pytest
 
 import ghcp
-from ghcp import ChangePlaneResult, Finding, assess_change_plane, assess_workflow
+from ghcp import (
+    ChangePlaneResult,
+    Finding,
+    LiveEvidenceResult,
+    assess_change_plane,
+    assess_workflow,
+    collect_live_azure,
+    collect_live_github,
+)
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -7367,3 +7375,232 @@ def test_local_reusable_workflow_deploys_helper_fails_closed_exactly_at_bound():
         )
         is True
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 8: optional, read-only live GitHub/Azure evidence collection.
+#
+# ``collect_live_github``/``collect_live_azure`` never touch a real network
+# or spawn a real process in these tests: every command runner below is an
+# injected test double that only ever records the exact command lists it
+# was asked to run and returns a scripted response. A permission failure
+# (HTTP 401/403 surfaced by a non-zero exit), a missing CLI binary, an
+# unparseable response, or a missing required input must never be reported
+# as ``"pass"`` -- only ever ``"not-verified"`` with the specific GHCP
+# control the missing evidence affects.
+# ---------------------------------------------------------------------------
+
+
+class _FakeRunner:
+    """Injectable command runner: records every command it is asked to run,
+    in order, and returns the next scripted ``subprocess.CompletedProcess``
+    for it -- never actually spawns a process or touches the network."""
+
+    def __init__(self, responses: Sequence[subprocess.CompletedProcess]):
+        self.commands: List[List[str]] = []
+        self._responses = list(responses)
+
+    def __call__(self, command: Sequence[str]) -> subprocess.CompletedProcess:
+        self.commands.append(list(command))
+        if self._responses:
+            return self._responses.pop(0)
+        return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="{}", stderr="")
+
+
+def _ok(stdout: str) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+
+def _forbidden() -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr="HTTP 403 Forbidden"
+    )
+
+
+@pytest.fixture
+def fake_runner() -> _FakeRunner:
+    return _FakeRunner(
+        [
+            _ok("[]"),
+            _ok("{}"),
+            _ok("{}"),
+            _ok(json.dumps({"environments": [{"name": "staging", "protection_rules": []}]})),
+            _ok("{}"),
+        ]
+    )
+
+
+@pytest.fixture
+def fake_runner_403() -> _FakeRunner:
+    return _FakeRunner([_forbidden()])
+
+
+def test_live_github_collects_rules_and_required_checks(fake_runner):
+    collect_live_github("aiappsgbb/threadlight-skills", "main", run=fake_runner)
+    assert fake_runner.commands == [
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/rulesets?includes_parents=true"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/branches/main/protection"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/actions/permissions/workflow"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/environments"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/actions/oidc/customization/sub"],
+    ]
+
+
+def test_live_github_success_is_pass_with_evidence_and_no_finding(fake_runner):
+    result = collect_live_github("aiappsgbb/threadlight-skills", "main", run=fake_runner)
+    assert isinstance(result, LiveEvidenceResult)
+    assert result.status == "pass"
+    assert result.finding is None
+    assert len(result.evidence) == 1
+    ref = result.evidence[0]
+    assert ref.repository == "aiappsgbb/threadlight-skills"
+    assert ref.live_verified is True
+    assert ref.sha256.startswith("sha256:")
+    assert result.data["environments"] == {"staging": {"protected": False}}
+
+
+def test_missing_live_permissions_remain_not_verified(fake_runner_403):
+    evidence = collect_live_github("owner/repo", "main", run=fake_runner_403)
+    assert evidence.status == "not-verified"
+    assert evidence.finding.finding_id == "GHCP-002"
+
+
+def test_live_github_missing_cli_is_not_verified():
+    def _raise_missing_cli(command):
+        raise FileNotFoundError("gh")
+
+    result = collect_live_github("owner/repo", "main", run=_raise_missing_cli)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+
+
+def test_live_github_malformed_response_is_not_verified():
+    def _malformed(command):
+        return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="not json", stderr="")
+
+    result = collect_live_github("owner/repo", "main", run=_malformed)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+
+
+def test_live_github_never_records_raw_stderr(fake_runner_403):
+    result = collect_live_github("owner/repo", "main", run=fake_runner_403)
+    assert "Forbidden" not in result.finding.details
+    assert "Forbidden" not in json.dumps(result.data)
+    assert "403" not in result.finding.details
+
+
+@pytest.fixture
+def fake_azure_runner() -> _FakeRunner:
+    return _FakeRunner(
+        [
+            _ok("[]"),
+            _ok(
+                json.dumps(
+                    [
+                        {"roleDefinitionName": "Reader"},
+                        {"roleDefinitionName": "Contributor"},
+                        {"roleDefinitionName": "Reader"},
+                    ]
+                )
+            ),
+            _ok("[]"),
+            _ok("[]"),
+        ]
+    )
+
+
+def test_live_azure_collects_identity_and_role_evidence(fake_azure_runner):
+    result = collect_live_azure(
+        "SUBSCRIPTION", "STAGING_RG", "DEPLOY_IDENTITY", run=fake_azure_runner
+    )
+    assert fake_azure_runner.commands == [
+        [
+            "az", "identity", "federated-credential", "list",
+            "--identity-name", "DEPLOY_IDENTITY",
+            "--resource-group", "STAGING_RG",
+            "--subscription", "SUBSCRIPTION",
+            "-o", "json",
+        ],
+        [
+            "az", "role", "assignment", "list",
+            "--assignee", "DEPLOY_IDENTITY",
+            "--resource-group", "STAGING_RG",
+            "--subscription", "SUBSCRIPTION",
+            "--all",
+            "-o", "json",
+        ],
+        [
+            "az", "role", "definition", "list",
+            "--name", "Contributor",
+            "--subscription", "SUBSCRIPTION",
+            "-o", "json",
+        ],
+        [
+            "az", "role", "definition", "list",
+            "--name", "Reader",
+            "--subscription", "SUBSCRIPTION",
+            "-o", "json",
+        ],
+    ]
+    assert result.status == "pass"
+    assert result.finding is None
+    for command in fake_azure_runner.commands:
+        joined = " ".join(command).lower()
+        assert "delete" not in joined
+        assert "create" not in joined
+        assert " set " not in f" {joined} "
+        assert "secret" not in joined
+        assert "password" not in joined
+        assert "token" not in joined
+
+
+def test_live_azure_federated_credential_failure_is_ghcp_005(fake_runner_403):
+    result = collect_live_azure("sub", "rg", "identity", run=fake_runner_403)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-005"
+
+
+def test_live_azure_role_assignment_failure_is_ghcp_006():
+    runner = _FakeRunner([_ok("[]"), _forbidden()])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+
+
+def test_live_azure_role_definition_failure_is_ghcp_006():
+    runner = _FakeRunner(
+        [_ok("[]"), _ok(json.dumps([{"roleDefinitionName": "Owner"}])), _forbidden()]
+    )
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+
+
+@pytest.mark.parametrize(
+    "subscription,resource_group,deploy_identity",
+    [("", "rg", "identity"), ("sub", "", "identity"), ("sub", "rg", "")],
+)
+def test_live_azure_absent_input_is_not_verified_without_running_commands(
+    subscription, resource_group, deploy_identity
+):
+    runner = _FakeRunner([])
+    result = collect_live_azure(subscription, resource_group, deploy_identity, run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert runner.commands == []
+
+
+def test_live_azure_missing_cli_is_not_verified():
+    def _raise_missing_cli(command):
+        raise FileNotFoundError("az")
+
+    result = collect_live_azure("sub", "rg", "identity", run=_raise_missing_cli)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id in {"GHCP-005", "GHCP-006"}
+
+
+def test_live_azure_never_records_raw_stderr(fake_runner_403):
+    result = collect_live_azure("sub", "rg", "identity", run=fake_runner_403)
+    assert "Forbidden" not in result.finding.details
+    assert "Forbidden" not in json.dumps(result.data)

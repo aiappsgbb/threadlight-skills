@@ -156,14 +156,15 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import List, Mapping, Optional, Tuple
+from typing import Callable, List, Mapping, Optional, Tuple
 
 import canonical
-from contracts import Finding, ProbeResult
+from contracts import Finding, Phase, ProbeResult, UnsafeTargetError
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -2348,6 +2349,193 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
             )
         )
     return tuple(results)
+
+
+# ---------------------------------------------------------------------------
+# Task 8: staging-only post-deploy guards.
+#
+# ``post-deploy`` is the one phase this project ever lets touch anything
+# resembling a live target, and only through the two functions below.
+# ``validate_post_deploy_target`` is a pure input guard: it never runs a
+# command or opens a connection, it only refuses to let assessment proceed
+# against a target this project was not explicitly told is staging.
+# ``run_staging_canary`` is the single, narrowly-bounded live HTTP check
+# ``post-deploy`` may run in addition to the fully hermetic, non-mutating
+# probes above -- every other post-deploy check remains exactly as
+# hermetic as Tasks 5/6 already made it.
+# ---------------------------------------------------------------------------
+
+#: A read-only HTTP runner: given a request mapping (``method``, ``url``,
+#: optionally ``headers``), returns a response object exposing
+#: ``status_code`` (int), ``headers`` (a string-keyed mapping), and
+#: ``body`` (bytes/str, hashed by :func:`run_staging_canary` but never
+#: itself recorded or returned).
+HttpReadRunner = Callable[[Mapping[str, object]], object]
+
+_STAGING_CANARY_ALLOWED_METHODS = frozenset({"GET", "HEAD"})
+
+#: Header names :func:`run_staging_canary` never allows literally on a
+#: canary request -- checked case-insensitively, exact match only (never
+#: a substring match, so an unrelated header is never rejected by
+#: coincidence).
+_STAGING_CANARY_FORBIDDEN_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+#: The response header names (checked case-insensitively, in this order)
+#: :func:`run_staging_canary` looks in for a deployment-identifying value
+#: to record -- never any other response header, and never the body.
+_DEPLOYMENT_ID_HEADER_NAMES = ("x-deployment-id", "deployment-id")
+
+
+def validate_post_deploy_target(phase: Phase, staging: bool, destructive: bool) -> None:
+    """Refuse to let a ``post-deploy`` assessment target anything other
+    than an explicit, non-destructive staging environment.
+
+    Raises :class:`UnsafeTargetError` when *phase* is ``"post-deploy"``
+    and *staging* is not ``True`` (post-deploy must never be pointed at
+    production, or at a target the caller never explicitly opted into
+    staging for), or when *destructive* is ``True`` (post-deploy must
+    never run a destructive probe against a live target, staging or
+    not). Every other phase is unaffected by *staging*/*destructive*: the
+    staging-only guard is specific to the one phase that can touch a
+    live target at all.
+    """
+    if phase != "post-deploy":
+        return
+    if not staging:
+        raise UnsafeTargetError(
+            "post-deploy assessment requires an explicit staging target; "
+            "refusing to run against a non-staging (or unconfirmed) "
+            "environment"
+        )
+    if destructive:
+        raise UnsafeTargetError(
+            "post-deploy assessment must never run a destructive probe "
+            "against a live target, even in staging"
+        )
+
+
+def _forbidden_canary_header(headers: object) -> Optional[str]:
+    if headers is None:
+        return None
+    if not isinstance(headers, Mapping):
+        raise UnsafeTargetError("staging canary headers must be a mapping")
+    for key in headers:
+        if str(key).strip().lower() in _STAGING_CANARY_FORBIDDEN_HEADERS:
+            return str(key)
+    return None
+
+
+def _validate_canary_contract(contract: Mapping[str, object]) -> None:
+    if contract.get("environment") != "staging":
+        raise UnsafeTargetError(
+            f"staging canary requires environment 'staging'; got "
+            f"{contract.get('environment')!r}"
+        )
+    if contract.get("destructive") is not False:
+        raise UnsafeTargetError("staging canary requires destructive: false")
+    method = contract.get("method")
+    if not isinstance(method, str) or method.upper() not in _STAGING_CANARY_ALLOWED_METHODS:
+        raise UnsafeTargetError(
+            f"staging canary allows only HTTPS GET/HEAD; got method {method!r}"
+        )
+    url = contract.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise UnsafeTargetError(f"staging canary requires an https:// URL; got {url!r}")
+    if "?" in url:
+        raise UnsafeTargetError("staging canary URL must not contain a query string")
+    if contract.get("query"):
+        raise UnsafeTargetError("staging canary must not send request query parameters")
+    if contract.get("body"):
+        raise UnsafeTargetError("staging canary must not send a request body")
+    forbidden_header = _forbidden_canary_header(contract.get("headers"))
+    if forbidden_header is not None:
+        raise UnsafeTargetError(
+            f"staging canary must not send a literal {forbidden_header!r} header"
+        )
+
+
+def _canary_deployment_id(headers: Mapping[str, object]) -> Optional[str]:
+    lowered = {str(key).strip().lower(): value for key, value in headers.items()}
+    for name in _DEPLOYMENT_ID_HEADER_NAMES:
+        if name in lowered and lowered[name] is not None:
+            return str(lowered[name])
+    return None
+
+
+def run_staging_canary(
+    contract: Mapping[str, object], run: HttpReadRunner
+) -> ProbeResult:
+    """Run one optional, narrowly-bounded live HTTP canary against a
+    staging environment.
+
+    Accepts only a contract declaring ``environment: "staging"``,
+    ``destructive: false``, an HTTPS ``GET``/``HEAD`` *method*, a *url*
+    with no query string, no request *body*, and no literal
+    authorization-style header; any other contract raises
+    :class:`UnsafeTargetError` before *run* is ever invoked, so an unsafe
+    canary can never reach the network at all.
+
+    Records only the observed HTTP status code, the wall-clock duration
+    of the call, any deployment-id-style response header, and a hash of
+    the response body -- the actual body content is read only long
+    enough to hash it and is never itself stored, logged, or returned.
+    """
+    _validate_canary_contract(contract)
+    request = {
+        "method": str(contract["method"]).upper(),
+        "url": contract["url"],
+        "headers": dict(contract.get("headers") or {}),
+    }
+    started = time.monotonic()
+    try:
+        response = run(request)
+    except Exception as error:  # noqa: BLE001 - network/tooling failure, not a finding
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-unreachable",
+            expected=f"HTTP {contract.get('expected_status')}",
+            observed=f"error_class={type(error).__name__}",
+            evidence_refs=(),
+        )
+    duration_ms = (time.monotonic() - started) * 1000.0
+
+    status_code = getattr(response, "status_code", None)
+    headers = getattr(response, "headers", None)
+    headers = headers if isinstance(headers, Mapping) else {}
+    deployment_id = _canary_deployment_id(headers)
+    raw_body = getattr(response, "body", b"")
+    body_bytes = raw_body if isinstance(raw_body, bytes) else str(raw_body).encode("utf-8")
+    response_hash = canonical.sha256_hex(body_bytes)
+
+    observed = (
+        f"status={status_code} duration_ms={duration_ms:.1f} "
+        f"deployment_id={deployment_id!r} response_sha256=sha256:{response_hash}"
+    )
+    expected_status = contract.get("expected_status")
+    if expected_status is not None and status_code != expected_status:
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-unexpected-status",
+            expected=f"HTTP {expected_status}",
+            observed=observed,
+            evidence_refs=(),
+        )
+    return ProbeResult(
+        probe_id="staging-canary",
+        action_id=None,
+        path_id=None,
+        status="pass",
+        reason_code="staging-canary-nondestructive-read",
+        expected=f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx",
+        observed=observed,
+        evidence_refs=(),
+    )
 
 
 if __name__ == "__main__":
