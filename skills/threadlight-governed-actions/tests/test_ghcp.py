@@ -7195,3 +7195,175 @@ def test_discover_infrastructure_requirements_covers_all_deployment_descriptors(
         "charts/**",
         "k8s/**",
     )
+
+
+# ---------------------------------------------------------------------------
+# One remaining Important issue: local reusable-workflow tracing must
+# cover GitHub's own full supported nesting bound -- "a maximum of ten
+# levels of workflows... the top-level caller workflow and up to nine
+# levels of reusable workflows" -- not stop short of it. A deploy that
+# only appears at, say, the ninth (last supported) level must still be
+# detected exactly as if it were direct; and a chain that goes beyond
+# what this static traversal can safely resolve must fail closed
+# (conservatively treated as a deploy) rather than silently reported as
+# non-deploying merely because tracing had to stop somewhere.
+# ---------------------------------------------------------------------------
+
+
+def _write_reusable_workflow_chain(
+    root: Path, levels: int, *, deploy_at: Optional[int] = None
+) -> Path:
+    """Write a push-triggered ``caller.yml`` that calls a local reusable
+    workflow ``l1.yml``, which calls ``l2.yml``, ... down to
+    ``l{levels}.yml`` -- an unbroken chain exactly ``levels`` reusable
+    workflows deep. When `deploy_at` is given, that one level (1-indexed)
+    actually deploys via a raw `az webapp deploy` run command; every
+    other level in the chain is otherwise inert (no deploy evidence of
+    its own, job ids/names deliberately free of "deploy"). Returns the
+    path to `caller.yml`.
+    """
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: ./.github/workflows/l1.yml
+        """,
+    )
+    for level in range(1, levels + 1):
+        if level == deploy_at:
+            body = f"""\
+                name: L{level}
+                on:
+                  workflow_call:
+                jobs:
+                  release:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                      - run: az webapp deploy --resource-group rg --name app
+                """
+        elif level < levels:
+            body = f"""\
+                name: L{level}
+                on:
+                  workflow_call:
+                jobs:
+                  delegate:
+                    uses: ./.github/workflows/l{level + 1}.yml
+                """
+        else:
+            body = f"""\
+                name: L{level}
+                on:
+                  workflow_call:
+                jobs:
+                  noop:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo done
+                """
+        _write_workflow(root, f"l{level}.yml", body)
+    return root / ".github" / "workflows" / "caller.yml"
+
+
+def test_deploy_at_maximum_supported_reusable_workflow_depth_is_must_fix(tmp_path):
+    """GitHub supports up to nine levels of chained reusable workflows;
+    a deploy that only appears at the ninth (last supported) level must
+    still be traced and classified as a deploy -- not silently missed
+    because tracing stopped short of GitHub's own actual bound."""
+    root = tmp_path / "max-depth-deploy-repo"
+    caller = _write_reusable_workflow_chain(root, levels=9, deploy_at=9)
+    result = assess_workflow(caller)
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_nine_level_chain_with_no_deploy_anywhere_still_passes(tmp_path):
+    """A chain that is fully within GitHub's supported nesting bound and
+    genuinely never deploys anywhere along it must not be conservatively
+    misclassified as a deploy -- fail-closed applies only once tracing
+    can no longer safely continue, not to every deep chain."""
+    root = tmp_path / "max-depth-nondeploy-repo"
+    caller = _write_reusable_workflow_chain(root, levels=9, deploy_at=None)
+    result = assess_workflow(caller)
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_over_depth_reusable_workflow_chain_fails_closed_as_deploy(tmp_path):
+    """A chain ten reusable workflows deep goes beyond what GitHub's own
+    documented bound (and hence this static traversal) can safely
+    resolve -- even with no declared deploy evidence anywhere in the
+    part of the chain that can be traced, it must fail closed
+    (conservatively treated as a deploy) rather than be reported as a
+    definite non-deploy that this analysis cannot actually prove."""
+    root = tmp_path / "over-depth-repo"
+    caller = _write_reusable_workflow_chain(root, levels=10, deploy_at=None)
+    result = assess_workflow(caller)
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_cyclic_reusable_workflow_chain_still_terminates_without_false_positive(
+    tmp_path,
+):
+    """A cycle is a revisit, not an exceeded-depth boundary: it is
+    already fully accounted for on the branch that first visited it, so
+    it must continue to resolve to non-deploying (never hang, crash, or
+    conservatively fail closed just because a cycle exists)."""
+    root = tmp_path / "cycle-still-nondeploy-repo"
+    _write_workflow(
+        root,
+        "cyc-a.yml",
+        """\
+        name: CycA
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: ./.github/workflows/cyc-b.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "cyc-b.yml",
+        """\
+        name: CycB
+        on:
+          workflow_call:
+        jobs:
+          delegate:
+            uses: ./.github/workflows/cyc-a.yml
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "cyc-a.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_local_reusable_workflow_deploys_helper_fails_closed_exactly_at_bound():
+    from ghcp import _MAX_REUSABLE_WORKFLOW_DEPTH, _local_reusable_workflow_deploys
+
+    # A depth already at (or past) the supported bound must fail closed
+    # regardless of whether the reference even resolves -- tracing
+    # cannot safely continue at all at this point.
+    assert (
+        _local_reusable_workflow_deploys(
+            Path("/nonexistent"),
+            "./.github/workflows/whatever.yml",
+            None,
+            _MAX_REUSABLE_WORKFLOW_DEPTH,
+        )
+        is True
+    )

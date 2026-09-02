@@ -1279,11 +1279,18 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
 # ---------------------------------------------------------------------------
 
 
-# A local reusable-workflow call chain deeper than this is treated as
-# non-deploying rather than followed further -- defense in depth beyond
-# the cycle guard below, bounding worst-case work for a pathological
-# chain that never actually cycles back to a visited path.
-_MAX_REUSABLE_WORKFLOW_DEPTH = 5
+# GitHub Actions itself permits a top-level caller workflow plus up to
+# nine levels of chained reusable workflows (ten levels total): "You can
+# connect a maximum of ten levels of workflows - that is, the top-level
+# caller workflow and up to nine levels of reusable workflows." Every one
+# of those nine levels must be traced -- a lower bound here would falsely
+# classify a deploy that only appears at, say, level 7, 8, or 9 as
+# non-deploying even though GitHub itself fully supports and would run
+# such a chain. A call chain that still has an *unresolved* further call
+# beyond this boundary cannot be proven non-deploying by this static
+# traversal; see `_local_reusable_workflow_deploys` for the fail-closed
+# behavior that applies once this bound is reached.
+_MAX_REUSABLE_WORKFLOW_DEPTH = 9
 
 
 def _local_reusable_workflow_calls(document: Mapping) -> Tuple[str, ...]:
@@ -1346,15 +1353,26 @@ def _local_reusable_workflow_deploys(
     to a separate reusable-workflow file is classified a deploy exactly
     as if it had deployed directly.
 
-    Bounded and cycle-safe: a resolved path already visited earlier on
-    this same call chain, an unresolvable/path-escaping reference, or a
-    chain deeper than :data:`_MAX_REUSABLE_WORKFLOW_DEPTH`, is treated
-    as non-deploying rather than ever recursed into further -- this can
-    only under-detect an unusually deep or mutually-recursive chain,
-    never loop indefinitely or exhaust the stack.
+    Every level up to and including :data:`_MAX_REUSABLE_WORKFLOW_DEPTH`
+    (GitHub's own supported nesting bound) is traced. Cycle-safe: a
+    resolved path already visited earlier on this same call chain is
+    skipped (it was, or is being, evaluated on the branch that first
+    visited it, so re-descending into it here could not reveal anything
+    new) -- this never loops indefinitely or exhausts the stack. An
+    unresolvable reference (not a local ``./`` reference, path-escaping,
+    or missing on disk) genuinely resolves to "no evidence this way" and
+    stays non-deploying, exactly as before.
+
+    A chain that is *still* going -- there is a further call left to
+    follow -- once this traversal has already reached the supported
+    depth boundary is different: this static analysis cannot safely
+    resolve, and therefore cannot prove non-deploying, whatever lies
+    beyond that boundary. Rather than silently asserting non-deployment
+    it cannot actually establish, that case fails closed and is
+    conservatively treated as a deploy.
     """
-    if _depth > _MAX_REUSABLE_WORKFLOW_DEPTH:
-        return False
+    if _depth >= _MAX_REUSABLE_WORKFLOW_DEPTH:
+        return True
     resolved = _resolve_local_reusable_workflow_path(root, uses_ref)
     if resolved is None:
         return False
@@ -1370,9 +1388,12 @@ def _local_reusable_workflow_deploys(
         return False
     if _is_deploy_workflow(called_document):
         return True
+    nested_refs = _local_reusable_workflow_calls(called_document)
+    if not nested_refs:
+        return False
     return any(
         _local_reusable_workflow_deploys(root, nested_ref, visited, _depth + 1)
-        for nested_ref in _local_reusable_workflow_calls(called_document)
+        for nested_ref in nested_refs
     )
 
 
