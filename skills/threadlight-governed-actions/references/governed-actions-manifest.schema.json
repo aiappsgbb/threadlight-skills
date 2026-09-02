@@ -528,8 +528,8 @@
         "path_id",
         "status",
         "reason_code",
-        "expected",
-        "observed",
+        "expected_sha256",
+        "observed_sha256",
         "evidence_refs"
       ],
       "properties": {
@@ -548,11 +548,11 @@
         "reason_code": {
           "type": "string"
         },
-        "expected": {
-          "type": "string"
+        "expected_sha256": {
+          "$ref": "#/$defs/sha256"
         },
-        "observed": {
-          "type": "string"
+        "observed_sha256": {
+          "$ref": "#/$defs/sha256"
         },
         "evidence_refs": {
           "type": "array",

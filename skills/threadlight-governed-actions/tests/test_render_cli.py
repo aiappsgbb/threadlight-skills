@@ -208,6 +208,10 @@ def _evidence(
     *,
     collected_at: Optional[str] = _COLLECTED_AT_EARLY,
     kind: str = "static-file-hash",
+    repository: str = _REPOSITORY,
+    source_commit: str = _COMMIT,
+    phase: str = "design",
+    policy_set_sha256: Optional[str] = None,
 ) -> contracts.EvidenceRef:
     return contracts.EvidenceRef(
         evidence_id=evidence_id,
@@ -217,11 +221,11 @@ def _evidence(
         collected_at=collected_at,
         freshness_seconds=0 if collected_at else None,
         live_verified=bool(collected_at),
-        phase="design",
-        repository=_REPOSITORY,
-        source_commit=_COMMIT,
+        phase=phase,
+        repository=repository,
+        source_commit=source_commit,
         target_environment=None,
-        policy_set_sha256=None,
+        policy_set_sha256=policy_set_sha256,
     )
 
 
@@ -230,6 +234,7 @@ def _finding(
     status: contracts.Status,
     *,
     plane: str = "runtime",
+    phase: str = "design",
     reason_code: str = "reason",
     affected_actions: Tuple[str, ...] = (),
     affected_paths: Tuple[str, ...] = (),
@@ -239,7 +244,7 @@ def _finding(
     return contracts.Finding(
         finding_id=finding_id,
         status=status,
-        phase="design",
+        phase=phase,
         plane=plane,
         reason_code=reason_code,
         summary=f"summary for {finding_id}",
@@ -513,6 +518,32 @@ def test_evidence_pack_never_contains_probe_payload_values():
     text = render.render_evidence_pack(_full_result())
     assert "SENTINEL-EXPECTED-PAYLOAD" not in text
     assert "SENTINEL-OBSERVED-PAYLOAD" not in text
+
+
+def test_manifest_never_contains_probe_payload_values():
+    # ``build_manifest``'s in-memory dict (and therefore the JSON bytes
+    # ultimately written to disk) must never carry a probe's raw
+    # ``expected``/``observed`` comparison payload -- only a stable
+    # sha256 digest of each, so the manifest can still prove which
+    # expected/observed pair a probe's status was decided against without
+    # ever smuggling the payload value itself.
+    manifest = render.build_manifest(_full_result())
+    serialized = json.dumps(manifest)
+    assert "SENTINEL-EXPECTED-PAYLOAD" not in serialized
+    assert "SENTINEL-OBSERVED-PAYLOAD" not in serialized
+    probes = manifest["conformance"]["application_probes"]
+    delete_record_probe = next(p for p in probes if p["probe_id"] == "probe-delete-record")
+    assert delete_record_probe["expected_sha256"] == _sha256_of("SENTINEL-EXPECTED-PAYLOAD")
+    assert delete_record_probe["observed_sha256"] == _sha256_of("SENTINEL-OBSERVED-PAYLOAD")
+    assert "expected" not in delete_record_probe
+    assert "observed" not in delete_record_probe
+
+
+def test_apply_plan_never_contains_probe_payload_values():
+    apply_plan = render.build_apply_plan(_full_result())
+    serialized = json.dumps(apply_plan)
+    assert "SENTINEL-EXPECTED-PAYLOAD" not in serialized
+    assert "SENTINEL-OBSERVED-PAYLOAD" not in serialized
 
 
 def test_evidence_pack_never_contains_banned_payload_keys_as_json():
@@ -1019,6 +1050,109 @@ def test_freshness_with_no_findings_or_probes_has_no_required_evidence_to_prove_
 
 
 # ---------------------------------------------------------------------------
+# Hardening round: required evidence must also be *bound* to this
+# assessment's own identity -- repository, commit, a future-relative-to-
+# capture timestamp, an unambiguous finding phase, and (when declared) the
+# assessment's own canonical policy-set digest -- never merely a parseable
+# timestamp. Any such mismatch is exactly as untrustworthy as a missing/
+# unparseable ``collected_at``, and can never yield a ``governed`` summary
+# verdict (issue 2, "close renderer trust gaps" round).
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_summary_partial_when_required_evidence_repository_mismatches_source():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-foreign",))]
+    evidence = [_evidence("EVID-foreign", repository="someone-else/other-repo")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # Foreign-repository evidence can never be trusted for *this*
+    # assessment, so freshness degrades and the verdict is truthfully
+    # "partial" -- never a fabricated "governed" on the strength of
+    # evidence that does not even belong to this repository.
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_partial_when_required_evidence_commit_mismatches_source():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-wrong-commit",))]
+    evidence = [_evidence("EVID-wrong-commit", source_commit="f" * 40)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_partial_when_required_evidence_timestamp_is_in_the_future():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-future",))]
+    # _CAPTURED_AT_DEFAULT (== _COLLECTED_AT_EARLY) is "2026-01-01T00:00:00Z";
+    # this evidence claims to have been collected an hour *after* the
+    # assessment's own trusted capture instant, which can never be a real
+    # collection event relative to that capture.
+    evidence = [_evidence("EVID-future", collected_at="2026-01-01T01:00:00Z")]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_CAPTURED_AT_DEFAULT)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_partial_when_required_evidence_phase_mismatches_referencing_finding():
+    findings = [
+        _finding("MED-001", "pass", phase="post-deploy", evidence_refs=("EVID-wrong-phase",))
+    ]
+    evidence = [_evidence("EVID-wrong-phase", phase="design")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_partial_when_required_evidence_policy_set_sha256_mismatches():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-wrong-policy",))]
+    evidence = [_evidence("EVID-wrong-policy", policy_set_sha256=_sha256_of("not-the-real-policy-set"))]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_partial_when_freshness_expired():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-oldest",))]
+    evidence = [_evidence("EVID-oldest", collected_at=_OLDEST_TRUSTWORTHY_TIMESTAMP)]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_CAPTURED_AT_EXPIRED)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "expired"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_ignores_unrelated_evidence_identity_mismatch():
+    # An unrelated evidence entry -- one nothing here required -- carries
+    # a foreign repository, a mismatched commit, and a mismatched phase.
+    # None of that may drag down a required, correctly-bound evidence
+    # entry's own freshness or the overall verdict.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-required",))]
+    evidence = [
+        _evidence("EVID-required", collected_at=_COLLECTED_AT_EARLY),
+        _evidence(
+            "EVID-unrelated-mismatched",
+            repository="someone-else/other-repo",
+            source_commit="f" * 40,
+            phase="post-deploy",
+        ),
+    ]
+    result = _base_result(findings=findings, evidence=evidence, dirty=False)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "fresh"
+    assert manifest["summary"]["verdict"] == "governed"
+
+
+# ---------------------------------------------------------------------------
 # Hardening round: freshness is bound to the assessment's own trusted
 # capture instant, never to the newest evidence timestamp this manifest
 # happens to carry, and never to evidence unrelated findings/probes did not
@@ -1311,9 +1445,14 @@ def test_write_artifacts_never_writes_probe_payload_values(tmp_path):
         render.DEFAULT_EVIDENCE_RELATIVE_PATH,
         render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
     )
+    # All three rendered artifacts -- not just the Markdown evidence pack
+    # -- must never carry a probe's raw comparison payload.
     evidence_text = evidence_path.read_text()
-    assert "SENTINEL-EXPECTED-PAYLOAD" not in evidence_text
-    assert "SENTINEL-OBSERVED-PAYLOAD" not in evidence_text
+    manifest_text = manifest_path.read_text()
+    apply_plan_text = apply_plan_path.read_text()
+    for text in (evidence_text, manifest_text, apply_plan_text):
+        assert "SENTINEL-EXPECTED-PAYLOAD" not in text
+        assert "SENTINEL-OBSERVED-PAYLOAD" not in text
 
 
 def test_write_artifacts_tolerates_malformed_collected_at_without_raising(tmp_path):
@@ -3239,6 +3378,239 @@ def test_evidence_pack_autolink_defense_within_full_table_row_context():
     assert row_th_count == 7
     assert row_td_count % 7 == 0  # every data row still has exactly 7 cells
     assert not any(token.type == "link_open" for token in tokens)
+
+
+# ---------------------------------------------------------------------------
+# Quality review: ``_md_code_span`` used to compose badly with
+# ``_md_escape_inline``'s own inserted double-backtick spans. An identifier
+# such as ``user@evil.example/x`` round-trips through ``_md_escape_inline``
+# as ```` ``user@evil.example``/x ```` (only the bare-email trigger
+# substring wrapped); wrapping *that whole string* in one more pair of
+# single backticks -- the old ``_md_code_span`` -- produced
+# ```` ```user@evil.example``/x` ````, whose leading backtick lands
+# directly adjacent (zero characters between them) to the following
+# double backtick, merging into one ambiguous triple-backtick run with no
+# matching triple-backtick run anywhere else in the string. CommonMark
+# then fails to parse *any* code span there, so ``user@evil.example``
+# falls back to being scanned as ordinary text -- exactly what GitHub
+# Flavored Markdown's extended autolink extension turns into a live
+# ``mailto:`` link.
+#
+# The fix makes ``_md_code_span`` wrap an identifier field's own *raw*
+# value once, using a delimiter sized from that value's own backtick
+# content, and makes it fully independent of (never composed with)
+# ``_md_escape_inline``. These tests prove the redesigned function both in
+# isolation and at every one of its real rendering call sites, the latter
+# against a genuine CommonMark-compliant parser's own token stream (not
+# merely against substring presence in the raw Markdown source).
+# ---------------------------------------------------------------------------
+
+
+def test_md_code_span_round_trips_a_plain_identifier():
+    assert render._md_code_span("plain-id-123") == "`plain-id-123`"
+
+
+def test_md_code_span_round_trips_a_non_string_value():
+    assert render._md_code_span(True) == "`True`"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("no-backticks", "`no-backticks`"),
+        ("one`tick", "``one`tick``"),
+        ("two``ticks", "```two``ticks```"),
+        ("three```ticks", "````three```ticks````"),
+    ],
+)
+def test_md_code_span_delimiter_is_one_longer_than_longest_internal_run(value, expected):
+    # The delimiter is sized from *value*'s own longest consecutive
+    # backtick run (never fixed at one backtick), so no substring inside
+    # the content can ever be mistaken by CommonMark's maximal-run
+    # matching for a same-length closing delimiter.
+    assert render._md_code_span(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("`leading-tick", "`` `leading-tick``"),
+        ("trailing-tick`", "``trailing-tick` ``"),
+        ("`both-ticks`", "`` `both-ticks` ``"),
+    ],
+)
+def test_md_code_span_pads_a_literal_space_next_to_an_edge_backtick(value, expected):
+    # A single literal space -- never another backtick -- separates the
+    # delimiter from a leading/trailing backtick *in the content*, so the
+    # delimiter's own backticks can never land directly adjacent to a
+    # content backtick and merge into one longer, ambiguous run.
+    assert render._md_code_span(value) == expected
+
+
+def test_md_code_span_of_empty_value_is_a_single_space_code_span():
+    assert render._md_code_span("") == "` `"
+
+
+def test_md_code_span_never_reintroduces_escape_inline_substitutions():
+    # Wrapping a value with metacharacters ``_md_escape_inline`` would
+    # otherwise handle one at a time (&, [, ], (, ), |, <, >) must never
+    # insert any backslash escape or entity reference of its own here: a
+    # code span's own delimiters are already sufficient on their own, and
+    # inserting escape-inline's substitutions would corrupt the code
+    # span's literal content instead of merely being redundant.
+    value = "a[b](c)|d&e<f>g"
+    assert render._md_code_span(value) == f"`{value}`"
+
+
+def test_md_code_span_collapses_embedded_newlines():
+    assert render._md_code_span("line1\nline2\r\nline3\rline4") == "`line1 line2 line3 line4`"
+
+
+_HOSTILE_CODE_SPAN_IDENTIFIER = "user@evil.example/x"
+_HOSTILE_CODE_SPAN_TOUCHING_TRIGGERS = "https://user@evil.example"
+_HOSTILE_CODE_SPAN_EMBEDDED_BACKTICKS = "id-`with`-backticks"
+_HOSTILE_CODE_SPAN_WWW_UPPERCASE = "WWW.evil.example/x"
+
+
+def _section_text(text: str, heading: str, next_heading: Optional[str]) -> str:
+    """Extract the rendered lines belonging to *heading*, up to (but not
+    including) *next_heading*, or to the end of the document if
+    *next_heading* is ``None``."""
+    start = text.index(heading)
+    end = text.index(next_heading) if next_heading is not None else len(text)
+    return text[start:end]
+
+
+def _hostile_action_id_result(hostile: str):
+    result = _base_result(actions=[_action(hostile)])
+    return result, "## Runtime action inventory", "## Runtime mediation graph"
+
+
+def _hostile_path_id_result(hostile: str):
+    result = _base_result(
+        actions=[_action("act-1")],
+        paths=[_path(hostile, "act-1")],
+    )
+    return result, "## Runtime mediation graph", "## Application-path probe evidence"
+
+
+def _hostile_probe_id_result(hostile: str):
+    result = _base_result(
+        actions=[_action("act-1")],
+        paths=[_path("path-1", "act-1")],
+        probes=[_probe(hostile, "act-1", "path-1")],
+    )
+    return result, "## Application-path probe evidence", "## GitHub Copilot change plane"
+
+
+def _hostile_residual_risk_id_result(hostile: str):
+    result = _base_result(
+        residual_risks=[
+            {"residual_risk_id": hostile, "finding_id": "n/a", "description": "test risk"}
+        ]
+    )
+    return result, "## Residual-risk register", "## Remediation plan"
+
+
+def _hostile_remediation_finding_id_result(hostile: str):
+    result = _base_result(findings=[_finding(hostile, "must-fix")])
+    return result, "## Remediation plan", None
+
+
+def _hostile_source_repository_result(hostile: str):
+    base = _base_result()
+    result = dataclasses.replace(
+        base, source=contracts.SourceRef(repository=hostile, commit=_COMMIT, dirty=False)
+    )
+    return result, "## Scope and trust model", "## Architecture and data flow"
+
+
+def _hostile_source_commit_result(hostile: str):
+    base = _base_result()
+    result = dataclasses.replace(
+        base, source=contracts.SourceRef(repository=_REPOSITORY, commit=hostile, dirty=False)
+    )
+    return result, "## Scope and trust model", "## Architecture and data flow"
+
+
+def _hostile_change_plane_repository_result(hostile: str):
+    base = _base_result()
+    change_plane = dict(base.change_plane)
+    change_plane["repository"] = hostile
+    result = dataclasses.replace(base, change_plane=change_plane)
+    return result, "## GitHub Copilot change plane", "## Evidence index"
+
+
+_CODE_SPAN_CALL_SITES = [
+    ("action_id", _hostile_action_id_result),
+    ("path_id", _hostile_path_id_result),
+    ("probe_id", _hostile_probe_id_result),
+    ("residual_risk_id", _hostile_residual_risk_id_result),
+    ("remediation_finding_id", _hostile_remediation_finding_id_result),
+    ("source_repository", _hostile_source_repository_result),
+    ("source_commit", _hostile_source_commit_result),
+    ("change_plane_repository", _hostile_change_plane_repository_result),
+]
+
+
+@_REQUIRES_MARKDOWN_IT
+@pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
+def test_md_code_span_call_site_survives_bare_email_autolink_trigger_touching_slash(
+    label, build
+):
+    result, heading, next_heading = build(_HOSTILE_CODE_SPAN_IDENTIFIER)
+    text = render.render_evidence_pack(result)
+    section = _section_text(text, heading, next_heading)
+    tokens = _parse_with_commonmark(section)
+    assert not any(token.type == "link_open" for token in tokens)
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert _HOSTILE_CODE_SPAN_IDENTIFIER in code_span_contents
+
+
+@_REQUIRES_MARKDOWN_IT
+@pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
+def test_md_code_span_call_site_survives_touching_scheme_and_email_triggers(label, build):
+    # A single identifier value combining two hostile triggers with
+    # nothing between them (a bare ``https://`` scheme immediately
+    # followed by a bare ``user@domain`` email, as in
+    # ``https://user@evil.example``) is wrapped whole, in one code span,
+    # by this module's design -- there is no separate per-trigger wrap
+    # inside an identifier field to ever merge with another.
+    result, heading, next_heading = build(_HOSTILE_CODE_SPAN_TOUCHING_TRIGGERS)
+    text = render.render_evidence_pack(result)
+    section = _section_text(text, heading, next_heading)
+    tokens = _parse_with_commonmark(section)
+    assert not any(token.type == "link_open" for token in tokens)
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert _HOSTILE_CODE_SPAN_TOUCHING_TRIGGERS in code_span_contents
+
+
+@_REQUIRES_MARKDOWN_IT
+@pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
+def test_md_code_span_call_site_survives_www_trigger_in_uppercase(label, build):
+    result, heading, next_heading = build(_HOSTILE_CODE_SPAN_WWW_UPPERCASE)
+    text = render.render_evidence_pack(result)
+    section = _section_text(text, heading, next_heading)
+    tokens = _parse_with_commonmark(section)
+    assert not any(token.type == "link_open" for token in tokens)
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert _HOSTILE_CODE_SPAN_WWW_UPPERCASE in code_span_contents
+
+
+@_REQUIRES_MARKDOWN_IT
+@pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
+def test_md_code_span_call_site_survives_embedded_backticks(label, build):
+    # An identifier containing its own literal backticks must still
+    # isolate into exactly one well-formed code span (the delimiter is
+    # sized from the value's own longest run), never leaving a stray,
+    # unmatched backtick as plain text alongside it.
+    result, heading, next_heading = build(_HOSTILE_CODE_SPAN_EMBEDDED_BACKTICKS)
+    text = render.render_evidence_pack(result)
+    section = _section_text(text, heading, next_heading)
+    tokens = _parse_with_commonmark(section)
+    assert not any(token.type == "link_open" for token in tokens)
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert _HOSTILE_CODE_SPAN_EMBEDDED_BACKTICKS in code_span_contents
 
 
 # ---------------------------------------------------------------------------

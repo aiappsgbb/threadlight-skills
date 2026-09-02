@@ -911,8 +911,8 @@ def _populated_manifest():
                 "path_id": "path-1",
                 "status": "pass",
                 "reason_code": "hook-observed",
-                "expected": "hook fires before send",
-                "observed": "hook fired before send",
+                "expected_sha256": _sha("4"),
+                "observed_sha256": _sha("5"),
                 "evidence_refs": ["evidence-1"],
             }
         ],

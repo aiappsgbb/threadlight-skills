@@ -461,14 +461,19 @@ def _path_to_dict(path: PathRecord) -> Dict[str, object]:
 
 
 def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
+    # ``expected``/``observed`` are a probe's own comparison payload --
+    # never rendered verbatim in any artifact. Only their sha256 digests
+    # are recorded, so the manifest can still prove *which* expected/
+    # observed pair a probe's status was decided against (e.g. for
+    # replay/dispute), without ever carrying the payload value itself.
     return {
         "probe_id": probe.probe_id,
         "action_id": probe.action_id,
         "path_id": probe.path_id,
         "status": probe.status,
         "reason_code": probe.reason_code,
-        "expected": probe.expected,
-        "observed": probe.observed,
+        "expected_sha256": f"sha256:{canonical.sha256_hex(probe.expected.encode('utf-8'))}",
+        "observed_sha256": f"sha256:{canonical.sha256_hex(probe.observed.encode('utf-8'))}",
         "evidence_refs": sorted(probe.evidence_refs),
     }
 
@@ -768,28 +773,100 @@ def _required_evidence_ids(result: AssessmentResult) -> Set[str]:
     return ids
 
 
-def _required_evidence_is_untrustworthy(result: AssessmentResult) -> bool:
+def _canonical_policy_set_sha256(result: AssessmentResult) -> str:
+    """The canonical policy-set digest this assessment's own
+    ``policy_hashes`` collapse to.
+
+    Computed exactly like :func:`canonical.hash_files`'s own
+    ``set_sha256`` -- the established representation for a hashed *set*
+    of ``{path, sha256}`` entries: normalized, sorted by path, then
+    canonically serialized and hashed -- so an evidence entry's own
+    declared ``policy_set_sha256`` can be checked against the *actual*
+    policy set this assessment observed, never an invented expectation.
+    """
+    normalized = _normalize_policy_hashes(result.policy_hashes)
+    return f"sha256:{canonical.sha256_hex(canonical.canonical_bytes(normalized))}"
+
+
+def _evidence_finding_phases(result: AssessmentResult) -> Dict[str, Set[str]]:
+    """Every evidence id mapped to the set of distinct ``Finding.phase``
+    values among findings that cite it in their own ``evidence_refs``.
+
+    Probes are deliberately excluded here -- ``ProbeResult`` carries no
+    ``phase`` of its own, so there is nothing authoritative to compare an
+    evidence entry's ``phase`` against for a probe-only reference, and
+    this module never invents one.
+    """
+    phases_by_evidence: Dict[str, Set[str]] = {}
+    for finding in result.findings:
+        for evidence_id in finding.evidence_refs:
+            phases_by_evidence.setdefault(evidence_id, set()).add(finding.phase)
+    return phases_by_evidence
+
+
+def _required_evidence_is_untrustworthy(
+    result: AssessmentResult, captured_instant: Optional[datetime]
+) -> bool:
     """True when at least one finding or probe *requires* an evidence
-    entry whose own collection timestamp cannot be trusted -- either the
-    referenced ``evidence_id`` has no matching entry in ``result.evidence``
-    at all, or the entry it matches has a missing/unparseable
-    ``collected_at``.
+    entry that fails any of this module's identity/timestamp trust
+    checks:
+
+    * the referenced ``evidence_id`` has no matching entry in
+      ``result.evidence`` at all;
+    * the entry it matches has a missing/unparseable ``collected_at``;
+    * ``collected_at`` names an instant strictly after this assessment's
+      own trusted ``captured_at`` instant -- evidence can never have been
+      collected in the future relative to the assessment that cites it;
+    * ``repository``/``source_commit`` does not match this assessment's
+      own ``result.source`` -- foreign-repository or wrong-commit
+      evidence can never be trusted for *this* assessment;
+    * ``phase`` disagrees with the single, unambiguous phase of every
+      finding that cites it (a reference cited by findings with more
+      than one distinct phase, or cited only by probes, is left
+      unchecked here rather than guessing which phase is authoritative);
+    * a non-null ``policy_set_sha256`` does not match the canonical
+      digest this assessment's own ``policy_hashes`` collapse to.
 
     This check is deliberately independent of how many *other*, unrelated
-    evidence entries happen to carry a trustworthy timestamp: an
-    assessment that supplies plenty of fresh evidence for findings/probes
-    that never cited it must never be allowed to mask the one finding or
-    probe whose own required evidence cannot be trusted, and must never
-    render an overall ``fresh`` freshness verdict on the strength of
-    evidence nothing actually needed.
+    evidence entries happen to be trustworthy: an assessment that
+    supplies plenty of fresh, correctly-bound evidence for findings/
+    probes that never cited the untrustworthy entry must never mask the
+    one finding or probe whose own required evidence fails one of these
+    checks, and must never render an overall ``fresh`` freshness verdict
+    -- or a ``governed`` summary verdict -- on the strength of evidence
+    nothing actually needed.
+
+    Deliberately does *not* check a "target environment" or "tested
+    tuple" expectation: ``AssessmentResult`` carries no authoritative
+    expected value for either today, and this module never invents one
+    to compare against -- a real check there would need a new, explicit
+    assessment-level binding field, not a fabricated expectation.
     """
     required_ids = _required_evidence_ids(result)
     if not required_ids:
         return False
-    trustworthy_ids = {
-        ref.evidence_id for ref in result.evidence if _try_parse_rfc3339(ref.collected_at) is not None
-    }
-    return not required_ids.issubset(trustworthy_ids)
+    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
+    finding_phases_by_evidence = _evidence_finding_phases(result)
+    expected_policy_set_sha256 = _canonical_policy_set_sha256(result)
+    for evidence_id in required_ids:
+        ref = evidence_by_id.get(evidence_id)
+        if ref is None:
+            return True
+        instant = _try_parse_rfc3339(ref.collected_at)
+        if instant is None:
+            return True
+        if captured_instant is not None and instant > captured_instant:
+            return True
+        if ref.repository != result.source.repository:
+            return True
+        if ref.source_commit != result.source.commit:
+            return True
+        finding_phases = finding_phases_by_evidence.get(evidence_id, set())
+        if len(finding_phases) == 1 and ref.phase not in finding_phases:
+            return True
+        if ref.policy_set_sha256 is not None and ref.policy_set_sha256 != expected_policy_set_sha256:
+            return True
+    return False
 
 
 def _phase_for(result: AssessmentResult) -> str:
@@ -854,7 +931,12 @@ def _freshness_from_pairs(
 # ---------------------------------------------------------------------------
 
 
-def _summary(findings: Sequence[Dict[str, object]], dirty: bool) -> Dict[str, object]:
+def _summary(
+    findings: Sequence[Dict[str, object]],
+    dirty: bool,
+    required_evidence_untrustworthy: bool,
+    freshness_expired: bool,
+) -> Dict[str, object]:
     by_status: Dict[str, List[str]] = {status: [] for status in contracts.STATUSES}
     for finding in findings:
         by_status[str(finding["status"])].append(str(finding["finding_id"]))
@@ -867,11 +949,20 @@ def _summary(findings: Sequence[Dict[str, object]], dirty: bool) -> Dict[str, ob
 
     if must_fix:
         verdict = "ungoverned"
-    elif should_fix or not_verified or dirty:
+    elif should_fix or not_verified or dirty or required_evidence_untrustworthy or freshness_expired:
         # A dirty source tree can never bind evidence to a unique commit,
-        # so it can never earn "governed" -- without inventing a finding
-        # beyond what the assessor actually observed, the truthful verdict
-        # is "partial".
+        # so it can never earn "governed". Exactly the same truthful
+        # degradation applies when a finding's or probe's own *required*
+        # evidence fails this module's identity/timestamp trust checks
+        # (foreign repository, wrong commit, a future timestamp, a
+        # mismatched phase or policy-set binding) or is simply too old
+        # (the assessment's own trusted capture instant exceeds
+        # ``oldest_source_at`` plus ``valid_for_hours``) -- without
+        # inventing a finding beyond what the assessor actually observed,
+        # the truthful verdict is "partial". An assessment with no
+        # required evidence at all (nothing here needed evidentiary
+        # proof of freshness) is unaffected by either check and can still
+        # earn "governed".
         verdict = "partial"
     else:
         verdict = "governed"
@@ -930,6 +1021,8 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     captured_instant = _try_parse_rfc3339(result.captured_at)
     captured_at = result.captured_at if captured_instant is not None else FALLBACK_TIMESTAMP
     required_timestamp_pairs = _required_trustworthy_timestamp_pairs(result)
+    required_evidence_untrustworthy = _required_evidence_is_untrustworthy(result, captured_instant)
+    freshness = _freshness_from_pairs(required_timestamp_pairs, captured_instant, required_evidence_untrustworthy)
 
     return {
         "schema": MANIFEST_SCHEMA,
@@ -957,11 +1050,14 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
         "change_plane": _normalize_change_plane(result.change_plane, result.source.repository),
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
-        "freshness": _freshness_from_pairs(
-            required_timestamp_pairs, captured_instant, _required_evidence_is_untrustworthy(result)
-        ),
+        "freshness": freshness,
         "residual_risks": residual_risks,
-        "summary": _summary(findings, result.source.dirty),
+        "summary": _summary(
+            findings,
+            result.source.dirty,
+            required_evidence_untrustworthy,
+            freshness["status"] == "expired",
+        ),
     }
 
 
@@ -1112,16 +1208,19 @@ def _wrap_code_span_fragment(fragment: str) -> str:
     the backslash had never been there, whereas a code span's delimiters
     survive as real structural boundaries all the way through parsing.
 
-    Uses a *double*-backtick delimiter (not a single one) so this
-    function's own inserted span can never collide with the single-
-    backtick delimiters :func:`_md_code_span` adds when it wraps an
-    entire escaped value a second time: CommonMark requires a code
-    span's closing delimiter to be a backtick run of the exact same
-    length as its opener, so a lone embedded backtick from this
-    function's own double-backtick markers can never prematurely close
-    an outer single-backtick span, and if this value is never
-    additionally wrapped, the double backticks still open and close a
-    perfectly ordinary code span on their own.
+    Uses a *double*-backtick delimiter (not a single one) so two of this
+    function's own inserted spans landing back-to-back with nothing
+    between them (see :data:`_TOUCHING_CODE_SPAN_DELIMITERS_RE` below)
+    can be told apart from a single four-backtick run and split back
+    apart, and so that if this value is never additionally wrapped, the
+    double backticks still open and close a perfectly ordinary code span
+    on their own. This function is only ever used inside
+    :func:`_md_escape_inline`, for prose/table-field values; identifier
+    fields use :func:`_md_code_span` instead, which wraps a value's own
+    *raw* content directly and never calls (or is called by)
+    :func:`_md_escape_inline` -- the two are deliberately independent,
+    non-composing sanitizers, so this function's own delimiters are
+    never nested inside (or wrapped a second time by) the other.
     """
     return f"``{fragment}``"
 
@@ -1232,12 +1331,78 @@ def _md_escape_inline(value: object) -> str:
 
 
 def _md_code_span(value: object) -> str:
-    """Wrap an escaped, identifier-like *value* in a Markdown inline code
-    span. :func:`_md_escape_inline` already replaces any embedded
-    backtick, so the delimiters this function adds can never be broken out
-    of by the interpolated value.
+    """Wrap *value*'s own raw content -- verbatim, never pre-escaped by
+    :func:`_md_escape_inline` -- in a single Markdown inline code span
+    that is always well-formed and therefore always inert, for an
+    identifier-like field (an action/path/probe/finding/residual-risk id,
+    a repository, or a commit).
+
+    This function and :func:`_md_escape_inline` are deliberately
+    independent, non-composing sanitizers. Composing them -- wrapping an
+    already-escaped value (which may itself contain
+    :func:`_wrap_code_span_fragment`'s own double-backtick-delimited
+    spans for an embedded bare URL/``www.``/email trigger) in this
+    function's own delimiter -- used to place this function's opening
+    backtick directly adjacent, with zero characters between them, to an
+    inner fragment's own leading double backtick, merging the two into
+    one ambiguous, longer backtick run with no matching closing run
+    anywhere in the string. CommonMark then fails to parse *any* code
+    span there at all, so the raw trigger substring falls back to being
+    scanned as ordinary text -- exactly the kind of bare
+    ``user@evil.example``-shaped substring GitHub Flavored Markdown's
+    extended autolink extension turns into a live ``mailto:`` link. (For
+    example, the identifier ``user@evil.example/x`` used to round-trip
+    through ``_md_escape_inline`` as ``` ``user@evil.example``/x ```,
+    and wrapping *that* in one more pair of single backticks produced
+    ` ```user@evil.example``/x` `, whose opening triple-backtick run
+    never finds a matching triple-backtick closing run.)
+
+    A code span's content is raw, literal text: unlike ordinary Markdown
+    text content, it is never entity-decoded, never re-scanned for
+    inline constructs (links, emphasis, raw HTML), and never rescanned by
+    GitHub Flavored Markdown's extended autolink extension either (see
+    :func:`_wrap_code_span_fragment`'s own docstring for why). Wrapping
+    the *entire* raw value once is therefore already sufficient, by
+    construction, to neutralize every metacharacter this module's
+    prose/table escaping otherwise has to handle one at a time
+    (backticks, pipes, brackets, parentheses, angle brackets, entity
+    references, bare URL/``www.``/email autolink triggers) -- there is
+    nothing left for a separate escaping pass to do, so this function
+    never calls :func:`_md_escape_inline`.
+
+    The delimiter itself is computed from *value*'s own content rather
+    than fixed at one backtick, so it can never be defeated by a value
+    that itself contains a backtick run: it is one backtick longer than
+    the longest run of consecutive backticks found anywhere in *value*
+    (including at either edge), which guarantees no substring inside the
+    content can ever be mistaken by CommonMark's maximal-backtick-run
+    matching for a same-length closing delimiter. If the content starts
+    or ends with a literal backtick, a single literal space is added on
+    that side first -- not to be confused with the delimiter itself --
+    so the delimiter's own backticks are never directly adjacent (zero
+    characters between them) to a leading/trailing backtick run *in the
+    content*, which is exactly the same adjacency-merging hazard this
+    function's own composition bug above came from, just internal to one
+    value instead of between two nested wraps.
     """
-    return f"`{_md_escape_inline(value)}`"
+    text = str(value)
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    longest_run = 0
+    current_run = 0
+    for char in text:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    delimiter = "`" * (longest_run + 1)
+    if text.startswith("`"):
+        text = " " + text
+    if text.endswith("`"):
+        text = text + " "
+    if not text:
+        text = " "
+    return f"{delimiter}{text}{delimiter}"
 
 
 _MATRIX_HEADER = "| ID | Plane | Control | Status | Reason | Evidence | Remediation |"
