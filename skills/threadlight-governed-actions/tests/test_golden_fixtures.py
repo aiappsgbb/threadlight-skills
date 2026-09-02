@@ -233,12 +233,21 @@ _FIXTURE_NAMES: Tuple[str, ...] = (
     "upstream-version-drift",
 )
 
-# The exact set of repository-relative paths a fixture root is allowed to
-# declare. Every fixture encodes its scenario purely through the content
-# -- or the deliberate absence -- of these paths; nothing else may exist
-# in a fixture tree, so no scenario can ever depend on an undeclared
-# side file the target itself would never ship.
-_DECLARED_FIXTURE_PATHS: FrozenSet[str] = frozenset(
+# The exact, per-scenario set of repository-relative paths each fixture
+# root declares -- the plan's own fixture file-set table, verbatim. Every
+# fixture encodes its scenario purely through the content (or the
+# deliberate absence) of exactly these paths: nothing may be missing and
+# nothing extra may exist, so no scenario can ever depend on an
+# undeclared side file the target itself would never ship, and no
+# scenario can silently drop a declared control file and pick up an
+# incidental "control absent" finding it never meant to exhibit.
+#
+# ``unprotected-ghcp`` is the one deliberately different set: it declares
+# no real ownership file at all (its ``.github/CODEOWNERS.absent`` is
+# inert decoy test data that must never be read as a real ownership
+# file) and splits its change-plane weaknesses across the two workflow
+# files a real repository would ship, ``deploy.yml`` and ``tests.yml``.
+_RUNTIME_FOCUSED_FIXTURE_PATHS: FrozenSet[str] = frozenset(
     {
         "specs/SPEC.md",
         "agent.yaml",
@@ -250,6 +259,44 @@ _DECLARED_FIXTURE_PATHS: FrozenSet[str] = frozenset(
         ".github/CODEOWNERS",
         ".github/workflows/governed-actions.yml",
     }
+)
+
+_SCENARIO_FIXTURE_PATHS: Dict[str, FrozenSet[str]] = {
+    "conformant-maf": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "unmediated-background": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "provider-hosted-side-effect": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "approval-replay": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "interceptor-failure": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "output-streaming": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "upstream-version-drift": _RUNTIME_FOCUSED_FIXTURE_PATHS,
+    "unprotected-ghcp": frozenset(
+        {
+            "specs/SPEC.md",
+            "agent.yaml",
+            "app/agent.py",
+            "governance/probe-contract.json",
+            "governance/alerts.json",
+            "governance/installed-packages.json",
+            "governance/change-plane.json",
+            ".github/CODEOWNERS.absent",
+            ".github/workflows/deploy.yml",
+            ".github/workflows/tests.yml",
+        }
+    ),
+}
+
+# The seven runtime-focused scenarios: every one keeps its non-target
+# runtime, alert, pin, approval/output, and change-plane controls
+# conformant, so each negative scenario (and the golden generated from
+# one) isolates exactly its own declared defect and nothing else.
+_RUNTIME_FOCUSED_SCENARIOS: Tuple[str, ...] = (
+    "conformant-maf",
+    "unmediated-background",
+    "provider-hosted-side-effect",
+    "approval-replay",
+    "interceptor-failure",
+    "output-streaming",
+    "upstream-version-drift",
 )
 
 
@@ -327,6 +374,42 @@ def test_conformant_maf_manifest_verdict_is_governed(tmp_path: Path) -> None:
     manifest = render.build_manifest(result)
     assert manifest["summary"]["verdict"] == "governed"
     assert manifest["summary"]["must_fix"] == []
+
+
+_CONFORMANT_STATUSES: FrozenSet[str] = frozenset({"pass", "not-applicable"})
+
+
+@pytest.mark.parametrize("fixture_name", _RUNTIME_FOCUSED_SCENARIOS)
+def test_runtime_focused_scenarios_isolate_only_their_declared_defect(
+    tmp_path: Path, fixture_name: str
+) -> None:
+    """Each runtime-focused scenario asserts exactly its own defect.
+
+    A negative fixture that also happens to be missing an alert catalog,
+    a probe contract, an approval binding, an output contract, a pinned
+    tuple, or a change-plane declaration would light up
+    ``OPS-001``/``ENF-001``/``APR-001``/``OUT-001``/``PIN-001``/
+    ``GHCP-002`` as incidental noise, and the golden generated from it
+    would attest to defects the scenario never meant to declare. Every
+    non-target control here must therefore land ``pass`` (or
+    ``not-applicable``): the only findings left over are the scenario's
+    own declared defect ids.
+    """
+    _expected_exit, expected_defects = SCENARIOS[fixture_name]
+    result = assess_fixture(tmp_path, fixture_name)
+    unresolved = {
+        finding.finding_id
+        for finding in result.findings
+        if finding.status not in _CONFORMANT_STATUSES
+    }
+    assert unresolved == expected_defects, (
+        fixture_name,
+        sorted(
+            (finding.finding_id, finding.status, finding.reason_code)
+            for finding in result.findings
+            if finding.status not in _CONFORMANT_STATUSES
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -568,9 +651,17 @@ def test_conformant_goldens_share_the_conformant_maf_source() -> None:
 def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
     manifest = json.loads(NONCONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
     assert manifest["summary"]["verdict"] != "governed"
-    assert set(manifest["summary"]["must_fix"]) >= {"MED-001", "MED-002"}
+    summary = manifest["summary"]
+    assert set(summary["must_fix"]) == {"MED-001", "MED-002"}
+    # The nonconformant golden isolates ``unmediated-background``'s own
+    # declared mediation defect: no incidental "control file absent"
+    # finding may ride along in the artifact customers read.
+    incidental = {"OPS-001", "ACT-001", "APR-001", "ENF-001", "GHCP-002", "OUT-001"}
+    for bucket in ("must_fix", "should_fix", "not_verified"):
+        assert not incidental & set(summary[bucket]), (bucket, summary[bucket])
     apply_plan = json.loads(NONCONFORMANT_APPLY_PLAN_GOLDEN.read_text(encoding="utf-8"))
     assert isinstance(apply_plan, dict)
+    assert {item["finding_id"] for item in apply_plan["items"]} == {"MED-001", "MED-002"}
 
 
 # ---------------------------------------------------------------------------
@@ -605,47 +696,71 @@ def test_every_sha256_prefixed_string_is_well_formed(golden_path: Path) -> None:
         assert _SHA256_REF_RE.match(ref), f"malformed hash reference {ref!r} in {golden_path.name}"
 
 
-def test_every_fixture_tree_contains_only_declared_paths() -> None:
+def test_every_fixture_tree_declares_exactly_its_scenario_path_set() -> None:
+    assert set(_SCENARIO_FIXTURE_PATHS) == set(_FIXTURE_NAMES)
     for fixture_name in _FIXTURE_NAMES:
         root = FIXTURES_DIR / fixture_name
-        present = {
-            str(path.relative_to(root))
-            for path in _iter_repo_relative_files(root)
-        }
-        assert present <= _DECLARED_FIXTURE_PATHS, (
+        present = {str(path.relative_to(root)) for path in _iter_repo_relative_files(root)}
+        expected = _SCENARIO_FIXTURE_PATHS[fixture_name]
+        assert present == expected, (
             fixture_name,
-            sorted(present - _DECLARED_FIXTURE_PATHS),
+            "missing",
+            sorted(expected - present),
+            "undeclared",
+            sorted(present - expected),
         )
 
 
 def test_every_finding_evidence_reference_resolves_to_a_declared_evidence_entry(
     tmp_path: Path,
 ) -> None:
-    """No governed verdict may ever rest on an unresolved evidence id.
+    """No finding or probe may ever cite an evidence id nothing resolved.
 
-    Scoped deliberately and honestly: the static mediation/inventory
-    findings cite the repository-relative source paths they read
-    (``agent.yaml``, ``app/agent.py``), and the pre-deploy pipeline has
-    no evidence-collection path that binds a raw source path to a
-    collected ``EvidenceRef``. Rather than paper over that with a
-    synthesized entry, this asserts the property that actually protects
-    the gate: every required id resolves for any fixture the pipeline is
-    willing to call ``governed``, and any fixture with an unresolved id
-    is never governed.
+    Task 12 requires *every* evidence reference in every golden to
+    resolve, not merely every reference a governed verdict happened to
+    rest on. Static mediation/inventory findings cite the
+    repository-relative source paths they actually read (``agent.yaml``,
+    ``app/agent.py``), and the pre-deploy pipeline binds each of those to
+    a real ``EvidenceRef`` hashed over the file's own bytes, so this
+    holds unconditionally for every fixture -- conformant or not.
     """
     for fixture_name in _FIXTURE_NAMES:
         result = assess_fixture(tmp_path, fixture_name)
         declared = {ref.evidence_id for ref in result.evidence}
         unresolved = render._required_evidence_ids(result) - declared
-        verdict = render.build_manifest(result)["summary"]["verdict"]
-        if verdict == "governed":
-            assert not unresolved, (fixture_name, sorted(unresolved))
+        assert not unresolved, (fixture_name, sorted(unresolved))
         for probe in result.probes:
             assert set(probe.evidence_refs) <= declared, (
                 fixture_name,
                 probe.probe_id,
                 sorted(set(probe.evidence_refs) - declared),
             )
+
+
+@pytest.mark.parametrize(
+    "golden_path",
+    [CONFORMANT_MANIFEST_GOLDEN, NONCONFORMANT_MANIFEST_GOLDEN],
+    ids=lambda path: path.name,
+)
+def test_every_golden_manifest_evidence_reference_resolves(golden_path: Path) -> None:
+    manifest = json.loads(golden_path.read_text(encoding="utf-8"))
+    declared = {entry["evidence_id"] for entry in manifest.get("evidence", ())}
+    cited = set()
+    for finding in manifest.get("findings", ()):
+        cited.update(finding.get("evidence_refs", ()))
+    for probe in manifest.get("probes", ()):
+        cited.update(probe.get("evidence_refs", ()))
+    assert cited <= declared, (golden_path.name, sorted(cited - declared))
+
+
+def test_nonconformant_apply_plan_evidence_resolves_against_its_manifest() -> None:
+    manifest = json.loads(NONCONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
+    declared = {entry["evidence_id"] for entry in manifest.get("evidence", ())}
+    apply_plan = json.loads(NONCONFORMANT_APPLY_PLAN_GOLDEN.read_text(encoding="utf-8"))
+    cited = set()
+    for item in apply_plan.get("items", ()):
+        cited.update(item.get("evidence_required", ()))
+    assert cited <= declared, sorted(cited - declared)
 
 
 # Conservative textual patterns for a self-review secret/PII sweep across

@@ -142,6 +142,11 @@ def test_every_consequential_mode_becomes_a_graph_path(fixture_root: Path):
     graph = build_mediation_graph(root, actions, adapter)
 
     assert {(path.action_id, path.mode) for path in graph.paths} == {
+        ("customer.lookup", "interactive"),
+        ("customer.lookup", "batch"),
+        ("customer.lookup", "background"),
+        ("customer.lookup", "subagent"),
+        ("customer.lookup", "direct-tool"),
         ("payments.refund", "interactive"),
         ("payments.refund", "batch"),
         ("payments.refund", "background"),
@@ -369,15 +374,17 @@ def test_build_mediation_graph_skips_exclusively_provider_hosted_actions(
     ``provider-hosted-tool`` has no interactive/batch/background/subagent/
     direct-tool family to assess at all, so ``build_mediation_graph`` must
     not manufacture five spurious ``not-verified`` paths (and a matching
-    MED-002) for it.
+    MED-002) for it -- while the same fixture's ordinary, non-provider-
+    hosted actions are still assessed exactly as they are everywhere else.
     """
     root = fixture_root / "provider-hosted-side-effect"
     actions = inventory.build_action_inventory(root).actions
 
     graph = build_mediation_graph(root, actions, maf_adapter.MAFAdapter())
 
-    assert graph.paths == ()
-    assert graph.findings == ()
+    provider_hosted = {"mail.send", "search.lookup"}
+    assert {path.action_id for path in graph.paths} & provider_hosted == set()
+    assert {finding.action_id for finding in graph.findings} & provider_hosted == set()
 
 
 def test_adapter_declared_status_is_never_trusted_and_is_recomputed(
@@ -659,7 +666,9 @@ def test_post_hoc_pre_action_seam_call_does_not_cover_a_bypass_path(
     graph = build_mediation_graph(root, actions, maf_adapter.MAFAdapter())
 
     background_path = next(
-        path for path in graph.paths if path.mode == "background"
+        path
+        for path in graph.paths
+        if path.action_id == "payments.refund" and path.mode == "background"
     )
     assert background_path.status == "must-fix"
     assert background_path.covered is False

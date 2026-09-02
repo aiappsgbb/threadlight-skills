@@ -6,6 +6,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Rule 6 requires every job's own explicit permissions -- a sibling
+    # job cannot silently inherit the workflow-level default, so this job
+    # repeats it explicitly even though there is only one job in this file.
     permissions:
       contents: read
     steps:

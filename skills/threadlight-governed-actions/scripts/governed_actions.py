@@ -37,8 +37,8 @@ import subprocess
 import sys
 from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from pathlib import Path, PurePosixPath
+from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
 import alerts
 import canonical
@@ -630,6 +630,159 @@ def _bind_probe_evidence(
     return tuple(kept), tuple(findings), evidence
 
 
+#: The exact file suffixes a static analyzer in this assessor cites as a
+#: repository-relative source path: the action-registry formats
+#: :data:`inventory._REGISTRY_FILENAMES` recognizes, the Python modules
+#: ``mediation``/``maf_adapter`` scan, and the SPEC Markdown. Anything
+#: else a finding cites is an opaque protected-system identifier (a probe
+#: digest, an alert/GHCP collector id, a spec-section anchor) whose
+#: provenance belongs to the collector that produced it -- never to this
+#: path, which would otherwise have to guess at a file to hash.
+_STATIC_SOURCE_EVIDENCE_SUFFIXES: FrozenSet[str] = frozenset(
+    {".json", ".md", ".py", ".yaml", ".yml"}
+)
+
+
+def _is_static_source_evidence_ref(reference: str) -> bool:
+    """True when *reference* is shaped like a repository-relative source
+    path this module may safely attempt to read.
+
+    Purely a shape check, deliberately strict and allowlist-based:
+    absolute paths, Windows-style separators, NUL bytes, empty or
+    ``.``/``..`` components (so no traversal spelling survives), and any
+    suffix outside :data:`_STATIC_SOURCE_EVIDENCE_SUFFIXES` are all
+    rejected here, before anything touches the filesystem. Passing this
+    check never implies the file exists, is readable, or stays inside
+    the assessment root -- :func:`_static_source_sha256` proves each of
+    those separately against the real filesystem.
+    """
+    if not reference or reference != reference.strip():
+        return False
+    if "\\" in reference or "\x00" in reference:
+        return False
+    candidate = PurePosixPath(reference)
+    if candidate.is_absolute():
+        return False
+    parts = candidate.parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        return False
+    return candidate.suffix.lower() in _STATIC_SOURCE_EVIDENCE_SUFFIXES
+
+
+def _static_source_sha256(root: Path, reference: str) -> Optional[str]:
+    """The ``sha256:`` digest of the real bytes at *reference* under
+    *root*, or ``None`` when that cannot be proven safely.
+
+    Delegates every path-safety and read decision to
+    :func:`canonical.hash_files`, the established validator: it resolves
+    the candidate, rejects anything whose real target escapes *root*
+    (including a symlink pointing outside it), and raises
+    :class:`canonical.CanonicalizationError` rather than leaking a raw
+    ``OSError`` when the file is absent, a directory, or unreadable.
+    Every one of those cases returns ``None`` here, leaving the citation
+    unresolved so the verdict cannot pass on it.
+
+    A citation that resolves to a *different* in-root path than the one
+    it names (an in-root symlink alias) is also left unresolved: this
+    module will only ever bind an evidence entry whose id and ``source``
+    name the exact file whose bytes it hashed, never an alias for
+    another one.
+    """
+    try:
+        hashed = canonical.hash_files(Path(root), (Path(reference),))
+    except (canonical.CanonicalizationError, OSError, ValueError):
+        return None
+    entries = hashed["files"]
+    if len(entries) != 1:
+        return None
+    entry = entries[0]
+    if entry["path"] != reference:
+        return None
+    return str(entry["sha256"])
+
+
+def _bind_static_source_evidence(
+    root: Path,
+    findings: Sequence[contracts.Finding],
+    source: contracts.SourceRef,
+    options: contracts.AssessmentOptions,
+    policy_hashes: Sequence[Mapping[str, str]],
+    already_collected: FrozenSet[str] = frozenset(),
+) -> Tuple[contracts.EvidenceRef, ...]:
+    """Bind every repository-relative source path a *static* finding
+    cites to a real :class:`contracts.EvidenceRef`.
+
+    ``inventory``/``mediation``/``maf_adapter`` cite the exact
+    repository-relative paths they statically read (``agent.yaml``,
+    ``app/agent.py``, ...) as their own ``Finding.evidence_refs``. This
+    reads each such file for real and hashes its actual bytes, then
+    binds the entry to this assessment's own repository, source commit,
+    capture instant, and canonical policy set -- exactly the provenance
+    :func:`_bind_probe_evidence` binds for a probe-observed artifact,
+    and exactly what :mod:`render`'s own trust checks compare against.
+
+    ``phase`` is bound to the phase of the findings that actually cite
+    the path, not to *options.phase*: like :func:`_spec_section_8_evidence`,
+    this is static-analysis evidence, and the analysis that read the file
+    is the design-plane one whose findings cite it. Binding the running
+    phase instead would leave every design-phase citation failing
+    :mod:`render`'s own evidence/finding phase agreement check.
+
+    Deliberately narrow, and never permissive:
+
+    - only citations shaped like a repository-relative source path are
+      even considered (:func:`_is_static_source_evidence_ref`), so an
+      opaque protected-system identifier -- a probe's ``sha256:`` digest,
+      an alert/GHCP collector id, the spec-section anchor -- is never
+      converted through this path;
+    - the digest is always computed over the file's real bytes on disk
+      (:func:`_static_source_sha256`), never synthesized from the
+      evidence id, the path string, or anything else that would let a
+      citation resolve without the artifact existing;
+    - a citation whose file is absent, unreadable, escaping, or an alias
+      for a different path is left *unresolved* rather than bound to
+      invented provenance, so it keeps failing ``render``'s
+      required-evidence trust check and the verdict cannot pass;
+    - an id already collected by another, authoritative collector
+      (*already_collected*) is never re-bound or overwritten here.
+
+    Only the payload-free ``{path, sha256}`` binding is ever carried: no
+    file content, argument, prompt, or output ever reaches an evidence
+    entry.
+    """
+    policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
+    phases_by_reference: Dict[str, List[str]] = {}
+    for finding in findings:
+        for reference in finding.evidence_refs:
+            if reference in already_collected:
+                continue
+            if not _is_static_source_evidence_ref(reference):
+                continue
+            phases_by_reference.setdefault(reference, []).append(finding.phase)
+    collected: List[contracts.EvidenceRef] = []
+    for reference in sorted(phases_by_reference):
+        digest = _static_source_sha256(root, reference)
+        if digest is None:
+            continue
+        collected.append(
+            contracts.EvidenceRef(
+                evidence_id=reference,
+                kind="static-file-hash",
+                source=reference,
+                sha256=digest,
+                collected_at=options.now,
+                freshness_seconds=0,
+                live_verified=False,
+                phase=sorted(set(phases_by_reference[reference]))[0],
+                repository=source.repository,
+                source_commit=source.commit,
+                target_environment=None,
+                policy_set_sha256=policy_set_sha256,
+            )
+        )
+    return tuple(collected)
+
+
 def _approval_not_verified_finding(phase: str) -> contracts.Finding:
     """APR-001 is reported explicit not-verified whenever the target
     declares no usable, deterministic approval binding of its own --
@@ -1040,6 +1193,21 @@ def _assess_pre_deploy(
     conformance_claims = _conformance_claims_from_controls(change_plane_result.controls)
 
     findings.sort(key=lambda finding: (finding.finding_id, finding.reason_code))
+    # Static findings cite the repository-relative source paths they
+    # actually read; bind each to a real, byte-hashed evidence entry so no
+    # finding is left resting on a citation that resolves to nothing.
+    # Runs last, and never over an id another collector already bound, so
+    # it can only ever add provenance this assessment proved for itself.
+    evidence.extend(
+        _bind_static_source_evidence(
+            root,
+            findings,
+            source,
+            options,
+            policy_hashes,
+            already_collected=frozenset(ref.evidence_id for ref in evidence),
+        )
+    )
     return contracts.AssessmentResult(
         source=source,
         actions=inv.actions,

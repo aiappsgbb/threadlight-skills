@@ -1,11 +1,9 @@
-"""The unmediated-background fixture's single declared application module.
+"""The upstream-version-drift fixture's single declared application module.
 
-Identical to the conformant fixture's module except for its own declared
-defect: its batch and background refund dispatch paths deliberately call
-the raw payment-provider client directly, bypassing both the pre-action
-mediation seam and the governed tool service (see
-``batch_payments_refund``/``background_payments_refund``); every other
-seam behaves exactly as the conformant fixture's does.
+Identical to the conformant fixture's module apart from this
+paragraph: this scenario's declared defect lives entirely outside the
+application source, so its runtime seams stay conformant and the
+scenario isolates only its own defect.
 
 This one module is everything the fixture declares under ``app/``: the
 statically-inspected action declarations and mediation graph, *and* the
@@ -51,7 +49,6 @@ class _Namespace:
 
 agent_hooks = _Namespace()
 tool_service = _Namespace()
-provider = _Namespace()
 output_mediator = _Namespace()
 audit_sink = _Namespace()
 
@@ -138,23 +135,20 @@ def interactive_payments_refund(payment_id: str, amount: float) -> dict[str, Any
 
 
 def batch_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
-    # This fixture's declared defect: batch refunds reach the raw
-    # payment-provider client with no pre-action seam call ahead of them
-    # at all, so the effect executes entirely outside mediation.
-    result = provider.charge_refund(payment_id=payment_id, amount=amount)
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="batch")
+    agent_hooks.require_approval(action_id="payments.refund", mode="batch")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
     audit_sink.record(action_id="payments.refund", mode="batch")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="batch")
     return result
 
 
 def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
-    # This fixture's declared defect, twice over: the background refund
-    # also reaches the raw provider client directly, and the real
-    # pre-action seam call below is reached only *after* the effect has
-    # already executed -- a genuine seam call made too late is still a
-    # post-hoc observation, never pre-action control.
-    result = provider.charge_refund(payment_id=payment_id, amount=amount)
     agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
     audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
     return result
 
 
