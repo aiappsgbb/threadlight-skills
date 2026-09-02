@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -277,7 +278,26 @@ _REMEDIATION_REQUIRED_STATUSES: Tuple[Status, ...] = (
 
 # ---------------------------------------------------------------------------
 # Sorting helpers
+#
+# Every explicitly documented primary key below (action_id;
+# (action_id, mode, path_id); probe_id; (status rank, finding_id,
+# reason_code); evidence_id) is only *usually* unique across a single
+# assessment. Two records that happen to share the exact same primary key
+# but differ in some other field would otherwise sort in whatever order
+# Python's stable sort happened to receive them in -- which depends on the
+# caller's own input ordering, not on the records' content -- silently
+# reintroducing the exact input-order sensitivity every other sort here
+# exists to eliminate. Every sort key below therefore appends a
+# fully-normalized canonical-JSON-bytes tiebreaker computed from the
+# record's own complete rendered dict, so two records with a tied primary
+# key (and only two *genuinely identical* records can ever tie on both the
+# primary key and this full-record tiebreaker) always land in the same
+# relative order regardless of which order the caller supplied them in.
 # ---------------------------------------------------------------------------
+
+
+def _canonical_tiebreak(rendered: Mapping[str, object]) -> bytes:
+    return canonical.canonical_bytes(rendered)
 
 
 def _finding_sort_key(finding: Finding) -> Tuple[int, str, str]:
@@ -289,23 +309,44 @@ def _finding_sort_key(finding: Finding) -> Tuple[int, str, str]:
 
 
 def _sorted_actions(actions: Sequence[ActionRecord]) -> List[ActionRecord]:
-    return sorted(actions, key=lambda action: action.action_id)
+    return sorted(
+        actions,
+        key=lambda action: (action.action_id, _canonical_tiebreak(_action_to_dict(action))),
+    )
 
 
 def _sorted_paths(paths: Sequence[PathRecord]) -> List[PathRecord]:
-    return sorted(paths, key=lambda path: (path.action_id, path.mode, path.path_id))
+    return sorted(
+        paths,
+        key=lambda path: (
+            (path.action_id, path.mode, path.path_id),
+            _canonical_tiebreak(_path_to_dict(path)),
+        ),
+    )
 
 
 def _sorted_probes(probes: Sequence[ProbeResult]) -> List[ProbeResult]:
-    return sorted(probes, key=lambda probe: probe.probe_id)
+    return sorted(
+        probes,
+        key=lambda probe: (probe.probe_id, _canonical_tiebreak(_probe_to_dict(probe))),
+    )
 
 
-def _sorted_findings(findings: Sequence[Finding]) -> List[Finding]:
-    return sorted(findings, key=_finding_sort_key)
+def _sorted_findings(findings: Sequence[Finding], risk_ids: Set[str]) -> List[Finding]:
+    return sorted(
+        findings,
+        key=lambda finding: (
+            _finding_sort_key(finding),
+            _canonical_tiebreak(_finding_to_dict(finding, risk_ids)),
+        ),
+    )
 
 
 def _sorted_evidence(evidence: Sequence[EvidenceRef]) -> List[EvidenceRef]:
-    return sorted(evidence, key=lambda ref: ref.evidence_id)
+    return sorted(
+        evidence,
+        key=lambda ref: (ref.evidence_id, _canonical_tiebreak(_evidence_to_dict(ref))),
+    )
 
 
 def _sorted_mappings(items: Sequence[Mapping[str, object]], key: str) -> List[Dict[str, object]]:
@@ -551,17 +592,35 @@ def _sorted_reports(reports: Sequence[Mapping[str, object]]) -> List[Dict[str, o
 # lexical string comparison that can silently disagree with it. A raw,
 # unparseable ``collected_at`` (one that matches the schema's own
 # ``pattern`` but is not a real calendar instant, e.g. a nonexistent
-# 30th of February, or one that fails to parse for any other reason) is
-# never allowed to escape as an uncaught ``ValueError`` here -- it is
-# instead treated exactly like a *missing* ``collected_at``: excluded from
-# every timestamp aggregation so freshness degrades conservatively (to the
-# schema's own ``stale``/``null`` vocabulary) rather than crashing or
-# silently trusting an untrustworthy value.
+# 30th of February, or one that fails to parse for any other reason, or
+# names more fractional-second digits than a ``datetime`` can represent
+# without silently truncating them) is never allowed to escape as an
+# uncaught ``ValueError`` here -- it is instead treated exactly like a
+# *missing* ``collected_at``: excluded from every timestamp aggregation so
+# freshness degrades conservatively (to the schema's own ``stale``/``null``
+# vocabulary) rather than crashing, silently trusting an untrustworthy
+# value, or silently rounding/truncating a value into a false conclusion.
 # ---------------------------------------------------------------------------
+
+
+#: ``datetime`` (and this module's own rendered/compared instants) can
+#: only ever represent whole microseconds. Rather than silently truncating
+#: any additional fractional-second digits an evidence timestamp names --
+#: which could shift the instant actually used for a freshness comparison
+#: without any visible sign that precision was lost -- a timestamp naming
+#: more than this many fractional digits is rejected outright.
+_MAX_SUPPORTED_FRACTIONAL_DIGITS = 6
+_FRACTIONAL_SECONDS_RE = re.compile(r"\.(\d+)")
 
 
 def _parse_rfc3339(value: str) -> datetime:
     text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    match = _FRACTIONAL_SECONDS_RE.search(text)
+    if match and len(match.group(1)) > _MAX_SUPPORTED_FRACTIONAL_DIGITS:
+        raise ValueError(
+            "RFC 3339 timestamp names more fractional-second digits than "
+            f"this assessor can represent without truncation: {value!r}"
+        )
     parsed = datetime.fromisoformat(text)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
@@ -573,10 +632,12 @@ def _try_parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
     or cannot be parsed as a real RFC 3339 instant.
 
     Never raises: any parsing failure (``ValueError`` for a nonexistent
-    calendar date/time such as a leap-day-31st, ``OverflowError`` for a
-    year outside the platform's representable range, or ``TypeError`` for
-    a non-string) is caught and reported as ``None`` -- an untrustworthy or
-    absent timestamp look identical to every caller downstream.
+    calendar date/time such as a leap-day-31st or for more fractional-
+    second digits than a ``datetime`` can represent without truncation,
+    ``OverflowError`` for a year outside the platform's representable
+    range, or ``TypeError`` for a non-string) is caught and reported as
+    ``None`` -- an untrustworthy or absent timestamp look identical to
+    every caller downstream.
     """
     if not value:
         return None
@@ -728,7 +789,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     """
     residual_risks = _assemble_residual_risks(result)
     risk_ids = {str(entry["residual_risk_id"]) for entry in residual_risks}
-    findings = [_finding_to_dict(finding, risk_ids) for finding in _sorted_findings(result.findings)]
+    findings = [_finding_to_dict(finding, risk_ids) for finding in _sorted_findings(result.findings, risk_ids)]
     timestamp_pairs = _trustworthy_timestamp_pairs(result)
     captured_at = _captured_at_from_pairs(timestamp_pairs)
     captured_instant = timestamp_pairs[-1][0] if timestamp_pairs else None
@@ -848,28 +909,62 @@ def build_apply_plan(result: AssessmentResult) -> Dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
+#: Matches a bare ``scheme://`` run (e.g. ``https://``) so it can be
+#: defused even with no surrounding brackets or angle brackets at all --
+#: GitHub Flavored Markdown's *extended autolink* extension recognizes a
+#: bare run like this (or a bare ``www.``) as a live, clickable link
+#: without requiring either syntax this function already escapes.
+_BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
+
+
 def _md_escape_inline(value: object) -> str:
     """Sanitize *value* for inclusion in a single rendered Markdown table
-    cell, list item, or heading-adjacent line.
+    cell, list item, or heading-adjacent line, so it can only ever render
+    as safe, inert literal text -- never a live image, link, autolink, or
+    raw HTML element.
 
     Collapses any embedded newline/carriage-return -- which could
     otherwise inject a forged extra table row or a spurious new heading
-    line into the rendered pack -- to a single space, escapes ``|`` (which
-    would otherwise split a table row into extra cells), and replaces any
-    backtick with a plain apostrophe and any ``<``/``>`` with their HTML
-    entities (which would otherwise let an assessment-/customer-
-    influenceable string break out of an inline code span or inject raw
-    HTML), all while keeping the value fully human-readable. Applied to
+    line into the rendered pack -- to a single space. A literal backslash
+    is escaped *first*, before any other character below, so a value
+    ending in a backslash immediately before one of the characters this
+    function itself escapes next can never combine with this function's
+    own inserted escape backslash to look like an escaped backslash
+    followed by unescaped, live syntax. ``[``, ``]``, ``(``, and ``)`` are
+    then backslash-escaped: CommonMark/GFM require all of literal,
+    unescaped brackets *and* parentheses to recognize either inline-link
+    (``[text](url)``), image (``![alt](src)``), or reference-link
+    (``[text][ref]``) syntax, so escaping every one of them makes every
+    form -- regardless of URL scheme, including ``javascript:`` -- inert
+    text rather than a clickable link or an image that would load an
+    external resource. ``|`` is escaped (would otherwise split a table row
+    into extra cells). A backtick is replaced with a plain apostrophe
+    (would otherwise let the value break out of an inline code span this
+    module wraps identifier-like values in elsewhere). ``<``/``>`` are
+    HTML-entity-escaped, which defeats both a raw HTML tag and an
+    angle-bracket autolink (``<https://...>``): neither can ever open or
+    close once escaped. Finally, a bare ``scheme://`` or ``www.`` run --
+    which GitHub Flavored Markdown's extended autolink extension can turn
+    into a live link even with no brackets or angle brackets present at
+    all -- has its trigger substring broken with a backslash so the exact
+    literal text it matches against no longer appears.
+
+    All of this keeps the value fully human-readable; it is applied to
     every assessment-influenceable string this module ever interpolates
-    into a table cell, list item, or heading-adjacent line; this module
-    never renders a probe's raw ``expected``/``observed`` payload value
-    here at all, so there is nothing to leak through this escaping.
+    into a table cell, list item, or heading-adjacent line, and this
+    module never renders a probe's raw ``expected``/``observed`` payload
+    value here at all, so there is nothing to leak through this escaping.
     """
     text = str(value)
     text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("\\", "\\\\")
+    text = text.replace("[", "\\[").replace("]", "\\]")
+    text = text.replace("(", "\\(").replace(")", "\\)")
     text = text.replace("|", "\\|")
     text = text.replace("`", "'")
     text = text.replace("<", "&lt;").replace(">", "&gt;")
+    text = _BARE_URL_SCHEME_RE.sub(lambda match: f"{match.group(1)}:\\/\\/", text)
+    text = text.replace("www.", "www\\.")
     return text
 
 
@@ -1197,25 +1292,50 @@ def _validate_apply_plan(apply_plan: Mapping[str, object]) -> None:
 
 
 def _resolve_destination(root: Path, relative: Path) -> Path:
+    """Compute *relative*'s destination path anchored at *root*, purely
+    lexically.
+
+    This never touches the filesystem for the *relative* portion of the
+    path -- no ``.resolve()``, no symlink traversal, only a plain,
+    in-memory ``.``/``..`` segment-stack normalization -- so the
+    destination keeps its own literal identity exactly as named,
+    including when the final (leaf) path component is itself a symlink.
+    Resolving the *whole* candidate path here (as an earlier version of
+    this function did) would silently substitute a destination-leaf
+    symlink's resolved target for the destination itself, so every later
+    check -- starting with preflight's own ``lstat`` of this very return
+    value -- would then inspect the *target* rather than the symlink,
+    exactly the destination-leaf-symlink attack this module must reject
+    rather than silently follow. A ``..`` that would walk back past
+    *root* itself is rejected outright as an escape attempt; every other
+    ``..``/``.`` segment is resolved lexically against the segments
+    already accumulated, never by asking the filesystem to resolve an
+    actual (possibly symlinked) ancestor directory. Ancestor-directory
+    symlinks are never followed at this stage either -- they are instead
+    caught later, when this destination's ancestors are opened one
+    no-follow directory at a time from an already-verified root.
+    """
     relative = Path(relative)
     if relative.is_absolute():
         raise ArtifactWriteError(
             f"artifact path must be repository-relative, not absolute: {relative}"
         )
     root_resolved = root.resolve()
-    candidate = root_resolved
+    stack: List[str] = []
     for part in relative.parts:
         if part in ("", "."):
             continue
-        candidate = candidate / part
-    resolved = candidate.resolve()
-    try:
-        resolved.relative_to(root_resolved)
-    except ValueError as error:
-        raise ArtifactWriteError(
-            f"artifact path escapes the assessed root: {relative}"
-        ) from error
-    return resolved
+        if part == "..":
+            if not stack:
+                raise ArtifactWriteError(
+                    f"artifact path escapes the assessed root: {relative}"
+                )
+            stack.pop()
+            continue
+        stack.append(part)
+    if not stack:
+        raise ArtifactWriteError(f"artifact path must not be empty: {relative}")
+    return root_resolved.joinpath(*stack)
 
 
 def _lstat_or_none(path: Path) -> Optional[os.stat_result]:
@@ -1331,15 +1451,23 @@ def _verify_leaf_absent_or_regular(parent_fd: int, name: str, display: Path) -> 
         )
 
 
-def _revalidate_destination(root_fd: int, root_resolved: Path, dest: Path) -> int:
-    """Immediately before every stage/backup/replace step, re-walk *dest*'s
-    full path from the anchored *root_fd* with no-follow opens, so a
-    parent directory (or the leaf itself) that was swapped to a symlink,
-    directory, or other special file after an earlier check is caught and
-    this call fails closed rather than silently writing through it.
+def _open_verified_parent(root_fd: int, root_resolved: Path, dest: Path) -> Tuple[int, str]:
+    """Open and return a held-open, verified, no-follow directory fd for
+    *dest*'s immediate parent (creating missing ancestor directories as
+    needed), plus *dest*'s own leaf (final path-component) name.
 
-    Returns an open, verified dir_fd for *dest*'s immediate parent
-    directory; the caller owns it and must close it.
+    The caller owns the returned fd and must close it exactly once, but
+    -- unlike a fresh reopen-and-close-immediately check -- is expected to
+    keep it open across every subsequent stage/backup/commit/rollback/
+    cleanup step for this destination. Because the fd is bound to the
+    parent directory's own inode rather than to a path string, every
+    later descriptor-relative operation performed against it (``dir_fd=``)
+    still reaches the exact verified directory this fd was opened
+    against, even if a *later* action renames, removes, or symlink-swaps
+    that directory (or any of its own ancestors) at the path level --
+    closing the exact TOCTOU window a reopen-by-path-every-time design
+    would otherwise leave between one check and the next path-based
+    operation.
     """
     parts = dest.relative_to(root_resolved).parts
     if not parts:
@@ -1347,86 +1475,139 @@ def _revalidate_destination(root_fd: int, root_resolved: Path, dest: Path) -> in
             f"artifact destination must not be the assessed root itself: {dest}"
         )
     parent_fd = _open_verified_dir_fd(root_fd, parts[:-1], dest.parent)
+    return parent_fd, parts[-1]
+
+
+def _fd_leaf_exists(parent_fd: int, name: str) -> bool:
     try:
-        _verify_leaf_absent_or_regular(parent_fd, parts[-1], dest)
-    except BaseException:
-        os.close(parent_fd)
-        raise
-    return parent_fd
+        os.lstat(name, dir_fd=parent_fd)
+        return True
+    except FileNotFoundError:
+        return False
 
 
-def _stage_temp_file(root_fd: int, root_resolved: Path, dest: Path, data: bytes) -> Path:
-    """Stage *data* as a new, race-resistant temp file next to *dest*.
+def _fd_unlink_ignore_missing(parent_fd: int, name: str) -> None:
+    try:
+        os.unlink(name, dir_fd=parent_fd)
+    except FileNotFoundError:
+        pass
 
-    Traverses to *dest*'s parent directory purely through verified,
-    no-follow dir-fd opens anchored at *root_fd* (never re-resolving the
-    directory by path), then creates a randomly named temp file with
-    ``O_CREAT | O_EXCL | O_NOFOLLOW`` under that verified parent fd, so
-    staging itself never re-opens a path that could have been swapped to a
-    symlink in between. On any write/fsync failure the partial temp file
-    is removed and the failure is re-raised as a bounded
-    :class:`ArtifactWriteError` (never a raw, unbounded exception).
+
+def _stage_temp_file(parent_fd: int, dest: Path, leaf_name: str, data: bytes) -> str:
+    """Stage *data* as a new, race-resistant temp file inside the
+    already-open, already-verified *parent_fd* directory, and return its
+    single-component staging name.
+
+    Creates a randomly named temp file with
+    ``O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW`` directly under
+    *parent_fd* -- never by deriving or (re-)opening a path -- so staging
+    itself can never be tricked into writing through a symlink, even if
+    an ancestor directory was swapped after *parent_fd* was opened: the
+    fd is bound to the verified directory's own inode, not to a path
+    string. On any write/fsync failure the partial temp file is removed
+    and the failure is re-raised as a bounded :class:`ArtifactWriteError`
+    (never a raw, unbounded exception).
     """
-    parts = dest.relative_to(root_resolved).parts
-    if not parts:
-        raise ArtifactWriteError(
-            f"artifact destination must not be the assessed root itself: {dest}"
-        )
-    parent_fd = _open_verified_dir_fd(root_fd, parts[:-1], dest.parent)
-    try:
-        name = parts[-1]
-        candidate: Optional[str] = None
-        fd: Optional[int] = None
-        for _attempt in range(8):
-            candidate = f".{name}.{uuid.uuid4().hex}.stage"
-            try:
-                fd = os.open(
-                    candidate,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
-                    0o600,
-                    dir_fd=parent_fd,
-                )
-                break
-            except FileExistsError:
-                candidate = None
-                continue
-        if fd is None or candidate is None:
-            raise ArtifactWriteError(
-                f"could not allocate a unique staging name for {dest}"
-            )
+    candidate: Optional[str] = None
+    fd: Optional[int] = None
+    for _attempt in range(8):
+        candidate = f".{leaf_name}.{uuid.uuid4().hex}.stage"
         try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-        except BaseException as error:
-            try:
-                os.unlink(candidate, dir_fd=parent_fd)
-            except OSError:
-                pass
-            raise ArtifactWriteError(
-                f"failed to stage artifact bytes for {dest}: {error}"
-            ) from error
-        return dest.parent / candidate
-    finally:
-        os.close(parent_fd)
+            fd = os.open(
+                candidate,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=parent_fd,
+            )
+            break
+        except FileExistsError:
+            candidate = None
+            continue
+    if fd is None or candidate is None:
+        raise ArtifactWriteError(f"could not allocate a unique staging name for {dest}")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException as error:
+        try:
+            os.unlink(candidate, dir_fd=parent_fd)
+        except OSError:
+            pass
+        raise ArtifactWriteError(
+            f"failed to stage artifact bytes for {dest}: {error}"
+        ) from error
+    return candidate
 
 
-def _unique_backup_path(dest: Path) -> Path:
+def _unique_backup_name(leaf_name: str) -> str:
     # A pure name generator with no filesystem interaction: collision
     # probability with a random UUID4 hex suffix is negligible, and this
     # avoids the create-then-unlink round trip (itself a small window for
     # a race) a filesystem-backed unique-name allocator would otherwise
     # need.
-    return dest.parent / f".{dest.name}.{uuid.uuid4().hex}.bak"
+    return f".{leaf_name}.{uuid.uuid4().hex}.bak"
 
 
-def _fsync_dir(directory: Path) -> None:
-    dir_fd = os.open(directory, os.O_RDONLY)
+def _fsync_dir(dest: Path, parent_fd: int) -> None:
+    """fsync *dest*'s parent directory via the already-open, held
+    *parent_fd* -- never by reopening it by path -- so this fsync itself
+    cannot be redirected by a later ancestor-directory swap either. *dest*
+    is accepted only so a caller/spy can identify which artifact this
+    fsync belongs to; it is never itself touched.
+    """
+    del dest
+    os.fsync(parent_fd)
+
+
+def _perform_replace(
+    replace: Callable[[Path, Path], None],
+    root_fd: int,
+    root_resolved: Path,
+    parent_fd: int,
+    src_name: str,
+    dst_name: str,
+    src_display: Path,
+    dst_display: Path,
+    dest: Path,
+) -> None:
+    """Move *src_name* onto *dst_name*, both inside the already-verified,
+    held-open *parent_fd* directory backing *dest*.
+
+    When *replace* is still the default, untouched ``os.replace``, this
+    performs a genuinely descriptor-relative, no-follow
+    ``os.rename(..., src_dir_fd=parent_fd, dst_dir_fd=parent_fd)`` against
+    the held-open verified directory fd directly -- immune to any
+    ancestor-directory swap that happened after *parent_fd* was opened,
+    since the fd is bound to the directory's own inode rather than to a
+    path string. This keeps the production/default code path fully
+    TOCTOU-safe end to end.
+
+    When a test has substituted a custom *replace* callable (to simulate
+    a bounded, injected failure partway through a transaction), that
+    callable necessarily operates on plain path strings and so cannot
+    benefit from the held-open fd's race-immunity on its own. Immediately
+    before invoking it, *dest*'s full path is re-walked from the trusted
+    root, one no-follow directory open at a time -- so an ancestor
+    directory (or the leaf itself) swapped to a symlink/special file at
+    any point up to this exact instant is still caught here and fails
+    closed, rather than letting the injected, path-based callable write
+    through it. This preserves full test-injectability of simulated
+    failures without weakening the safety property under test.
+    """
+    if replace is os.replace:
+        os.rename(src_name, dst_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        return
+    parts = dest.relative_to(root_resolved).parts
+    fresh_parent_fd = _open_verified_dir_fd(root_fd, parts[:-1], dest.parent)
     try:
-        os.fsync(dir_fd)
+        _verify_leaf_absent_or_regular(fresh_parent_fd, parts[-1], dest)
     finally:
-        os.close(dir_fd)
+        os.close(fresh_parent_fd)
+    replace(src_display, dst_display)
+
+
 
 
 def write_artifacts(
@@ -1450,19 +1631,29 @@ def write_artifacts(
 
     Before any staging, all three destinations are preflight-checked (not
     the assessed root itself, no existing non-regular-file leaf, no
-    duplicates, no ancestor/descendant nesting). Bytes are then staged as
-    new, randomly named temp files reached purely through verified,
-    no-follow directory-fd traversal anchored at the assessed root (so
-    staging itself cannot be tricked into writing through a symlink); any
-    existing artifact at each destination is moved aside to a unique
-    backup name, and only then are all three temp files replaced onto
-    their destinations. Immediately before every backup-aside or
-    commit-replace step (the two places this call still must go through
-    the injectable, path-based *replace* callable rather than a dir-fd
-    operation) the full destination path is re-walked with the same
-    no-follow verification, so a parent directory or leaf swapped to a
-    symlink/directory/special file after an earlier check still fails
-    closed rather than being silently written through.
+    duplicates, no ancestor/descendant nesting) against their own purely
+    lexical path identity, never a filesystem-resolved one -- so a
+    destination whose own leaf is itself a symlink (even one pointing at
+    an otherwise-harmless in-root regular file) is rejected here rather
+    than silently treated as if it named that regular file directly. A
+    verified, no-follow parent-directory fd is then opened for each
+    destination and held open for the *entire remainder* of this call --
+    staging, backup-aside, commit, rollback, and cleanup all operate
+    against that one held-open fd via descriptor-relative
+    (``dir_fd=``/``src_dir_fd=``/``dst_dir_fd=``) syscalls, never by
+    re-deriving or re-opening a path. Because such an fd is bound to the
+    directory's own inode rather than to a path string, every one of
+    those operations remains safe even if an ancestor directory (or the
+    whole subtree) is renamed, removed, or symlink-swapped by something
+    else after that fd was opened -- there is no reopen-by-path window
+    left for such a swap to redirect. The one exception is the injectable
+    *replace* parameter itself: when a caller has substituted a custom,
+    path-based callable (as tests do, to simulate a bounded failure), that
+    callable is still invoked with real paths -- but only after this
+    destination's full path has been freshly re-walked with the same
+    no-follow verification immediately beforehand, so even that
+    necessarily-path-based call still fails closed against a swap that
+    happened up to that exact instant.
 
     If any step of the staging, backup, or replace phase fails, every
     backup already made is restored, every destination this call itself
@@ -1501,95 +1692,136 @@ def write_artifacts(
 
     root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        staged: List[Tuple[Path, Path]] = []
+        # Open (and hold open for the rest of this call) one verified,
+        # no-follow parent-directory fd per destination *before* any
+        # staging begins, so every later step -- including the very first
+        # one -- already benefits from full TOCTOU immunity.
+        prepared: List[List[object]] = []  # [dest, parent_fd, leaf_name, data]
         try:
             for dest, data in destinations:
-                temp = _stage_temp_file(root_fd, root_resolved, dest, data)
-                staged.append((dest, temp))
-        except BaseException as error:
-            for _dest, temp in staged:
-                try:
-                    Path(temp).unlink(missing_ok=True)
-                except OSError:
-                    pass
-            if isinstance(error, ArtifactWriteError):
-                raise
-            raise ArtifactWriteError(
-                f"failed to stage governed-actions artifacts: {error}"
-            ) from error
-
-        backups: List[Tuple[Path, Path]] = []
-        created_without_backup: List[Path] = []
+                parent_fd, leaf_name = _open_verified_parent(root_fd, root_resolved, dest)
+                prepared.append([dest, parent_fd, leaf_name, data])
+        except BaseException:
+            for _dest, parent_fd, _leaf_name, _data in prepared:
+                os.close(parent_fd)  # type: ignore[arg-type]
+            raise
         try:
-            for dest, _temp in staged:
-                parent_fd = _revalidate_destination(root_fd, root_resolved, dest)
-                os.close(parent_fd)
-                if dest.exists():
-                    backup = _unique_backup_path(dest)
-                    replace(dest, backup)
-                    backups.append((dest, backup))
+            for dest, parent_fd, leaf_name, _data in prepared:
+                _verify_leaf_absent_or_regular(parent_fd, leaf_name, dest)  # type: ignore[arg-type]
 
-            for dest, temp in staged:
-                parent_fd = _revalidate_destination(root_fd, root_resolved, dest)
-                os.close(parent_fd)
-                replace(temp, dest)
-                if not any(existing_dest == dest for existing_dest, _ in backups):
-                    created_without_backup.append(dest)
-                _fsync_dir(dest.parent)
-        except BaseException as error:
-            rollback_errors: List[str] = []
-            for dest in created_without_backup:
-                try:
-                    dest.unlink(missing_ok=True)
-                except OSError as unlink_error:
-                    rollback_errors.append(
-                        f"could not remove newly created artifact {dest}: {unlink_error}"
-                    )
-            for dest, backup in backups:
-                try:
-                    replace(backup, dest)
-                except OSError as restore_error:
-                    # Never delete the backup when its own restore fails:
-                    # it is the only remaining copy of the prior artifact,
-                    # and is preserved here for manual recovery.
-                    rollback_errors.append(
-                        f"could not restore prior artifact at {dest} from "
-                        f"backup {backup} (backup preserved for manual "
-                        f"recovery): {restore_error}"
-                    )
-                    continue
-                try:
-                    _fsync_dir(dest.parent)
-                except OSError as fsync_error:
-                    rollback_errors.append(
-                        f"restored {dest} from backup {backup} but could not "
-                        f"fsync its parent directory (backup preserved for "
-                        f"manual verification): {fsync_error}"
-                    )
-                    continue
-                try:
-                    Path(backup).unlink(missing_ok=True)
-                except OSError:
-                    pass
-            for _dest, temp in staged:
-                try:
-                    Path(temp).unlink(missing_ok=True)
-                except OSError:
-                    pass
-            if rollback_errors:
+            staged: List[Tuple[Path, int, str, str]] = []
+            try:
+                for dest, parent_fd, leaf_name, data in prepared:
+                    staged_name = _stage_temp_file(parent_fd, dest, leaf_name, data)  # type: ignore[arg-type]
+                    staged.append((dest, parent_fd, leaf_name, staged_name))  # type: ignore[arg-type]
+            except BaseException as error:
+                for _dest, parent_fd, _leaf_name, staged_name in staged:
+                    _fd_unlink_ignore_missing(parent_fd, staged_name)
+                if isinstance(error, ArtifactWriteError):
+                    raise
                 raise ArtifactWriteError(
-                    "failed to write governed-actions artifacts AND ROLLBACK "
-                    "DID NOT FULLY RESTORE the prior artifact set -- manual "
-                    f"recovery required: {error}; rollback errors: "
-                    + "; ".join(rollback_errors)
+                    f"failed to stage governed-actions artifacts: {error}"
                 ) from error
-            raise ArtifactWriteError(
-                f"failed to write governed-actions artifacts: {error}"
-            ) from error
 
-        for _dest, backup in backups:
-            Path(backup).unlink(missing_ok=True)
+            backups: List[Tuple[Path, int, str, str]] = []
+            created_without_backup: List[Tuple[Path, int, str]] = []
+            try:
+                for dest, parent_fd, leaf_name, _staged_name in staged:
+                    _verify_leaf_absent_or_regular(parent_fd, leaf_name, dest)
+                    if _fd_leaf_exists(parent_fd, leaf_name):
+                        backup_name = _unique_backup_name(leaf_name)
+                        _perform_replace(
+                            replace,
+                            root_fd,
+                            root_resolved,
+                            parent_fd,
+                            leaf_name,
+                            backup_name,
+                            dest,
+                            dest.parent / backup_name,
+                            dest,
+                        )
+                        backups.append((dest, parent_fd, leaf_name, backup_name))
 
-        return tuple(dest for dest, _ in staged)  # type: ignore[return-value]
+                for dest, parent_fd, leaf_name, staged_name in staged:
+                    _verify_leaf_absent_or_regular(parent_fd, leaf_name, dest)
+                    _perform_replace(
+                        replace,
+                        root_fd,
+                        root_resolved,
+                        parent_fd,
+                        staged_name,
+                        leaf_name,
+                        dest.parent / staged_name,
+                        dest,
+                        dest,
+                    )
+                    if not any(existing_dest == dest for existing_dest, _pf, _ln, _bn in backups):
+                        created_without_backup.append((dest, parent_fd, leaf_name))
+                    _fsync_dir(dest, parent_fd)
+            except BaseException as error:
+                rollback_errors: List[str] = []
+                for dest, parent_fd, leaf_name in created_without_backup:
+                    try:
+                        os.unlink(leaf_name, dir_fd=parent_fd)
+                    except OSError as unlink_error:
+                        rollback_errors.append(
+                            f"could not remove newly created artifact {dest}: {unlink_error}"
+                        )
+                for dest, parent_fd, leaf_name, backup_name in backups:
+                    backup_display = dest.parent / backup_name
+                    try:
+                        _perform_replace(
+                            replace,
+                            root_fd,
+                            root_resolved,
+                            parent_fd,
+                            backup_name,
+                            leaf_name,
+                            backup_display,
+                            dest,
+                            dest,
+                        )
+                    except OSError as restore_error:
+                        # Never delete the backup when its own restore
+                        # fails: it is the only remaining copy of the
+                        # prior artifact, and is preserved here for
+                        # manual recovery.
+                        rollback_errors.append(
+                            f"could not restore prior artifact at {dest} from "
+                            f"backup {backup_display} (backup preserved for "
+                            f"manual recovery): {restore_error}"
+                        )
+                        continue
+                    try:
+                        _fsync_dir(dest, parent_fd)
+                    except OSError as fsync_error:
+                        rollback_errors.append(
+                            f"restored {dest} from backup {backup_display} but "
+                            f"could not fsync its parent directory (backup "
+                            f"preserved for manual verification): {fsync_error}"
+                        )
+                        continue
+                    _fd_unlink_ignore_missing(parent_fd, backup_name)
+                for _dest, parent_fd, _leaf_name, staged_name in staged:
+                    _fd_unlink_ignore_missing(parent_fd, staged_name)
+                if rollback_errors:
+                    raise ArtifactWriteError(
+                        "failed to write governed-actions artifacts AND ROLLBACK "
+                        "DID NOT FULLY RESTORE the prior artifact set -- manual "
+                        f"recovery required: {error}; rollback errors: "
+                        + "; ".join(rollback_errors)
+                    ) from error
+                raise ArtifactWriteError(
+                    f"failed to write governed-actions artifacts: {error}"
+                ) from error
+
+            for _dest, parent_fd, _leaf_name, backup_name in backups:
+                _fd_unlink_ignore_missing(parent_fd, backup_name)
+
+            return tuple(dest for dest, _pf, _ln, _sn in staged)  # type: ignore[return-value]
+        finally:
+            for _dest, parent_fd, _leaf_name, _data in prepared:
+                os.close(parent_fd)  # type: ignore[arg-type]
     finally:
         os.close(root_fd)

@@ -1310,6 +1310,94 @@ def test_write_artifacts_detects_parent_symlink_swap_mid_transaction(tmp_path):
     assert not list(attacker_target.iterdir())
 
 
+def test_write_artifacts_rejects_destination_that_is_itself_a_symlink(tmp_path):
+    # Even when a destination leaf symlink points at an otherwise
+    # harmless, in-root regular file, the destination itself is rejected:
+    # this assessor only ever replaces a plain file it previously wrote,
+    # never a symlink at the destination's own final path component.
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    innocuous_target = manifest_path.parent / "innocuous-regular-file.json"
+    innocuous_target.write_bytes(b"{}\n")
+    manifest_path.symlink_to(innocuous_target)
+
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+
+    # Rejected before any staging occurred: the destination symlink and
+    # the in-root file it points at are both left completely untouched.
+    assert manifest_path.is_symlink()
+    assert innocuous_target.read_bytes() == b"{}\n"
+    assert not evidence_path.exists()
+    assert not apply_plan_path.exists()
+
+
+def test_write_artifacts_held_open_parent_fd_survives_ancestor_symlink_swap(
+    tmp_path, monkeypatch
+):
+    # With no custom ``replace`` injected, every stage/backup/commit step
+    # for a destination goes through one verified, no-follow
+    # parent-directory fd that is opened once and held open for that
+    # destination's entire lifetime in this call -- an fd is bound to the
+    # directory's inode, not to a path string, so it stays valid (and
+    # keeps operating against the *original* directory) even if something
+    # else renames that directory out of the way and replaces its old
+    # path with an attacker-controlled symlink partway through the call.
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+    tests_dir = manifest_path.parent
+    assert tests_dir == apply_plan_path.parent  # both artifacts share this parent
+
+    tests_dir_saved = tests_dir.parent / f"{tests_dir.name}-saved-by-attacker"
+    attacker_target = tmp_path.parent / f"{tmp_path.name}-attacker-target"
+    attacker_target.mkdir()
+
+    original_stage = render._stage_temp_file
+    swap_done = {"value": False}
+
+    def _spy_stage(parent_fd, dest, leaf_name, data):
+        staged_name = original_stage(parent_fd, dest, leaf_name, data)
+        # Immediately after the *first* artifact is staged (into the
+        # already-held-open parent fd), an attacker swaps the shared
+        # tests/ ancestor directory for a symlink pointing outside the
+        # assessed root, before the remaining artifacts under that same
+        # directory are staged, backed up, or committed.
+        if not swap_done["value"]:
+            tests_dir.rename(tests_dir_saved)
+            tests_dir.symlink_to(attacker_target, target_is_directory=True)
+            swap_done["value"] = True
+        return staged_name
+
+    monkeypatch.setattr(render, "_stage_temp_file", _spy_stage)
+
+    returned = render.write_artifacts(
+        tmp_path,
+        result,
+        render.DEFAULT_MANIFEST_RELATIVE_PATH,
+        render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+        render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+    )
+
+    # The whole transaction must still succeed, and every byte must have
+    # landed in the *original* directory (now sitting at the renamed
+    # path) via the held-open fd -- never through the attacker's symlink.
+    assert returned == (manifest_path, evidence_path, apply_plan_path)
+    assert not list(attacker_target.iterdir())
+    restored_manifest = tests_dir_saved / render.DEFAULT_MANIFEST_RELATIVE_PATH.name
+    restored_apply_plan = tests_dir_saved / render.DEFAULT_APPLY_PLAN_RELATIVE_PATH.name
+    assert restored_manifest.is_file()
+    assert restored_apply_plan.is_file()
+    manifest = json.loads(restored_manifest.read_text())
+    _assert_valid_manifest(manifest)
+
+
 # ---------------------------------------------------------------------------
 # Hardening round: rollback failures are never swallowed (issue 3)
 # ---------------------------------------------------------------------------
@@ -1335,9 +1423,9 @@ def test_write_artifacts_rollback_failure_is_not_swallowed(tmp_path, monkeypatch
     original_fsync_dir = render._fsync_dir
     fsync_calls = []
 
-    def _spy_fsync_dir(directory: Path) -> None:
-        fsync_calls.append(Path(directory))
-        original_fsync_dir(directory)
+    def _spy_fsync_dir(dest: Path, parent_fd: int) -> None:
+        fsync_calls.append(Path(dest).parent)
+        original_fsync_dir(dest, parent_fd)
 
     monkeypatch.setattr(render, "_fsync_dir", _spy_fsync_dir)
 
@@ -1405,16 +1493,16 @@ def test_write_artifacts_cleans_up_earlier_staged_files_when_a_later_stage_fails
     manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
 
     original_stage = render._stage_temp_file
-    staged_paths = []
+    staged_locations = []
     call_count = {"value": 0}
 
-    def _spy_stage(root_fd, root_resolved, dest, data):
+    def _spy_stage(parent_fd, dest, leaf_name, data):
         call_count["value"] += 1
         if call_count["value"] == 2:
             raise OSError("synthetic staging failure for the second artifact")
-        temp = original_stage(root_fd, root_resolved, dest, data)
-        staged_paths.append(temp)
-        return temp
+        staged_name = original_stage(parent_fd, dest, leaf_name, data)
+        staged_locations.append(dest.parent / staged_name)
+        return staged_name
 
     monkeypatch.setattr(render, "_stage_temp_file", _spy_stage)
 
@@ -1428,8 +1516,8 @@ def test_write_artifacts_cleans_up_earlier_staged_files_when_a_later_stage_fails
         )
 
     assert "synthetic staging failure" in str(excinfo.value)
-    assert len(staged_paths) == 1  # only the first artifact staged before the failure
-    assert not staged_paths[0].exists(), "earlier staged temp file must be cleaned up"
+    assert len(staged_locations) == 1  # only the first artifact staged before the failure
+    assert not staged_locations[0].exists(), "earlier staged temp file must be cleaned up"
     assert not manifest_path.exists()
     assert not evidence_path.exists()
     assert not apply_plan_path.exists()
@@ -1449,8 +1537,12 @@ def test_stage_temp_file_removes_partial_temp_on_write_failure(tmp_path, monkeyp
     monkeypatch.setattr(os, "fsync", _failing_fsync)
     root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        with pytest.raises(render.ArtifactWriteError):
-            render._stage_temp_file(root_fd, root_resolved, dest, b"{}\n")
+        parent_fd, leaf_name = render._open_verified_parent(root_fd, root_resolved, dest)
+        try:
+            with pytest.raises(render.ArtifactWriteError):
+                render._stage_temp_file(parent_fd, dest, leaf_name, b"{}\n")
+        finally:
+            os.close(parent_fd)
     finally:
         os.close(root_fd)
 
@@ -1458,6 +1550,8 @@ def test_stage_temp_file_removes_partial_temp_on_write_failure(tmp_path, monkeyp
     assert tests_dir.is_dir()  # created by the fd-based mkdir before the failure
     leftovers = list(tests_dir.glob(".*"))
     assert leftovers == [], f"leftover staging files: {leftovers}"
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -1478,6 +1572,68 @@ def test_freshness_expires_at_preserves_fractional_seconds():
     # rendered timestamp can never contradict the freshness computation
     # actually performed against the full-precision instant.
     assert freshness["expires_at"] == "2026-01-02T00:00:00.123456Z"
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: RFC 3339 arbitrary precision is never silently truncated
+# into a false-fresh reading (issue 2, 2nd rereview)
+# ---------------------------------------------------------------------------
+
+
+def test_freshness_six_fractional_digits_is_the_supported_precision_boundary():
+    # Exactly six digits (RFC 3339's/this module's maximum supported
+    # precision) must still parse and be treated as trustworthy -- the
+    # degradation below only begins strictly beyond this boundary.
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-6digit", collected_at="2026-01-01T00:00:00.123456Z")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-6digit")
+    assert entry["collected_at"] == "2026-01-01T00:00:00.123456Z"
+    assert entry["live_verified"] is True
+
+
+@pytest.mark.parametrize("fractional_digits", [7, 8, 9])
+def test_freshness_degrades_collected_at_beyond_six_fractional_digits(fractional_digits):
+    # Python's datetime.fromisoformat silently *truncates* (never rejects)
+    # fractional-second digits beyond six -- naively parsing one of these
+    # values would produce a plausible-looking (but wrong) 6-digit instant
+    # and let it through as trustworthy. This module must instead treat a
+    # timestamp whose precision it cannot exactly represent as
+    # untrustworthy/absent, never a silently truncated false-fresh instant.
+    fractional = "1" * fractional_digits
+    collected_at = f"2026-01-01T00:00:00.{fractional}Z"
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-boundary", collected_at=collected_at)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-boundary")
+    assert entry["collected_at"] is None
+    assert entry["freshness_seconds"] is None
+    assert entry["live_verified"] is False
+    assert manifest["freshness"]["status"] == "stale"
+    assert manifest["freshness"]["oldest_source_at"] is None
+
+
+def test_freshness_mixed_valid_and_over_precision_collected_at_uses_only_valid():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [
+        _evidence("EVID-overprecise", collected_at="2026-01-01T00:00:00.1234567Z"),
+        _evidence("EVID-precise", collected_at=_COLLECTED_AT_EARLY),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["oldest_source_at"] == _COLLECTED_AT_EARLY
+    overprecise_entry = next(
+        e for e in manifest["evidence"] if e["evidence_id"] == "EVID-overprecise"
+    )
+    precise_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-precise")
+    assert overprecise_entry["collected_at"] is None
+    assert overprecise_entry["live_verified"] is False
+    assert precise_entry["collected_at"] == _COLLECTED_AT_EARLY
 
 
 # ---------------------------------------------------------------------------
@@ -1670,6 +1826,155 @@ def test_manifest_probe_evidence_refs_sorted_and_order_independent():
 
 
 # ---------------------------------------------------------------------------
+# Hardening round: canonical tie-breaker for tied primary sort keys (issue 3,
+# 2nd rereview) -- two records that share the exact same *primary* sort key
+# but differ in other fields must still resolve to the same final order (and
+# therefore byte-identical manifests) no matter which order they appear in
+# the unsorted input, because each ``_sorted_*`` helper now appends a
+# canonical-bytes secondary key after its documented primary key.
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_actions_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    action_a = _action("act-tied", owner="team-a")
+    action_b = _action("act-tied", owner="team-b")
+
+    result_forward = _base_result(actions=[action_a, action_b], findings=findings)
+    result_reordered = _base_result(actions=[action_b, action_a], findings=findings)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["action_inventory"]) == 2
+
+
+def test_manifest_paths_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    action = _action("act-1")
+
+    def _tied_path(status: str) -> contracts.PathRecord:
+        return contracts.PathRecord(
+            path_id="path-tied",
+            action_id="act-1",
+            mode="runtime",
+            nodes=("entrypoint", "handler"),
+            pre_action_seam="hook:pre",
+            equivalent_control_ref=None,
+            covered=True,
+            status=status,
+            evidence_refs=(),
+        )
+
+    path_a = _tied_path("pass")
+    path_b = _tied_path("not-applicable")
+
+    result_forward = _base_result(actions=[action], paths=[path_a, path_b], findings=findings)
+    result_reordered = _base_result(actions=[action], paths=[path_b, path_a], findings=findings)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["mediation_paths"]) == 2
+
+
+def test_manifest_probes_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    action = _action("act-1")
+    path = _path("path-1", "act-1")
+
+    probe_a = _probe("probe-tied", "act-1", "path-1", observed="observed-a")
+    probe_b = _probe("probe-tied", "act-1", "path-1", observed="observed-b")
+
+    result_forward = _base_result(
+        actions=[action], paths=[path], probes=[probe_a, probe_b], findings=findings
+    )
+    result_reordered = _base_result(
+        actions=[action], paths=[path], probes=[probe_b, probe_a], findings=findings
+    )
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["conformance"]["application_probes"]) == 2
+
+
+def test_manifest_evidence_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+
+    def _tied_evidence(source: str) -> contracts.EvidenceRef:
+        return contracts.EvidenceRef(
+            evidence_id="EVID-tied",
+            kind="static-file-hash",
+            source=source,
+            sha256=_sha256_of(source),
+            collected_at=_COLLECTED_AT_EARLY,
+            freshness_seconds=0,
+            live_verified=True,
+            phase="design",
+            repository=_REPOSITORY,
+            source_commit=_COMMIT,
+            target_environment=None,
+            policy_set_sha256=None,
+        )
+
+    evidence_a = _tied_evidence("a-source.json")
+    evidence_b = _tied_evidence("b-source.json")
+
+    result_forward = _base_result(findings=findings, evidence=[evidence_a, evidence_b])
+    result_reordered = _base_result(findings=findings, evidence=[evidence_b, evidence_a])
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["evidence"]) == 2
+
+
+def test_manifest_findings_with_tied_primary_key_still_order_independent():
+    def _tied_finding(summary: str) -> contracts.Finding:
+        return contracts.Finding(
+            finding_id="MED-001",
+            status="pass",
+            phase="design",
+            plane="runtime",
+            reason_code="reason",
+            summary=summary,
+            details="details",
+            affected_actions=(),
+            affected_paths=(),
+            evidence_refs=(),
+            remediation_ids=(),
+            residual_risk_ref=None,
+        )
+
+    finding_a = _tied_finding("summary A")
+    finding_b = _tied_finding("summary B")
+
+    result_forward = _base_result(findings=[finding_a, finding_b])
+    result_reordered = _base_result(findings=[finding_b, finding_a])
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["findings"]) == 2
+
+
+# ---------------------------------------------------------------------------
 # Hardening round: residual-risk id collisions are rejected (issue 8)
 # ---------------------------------------------------------------------------
 
@@ -1829,3 +2134,101 @@ def test_evidence_pack_remediation_plan_escapes_hostile_owner():
     assert "<b>bold</b>" not in plan_section
     assert "&lt;b&gt;bold&lt;/b&gt;" in plan_section
     assert "pwn\\|ed" in plan_section
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: broader Markdown neutralization -- active images, links,
+# autolinks, and raw HTML must all be defeated, not just table delimiters
+# (issue 4, 2nd rereview)
+# ---------------------------------------------------------------------------
+
+_HOSTILE_INLINE_LINK = "[click me](javascript:alert(1))"
+_HOSTILE_IMAGE = "![alt text](javascript:alert(1))"
+_HOSTILE_REFERENCE_LINK = "[click me][evil]"
+_HOSTILE_ANGLE_AUTOLINK = "<https://evil.example/steal>"
+_HOSTILE_BARE_AUTOLINK = "visit https://evil.example/steal now"
+_HOSTILE_WWW_AUTOLINK = "visit www.evil.example now"
+
+
+def _escaping_finding(summary: str) -> Sequence[contracts.Finding]:
+    return [
+        contracts.Finding(
+            finding_id="MED-001",
+            status="pass",
+            phase="design",
+            plane="runtime",
+            reason_code="reason",
+            summary=summary,
+            details="details",
+            affected_actions=(),
+            affected_paths=(),
+            evidence_refs=(),
+            remediation_ids=(),
+            residual_risk_ref=None,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "hostile_text",
+    [
+        _HOSTILE_INLINE_LINK,
+        _HOSTILE_IMAGE,
+        _HOSTILE_REFERENCE_LINK,
+        _HOSTILE_ANGLE_AUTOLINK,
+        _HOSTILE_BARE_AUTOLINK,
+        _HOSTILE_WWW_AUTOLINK,
+    ],
+)
+def test_evidence_pack_neutralizes_active_markdown_link_and_image_forms(hostile_text):
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    # No unescaped ``](`` (inline-link/image trigger), unescaped ``][``
+    # (reference-link trigger), or a live angle-bracket autolink can
+    # survive -- every one of these forms requires literal, unescaped
+    # syntax to be recognized by a CommonMark/GFM renderer.
+    assert "](" not in matrix_section
+    assert "][" not in matrix_section
+    assert "<https://" not in matrix_section
+    assert "<http://" not in matrix_section
+    # GitHub Flavored Markdown's extended autolink extension can also turn
+    # a bare "scheme://" or "www." run into a live link with no brackets
+    # at all -- the literal trigger substrings must not survive either.
+    assert "https://evil.example" not in matrix_section
+    assert "http://evil.example" not in matrix_section
+    assert "www.evil.example" not in matrix_section
+    # The value must still be readable, safe literal text rather than
+    # being dropped or replaced with a placeholder.
+    assert "evil.example" in matrix_section or "click me" in matrix_section or "alt text" in matrix_section
+
+
+def test_evidence_pack_neutralizes_javascript_url_inline_link():
+    result = _base_result(findings=_escaping_finding(_HOSTILE_INLINE_LINK))
+    text = render.render_evidence_pack(result)
+    assert "[click me](javascript:alert(1))" not in text
+    assert "](" not in text  # the live-link trigger substring never survives
+    assert "click me" in text  # visible text remains readable
+
+
+def test_evidence_pack_neutralizes_javascript_url_image():
+    result = _base_result(findings=_escaping_finding(_HOSTILE_IMAGE))
+    text = render.render_evidence_pack(result)
+    assert "![alt text](javascript:alert(1))" not in text
+    assert "alt text" in text  # visible text remains readable
+
+
+def test_evidence_pack_neutralizes_reference_style_link():
+    result = _base_result(findings=_escaping_finding(_HOSTILE_REFERENCE_LINK))
+    text = render.render_evidence_pack(result)
+    assert "[click me][evil]" not in text
+    assert "click me" in text
+
+
+def test_evidence_pack_neutralizes_angle_bracket_autolink():
+    result = _base_result(findings=_escaping_finding(_HOSTILE_ANGLE_AUTOLINK))
+    text = render.render_evidence_pack(result)
+    assert "<https://evil.example/steal>" not in text
+    assert "evil.example" in text
+
