@@ -339,6 +339,53 @@ def test_pull_request_target_without_untrusted_checkout_is_not_flagged(
     assert result.pr_gate == "pass"
 
 
+# ---------------------------------------------------------------------------
+# Final blocker 1: every untrusted-checkout ref shape actually used in the
+# wild -- not only the full `github.event.pull_request.head` object path --
+# must be recognized: the `github.head_ref` shorthand context variable, the
+# `.ref`/`.sha` fields individually, and a literal `refs/pull/...` ref.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ref_expression",
+    [
+        "${{ github.event.pull_request.head.ref }}",
+        "${{ github.event.pull_request.head.sha }}",
+        "${{ github.head_ref }}",
+        "refs/pull/${{ github.event.pull_request.number }}/merge",
+        "refs/pull/123/head",
+    ],
+)
+def test_pull_request_target_untrusted_ref_variants_are_must_fix(
+    tmp_path, ref_expression
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: {ref_expression}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
 def test_direct_push_deploy_is_must_fix(tmp_path):
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True)
@@ -367,6 +414,93 @@ def test_direct_push_deploy_is_must_fix(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Final blocker 2: a workflow that deploys via a raw `az`/`azd` CLI command
+# in a `run:` step -- not a marketplace deploy action -- must still be
+# classified as a deploy workflow (and so still gated by rule 1), even when
+# the job that runs it is named something entirely unrelated to "deploy".
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "deploy_command",
+    [
+        "az webapp deploy --resource-group rg --name app --src-path app.zip",
+        "az containerapp update --name app --resource-group rg --image img",
+        "az functionapp deployment source config-zip -g rg -n app --src app.zip",
+        "azd deploy",
+        "azd up --no-prompt",
+    ],
+)
+def test_direct_push_with_raw_cli_deploy_command_is_must_fix_regardless_of_job_name(
+    tmp_path, deploy_command
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "release.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Release
+            on:
+              push:
+                branches: [main]
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              ship-it:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{{{ secrets.AZURE_CLIENT_ID }}}}
+                      tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                      subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+                  - name: Ship
+                    run: {deploy_command}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_az_group_create_alone_is_not_treated_as_a_deploy(tmp_path):
+    """A bare `az group create` (creating an empty resource group, not
+    deploying anything into it) must not itself trigger the deploy-run-
+    command classification -- only an actual deployment-shaped command
+    (`az deployment group create`, `az webapp deploy`, ...) should."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "provision.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Provision
+            on:
+              push:
+                branches: [main]
+            permissions:
+              contents: read
+            jobs:
+              setup:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Create resource group
+                    run: az group create --name rg --location eastus
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.is_deploy is False
+
+
+# ---------------------------------------------------------------------------
 # Static evidence can never, by itself, prove live branch protection.
 # ---------------------------------------------------------------------------
 
@@ -387,6 +521,8 @@ def test_live_github_evidence_can_confirm_branch_protection(tmp_path):
             "main": {
                 "required_pull_request_reviews": True,
                 "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
             }
         },
     }
@@ -402,11 +538,14 @@ def test_ghcp_internal_loop_intercepted_is_always_false(tmp_path):
             "main": {
                 "required_pull_request_reviews": True,
                 "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
             }
         },
     }
     result = assess_change_plane(root, live_github=live_github, live_azure=None)
     assert result.controls["ghcp_internal_loop_intercepted"] is False
+
 
 
 # ---------------------------------------------------------------------------
@@ -561,11 +700,349 @@ def test_required_status_checks_naming_gating_job_confirms_pass(tmp_path):
             "main": {
                 "required_pull_request_reviews": True,
                 "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
             }
         },
     }
     result = assess_change_plane(root, live_github=live_github, live_azure=None)
     assert result.findings == ()
+
+
+# ---------------------------------------------------------------------------
+# Final blocker 4a: a live "pass" must be semantically bound to genuine
+# protection -- exempting admins, still allowing force pushes, or granting
+# a bypass allowance each individually defeat what "protected" is supposed
+# to mean, and must each keep the branch-protection confirmation from ever
+# resolving to a `pass`.
+# ---------------------------------------------------------------------------
+
+
+def test_admins_exempt_from_branch_protection_stays_not_verified(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": True,
+                "required_status_checks": ["test"],
+                "enforce_admins": False,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_force_pushes_allowed_keeps_branch_protection_not_verified(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": True,
+                "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": True,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_review_bypass_allowance_keeps_branch_protection_not_verified(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": {
+                    "bypass_pull_request_allowances": {"users": ["octocat"]},
+                },
+                "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_enforce_admins_enabled_mapping_shape_still_confirms_pass(tmp_path):
+    """`enforce_admins` can be reported as a bare bool or a
+    ``{"enabled": bool}`` mapping (as GitHub's own API actually does) --
+    both shapes must be honored identically."""
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": True,
+                "required_status_checks": ["test"],
+                "enforce_admins": {"enabled": True},
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert result.findings == ()
+
+
+# ---------------------------------------------------------------------------
+# Final blocker 4b: environment protection is confirmed "as available" --
+# a deploy job's own declared GitHub Environment must be reported protected
+# whenever live evidence covers it, but the complete absence of any
+# environment declaration (or of live environment evidence at all) must
+# never block an otherwise-genuine pass on its own.
+# ---------------------------------------------------------------------------
+
+
+def _write_clean_repo_with_deploy_environment(tmp_path: Path, environment: str) -> Path:
+    root = tmp_path / "env-protected-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    (workflow_dir / "deploy.yml").write_text(
+        textwrap.dedent(
+            f"""\
+            name: Deploy
+            on:
+              workflow_dispatch:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                environment: {environment}
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{{{ secrets.AZURE_CLIENT_ID }}}}
+                      tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                      subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+                  - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+_STRONG_BRANCH_PROTECTION = {
+    "required_pull_request_reviews": True,
+    "required_status_checks": ["test"],
+    "enforce_admins": True,
+    "allow_force_pushes": False,
+}
+
+
+def test_unprotected_declared_environment_keeps_codeowners_not_verified(tmp_path):
+    root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+        "environments": {"production": {"protected": False}},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_protected_declared_environment_confirms_pass(tmp_path):
+    root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+        "environments": {"production": {"protected": True}},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+def test_missing_environment_evidence_never_blocks_pass_on_its_own(tmp_path):
+    """A deploy job that declares an ``environment:`` but live evidence
+    supplies no ``environments`` mapping at all must not be blocked by
+    that absence alone -- environment protection is confirmed only "as
+    available"."""
+    root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Final blocker 4c: identity separation's live confirmation is bound to
+# these workflows' own declared identity references, resolved through a
+# `live_azure["identity_principal_ids"]` mapping -- not merely counting
+# unrelated role assignments elsewhere in the tenant.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_separate_deploy_and_test_identities(tmp_path: Path) -> Path:
+    root = tmp_path / "identity-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.TEST_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    (workflow_dir / "deploy.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              workflow_dispatch:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.DEPLOY_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_identity_separation_stays_not_verified_without_live_mapping(tmp_path):
+    root = _repo_with_separate_deploy_and_test_identities(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "identity-separation-not-verified-statically"
+
+
+def test_identity_separation_confirms_pass_when_live_mapping_proves_disjoint(tmp_path):
+    root = _repo_with_separate_deploy_and_test_identities(tmp_path)
+    live_azure = {
+        "identity_principal_ids": {
+            "${{ secrets.TEST_CLIENT_ID }}": "11111111-1111-1111-1111-111111111111",
+            "${{ secrets.DEPLOY_CLIENT_ID }}": "22222222-2222-2222-2222-222222222222",
+        }
+    }
+    result = assess_change_plane(root, live_github=None, live_azure=live_azure)
+    assert "GHCP-006" not in {f.finding_id for f in result.findings}
+
+
+def test_identity_separation_must_fix_when_live_mapping_proves_shared_principal(
+    tmp_path,
+):
+    """Static files declare no *literal* overlapping reference (the
+    secrets expressions differ), but live evidence resolves both to the
+    very same underlying Azure principal -- that is a real, live-proven
+    shared identity, and must become a `must-fix`, not merely stay
+    not-verified."""
+    root = _repo_with_separate_deploy_and_test_identities(tmp_path)
+    live_azure = {
+        "identity_principal_ids": {
+            "${{ secrets.TEST_CLIENT_ID }}": "11111111-1111-1111-1111-111111111111",
+            "${{ secrets.DEPLOY_CLIENT_ID }}": "11111111-1111-1111-1111-111111111111",
+        }
+    }
+    result = assess_change_plane(root, live_github=None, live_azure=live_azure)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "live-confirmed-shared-identity"
+
+
+def test_identity_separation_stays_not_verified_when_a_ref_is_unmapped(tmp_path):
+    root = _repo_with_separate_deploy_and_test_identities(tmp_path)
+    live_azure = {
+        "identity_principal_ids": {
+            "${{ secrets.TEST_CLIENT_ID }}": "11111111-1111-1111-1111-111111111111",
+            # DEPLOY_CLIENT_ID left unmapped -- insufficient live evidence.
+        }
+    }
+    result = assess_change_plane(root, live_github=None, live_azure=live_azure)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
+    assert finding.status == "not-verified"
 
 
 # ---------------------------------------------------------------------------
@@ -1596,6 +2073,65 @@ def test_codeowners_pattern_without_owner_token_grants_no_coverage(tmp_path):
     assert finding.reason_code == "codeowners-incomplete-coverage"
 
 
+# ---------------------------------------------------------------------------
+# Final blocker 3: CODEOWNERS resolution is last-match-wins in file order,
+# exactly like GitHub's own -- a later line covering the same path (even an
+# ownerless one that explicitly disowns it) must override an earlier one,
+# never the reverse.
+# ---------------------------------------------------------------------------
+
+
+def test_codeowners_later_owned_line_overrides_earlier_ownerless_line(tmp_path):
+    """An earlier ownerless (disowning) line for a broad ancestor glob must
+    not defeat a *later*, more specific line that does declare a real
+    owner for the same path -- last match wins, so the later owned line
+    is what actually governs."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/**",  # ownerless: would disown everything under it
+            "src/governance/** @octo-org/governance",  # later: re-owns it
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    # Coverage itself is satisfied by the later, re-owning line; the only
+    # remaining GHCP-002 gap is live branch-protection confirmation, which
+    # static evidence alone can never supply.
+    assert finding.status == "not-verified"
+    assert finding.reason_code != "codeowners-incomplete-coverage"
+
+
+def test_codeowners_later_ownerless_line_disowns_earlier_owned_line(tmp_path):
+    """The reverse of the case above: a later ownerless line covering a
+    path that an earlier line *did* assign a real owner to must actually
+    take effect -- an explicit, later "no one owns this" declaration is
+    real CODEOWNERS semantics, not a no-op, and must still surface as
+    missing coverage for that requirement."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",  # owned...
+            "src/governance/**",  # ...then explicitly disowned later
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "codeowners-incomplete-coverage"
+    assert "src/governance/**" in finding.details
+
+
 def test_docs_codeowners_location_is_a_recognized_ownership_file(tmp_path):
     root = tmp_path / "docs-codeowners-repo"
     workflow_dir = root / ".github" / "workflows"
@@ -1903,6 +2439,63 @@ def test_clean_working_tree_still_yields_evidence(tmp_path):
     _init_git_repo(root)
     result = assess_change_plane(root, live_github=None, live_azure=None)
     assert len(result.evidence) == 1
+
+
+# ---------------------------------------------------------------------------
+# Final blocker 6: a repository with no discovered workflows at all must
+# never resolve GHCP-001/GHCP-004/GHCP-005 as a vacuous `pass` -- there is
+# nothing this assessor could have actually checked, so the honest answer
+# is "not-applicable", exactly like GHCP-006 already does when there is no
+# identity to compare at all.
+# ---------------------------------------------------------------------------
+
+
+def test_empty_workflow_set_never_resolves_pr_gate_to_pass(tmp_path):
+    root = tmp_path / "no-workflows-repo"
+    root.mkdir()
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_pr_only_gate"] == "not-applicable"
+
+
+def test_empty_workflow_set_never_resolves_pinned_least_privilege_to_pass(tmp_path):
+    root = tmp_path / "no-workflows-repo"
+    root.mkdir()
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_pinned_least_privilege"] == "not-applicable"
+
+
+def test_empty_workflow_set_never_resolves_azure_oidc_to_pass(tmp_path):
+    root = tmp_path / "no-workflows-repo"
+    root.mkdir()
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_azure_oidc"] == "not-applicable"
+
+
+# ---------------------------------------------------------------------------
+# Final blocker 5: the dirty check must also catch a *staged but
+# uncommitted* change -- the index recording something different from what
+# is actually committed at HEAD -- not only an unstaged working-tree-vs-
+# index difference. Pairing `source_commit` with a hash of staged-but-
+# never-committed bytes would misrepresent what that commit actually
+# contains.
+# ---------------------------------------------------------------------------
+
+
+def test_staged_but_uncommitted_workflow_change_yields_no_evidence(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    _init_git_repo(root)
+    workflow_path = root / ".github" / "workflows" / "ci.yml"
+    workflow_path.write_text(
+        workflow_path.read_text(encoding="utf-8") + "\n# staged but not committed\n",
+        encoding="utf-8",
+    )
+    # Stage the change -- working tree now matches the index, but the
+    # index no longer matches what HEAD actually has committed.
+    subprocess.run(
+        ["git", "add", "-A"], cwd=root, capture_output=True, text=True, check=True
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.evidence == ()
 
 
 # ---------------------------------------------------------------------------

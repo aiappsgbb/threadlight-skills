@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import re
 import struct
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
@@ -68,6 +69,26 @@ _DEPLOY_ACTION_MARKERS: Tuple[str, ...] = (
     "azure/arm-deploy",
 )
 
+# A workflow that runs one of these commands directly (via the Azure/azd
+# CLI in a `run:` step) is a deployment just as much as one that uses a
+# marketplace deploy action -- rule 1 (GHCP-001) must classify it as
+# `is_deploy` regardless of which job or step happens to run it, and
+# regardless of what that job is named: a job named "release" or "ship"
+# running `az webapp deploy` is still a deploy for this purpose.
+#
+# Deliberately excludes a bare `az group create` (or any other resource-
+# management command without a deployment-shaped verb attached to a
+# deploy-relevant resource type): creating an empty resource group is not
+# itself a deployment, and treating it as one would be a false positive
+# this module must not produce. `az deployment ... create` (ARM/Bicep
+# deployments) is still covered via the `deployment` marker.
+_DEPLOY_RUN_COMMAND_RE = re.compile(
+    r"\baz\s+(?:webapp|functionapp|containerapp|staticwebapp|aks|acr|"
+    r"deployment)\b[^\n]*\b(?:deploy(?:ment)?|up|create|update)\b"
+    r"|\bazd\s+(?:deploy|up)\b",
+    re.IGNORECASE,
+)
+
 _SECRET_LOGIN_KEYS: Tuple[str, ...] = (
     "creds",
     "client-secret",
@@ -75,8 +96,19 @@ _SECRET_LOGIN_KEYS: Tuple[str, ...] = (
     "publish-profile",
 )
 
+# Every shape a `pull_request_target`-triggered checkout's `ref:` can take
+# that actually resolves to the pull request's own, potentially attacker-
+# controlled head content rather than the trusted base branch: the full
+# `github.event.pull_request.head` object path (covers both its `.ref`
+# and `.sha` fields via substring), the `github.head_ref` shorthand
+# context variable (only ever populated for pull_request/
+# pull_request_target events, and always attacker-controlled), and a
+# literal `refs/pull/...` ref (the fork PR's own ref namespace, whether
+# `/head` or `/merge`).
 _UNTRUSTED_CHECKOUT_REF_MARKERS: Tuple[str, ...] = (
     "github.event.pull_request.head",
+    "github.head_ref",
+    "refs/pull/",
 )
 
 _CTK_MARKER_RE = re.compile(r"\bctk\b", re.IGNORECASE)
@@ -233,7 +265,7 @@ class WorkflowAssessment:
     sha_pins: Status
     oidc_wif: Status
     ci_probes: Status
-    identity_ref: Optional[str]
+    identity_refs: Tuple[str, ...]
     sha_violations: Tuple[str, ...]
 
 
@@ -714,15 +746,30 @@ def _oidc_status(
     return "pass"
 
 
-def _identity_ref(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Optional[str]:
+def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[str, ...]:
+    """Every distinct client-id/creds reference from *every* ``azure/
+    login`` step in a workflow -- not merely its first one. A workflow
+    can authenticate as more than one identity (multiple jobs, or
+    multiple login steps within one job), and rule 6's identity-
+    separation check must inspect all of them, not just the first
+    login step it happens to encounter.
+    """
+    refs: List[str] = []
     for _job, step in login_job_steps:
         with_block = step.get("with")
         if not isinstance(with_block, Mapping):
             continue
         for key in ("client-id", "creds"):
-            if with_block.get(key):
-                return str(with_block[key])
-    return None
+            value = with_block.get(key)
+            if value:
+                refs.append(str(value))
+    seen: Set[str] = set()
+    unique: List[str] = []
+    for ref in refs:
+        if ref not in seen:
+            seen.add(ref)
+            unique.append(ref)
+    return tuple(unique)
 
 
 # ---------------------------------------------------------------------------
@@ -731,8 +778,18 @@ def _identity_ref(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Optiona
 
 
 def _is_deploy_workflow(document: Mapping) -> bool:
+    """True if this workflow deploys -- via a known marketplace deploy
+    action, a raw Azure/azd CLI deploy command run directly in a `run:`
+    step, or a job id/name that says so -- classified regardless of
+    which job any of this lives in or what that job happens to be
+    named: a job named "release" running a bare `az webapp deploy`
+    command is still a deploy for rule 1's purposes.
+    """
     uses_refs = [ref.split("@", 1)[0].strip().lower() for ref in _uses_refs(document)]
     if any(marker in ref for ref in uses_refs for marker in _DEPLOY_ACTION_MARKERS):
+        return True
+    run_text = "\n".join(_run_command_texts(document))
+    if _DEPLOY_RUN_COMMAND_RE.search(run_text):
         return True
     labels = [label.lower() for label in _job_ids_and_names(document)]
     return any("deploy" in label for label in labels)
@@ -837,7 +894,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         sha_pins=sha_pins,
         oidc_wif=_oidc_status(document, login_job_steps, deploy_action_job_steps),
         ci_probes=_ci_probes_static_status(document, triggers),
-        identity_ref=_identity_ref(login_job_steps),
+        identity_refs=_identity_refs(login_job_steps),
         sha_violations=sha_violations,
     )
 
@@ -863,24 +920,48 @@ def _find_ownership_file(root: Path) -> Optional[Path]:
     return None
 
 
-def _parse_codeowners_patterns(path: Path) -> Set[str]:
-    """Every pattern in a CODEOWNERS file that actually names at least one
-    real owner -- a ``@user``/``@org/team`` GitHub reference or an email
-    address following the pattern on the same line. A pattern with no
-    owner token (or only unrecognized text after it) names no one
-    responsible and confers no real ownership coverage, however complete
-    the pattern itself looks, so it is not counted.
+def _parse_codeowners_entries(path: Path) -> Tuple[Tuple[str, bool], ...]:
+    """Every non-comment, non-blank CODEOWNERS line, in file order, as
+    ``(pattern, has_owner)`` pairs -- including a line with *no* owner
+    token at all, which is a valid CODEOWNERS shape that explicitly
+    disowns any path it matches (an intentional "no one owns this"
+    declaration, not a malformed line to discard).
+
+    ``has_owner`` is true only when at least one token following the
+    pattern is actually shaped like a real GitHub username/team
+    (``@user``, ``@org/team``) or an email address; a pattern followed
+    by only unrecognized text still counts as a declared (ownerless)
+    entry for last-match-wins purposes, it simply carries no owner.
     """
-    patterns: Set[str] = set()
+    entries: List[Tuple[str, bool]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         tokens = stripped.split()
         pattern, owners = tokens[0], tokens[1:]
-        if any(_CODEOWNERS_OWNER_TOKEN_RE.match(owner) for owner in owners):
-            patterns.add(pattern)
-    return patterns
+        has_owner = any(_CODEOWNERS_OWNER_TOKEN_RE.match(owner) for owner in owners)
+        entries.append((pattern, has_owner))
+    return tuple(entries)
+
+
+def _codeowners_requirement_owned(
+    entries: Sequence[Tuple[str, bool]], requirement: str
+) -> bool:
+    """Whether ``requirement`` is genuinely owned once every declared
+    CODEOWNERS entry is resolved in file order.
+
+    Real CODEOWNERS resolution is last-match-wins: for any given path,
+    the *last* line in the file whose pattern matches it decides
+    ownership (or the explicit lack of one) -- never simply "any
+    matching line that happens to have an owner", which would let an
+    earlier owner survive a later disowning line meant to override it.
+    """
+    owned = False
+    for pattern, has_owner in entries:
+        if _codeowners_pattern_covers(pattern, requirement):
+            owned = has_owner
+    return owned
 
 
 def _codeowners_recursive_prefix(pattern: str) -> Optional[str]:
@@ -1013,6 +1094,58 @@ def _eval_runner_referenced(
 # ---------------------------------------------------------------------------
 
 
+def _deploy_job_environment_names(assessments: Tuple["WorkflowAssessment", ...]) -> Set[str]:
+    """Every GitHub Environment name a deploy job actually declares via
+    its own ``environment:`` key (a bare string, or a mapping's
+    ``name:``) -- used only to check environment protection rules "as
+    available": a workflow that names no environment never requires
+    this evidence at all.
+    """
+    names: Set[str] = set()
+    for assessment in assessments:
+        if not assessment.is_deploy:
+            continue
+        document = _load_workflow_document(assessment.path)
+        jobs = document.get("jobs")
+        if not isinstance(jobs, Mapping):
+            continue
+        for job in jobs.values():
+            if not isinstance(job, Mapping):
+                continue
+            environment = job.get("environment")
+            if isinstance(environment, Mapping):
+                environment = environment.get("name")
+            if isinstance(environment, str) and environment.strip():
+                names.add(environment.strip())
+    return names
+
+
+def _environment_protection_confirmed(
+    live_github: Optional[Mapping], declared_environments: Set[str]
+) -> bool:
+    """True unless live evidence explicitly says a deploy job's own
+    declared GitHub Environment is unprotected.
+
+    Checked only "as available": a workflow that declares no
+    environment, or live evidence that supplies no ``environments``
+    mapping at all, never blocks confirmation on this alone -- GitHub
+    Environments are optional, and this module can never require
+    evidence for a control the target may not even use.
+    """
+    if not declared_environments:
+        return True
+    if not live_github:
+        return True
+    environments = live_github.get("environments")
+    if not isinstance(environments, Mapping):
+        return True
+    for name in declared_environments:
+        entry = environments.get(name)
+        if isinstance(entry, Mapping) and entry.get("protected") is False:
+            return False
+    return True
+
+
 def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> Set[str]:
     """Job ids/names of every pull_request-triggered workflow whose own
     static CTK/application-probe presence already passed -- the set of
@@ -1031,9 +1164,33 @@ def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> 
     return names
 
 
+def _protection_flag_enabled(value: object) -> bool:
+    """Normalize a GitHub branch-protection boolean flag, which the API
+    can report either as a bare boolean or as ``{"enabled": bool}`` --
+    absent/``None`` is treated as disabled (``False``), never inferred
+    as enabled."""
+    if isinstance(value, Mapping):
+        return bool(value.get("enabled"))
+    return bool(value)
+
+
 def _branch_protection_confirmed(
-    live_github: Optional[Mapping], required_check_names: Set[str]
+    live_github: Optional[Mapping],
+    required_check_names: Set[str],
+    declared_environments: Set[str] = frozenset(),
 ) -> bool:
+    """True only if live evidence proves the default branch is
+    *substantively* protected -- reviews required, required checks
+    naming this repo's real gating CI, admins not exempt, force pushes
+    disallowed, and no named bypass allowance -- plus, "as available",
+    that any GitHub Environment a deploy job actually uses is itself
+    reported protected. A required-status-check list that merely names
+    *some* check, or a protection rule that exempts admins or still
+    allows a forced push, can never be resolved into a `pass` -- each
+    is exactly the kind of gap static files alone could never see, and
+    this function exists precisely so live evidence -- when supplied --
+    is actually held to that full standard rather than a partial one.
+    """
     if not live_github:
         return False
     default_branch = live_github.get("default_branch")
@@ -1045,6 +1202,18 @@ def _branch_protection_confirmed(
         return False
     if not bool(rule.get("required_pull_request_reviews")):
         return False
+    if not _protection_flag_enabled(rule.get("enforce_admins")):
+        return False
+    if _protection_flag_enabled(rule.get("allow_force_pushes")):
+        return False
+    reviews = rule.get("required_pull_request_reviews")
+    if isinstance(reviews, Mapping):
+        bypass = reviews.get("bypass_pull_request_allowances")
+        if isinstance(bypass, Mapping):
+            if any(bypass.get(key) for key in ("users", "teams", "apps")):
+                return False
+        elif bypass:
+            return False
     required_status_checks = rule.get("required_status_checks")
     contexts = (
         required_status_checks.get("contexts")
@@ -1060,21 +1229,47 @@ def _branch_protection_confirmed(
     # one that actually runs this repo's CTK/application-probe CI; that
     # gap can never be resolved by inferring a `pass` -- it stays
     # not-verified unless a genuine gating job name is actually enforced.
-    return bool(context_names & required_check_names)
+    if not (context_names & required_check_names):
+        return False
+    return _environment_protection_confirmed(live_github, declared_environments)
 
 
-def _distinct_identities_confirmed(live_azure: Optional[Mapping]) -> bool:
+def _distinct_identities_confirmed(
+    live_azure: Optional[Mapping],
+    deploy_identities: Set[str],
+    other_identities: Set[str],
+) -> Optional[bool]:
+    """Whether live Azure evidence confirms *these workflows'* own
+    declared identity references actually resolve to genuinely distinct
+    principals -- ``True`` if confirmed distinct, ``False`` if live
+    evidence itself proves they resolve to the very same principal, or
+    ``None`` if the evidence supplied is insufficient to say either way.
+
+    A workflow's ``client-id``/``creds`` is almost always a
+    ``${{ secrets.* }}`` expression, never a literal value this module
+    could read itself, so correlating it to a real Azure principal is
+    necessarily a live-evidence concern: ``live_azure`` must supply an
+    ``identity_principal_ids`` mapping from each declared identity
+    reference to the principal id it actually resolves to. Counting
+    *unrelated* role assignments elsewhere in the tenant -- with no tie
+    back to what these specific workflows actually declare -- proves
+    nothing about whether deploy and build/test truly use separate
+    identities.
+    """
     if not live_azure:
-        return False
-    role_assignments = live_azure.get("role_assignments")
-    if not isinstance(role_assignments, Sequence):
-        return False
-    principal_ids = {
-        entry.get("principal_id")
-        for entry in role_assignments
-        if isinstance(entry, Mapping) and entry.get("principal_id")
-    }
-    return len(principal_ids) >= 2
+        return None
+    identity_principal_ids = live_azure.get("identity_principal_ids")
+    if not isinstance(identity_principal_ids, Mapping):
+        return None
+    if not deploy_identities or not other_identities:
+        return None
+    deploy_principals = {identity_principal_ids.get(ref) for ref in deploy_identities}
+    other_principals = {identity_principal_ids.get(ref) for ref in other_identities}
+    if None in deploy_principals or None in other_principals:
+        # A declared identity reference this live evidence never resolved
+        # at all can never be treated as confirmed distinct.
+        return None
+    return deploy_principals.isdisjoint(other_principals)
 
 
 # ---------------------------------------------------------------------------
@@ -1145,7 +1340,7 @@ def _unreadable_workflow_assessment(path: Path, reason: str) -> WorkflowAssessme
         sha_pins="must-fix",
         oidc_wif="must-fix",
         ci_probes="must-fix",
-        identity_ref=None,
+        identity_refs=(),
         sha_violations=(f"{path.name}: {reason}",),
     )
 
@@ -1180,8 +1375,8 @@ def assess_change_plane(
     plus repo-wide CODEOWNERS/eval-suite discovery into the six
     GHCP-001..GHCP-006 findings and their backing ``controls``/``evidence``.
     ``live_github``/``live_azure`` are already-collected evidence mappings
-    (schema: ``branch_protection``/``default_branch`` and
-    ``role_assignments`` respectively); when either is ``None`` the
+    (schema: ``branch_protection``/``default_branch``/``environments`` and
+    ``identity_principal_ids`` respectively); when either is ``None`` the
     corresponding live-only confirmations stay ``not-verified`` rather than
     an inferred ``pass`` -- static files alone can never prove a branch
     protection rule or a required-check list is actually enforced on
@@ -1454,26 +1649,112 @@ def _git_blob_sha1(data: bytes) -> str:
     return hashlib.sha1(header + data).hexdigest()
 
 
+def _read_loose_git_object(common_dir: Path, sha1: str) -> Optional[Tuple[str, bytes]]:
+    """Read one git loose object (``.git/objects/<aa>/<38 hex chars>``) and
+    return its ``(type, body)`` -- ``None`` if the object does not exist as
+    a loose object on disk.
+
+    Deliberately does not read git packfiles at all: parsing the packfile
+    format (delta chains, offset/ref-delta resolution) is out of scope for
+    this read-only, dependency-free module. An object that exists only in
+    a packfile (for example after ``git gc``) is treated exactly like a
+    missing object -- the caller must fall back to "not confirmed",
+    never fabricate a match.
+    """
+    if len(sha1) != 40:
+        return None
+    object_path = common_dir / "objects" / sha1[:2] / sha1[2:]
+    if not object_path.is_file():
+        return None
+    try:
+        raw = zlib.decompress(object_path.read_bytes())
+    except (OSError, zlib.error):
+        return None
+    header, _, body = raw.partition(b"\x00")
+    obj_type, _, _size = header.partition(b" ")
+    return obj_type.decode("ascii", errors="replace"), body
+
+
+def _parse_git_tree_entries(body: bytes) -> Dict[str, str]:
+    """Parse a git ``tree`` object's body into ``{name: sha1_hex}`` --
+    each entry is ``<mode> <name>\\0<20 raw sha1 bytes>`` back to back,
+    with no other separator between entries.
+    """
+    entries: Dict[str, str] = {}
+    offset = 0
+    length = len(body)
+    while offset < length:
+        space_index = body.index(b" ", offset)
+        nul_index = body.index(b"\x00", space_index)
+        name = body[space_index + 1 : nul_index].decode("utf-8", errors="replace")
+        sha1_bytes = body[nul_index + 1 : nul_index + 21]
+        entries[name] = sha1_bytes.hex()
+        offset = nul_index + 21
+    return entries
+
+
+def _resolve_head_blob_sha1(
+    common_dir: Path, source_commit: str, relative_path: str
+) -> Optional[str]:
+    """Resolve the blob sha1 actually committed at ``source_commit`` for
+    ``relative_path`` (a repository-relative POSIX path), by walking
+    commit -> root tree -> subtree -> ... -> blob through real, on-disk
+    loose git objects only -- never a git subprocess, and never a guess
+    when any object along that walk is missing or malformed (including
+    if it exists only in a packfile; see :func:`_read_loose_git_object`).
+    """
+    commit_obj = _read_loose_git_object(common_dir, source_commit)
+    if commit_obj is None or commit_obj[0] != "commit":
+        return None
+    first_line = commit_obj[1].split(b"\n", 1)[0]
+    if not first_line.startswith(b"tree "):
+        return None
+    tree_sha1 = first_line[len(b"tree ") :].decode("ascii", errors="replace").strip()
+    segments = [segment for segment in relative_path.split("/") if segment]
+    if not segments:
+        return None
+    current_sha1 = tree_sha1
+    for segment in segments[:-1]:
+        tree_obj = _read_loose_git_object(common_dir, current_sha1)
+        if tree_obj is None or tree_obj[0] != "tree":
+            return None
+        entries = _parse_git_tree_entries(tree_obj[1])
+        next_sha1 = entries.get(segment)
+        if next_sha1 is None:
+            return None
+        current_sha1 = next_sha1
+    final_tree_obj = _read_loose_git_object(common_dir, current_sha1)
+    if final_tree_obj is None or final_tree_obj[0] != "tree":
+        return None
+    return _parse_git_tree_entries(final_tree_obj[1]).get(segments[-1])
+
+
 def _workflow_set_is_clean(
-    git_dir: Path, root: Path, workflow_paths: Tuple[Path, ...]
+    git_dir: Path,
+    root: Path,
+    workflow_paths: Tuple[Path, ...],
+    source_commit: Optional[str],
 ) -> bool:
     """True only if every workflow file's on-disk bytes match the exact
-    blob git's own index has staged for it -- i.e. the working tree is not
-    dirty with respect to these specific files.
+    blob git's own index has staged for it (working tree not dirty vs.
+    the index), *and* the index's own staged blob for it matches what is
+    actually committed at ``source_commit`` (the index not dirty vs.
+    HEAD -- i.e. no staged-but-uncommitted change either).
 
-    Any index-parse failure, a missing index entry, or a content mismatch
-    is treated as "not confirmed clean", never as "confirmed clean": this
-    check only ever makes evidence *more* conservative, never fabricates a
-    clean result it cannot actually verify. This intentionally only
-    catches *unstaged* working-tree-vs-index drift, not a staged-but-
-    uncommitted index-vs-HEAD difference, which would require parsing
-    commit/tree objects.
+    Any index-parse failure, a missing index entry, a content mismatch,
+    or an unresolvable HEAD blob (including one only reachable through a
+    packfile this module deliberately never parses) is treated as "not
+    confirmed clean", never as "confirmed clean": this check only ever
+    makes evidence *more* conservative, never fabricates a clean result
+    it cannot actually verify.
     """
     entries = _read_git_index_entries(git_dir)
     if entries is None:
         return False
+    common_dir = _git_common_dir(git_dir)
     for path in workflow_paths:
-        entry = entries.get(path.relative_to(root).as_posix())
+        relative_path = path.relative_to(root).as_posix()
+        entry = entries.get(relative_path)
         if entry is None:
             return False
         _recorded_size, recorded_sha1 = entry
@@ -1482,6 +1763,11 @@ def _workflow_set_is_clean(
         except OSError:
             return False
         if _git_blob_sha1(data) != recorded_sha1:
+            return False
+        if source_commit is None:
+            return False
+        head_sha1 = _resolve_head_blob_sha1(common_dir, source_commit, relative_path)
+        if head_sha1 != recorded_sha1:
             return False
     return True
 
@@ -1504,7 +1790,7 @@ def _workflow_set_evidence(
     # it reports.
     if git_dir is None or repository is None or source_commit is None:
         return None
-    if not _workflow_set_is_clean(git_dir, root, workflow_paths):
+    if not _workflow_set_is_clean(git_dir, root, workflow_paths, source_commit):
         return None
     try:
         hashed = canonical.hash_files(root, workflow_paths)
@@ -1541,6 +1827,13 @@ def _assess_pr_gate(
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
 ) -> None:
+    if not assessments:
+        # No workflow was even discovered to check -- there is nothing here
+        # this rule could have actually verified, so the honest answer is
+        # "nothing to check", never the vacuous `pass` an empty offenders
+        # tuple would otherwise produce.
+        controls["ghcp_pr_only_gate"] = "not-applicable"
+        return
     offenders = tuple(a for a in assessments if a.pr_gate == "must-fix")
     controls["ghcp_pr_only_gate"] = "must-fix" if offenders else "pass"
     if not offenders:
@@ -1599,13 +1892,11 @@ def _assess_codeowners(
         )
         return
 
-    declared = _parse_codeowners_patterns(ownership_path)
+    entries = _parse_codeowners_entries(ownership_path)
     missing = tuple(
         requirement
         for requirement in _REQUIRED_CODEOWNERS_PATTERNS
-        if not any(
-            _codeowners_pattern_covers(pattern, requirement) for pattern in declared
-        )
+        if not _codeowners_requirement_owned(entries, requirement)
     )
     if missing:
         controls["ghcp_codeowners"] = "must-fix"
@@ -1629,7 +1920,11 @@ def _assess_codeowners(
         )
         return
 
-    if _branch_protection_confirmed(live_github, _required_check_job_names(assessments)):
+    if _branch_protection_confirmed(
+        live_github,
+        _required_check_job_names(assessments),
+        _deploy_job_environment_names(assessments),
+    ):
         controls["ghcp_codeowners"] = "pass"
         return
 
@@ -1753,6 +2048,9 @@ def _assess_actions_and_permissions(
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
 ) -> None:
+    if not assessments:
+        controls["ghcp_pinned_least_privilege"] = "not-applicable"
+        return
     sha_offenders = tuple(a for a in assessments if a.sha_pins == "must-fix")
     permission_offenders = tuple(a for a in assessments if a.permissions == "must-fix")
     if not sha_offenders and not permission_offenders:
@@ -1801,6 +2099,9 @@ def _assess_oidc(
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
 ) -> None:
+    if not assessments:
+        controls["ghcp_azure_oidc"] = "not-applicable"
+        return
     offenders = tuple(a for a in assessments if a.oidc_wif == "must-fix")
     controls["ghcp_azure_oidc"] = "must-fix" if offenders else "pass"
     if not offenders:
@@ -1838,9 +2139,11 @@ def _assess_identity_separation(
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
 ) -> None:
-    deploy_identities = {a.identity_ref for a in assessments if a.is_deploy and a.identity_ref}
+    deploy_identities = {
+        ref for a in assessments if a.is_deploy for ref in a.identity_refs
+    }
     other_identities = {
-        a.identity_ref for a in assessments if not a.is_deploy and a.identity_ref
+        ref for a in assessments if not a.is_deploy for ref in a.identity_refs
     }
 
     if not deploy_identities and not other_identities:
@@ -1869,8 +2172,38 @@ def _assess_identity_separation(
         )
         return
 
-    if _distinct_identities_confirmed(live_azure):
+    live_confirmed = _distinct_identities_confirmed(
+        live_azure, deploy_identities, other_identities
+    )
+    if live_confirmed is True:
         controls["ghcp_identity_separation"] = "pass"
+        return
+
+    if live_confirmed is False:
+        # Static files declare no overlapping identity reference, but live
+        # Azure evidence itself resolved these workflows' own declared
+        # references to the very same principal -- a shared identity live
+        # evidence proved, not merely one static files failed to disprove.
+        controls["ghcp_identity_separation"] = "must-fix"
+        findings.append(
+            Finding(
+                finding_id="GHCP-006",
+                status="must-fix",
+                phase="pre-deploy",
+                plane="change",
+                reason_code="live-confirmed-shared-identity",
+                summary=(
+                    "Build/test/deploy identities are shared, over-broad, or "
+                    "not evidenced."
+                ),
+                details=(
+                    "Live Azure evidence resolved deploy identity reference(s) "
+                    f"{sorted(deploy_identities)} and non-deploy identity "
+                    f"reference(s) {sorted(other_identities)} to at least one "
+                    "shared principal."
+                ),
+            )
+        )
         return
 
     controls["ghcp_identity_separation"] = "not-verified"
@@ -1887,9 +2220,10 @@ def _assess_identity_separation(
             ),
             details=(
                 "Static workflow files declare no overlapping identity "
-                "reference, but no live Azure role-assignment evidence "
-                "confirming at least two genuinely distinct principals was "
-                "supplied (`live_azure` is None or incomplete)."
+                "reference, but no live Azure evidence resolving these "
+                "workflows' own declared identity references to genuinely "
+                "distinct principals was supplied (`live_azure` is None or "
+                "incomplete)."
             ),
         )
     )
