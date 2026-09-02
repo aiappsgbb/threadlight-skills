@@ -36,7 +36,6 @@ live proof.
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +79,61 @@ _UNTRUSTED_CHECKOUT_REF_MARKERS: Tuple[str, ...] = (
 
 _CTK_MARKER_RE = re.compile(r"\bctk\b", re.IGNORECASE)
 _APPLICATION_PROBE_MARKER_RE = re.compile(r"application[-_ ]probe", re.IGNORECASE)
+
+# Rule 1 also rejects an explicit bypass command, not just an unprotected
+# trigger: a commit-message skip marker GitHub Actions itself honors (which
+# would silently stop a required check from ever running at all), a forced
+# push over a protected ref, or an administrative override of branch
+# protection/required reviews. Matched conservatively (favoring a false
+# positive over a missed bypass) against actual `run:`/`if:` command text
+# only -- never a step name or a YAML comment.
+_BYPASS_MARKER_PATTERNS: Tuple[str, ...] = (
+    r"\[skip ci\]",
+    r"\[ci skip\]",
+    r"\[skip actions\]",
+    r"\[actions skip\]",
+    r"\*\*\*no_ci\*\*\*",
+    r"--force(?:-with-lease)?\b",
+    r"\bgit\s+push\b[^\n]*(?:-f\b|--force)",
+    r"\bbypass\b",
+    r"\badmin[-_ ]?merge\b",
+    r"--admin\b",
+)
+_BYPASS_MARKER_RE = tuple(
+    re.compile(pattern, re.IGNORECASE) for pattern in _BYPASS_MARKER_PATTERNS
+)
+
+# Rule 6 (permissions half): scopes that actually grant repository write
+# access and therefore count toward the "too many write scopes" and
+# "workflow can modify itself" excessive-permission heuristics.
+# `id-token` is deliberately excluded -- rule 5 requires granting it for
+# OIDC/WIF, so it is never itself evidence of excessive privilege.
+_WRITE_RISK_SCOPES: Tuple[str, ...] = (
+    "contents",
+    "actions",
+    "packages",
+    "deployments",
+    "issues",
+    "pull-requests",
+    "discussions",
+    "pages",
+    "repository-projects",
+    "security-events",
+    "statuses",
+    "checks",
+)
+# More than this many simultaneous write scopes looks like `write-all`
+# spelled out scope-by-scope rather than a genuinely narrowed grant.
+_MAX_LEAST_PRIVILEGE_WRITE_SCOPES = 2
+
+# Same shared exclusion rule `inputs.py`'s `test_and_report_files` category
+# uses (mirrored, not imported, since this module never depends on
+# `inputs.resolve_inputs`, which requires `specs/SPEC.md`): a hidden
+# directory or vendored/scratch tree is never a trustworthy eval-suite
+# source, regardless of which check is discovering it.
+_EXCLUDED_DIR_NAMES: frozenset = frozenset(
+    {"venv", "node_modules", "site-packages", "__pycache__", "build", "dist"}
+)
 
 # Patterns a real CODEOWNERS file must declare coverage for. "Governance
 # tests" is interpreted as the skill's own ``tests/**`` tree; the two
@@ -213,6 +267,42 @@ def _job_ids_and_names(document: Mapping) -> List[str]:
     return labels
 
 
+def _run_command_texts(document: Mapping) -> Tuple[str, ...]:
+    """Every step's actual ``run:`` shell command text -- never a step
+    ``name``, a ``uses:`` reference, or a YAML comment, none of which are
+    evidence that a command genuinely executes."""
+    return tuple(
+        step["run"]
+        for step in _all_steps(document)
+        if isinstance(step.get("run"), str)
+    )
+
+
+def _conditional_texts(document: Mapping) -> Tuple[str, ...]:
+    """Every step- or job-level ``if:`` condition string in the document."""
+    texts: List[str] = [
+        str(step["if"]) for step in _all_steps(document) if isinstance(step.get("if"), str)
+    ]
+    jobs = document.get("jobs")
+    if isinstance(jobs, Mapping):
+        for job in jobs.values():
+            if isinstance(job, Mapping) and isinstance(job.get("if"), str):
+                texts.append(str(job["if"]))
+    return tuple(texts)
+
+
+def _has_bypass_commands(document: Mapping) -> bool:
+    """True if a run command or an if-condition contains a change-plane
+    bypass marker: a commit-message CI-skip marker GitHub Actions itself
+    honors, a forced push, or an administrative/required-review override.
+    Checked conservatively against real command/condition text only, never
+    a step name or comment, so this can only under-detect a bypass phrased
+    in some other way -- never flag a workflow for merely mentioning one.
+    """
+    joined = "\n".join(_run_command_texts(document) + _conditional_texts(document))
+    return any(pattern.search(joined) for pattern in _BYPASS_MARKER_RE)
+
+
 # ---------------------------------------------------------------------------
 # Individual static control checks (rule 4: SHA pinning)
 # ---------------------------------------------------------------------------
@@ -240,12 +330,30 @@ def _sha_pin_status(document: Mapping) -> Tuple[Status, Tuple[str, ...]]:
 
 def _permissions_declared_and_least_privilege(value: object) -> Optional[bool]:
     """Return True/False for an explicit permissions value, or None if the
-    key itself is entirely absent (caller decides what that means)."""
+    key itself is entirely absent (caller decides what that means).
+
+    A mapping is rejected, not just the literal ``write-all`` string, when
+    it grants ``actions: write`` (lets a workflow modify workflows -- a
+    supply-chain risk on its own) or grants ``write`` to more than
+    :data:`_MAX_LEAST_PRIVILEGE_WRITE_SCOPES` scopes, since spelling out
+    every scope as ``write`` individually is functionally equivalent to
+    ``write-all`` and is rejected the same way.
+    """
     if value is None:
         return None
     if isinstance(value, str):
         return value.strip().lower() != "write-all"
     if isinstance(value, Mapping):
+        write_scopes = {
+            str(scope).strip().lower()
+            for scope, granted in value.items()
+            if str(scope).strip().lower() in _WRITE_RISK_SCOPES
+            and str(granted).strip().lower() == "write"
+        }
+        if "actions" in write_scopes:
+            return False
+        if len(write_scopes) > _MAX_LEAST_PRIVILEGE_WRITE_SCOPES:
+            return False
         return True
     return None
 
@@ -365,6 +473,8 @@ def _pr_gate_status(document: Mapping, triggers: Tuple[str, ...], is_deploy: boo
         return "must-fix"
     if "push" in triggers and is_deploy:
         return "must-fix"
+    if _has_bypass_commands(document):
+        return "must-fix"
     return "pass"
 
 
@@ -373,21 +483,15 @@ def _pr_gate_status(document: Mapping, triggers: Tuple[str, ...], is_deploy: boo
 # ---------------------------------------------------------------------------
 
 
-def _document_search_text(document: Mapping) -> str:
-    """Render a parsed workflow document back to text for marker searches.
-
-    Deliberately built from the *parsed* document, never the raw file text:
-    a YAML comment (for example a docstring mentioning "CTK" while
-    describing a fixture that intentionally omits it) must never count as
-    evidence that a step actually runs it.
-    """
-    return json.dumps(document, default=str)
-
-
 def _ci_probes_static_status(document: Mapping, triggers: Tuple[str, ...]) -> Status:
     if "pull_request" not in triggers:
         return "pass"  # rule 3 only binds required (PR-triggered) CI
-    text = _document_search_text(document)
+    # Deliberately searched against the actual `run:` command text only --
+    # never a step `name`, a `uses:` reference, or a YAML comment: a step
+    # merely *named* "Run CTK" whose command never runs it, or a fixture
+    # docstring mentioning "CTK" while describing why it is intentionally
+    # absent, must never count as evidence that a step actually runs it.
+    text = "\n".join(_run_command_texts(document))
     if _CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text):
         return "pass"
     return "must-fix"
@@ -456,9 +560,65 @@ def _parse_codeowners_patterns(path: Path) -> Set[str]:
 
 
 def _discover_eval_suite_files(root: Path) -> Tuple[Path, ...]:
+    """Every file under a ``**/evals/**`` tree, mirroring `inputs.py`'s
+    ``test_and_report_files`` exclusion rule: a hidden directory or a
+    vendored/scratch tree (``node_modules``, ``build``, ...) is never a
+    trustworthy eval-suite source."""
     if not root.is_dir():
         return ()
-    return tuple(sorted(root.glob("**/evals/**/*")))
+    files: List[Path] = []
+    for candidate in root.glob("**/evals/**/*"):
+        if not candidate.is_file():
+            continue
+        relative = candidate.relative_to(root)
+        if any(
+            part.startswith(".") or part in _EXCLUDED_DIR_NAMES
+            for part in relative.parts
+        ):
+            continue
+        files.append(candidate)
+    return tuple(sorted(files))
+
+
+def _eval_suite_directories(root: Path, eval_files: Tuple[Path, ...]) -> Set[Path]:
+    """Every repo-relative directory path (an ``evals`` directory itself, or
+    a deeper ``.../evals`` directory) that actually contains a discovered
+    eval-suite file, used to require an *exact* runner-command reference
+    rather than a bare substring match against the word "evals" anywhere.
+    """
+    directories: Set[Path] = set()
+    for file_path in eval_files:
+        relative = file_path.relative_to(root)
+        for index, part in enumerate(relative.parts):
+            if part == "evals":
+                directories.add(Path(*relative.parts[: index + 1]))
+    return directories
+
+
+def _path_token_pattern(relative_path: Path) -> "re.Pattern[str]":
+    token = re.escape(relative_path.as_posix())
+    return re.compile(rf"(?<![\w./-]){token}(?![\w./-])")
+
+
+def _eval_runner_referenced(
+    pr_workflows: Sequence["WorkflowAssessment"], eval_directories: Set[Path]
+) -> bool:
+    """True only if a pull_request-triggered workflow's actual ``run:``
+    command text references one of ``eval_directories`` as a whole,
+    boundary-delimited path token -- never merely because the word "evals"
+    (or an unrelated path that happens to contain it) appears anywhere in
+    the document.
+    """
+    if not eval_directories:
+        return False
+    run_text = "\n".join(
+        text
+        for assessment in pr_workflows
+        for text in _run_command_texts(_load_workflow_document(assessment.path))
+    )
+    return any(
+        _path_token_pattern(directory).search(run_text) for directory in eval_directories
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +626,27 @@ def _discover_eval_suite_files(root: Path) -> Tuple[Path, ...]:
 # ---------------------------------------------------------------------------
 
 
-def _branch_protection_confirmed(live_github: Optional[Mapping]) -> bool:
+def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> Set[str]:
+    """Job ids/names of every pull_request-triggered workflow whose own
+    static CTK/application-probe presence already passed -- the set of
+    check names GitHub's required-status-check list would need to name for
+    a branch-protection rule to actually be enforcing this repo's real
+    gating CI, not merely *some* unrelated status check.
+    """
+    names: Set[str] = set()
+    for assessment in assessments:
+        if "pull_request" not in assessment.triggers:
+            continue
+        if assessment.ci_probes != "pass":
+            continue
+        document = _load_workflow_document(assessment.path)
+        names.update(label.strip().lower() for label in _job_ids_and_names(document))
+    return names
+
+
+def _branch_protection_confirmed(
+    live_github: Optional[Mapping], required_check_names: Set[str]
+) -> bool:
     if not live_github:
         return False
     default_branch = live_github.get("default_branch")
@@ -476,9 +656,24 @@ def _branch_protection_confirmed(live_github: Optional[Mapping]) -> bool:
     rule = branch_protection.get(default_branch)
     if not isinstance(rule, Mapping):
         return False
-    return bool(rule.get("required_pull_request_reviews")) and bool(
-        rule.get("required_status_checks")
+    if not bool(rule.get("required_pull_request_reviews")):
+        return False
+    required_status_checks = rule.get("required_status_checks")
+    contexts = (
+        required_status_checks.get("contexts")
+        if isinstance(required_status_checks, Mapping)
+        else required_status_checks
     )
+    if not isinstance(contexts, Sequence) or isinstance(contexts, (str, bytes)):
+        return False
+    context_names = {str(context).strip().lower() for context in contexts}
+    if not context_names:
+        return False
+    # A required-status-check list can name *some* check without naming the
+    # one that actually runs this repo's CTK/application-probe CI; that
+    # gap can never be resolved by inferring a `pass` -- it stays
+    # not-verified unless a genuine gating job name is actually enforced.
+    return bool(context_names & required_check_names)
 
 
 def _distinct_identities_confirmed(live_azure: Optional[Mapping]) -> bool:
@@ -518,7 +713,7 @@ def assess_change_plane(
     protection rule or a required-check list is actually enforced on
     GitHub, nor that two Azure principals are genuinely distinct.
     """
-    root = Path(root)
+    root = Path(root).resolve()
     workflow_paths = _discover_workflow_files(root)
     assessments = tuple(assess_workflow(path) for path in workflow_paths)
 
@@ -539,7 +734,9 @@ def assess_change_plane(
     controls["ghcp_internal_loop_intercepted"] = False
 
     if workflow_paths:
-        evidence.append(_workflow_set_evidence(root, workflow_paths))
+        workflow_evidence = _workflow_set_evidence(root, workflow_paths)
+        if workflow_evidence is not None:
+            evidence.append(workflow_evidence)
 
     findings.sort(key=lambda finding: finding.finding_id)
     return ChangePlaneResult(
@@ -549,7 +746,143 @@ def assess_change_plane(
     )
 
 
-def _workflow_set_evidence(root: Path, workflow_paths: Tuple[Path, ...]) -> EvidenceRef:
+# --- read-only git metadata resolution (never a subprocess, never a
+# fabricated placeholder) ------------------------------------------------
+
+
+def _find_git_dir(root: Path) -> Optional[Path]:
+    """Walk upward from ``root`` for a real ``.git`` directory, or a
+    ``.git`` file pointing at a worktree/submodule's real gitdir. Purely a
+    filesystem read -- this module never shells out to git."""
+    start = root if root.is_dir() else root.parent
+    for candidate in (start, *start.parents):
+        git_path = candidate / ".git"
+        if git_path.is_dir():
+            return git_path
+        if git_path.is_file():
+            try:
+                content = git_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if not content.startswith("gitdir:"):
+                continue
+            gitdir = Path(content.split(":", 1)[1].strip())
+            if not gitdir.is_absolute():
+                gitdir = (candidate / gitdir).resolve()
+            if gitdir.is_dir():
+                return gitdir
+    return None
+
+
+def _git_common_dir(git_dir: Path) -> Path:
+    """The real, shared gitdir a linked worktree's ``config``, ``refs``, and
+    ``packed-refs`` actually live in. A worktree's own gitdir (found by
+    :func:`_find_git_dir`) holds only its own ``HEAD``/``index``; a
+    ``commondir`` file there points at the main checkout's gitdir, which is
+    where the origin remote and branch refs are actually recorded. A plain,
+    non-worktree repository has no ``commondir`` file and is simply its own
+    common dir."""
+    commondir_path = git_dir / "commondir"
+    if not commondir_path.is_file():
+        return git_dir
+    try:
+        content = commondir_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return git_dir
+    if not content:
+        return git_dir
+    candidate = Path(content)
+    if not candidate.is_absolute():
+        candidate = (git_dir / candidate).resolve()
+    return candidate if candidate.is_dir() else git_dir
+
+
+_SSH_REMOTE_RE = re.compile(r"^git@[^:/]+:(?P<slug>.+?)(?:\.git)?/?$")
+_HTTPS_REMOTE_RE = re.compile(r"^https?://[^/]+/(?P<slug>.+?)(?:\.git)?/?$")
+
+
+def _resolve_repository_identifier(git_dir: Path) -> Optional[str]:
+    """Parse the common gitdir's ``config``'s ``[remote "origin"]`` URL
+    into an ``owner/repo``-style identifier, or ``None`` if there is no
+    origin remote to read -- never a directory-name guess."""
+    config_path = _git_common_dir(git_dir) / "config"
+    if not config_path.is_file():
+        return None
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    in_origin_remote = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_origin_remote = stripped.lower() == '[remote "origin"]'
+            continue
+        if not in_origin_remote or not stripped.lower().startswith("url"):
+            continue
+        _, _, value = stripped.partition("=")
+        url = value.strip()
+        for pattern in (_SSH_REMOTE_RE, _HTTPS_REMOTE_RE):
+            match = pattern.match(url)
+            if match:
+                return match.group("slug")
+    return None
+
+
+def _resolve_commit_sha(git_dir: Path) -> Optional[str]:
+    """Resolve ``HEAD`` (read from the worktree-local gitdir, since each
+    linked worktree has its own) to a real 40-lowercase-hex commit SHA by
+    reading loose or packed refs from the common gitdir -- never a
+    fabricated all-zero value."""
+    head_path = git_dir / "HEAD"
+    if not head_path.is_file():
+        return None
+    try:
+        head_content = head_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if _SHA_PIN_RE.match(head_content):
+        return head_content
+    if not head_content.startswith("ref:"):
+        return None
+    ref = head_content.split(":", 1)[1].strip()
+    common_dir = _git_common_dir(git_dir)
+    ref_path = common_dir / ref
+    if ref_path.is_file():
+        try:
+            sha = ref_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        return sha if _SHA_PIN_RE.match(sha) else None
+    packed_refs_path = common_dir / "packed-refs"
+    if not packed_refs_path.is_file():
+        return None
+    try:
+        packed_lines = packed_refs_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in packed_lines:
+        if not line or line.startswith("#") or line.startswith("^"):
+            continue
+        sha, _, name = line.partition(" ")
+        if name.strip() == ref:
+            return sha if _SHA_PIN_RE.match(sha) else None
+    return None
+
+
+def _workflow_set_evidence(
+    root: Path, workflow_paths: Tuple[Path, ...]
+) -> Optional[EvidenceRef]:
+    git_dir = _find_git_dir(root)
+    repository = _resolve_repository_identifier(git_dir) if git_dir else None
+    source_commit = _resolve_commit_sha(git_dir) if git_dir else None
+    # ``EvidenceRef.repository``/``source_commit`` are required, non-``None``
+    # fields; when trustworthy values cannot be read straight from real,
+    # on-disk git metadata this evidence entry is omitted entirely rather
+    # than filled with a directory-name guess or an all-zero placeholder
+    # SHA -- an assessor must never fabricate the evidence it reports.
+    if repository is None or source_commit is None:
+        return None
     hashed = canonical.hash_files(root, workflow_paths)
     return EvidenceRef(
         evidence_id="ghcp-workflows",
@@ -560,8 +893,8 @@ def _workflow_set_evidence(root: Path, workflow_paths: Tuple[Path, ...]) -> Evid
         freshness_seconds=None,
         live_verified=False,
         phase="pre-deploy",
-        repository=root.resolve().name,
-        source_commit="0" * 40,
+        repository=repository,
+        source_commit=source_commit,
         target_environment=None,
         policy_set_sha256=None,
     )
@@ -660,7 +993,7 @@ def _assess_codeowners(
         )
         return
 
-    if _branch_protection_confirmed(live_github):
+    if _branch_protection_confirmed(live_github, _required_check_job_names(assessments)):
         controls["ghcp_codeowners"] = "pass"
         return
 
@@ -730,17 +1063,15 @@ def _assess_ci_probes(
 
     eval_suite_files = _discover_eval_suite_files(root)
     if eval_suite_files:
-        eval_runner_present = any(
-            "evals" in _document_search_text(_load_workflow_document(a.path)).lower()
-            for a in pr_workflows
-        )
-        if not eval_runner_present:
+        eval_directories = _eval_suite_directories(root, eval_suite_files)
+        if not _eval_runner_referenced(pr_workflows, eval_directories):
             controls["ghcp_ci_probes"] = "must-fix"
             findings.append(
                 _ci_probes_finding(
                     "missing-eval-suite-runner",
                     "The repository ships an eval suite under `**/evals/**` "
-                    "but no pull_request-triggered workflow runs it.",
+                    "but no pull_request-triggered workflow's run command "
+                    "references its exact directory path.",
                     tuple(str(path) for path in eval_suite_files),
                 )
             )

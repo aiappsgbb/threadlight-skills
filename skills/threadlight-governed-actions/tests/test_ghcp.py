@@ -19,6 +19,8 @@ Run with:
 """
 from __future__ import annotations
 
+import json
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -29,6 +31,9 @@ from ghcp import ChangePlaneResult, assess_change_plane, assess_workflow
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+CATALOG_PATH = (
+    Path(__file__).resolve().parent.parent / "references" / "finding-catalog.json"
+)
 
 
 @pytest.fixture
@@ -387,3 +392,494 @@ def test_ghcp_internal_loop_intercepted_is_always_false(tmp_path):
     }
     result = assess_change_plane(root, live_github=live_github, live_azure=None)
     assert result.controls["ghcp_internal_loop_intercepted"] is False
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 1: a relative `root` must never double-prefix workflow paths
+# when hashing the workflow set (previously only exercised with absolute
+# `tmp_path`/`fixture_root` arguments, which never reproduced the bug).
+# ---------------------------------------------------------------------------
+
+
+def test_relative_root_does_not_double_prefix_workflow_hash(tmp_path, monkeypatch):
+    absolute_root = _write_clean_repo(tmp_path)
+    absolute_result = assess_change_plane(absolute_root, live_github=None, live_azure=None)
+
+    monkeypatch.chdir(tmp_path)
+    relative_result = assess_change_plane(
+        Path(absolute_root.name), live_github=None, live_azure=None
+    )
+
+    assert relative_result.controls == absolute_result.controls
+    assert [f.finding_id for f in relative_result.findings] == [
+        f.finding_id for f in absolute_result.findings
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 2: an explicit bypass command (commit-message CI-skip marker,
+# forced push, administrative merge override) is rejected even when the
+# workflow otherwise looks PR-gated -- checked only against real `run:`/
+# `if:` text, never a step name or a benign word that merely contains the
+# same letters.
+# ---------------------------------------------------------------------------
+
+
+def _workflow_with_run_command(tmp_path: Path, run_command: str, *, triggers: str = "pull_request:") -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: CI
+            on:
+              {triggers}
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run
+                    run: |
+                      {run_command}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return workflow_path
+
+
+@pytest.mark.parametrize(
+    "run_command",
+    [
+        "echo '[skip ci]' && git commit -m 'wip [skip ci]'",
+        "git push --force origin main",
+        "git push -f origin main",
+        "gh pr merge 42 --admin",
+        "echo bypass required check",
+        "echo admin-merge requested",
+    ],
+)
+def test_bypass_command_in_run_text_is_must_fix(tmp_path, run_command):
+    workflow = _workflow_with_run_command(tmp_path, run_command)
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "must-fix"
+
+
+@pytest.mark.parametrize(
+    "run_command",
+    [
+        "python -m ctk run-workforce-report",
+        "echo 'law enforcement demo'",
+        "echo reinforce the pipeline",
+        "echo 'administrative task, not a merge'",
+    ],
+)
+def test_benign_words_never_false_positive_as_bypass_commands(tmp_path, run_command):
+    workflow = _workflow_with_run_command(tmp_path, run_command)
+    result = assess_workflow(workflow)
+    assert result.pr_gate == "pass"
+
+
+def test_bypass_command_in_step_name_only_is_not_flagged(tmp_path):
+    """A step merely *named* with a bypass-sounding phrase, whose actual
+    `run:` command never contains one, is not evidence of a real bypass."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Never actually bypass required checks
+                    run: echo ok
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 3: a live required-status-check list that does not actually
+# name the workflow's own gating job stays not-verified, never an inferred
+# `pass` -- static CI presence and live required-check enforcement are
+# distinct claims.
+# ---------------------------------------------------------------------------
+
+
+def test_required_status_checks_naming_unrelated_job_stays_not_verified(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": True,
+                "required_status_checks": ["some-unrelated-check"],
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert {f.finding_id for f in result.findings} == {"GHCP-002"}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_required_status_checks_naming_gating_job_confirms_pass(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": True,
+                "required_status_checks": ["test"],
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert result.findings == ()
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 4: eval-suite discovery requires the exact runner directory
+# path as a whole token in a `run:` command -- never a bare substring match
+# on the word "evals" anywhere in the document.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_eval_suite(
+    tmp_path: Path, *, eval_relative_dir: str, ci_extra_run: str = ""
+) -> Path:
+    root = tmp_path / "eval-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            f"""\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+                      {ci_extra_run}
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = root / eval_relative_dir
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    return root
+
+
+def test_eval_suite_without_exact_runner_reference_is_must_fix(tmp_path):
+    root = _repo_with_eval_suite(tmp_path, eval_relative_dir="evals")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-003" in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-003")
+    assert finding.reason_code == "missing-eval-suite-runner"
+
+
+def test_bare_word_evals_substring_never_satisfies_exact_runner_check(tmp_path):
+    """A run command that merely contains the letters "evals" as part of a
+    longer token (never the exact directory path) must not satisfy rule 3's
+    eval-suite-runner requirement."""
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="python evals_helper.py"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-003" in {f.finding_id for f in result.findings}
+
+
+def test_top_level_eval_suite_with_exact_runner_reference_passes(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="pytest evals"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+def test_nested_eval_suite_requires_full_path_not_just_leaf_name(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="src/evals", ci_extra_run="pytest evals"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # "evals" alone never satisfies a nested "src/evals" eval-suite
+    # directory -- the exact repo-relative path is required.
+    assert "GHCP-003" in {f.finding_id for f in result.findings}
+
+
+def test_nested_eval_suite_with_exact_path_reference_passes(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="src/evals", ci_extra_run="pytest src/evals"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 5: least privilege rejects write-all in spirit, not just the
+# literal string -- too many individually declared write scopes, or
+# `actions: write` at all, is functionally equivalent to `write-all`.
+# ---------------------------------------------------------------------------
+
+
+def _workflow_with_permissions(tmp_path: Path, permissions_yaml: str) -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              {permissions_yaml}
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    return workflow_path
+
+
+def test_actions_write_permission_is_must_fix_even_alone(tmp_path):
+    workflow = _workflow_with_permissions(tmp_path, "actions: write")
+    result = assess_workflow(workflow)
+    assert result.permissions == "must-fix"
+
+
+def test_more_than_two_write_scopes_is_must_fix(tmp_path):
+    workflow = _workflow_with_permissions(
+        tmp_path,
+        "contents: write\n              packages: write\n              issues: write",
+    )
+    result = assess_workflow(workflow)
+    assert result.permissions == "must-fix"
+
+
+def test_two_write_scopes_stays_within_least_privilege(tmp_path):
+    workflow = _workflow_with_permissions(
+        tmp_path, "contents: write\n              packages: write"
+    )
+    result = assess_workflow(workflow)
+    assert result.permissions == "pass"
+
+
+def test_id_token_write_never_counts_as_a_risk_scope(tmp_path):
+    workflow = _workflow_with_permissions(
+        tmp_path, "contents: read\n              id-token: write"
+    )
+    result = assess_workflow(workflow)
+    assert result.permissions == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 6: CTK/application-probe presence is judged only from actual
+# `run:` command text -- a step *name* (or a YAML comment) mentioning "CTK"
+# or "application probe" is never evidence that a step actually runs one.
+# ---------------------------------------------------------------------------
+
+
+def test_ctk_mentioned_only_in_step_name_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probe
+                    run: echo "nothing real runs here"
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_mentioned_only_in_comment_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            # This workflow intentionally omits CTK and application-probe runs.
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Build
+                    run: echo build
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_and_probe_in_actual_run_command_is_pass(tmp_path):
+    workflow = pinned_oidc_workflow(
+        tmp_path, action_sha="0ad4c47a9e566829e19b6099ee3458ac923f5d3c"
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 7: evidence never fabricates `repository`/`source_commit` --
+# a real git checkout resolves genuine values; a non-git directory omits
+# the evidence entry entirely rather than filling in a placeholder.
+# ---------------------------------------------------------------------------
+
+
+def test_non_git_root_yields_no_fabricated_evidence(tmp_path):
+    root = _write_clean_repo(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.evidence == ()
+
+
+def test_real_git_checkout_resolves_genuine_repository_and_commit():
+    root = FIXTURES_DIR / "unprotected-ghcp"
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    actual_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert len(result.evidence) == 1
+    workflow_evidence = result.evidence[0]
+    assert workflow_evidence.source_commit == actual_head
+    assert workflow_evidence.source_commit != "0" * 40
+    assert "/" in workflow_evidence.repository
+    assert workflow_evidence.repository != root.resolve().name
+
+
+# ---------------------------------------------------------------------------
+# Spec-gap fix 8: GHCP-001..006 catalog entries are reconciled to the
+# approved fixed taxonomy, and every finding `assess_change_plane` actually
+# emits for those ids stays consistent with the catalog's plane and
+# gating severity -- the two sources must never silently drift apart.
+# ---------------------------------------------------------------------------
+
+_EXPECTED_GHCP_CATALOG_SUMMARIES = {
+    "GHCP-001": "Protected branch accepts agent changes outside pull requests.",
+    "GHCP-002": (
+        "CODEOWNERS, ruleset/branch protection, or required-check coverage "
+        "is missing or unavailable."
+    ),
+    "GHCP-003": "Required CI omits CTK, application probes, or relevant evals.",
+    "GHCP-004": "Action SHA floats or workflow permission is excessive.",
+    "GHCP-005": "Azure deployment uses a long-lived secret instead of OIDC/WIF.",
+    "GHCP-006": (
+        "Build/test/deploy identities are shared, over-broad, or not evidenced."
+    ),
+}
+
+# The catalog's `severity` can only ever be a single "must-fix"/"should-fix"
+# string (see `tests/test_contracts.py`), but the approved master taxonomy
+# allows GHCP-002/GHCP-006 to resolve to a softer `not-verified` status when
+# only local evidence is available; every other GHCP id may only ever emit
+# `must-fix`.
+_ALLOWED_GHCP_STATUSES = {
+    "GHCP-001": {"must-fix"},
+    "GHCP-002": {"must-fix", "not-verified"},
+    "GHCP-003": {"must-fix"},
+    "GHCP-004": {"must-fix"},
+    "GHCP-005": {"must-fix"},
+    "GHCP-006": {"must-fix", "not-verified"},
+}
+
+
+def _load_ghcp_catalog_entries():
+    catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    return {
+        entry["finding_id"]: entry
+        for entry in catalog["findings"]
+        if entry["finding_id"].startswith("GHCP-")
+    }
+
+
+def test_ghcp_catalog_entries_match_approved_taxonomy():
+    entries = _load_ghcp_catalog_entries()
+    assert set(entries) == set(_EXPECTED_GHCP_CATALOG_SUMMARIES)
+    for finding_id, expected_summary in _EXPECTED_GHCP_CATALOG_SUMMARIES.items():
+        entry = entries[finding_id]
+        assert entry["plane"] == "change"
+        assert entry["severity"] == "must-fix"
+        assert entry["gate"] is True
+        assert entry["summary"] == expected_summary
+
+
+def test_ghcp_findings_never_drift_from_catalog_plane_and_status(fixture_root):
+    catalog_entries = _load_ghcp_catalog_entries()
+    result = assess_change_plane(
+        fixture_root / "unprotected-ghcp", live_github=None, live_azure=None
+    )
+    ghcp_findings = [f for f in result.findings if f.finding_id.startswith("GHCP-")]
+    assert ghcp_findings  # sanity: the unprotected fixture emits every GHCP id
+    for finding in ghcp_findings:
+        catalog_entry = catalog_entries[finding.finding_id]
+        assert finding.plane == catalog_entry["plane"]
+        assert finding.status in _ALLOWED_GHCP_STATUSES[finding.finding_id]
