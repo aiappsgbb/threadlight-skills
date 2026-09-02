@@ -105,15 +105,23 @@ _SECRET_LOGIN_KEYS: Tuple[str, ...] = (
 # substring -- an attacker's own fork repository is exactly as
 # untrusted as their own head ref/sha), the `github.head_ref` shorthand
 # context variable (only ever populated for pull_request/
-# pull_request_target events, and always attacker-controlled), and a
+# pull_request_target events, and always attacker-controlled), a
 # literal `refs/pull/...` ref (the fork PR's own ref namespace, whether
-# `/head` or `/merge`). Checking out the trusted base ref from an
+# `/head` or `/merge`), and `github.event.pull_request.merge_commit_sha`
+# -- a *sibling* field to `.head`, not nested under it, so it is not
+# caught by the `.head` substring above, but the merge commit it names
+# is GitHub's own speculative merge of the PR author's head into the
+# base branch: it still incorporates the attacker's own diff, so
+# checking it out under `pull_request_target`'s elevated
+# permissions/secrets is exactly as untrusted as checking out the head
+# ref/sha directly. Checking out the trusted base ref from an
 # attacker-controlled `repository:` fork (or vice versa) is just as
 # untrusted as either alone -- both the ref *and* the repository must
 # stay on the trusted base for a `pull_request_target` checkout to be
 # safe.
 _UNTRUSTED_CHECKOUT_REF_MARKERS: Tuple[str, ...] = (
     "github.event.pull_request.head",
+    "github.event.pull_request.merge_commit_sha",
     "github.head_ref",
     "refs/pull/",
 )
@@ -130,6 +138,41 @@ _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE = re.compile(
 
 _CTK_MARKER_RE = re.compile(r"\bctk\b", re.IGNORECASE)
 _APPLICATION_PROBE_MARKER_RE = re.compile(r"application[-_ ]probe", re.IGNORECASE)
+
+# Recognized test/eval-suite runner invocations -- a command *prefix* that
+# actually executes tests/evaluations, as opposed to one that merely
+# inspects, lists, or prints a path (`ls evals`, `find evals -name ...`,
+# `cat evals/x.py`, an echoed mention, ...). Discovering an eval suite's
+# own path token in a `run:` command is not by itself proof the suite is
+# ever *executed* -- rule 3 requires a recognized runner name to appear
+# alongside that path token before treating the eval suite as covered.
+_RECOGNIZED_EVAL_RUNNER_RE = re.compile(
+    r"\b(?:pytest|py\.test|python3?\s+-m\s+(?:pytest|unittest)|unittest2?"
+    r"|npm\s+(?:run\s+)?test\b|yarn\s+test\b|pnpm\s+test\b|npx\s+jest\b|jest\b"
+    r"|mocha\b|go\s+test\b|dotnet\s+test\b|cargo\s+test\b|rspec\b|tox\b|nose2?\b)",
+    re.IGNORECASE,
+)
+
+
+def _eval_directory_invoked_by_recognized_runner(run_text: str, directory: Path) -> bool:
+    """True only if a *recognized* test/eval runner invocation (pytest,
+    unittest, npm/yarn/pnpm test, jest, mocha, go test, dotnet test, cargo
+    test, rspec, tox, ...) and a whole, boundary-delimited reference to
+    ``directory`` both appear on the same line of ``run_text``.
+
+    A command that merely lists, prints, or searches the eval directory
+    (``ls evals``, ``cat evals/x.py``, ``find evals -name '*.py'``, an
+    echoed mention, ...) never satisfies this: the eval directory's path
+    token appearing anywhere in the run text is not, by itself, proof the
+    suite is ever actually executed. Binding both to the same line is a
+    deliberately conservative approximation of "the runner is invoked
+    against this path" without needing a full shell parser.
+    """
+    token_pattern = _path_token_pattern(directory)
+    for line in run_text.splitlines():
+        if _RECOGNIZED_EVAL_RUNNER_RE.search(line) and token_pattern.search(line):
+            return True
+    return False
 
 # Rule 1 also rejects an explicit bypass command, not just an unprotected
 # trigger: a commit-message skip marker GitHub Actions itself honors (which
@@ -371,6 +414,28 @@ def _bounded_yaml_loader_class(yaml_module):
     return _BoundedSafeLoader
 
 
+def _sanitize_yaml_error(error: "yaml.YAMLError") -> str:
+    """A parse failure's own sanitized error class name plus, when
+    available, its 1-indexed line/column -- never the parser's own
+    message text or source-line snippet.
+
+    PyYAML's own ``str(error)`` for a ``MarkedYAMLError`` (the common
+    case -- a scanner/parser/composer error) embeds the literal
+    surrounding source text, for example the exact broken line and
+    whatever it happens to contain -- including any credential-shaped
+    value a user pasted into an otherwise-malformed workflow file. A
+    malformed-YAML finding must never retain any of that content, only
+    the fact that parsing failed and roughly where; `error.problem`,
+    `error.context`, `error.note`, and `str(error)` itself are
+    therefore never interpolated here.
+    """
+    class_name = type(error).__name__
+    mark = getattr(error, "problem_mark", None) or getattr(error, "context_mark", None)
+    if mark is not None:
+        return f"{class_name} at line {mark.line + 1}, column {mark.column + 1}"
+    return class_name
+
+
 def _load_workflow_document(path: Path) -> object:
     try:
         file_size = path.stat().st_size
@@ -395,7 +460,9 @@ def _load_workflow_document(path: Path) -> object:
     try:
         document = yaml.load(raw_text, Loader=_bounded_yaml_loader_class(yaml))
     except yaml.YAMLError as error:
-        raise ChangePlaneError(f"invalid YAML in workflow file {path}: {error}") from error
+        raise ChangePlaneError(
+            f"invalid YAML in workflow file {path}: {_sanitize_yaml_error(error)}"
+        ) from error
     except RecursionError as error:  # pragma: no cover - defense in depth
         raise ChangePlaneError(
             f"workflow file {path} is nested too deeply to parse"
@@ -1169,48 +1236,103 @@ def _find_ownership_file(root: Path) -> Optional[Path]:
     return None
 
 
-def _parse_codeowners_entries(path: Path) -> Tuple[Tuple[str, bool], ...]:
+def _parse_codeowners_entries(path: Path) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
     """Every non-comment, non-blank CODEOWNERS line, in file order, as
-    ``(pattern, has_owner)`` pairs -- including a line with *no* owner
+    ``(pattern, owner_tokens)`` pairs -- including a line with *no* owner
     token at all, which is a valid CODEOWNERS shape that explicitly
     disowns any path it matches (an intentional "no one owns this"
     declaration, not a malformed line to discard).
 
-    ``has_owner`` is true only when at least one token following the
-    pattern is actually shaped like a real GitHub username/team
-    (``@user``, ``@org/team``) or an email address; a pattern followed
-    by only unrecognized text still counts as a declared (ownerless)
-    entry for last-match-wins purposes, it simply carries no owner.
+    ``owner_tokens`` retains only the tokens following the pattern that
+    are actually shaped like a real GitHub username/team (``@user``,
+    ``@org/team``) or an email address, as a tuple rather than a
+    collapsed boolean -- a later, narrower entry re-declaring the exact
+    same owner set is not a real ownership change and must not be
+    confused with one that disowns the path or reassigns it to someone
+    else. A pattern followed by only unrecognized text still counts as
+    a declared (ownerless) entry for last-match-wins purposes; it
+    simply carries an empty owner-token tuple.
     """
-    entries: List[Tuple[str, bool]] = []
+    entries: List[Tuple[str, Tuple[str, ...]]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         tokens = stripped.split()
         pattern, owners = tokens[0], tokens[1:]
-        has_owner = any(_CODEOWNERS_OWNER_TOKEN_RE.match(owner) for owner in owners)
-        entries.append((pattern, has_owner))
+        owner_tokens = tuple(
+            owner for owner in owners if _CODEOWNERS_OWNER_TOKEN_RE.match(owner)
+        )
+        entries.append((pattern, owner_tokens))
     return tuple(entries)
 
 
+def _codeowners_pattern_nested_within(pattern: str, required_prefix: str) -> bool:
+    """True if a declared ``pattern`` is a proper subset of the directory
+    tree named by ``required_prefix`` -- the reverse relationship of
+    `_codeowners_pattern_covers`. Used to find a *later* entry that,
+    under real last-match-wins resolution, carves an override out of an
+    otherwise fully-owned required tree rather than one that covers the
+    whole tree itself.
+    """
+    declared_prefix = _codeowners_recursive_prefix(pattern)
+    if declared_prefix is not None:
+        return declared_prefix != required_prefix and _is_ancestor_or_equal(
+            required_prefix, declared_prefix
+        )
+    # An exact-file (or single-level glob) pattern still carves out a
+    # hole if its own literal path falls inside the required tree.
+    target = pattern.strip().lstrip("/")
+    return _is_ancestor_or_equal(required_prefix, target)
+
+
 def _codeowners_requirement_owned(
-    entries: Sequence[Tuple[str, bool]], requirement: str
+    entries: Sequence[Tuple[str, Tuple[str, ...]]], requirement: str
 ) -> bool:
     """Whether ``requirement`` is genuinely owned once every declared
     CODEOWNERS entry is resolved in file order.
 
-    Real CODEOWNERS resolution is last-match-wins: for any given path,
-    the *last* line in the file whose pattern matches it decides
-    ownership (or the explicit lack of one) -- never simply "any
-    matching line that happens to have an owner", which would let an
-    earlier owner survive a later disowning line meant to override it.
+    Real CODEOWNERS resolution is last-match-wins *per file*, not per
+    requirement pattern: for any given path, the *last* line in the
+    file whose pattern matches it decides ownership (or the explicit
+    lack of one). A broad entry covering the whole required tree is
+    therefore not enough on its own -- a *later*, narrower entry
+    nested inside that tree wins for every file it matches, so it can
+    silently disown (or reassign) part of a tree this check would
+    otherwise report as fully owned. Once the broad covering entry is
+    found, every subsequent entry nested inside the required tree is
+    inspected: if any of them declares a different owner set (an empty
+    set counts as different from a non-empty one), the requirement can
+    no longer be proven fully owned, however broad the covering entry
+    looked in isolation. A narrower entry re-declaring the identical
+    owner set is not an override in substance and does not break
+    coverage; a narrower entry appearing *before* the covering entry is
+    irrelevant, since the later broad entry already overrides it.
     """
     owned = False
-    for pattern, has_owner in entries:
+    owner_tokens: Tuple[str, ...] = ()
+    covering_index: Optional[int] = None
+    for index, (pattern, entry_owner_tokens) in enumerate(entries):
         if _codeowners_pattern_covers(pattern, requirement):
-            owned = has_owner
-    return owned
+            owned = bool(entry_owner_tokens)
+            owner_tokens = entry_owner_tokens
+            covering_index = index
+    if not owned:
+        return False
+
+    required_prefix = _codeowners_recursive_prefix(requirement)
+    if required_prefix is None:
+        # An exact file requirement has no descendant subtree a later,
+        # narrower entry could carve a hole out of.
+        return True
+
+    covering_owner_set = frozenset(owner_tokens)
+    for pattern, entry_owner_tokens in entries[covering_index + 1 :]:
+        if not _codeowners_pattern_nested_within(pattern, required_prefix):
+            continue
+        if frozenset(entry_owner_tokens) != covering_owner_set:
+            return False
+    return True
 
 
 def _codeowners_recursive_prefix(pattern: str) -> Optional[str]:
@@ -1321,13 +1443,15 @@ def _eval_runner_referenced(
     pr_workflows: Sequence["WorkflowAssessment"], eval_directories: Set[Path]
 ) -> bool:
     """True only if a pull_request-triggered workflow's actual,
-    execution-reachable ``run:`` command text references one of
-    ``eval_directories`` as a whole, boundary-delimited path token --
-    never merely because the word "evals" (or an unrelated path that
-    happens to contain it) appears anywhere in the document, and never
-    from a disabled/always-false step or a comment/echo-only line that
-    merely mentions the path rather than actually invoking a runner
-    against it.
+    execution-reachable ``run:`` command text invokes a *recognized*
+    test/eval runner against one of ``eval_directories`` as a whole,
+    boundary-delimited path token -- never merely because the word
+    "evals" (or an unrelated path that happens to contain it) appears
+    anywhere in the document, never from a disabled/always-false step
+    or a comment/echo-only line, and never from a command that merely
+    lists, prints, or searches the path (``ls evals``, ``cat
+    evals/x.py``, ``find evals -name ...``) without ever actually
+    executing anything against it.
     """
     if not eval_directories:
         return False
@@ -1339,7 +1463,8 @@ def _eval_runner_referenced(
         )
     )
     return any(
-        _path_token_pattern(directory).search(run_text) for directory in eval_directories
+        _eval_directory_invoked_by_recognized_runner(run_text, directory)
+        for directory in eval_directories
     )
 
 
@@ -1437,17 +1562,20 @@ def _job_satisfies_ci_probes(job: Mapping) -> bool:
 
 def _job_references_eval(job: Mapping, eval_directories: Set[Path]) -> bool:
     """True only if this specific job's own execution-reachable ``run:``
-    text references one of ``eval_directories`` as a whole, boundary-
-    delimited path token -- mirrors `_eval_runner_referenced`, but
-    scoped to a single job so the eval suite's own gating job can be
-    identified separately from whichever job runs CTK/application
-    probes, when a repo splits the two across sibling jobs in the same
-    workflow.
+    text invokes a *recognized* test/eval runner against one of
+    ``eval_directories`` as a whole, boundary-delimited path token --
+    mirrors `_eval_runner_referenced`, but scoped to a single job so the
+    eval suite's own gating job can be identified separately from
+    whichever job runs CTK/application probes, when a repo splits the
+    two across sibling jobs in the same workflow.
     """
     if not eval_directories:
         return False
     text = "\n".join(_job_run_texts(job))
-    return any(_path_token_pattern(directory).search(text) for directory in eval_directories)
+    return any(
+        _eval_directory_invoked_by_recognized_runner(text, directory)
+        for directory in eval_directories
+    )
 
 
 def _required_check_job_roles(

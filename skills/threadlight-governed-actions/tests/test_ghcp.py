@@ -4194,3 +4194,273 @@ def test_oversized_workflow_finding_never_leaks_absolute_host_path(tmp_path):
     assert str(tmp_path) not in all_paths
     assert str(root) not in all_details
     assert str(root) not in all_paths
+
+
+# ---------------------------------------------------------------------------
+# Final trust-gap fix 1: `github.event.pull_request.merge_commit_sha` is a
+# *sibling* field to `.head`, not nested under it -- the merge commit it
+# names still incorporates the PR author's own (attacker-controlled) diff
+# merged into the base, so a `pull_request_target` checkout of it is exactly
+# as untrusted as checking out `.head.ref`/`.head.sha` directly.
+# ---------------------------------------------------------------------------
+
+
+def test_pull_request_target_merge_commit_sha_ref_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ github.event.pull_request.merge_commit_sha }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_raw_checkout_of_merge_commit_sha_is_must_fix(tmp_path):
+    """The same untrusted merge-commit ref is just as unsafe when checked
+    out via a raw `git checkout`/`fetch` command rather than through
+    `actions/checkout`'s own `ref:` input."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch merge commit directly
+                    run: git fetch origin ${{ github.event.pull_request.merge_commit_sha }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# Final trust-gap fix 2: CODEOWNERS resolution is last-match-wins *per
+# file*, not per requirement pattern -- a broad entry that covers a whole
+# required tree is not enough on its own if a *later*, narrower entry
+# nested inside that tree disowns (or reassigns) part of it. Broad
+# ownership can never be trusted to prove full recursive coverage when a
+# descendant subtree is later carved out.
+# ---------------------------------------------------------------------------
+
+
+def test_codeowners_later_narrower_ownerless_entry_breaks_recursive_coverage(tmp_path):
+    """A broad `src/governance/**` owner entry followed by a later,
+    narrower, ownerless `src/governance/legacy/**` entry must not be
+    treated as full coverage of the required `src/governance/**` tree --
+    the later entry wins for every file under `legacy/`, disowning it."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "src/governance/legacy/**",  # later, narrower, ownerless
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "codeowners-incomplete-coverage"
+
+
+def test_codeowners_later_narrower_other_owner_entry_breaks_recursive_coverage(
+    tmp_path,
+):
+    """The same gap when the later, narrower entry reassigns the subtree
+    to a *different* owner rather than disowning it outright -- either
+    way, the broad entry no longer proves full recursive coverage."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "src/governance/legacy/** @octo-org/legacy-team",  # different owner
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "codeowners-incomplete-coverage"
+
+
+def test_codeowners_later_narrower_same_owner_entry_still_confirms_coverage(tmp_path):
+    """A later, narrower entry that merely re-declares the *identical*
+    owner set is not a real override in substance -- coverage must still
+    be confirmed (this is a regression/parity guard against becoming an
+    overly-aggressive false negative)."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "src/governance/legacy/** @octo-org/governance",  # same owner
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+    assert finding.reason_code != "codeowners-incomplete-coverage"
+
+
+def test_codeowners_earlier_narrower_ownerless_entry_does_not_break_coverage(tmp_path):
+    """A narrower ownerless entry appearing *before* the broad covering
+    entry is irrelevant -- the later, broad entry already overrides it
+    for every file it matches, so coverage is genuinely complete."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/legacy/**",  # earlier, narrower, ownerless
+            "src/governance/** @octo-org/governance",  # later, broad, owns all
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+    assert finding.reason_code != "codeowners-incomplete-coverage"
+
+
+# ---------------------------------------------------------------------------
+# Final trust-gap fix 3: eval-suite execution detection must see an actual
+# recognized test/eval runner invocation targeting the discovered eval
+# directory -- a command that merely lists, prints, cats, or searches the
+# path (`ls evals`, `find evals -name ...`, `cat evals/x.py`) can never
+# count, however literally the path appears in the run text.
+# ---------------------------------------------------------------------------
+
+
+def test_ls_of_eval_directory_alone_is_must_fix(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="ls evals"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next((f for f in result.findings if f.finding_id == "GHCP-003"), None)
+    assert finding is not None
+    assert finding.status == "must-fix"
+
+
+def test_find_of_eval_directory_alone_is_must_fix(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="find evals -name '*.py'"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next((f for f in result.findings if f.finding_id == "GHCP-003"), None)
+    assert finding is not None
+    assert finding.status == "must-fix"
+
+
+def test_cat_of_eval_directory_alone_is_must_fix(tmp_path):
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="cat evals/case_one.py"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next((f for f in result.findings if f.finding_id == "GHCP-003"), None)
+    assert finding is not None
+    assert finding.status == "must-fix"
+
+
+def test_python_module_pytest_runner_against_evals_passes(tmp_path):
+    """`python -m pytest evals` is a recognized runner invocation, not just
+    a bare mention of the directory, and must still satisfy rule 3."""
+    root = _repo_with_eval_suite(
+        tmp_path, eval_relative_dir="evals", ci_extra_run="python -m pytest evals"
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_ci_probes"] == "pass"
+    assert "GHCP-003" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Final trust-gap fix 4: a malformed-YAML finding must never retain the
+# parser's own raw message or source-line snippet -- only a sanitized error
+# class plus line/column, never source content or credential-shaped values
+# a broken workflow file happened to contain.
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_yaml_finding_never_leaks_source_snippet_or_secret(tmp_path):
+    root = tmp_path / "malformed-secret-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    malformed_path = root / ".github" / "workflows" / "malformed.yml"
+    # The line that trips the parser also happens to contain a
+    # plausible-looking secret -- PyYAML's own `str(error)` would embed
+    # this exact source line as a "context" snippet if it were ever
+    # interpolated directly into a finding.
+    malformed_path.write_text(
+        "name: Broken\non: [pull_request\npassword: hunter2supersecret\n",
+        encoding="utf-8",
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    all_details = " ".join(f.details for f in result.findings)
+    all_sha_violations = " ".join(
+        v for f in result.findings for v in getattr(f, "sha_violations", ())
+    )
+    combined = all_details + " " + all_sha_violations
+    assert "hunter2supersecret" not in combined
+    assert "password:" not in combined
+    # A sanitized error class is still surfaced -- the finding is not
+    # emptied of all diagnostic value, only of raw source content.
+    assert "Error" in combined
