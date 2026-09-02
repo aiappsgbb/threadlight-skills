@@ -1,0 +1,40 @@
+{
+  "_comment": "Synthetic, non-sensitive fixture data. A later golden-fixture task loads this file and passes its 'github'/'azure' sections as injected live evidence to assess_change_plane; production code never auto-trusts this fixture path itself. This scenario's live evidence still confirms the branch/identity posture is unprotected, so it never upgrades a static must-fix finding to a pass.",
+  "github": {
+    "repository": "octo-org/unprotected-ghcp",
+    "default_branch": "main",
+    "branch_protection": {
+      "main": {
+        "required_pull_request_reviews": false,
+        "required_approving_review_count": 0,
+        "required_status_checks": [],
+        "enforce_admins": false,
+        "allow_force_pushes": true,
+        "restrictions": null
+      }
+    },
+    "rulesets": [],
+    "workflow_identity_claims": {
+      ".github/workflows/deploy.yml": {
+        "actor": "github-actions[bot]",
+        "federated_subject": null
+      },
+      ".github/workflows/tests.yml": {
+        "actor": "github-actions[bot]",
+        "federated_subject": null
+      }
+    }
+  },
+  "azure": {
+    "subscription_id": "00000000-0000-0000-0000-000000000000",
+    "role_assignments": [
+      {
+        "principal_id": "11111111-1111-1111-1111-111111111111",
+        "principal_display_name": "unprotected-ghcp-shared-identity",
+        "role_definition_name": "Contributor",
+        "scope": "/subscriptions/00000000-0000-0000-0000-000000000000"
+      }
+    ],
+    "federated_credentials": []
+  }
+}
