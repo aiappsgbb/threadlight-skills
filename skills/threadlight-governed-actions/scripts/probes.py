@@ -1229,6 +1229,22 @@ def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) 
     return bytes(result[0]) == _CHILD_READY_MARKER
 
 def _read_ledger_events(ledger_path: Path) -> list:
+    """Read an observation/nonce ledger's JSONL events, tolerantly.
+
+    A missing ledger file, or a line that fails to parse as JSON at
+    all, is treated as *no evidence yet* — a killed child can leave a
+    partial trailing line, and that must never be mistaken for a real
+    recorded event. But a line that *does* parse as valid JSON while
+    not being a JSON object (a bare string, number, boolean, ``null``,
+    or array) is never silently accepted as an event either: every
+    caller unconditionally calls ``.get(...)`` on each returned event,
+    so returning anything non-mapping here would let a malformed or
+    adversarial target crash a caller with a raw ``AttributeError``
+    instead of a typed probe failure. Such a line raises
+    :class:`ProbeToolingError` instead — the ledger is corrupt/
+    malformed evidence, which is exactly as unobservable as no
+    evidence at all, never a silent pass.
+    """
     try:
         text = ledger_path.read_text(encoding="utf-8")
     except OSError:
@@ -1239,11 +1255,18 @@ def _read_ledger_events(ledger_path: Path) -> list:
         if not line:
             continue
         try:
-            events.append(json.loads(line))
+            parsed = json.loads(line)
         except json.JSONDecodeError:
             # A killed child can leave a partial trailing line; ignore
             # it rather than let it look like a real recorded event.
             continue
+        if not isinstance(parsed, Mapping):
+            raise ProbeToolingError(
+                f"observation ledger {ledger_path} contains a malformed "
+                f"event that is valid JSON but not a JSON object: "
+                f"{parsed!r}"
+            )
+        events.append(parsed)
     return events
 
 
@@ -1569,9 +1592,16 @@ _AUDIT_NOT_VERIFIED_REASON = "audit-probe-outcome-not-verified"
 # own single driven dispatch call against an approval-family target —
 # arbitrary but stable so every run drives exactly the same case; never
 # a real approval, and never the target's own declared, checked-in
-# ledger (see the private temporary ledger construction below).
+# ledger (see the private temporary ledger construction below). "now"
+# is fixed well before "expires_at" so this fixed synthetic call is
+# always a legitimate, non-expired first-time redemption regardless of
+# how a conformant target's own accept/reject decision depends on
+# expiry — this probe set only ever cares about the audit sink's
+# payload-freeness, never the redemption's own accept/reject outcome.
 _AUDIT_PROBE_NONCE = "audit-probe-nonce"
 _AUDIT_PROBE_DIGEST = "sha256:" + "0" * 64
+_AUDIT_PROBE_NOW = "2026-01-01T00:00:00Z"
+_AUDIT_PROBE_EXPIRES_AT = "2026-01-01T00:05:00Z"
 
 # Fixed, deterministic verdict for ``run_privacy_probe_set``'s own
 # single driven dispatch call against an output-family target — "deny"
@@ -1748,49 +1778,71 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     Every scenario a passing probe proves here demonstrates the control
     working correctly — a first-time acceptance, a byte-identical
     replay rejected, a mutated-field reuse rejected, or an expired
-    binding rejected before ever touching the nonce store — exactly like
-    Task 5's enforcement probes, where "pass" means "proven safe", not
-    merely "approved". Only a genuine violation — the ledger failing to
-    durably record exactly one new attempt, or the ledger's own
-    redemption record itself directly reporting a fail-open acceptance
-    of a replay or a mutated binding — is ``must-fix`` with reason
-    ``APR-001``.
+    binding rejected before ever reaching the protected tool — exactly
+    like Task 5's enforcement probes, where "pass" means "proven safe",
+    not merely "approved". Only a genuine violation — the ledger
+    failing to durably record exactly one new decision for this
+    attempt, the ledger's own newly appended decision directly
+    reporting a fail-open acceptance of a replay or a mutated binding,
+    an expired binding's decision accepted anyway, or *any* rejected
+    decision that the ledger shows was invoked regardless — is
+    ``must-fix`` with reason ``APR-001``.
 
-    Expiry is checked *first*, using plain string comparison against
-    the binding's fixed-width ISO-8601 ``expires_at`` — before the nonce
-    store is ever consulted at all — so an expired approval never
-    consumes a nonce and is rejected purely on its own validity window
-    (``now >= expires_at`` counts as expired; a window's own expiry
-    instant is exclusive, never valid).
+    Expiry is never self-graded here in Python before ever asking the
+    target anything: ``now`` and the binding's own ``expires_at`` are
+    always forwarded to the fixture's own service-side ``redeem`` call,
+    which makes its own accept/reject decision (durably recording it)
+    including whatever it decides about expiry — this probe only
+    independently reconciles that recorded decision against the same
+    ``now >= expires_at`` comparison (a window's own expiry instant is
+    exclusive, never valid), so an expired binding that got fail-open
+    *accepted* by a broken target is itself caught as ``APR-001``,
+    never merely trusted.
 
-    ``dispatch`` (a synthetic, service-side atomic
-    ``redeem(nonce, digest, ledger_path)``) always runs isolated in a
-    sanitized, bounded child subprocess (see
-    ``_dispatch_task6_child``), so a hung or crashed target can never
-    hang or kill this assessor — but its own in-process return value
-    (and even whether it ever completed at all) is never trusted
-    either way. The persistent, on-disk nonce ledger is read both
-    before and after that call, and this only ever *observes* the
-    outcome the ledger's own newly appended record reports for itself
-    via its explicit ``accepted`` field — it never infers accept,
-    replay, or mismatch merely from how the record count changed, nor
-    from comparing digests itself, which a fail-open store that
-    silently granted a replay or a mutated binding could otherwise
-    mask. A first-ever attempt for a nonce must itself durably record
+    ``dispatch`` (a synthetic, service-side atomic ``redeem(nonce,
+    digest, expires_at, now, ledger_path)``) always runs isolated in a
+    sanitized, bounded child subprocess (see ``_dispatch_task6_child``),
+    so a hung or crashed target can never hang or kill this assessor —
+    but its own in-process return value (and even whether it ever
+    completed at all) is never trusted either way. The persistent,
+    on-disk nonce ledger is read both before and after that call, and
+    this only ever *observes* the outcome the ledger's own newly
+    appended records report for themselves via their explicit
+    ``event``/``accepted`` fields — it never infers accept, replay, or
+    mismatch merely from how the record count changed, nor from
+    comparing digests itself, which a fail-open store that silently
+    granted a replay or a mutated binding could otherwise mask.
+
+    Acceptance and *tool invocation* are proven as two distinct,
+    ordered ledger facts, never conflated: exactly one new
+    ``"decision"`` record for this nonce, followed — strictly, and
+    only when that decision is ``accepted: true`` — by exactly one new
+    ``"invocation"`` record for the same nonce. A rejected decision
+    (replay, mutated binding, or expiry) that the ledger shows was
+    invoked anyway is a fail-open control and is always ``APR-001``,
+    regardless of why it was rejected; an accepted decision that the
+    ledger fails to show was ever actually invoked (missing,
+    duplicated, or out of order relative to its own decision) is
+    equally untrustworthy and equally ``APR-001`` — this probe never
+    merely takes an ``accepted: true`` decision's word for it that the
+    tool was reached. A ledger that does not grow by exactly one new
+    decision record for this single attempt — no growth at all (a
+    hung/crashed target, or a hang bounded by the dispatch child's own
+    timeout), or more than one decision appended — can never be
+    trusted as a proven pass either.
+
+    Once invocation evidence is proven consistent, a first-ever,
+    non-expired attempt for a nonce must itself durably record
     ``accepted: true`` to pass; once a nonce already has one accepted
-    record, any later attempt reporting ``accepted: true`` again is a
-    proven fail-open acceptance (``APR-001``) regardless of whether it
-    is a byte-identical replay or a mutated binding, and only a
-    genuinely rejected (``accepted: false``) later attempt passes —
-    distinguished as a replay (digest matches the original accepted
-    record) or a binding mismatch (it does not, covering every mutated
-    field: subject, role, target, tenant, policy, action, or
+    record, any later, non-expired attempt reporting ``accepted: true``
+    again is a proven fail-open acceptance (``APR-001``) regardless of
+    whether it is a byte-identical replay or a mutated binding, and
+    only a genuinely rejected (``accepted: false``) later attempt
+    passes — distinguished as a replay (digest matches the original
+    accepted record) or a binding mismatch (it does not, covering every
+    mutated field: subject, role, target, tenant, policy, action, or
     arguments, including a reused nonce whose original approval was
-    bound to different, pre-transform arguments). A ledger that does
-    not grow by exactly one durable record for this single attempt —
-    no growth at all (a hung/crashed target, or a hang bounded by the
-    dispatch child's own timeout), or more than one record appended —
-    can never be trusted as a proven pass either.
+    bound to different, pre-transform arguments).
 
     Payload-freeness of whatever the fixture's ``redeem`` call drained
     into its declared ``audit_sink`` is never judged here at all —
@@ -1800,26 +1852,17 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     """
     root_path = Path(root).resolve()
     contract = load_approval_contract(root_path)
-
-    if now >= binding.expires_at:
-        return ProbeResult(
-            probe_id=_APPROVAL_PROBE_ID,
-            action_id=binding.action_id,
-            path_id=None,
-            status="pass",
-            reason_code=_APPROVAL_PASS_REASON,
-            expected=_APPROVAL_EXPECTED,
-            observed="expired_rejected",
-            evidence_refs=(approval_digest(binding),),
-        )
-
     digest = approval_digest(binding)
     nonce_ledger_path = root_path / contract["nonce_ledger"]
 
     before_records = _read_nonce_records(nonce_ledger_path)
     prior_accepted_digest: Optional[str] = None
     for record in before_records:
-        if record.get("nonce") == binding.nonce and record.get("accepted") is True:
+        if (
+            record.get("event") == "decision"
+            and record.get("nonce") == binding.nonce
+            and record.get("accepted") is True
+        ):
             prior_accepted_digest = record.get("digest")
             break
     prior_accepted_for_nonce = prior_accepted_digest is not None
@@ -1828,41 +1871,74 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
         root_path,
         str(contract["dispatch"]),
         str(contract["audit_sink"]),
-        (binding.nonce, digest, str(nonce_ledger_path)),
+        (binding.nonce, digest, binding.expires_at, now, str(nonce_ledger_path)),
     )
 
     after_records = _read_nonce_records(nonce_ledger_path)
+    new_records = after_records[len(before_records):]
+    new_decisions = [record for record in new_records if record.get("event") == "decision"]
+    new_invocations = [
+        record for record in new_records if record.get("event") == "invocation"
+    ]
 
-    new_record_count = len(after_records) - len(before_records)
-    if new_record_count != 1:
+    expired = now >= binding.expires_at
+    status: str
+    observed: str
+
+    if len(new_decisions) != 1:
         observed = (
             "nonce_reuse_not_atomic"
-            if new_record_count > 1
+            if len(new_decisions) > 1
             else "nonce_redemption_not_recorded"
         )
         status = "must-fix"
-        reason_code = "APR-001"
     else:
-        new_record = after_records[-1]
-        if new_record.get("nonce") != binding.nonce:
+        decision = new_decisions[0]
+        if decision.get("nonce") != binding.nonce:
             observed = "nonce_redemption_not_recorded"
             status = "must-fix"
-            reason_code = "APR-001"
         else:
-            accepted_now = new_record.get("accepted") is True
-            if not prior_accepted_for_nonce:
+            accepted_now = decision.get("accepted") is True
+            decision_index = new_records.index(decision)
+            matching_invocations = [
+                record
+                for record in new_invocations
+                if record.get("nonce") == binding.nonce
+            ]
+            if not accepted_now and new_invocations:
+                # Fail-open: the target invoked the protected tool for
+                # this dispatch even though its own decision was a
+                # rejection — never trusted regardless of *why* it was
+                # rejected (replay, mismatch, or expiry).
+                observed = "fail_open_invocation_on_rejection"
+                status = "must-fix"
+            elif accepted_now and (
+                len(matching_invocations) != 1
+                or new_records.index(matching_invocations[0]) <= decision_index
+            ):
+                # Accepted, but the ledger fails to prove the tool was
+                # actually, and only once, reached strictly after this
+                # decision — an accepted decision is never trusted on
+                # its word alone.
+                observed = "invocation_not_recorded_after_acceptance"
+                status = "must-fix"
+            elif expired:
+                if accepted_now:
+                    observed = "expired_binding_fail_open_accepted"
+                    status = "must-fix"
+                else:
+                    observed = "expired_rejected"
+                    status = "pass"
+            elif not prior_accepted_for_nonce:
                 if accepted_now:
                     observed = "approval_accepted"
                     status = "pass"
-                    reason_code = _APPROVAL_PASS_REASON
                 else:
                     observed = "nonce_redemption_not_recorded"
                     status = "must-fix"
-                    reason_code = "APR-001"
             elif accepted_now:
                 observed = "fail_open_replay_or_mutation_accepted"
                 status = "must-fix"
-                reason_code = "APR-001"
             else:
                 observed = (
                     "replay_rejected"
@@ -1870,8 +1946,8 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
                     else "binding_mismatch_rejected"
                 )
                 status = "pass"
-                reason_code = _APPROVAL_PASS_REASON
 
+    reason_code = _APPROVAL_PASS_REASON if status == "pass" else "APR-001"
     return ProbeResult(
         probe_id=_APPROVAL_PROBE_ID,
         action_id=binding.action_id,
@@ -2006,17 +2082,32 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         observed = "output_released_before_verdict"
         status = "must-fix"
     elif verdict == "deny":
-        egress_bytes = sum(
-            int(event.get("bytes", 0))
-            for event in events
-            if event.get("event") == "egress"
-        )
-        chunk_bytes = sum(
-            int(event.get("bytes", 0))
-            for event in events
-            if event.get("event") == "chunk"
-        )
-        if egress_bytes + chunk_bytes == 0:
+        release_events = [
+            event for event in events if event.get("event") in ("egress", "chunk")
+        ]
+        total_released_bytes = 0
+        every_release_bytes_valid = True
+        for event in release_events:
+            raw_bytes = event.get("bytes")
+            is_valid_nonnegative_int = (
+                isinstance(raw_bytes, int)
+                and not isinstance(raw_bytes, bool)
+                and raw_bytes >= 0
+            )
+            if not is_valid_nonnegative_int:
+                every_release_bytes_valid = False
+                break
+            total_released_bytes += raw_bytes
+        if not every_release_bytes_valid:
+            # Missing, boolean, float, string, or negative "bytes"
+            # evidence can never be trusted as proof of zero egress —
+            # never defaulted to 0, never summed, never coerced through
+            # a bare ``int()`` that could itself crash on a non-numeric
+            # value. Unverifiable byte evidence is itself a must-fix,
+            # never a silent pass.
+            observed = "malformed_egress_byte_evidence"
+            status = "must-fix"
+        elif total_released_bytes == 0:
             observed = "zero_bytes_egressed"
             status = "pass"
         else:
@@ -2159,6 +2250,8 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
             args: Tuple[str, ...] = (
                 _AUDIT_PROBE_NONCE,
                 _AUDIT_PROBE_DIGEST,
+                _AUDIT_PROBE_EXPIRES_AT,
+                _AUDIT_PROBE_NOW,
                 str(ledger_path),
             )
         else:

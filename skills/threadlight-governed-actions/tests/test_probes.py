@@ -36,11 +36,16 @@ synthetic dispatch call of its own against the *same real* target and
 independently validates whatever its own ``audit_sink`` actually
 produced). Every approval scenario that proves the anti-replay/binding
 control worked — a first-time acceptance, a replay, a mutated-field
-reuse, or an expired attempt rejected before ever reaching the nonce
-store — is itself a *passing* probe; only a genuine violation (the
-ledger failing to durably record exactly one new attempt, or its own
-newly appended record directly reporting a fail-open acceptance of a
-replay or mutated binding) is ``must-fix`` with reason ``APR-001``.
+reuse, or an expired binding correctly rejected by the target's own
+recorded decision — is itself a *passing* probe; only a genuine
+violation (the ledger failing to durably record exactly one new
+decision, a decision directly reporting a fail-open acceptance of a
+replay or mutated or expired binding, or any tool-invocation evidence
+recorded despite — or without — a matching acceptance decision) is
+``must-fix`` with reason ``APR-001``. Every rejection, including
+expiry, is always dispatched to the target and proven from its own
+durable ledger evidence — never short-circuited by the probe's own
+Python-side judgment before the target is ever consulted.
 Payload-freeness of the decision-audit trail (``AUD-001``) is judged
 *only* by ``run_privacy_probe_set``, never by ``run_approval_probe`` or
 ``run_output_probe`` themselves, so an audit violation can never mask,
@@ -936,10 +941,11 @@ def test_approval_probe_reports_apr_001_when_ledger_proves_non_atomic_reuse(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
     # A deliberately broken, fail-open nonce store: it always grants
-    # ``accepted: true``, even to an attempt for a nonce that already
-    # has an accepted record. ``run_approval_probe`` must never trust
-    # the fixture's own self-reported ``accepted`` field blindly for
-    # this case either — it cross-checks each new record's ``accepted``
+    # ``accepted: true`` (and always invokes the protected tool as a
+    # result), even to an attempt for a nonce that already has an
+    # accepted record. ``run_approval_probe`` must never trust the
+    # fixture's own self-reported ``accepted`` field blindly for this
+    # case either — it cross-checks each new decision's ``accepted``
     # value against the ledger's *own* prior history for that nonce,
     # and reports the catalog's ``APR-001`` must-fix finding the moment
     # a second attempt is fail-open-accepted rather than a laundered
@@ -954,10 +960,16 @@ import json
 AUDIT_EVENTS = []
 
 
-def redeem(nonce, digest, ledger_path):
+def redeem(nonce, digest, expires_at, now, ledger_path):
     with open(ledger_path, "a", encoding="utf-8") as handle:
         handle.write(
-            json.dumps({"nonce": nonce, "digest": digest, "accepted": True}) + "\\n"
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": True}
+            )
+            + "\\n"
+        )
+        handle.write(
+            json.dumps({"event": "invocation", "nonce": nonce}) + "\\n"
         )
 ''',
         encoding="utf-8",
@@ -988,6 +1000,204 @@ def redeem(nonce, digest, ledger_path):
     assert [(f.finding_id, f.status) for f in findings] == [("APR-001", "must-fix")]
 
 
+def test_approval_probe_reports_apr_001_when_expired_binding_is_fail_open_accepted(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # A target that ignores expiry entirely and always accepts (and
+    # always invokes the tool) must be caught even though its own
+    # decision record says ``accepted: true`` — this probe
+    # independently reconciles that decision against the same
+    # ``now >= expires_at`` comparison, never merely trusting an
+    # accepted decision for an already-expired binding.
+    root = tmp_path / "expiry-ignoring-nonce-store"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": True}
+            )
+            + "\\n"
+        )
+        handle.write(
+            json.dumps({"event": "invocation", "nonce": nonce}) + "\\n"
+        )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    expired_binding = replace(approval_binding, nonce="nonce-expiry-ignored-0001")
+    result = run_approval_probe(
+        root, expired_binding, now="2026-09-01T12:05:01Z"
+    )
+    assert result.status == "must-fix"
+    assert result.reason_code == "APR-001"
+    assert result.observed == "expired_binding_fail_open_accepted"
+
+
+def test_approval_probe_reports_apr_001_when_rejection_is_invoked_anyway(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # Req3: a fail-open target that correctly *records* a rejection
+    # (``accepted: false``) but invokes the protected tool anyway must
+    # be caught by observing the ledger's own distinct invocation
+    # evidence — never inferred merely from the decision's own
+    # ``accepted`` field, which this broken target reports honestly.
+    root = tmp_path / "invoke-on-rejection-nonce-store"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": False}
+            )
+            + "\\n"
+        )
+        # Fail-open: invokes the protected tool even though its own
+        # decision says the attempt was rejected.
+        handle.write(
+            json.dumps({"event": "invocation", "nonce": nonce}) + "\\n"
+        )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+    assert result.status == "must-fix"
+    assert result.reason_code == "APR-001"
+    assert result.observed == "fail_open_invocation_on_rejection"
+
+
+def test_approval_probe_reports_apr_001_when_acceptance_has_no_invocation_evidence(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # A target that grants ``accepted: true`` but never actually
+    # records invoking the protected tool cannot be trusted on its
+    # decision's word alone — no corroborating invocation evidence
+    # means the acceptance itself cannot be proven to have unlocked
+    # anything, so it is reported as must-fix rather than a laundered
+    # pass.
+    root = tmp_path / "accept-without-invocation-nonce-store"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": True}
+            )
+            + "\\n"
+        )
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+    assert result.status == "must-fix"
+    assert result.reason_code == "APR-001"
+    assert result.observed == "invocation_not_recorded_after_acceptance"
+
+
+def test_approval_probe_reports_apr_001_when_ledger_contains_malformed_event(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # Req2: a ledger line that is valid JSON but not a JSON object
+    # (here, a bare string) must never crash the probe with a raw
+    # ``AttributeError`` from calling ``.get(...)`` on it — it is a
+    # typed ``ProbeToolingError`` instead, exactly as unobservable as
+    # no evidence at all.
+    root = tmp_path / "malformed-ledger-event-nonce-store"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps("not-an-object") + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProbeToolingError):
+        run_approval_probe(root, approval_binding, now="2026-09-01T12:00:00Z")
+
+
 def test_approval_probe_dispatch_hang_does_not_hang_the_assessor(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
@@ -1006,7 +1216,7 @@ import time
 AUDIT_EVENTS = []
 
 
-def redeem(nonce, digest, ledger_path):
+def redeem(nonce, digest, expires_at, now, ledger_path):
     time.sleep(3600)
 ''',
         encoding="utf-8",
@@ -1040,14 +1250,18 @@ def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
     # genuinely atomic under real concurrency, not merely
     # sequentially-correct — many concurrent redemption attempts for
     # the exact same nonce/digest must yield exactly one durably
-    # accepted record in the shared ledger, however many total attempt
-    # records are appended.
+    # accepted decision in the shared ledger, however many total
+    # decision records are appended, and exactly one corresponding
+    # invocation record — proving the protected tool itself is reached
+    # exactly once too, never once per racing caller.
     contract = probes.load_approval_contract(approval_root)
     ledger_path = approval_root / str(contract["nonce_ledger"])
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
 
     nonce = "nonce-concurrent-0001"
     digest = "sha256:" + "c" * 64
+    expires_at = "2026-09-01T12:05:00Z"
+    now = "2026-09-01T12:00:00Z"
     worker_count = 8
     barrier = threading.Barrier(worker_count)
     errors = []
@@ -1059,7 +1273,7 @@ def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
                 approval_root,
                 str(contract["dispatch"]),
                 str(contract["audit_sink"]),
-                (nonce, digest, str(ledger_path)),
+                (nonce, digest, expires_at, now, str(ledger_path)),
             )
         except Exception as error:  # pragma: no cover - surfaced via errors list
             errors.append(error)
@@ -1077,10 +1291,18 @@ def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
         for line in ledger_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert len(records) == worker_count
-    accepted_records = [record for record in records if record.get("accepted") is True]
+    decision_records = [record for record in records if record.get("event") == "decision"]
+    invocation_records = [
+        record for record in records if record.get("event") == "invocation"
+    ]
+    assert len(decision_records) == worker_count
+    accepted_records = [
+        record for record in decision_records if record.get("accepted") is True
+    ]
     assert len(accepted_records) == 1
-    assert all(record["nonce"] == nonce for record in records)
+    assert all(record["nonce"] == nonce for record in decision_records)
+    assert len(invocation_records) == 1
+    assert invocation_records[0]["nonce"] == nonce
 
 
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
@@ -1456,7 +1678,7 @@ import json
 AUDIT_EVENTS = []
 
 
-def redeem(nonce, digest, ledger_path):
+def redeem(nonce, digest, expires_at, now, ledger_path):
     with open(ledger_path, "a", encoding="utf-8") as handle:
         handle.write(
             json.dumps({"nonce": nonce, "digest": digest, "accepted": True}) + "\\n"
@@ -1644,6 +1866,115 @@ def emit_output(verdict, ledger_path):
     assert result.observed == "nonzero_bytes_egressed_on_deny"
 
 
+_MALFORMED_DENY_BYTES_TEMPLATE = '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"event": "verdict_received", "verdict": verdict}) + "\\n"
+        )
+        __BYTES_LINE__
+'''
+
+
+@pytest.mark.parametrize(
+    "case_id,malformed_value",
+    [
+        ("bool-true", True),
+        ("bool-false", False),
+        ("float", 40.5),
+        ("string", "40"),
+        ("missing", None),
+        ("negative", -1),
+    ],
+)
+def test_output_probe_never_trusts_malformed_egress_byte_evidence_on_deny(
+    tmp_path: Path, case_id: str, malformed_value: object
+):
+    # Req1: a deny-verdict release event whose "bytes" field is a bool,
+    # float, string, missing, or negative can never be trusted as
+    # proof of zero egress — never defaulted to 0, never summed, never
+    # coerced through a bare ``int()`` that would itself crash on a
+    # non-numeric value. This must be reported as a distinct,
+    # non-silent must-fix, never a laundered pass and never an
+    # unhandled crash.
+    root = tmp_path / f"output-deny-malformed-bytes-{case_id}"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    if case_id == "missing":
+        bytes_line = 'handle.write(json.dumps({"event": "egress"}) + "\\n")'
+    else:
+        bytes_line = (
+            'handle.write(json.dumps({"event": "egress", "bytes": '
+            + repr(malformed_value)
+            + '}) + "\\n")'
+        )
+    agent_source = _MALFORMED_DENY_BYTES_TEMPLATE.replace(
+        "__BYTES_LINE__", bytes_line
+    )
+    (app_dir / "agent.py").write_text(agent_source, encoding="utf-8")
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_output_probe(root, verdict="deny")
+    assert result.status == "must-fix"
+    assert result.reason_code == "OUT-001"
+    assert result.observed == "malformed_egress_byte_evidence"
+
+
+def test_output_probe_reports_out_001_for_malformed_ledger_event(tmp_path: Path):
+    # Req2: a ledger line that is valid JSON but not a JSON object
+    # (here, a bare number) must never crash the probe with a raw
+    # ``AttributeError``/``ValueError`` from calling ``.get(...)`` on
+    # it — it is a typed ``ProbeToolingError`` instead, exactly as
+    # unobservable as no evidence at all.
+    root = tmp_path / "output-malformed-ledger-event"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def emit_output(verdict, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(12345) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:emit_output",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "observation_ledger": "governance/output-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProbeToolingError):
+        run_output_probe(root, verdict="deny")
+
+
 def test_approval_probe_never_masks_audit_leak_and_privacy_probe_set_reports_it(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
@@ -1668,23 +1999,41 @@ import os
 AUDIT_EVENTS = []
 
 
-def redeem(nonce, digest, ledger_path):
+def redeem(nonce, digest, expires_at, now, ledger_path):
     with open(ledger_path, "a+", encoding="utf-8") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             handle.seek(0)
-            already_accepted = any(
-                json.loads(line).get("nonce") == nonce
-                and json.loads(line).get("accepted") is True
+            existing = [
+                json.loads(line)
                 for line in handle.read().splitlines()
                 if line.strip()
+            ]
+            already_accepted = any(
+                record.get("event") == "decision"
+                and record.get("nonce") == nonce
+                and record.get("accepted") is True
+                for record in existing
             )
-            accepted = not already_accepted
+            expired = now >= expires_at
+            accepted = (not expired) and (not already_accepted)
             handle.write(
-                json.dumps({"nonce": nonce, "digest": digest, "accepted": accepted})
+                json.dumps(
+                    {
+                        "event": "decision",
+                        "nonce": nonce,
+                        "digest": digest,
+                        "accepted": accepted,
+                    }
+                )
                 + "\\n"
             )
             handle.flush()
+            if accepted:
+                handle.write(
+                    json.dumps({"event": "invocation", "nonce": nonce}) + "\\n"
+                )
+                handle.flush()
             os.fsync(handle.fileno())
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
