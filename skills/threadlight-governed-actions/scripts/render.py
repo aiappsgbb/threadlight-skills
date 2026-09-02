@@ -158,13 +158,15 @@ _MANDATORY_RESIDUAL_RISKS: Tuple[Dict[str, object], ...] = (
             "separation) is only as current as its own trustworthy "
             "collection timestamp. An evidence entry whose collected_at "
             "is missing or does not parse as a real instant is rendered "
-            "with collected_at null and live_verified false, and is "
+            "with collected_at null and live_verified false (never the "
+            "input's own claimed live_verified/freshness_seconds), and is "
             "excluded from this manifest's freshness computation entirely. "
             "When no evidence carries a trustworthy timestamp, "
-            "freshness.status is reported stale; when the oldest "
-            "trustworthy timestamp falls outside this manifest's freshness "
-            "window, freshness.status is reported expired -- neither is "
-            "ever assumed to still be fresh."
+            "freshness.status is reported stale; when the newest "
+            "trustworthy timestamp (captured_at) exceeds the oldest "
+            "trustworthy timestamp (oldest_source_at) plus this "
+            "manifest's valid_for_hours, freshness.status is reported "
+            "expired -- neither is ever assumed to still be fresh."
         ),
     },
     {
@@ -354,17 +356,23 @@ def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
 
 
 def _evidence_to_dict(ref: EvidenceRef) -> Dict[str, object]:
-    # A ``collected_at`` that is present but does not parse as a genuine
-    # RFC 3339 instant (e.g. a calendar-impossible date) is untrustworthy:
-    # it is degraded to the schema's own "absent" representation (``None``)
-    # rather than passed through raw, which would otherwise leave a
-    # manifest that can never validate against the timestamp format. The
-    # same degradation also clears the fields that would otherwise imply a
-    # timestamp could be trusted (``freshness_seconds``, ``live_verified``).
+    # ``collected_at`` is the only trustworthy signal here: if it is
+    # missing entirely, *or* present but does not parse as a genuine
+    # RFC 3339 instant (e.g. a calendar-impossible date), the entry is
+    # untrustworthy and every field that could otherwise imply a
+    # timestamp can be trusted is degraded in lockstep to the schema's
+    # own "absent"/"unverified" representation -- ``collected_at`` and
+    # ``freshness_seconds`` to ``None``, ``live_verified`` to ``False`` --
+    # regardless of what the input itself claimed for
+    # ``freshness_seconds``/``live_verified``. An untrustworthy or absent
+    # collected_at can never be overridden by an input that separately
+    # (accidentally or not) asserts a truthy ``live_verified`` or a
+    # nonzero ``freshness_seconds``: those claims are only ever honored
+    # once collected_at itself has been proven trustworthy.
     collected_at = ref.collected_at
     freshness_seconds = ref.freshness_seconds
     live_verified = ref.live_verified
-    if collected_at is not None and _try_parse_rfc3339(collected_at) is None:
+    if collected_at is None or _try_parse_rfc3339(collected_at) is None:
         collected_at = None
         freshness_seconds = None
         live_verified = False

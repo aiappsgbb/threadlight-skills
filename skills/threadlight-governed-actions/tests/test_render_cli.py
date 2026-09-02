@@ -592,6 +592,13 @@ _INSTANT_LATER_BUT_LEXICALLY_EARLIER = "2025-12-31T23:00:00Z"  # == 2025-12-31T2
 # A schema-``pattern``-valid but calendar-impossible timestamp: no such date
 # as February 30th exists, so ``datetime.fromisoformat`` raises ``ValueError``.
 _MALFORMED_COLLECTED_AT = "2026-02-30T10:00:00Z"
+# Two trustworthy instants 48 hours apart -- more than FRESHNESS_VALID_FOR_HOURS
+# (24h) -- so the *newest* (captured_at) instant exceeds the *oldest*
+# (oldest_source_at) instant plus valid_for_hours, and freshness.status must
+# be "expired" (not because the oldest timestamp itself looks stale, but
+# because the newest evidence was captured too long after the oldest one).
+_OLDEST_TRUSTWORTHY_TIMESTAMP = "2026-01-01T00:00:00Z"
+_NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED = "2026-01-03T00:00:00Z"
 
 
 def test_freshness_orders_by_actual_instant_not_lexical_string():
@@ -674,6 +681,78 @@ def test_manifest_mixed_valid_and_invalid_collected_at_uses_only_valid():
     assert good_entry["collected_at"] == _COLLECTED_AT_EARLY
 
 
+def _overclaiming_evidence(evidence_id: str, *, collected_at: Optional[str]) -> contracts.EvidenceRef:
+    # Deliberately bypasses ``_evidence()``'s own derivation of
+    # freshness_seconds/live_verified from collected_at, to construct the
+    # exact adversarial-input shape this module must never trust: a
+    # source claiming a fresh, live-verified timestamp even though
+    # collected_at itself is missing or unparseable.
+    return contracts.EvidenceRef(
+        evidence_id=evidence_id,
+        kind="static-file-hash",
+        source=f"{evidence_id}.json",
+        sha256=_sha256_of(evidence_id),
+        collected_at=collected_at,
+        freshness_seconds=42,
+        live_verified=True,
+        phase="design",
+        repository=_REPOSITORY,
+        source_commit=_COMMIT,
+        target_environment=None,
+        policy_set_sha256=None,
+    )
+
+
+def test_manifest_never_trusts_overclaimed_freshness_for_missing_collected_at():
+    # collected_at is the *only* trustworthy signal; freshness_seconds=42
+    # and live_verified=True on the input must never leak through just
+    # because collected_at happens to be entirely absent.
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_overclaiming_evidence("EVID-overclaim-missing", collected_at=None)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-overclaim-missing")
+    assert entry["collected_at"] is None
+    assert entry["freshness_seconds"] is None
+    assert entry["live_verified"] is False
+    assert manifest["freshness"]["status"] == "stale"
+
+
+def test_manifest_never_trusts_overclaimed_freshness_for_invalid_collected_at():
+    # Same adversarial shape, but collected_at is present and looks like a
+    # timestamp yet fails to parse as a real instant -- freshness_seconds
+    # and live_verified must degrade exactly as for the missing case.
+    findings = [_finding("MED-001", "pass")]
+    evidence = [
+        _overclaiming_evidence("EVID-overclaim-invalid", collected_at=_MALFORMED_COLLECTED_AT)
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-overclaim-invalid")
+    assert entry["collected_at"] is None
+    assert entry["freshness_seconds"] is None
+    assert entry["live_verified"] is False
+    assert manifest["freshness"]["status"] == "stale"
+
+
+def test_evidence_index_never_shows_overclaimed_live_verified_for_missing_timestamp():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_overclaiming_evidence("EVID-overclaim-missing", collected_at=None)]
+    result = _base_result(findings=findings, evidence=evidence)
+    text = render.render_evidence_pack(result)
+    index_start = text.index("## Evidence index")
+    index_section = text[index_start : text.index("## Pass/fail matrix")]
+    assert "EVID-overclaim-missing" in index_section
+    # The index row for this evidence must render the degraded, truthful
+    # live_verified=False -- never the overclaimed True the input supplied.
+    row = next(line for line in index_section.splitlines() if "EVID-overclaim-missing" in line)
+    assert "False" in row
+    assert "True" not in row
+    assert "42" not in row
+
+
 def _live_evidence_freshness_risk(manifest: Dict[str, object]) -> Dict[str, object]:
     return next(
         risk
@@ -697,10 +776,17 @@ def test_residual_risk_live_evidence_freshness_wording_is_precise():
     assert "false" in description
     assert "excluded" in description
     # Precisely distinguishes the two possible non-fresh outcomes: no
-    # trustworthy timestamp at all -> stale; a trustworthy timestamp that
-    # falls outside the freshness window -> expired.
+    # trustworthy timestamp at all -> stale. Expiration is never described
+    # as the *oldest* timestamp itself "falling outside a window that
+    # starts there" (that framing is circular/false); it must instead say
+    # the newest trustworthy instant (captured_at) exceeds the oldest
+    # trustworthy instant (oldest_source_at) plus valid_for_hours.
     assert "stale" in description
     assert "expired" in description
+    assert "captured_at" in description
+    assert "oldest_source_at" in description
+    assert "valid_for_hours" in description
+    assert "falls outside" not in description
 
 
 def test_residual_risk_live_evidence_freshness_wording_matches_stale_case():
@@ -714,6 +800,26 @@ def test_residual_risk_live_evidence_freshness_wording_matches_stale_case():
     # is excluded from freshness, and the manifest is truthfully "stale".
     description = _live_evidence_freshness_risk(manifest)["description"]
     assert "stale" in description
+
+
+def test_residual_risk_live_evidence_freshness_wording_matches_expired_case():
+    findings = [_finding("MED-001", "pass")]
+    evidence = [
+        _evidence("EVID-oldest", collected_at=_OLDEST_TRUSTWORTHY_TIMESTAMP),
+        _evidence("EVID-newest", collected_at=_NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    # Exercise the real mechanics this wording claims: the newest
+    # trustworthy instant (captured_at) is 48 hours after the oldest
+    # (oldest_source_at), which exceeds valid_for_hours (24) -- so the
+    # manifest is truthfully "expired", not because oldest_source_at
+    # itself looks old in isolation.
+    assert manifest["captured_at"] == _NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED
+    assert manifest["freshness"]["oldest_source_at"] == _OLDEST_TRUSTWORTHY_TIMESTAMP
+    assert manifest["freshness"]["status"] == "expired"
+    description = _live_evidence_freshness_risk(manifest)["description"]
+    assert "expired" in description
 
 
 # ---------------------------------------------------------------------------
