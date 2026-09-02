@@ -95,6 +95,12 @@ def pinned_oidc_workflow(
     return workflow_path
 
 
+_STRUCTURED_REQUIRED_REVIEWS = {
+    "require_code_owner_reviews": True,
+    "required_approving_review_count": 1,
+}
+
+
 def _write_clean_repo(tmp_path: Path) -> Path:
     """Build a repo-wide fixture that is clean on every GHCP control except
     live-only branch-protection/required-check enforcement, which static
@@ -519,7 +525,7 @@ def test_live_github_evidence_can_confirm_branch_protection(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": True,
                 "allow_force_pushes": False,
@@ -536,7 +542,7 @@ def test_ghcp_internal_loop_intercepted_is_always_false(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": True,
                 "allow_force_pushes": False,
@@ -681,7 +687,7 @@ def test_required_status_checks_naming_unrelated_job_stays_not_verified(tmp_path
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["some-unrelated-check"],
             }
         },
@@ -698,7 +704,7 @@ def test_required_status_checks_naming_gating_job_confirms_pass(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": True,
                 "allow_force_pushes": False,
@@ -724,7 +730,7 @@ def test_admins_exempt_from_branch_protection_stays_not_verified(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": False,
                 "allow_force_pushes": False,
@@ -742,7 +748,7 @@ def test_force_pushes_allowed_keeps_branch_protection_not_verified(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": True,
                 "allow_force_pushes": True,
@@ -783,7 +789,7 @@ def test_enforce_admins_enabled_mapping_shape_still_confirms_pass(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": {"enabled": True},
                 "allow_force_pushes": False,
@@ -876,7 +882,7 @@ def _write_clean_repo_with_deploy_environment(tmp_path: Path, environment: str) 
 
 
 _STRONG_BRANCH_PROTECTION = {
-    "required_pull_request_reviews": True,
+    "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
     "required_status_checks": ["test"],
     "enforce_admins": True,
     "allow_force_pushes": False,
@@ -1368,15 +1374,17 @@ _EXPECTED_GHCP_CATALOG_SUMMARIES = {
 
 # The catalog's `severity` can only ever be a single "must-fix"/"should-fix"
 # string (see `tests/test_contracts.py`), but the approved master taxonomy
-# allows GHCP-002/GHCP-006 to resolve to a softer `not-verified` status when
-# only local evidence is available; every other GHCP id may only ever emit
-# `must-fix`.
+# allows GHCP-002/GHCP-005/GHCP-006 to resolve to a softer `not-verified`
+# status when only local evidence is available (an Azure deploy with no
+# visible `azure/login` step is never itself proof of OIDC/WIF, so GHCP-005
+# must be able to surface `not-verified` too); every other GHCP id may only
+# ever emit `must-fix`.
 _ALLOWED_GHCP_STATUSES = {
     "GHCP-001": {"must-fix"},
     "GHCP-002": {"must-fix", "not-verified"},
     "GHCP-003": {"must-fix"},
     "GHCP-004": {"must-fix"},
-    "GHCP-005": {"must-fix"},
+    "GHCP-005": {"must-fix", "not-verified"},
     "GHCP-006": {"must-fix", "not-verified"},
 }
 
@@ -3148,7 +3156,7 @@ def test_required_status_check_naming_sibling_non_gating_job_stays_not_verified(
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["lint"],
                 "enforce_admins": True,
                 "allow_force_pushes": False,
@@ -3167,7 +3175,7 @@ def test_required_status_check_naming_actual_gating_job_confirms_pass(tmp_path):
         "default_branch": "main",
         "branch_protection": {
             "main": {
-                "required_pull_request_reviews": True,
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
                 "required_status_checks": ["test"],
                 "enforce_admins": True,
                 "allow_force_pushes": False,
@@ -3182,9 +3190,9 @@ def test_required_status_check_naming_actual_gating_job_confirms_pass(tmp_path):
 # Fresh quality review, item 4: real, API-shaped branch-protection evidence
 # must explicitly turn on CODEOWNER review and require a positive approving-
 # review count -- a `required_pull_request_reviews` mapping present for some
-# other reason is never itself proof reviews are actually required. A
-# simplified test fixture's bare-boolean form is unaffected and stays
-# conservative exactly as before.
+# other reason is never itself proof reviews are actually required. A bare
+# boolean (whether from a simplified test fixture or otherwise) is never
+# itself structured evidence and must always be rejected.
 # ---------------------------------------------------------------------------
 
 
@@ -3248,11 +3256,12 @@ def test_branch_protection_real_api_shape_with_codeowner_review_confirms_pass(
     assert result.findings == ()
 
 
-def test_branch_protection_simplified_bare_boolean_form_is_unaffected(tmp_path):
-    """A simplified test fixture's bare `True` (not GitHub's own nested
-    object shape) stays conservatively accepted exactly as before -- it is
-    never held to the CODEOWNER-review/approval-count checks a real API
-    response can actually supply."""
+def test_branch_protection_bare_boolean_form_is_rejected_never_false_pass(tmp_path):
+    """A simplified/legacy bare `True` for `required_pull_request_reviews`
+    (rather than GitHub's own nested object shape) must never be accepted
+    as sufficient live evidence -- it carries no proof CODEOWNER review or
+    a positive required-approval count are actually turned on, and must
+    always fail closed to `not-verified`, never an inferred `pass`."""
     root = _write_clean_repo(tmp_path)
     live_github = {
         "default_branch": "main",
@@ -3266,7 +3275,9 @@ def test_branch_protection_simplified_bare_boolean_form_is_unaffected(tmp_path):
         },
     }
     result = assess_change_plane(root, live_github=live_github, live_azure=None)
-    assert result.findings == ()
+    assert "GHCP-002" in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
 
 
 # ---------------------------------------------------------------------------
@@ -3612,3 +3623,574 @@ def test_symlink_escape_finding_never_leaks_absolute_host_path(tmp_path):
     all_paths = " ".join(path for f in result.findings for path in f.affected_paths)
     assert str(tmp_path) not in all_details
     assert str(tmp_path) not in all_paths
+
+
+# ---------------------------------------------------------------------------
+# Verification-gap fix 1: an aggregate `ghcp_azure_oidc` control (and its
+# GHCP-005 finding) must reflect a single workflow's own `not-verified`
+# OIDC/WIF status -- never silently resolve to a rolled-up `pass` just
+# because no *other* workflow is an outright `must-fix` offender.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_unverified_azure_deploy_and_clean_workflow(tmp_path: Path) -> Path:
+    root = tmp_path / "unverified-oidc-repo"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          ship:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Deploy via CLI
+                run: az webapp deploy --resource-group rg --name my-app
+        """,
+    )
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    return root
+
+
+def test_aggregate_azure_oidc_control_propagates_not_verified_never_pass(tmp_path):
+    root = _repo_with_unverified_azure_deploy_and_clean_workflow(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_azure_oidc"] == "not-verified"
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-005")
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "azure-login-not-verified-statically"
+
+
+def test_aggregate_azure_oidc_control_stays_pass_with_no_unverified_workflow(tmp_path):
+    """A clean repo with no Azure deploy evidence at all still confirms a
+    passing `ghcp_azure_oidc` control -- the not-verified propagation from
+    the test above is specific to an actual unverified deploy, never a
+    blanket regression to a permanently-unverifiable control."""
+    root = _write_clean_repo(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert result.controls["ghcp_azure_oidc"] == "pass"
+    assert "GHCP-005" not in {f.finding_id for f in result.findings}
+
+
+# ---------------------------------------------------------------------------
+# Verification-gap fix 2: `_is_statically_disabled` must normalize a GitHub
+# expression wrapper -- `if: ${{ false }}`, `if: "${{ false }}"`, and
+# equivalent constant forms -- down to the same literal `false` a bare
+# `if: false` already produces, so a disabled step or job can never satisfy
+# CTK/application-probe/eval evidence just because its own disabling
+# condition happens to be spelled as an expression instead of a bare
+# boolean.
+# ---------------------------------------------------------------------------
+
+
+def test_ctk_probe_in_expression_wrapped_disabled_step_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    if: ${{ false }}
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_in_quoted_expression_wrapped_disabled_step_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    if: "${{ false }}"
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_in_expression_wrapped_disabled_job_is_must_fix(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        "python -m ctk run-vectors\n                      "
+        "python -m probes run-application-probe",
+        job_if="${{ false }}",
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_eval_runner_in_expression_wrapped_disabled_step_is_must_fix(tmp_path):
+    root = tmp_path / "eval-expr-disabled-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+                  - name: Run evals
+                    if: ${{ false }}
+                    run: pytest evals
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-003" in {f.finding_id for f in result.findings}
+
+
+def test_ctk_probe_with_genuinely_enabled_expression_condition_still_passes(tmp_path):
+    """A real, non-constant expression condition (or one that normalizes to
+    a truthy constant) must never be mistaken for a disabling condition --
+    only a step/job that actually normalizes to a false-y literal is
+    treated as statically disabled."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        "python -m ctk run-vectors\n                      "
+        "python -m probes run-application-probe",
+        job_if="${{ true }}",
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Verification-gap fix 3: live required-status-check enforcement must bind
+# to whichever job(s) actually run the repo's own eval-suite command, not
+# just the job(s) satisfying CTK/application-probe evidence -- a separate,
+# unrequired job quietly running the eval suite must never confirm branch
+# protection on its own.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_ctk_probe_and_separate_eval_job(tmp_path: Path) -> Path:
+    root = tmp_path / "separate-eval-job-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+              evals:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run evals
+                    run: pytest evals
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    return root
+
+
+def test_required_check_naming_only_ctk_job_stays_not_verified_when_eval_job_separate(
+    tmp_path,
+):
+    root = _repo_with_ctk_probe_and_separate_eval_job(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
+                "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_required_check_naming_both_ctk_and_eval_jobs_confirms_pass(tmp_path):
+    root = _repo_with_ctk_probe_and_separate_eval_job(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
+                "required_status_checks": ["test", "evals"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {
+        f.finding_id for f in result.findings if f.status == "not-verified"
+    }
+
+
+def test_required_check_naming_only_eval_job_stays_not_verified_when_ctk_job_separate(
+    tmp_path,
+):
+    """The binding requirement is symmetric: naming only the eval job while
+    leaving the CTK/probe job unrequired is just as unconfirmed as the
+    reverse."""
+    root = _repo_with_ctk_probe_and_separate_eval_job(tmp_path)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
+                "required_status_checks": ["evals"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_required_check_naming_single_combined_job_confirms_pass(tmp_path):
+    """A single job that itself runs both the CTK/application probes and
+    the eval suite satisfies both roles at once, without needing to be
+    named twice."""
+    root = tmp_path / "combined-job-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK, application probes, and evals
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+                      pytest evals
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(
+            [
+                "src/governance/** @octo-org/governance",
+                "policies/** @octo-org/governance",
+                "tests/** @octo-org/governance",
+                ".github/workflows/governed-actions.yml @octo-org/governance",
+                "tests/governed-actions-manifest.json @octo-org/governance",
+                "tests/governed-actions-apply-plan.json @octo-org/governance",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True)
+    (eval_dir / "test_eval.py").write_text("def test_eval(): pass\n", encoding="utf-8")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {
+            "main": {
+                "required_pull_request_reviews": dict(_STRUCTURED_REQUIRED_REVIEWS),
+                "required_status_checks": ["test"],
+                "enforce_admins": True,
+                "allow_force_pushes": False,
+            }
+        },
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {
+        f.finding_id for f in result.findings if f.status == "not-verified"
+    }
+
+
+# ---------------------------------------------------------------------------
+# Verification-gap fix 5: only a single, validated GitHub Actions context
+# reference (``secrets.*``, ``vars.*``, ``env.*``, ``needs.*.outputs.*``,
+# ...) wrapped in ``${{ ... }}`` and nothing else is ever preserved as an
+# identity reference -- a string literal, a function call, or any other
+# expression payload wrapped in the very same ``${{ ... }}`` syntax is not
+# itself proof it is a safe reference rather than an inline credential a
+# workflow author hardcoded directly into the expression, and must still be
+# redacted.
+# ---------------------------------------------------------------------------
+
+
+def _workflow_with_client_id(tmp_path: Path, client_id_value: str) -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@92a5484dfaf04ca78a94597f4f19fea633851fa2
+                    with:
+                      client-id: {client_id_value}
+                      tenant-id: ${{{{ secrets.AZURE_TENANT_ID }}}}
+                      subscription-id: ${{{{ secrets.AZURE_SUBSCRIPTION_ID }}}}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return workflow_path
+
+
+def test_string_literal_wrapped_in_expression_syntax_is_still_redacted(tmp_path):
+    workflow = _workflow_with_client_id(tmp_path, "${{ 'hardcoded-client-id-value' }}")
+    result = assess_workflow(workflow)
+    refs = result.identity_refs
+    assert refs
+    assert "hardcoded-client-id-value" not in " ".join(refs)
+    assert any(ref.startswith("<inline-identity-value-redacted:sha256:") for ref in refs)
+
+
+def test_function_call_wrapped_in_expression_syntax_is_still_redacted(tmp_path):
+    workflow = _workflow_with_client_id(
+        tmp_path, "${{ fromJSON(secrets.AZURE_CREDENTIALS).clientId }}"
+    )
+    result = assess_workflow(workflow)
+    refs = result.identity_refs
+    assert refs
+    assert "AZURE_CREDENTIALS" not in " ".join(refs)
+    assert any(ref.startswith("<inline-identity-value-redacted:sha256:") for ref in refs)
+
+
+def test_bare_secrets_context_reference_is_preserved_unredacted(tmp_path):
+    workflow = _workflow_with_client_id(tmp_path, "${{ secrets.AZURE_CLIENT_ID }}")
+    result = assess_workflow(workflow)
+    refs = result.identity_refs
+    assert "${{ secrets.AZURE_CLIENT_ID }}" in refs
+
+
+def test_bare_vars_and_needs_context_references_are_preserved_unredacted(tmp_path):
+    for safe_ref in (
+        "${{ vars.AZURE_CLIENT_ID }}",
+        "${{ needs.build.outputs.client_id }}",
+    ):
+        workflow = _workflow_with_client_id(tmp_path, safe_ref)
+        result = assess_workflow(workflow)
+        assert safe_ref in result.identity_refs
+
+
+# ---------------------------------------------------------------------------
+# Verification-gap fix 6: a workflow file this module cannot safely read or
+# parse must never leak the assessment host's own absolute directory layout
+# into the resulting finding, even though the underlying `OSError`/
+# `yaml.YAMLError` text itself embeds whatever path this module happened to
+# read the file from.
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_yaml_finding_never_leaks_absolute_host_path(tmp_path):
+    root = tmp_path / "malformed-path-leak-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    malformed_path = root / ".github" / "workflows" / "malformed.yml"
+    malformed_path.write_text("name: Broken\non: [pull_request\n", encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    all_details = " ".join(f.details for f in result.findings)
+    all_paths = " ".join(path for f in result.findings for path in f.affected_paths)
+    assert str(tmp_path) not in all_details
+    assert str(tmp_path) not in all_paths
+    assert str(root) not in all_details
+    assert str(root) not in all_paths
+
+
+def test_oversized_workflow_finding_never_leaks_absolute_host_path(tmp_path):
+    root = tmp_path / "oversized-path-leak-repo"
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+    huge_path = root / ".github" / "workflows" / "huge.yml"
+    huge_path.write_text("# padding\n" + ("x" * (2 * 1024 * 1024)), encoding="utf-8")
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    all_details = " ".join(f.details for f in result.findings)
+    all_paths = " ".join(path for f in result.findings for path in f.affected_paths)
+    assert str(tmp_path) not in all_details
+    assert str(tmp_path) not in all_paths
+    assert str(root) not in all_details
+    assert str(root) not in all_paths

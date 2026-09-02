@@ -824,20 +824,32 @@ def _oidc_status(
     return "pass"
 
 
-_SAFE_IDENTITY_REF_RE = re.compile(r"^\$\{\{.*\}\}$", re.DOTALL)
+_SAFE_IDENTITY_REF_RE = re.compile(
+    r"^\$\{\{\s*[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_-]+)+\s*\}\}$"
+)
 
 
 def _redact_identity_ref(value: str) -> str:
     """A workflow's own literal ``client-id``/``creds`` text, safe to
     retain and render anywhere in this module's evidence only when it
-    is itself a ``${{ ... }}`` expression -- almost always
-    ``secrets.*``, but also a safe context/env reference -- never an
-    actual inline credential value. Rule 6 must never retain or render
-    an inline (non-expression) value: it is replaced here with a short,
-    non-reversible fingerprint, so two occurrences of the very same
-    inline value can still be recognized as equal across a report
-    without the underlying credential ever appearing in any finding,
-    log, or report.
+    is itself a single, validated GitHub Actions context reference --
+    a bare, dotted path like ``secrets.AZURE_CLIENT_ID``, ``vars.FOO``,
+    ``env.FOO``, or ``needs.build.outputs.id``, wrapped in
+    ``${{ ... }}`` and nothing else.
+
+    Anything else is redacted, including a string literal, a function
+    call (``fromJSON(...)``, ``format(...)``, ...), an operator
+    expression, or string concatenation *even when wrapped in*
+    ``${{ ... }}`` -- an expression is not itself proof its payload is
+    a safe reference rather than an inline credential a workflow
+    author hardcoded directly into the expression (e.g.
+    ``${{ 'hunter2' }}``); only a bare context reference this module
+    can actually validate is preserved. Every other value -- an
+    unwrapped inline literal, or an unvalidated expression -- is
+    replaced here with a short, non-reversible fingerprint, so two
+    occurrences of the very same inline value can still be recognized
+    as equal across a report without the underlying credential ever
+    appearing in any finding, log, or report.
     """
     if _SAFE_IDENTITY_REF_RE.match(value.strip()):
         return value
@@ -986,15 +998,46 @@ def _pr_gate_status(document: Mapping, triggers: Tuple[str, ...], is_deploy: boo
 _INERT_RUN_LINE_RE = re.compile(r"^(?:echo\b|printf\b|print\s*\()", re.IGNORECASE)
 
 
+# A step's/job's `if:` condition, expressed as raw GitHub Actions
+# expression syntax, is normalized down to its innermost literal text by
+# repeatedly stripping a matching `${{ ... }}` wrapper and/or matching
+# quotes -- so `false`, `'false'`, `${{ false }}`, `${{ 'false' }}`, and
+# even a doubly-wrapped `${{ 'false' }}` embedded in more `${{ }}` are
+# all recognized as exactly the same statically-false condition.
+_EXPRESSION_WRAPPER_RE = re.compile(r"^\$\{\{\s*(?P<inner>.*)\s*\}\}$", re.DOTALL)
+
+
+def _normalize_static_if_condition(value: object) -> Optional[str]:
+    """The innermost literal text of a step's/job's `if:` condition, with
+    every layer of a `${{ ... }}` expression wrapper and/or matching
+    quotes stripped -- or ``None`` if ``value`` is not itself a string
+    (a bare YAML boolean is handled directly by the caller instead).
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    previous = None
+    while previous != text:
+        previous = text
+        match = _EXPRESSION_WRAPPER_RE.match(text)
+        if match:
+            text = match.group("inner").strip()
+            continue
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+            text = text[1:-1].strip()
+    return text
+
+
 def _is_statically_disabled(step: Mapping, job: Optional[Mapping]) -> bool:
     """True only if a step's own `if:` (or its containing job's `if:`) is
-    a literal, statically-false condition -- YAML's bare `false`/`0`, or
-    an equivalent quoted string -- never a guess about a dynamic
-    expression this module cannot evaluate. A step or job with no `if:`
-    key at all, or one whose condition depends on runtime context this
-    module cannot resolve, is never treated as disabled: only a
-    condition that can *never* evaluate true, however GitHub actually
-    runs it, is excluded.
+    a literal, statically-false condition -- YAML's bare `false`/`0`, an
+    equivalent quoted string, or any of those wrapped in a GitHub Actions
+    `${{ ... }}` expression (however many layers deep) -- never a guess
+    about a dynamic expression this module cannot evaluate. A step or
+    job with no `if:` key at all, or one whose condition depends on
+    runtime context this module cannot resolve, is never treated as
+    disabled: only a condition that can *never* evaluate true, however
+    GitHub actually runs it, is excluded.
     """
     candidates: List[object] = [step.get("if")]
     if isinstance(job, Mapping):
@@ -1006,10 +1049,8 @@ def _is_statically_disabled(step: Mapping, job: Optional[Mapping]) -> bool:
             if candidate is False:
                 return True
             continue
-        text = str(candidate).strip()
-        if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
-            text = text[1:-1].strip()
-        if text.lower() in ("false", "0"):
+        text = _normalize_static_if_condition(candidate)
+        if text is not None and text.lower() in ("false", "0"):
             return True
     return False
 
@@ -1359,12 +1400,12 @@ def _environment_protection_confirmed(
     return True
 
 
-def _job_satisfies_ci_probes(job: Mapping) -> bool:
-    """True only if this specific job's own steps -- never a sibling
-    job's -- actually run both a CTK and an application probe, using
-    the same execution-reachability rules as `_ci_probes_static_status`
-    (excluding a disabled/always-false step and comment/echo-only
-    lines).
+def _job_run_texts(job: Mapping) -> List[str]:
+    """A single job's own execution-reachable ``run:`` command texts --
+    excluding a disabled/always-false step and comment/echo-only lines
+    -- factored out so both CTK/application-probe presence and eval-
+    runner presence can be checked against exactly the same text for
+    exactly the same job.
     """
     texts: List[str] = []
     steps = job.get("steps")
@@ -1380,22 +1421,58 @@ def _job_satisfies_ci_probes(job: Mapping) -> bool:
             kept = _governance_relevant_run_text(run)
             if kept:
                 texts.append(kept)
-    text = "\n".join(texts)
+    return texts
+
+
+def _job_satisfies_ci_probes(job: Mapping) -> bool:
+    """True only if this specific job's own steps -- never a sibling
+    job's -- actually run both a CTK and an application probe, using
+    the same execution-reachability rules as `_ci_probes_static_status`
+    (excluding a disabled/always-false step and comment/echo-only
+    lines).
+    """
+    text = "\n".join(_job_run_texts(job))
     return bool(_CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text))
 
 
-def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> Set[str]:
-    """Job ids/names of *only* the specific job(s), within a passing
-    pull_request-triggered workflow, whose own steps actually run both a
-    CTK and an application probe -- never every job in that workflow
-    file. A branch-protection required-status-check list must name the
-    real gating job GitHub reports the check under; an unrelated
-    sibling job (lint, docs-preview, ...) that merely lives alongside
-    the real gating job in the same file is not itself evidence of
-    anything, and naming it in required-status-checks would never
-    actually enforce this repo's real gating CI.
+def _job_references_eval(job: Mapping, eval_directories: Set[Path]) -> bool:
+    """True only if this specific job's own execution-reachable ``run:``
+    text references one of ``eval_directories`` as a whole, boundary-
+    delimited path token -- mirrors `_eval_runner_referenced`, but
+    scoped to a single job so the eval suite's own gating job can be
+    identified separately from whichever job runs CTK/application
+    probes, when a repo splits the two across sibling jobs in the same
+    workflow.
     """
-    names: Set[str] = set()
+    if not eval_directories:
+        return False
+    text = "\n".join(_job_run_texts(job))
+    return any(_path_token_pattern(directory).search(text) for directory in eval_directories)
+
+
+def _required_check_job_roles(
+    assessments: Tuple["WorkflowAssessment", ...], eval_directories: Set[Path]
+) -> List[Tuple[Set[str], Set[str]]]:
+    """One entry per pull_request-triggered, fully-passing workflow that
+    satisfies rule 3's required CI: a ``(ctk_probe_names,
+    eval_names)`` pair, where ``ctk_probe_names`` is every job id/name
+    within that workflow whose own steps satisfy CTK + application
+    probe (alternatives -- naming any one of them gates on that role),
+    and ``eval_names`` is every job id/name whose own steps reference
+    the repo's eval suite runner (also alternatives; empty when the
+    repo ships no eval suite).
+
+    A branch-protection required-status-check list only actually
+    enforces this workflow's real gating CI when it names *both*
+    roles: at least one CTK/application-probe job name, *and* -- if
+    the repo ships an eval suite -- at least one eval-referencing job
+    name too. A repo that splits its eval suite into a separate job
+    from its CTK/application-probe job must have *both* job names
+    required, never just one; a repo that runs everything in one
+    combined job satisfies both roles by naming that single job, since
+    its name then appears in both sets.
+    """
+    roles: List[Tuple[Set[str], Set[str]]] = []
     for assessment in assessments:
         if "pull_request" not in assessment.triggers:
             continue
@@ -1405,13 +1482,31 @@ def _required_check_job_names(assessments: Tuple["WorkflowAssessment", ...]) -> 
         jobs = document.get("jobs")
         if not isinstance(jobs, Mapping):
             continue
+        ctk_probe_names: Set[str] = set()
+        eval_names: Set[str] = set()
         for job_id, job in jobs.items():
-            if not isinstance(job, Mapping) or not _job_satisfies_ci_probes(job):
+            if not isinstance(job, Mapping):
                 continue
-            names.add(str(job_id).strip().lower())
+            names = {str(job_id).strip().lower()}
             if job.get("name"):
                 names.add(str(job["name"]).strip().lower())
-    return names
+            if _job_satisfies_ci_probes(job):
+                ctk_probe_names.update(names)
+            if _job_references_eval(job, eval_directories):
+                eval_names.update(names)
+        if not ctk_probe_names:
+            continue
+        if eval_directories and not eval_names:
+            # This workflow satisfies CTK/application-probe, but no job
+            # within it references the repo's own eval suite anywhere --
+            # `_satisfies_required_ci` already excludes this workflow
+            # from static rule 3 for the same reason; it must never
+            # contribute a required-check role here either, since naming
+            # its CTK/application-probe job alone could never actually
+            # gate on the eval suite too.
+            continue
+        roles.append((ctk_probe_names, eval_names if eval_directories else set()))
+    return roles
 
 
 def _protection_flag_enabled(value: object) -> bool:
@@ -1426,18 +1521,20 @@ def _protection_flag_enabled(value: object) -> bool:
 
 def _branch_protection_confirmed(
     live_github: Optional[Mapping],
-    required_check_names: Set[str],
+    required_check_roles: Sequence[Tuple[Set[str], Set[str]]],
     declared_environments: Set[str] = frozenset(),
 ) -> bool:
     """True only if live evidence proves the default branch is
     *substantively* protected -- reviews required (from real,
     API-shaped data: CODEOWNER review explicitly required *and* a
     positive required approving-review count), required checks naming
-    this repo's real gating CI, admins not exempt, force pushes
-    disallowed, and no named bypass allowance -- plus, "as available",
-    that any GitHub Environment a deploy job actually uses is itself
-    reported protected. A required-status-check list that merely names
-    *some* check, a protection rule that exempts admins or still
+    *every* job this repo's real gating CI actually needs enforced,
+    admins not exempt, force pushes disallowed, and no named bypass
+    allowance -- plus, "as available", that any GitHub Environment a
+    deploy job actually uses is itself reported protected. A
+    required-status-check list that merely names *some* check, that
+    names a workflow's CTK/application-probe job but not its separate
+    eval-suite job, a protection rule that exempts admins or still
     allows a forced push, or a `required_pull_request_reviews` object
     that never actually turns on CODEOWNER review or requires at least
     one approval, can never be resolved into a `pass` -- each is
@@ -1445,12 +1542,12 @@ def _branch_protection_confirmed(
     this function exists precisely so live evidence -- when supplied --
     is actually held to that full standard rather than a partial one.
 
-    ``required_pull_request_reviews`` can also be reported as a bare
-    boolean by a simplified test fixture (rather than GitHub's own
-    nested object shape); that simplified form is deliberately still
-    accepted at face value -- it stays conservative (any falsy value
-    still fails closed) but is never held to the CODEOWNER-review/
-    approval-count checks a real API response can actually supply.
+    ``required_pull_request_reviews`` must itself be GitHub's own
+    nested object shape -- a bare boolean (``true``/``false``), however
+    a simplified test fixture might report it, is never itself
+    structured evidence that CODEOWNER review and a positive required
+    approval count are actually turned on, and is always rejected
+    (fails closed) rather than accepted at face value.
     """
     if not live_github:
         return False
@@ -1462,26 +1559,25 @@ def _branch_protection_confirmed(
     if not isinstance(rule, Mapping):
         return False
     reviews = rule.get("required_pull_request_reviews")
-    if not reviews:
+    if not isinstance(reviews, Mapping):
         return False
-    if isinstance(reviews, Mapping):
-        # Real, API-shaped evidence must explicitly turn on CODEOWNER
-        # review and require at least one approval -- a mapping present
-        # for some other reason (e.g. only `dismiss_stale_reviews`) is
-        # not itself proof reviews are actually required at all.
-        if not reviews.get("require_code_owner_reviews"):
+    # Real, API-shaped evidence must explicitly turn on CODEOWNER
+    # review and require at least one approval -- a mapping present
+    # for some other reason (e.g. only `dismiss_stale_reviews`) is
+    # not itself proof reviews are actually required at all.
+    if not reviews.get("require_code_owner_reviews"):
+        return False
+    approving_count = reviews.get("required_approving_review_count")
+    if not isinstance(approving_count, int) or isinstance(approving_count, bool):
+        return False
+    if approving_count <= 0:
+        return False
+    bypass = reviews.get("bypass_pull_request_allowances")
+    if isinstance(bypass, Mapping):
+        if any(bypass.get(key) for key in ("users", "teams", "apps")):
             return False
-        approving_count = reviews.get("required_approving_review_count")
-        if not isinstance(approving_count, int) or isinstance(approving_count, bool):
-            return False
-        if approving_count <= 0:
-            return False
-        bypass = reviews.get("bypass_pull_request_allowances")
-        if isinstance(bypass, Mapping):
-            if any(bypass.get(key) for key in ("users", "teams", "apps")):
-                return False
-        elif bypass:
-            return False
+    elif bypass:
+        return False
     if not _protection_flag_enabled(rule.get("enforce_admins")):
         return False
     if _protection_flag_enabled(rule.get("allow_force_pushes")):
@@ -1497,11 +1593,20 @@ def _branch_protection_confirmed(
     context_names = {str(context).strip().lower() for context in contexts}
     if not context_names:
         return False
-    # A required-status-check list can name *some* check without naming the
-    # one that actually runs this repo's CTK/application-probe CI; that
-    # gap can never be resolved by inferring a `pass` -- it stays
-    # not-verified unless a genuine gating job name is actually enforced.
-    if not (context_names & required_check_names):
+    # A required-status-check list can name *some* check without naming
+    # the one(s) that actually run this repo's real gating CI -- every
+    # role (CTK/application-probe, and the eval suite's own job when the
+    # repo ships one) a qualifying workflow needs must itself be named,
+    # not merely one of them; that gap can never be resolved by
+    # inferring a `pass` -- it stays not-verified unless a genuinely
+    # complete gating job set is actually enforced.
+    if not required_check_roles:
+        return False
+    if not any(
+        (ctk_probe_names & context_names)
+        and (not eval_names or (eval_names & context_names))
+        for ctk_probe_names, eval_names in required_check_roles
+    ):
         return False
     return _environment_protection_confirmed(live_github, declared_environments)
 
@@ -1648,6 +1753,31 @@ def _unreadable_workflow_assessment(path: Path, reason: str) -> WorkflowAssessme
     )
 
 
+def _sanitize_workflow_error_text(root: Path, path: Path, message: str) -> str:
+    """A caught ``ChangePlaneError``'s own message, with every occurrence
+    of this workflow file's absolute filesystem path -- and its
+    resolved form, if it differs -- replaced by its repository-relative
+    location. `_load_workflow_document`'s own error messages (and the
+    lower-level ``OSError``/``yaml.YAMLError`` text they wrap) embed
+    whatever path this module happened to read the file from; a parse
+    or read failure must never leak the assessment host's own directory
+    layout into a retained finding any more than a successful read
+    does.
+    """
+    sanitized = message
+    relative = _rel_unresolved(root, path)
+    for absolute_form in {str(path), str(Path(path).absolute())}:
+        if absolute_form and absolute_form != relative:
+            sanitized = sanitized.replace(absolute_form, relative)
+    try:
+        resolved_form = str(path.resolve())
+    except OSError:
+        resolved_form = ""
+    if resolved_form and resolved_form != relative:
+        sanitized = sanitized.replace(resolved_form, relative)
+    return sanitized
+
+
 def _assess_workflow_or_flag(root: Path, path: Path) -> Tuple[WorkflowAssessment, bool]:
     """Assess one workflow file, converting *any* failure to safely
     reject, read, or parse it into a conservative "must-fix everything"
@@ -1664,7 +1794,8 @@ def _assess_workflow_or_flag(root: Path, path: Path) -> Tuple[WorkflowAssessment
         _reject_workflow_symlink_escape(root, path)
         return assess_workflow(path), True
     except ChangePlaneError as error:
-        return _unreadable_workflow_assessment(path, str(error)), False
+        reason = _sanitize_workflow_error_text(root, path, str(error))
+        return _unreadable_workflow_assessment(path, reason), False
 
 
 def assess_change_plane(
@@ -2223,9 +2354,13 @@ def _assess_codeowners(
         )
         return
 
+    eval_suite_files = _discover_eval_suite_files(root)
+    eval_directories = (
+        _eval_suite_directories(root, eval_suite_files) if eval_suite_files else set()
+    )
     if _branch_protection_confirmed(
         live_github,
-        _required_check_job_names(assessments),
+        _required_check_job_roles(assessments, eval_directories),
         _deploy_job_environment_names(assessments),
     ):
         controls["ghcp_codeowners"] = "pass"
@@ -2406,31 +2541,63 @@ def _assess_oidc(
         controls["ghcp_azure_oidc"] = "not-applicable"
         return
     offenders = tuple(a for a in assessments if a.oidc_wif == "must-fix")
-    controls["ghcp_azure_oidc"] = "must-fix" if offenders else "pass"
-    if not offenders:
-        return
-    findings.append(
-        Finding(
-            finding_id="GHCP-005",
-            status="must-fix",
-            phase="pre-deploy",
-            plane="change",
-            reason_code="secret-based-azure-login",
-            summary="Azure deployment uses a long-lived secret instead of OIDC/WIF.",
-            details=(
-                "One or more `azure/login` steps, or Azure deployment "
-                "action steps (`azure/webapps-deploy`, `azure/functions-"
-                "action`, `azure/arm-deploy`, ...), read a client secret, "
-                "password, publish profile, or service-principal secret "
-                "-- as an input, a `run:` command flag, or an `env:` "
-                "variable name -- or an `azure/login` step is not backed "
-                "by an explicit `permissions: id-token: write` grant in "
-                "that same job, instead of authenticating via OpenID "
-                "Connect / workload identity federation."
-            ),
-            affected_paths=tuple(_rel(root, a.path) for a in offenders),
+    if offenders:
+        controls["ghcp_azure_oidc"] = "must-fix"
+        findings.append(
+            Finding(
+                finding_id="GHCP-005",
+                status="must-fix",
+                phase="pre-deploy",
+                plane="change",
+                reason_code="secret-based-azure-login",
+                summary="Azure deployment uses a long-lived secret instead of OIDC/WIF.",
+                details=(
+                    "One or more `azure/login` steps, or Azure deployment "
+                    "action steps (`azure/webapps-deploy`, `azure/functions-"
+                    "action`, `azure/arm-deploy`, ...), read a client secret, "
+                    "password, publish profile, or service-principal secret "
+                    "-- as an input, a `run:` command flag, or an `env:` "
+                    "variable name -- or an `azure/login` step is not backed "
+                    "by an explicit `permissions: id-token: write` grant in "
+                    "that same job, instead of authenticating via OpenID "
+                    "Connect / workload identity federation."
+                ),
+                affected_paths=tuple(_rel(root, a.path) for a in offenders),
+            )
         )
-    )
+        return
+    # A workflow this module could tell deploys to Azure, but with no
+    # visible `azure/login` step at all, is never itself a `must-fix` --
+    # absence of a secret-shaped credential is not proof of OIDC/WIF, it
+    # is equally consistent with a federated identity this static scan
+    # simply cannot see. It must never be silently rolled up into an
+    # aggregate `pass` either: a single per-workflow `not-verified`
+    # anywhere in the set means this repo's own Azure-OIDC posture as a
+    # whole is not-verified, not confirmed passing.
+    unverified = tuple(a for a in assessments if a.oidc_wif == "not-verified")
+    if unverified:
+        controls["ghcp_azure_oidc"] = "not-verified"
+        findings.append(
+            Finding(
+                finding_id="GHCP-005",
+                status="not-verified",
+                phase="pre-deploy",
+                plane="change",
+                reason_code="azure-login-not-verified-statically",
+                summary="Azure deployment uses a long-lived secret instead of OIDC/WIF.",
+                details=(
+                    "One or more workflows demonstrably deploy to Azure "
+                    "(a known Azure deploy action, or a raw `az`/`azd` CLI "
+                    "deploy command) yet declare no visible `azure/login` "
+                    "step confirming how they authenticate; static files "
+                    "alone can never prove OpenID Connect / workload "
+                    "identity federation is what is actually used."
+                ),
+                affected_paths=tuple(_rel(root, a.path) for a in unverified),
+            )
+        )
+        return
+    controls["ghcp_azure_oidc"] = "pass"
 
 
 # --- GHCP-006: build/test/deploy identity separation -------------------
