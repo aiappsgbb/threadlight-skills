@@ -236,3 +236,23 @@ class AssessmentResult:
     #: be populated from ``AssessmentOptions.live_github`` once an
     #: orchestrator wires the two together.
     live_github_selected: bool = False
+    #: Whether live Azure evidence collection (``--subscription`` +
+    #: ``--staging-resource-group`` + ``--deploy-identity``, all three
+    #: together) was explicitly selected for *this* run, mirroring
+    #: ``AssessmentOptions.live_azure``. Exists for exactly the same
+    #: reason as ``live_github_selected`` above, for the two Azure GHCP
+    #: reason codes that mean "statically unverifiable"
+    #: (``"azure-login-not-verified-statically"``,
+    #: ``"identity-separation-not-verified-statically"``): so
+    #: ``exit_code`` can distinguish an optional, unselected live Azure
+    #: capability (still not-verified, still gate-exempt) from one the
+    #: CLI explicitly requested but that came back unresolved or
+    #: incomplete -- for example because live Azure collection itself
+    #: succeeded but the resulting evidence still could not resolve
+    #: genuinely distinct identities -- which must fail ``--gate`` like
+    #: any other selected-but-incomplete live evidence. Defaults to
+    #: ``False`` for backward compatibility with existing callers built
+    #: before this field existed. Intended to be populated from
+    #: ``AssessmentOptions.live_azure`` once an orchestrator wires the
+    #: two together.
+    live_azure_selected: bool = False

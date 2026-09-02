@@ -80,19 +80,27 @@ _PROBE_CONTRACT_RELATIVE_PATH = Path("governance") / "probe-contract.json"
 #: live-Azure evidence was requested at all, as opposed to one that was
 #: requested and failed. Per the gate semantics this module implements,
 #: an optional, unselected live capability may remain not-verified
-#: without failing ``--gate``; a selected-but-failed one may not. Note
-#: that ``"branch-protection-not-verified-statically"`` is *conditionally*
-#: exempt (see :func:`exit_code`): it is only ever "optional and
-#: unselected" when ``--live-github`` was not itself selected for this
-#: run, since a selected-but-incomplete live GitHub check is never
-#: exempt.
-_OPTIONAL_UNSELECTED_LIVE_REASON_CODES = frozenset(
-    {
-        "branch-protection-not-verified-statically",
-        "azure-login-not-verified-statically",
-        "identity-separation-not-verified-statically",
-    }
-)
+#: without failing ``--gate``; a selected-but-failed one may not. Each
+#: reason code below is therefore mapped to the ``AssessmentResult``
+#: attribute recording whether *its* underlying live capability was
+#: selected on this run: the code is only ever "optional and unselected"
+#: -- and so gate-exempt -- when that attribute is ``False``. When it is
+#: ``True``, the same reason code means static-only fallback happened
+#: despite an explicit live request (e.g. GHCP's static analysis ran
+#: ahead of -- or instead of -- live collection actually completing, or
+#: live collection succeeded but could not itself resolve the control),
+#: so it must fail the gate like any other selected-but-incomplete live
+#: evidence. Every live capability the CLI *did* select surfaces its own
+#: collection failure (when collection itself fails) via a different
+#: reason code (``github-live-evidence-unavailable`` and friends), which
+#: is never in this mapping and is therefore never exempt -- exactly
+#: "every live capability explicitly selected by CLI arguments" must
+#: resolve.
+_CONDITIONAL_LIVE_EXEMPT_REASON_CODES: Mapping[str, str] = {
+    "branch-protection-not-verified-statically": "live_github_selected",
+    "azure-login-not-verified-statically": "live_azure_selected",
+    "identity-separation-not-verified-statically": "live_azure_selected",
+}
 
 
 class ArgumentError(ValueError):
@@ -440,6 +448,7 @@ def _assess_design(
         residual_risks=(),
         captured_at=options.now,
         phase="design",
+        live_azure_selected=options.live_azure,
     )
 
 
@@ -656,7 +665,7 @@ def _default_branch_unresolved_finding() -> contracts.Finding:
     ``ghcp._github_not_verified`` assigns to any other failed live
     GitHub collection): this is semantically the same "live GitHub
     evidence could not be collected" outcome, and -- since that reason
-    code is not in :data:`_OPTIONAL_UNSELECTED_LIVE_REASON_CODES`,
+    code is not a key of :data:`_CONDITIONAL_LIVE_EXEMPT_REASON_CODES`,
     unlike ``branch-protection-not-verified-statically`` -- it correctly
     fails ``--gate`` without any further exemption logic.
     """
@@ -793,6 +802,7 @@ def _assess_pre_deploy(
         captured_at=options.now,
         phase="pre-deploy",
         live_github_selected=options.live_github,
+        live_azure_selected=options.live_azure,
     )
 
 
@@ -836,6 +846,7 @@ def _assess_post_deploy(
         captured_at=options.now,
         phase="post-deploy",
         live_github_selected=options.live_github,
+        live_azure_selected=options.live_azure,
     )
 
 
@@ -884,23 +895,22 @@ def exit_code(result: contracts.AssessmentResult, gate: bool) -> int:
       any extra phase-specific code here.
     - ``pre-deploy``/``post-deploy`` additionally fail the gate on any
       remaining ``not-verified`` finding, *except* one whose
-      ``reason_code`` is one of the three GHCP reason codes that mean "a
+      ``reason_code`` is a key of
+      :data:`_CONDITIONAL_LIVE_EXEMPT_REASON_CODES` **and** whose mapped
+      ``AssessmentResult`` selection attribute (``live_github_selected``/
+      ``live_azure_selected``) is ``False`` -- meaning that particular
       live capability was never even attempted because it was not
-      selected on the CLI" (see
-      :data:`_OPTIONAL_UNSELECTED_LIVE_REASON_CODES`) -- an optional,
-      unselected live capability may remain not-verified, keeps the
-      verdict partial, and does not fail the gate. ``"branch-protection-
-      not-verified-statically"`` is exempted only when ``--live-github``
-      itself was *not* selected for this run
-      (``result.live_github_selected``); when it *was* selected, this
-      reason code means static-only fallback happened despite an
-      explicit live request (e.g. GHCP's static analysis ran ahead of --
-      or instead of -- live collection actually completing), so it must
-      fail the gate like any other selected-but-incomplete live
-      evidence. Every live capability the CLI *did* select surfaces its
-      own failure (when collection fails) via a different reason code
+      selected on the CLI, so the control staying not-verified is an
+      optional, unselected one: the verdict remains partial, and it does
+      not fail the gate. When the corresponding selection attribute is
+      ``True`` instead, the exact same reason code must fail the gate,
+      since it now means a live capability the caller *did* explicitly
+      select still could not be resolved. Every live capability the CLI
+      selected surfaces its own collection failure (when collection
+      itself fails) via a different reason code
       (``github-live-evidence-unavailable`` and friends), which is never
-      exempted here -- exactly "every live capability explicitly selected
+      a key of :data:`_CONDITIONAL_LIVE_EXEMPT_REASON_CODES` and so is
+      never exempt -- exactly "every live capability explicitly selected
       by CLI arguments" must resolve.
     """
     if not gate:
@@ -916,10 +926,8 @@ def exit_code(result: contracts.AssessmentResult, gate: bool) -> int:
     for finding in result.findings:
         if finding.status != "not-verified":
             continue
-        if finding.reason_code == "branch-protection-not-verified-statically":
-            if not result.live_github_selected:
-                continue
-        elif finding.reason_code in _OPTIONAL_UNSELECTED_LIVE_REASON_CODES:
+        selection_attr = _CONDITIONAL_LIVE_EXEMPT_REASON_CODES.get(finding.reason_code)
+        if selection_attr is not None and not getattr(result, selection_attr):
             continue
         return 1
 

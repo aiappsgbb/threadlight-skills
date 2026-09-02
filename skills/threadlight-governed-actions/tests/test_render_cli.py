@@ -20,6 +20,7 @@ import os
 import random
 import stat
 import subprocess
+import textwrap
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -271,6 +272,7 @@ def _base_result(
     captured_at: Optional[str] = _CAPTURED_AT_DEFAULT,
     phase: Optional[str] = None,
     live_github_selected: bool = False,
+    live_azure_selected: bool = False,
 ) -> contracts.AssessmentResult:
     return contracts.AssessmentResult(
         source=_source(dirty=dirty),
@@ -316,6 +318,7 @@ def _base_result(
         captured_at=captured_at,
         phase=phase,
         live_github_selected=live_github_selected,
+        live_azure_selected=live_azure_selected,
     )
 
 
@@ -3982,6 +3985,28 @@ def _forbidden_command_runner(_command: Sequence[str]) -> subprocess.CompletedPr
     )
 
 
+def _establish_resolvable_origin_default_branch(root: Path, branch: str = "main") -> str:
+    """Give *root* a genuinely resolvable ``refs/remotes/origin/HEAD``,
+    as a real checkout that had actually run ``git remote set-head
+    origin --auto`` (or an equivalent clone/fetch) would have --
+    ``_init_governed_actions_target`` alone never creates this ref, so
+    ``governed_actions._resolve_default_branch`` returns ``None`` for
+    it, and any ``--live-github`` collection a test drives against it
+    is short-circuited by :func:`governed_actions._default_branch_unresolved_finding`
+    before ``ghcp.collect_live_github`` (or the stubbed runner behind
+    it) is ever actually invoked. Renaming the local branch first makes
+    the resulting default branch deterministic regardless of whatever
+    ``init.defaultBranch`` happens to be configured in the ambient test
+    environment.
+    """
+    _run_git_command(["branch", "-m", branch], root)
+    _run_git_command(
+        ["symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}"],
+        root,
+    )
+    return branch
+
+
 def test_design_without_emit_does_not_modify_project_and_returns_0(tmp_path):
     root = _init_governed_actions_target(tmp_path)
     before = _tracked_and_untracked_snapshot(root)
@@ -4061,9 +4086,29 @@ def test_post_deploy_without_staging_resource_group_returns_2(tmp_path):
 
 
 def test_live_github_permission_failure_with_gate_returns_1(tmp_path, monkeypatch):
+    # Defect 2 (test correctness): the fixture must actually establish a
+    # resolvable default branch, or `_collect_selected_live_evidence`
+    # never calls `collect_live_github` at all -- the forbidden runner
+    # below would sit unused, and exit 1 would come only from PIN-001
+    # (no governance/installed-packages.json), an entirely unrelated
+    # finding, not from a live-GitHub permission failure. Recording every
+    # command the stubbed runner actually receives proves it was truly
+    # invoked, and asserting the explicit `github-live-evidence-
+    # unavailable` finding (rather than only the exit code) proves the
+    # *reason* the gate failed is genuinely the live GitHub permission
+    # failure this test is named for.
     root = _init_governed_actions_target(tmp_path)
+    _establish_resolvable_origin_default_branch(root)
+    calls: List[Sequence[str]] = []
+
+    def _recording_forbidden_command_runner(
+        command: Sequence[str],
+    ) -> subprocess.CompletedProcess:
+        calls.append(list(command))
+        return _forbidden_command_runner(command)
+
     monkeypatch.setattr(
-        governed_actions, "_default_command_runner", _forbidden_command_runner
+        governed_actions, "_default_command_runner", _recording_forbidden_command_runner
     )
     exit_status = governed_actions.main(
         [
@@ -4075,9 +4120,17 @@ def test_live_github_permission_failure_with_gate_returns_1(tmp_path, monkeypatc
             "--live-github",
             "--repo",
             "acme/widget",
+            "--emit",
         ]
     )
     assert exit_status == 1
+    assert calls, "the stubbed live GitHub runner was never invoked"
+    assert calls[0][:2] == ["gh", "api"]
+    manifest = json.loads(
+        (root / render.DEFAULT_MANIFEST_RELATIVE_PATH).read_text(encoding="utf-8")
+    )
+    reason_codes = {finding["reason_code"] for finding in manifest["findings"]}
+    assert "github-live-evidence-unavailable" in reason_codes
 
 
 def test_dirty_source_is_represented_explicitly_not_hidden(tmp_path):
@@ -4325,6 +4378,62 @@ def test_exit_code_gate_pre_deploy_fails_on_selected_live_github_not_verified():
     assert governed_actions.exit_code(result, gate=True) == 1
 
 
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "azure-login-not-verified-statically",
+        "identity-separation-not-verified-statically",
+    ],
+)
+def test_exit_code_gate_pre_deploy_fails_on_selected_live_azure_not_verified(reason_code):
+    # Defect 1 (High): a selected-but-unresolved live Azure finding must
+    # fail the gate exactly like a selected-but-unresolved live GitHub
+    # one does -- these two GHCP reason codes must never be exempted
+    # merely because they are *capable* of being "statically
+    # unverifiable"; they are exempt only when live Azure evidence was
+    # never even requested (see the paired exemption test below).
+    result = _base_result(
+        findings=[
+            _finding(
+                "GHCP-005" if reason_code.startswith("azure-login") else "GHCP-006",
+                "not-verified",
+                phase="pre-deploy",
+                reason_code=reason_code,
+            )
+        ],
+        phase="pre-deploy",
+        live_azure_selected=True,
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "azure-login-not-verified-statically",
+        "identity-separation-not-verified-statically",
+    ],
+)
+def test_exit_code_gate_pre_deploy_exempts_unselected_live_azure_not_verified(reason_code):
+    # An optional, *unselected* live Azure capability (no --subscription/
+    # --staging-resource-group/--deploy-identity given at all) must
+    # remain gate-exempt, exactly like an unselected live GitHub
+    # branch-protection finding.
+    result = _base_result(
+        findings=[
+            _finding(
+                "GHCP-005" if reason_code.startswith("azure-login") else "GHCP-006",
+                "not-verified",
+                phase="pre-deploy",
+                reason_code=reason_code,
+            )
+        ],
+        phase="pre-deploy",
+        live_azure_selected=False,
+    )
+    assert governed_actions.exit_code(result, gate=True) == 0
+
+
 def test_resolve_default_branch_returns_none_when_local_ref_unavailable(tmp_path):
     # No arbitrary "main" fallback: when the local checkout has no
     # `origin/HEAD` ref recorded (e.g. `git remote set-head origin
@@ -4361,6 +4470,45 @@ def test_collect_selected_live_evidence_never_calls_github_with_unresolved_defau
     assert any(finding.reason_code == "github-live-evidence-unavailable" for finding in findings)
 
 
+def test_collect_selected_live_evidence_calls_github_when_default_branch_resolved(tmp_path, monkeypatch):
+    # Defect 2's other half: once a default branch genuinely *is*
+    # resolvable, --live-github must actually invoke live collection --
+    # this is the direct, unit-level counterpart to
+    # ``test_live_github_permission_failure_with_gate_returns_1``'s
+    # end-to-end proof that the stubbed runner is truly exercised.
+    root = _init_governed_actions_target(tmp_path)
+    calls: List[Tuple[str, str]] = []
+
+    def _record_and_fail(repository, default_branch, run):
+        calls.append((repository, default_branch))
+        return governed_actions.ghcp.LiveEvidenceResult(
+            status="not-verified",
+            data={"error_class": "cli-error", "exit_code": 1},
+            evidence=(),
+            finding=_finding(
+                "GHCP-002",
+                "not-verified",
+                phase="pre-deploy",
+                reason_code="github-live-evidence-unavailable",
+            ),
+        )
+
+    monkeypatch.setattr(governed_actions.ghcp, "collect_live_github", _record_and_fail)
+    options = contracts.AssessmentOptions(
+        root=root,
+        phase="pre-deploy",
+        live_github=True,
+        repository="acme/widget",
+        now=_CAPTURED_AT_DEFAULT,
+    )
+    live_github, live_azure, findings = governed_actions._collect_selected_live_evidence(
+        root, options, "main"
+    )
+    assert calls == [("acme/widget", "main")]
+    assert live_github == {"error_class": "cli-error", "exit_code": 1}
+    assert any(finding.reason_code == "github-live-evidence-unavailable" for finding in findings)
+
+
 def test_selected_live_github_with_unresolvable_default_branch_reports_not_verified(tmp_path):
     # End-to-end: --live-github selected against a checkout with no
     # resolvable default branch must never crash (exit 3) and never
@@ -4384,3 +4532,211 @@ def test_selected_live_github_with_unresolvable_default_branch_reports_not_verif
     )
     reason_codes = {finding["reason_code"] for finding in manifest["findings"]}
     assert "github-live-evidence-unavailable" in reason_codes
+
+
+# ---------------------------------------------------------------------------
+# Defect 1 (High): selected live Azure evidence that is genuinely
+# unresolved must fail the gate; unselected optional live Azure evidence
+# must remain gate-exempt. End-to-end regressions against the real
+# ``assess`` pipeline (real inventory/mediation/GHCP change-plane
+# analysis, a stubbed-only-at-the-command-runner-boundary
+# ``ghcp.collect_live_azure``), isolating the exit-code assertion to
+# exactly the one finding this defect concerns via ``dataclasses.replace``
+# so the assertion is never a coincidental side effect of some other,
+# unrelated pre-deploy finding (this repo's own pre-deploy gate has
+# several always-not-verified findings of its own, e.g. APR-001).
+# ---------------------------------------------------------------------------
+
+
+def _write_separate_deploy_and_test_identity_workflows(root: Path) -> None:
+    """Commit two workflow files whose declared identity references are
+    two distinct GitHub Actions secrets -- one used only by a
+    build/test job, the other only by a deploy job -- so GHCP-006
+    (build/test/deploy identity separation) has real, non-empty
+    ``deploy_identity_refs``/``non_deploy_identity_refs`` to compare,
+    and (absent a live ``identity_principal_ids`` mapping resolving them)
+    lands on ``identity-separation-not-verified-statically`` rather than
+    ``not-applicable``. Every step here authenticates via OIDC/WIF
+    (``client-id``/``tenant-id``/``subscription-id`` from ``secrets.*``,
+    no client-secret), so this fixture never itself trips GHCP-004/005.
+    """
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.TEST_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    (workflow_dir / "deploy.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              workflow_dispatch:
+            permissions:
+              contents: read
+              id-token: write
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.DEPLOY_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    _run_git_command(["add", "-A"], root)
+    _run_git_command(["commit", "-q", "-m", "add azure identity workflows"], root)
+
+
+def _successful_azure_command_runner(command: Sequence[str]) -> subprocess.CompletedProcess:
+    """A stub Azure ``CommandRunner`` returning a genuinely successful,
+    well-shaped response for every command ``ghcp.collect_live_azure``
+    issues -- proving Defect 1's fix operates even when live Azure
+    collection itself fully succeeds: the real collector is necessarily
+    scoped to the single ``--deploy-identity`` the CLI was given, so its
+    returned payload never carries an ``identity_principal_ids``
+    mapping resolving *both* the deploy and the non-deploy identity
+    reference, and GHCP-006 therefore stays genuinely, honestly
+    unresolved rather than a fabricated ``pass``.
+    """
+    joined = " ".join(command)
+    if "federated-credential" in joined:
+        return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="[]", stderr="")
+    if "role" in joined and "assignment" in joined:
+        return subprocess.CompletedProcess(
+            args=list(command),
+            returncode=0,
+            stdout=json.dumps(
+                [
+                    {
+                        "roleDefinitionName": "Contributor",
+                        "principalId": "11111111-1111-1111-1111-111111111111",
+                    }
+                ]
+            ),
+            stderr="",
+        )
+    if "role" in joined and "definition" in joined:
+        return subprocess.CompletedProcess(
+            args=list(command),
+            returncode=0,
+            stdout=json.dumps([{"roleName": "Contributor"}]),
+            stderr="",
+        )
+    raise AssertionError(f"unexpected azure command in test stub: {command!r}")
+
+
+def _identity_separation_finding(result: contracts.AssessmentResult) -> contracts.Finding:
+    return next(f for f in result.findings if f.finding_id == "GHCP-006")
+
+
+def test_selected_live_azure_unresolved_identity_separation_fails_gate(tmp_path, monkeypatch):
+    # Defect 1, primary regression: --subscription/--staging-resource-group/
+    # --deploy-identity are all selected, and the stubbed 'az' runner
+    # succeeds outright -- yet the real collect_live_azure payload still
+    # cannot resolve genuinely distinct identities (it only ever knows
+    # about the one --deploy-identity it was given), so GHCP-006 stays
+    # not-verified. Selected-but-unresolved live Azure evidence must fail
+    # the gate.
+    root = _init_governed_actions_target(tmp_path)
+    _write_separate_deploy_and_test_identity_workflows(root)
+    monkeypatch.setattr(
+        governed_actions, "_default_command_runner", _successful_azure_command_runner
+    )
+    options = contracts.AssessmentOptions(
+        root=root,
+        phase="pre-deploy",
+        subscription="SUBSCRIPTION",
+        staging_resource_group="STAGING_RG",
+        deploy_identity="DEPLOY_IDENTITY",
+        live_azure=True,
+        now=_CAPTURED_AT_DEFAULT,
+    )
+    result = governed_actions.assess(options)
+    assert result.live_azure_selected is True
+    finding = _identity_separation_finding(result)
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "identity-separation-not-verified-statically"
+
+    isolated = dataclasses.replace(result, findings=(finding,))
+    assert governed_actions.exit_code(isolated, gate=True) == 1
+
+
+def test_unselected_optional_live_azure_identity_separation_exemption_remains(tmp_path):
+    # Paired regression: the exact same ambiguous static workflow set,
+    # but with no --subscription/--staging-resource-group/--deploy-identity
+    # at all -- live Azure was never selected, so GHCP-006 staying
+    # not-verified must remain gate-exempt exactly as before this fix.
+    root = _init_governed_actions_target(tmp_path)
+    _write_separate_deploy_and_test_identity_workflows(root)
+    options = contracts.AssessmentOptions(
+        root=root,
+        phase="pre-deploy",
+        now=_CAPTURED_AT_DEFAULT,
+    )
+    result = governed_actions.assess(options)
+    assert result.live_azure_selected is False
+    finding = _identity_separation_finding(result)
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "identity-separation-not-verified-statically"
+
+    isolated = dataclasses.replace(result, findings=(finding,))
+    assert governed_actions.exit_code(isolated, gate=True) == 0
+
+
+@pytest.mark.parametrize("phase", ["design", "pre-deploy", "post-deploy"])
+def test_assess_binds_live_azure_selected_from_options_every_phase(tmp_path, monkeypatch, phase):
+    # Binding must happen for every phase (design included), never only
+    # for the phases that currently happen to read it -- so the field
+    # can never silently drift from ``AssessmentOptions.live_azure``.
+    root = _init_governed_actions_target(tmp_path)
+    monkeypatch.setattr(
+        governed_actions, "_default_command_runner", _successful_azure_command_runner
+    )
+    kwargs: Dict[str, object] = dict(
+        root=root,
+        phase=phase,
+        now=_CAPTURED_AT_DEFAULT,
+        live_azure=True,
+        subscription="SUBSCRIPTION",
+        staging_resource_group="STAGING_RG",
+        deploy_identity="DEPLOY_IDENTITY",
+    )
+    if phase == "post-deploy":
+        kwargs["staging"] = True
+    result = governed_actions.assess(contracts.AssessmentOptions(**kwargs))
+    assert result.live_azure_selected is True
