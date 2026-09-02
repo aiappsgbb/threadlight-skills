@@ -506,8 +506,26 @@ def _missing_probe_contract_finding(phase: str) -> contracts.Finding:
 def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
     if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
         return (), (_missing_probe_contract_finding(phase),)
-    probe_results = probes.run_enforcement_probe_set(root) + probes.run_privacy_probe_set(root)
-    return probe_results, probes.findings_from_probes(probe_results)
+    # A declared ``governance/probe-contract.json`` may be a purpose-specific
+    # contract that only ever satisfies ``load_approval_contract`` or
+    # ``load_output_contract`` (both far looser than the enforcement
+    # suite's own ``load_probe_contract``, which additionally requires
+    # ``timeout_ms``/``side_effect_mode``/``observation_ledger``/``actions``).
+    # Mirroring ``_run_output_coverage``'s own established, symmetric
+    # handling of the very same "contract present but not shaped for this
+    # probe kind" case, the enforcement suite is reported not-verified
+    # here rather than letting ``probes.ProbeContractError`` propagate
+    # and abort the whole assessment.
+    try:
+        enforcement_results = probes.run_enforcement_probe_set(root)
+    except probes.ProbeContractError:
+        enforcement_results = ()
+        enforcement_findings: Tuple[contracts.Finding, ...] = (_missing_probe_contract_finding(phase),)
+    else:
+        enforcement_findings = probes.findings_from_probes(enforcement_results)
+    privacy_results = probes.run_privacy_probe_set(root)
+    probe_results = enforcement_results + privacy_results
+    return probe_results, enforcement_findings + probes.findings_from_probes(privacy_results)
 
 
 def _approval_not_verified_finding(phase: str) -> contracts.Finding:
