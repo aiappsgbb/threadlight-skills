@@ -66,15 +66,19 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
 
     Returns ``(catalog, None)`` on success or ``(None, problem)`` when the
     file is missing, larger than :data:`_MAX_ALERT_CATALOG_BYTES`, is not
-    valid JSON (including JSON nested/circular deeply enough to exhaust
-    the interpreter's recursion limit while parsing), is not a JSON
-    object, or contains a value (for example a non-finite
-    ``NaN``/``Infinity`` float ``json.loads`` itself would otherwise
-    silently accept) that cannot itself be canonicalized -- every one of
-    these is reported the same "cannot confirm the catalog is complete"
-    way; this function never guesses at a partial catalog from malformed
-    input, and never lets a malformed on-disk file crash this assessment
-    with an unhandled exception.
+    valid UTF-8 text (a ``UnicodeDecodeError`` -- itself a ``ValueError``
+    subclass, but not an ``OSError`` one -- is caught here just as
+    conservatively as a genuine I/O failure, never left to propagate as
+    an unhandled exception, and never with the file's raw bytes or path
+    echoed back), is not valid JSON (including JSON nested/circular
+    deeply enough to exhaust the interpreter's recursion limit while
+    parsing), is not a JSON object, or contains a value (for example a
+    non-finite ``NaN``/``Infinity`` float ``json.loads`` itself would
+    otherwise silently accept) that cannot itself be canonicalized --
+    every one of these is reported the same "cannot confirm the catalog
+    is complete" way; this function never guesses at a partial catalog
+    from malformed input, and never lets a malformed on-disk file crash
+    this assessment with an unhandled exception.
     """
     catalog_path = root / _ALERTS_CATALOG_RELATIVE_PATH
     if not catalog_path.is_file():
@@ -97,7 +101,7 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
         )
     try:
         text = catalog_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None, (
             f"The production alert catalog {_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} "
             "could not be read."

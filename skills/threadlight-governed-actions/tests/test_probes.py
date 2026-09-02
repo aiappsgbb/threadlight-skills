@@ -2678,3 +2678,123 @@ def test_staging_canary_malformed_port_in_response_url_is_not_verified(
     result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
     assert result.status == "not-verified"
     assert result.reason_code == "staging-canary-off-origin-redirect"
+
+
+# ---------------------------------------------------------------------------
+# Round 6, issue 2: every ``UnsafeTargetError`` message raised while
+# validating a canary contract/URL must be fixed and redacted -- never
+# interpolating the raw URL, the underlying parser error text, embedded
+# userinfo, a port number, a query string, or any other contract-supplied
+# value. A secret-looking marker planted in any of these positions must
+# never appear in the raised message.
+# ---------------------------------------------------------------------------
+
+_SECRET_MARKER = "sekrit-token-should-never-leak-9f3c"
+
+
+def test_unsafe_target_error_never_echoes_non_string_contract_url(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "url": {_SECRET_MARKER: True}},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_http_scheme_url(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "url": f"http://staging.example.invalid/{_SECRET_MARKER}"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_malformed_port_or_parser_text(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "url": "https://staging.example.invalid:99999999/governance/health"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    message = str(excinfo.value)
+    assert "99999999" not in message
+    assert "out of range" not in message.lower()
+    assert "cast to integer" not in message.lower()
+
+
+def test_unsafe_target_error_never_echoes_userinfo(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {
+                **safe_canary,
+                "url": f"https://{_SECRET_MARKER}:{_SECRET_MARKER}@staging.example.invalid/health",
+            },
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_query_string(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "url": safe_canary["url"] + f"?token={_SECRET_MARKER}"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_contract_environment_value(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "environment": _SECRET_MARKER},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_contract_method_value(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "method": _SECRET_MARKER},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_disallowed_header_name(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "headers": {_SECRET_MARKER: "value"}},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)
+
+
+def test_unsafe_target_error_never_echoes_expected_status_value(
+    safe_canary, trusted_staging_origin
+):
+    with pytest.raises(UnsafeTargetError) as excinfo:
+        run_staging_canary(
+            {**safe_canary, "expected_status": _SECRET_MARKER},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+    assert _SECRET_MARKER not in str(excinfo.value)

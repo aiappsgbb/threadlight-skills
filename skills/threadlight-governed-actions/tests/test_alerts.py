@@ -377,3 +377,24 @@ def test_ops_001_plane_is_both_and_matches_finding_catalog(tmp_path):
     _write_catalog(tmp_path)
     finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
     assert finding.plane == entry["plane"] == "both"
+
+
+# --- Round 6, issue 3: invalid-UTF-8 catalog bytes must never crash this
+# assessment with an unhandled ``UnicodeDecodeError`` -- read failure is
+# already a conservative "should-fix", and unreadable-as-text bytes are no
+# different from any other unreadable file. ------------------------------
+
+
+def test_invalid_utf8_catalog_bytes_is_should_fix_never_crashes(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    # 0xFF is not a valid UTF-8 lead byte in any position; this is not
+    # decodable as UTF-8 text at all, unlike a merely-malformed JSON
+    # string that still happens to be valid UTF-8.
+    (governance_dir / "alerts.json").write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+    assert "\xff" not in finding.details
+    assert "\ufffd" not in finding.details
+    assert str(tmp_path) not in finding.details

@@ -3374,20 +3374,85 @@ def _validate_github_oidc_customization_payload(payload: object) -> bool:
     return isinstance(payload.get("include_claim_keys"), list)
 
 
+#: GitHub's own documented default ``per_page`` for the two endpoints
+#: :func:`collect_live_github` calls that can genuinely paginate
+#: (``rulesets`` and ``environments``) -- not a number this project
+#: invented. This collector never adds a ``per_page``/``page`` query
+#: parameter or a follow-up page request (the five-command contract is
+#: fixed), so a bare list sitting at exactly this many entries can never
+#: be told apart from a silently truncated first page, and is
+#: conservatively treated as unproven rather than trusted.
+_GITHUB_DEFAULT_PAGE_SIZE = 30
+
+
+def _rulesets_page_is_complete(payload: object) -> bool:
+    """Whether a rulesets list already known to be a JSON array of
+    objects can be proven to be the *entire* list rather than a
+    possibly-truncated first page.
+
+    The rulesets endpoint's response is a bare JSON array with no
+    ``total_count`` (or any other) completeness envelope, so the only
+    signal available here is size: a list strictly shorter than
+    GitHub's own default page size could not have been truncated by
+    pagination (a real API never returns a partial page followed by a
+    "no more pages" state without also filling that page first), so it
+    is proven complete; a list at or above that size cannot be told
+    apart from a truncated first page and is conservatively reported
+    incomplete instead of guessed at as proof of a real, larger state.
+    """
+    return isinstance(payload, list) and len(payload) < _GITHUB_DEFAULT_PAGE_SIZE
+
+
+def _environments_page_is_complete(payload: object) -> bool:
+    """Whether an environments response already known to be a usable
+    mapping with an ``environments`` list can be proven complete.
+
+    GitHub's real ``GET /repos/{repo}/environments`` response also
+    reports its own ``total_count`` of environments across every page;
+    when that field is present as an integer it is this endpoint's own
+    explicit completeness signal and is trusted over the page-size
+    heuristic below -- the returned list is complete only when
+    ``total_count`` exactly matches how many entries were actually
+    returned (naming *more* than were returned proves this is only a
+    partial page; naming fewer is just as unusable as any other
+    unrecognized/inconsistent shape). When ``total_count`` is absent or
+    not an integer, this falls back to the same default-page-size
+    heuristic :func:`_rulesets_page_is_complete` uses.
+    """
+    if not isinstance(payload, Mapping):
+        return False
+    entries = payload.get("environments")
+    if not isinstance(entries, list):
+        return False
+    total_count = payload.get("total_count")
+    if isinstance(total_count, int) and not isinstance(total_count, bool):
+        return total_count == len(entries)
+    return len(entries) < _GITHUB_DEFAULT_PAGE_SIZE
+
+
+def _always_complete_page(payload: object) -> bool:
+    """Completeness check for the three ``collect_live_github`` endpoints
+    that never paginate at all: each returns exactly one JSON object,
+    never a list, so there is no "first page" to distrust."""
+    return True
+
+
 #: Each of ``collect_live_github``'s five endpoints, in call order, paired
-#: with the GHCP control its live evidence affects and the shape validator
-#: proving its response is actually usable (not merely valid JSON). Only
-#: the OIDC subject-customization endpoint speaks to GHCP-005 (Azure
-#: OIDC/WIF trust, from the GitHub side); every other endpoint speaks to
-#: GHCP-002 (branch protection / required reviews / rulesets) -- matching
-#: exactly the two controls the design's collector contract ever attributes
-#: a GitHub live-evidence gap to.
-_GITHUB_STEPS: Tuple[Tuple[str, str, str, Callable[[object], bool]], ...] = (
-    ("rulesets", "rulesets?includes_parents=true", "GHCP-002", _is_json_list_of_mappings),
-    ("branch_protection", "branches/{default_branch}/protection", "GHCP-002", _is_nonempty_json_mapping),
-    ("actions_permissions_workflow", "actions/permissions/workflow", "GHCP-002", _validate_github_actions_permissions_payload),
-    ("environments", "environments", "GHCP-002", _validate_github_environments_payload),
-    ("oidc_customization_sub", "actions/oidc/customization/sub", "GHCP-005", _validate_github_oidc_customization_payload),
+#: with the GHCP control its live evidence affects, the shape validator
+#: proving its response is actually usable (not merely valid JSON), and a
+#: completeness check proving a validated response is not merely an
+#: unproven/possibly-truncated first page. Only the OIDC subject-
+#: customization endpoint speaks to GHCP-005 (Azure OIDC/WIF trust, from
+#: the GitHub side); every other endpoint speaks to GHCP-002 (branch
+#: protection / required reviews / rulesets) -- matching exactly the two
+#: controls the design's collector contract ever attributes a GitHub
+#: live-evidence gap to.
+_GITHUB_STEPS: Tuple[Tuple[str, str, str, Callable[[object], bool], Callable[[object], bool]], ...] = (
+    ("rulesets", "rulesets?includes_parents=true", "GHCP-002", _is_json_list_of_mappings, _rulesets_page_is_complete),
+    ("branch_protection", "branches/{default_branch}/protection", "GHCP-002", _is_nonempty_json_mapping, _always_complete_page),
+    ("actions_permissions_workflow", "actions/permissions/workflow", "GHCP-002", _validate_github_actions_permissions_payload, _always_complete_page),
+    ("environments", "environments", "GHCP-002", _validate_github_environments_payload, _environments_page_is_complete),
+    ("oidc_customization_sub", "actions/oidc/customization/sub", "GHCP-005", _validate_github_oidc_customization_payload, _always_complete_page),
 )
 
 
@@ -3486,25 +3551,30 @@ def collect_live_github(
 
     This function issues exactly the five commands above -- no
     pagination flag or follow-up page request is ever added, matching
-    this project's fixed live-command contract. Every one of these
-    endpoints can in principle paginate on a real repository with an
-    unusually large number of rulesets/environments; when it does, ``gh
-    api`` still returns only that endpoint's first page here, and this
-    function has no way to know whether more pages existed. That is a
-    known, accepted limit of this optional evidence, not a defect: an
-    incomplete or first-page-only live result is already reported the
-    same "not-verified"/"malformed-shape" way as an outright failure
-    would be (see above), so a truncated live response can never be
-    mistaken for full live verification of a control.
+    this project's fixed live-command contract. Both ``rulesets`` and
+    ``environments`` can in principle paginate on a real repository with
+    an unusually large number of entries, and ``gh api`` still returns
+    only that endpoint's first page here; rather than guessing whether
+    that page is the whole live state, this function actively proves it
+    from whatever completeness signal the endpoint itself offers
+    (``environments``'s own ``total_count``, or -- when that signal is
+    unavailable -- a bare list's length against GitHub's own documented
+    default page size). A page that cannot be proven complete this way
+    is reported ``"not-verified"``/``"incomplete-first-page"`` exactly
+    like an outright command failure or a malformed shape (see above),
+    so a truncated live response can never be mistaken for full live
+    verification of a control.
     """
     collected: Dict[str, object] = {}
-    for key, endpoint_suffix, finding_id, validate in _GITHUB_STEPS:
+    for key, endpoint_suffix, finding_id, validate, is_complete in _GITHUB_STEPS:
         endpoint = f"repos/{repository}/{endpoint_suffix.format(default_branch=default_branch)}"
         payload, error_class, exit_code = _run_read_only_command(run, ["gh", "api", endpoint])
         if error_class is not None:
             return _github_not_verified(finding_id, repository, error_class, exit_code)
         if not validate(payload):
             return _github_not_verified(finding_id, repository, "malformed-shape", exit_code)
+        if not is_complete(payload):
+            return _github_not_verified(finding_id, repository, "incomplete-first-page", exit_code)
         collected[key] = payload
 
     data: Dict[str, object] = {

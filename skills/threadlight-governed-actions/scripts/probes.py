@@ -2477,15 +2477,21 @@ def _parse_canary_https_url(url: object, *, what: str) -> str:
     embedded userinfo, query string, or fragment, returning its
     normalized ``https://host[:port]`` origin.
 
-    Raises :class:`UnsafeTargetError` (naming *what*, e.g. ``"staging
-    canary url"`` or ``"trusted staging origin"``) for anything else: a
-    non-``https`` scheme, embedded credentials, a missing hostname, a
-    query string, or a fragment -- any of which could smuggle a
+    Raises :class:`UnsafeTargetError` (naming only *what*, e.g. ``"staging
+    canary url"`` or ``"trusted staging origin"`` -- a fixed, internal
+    label this module itself controls, never anything derived from
+    *url*) for anything else: a non-``https`` scheme, embedded
+    credentials, a missing hostname, a query string, a fragment, or a
+    syntactically malformed port -- any of which could smuggle a
     credential or silently redirect the canary somewhere other than the
-    one origin actually intended.
+    one origin actually intended. Every one of these messages is fixed
+    text; none of them ever interpolates the raw *url*, the underlying
+    ``ValueError`` text a malformed port/host raises, or any other part
+    of the input, since any of those could themselves carry a credential
+    or other sensitive fragment of the very value being rejected.
     """
     if not isinstance(url, str):
-        raise UnsafeTargetError(f"{what} must be an https:// URL string; got {url!r}")
+        raise UnsafeTargetError(f"{what} must be an https:// URL string")
     try:
         parsed = urlsplit(url)
         # ``SplitResult.port`` (and, for some malformed inputs, ``urlsplit``
@@ -2496,12 +2502,14 @@ def _parse_canary_https_url(url: object, *, what: str) -> str:
         # any other shape this function already rejects, so it is caught
         # here and translated into the same :class:`UnsafeTargetError`
         # every other malformed-URL case raises, never left to propagate
-        # as a raw, uncaught ``ValueError``.
+        # as a raw, uncaught ``ValueError`` -- and never echoing that
+        # ``ValueError``'s own text, which can itself quote the
+        # offending raw input.
         port = parsed.port
     except ValueError as error:
-        raise UnsafeTargetError(f"{what} has a malformed URL: {error}") from error
+        raise UnsafeTargetError(f"{what} has a malformed URL") from error
     if parsed.scheme != "https":
-        raise UnsafeTargetError(f"{what} must use https://; got {url!r}")
+        raise UnsafeTargetError(f"{what} must use https://")
     if parsed.username is not None or parsed.password is not None:
         raise UnsafeTargetError(f"{what} must not contain embedded userinfo")
     if not parsed.hostname:
@@ -2528,19 +2536,21 @@ def _validate_canary_contract(contract: Mapping[str, object], trusted_origin: ob
     ``environment`` field, or from a hostname that merely looks like
     staging; only an exact match against a value the caller supplied
     out-of-band is ever trusted.
+
+    Every :class:`UnsafeTargetError` this function raises is fixed,
+    redacted text; none of them ever interpolates a value the contract
+    itself supplied (the ``environment``/``method``/``expected_status``
+    value, a disallowed header's own name, or the URL) since any of
+    those could themselves carry a credential or other sensitive
+    fragment of the very value being rejected.
     """
     if contract.get("environment") != "staging":
-        raise UnsafeTargetError(
-            f"staging canary requires environment 'staging'; got "
-            f"{contract.get('environment')!r}"
-        )
+        raise UnsafeTargetError("staging canary requires environment 'staging'")
     if contract.get("destructive") is not False:
         raise UnsafeTargetError("staging canary requires destructive: false")
     method = contract.get("method")
     if not isinstance(method, str) or method.upper() not in _STAGING_CANARY_ALLOWED_METHODS:
-        raise UnsafeTargetError(
-            f"staging canary allows only HTTPS GET/HEAD; got method {method!r}"
-        )
+        raise UnsafeTargetError("staging canary allows only HTTPS GET/HEAD")
     origin = _parse_canary_https_url(contract.get("url"), what="staging canary url")
     trusted = _parse_canary_https_url(trusted_origin, what="trusted staging origin")
     if origin != trusted:
@@ -2554,15 +2564,10 @@ def _validate_canary_contract(contract: Mapping[str, object], trusted_origin: ob
         raise UnsafeTargetError("staging canary must not send a request body")
     disallowed_header = _disallowed_canary_header(contract.get("headers"))
     if disallowed_header is not None:
-        raise UnsafeTargetError(
-            f"staging canary must not send a non-allowlisted {disallowed_header!r} header"
-        )
+        raise UnsafeTargetError("staging canary must not send a non-allowlisted header")
     expected_status = contract.get("expected_status")
     if expected_status is not None and not _is_valid_http_status(expected_status):
-        raise UnsafeTargetError(
-            f"staging canary expected_status must be an int in 100..599; got "
-            f"{expected_status!r}"
-        )
+        raise UnsafeTargetError("staging canary expected_status must be an int in 100..599")
     return origin
 
 

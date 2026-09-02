@@ -7567,6 +7567,93 @@ def test_live_github_environments_missing_key_is_not_verified():
     assert result.finding.finding_id == "GHCP-002"
 
 
+# ---------------------------------------------------------------------------
+# Round 6, issue 1: an incomplete/ambiguous first page of a pageable
+# GitHub list endpoint must never be trusted as a complete evidence set --
+# this must never require adding a pagination flag or a sixth command,
+# only conservatively refusing to trust a page that cannot itself be
+# proven complete (via an endpoint's own completeness signal, or a bare
+# list sitting at exactly the API's own default page-size boundary).
+# ---------------------------------------------------------------------------
+
+
+def test_live_github_rulesets_below_page_capacity_is_pass():
+    responses = _valid_github_responses()
+    below_capacity = [{"id": i, "name": f"rs{i}"} for i in range(ghcp._GITHUB_DEFAULT_PAGE_SIZE - 1)]
+    responses[0] = _ok(json.dumps(below_capacity))
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "pass"
+    assert result.finding is None
+
+
+def test_live_github_rulesets_at_page_capacity_is_not_verified():
+    # A bare JSON array (no ``gh api`` pagination envelope/total_count is
+    # ever returned for this endpoint) sitting at exactly the API's own
+    # default page size can never be proven to be the *entire* rulesets
+    # list rather than a silently truncated first page -- this project
+    # never adds a pagination flag or a sixth command to resolve that
+    # ambiguity, it only refuses to trust the ambiguous result.
+    responses = _valid_github_responses()
+    at_capacity = [{"id": i, "name": f"rs{i}"} for i in range(ghcp._GITHUB_DEFAULT_PAGE_SIZE)]
+    responses[0] = _ok(json.dumps(at_capacity))
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+    assert result.evidence == ()
+
+
+def test_live_github_environments_total_count_matches_length_is_pass():
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "total_count": 1,
+                "environments": [{"name": "staging", "protection_rules": []}],
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "pass"
+    assert result.finding is None
+
+
+def test_live_github_environments_total_count_mismatch_is_not_verified():
+    # ``total_count`` naming more entries than were actually returned
+    # proves this is only a partial page -- an explicit completeness
+    # signal directly contradicting what was actually observed, which
+    # must never be trusted as complete evidence.
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "total_count": 2,
+                "environments": [{"name": "staging", "protection_rules": []}],
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+    assert result.evidence == ()
+
+
+def test_live_github_exact_five_commands_unchanged_by_completeness_check(fake_runner):
+    # Proving incomplete-page detection never adds a sixth command or a
+    # pagination flag to the fixed five-command contract.
+    collect_live_github("aiappsgbb/threadlight-skills", "main", run=fake_runner)
+    assert fake_runner.commands == [
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/rulesets?includes_parents=true"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/branches/main/protection"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/actions/permissions/workflow"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/environments"],
+        ["gh", "api", "repos/aiappsgbb/threadlight-skills/actions/oidc/customization/sub"],
+    ]
+
+
 def test_live_github_success_includes_collected_sha256_digest_over_canonical_data(fake_runner):
     result = collect_live_github("aiappsgbb/threadlight-skills", "main", run=fake_runner)
     digest = result.data["collected_sha256"]
