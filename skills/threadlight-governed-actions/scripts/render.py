@@ -1188,7 +1188,17 @@ def build_apply_plan(result: AssessmentResult) -> Dict[str, object]:
 #: GitHub Flavored Markdown's *extended autolink* extension recognizes a
 #: bare run like this (or a bare ``www.``) as a live, clickable link
 #: without requiring either syntax this function already escapes.
-_BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
+#:
+#: Deliberately has **no** word-boundary anchor before the scheme: cmark-
+#: gfm's own scanner finds ``://`` and then rewinds through as many
+#: alphabetic/``[a-z0-9+.-]`` scheme characters as it can, with no
+#: requirement that whatever precedes the scheme be "not part of the same
+#: word" -- a Python ``\b`` check wrongly refuses to match when the
+#: preceding character is itself a word character (a digit, an
+#: underscore, or a letter), so ``4https://``, ``_https://``, and
+#: ``x_https://`` were all real, live GFM autolinks that a boundary-
+#: anchored pattern silently failed to defuse.
+_BARE_URL_SCHEME_RE = re.compile(r"(?i)([a-z][a-z0-9+.-]*)://")
 
 
 #: Matches a bare ``www.`` run, in *any* letter case -- GFM's own
@@ -1197,7 +1207,12 @@ _BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
 #: ``WWW.``/``Www.``/etc. are just as live a trigger as lowercase
 #: ``www.``; a plain case-sensitive substring match would silently miss
 #: every non-lowercase spelling.
-_BARE_WWW_RE = re.compile(r"(?i)\bwww\.")
+#:
+#: Deliberately has **no** word-boundary anchor either, for the same
+#: reason as ``_BARE_URL_SCHEME_RE`` above: cmark-gfm's ``www_match``
+#: scan has no preceding-character restriction, so ``_www.`` is exactly
+#: as live an autolink trigger as ``www.`` on its own.
+_BARE_WWW_RE = re.compile(r"(?i)www\.")
 
 
 #: Matches a bare ``local@domain.tld``-shaped run so it can be defused

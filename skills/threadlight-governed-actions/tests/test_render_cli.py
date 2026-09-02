@@ -3246,6 +3246,19 @@ _HOSTILE_BARE_AUTOLINK = "visit https://evil.example/steal now"
 _HOSTILE_WWW_AUTOLINK = "visit www.evil.example now"
 _HOSTILE_WWW_AUTOLINK_UPPERCASE = "visit WWW.evil.example now"
 _HOSTILE_WWW_AUTOLINK_MIXED_CASE = "visit Www.Evil.Example now"
+# Quality review (critical): Python's ``\b`` word-boundary anchor requires a
+# transition between a ``\w`` and a non-``\w`` character, so it wrongly
+# refuses to match a scheme/``www.`` trigger immediately preceded by
+# another word character -- a digit, an underscore, or a letter --
+# treating it as "not a boundary". cmark-gfm's own scanner has no such
+# requirement at all: its scheme rewind and ``www_match`` recognizer fire
+# regardless of what precedes the trigger. Each of these is a real, live
+# GFM autolink despite starting mid-"word" by Python's definition.
+_HOSTILE_BARE_AUTOLINK_DIGIT_PREFIX = "visit 4https://evil.example now"
+_HOSTILE_BARE_AUTOLINK_UNDERSCORE_PREFIX = "visit _https://evil.example now"
+_HOSTILE_BARE_AUTOLINK_DIGIT_PREFIX_WITH_PATH = "visit 0https://evil.example/pwn now"
+_HOSTILE_BARE_AUTOLINK_LETTER_UNDERSCORE_PREFIX = "visit x_https://e.x now"
+_HOSTILE_WWW_AUTOLINK_UNDERSCORE_PREFIX = "visit _www.evil.example now"
 
 
 def _escaping_finding(summary: str) -> Sequence[contracts.Finding]:
@@ -3451,6 +3464,11 @@ _REQUIRES_MARKDOWN_IT = pytest.mark.skipif(
         (_HOSTILE_BARE_EMAIL_AUTOLINK, "user@evil.example"),
         (_HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE, "User@Evil.EXAMPLE"),
         (_HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN, "user@bar_baz.evil.example"),
+        (_HOSTILE_BARE_AUTOLINK_DIGIT_PREFIX, "https://"),
+        (_HOSTILE_BARE_AUTOLINK_UNDERSCORE_PREFIX, "https://"),
+        (_HOSTILE_BARE_AUTOLINK_DIGIT_PREFIX_WITH_PATH, "https://"),
+        (_HOSTILE_BARE_AUTOLINK_LETTER_UNDERSCORE_PREFIX, "https://"),
+        (_HOSTILE_WWW_AUTOLINK_UNDERSCORE_PREFIX, "www."),
     ],
 )
 def test_evidence_pack_autolink_defense_verified_by_real_commonmark_parser(
