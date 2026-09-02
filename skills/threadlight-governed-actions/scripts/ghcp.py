@@ -359,28 +359,28 @@ def _permissions_declared_and_least_privilege(value: object) -> Optional[bool]:
 
 
 def _permissions_status(document: Mapping) -> Status:
+    """Explicit, least-privilege permissions are required at the workflow
+    level *and* independently on every job -- GitHub Actions lets an
+    omitted job silently inherit the workflow-level default, so a sibling
+    job's own explicit declaration is never evidence for a job that
+    doesn't declare its own: an implicit inherited default is exactly the
+    ambient-permission risk rule 6 exists to reject, even when some other
+    job in the same file happens to be fully explicit.
+    """
     workflow_level = _permissions_declared_and_least_privilege(document.get("permissions"))
-    if workflow_level is False:
+    if workflow_level is not True:
         return "must-fix"
 
-    job_level_results: List[Optional[bool]] = []
     jobs = document.get("jobs")
     if isinstance(jobs, Mapping):
         for job in jobs.values():
             if not isinstance(job, Mapping):
                 continue
-            job_level_results.append(
-                _permissions_declared_and_least_privilege(job.get("permissions"))
-            )
+            job_level = _permissions_declared_and_least_privilege(job.get("permissions"))
+            if job_level is not True:
+                return "must-fix"
 
-    if any(result is False for result in job_level_results):
-        return "must-fix"
-
-    if workflow_level is True or any(result is True for result in job_level_results):
-        return "pass"
-
-    # Neither the workflow nor any job declares explicit permissions at all.
-    return "must-fix"
+    return "pass"
 
 
 def _grants_id_token_write(document: Mapping) -> bool:
@@ -413,18 +413,60 @@ def _azure_login_steps(document: Mapping) -> List[Mapping]:
     ]
 
 
-def _oidc_status(document: Mapping, login_steps: Sequence[Mapping]) -> Status:
+def _azure_deploy_action_steps(document: Mapping) -> List[Mapping]:
+    """Every step whose ``uses:`` references one of the known Azure
+    deployment actions (:data:`_DEPLOY_ACTION_MARKERS` -- ``azure/webapps-
+    deploy``, ``azure/functions-action``, ``azure/arm-deploy``, ...).
+
+    These actions can authenticate directly with their own secret input
+    (most commonly ``publish-profile`` or ``creds``) without any
+    ``azure/login`` step ever appearing in the workflow at all, so rule 5's
+    secret-credential scan must inspect them too, not just ``azure/login``.
+    """
+    return [
+        step
+        for step in _all_steps(document)
+        if str(step.get("uses", "")).split("@", 1)[0].strip().lower()
+        in _DEPLOY_ACTION_MARKERS
+    ]
+
+
+def _has_secret_credential_input(step: Mapping) -> bool:
+    """True if a step's ``with:`` block sets any key in
+    :data:`_SECRET_LOGIN_KEYS` (``creds``, ``client-secret``, ``password``,
+    ``publish-profile``, ...) -- a long-lived secret credential rather than
+    OIDC/workload-identity-federation, regardless of which action reads
+    it."""
+    with_block = step.get("with")
+    if not isinstance(with_block, Mapping):
+        return False
+    keys_lower = {str(key).strip().lower() for key in with_block.keys()}
+    return bool(keys_lower & set(_SECRET_LOGIN_KEYS))
+
+
+def _oidc_status(
+    document: Mapping,
+    login_steps: Sequence[Mapping],
+    deploy_action_steps: Sequence[Mapping],
+) -> Status:
+    # A deployment action authenticating directly with its own secret
+    # input (e.g. `azure/webapps-deploy`'s `publish-profile`) is rejected
+    # even when no `azure/login` step exists anywhere in the workflow --
+    # the secret is the change-plane risk, not which action happens to
+    # read it.
+    if any(_has_secret_credential_input(step) for step in deploy_action_steps):
+        return "must-fix"
     if not login_steps:
-        return "pass"  # nothing to assess: rule 5 is not-applicable, not a finding
+        return "pass"  # nothing else to assess: rule 5 is not-applicable, not a finding
     if not _grants_id_token_write(document):
         return "must-fix"
     for step in login_steps:
         with_block = step.get("with")
         if not isinstance(with_block, Mapping):
             return "must-fix"
-        keys_lower = {str(key).strip().lower() for key in with_block.keys()}
-        if keys_lower & set(_SECRET_LOGIN_KEYS):
+        if _has_secret_credential_input(step):
             return "must-fix"
+        keys_lower = {str(key).strip().lower() for key in with_block.keys()}
         if "client-id" not in keys_lower or "tenant-id" not in keys_lower:
             return "must-fix"
     return "pass"
@@ -514,6 +556,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     is_deploy = _is_deploy_workflow(document)
     sha_pins, sha_violations = _sha_pin_status(document)
     login_steps = _azure_login_steps(document)
+    deploy_action_steps = _azure_deploy_action_steps(document)
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -521,7 +564,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         pr_gate=_pr_gate_status(document, triggers, is_deploy),
         permissions=_permissions_status(document),
         sha_pins=sha_pins,
-        oidc_wif=_oidc_status(document, login_steps),
+        oidc_wif=_oidc_status(document, login_steps, deploy_action_steps),
         ci_probes=_ci_probes_static_status(document, triggers),
         identity_ref=_identity_ref(login_steps),
         sha_violations=sha_violations,
@@ -557,6 +600,69 @@ def _parse_codeowners_patterns(path: Path) -> Set[str]:
             continue
         patterns.add(stripped.split()[0])
     return patterns
+
+
+def _codeowners_recursive_prefix(pattern: str) -> Optional[str]:
+    """The directory this CODEOWNERS pattern recursively covers, or
+    ``None`` if it is not a recursive-directory-style pattern at all (an
+    exact file, or a single-``*`` one-level glob, neither of which reaches
+    every file below it).
+
+    A leading ``/`` is a cosmetic root anchor here -- both ``tests/**``
+    and ``/tests/**`` return the same ``"tests"`` prefix, since our
+    required patterns are always already repo-root-relative and GitHub's
+    own CODEOWNERS matching anchors a pattern containing an internal
+    slash to the repository root regardless of whether it is also
+    prefixed with one. A bare ``*``/``**`` (with or without a leading
+    slash) is the repository-wide catch-all and returns ``""``, an
+    ancestor of every path.
+    """
+    normalized = pattern.strip().lstrip("/")
+    if normalized in ("", "*", "**"):
+        return ""
+    if normalized.endswith("/**"):
+        return normalized[: -len("/**")]
+    if normalized.endswith("/"):
+        return normalized.rstrip("/")
+    return None
+
+
+def _is_ancestor_or_equal(ancestor: str, path: str) -> bool:
+    if ancestor == "":
+        return True  # the repository root is an ancestor of every path
+    return path == ancestor or path.startswith(ancestor + "/")
+
+
+def _codeowners_pattern_covers(declared_pattern: str, requirement: str) -> bool:
+    """True if a single declared CODEOWNERS pattern covers every file the
+    ``requirement`` pattern would need covered.
+
+    Recognizes a repository-wide catch-all (``*``/``**``), a broader
+    ancestor directory glob covering a narrower required one (``src/**``
+    covers ``src/governance/**``; ``tests/**`` covers the two explicit
+    ``tests/governed-actions-*.json`` file requirements), and a leading
+    ``/`` root anchor as equivalent to no leading slash at all -- never
+    only literal string equality. A required *recursive* directory
+    (``tests/**``) is only ever fully covered by another recursive glob
+    whose own directory is that directory or an ancestor of it; a
+    single-level ``tests/*`` glob does not reach a nested file and is
+    correctly never treated as covering it.
+    """
+    declared_prefix = _codeowners_recursive_prefix(declared_pattern)
+    required_prefix = _codeowners_recursive_prefix(requirement)
+
+    if required_prefix is not None:
+        return declared_prefix is not None and _is_ancestor_or_equal(
+            declared_prefix, required_prefix
+        )
+
+    # The requirement is an exact file path: covered by the identical
+    # literal pattern, or by a recursive directory glob that is an
+    # ancestor of it.
+    target = requirement.strip().lstrip("/")
+    if declared_prefix is not None:
+        return _is_ancestor_or_equal(declared_prefix, target)
+    return declared_pattern.strip().lstrip("/") == target
 
 
 def _discover_eval_suite_files(root: Path) -> Tuple[Path, ...]:
@@ -969,7 +1075,11 @@ def _assess_codeowners(
 
     declared = _parse_codeowners_patterns(ownership_path)
     missing = tuple(
-        pattern for pattern in _REQUIRED_CODEOWNERS_PATTERNS if pattern not in declared
+        requirement
+        for requirement in _REQUIRED_CODEOWNERS_PATTERNS
+        if not any(
+            _codeowners_pattern_covers(pattern, requirement) for pattern in declared
+        )
     )
     if missing:
         controls["ghcp_codeowners"] = "must-fix"
@@ -1161,11 +1271,14 @@ def _assess_oidc(
             reason_code="secret-based-azure-login",
             summary="Azure deployment uses a long-lived secret instead of OIDC/WIF.",
             details=(
-                "One or more `azure/login` steps read a client secret, "
-                "password, publish profile, or service-principal secret, or "
-                "are not backed by an explicit `permissions: id-token: write` "
-                "grant, instead of authenticating via OpenID Connect / "
-                "workload identity federation."
+                "One or more `azure/login` steps, or Azure deployment "
+                "action steps (`azure/webapps-deploy`, `azure/functions-"
+                "action`, `azure/arm-deploy`, ...), read a client secret, "
+                "password, publish profile, or service-principal secret, "
+                "or an `azure/login` step is not backed by an explicit "
+                "`permissions: id-token: write` grant, instead of "
+                "authenticating via OpenID Connect / workload identity "
+                "federation."
             ),
             affected_paths=tuple(str(a.path) for a in offenders),
         )

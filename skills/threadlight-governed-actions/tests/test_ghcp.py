@@ -23,11 +23,12 @@ import json
 import subprocess
 import textwrap
 from pathlib import Path
+from typing import Sequence
 
 import pytest
 
 import ghcp
-from ghcp import ChangePlaneResult, assess_change_plane, assess_workflow
+from ghcp import ChangePlaneResult, Finding, assess_change_plane, assess_workflow
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -113,6 +114,12 @@ def _write_clean_repo(tmp_path: Path) -> Path:
             jobs:
               test:
                 runs-on: ubuntu-latest
+                # Rule 6 requires every job's own explicit permissions --
+                # a sibling job cannot silently inherit the workflow-level
+                # default, so this job repeats it explicitly even though
+                # there is only one job in this file.
+                permissions:
+                  contents: read
                 steps:
                   - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
                   - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -195,17 +202,25 @@ def test_full_sha_and_oidc_are_recognized(tmp_path):
 
 
 def test_39_character_sha_is_rejected(tmp_path):
-    workflow = pinned_oidc_workflow(
-        tmp_path, action_sha="0ad4c47a9e566829e19b6099ee3458ac923f5d"
-    )
+    # Exactly the 40-character reference below with its last character
+    # dropped -- a true 39-character lowercase-hex string, not merely "one
+    # character shorter than something else".
+    action_sha = "0ad4c47a9e566829e19b6099ee3458ac923f5d3c"
+    assert len(action_sha) == 40
+    truncated_sha = action_sha[:-1]
+    assert len(truncated_sha) == 39
+    workflow = pinned_oidc_workflow(tmp_path, action_sha=truncated_sha)
     result = assess_workflow(workflow)
     assert result.sha_pins == "must-fix"
 
 
 def test_40_character_uppercase_sha_is_rejected(tmp_path):
-    workflow = pinned_oidc_workflow(
-        tmp_path, action_sha="0AD4C47A9E566829E19B6099EE3458AC923F5D3"
-    )
+    # The same 40-character reference, upper-cased -- a true 40-character
+    # string, just not lowercase, so length alone never explains rejection.
+    action_sha = "0ad4c47a9e566829e19b6099ee3458ac923f5d3c"
+    uppercase_sha = action_sha.upper()
+    assert len(uppercase_sha) == 40
+    workflow = pinned_oidc_workflow(tmp_path, action_sha=uppercase_sha)
     result = assess_workflow(workflow)
     assert result.sha_pins == "must-fix"
 
@@ -675,6 +690,12 @@ def _workflow_with_permissions(tmp_path: Path, permissions_yaml: str) -> Path:
             jobs:
               build:
                 runs-on: ubuntu-latest
+                # Rule 6 requires this job's own explicit permissions
+                # independently of the workflow-level value under test
+                # above -- a trivially safe, fixed grant here so each
+                # test below exercises only the workflow-level value.
+                permissions:
+                  contents: read
                 steps:
                   - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
             """
@@ -883,3 +904,339 @@ def test_ghcp_findings_never_drift_from_catalog_plane_and_status(fixture_root):
         catalog_entry = catalog_entries[finding.finding_id]
         assert finding.plane == catalog_entry["plane"]
         assert finding.status in _ALLOWED_GHCP_STATUSES[finding.finding_id]
+
+
+# ---------------------------------------------------------------------------
+# Final spec-gap fix 1: the SHA boundary tests above now use a *true*
+# 39-character lowercase string and a *true* 40-character uppercase string
+# (previously off-by-one and off-by-one respectively) -- covered by the
+# corrected `test_39_character_sha_is_rejected` /
+# `test_40_character_uppercase_sha_is_rejected` earlier in this file.
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Final spec-gap fix 2: rule 5's secret-credential scan covers every Azure
+# deployment action (`azure/webapps-deploy`'s `publish-profile`, `azure/arm-
+# deploy`'s `creds`, ...), not only `azure/login` -- a deploy action can
+# authenticate directly with its own secret input without any `azure/login`
+# step ever appearing in the workflow at all.
+# ---------------------------------------------------------------------------
+
+
+def test_publish_profile_on_webapps_deploy_without_login_step_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Deploy to Azure Web App
+                    uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      app-name: my-app
+                      publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_creds_on_arm_deploy_without_login_step_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Deploy ARM template
+                    uses: azure/arm-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      creds: ${{ secrets.AZURE_CREDENTIALS }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_deploy_action_without_secret_input_and_no_login_step_stays_pass(tmp_path):
+    """A deploy action step with no secret-shaped input at all (relying on
+    a preceding job's already-federated credentials, or on the runner's own
+    environment) and no `azure/login` step anywhere is not itself evidence
+    of a secret-based login -- rule 5 has nothing to reject here."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "deploy.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Deploy
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Deploy to Azure Web App
+                    uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      app-name: my-app
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Final spec-gap fix 3: explicit least-privilege permissions are required at
+# the workflow level *and* independently on every job -- a sibling job's own
+# explicit declaration is never evidence for a job that omits its own and
+# silently inherits the workflow-level default.
+# ---------------------------------------------------------------------------
+
+
+def test_sibling_job_without_own_permissions_is_must_fix_even_if_another_job_is_explicit(
+    tmp_path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              explicit:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              implicit:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.permissions == "must-fix"
+
+
+def test_every_job_explicit_but_workflow_level_missing_is_must_fix(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.permissions == "must-fix"
+
+
+def test_workflow_and_every_job_explicit_least_privilege_is_pass(tmp_path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "ci.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              one:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              two:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  packages: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.permissions == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Final spec-gap fix 4: CODEOWNERS coverage understands a repository-wide
+# catch-all glob, a broader ancestor directory glob subsuming a narrower
+# required one, and a cosmetic leading-slash root anchor -- never only
+# literal string equality -- while still requiring every governance
+# surface to actually be covered by *some* declared pattern.
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_codeowners(tmp_path: Path, codeowners_lines: Sequence[str]) -> Path:
+    """A minimal repo that is clean on every GHCP control except CODEOWNERS
+    coverage, whose declared patterns this helper's caller controls."""
+    root = tmp_path / "codeowners-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI
+            on:
+              pull_request:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+            """
+        ),
+        encoding="utf-8",
+    )
+    (root / "CODEOWNERS").write_text(
+        "\n".join(list(codeowners_lines) + [""]), encoding="utf-8"
+    )
+    return root
+
+
+def _codeowners_finding(result: ChangePlaneResult) -> Finding:
+    return next(f for f in result.findings if f.finding_id == "GHCP-002")
+
+
+def test_codeowners_leading_slash_patterns_still_satisfy_coverage(tmp_path):
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "/src/governance/** @octo-org/governance",
+            "/policies/** @octo-org/governance",
+            "/tests/** @octo-org/governance",
+            "/.github/workflows/governed-actions.yml @octo-org/governance",
+            "/tests/governed-actions-manifest.json @octo-org/governance",
+            "/tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # Coverage is fully satisfied, so absent live evidence the control can
+    # only land on "not-verified" -- it must never be "must-fix" simply
+    # because every declared line happens to carry a leading slash.
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_catch_all_glob_satisfies_every_required_surface(tmp_path):
+    root = _repo_with_codeowners(tmp_path, ["* @octo-org/governance"])
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_broader_ancestor_glob_subsumes_nested_file_requirements(tmp_path):
+    """A single `tests/**` line subsumes both explicit governed-actions
+    JSON-file requirements underneath it, and a single `src/**` line
+    subsumes the narrower `src/governance/**` requirement -- neither needs
+    its own redundant, separately declared line."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_single_level_glob_does_not_satisfy_recursive_requirement(tmp_path):
+    """`tests/*` only reaches one path segment deep; it must never be
+    treated as covering the fully recursive `tests/**` requirement."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/* @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-002" in {f.finding_id for f in result.findings}
+
+
+def test_codeowners_unrelated_patterns_still_flagged_missing(tmp_path):
+    """Recognizing glob coverage must never become so lenient that an
+    unrelated CODEOWNERS still silently passes -- every governance surface
+    must still be covered by some declared pattern."""
+    root = _repo_with_codeowners(tmp_path, ["docs/** @octo-org/docs"])
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert "GHCP-002" in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
