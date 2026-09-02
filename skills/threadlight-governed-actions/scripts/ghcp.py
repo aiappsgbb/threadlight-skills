@@ -205,6 +205,41 @@ _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE = re.compile(
 _CTK_MARKER_RE = re.compile(r"\bctk\b", re.IGNORECASE)
 _APPLICATION_PROBE_MARKER_RE = re.compile(r"application[-_ ]probe", re.IGNORECASE)
 
+# A *recognized runner invocation* -- the actual command being run is
+# literally `ctk`/`probes` (optionally via `./` or `python[3] -m`) --
+# anchored at the start of an already shell-segment-isolated command
+# line. `_CTK_MARKER_RE`/`_APPLICATION_PROBE_MARKER_RE` above match the
+# marker word *anywhere*, which a `grep -r ctk .`, `cat ctk.log`, `find
+# . -name '*ctk*'`, or a log filename mentioning either word would all
+# satisfy without ever actually running anything; these two are used
+# instead wherever rule 3 needs proof of genuine execution.
+_RECOGNIZED_CTK_RUNNER_RE = re.compile(
+    r"^(?:\./)?(?:python3?\s+-m\s+)?ctk\b", re.IGNORECASE
+)
+_RECOGNIZED_APPLICATION_PROBE_RUNNER_RE = re.compile(
+    r"^(?:\./)?(?:python3?\s+-m\s+)?probes\b", re.IGNORECASE
+)
+
+
+def _ci_probes_satisfied(text: str) -> bool:
+    """True only if ``text`` (already execution-reachable ``run:``
+    command text, one shell segment per line) contains, on some line, a
+    recognized CTK-runner invocation, and, on some line, a recognized
+    application-probe-runner invocation whose *own* line also names the
+    application probe specifically -- never merely because both marker
+    words appear somewhere in the text at all, which a `grep`/`cat`/
+    `find` command or a log filename mentioning them would satisfy
+    without ever actually running either.
+    """
+    lines = text.splitlines()
+    ctk_ok = any(_RECOGNIZED_CTK_RUNNER_RE.match(line) for line in lines)
+    probe_ok = any(
+        _RECOGNIZED_APPLICATION_PROBE_RUNNER_RE.match(line)
+        and _APPLICATION_PROBE_MARKER_RE.search(line)
+        for line in lines
+    )
+    return ctk_ok and probe_ok
+
 # Recognized test/eval-suite runner invocations -- a command *prefix* that
 # actually executes tests/evaluations, as opposed to one that merely
 # inspects, lists, or prints a path (`ls evals`, `find evals -name ...`,
@@ -361,6 +396,36 @@ _ARM_TEMPLATE_SCHEMA_RE = re.compile(
 # fully parsed/loaded -- so an arbitrarily large `.json` file elsewhere
 # in the tree can never make this scan slow or memory-heavy.
 _ARM_TEMPLATE_SNIFF_BYTES = 4096
+
+# The Azure Developer CLI (azd) manifest -- conventionally at the
+# repository root -- declares and drives this repository's actual
+# deployment (`azd up`/`azd deploy`); its presence is as unambiguous a
+# deployment-descriptor signal as an infrastructure directory.
+_DEPLOYMENT_MANIFEST_ROOT_FILENAMES: Tuple[str, ...] = ("azure.yaml", "azure.yml")
+
+# A Dockerfile "variant" -- the bare canonical `Dockerfile`, a suffixed
+# form (`Dockerfile.prod`), or a prefixed form (`api.Dockerfile`) --
+# each unambiguously names a container build/deployment descriptor
+# regardless of which directory it lives in, matched case-insensitively
+# since the convention itself is not case-sensitive in practice.
+_DOCKERFILE_NAME_RE = re.compile(r"^dockerfile(?:\..+)?$|^.+\.dockerfile$", re.IGNORECASE)
+
+# The exact filename Helm itself requires at the root of every chart --
+# a far more reliable, conservative signal than guessing from a
+# directory name like `charts/` alone.
+_HELM_CHART_FILENAME = "chart.yaml"
+
+# The two top-level keys every genuine Kubernetes manifest declares --
+# sniffed narrowly (never fully parsed) so an unrelated YAML file
+# elsewhere in the tree can never false-positive as a deployment
+# descriptor merely for using either word in some other sense.
+_KUBERNETES_MANIFEST_API_VERSION_RE = re.compile(r"^apiVersion:\s*\S", re.MULTILINE)
+_KUBERNETES_MANIFEST_KIND_RE = re.compile(r"^kind:\s*\S", re.MULTILINE)
+
+# Bounds the same class of sniff read as `_ARM_TEMPLATE_SNIFF_BYTES`,
+# for exactly the same reason: a large, unrelated YAML file elsewhere
+# in the tree can never make this scan slow or memory-heavy.
+_KUBERNETES_MANIFEST_SNIFF_BYTES = 4096
 
 # Every location GitHub itself recognizes a CODEOWNERS file at, in
 # GitHub's own precedence order: ``.github/CODEOWNERS`` is consulted
@@ -656,15 +721,62 @@ def _job_ids_and_names(document: Mapping) -> List[str]:
     return labels
 
 
+# The `azure/cli` marketplace action executes arbitrary Azure CLI
+# commands supplied through its own `inlineScript:` input rather than a
+# `run:` step body -- a deploy command hidden inside one (`az webapp
+# deploy ...`, `az deployment group create ...`) is exactly as real a
+# deployment as the identical command typed directly into a `run:`
+# step, and every check that inspects "actual command text" must
+# inspect this input too, not just `run:`.
+_AZURE_CLI_ACTION_MARKER = "azure/cli"
+
+
+def _azure_cli_inline_script_texts(document: Mapping) -> Tuple[str, ...]:
+    """Every ``inlineScript:`` input text from an ``azure/cli`` action
+    step anywhere in the document."""
+    texts: List[str] = []
+    for step in _all_steps(document):
+        if str(step.get("uses", "")).split("@", 1)[0].strip().lower() != _AZURE_CLI_ACTION_MARKER:
+            continue
+        with_block = step.get("with")
+        if not isinstance(with_block, Mapping):
+            continue
+        script = _with_input_value(with_block, "inlineScript")
+        if isinstance(script, str):
+            texts.append(script)
+    return tuple(texts)
+
+
+def _job_azure_cli_inline_script_texts(job: Mapping) -> Tuple[str, ...]:
+    """Same as :func:`_azure_cli_inline_script_texts`, scoped to just
+    this one job's own steps."""
+    texts: List[str] = []
+    steps = job.get("steps")
+    if isinstance(steps, list):
+        for step in steps:
+            if not isinstance(step, Mapping):
+                continue
+            if str(step.get("uses", "")).split("@", 1)[0].strip().lower() != _AZURE_CLI_ACTION_MARKER:
+                continue
+            with_block = step.get("with")
+            if not isinstance(with_block, Mapping):
+                continue
+            script = _with_input_value(with_block, "inlineScript")
+            if isinstance(script, str):
+                texts.append(script)
+    return tuple(texts)
+
+
 def _run_command_texts(document: Mapping) -> Tuple[str, ...]:
-    """Every step's actual ``run:`` shell command text -- never a step
+    """Every step's actual ``run:`` shell command text, plus every
+    ``azure/cli`` step's own ``inlineScript:`` text -- never a step
     ``name``, a ``uses:`` reference, or a YAML comment, none of which are
     evidence that a command genuinely executes."""
     return tuple(
         step["run"]
         for step in _all_steps(document)
         if isinstance(step.get("run"), str)
-    )
+    ) + _azure_cli_inline_script_texts(document)
 
 
 def _conditional_texts(document: Mapping) -> Tuple[str, ...]:
@@ -1167,13 +1279,117 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
 # ---------------------------------------------------------------------------
 
 
-def _is_deploy_workflow(document: Mapping) -> bool:
+# A local reusable-workflow call chain deeper than this is treated as
+# non-deploying rather than followed further -- defense in depth beyond
+# the cycle guard below, bounding worst-case work for a pathological
+# chain that never actually cycles back to a visited path.
+_MAX_REUSABLE_WORKFLOW_DEPTH = 5
+
+
+def _local_reusable_workflow_calls(document: Mapping) -> Tuple[str, ...]:
+    """Every ``uses:`` reference on a job that *calls* a reusable
+    workflow (a job with no ``steps:`` of its own, only a top-level
+    ``uses:``) -- never a step-level ``uses:`` referencing an ordinary
+    marketplace action, which this must not conflate with a workflow
+    call."""
+    calls: List[str] = []
+    jobs = document.get("jobs")
+    if isinstance(jobs, Mapping):
+        for job in jobs.values():
+            if not isinstance(job, Mapping) or "steps" in job:
+                continue
+            uses = job.get("uses")
+            if isinstance(uses, str) and uses.strip():
+                calls.append(uses.strip())
+    return tuple(calls)
+
+
+def _resolve_local_reusable_workflow_path(root: Path, uses_ref: str) -> Optional[Path]:
+    """Resolve a local reusable-workflow ``uses: ./...`` reference to
+    its real, on-disk path -- strictly relative to the repository root,
+    exactly as GitHub Actions itself resolves such a reference -- or
+    ``None`` if this is not a local reusable-workflow reference at all,
+    if it contains a ``..`` path-traversal segment, or if resolving it
+    (following any symlink) would land outside the repository root
+    entirely. A resolved path that does not exist as a regular file is
+    also rejected. Every rejection here is a fail-closed "not verified
+    as a local reusable-workflow reference", never a crash and never a
+    silently-followed path escape.
+    """
+    ref = uses_ref.split("@", 1)[0].strip()
+    if not ref.startswith("./"):
+        return None
+    if ".." in Path(ref).parts:
+        return None
+    try:
+        resolved_root = root.resolve()
+        candidate = (root / ref).resolve()
+    except OSError:
+        return None
+    if candidate != resolved_root and resolved_root not in candidate.parents:
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def _local_reusable_workflow_deploys(
+    root: Path,
+    uses_ref: str,
+    _visited: Optional[Set[Path]] = None,
+    _depth: int = 0,
+) -> bool:
+    """True if a local reusable-workflow reference resolves to a
+    workflow file that either itself deploys, or itself calls (possibly
+    transitively) another local reusable workflow that deploys -- so a
+    push-triggered caller that merely delegates its actual deployment
+    to a separate reusable-workflow file is classified a deploy exactly
+    as if it had deployed directly.
+
+    Bounded and cycle-safe: a resolved path already visited earlier on
+    this same call chain, an unresolvable/path-escaping reference, or a
+    chain deeper than :data:`_MAX_REUSABLE_WORKFLOW_DEPTH`, is treated
+    as non-deploying rather than ever recursed into further -- this can
+    only under-detect an unusually deep or mutually-recursive chain,
+    never loop indefinitely or exhaust the stack.
+    """
+    if _depth > _MAX_REUSABLE_WORKFLOW_DEPTH:
+        return False
+    resolved = _resolve_local_reusable_workflow_path(root, uses_ref)
+    if resolved is None:
+        return False
+    visited = _visited if _visited is not None else set()
+    if resolved in visited:
+        return False
+    visited.add(resolved)
+    try:
+        called_document = _load_workflow_document(resolved)
+    except ChangePlaneError:
+        return False
+    if not isinstance(called_document, Mapping):
+        return False
+    if _is_deploy_workflow(called_document):
+        return True
+    return any(
+        _local_reusable_workflow_deploys(root, nested_ref, visited, _depth + 1)
+        for nested_ref in _local_reusable_workflow_calls(called_document)
+    )
+
+
+def _is_deploy_workflow(document: Mapping, root: Optional[Path] = None) -> bool:
     """True if this workflow deploys -- via a known marketplace deploy
     action, a raw Azure/azd CLI deploy command run directly in a `run:`
-    step, or a job id/name that says so -- classified regardless of
-    which job any of this lives in or what that job happens to be
-    named: a job named "release" running a bare `az webapp deploy`
-    command is still a deploy for rule 1's purposes.
+    step or an `azure/cli` step's own `inlineScript:` input, a job
+    id/name that says so, or by calling (directly or transitively) a
+    local reusable workflow that itself deploys -- classified
+    regardless of which job any of this lives in or what that job
+    happens to be named: a job named "release" running a bare `az
+    webapp deploy` command is still a deploy for rule 1's purposes.
+
+    ``root`` -- when supplied -- additionally lets a local reusable-
+    workflow ``uses: ./...`` call be resolved and inspected; omitted
+    (the default), only this document's own directly-declared evidence
+    is considered, exactly as before.
     """
     uses_refs = [ref.split("@", 1)[0].strip().lower() for ref in _uses_refs(document)]
     if any(marker in ref for ref in uses_refs for marker in _DEPLOY_ACTION_MARKERS):
@@ -1182,7 +1398,13 @@ def _is_deploy_workflow(document: Mapping) -> bool:
     if _DEPLOY_RUN_COMMAND_RE.search(run_text):
         return True
     labels = [label.lower() for label in _job_ids_and_names(document)]
-    return any("deploy" in label for label in labels)
+    if any("deploy" in label for label in labels):
+        return True
+    if root is not None:
+        for uses_ref in _local_reusable_workflow_calls(document):
+            if _local_reusable_workflow_deploys(root, uses_ref):
+                return True
+    return False
 
 
 def _is_deploy_job(job_id: object, job: Mapping) -> bool:
@@ -1212,7 +1434,8 @@ def _is_deploy_job(job_id: object, job: Mapping) -> bool:
     if any(marker in ref for ref in uses_refs for marker in _DEPLOY_ACTION_MARKERS):
         return True
     run_text = "\n".join(
-        step["run"] for step in step_list if isinstance(step.get("run"), str)
+        [step["run"] for step in step_list if isinstance(step.get("run"), str)]
+        + list(_job_azure_cli_inline_script_texts(job))
     )
     if _DEPLOY_RUN_COMMAND_RE.search(run_text):
         return True
@@ -1737,7 +1960,7 @@ def _ci_probes_static_status(document: Mapping, triggers: Tuple[str, ...]) -> St
     # step, or an `echo "ctk application-probe"` line, must never count
     # as evidence a step actually runs one.
     text = "\n".join(_governance_relevant_run_command_texts(document))
-    if _CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text):
+    if _ci_probes_satisfied(text):
         return "pass"
     return "must-fix"
 
@@ -1745,6 +1968,20 @@ def _ci_probes_static_status(document: Mapping, triggers: Tuple[str, ...]) -> St
 # ---------------------------------------------------------------------------
 # Public: assess_workflow
 # ---------------------------------------------------------------------------
+
+
+def _infer_repo_root_from_workflow_path(path: Path) -> Optional[Path]:
+    """The repository root implied by a workflow file's own conventional
+    location (``<root>/.github/workflows/<name>.yml``) -- or ``None`` if
+    ``path`` is not laid out this way, in which case a local reusable-
+    workflow call from it simply cannot be resolved and is left
+    unfollowed rather than guessed at.
+    """
+    workflows_dir = path.parent
+    github_dir = workflows_dir.parent
+    if workflows_dir.name != "workflows" or github_dir.name != ".github":
+        return None
+    return github_dir.parent
 
 
 def assess_workflow(path: Path) -> WorkflowAssessment:
@@ -1756,7 +1993,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     path = Path(path)
     document = _load_workflow_document(path)
     triggers = _trigger_names(document)
-    is_deploy = _is_deploy_workflow(document)
+    is_deploy = _is_deploy_workflow(document, root=_infer_repo_root_from_workflow_path(path))
     sha_pins, sha_violations = _sha_pin_status(document)
     login_job_steps = _azure_login_job_steps(document)
     deploy_action_job_steps = _azure_deploy_action_job_steps(document)
@@ -2160,26 +2397,54 @@ def _looks_like_arm_template(path: Path) -> bool:
     return bool(_ARM_TEMPLATE_SCHEMA_RE.search(head))
 
 
+def _looks_like_kubernetes_manifest(path: Path) -> bool:
+    """True if ``path`` -- sniffed for only its first
+    :data:`_KUBERNETES_MANIFEST_SNIFF_BYTES` bytes, never fully parsed --
+    declares both ``apiVersion:`` and ``kind:`` at the start of a line,
+    the two keys every genuine Kubernetes manifest carries. Guessing
+    from a `.yml`/`.yaml` file's name or directory alone would false-
+    positive on every unrelated YAML file in the repository (including
+    this module's own GitHub Actions workflow fixtures); this content
+    sniff is deliberately narrow instead.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            head = handle.read(_KUBERNETES_MANIFEST_SNIFF_BYTES)
+    except OSError:
+        return False
+    return bool(
+        _KUBERNETES_MANIFEST_API_VERSION_RE.search(head)
+        and _KUBERNETES_MANIFEST_KIND_RE.search(head)
+    )
+
+
 def _discover_infrastructure_codeowners_requirements(root: Path) -> Tuple[str, ...]:
     """Every additional CODEOWNERS requirement this repository's own,
     actually-present infrastructure/Infrastructure-as-Code (IaC) surface
-    calls for -- deterministic and conservative: a fixed set of
-    conventional top-level directory names
-    (:data:`_INFRASTRUCTURE_DIRECTORY_NAMES`) is checked for existence at
-    the repository root only, and the whole tree (excluding hidden and
-    vendored/scratch directories, per :data:`_EXCLUDED_DIR_NAMES`) is
-    scanned for an individual Terraform/Bicep file
-    (:data:`_IAC_FILE_SUFFIXES`) or a genuine ARM JSON template (sniffed
-    via :func:`_looks_like_arm_template`), each reported as its own
-    containing top-level directory (or, for a file sitting directly at
-    the repository root, that exact file's own name) so CODEOWNERS
-    coverage can be required for precisely the infrastructure surface
-    this repository actually declares.
+    -- or recognized deployment descriptor -- calls for: deterministic
+    and conservative. A fixed set of conventional top-level directory
+    names (:data:`_INFRASTRUCTURE_DIRECTORY_NAMES`) is checked for
+    existence at the repository root only; a root-level Azure Developer
+    CLI manifest (:data:`_DEPLOYMENT_MANIFEST_ROOT_FILENAMES`) is
+    likewise checked only at the root; and the whole tree (excluding
+    hidden and vendored/scratch directories, per
+    :data:`_EXCLUDED_DIR_NAMES`) is scanned for an individual Terraform/
+    Bicep file (:data:`_IAC_FILE_SUFFIXES`), a genuine ARM JSON template
+    (sniffed via :func:`_looks_like_arm_template`), a Dockerfile variant
+    (:data:`_DOCKERFILE_NAME_RE`), a Helm chart's own
+    :data:`_HELM_CHART_FILENAME`, or a genuine Kubernetes manifest
+    (sniffed via :func:`_looks_like_kubernetes_manifest`) -- each
+    reported as its own containing top-level directory (or, for a file
+    sitting directly at the repository root, that exact file's own
+    name) so CODEOWNERS coverage can be required for precisely the
+    infrastructure/deployment surface this repository actually
+    declares.
 
     Returns an empty tuple -- never inventing a requirement -- for a
-    repository with no infrastructure/IaC surface at all; a category
-    this repository has no matching directory or file for is simply
-    absent from the result, not silently required anyway.
+    repository with no infrastructure/IaC/deployment-descriptor surface
+    at all; a category this repository has no matching directory or
+    file for is simply absent from the result, not silently required
+    anyway.
     """
     if not root.is_dir():
         return ()
@@ -2187,6 +2452,9 @@ def _discover_infrastructure_codeowners_requirements(root: Path) -> Tuple[str, .
     for name in _INFRASTRUCTURE_DIRECTORY_NAMES:
         if (root / name).is_dir():
             discovered.add(f"{name}/**")
+    for name in _DEPLOYMENT_MANIFEST_ROOT_FILENAMES:
+        if (root / name).is_file():
+            discovered.add(name)
     for candidate in root.rglob("*"):
         if not candidate.is_file():
             continue
@@ -2197,10 +2465,16 @@ def _discover_infrastructure_codeowners_requirements(root: Path) -> Tuple[str, .
         ):
             continue
         name_lower = candidate.name.lower()
-        is_iac = any(name_lower.endswith(suffix) for suffix in _IAC_FILE_SUFFIXES)
-        if not is_iac and name_lower.endswith(".json"):
-            is_iac = _looks_like_arm_template(candidate)
-        if not is_iac:
+        is_relevant = any(name_lower.endswith(suffix) for suffix in _IAC_FILE_SUFFIXES)
+        if not is_relevant and name_lower.endswith(".json"):
+            is_relevant = _looks_like_arm_template(candidate)
+        if not is_relevant and _DOCKERFILE_NAME_RE.match(candidate.name):
+            is_relevant = True
+        if not is_relevant and name_lower == _HELM_CHART_FILENAME:
+            is_relevant = True
+        if not is_relevant and name_lower.endswith((".yml", ".yaml")):
+            is_relevant = _looks_like_kubernetes_manifest(candidate)
+        if not is_relevant:
             continue
         if len(relative.parts) == 1:
             discovered.add(relative.as_posix())
@@ -2339,7 +2613,7 @@ def _job_satisfies_ci_probes(job: Mapping) -> bool:
     lines).
     """
     text = "\n".join(_job_run_texts(job))
-    return bool(_CTK_MARKER_RE.search(text) and _APPLICATION_PROBE_MARKER_RE.search(text))
+    return _ci_probes_satisfied(text)
 
 
 def _job_references_eval(job: Mapping, eval_directories: Set[Path]) -> bool:

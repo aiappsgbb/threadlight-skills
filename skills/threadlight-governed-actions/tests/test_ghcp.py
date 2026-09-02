@@ -6546,3 +6546,652 @@ def test_deploy_job_without_declared_environment_is_unaffected_by_tier_check(
     result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
     assert result.environment_identity_refs == ()
 
+
+
+# ---------------------------------------------------------------------------
+# Readiness review, item 1: deployment detection must resolve a local
+# reusable-workflow call (``uses: ./.github/workflows/callee.yml``) and
+# inspect an ``azure/cli`` step's own ``inlineScript:`` input for a pinned
+# deployment command -- a push-triggered caller that delegates its actual
+# deployment to either mechanism must still fail rule 1 (GHCP-001), exactly
+# as if it had deployed directly. Resolution must never hang on a cycle,
+# recurse unbounded, or escape the repository root.
+# ---------------------------------------------------------------------------
+
+
+def test_push_caller_of_local_reusable_deploying_workflow_is_must_fix(tmp_path):
+    root = tmp_path / "reusable-deploy-repo"
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          ship:
+            uses: ./.github/workflows/callee.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "callee.yml",
+        """\
+        name: Callee
+        on:
+          workflow_call:
+        jobs:
+          release:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "caller.yml")
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_push_caller_of_local_reusable_non_deploying_workflow_still_passes(tmp_path):
+    root = tmp_path / "reusable-nondeploy-repo"
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          run-it:
+            uses: ./.github/workflows/callee.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "callee.yml",
+        """\
+        name: Callee
+        on:
+          workflow_call:
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo "build only"
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "caller.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_caller_of_local_reusable_deploying_workflow_is_unaffected(
+    tmp_path,
+):
+    """Rule 1 only gates a *push*-triggered deploy; a pull_request-
+    triggered caller of a deploying reusable workflow is still correctly
+    classified `is_deploy=True` (for other checks, e.g. rule 6), but must
+    not itself fail rule 1 -- it is already PR-gated."""
+    root = tmp_path / "reusable-deploy-pr-repo"
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          ship:
+            uses: ./.github/workflows/callee.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "callee.yml",
+        """\
+        name: Callee
+        on:
+          workflow_call:
+        jobs:
+          release:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "caller.yml")
+    assert result.is_deploy is True
+    assert result.pr_gate == "pass"
+
+
+def test_transitively_nested_reusable_workflow_deploy_is_detected(tmp_path):
+    """A calls B (non-deploying) which itself calls C (deploying) -- the
+    deploy evidence must propagate all the way back to A."""
+    root = tmp_path / "reusable-nested-repo"
+    _write_workflow(
+        root,
+        "a.yml",
+        """\
+        name: A
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: ./.github/workflows/b.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "b.yml",
+        """\
+        name: B
+        on:
+          workflow_call:
+        jobs:
+          delegate:
+            uses: ./.github/workflows/c.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "c.yml",
+        """\
+        name: C
+        on:
+          workflow_call:
+        jobs:
+          release:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: az webapp deploy --resource-group rg --name app
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "a.yml")
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_cyclic_reusable_workflow_calls_do_not_crash_or_falsely_classify_as_deploy(
+    tmp_path,
+):
+    """Two reusable workflows calling each other must never hang, recurse
+    unboundedly, or crash -- and, since neither ever actually declares any
+    deploy evidence of its own, must not be misclassified as deploying."""
+    root = tmp_path / "reusable-cycle-repo"
+    _write_workflow(
+        root,
+        "cyc-a.yml",
+        """\
+        name: CycA
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: ./.github/workflows/cyc-b.yml
+        """,
+    )
+    _write_workflow(
+        root,
+        "cyc-b.yml",
+        """\
+        name: CycB
+        on:
+          workflow_call:
+        jobs:
+          delegate:
+            uses: ./.github/workflows/cyc-a.yml
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "cyc-a.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_reusable_workflow_path_escape_is_not_followed(tmp_path):
+    """A `uses:` reference attempting to traverse outside the repository
+    root must never be resolved/read -- it simply contributes no deploy
+    evidence via this mechanism, rather than crashing or being silently
+    followed outside the repository."""
+    root = tmp_path / "reusable-escape-repo"
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: ./../../outside.yml
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "caller.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_external_reusable_workflow_call_is_not_statically_resolved(tmp_path):
+    """A reusable-workflow call into a *different* repository
+    (``org/repo/.github/workflows/x.yml@ref``, not `./`-prefixed) cannot
+    be resolved statically without fetching that other repository -- it
+    must never be treated as deploy evidence (nor crash)."""
+    root = tmp_path / "reusable-external-repo"
+    _write_workflow(
+        root,
+        "caller.yml",
+        """\
+        name: Caller
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          delegate:
+            uses: octo-org/other-repo/.github/workflows/deploy.yml@main
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "caller.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_azure_cli_inline_script_with_deploy_command_on_push_is_must_fix(tmp_path):
+    root = tmp_path / "azure-cli-inline-deploy-repo"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          run-script:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/cli@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                with:
+                  inlineScript: |
+                    az webapp deploy --resource-group rg --name app
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
+    assert result.is_deploy is True
+    assert result.pr_gate == "must-fix"
+
+
+def test_azure_cli_inline_script_without_deploy_command_is_unaffected(tmp_path):
+    root = tmp_path / "azure-cli-inline-nondeploy-repo"
+    _write_workflow(
+        root,
+        "check.yml",
+        """\
+        name: Check
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          run-script:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - uses: azure/cli@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                with:
+                  inlineScript: |
+                    az account show
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "check.yml")
+    assert result.is_deploy is False
+    assert result.pr_gate == "pass"
+
+
+def test_azure_cli_inline_script_deploy_scoped_correctly_to_its_own_job(tmp_path):
+    """`_is_deploy_job` (rule 6's per-job classifier) must also see a
+    deploying `azure/cli` `inlineScript:`, scoped to that job alone."""
+    from ghcp import _is_deploy_job, _load_workflow_document
+
+    root = tmp_path / "azure-cli-inline-job-scope-repo"
+    workflow_path = _write_workflow(
+        root,
+        "mixed.yml",
+        """\
+        name: Mixed
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo "build"
+          ship:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: azure/cli@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                with:
+                  inlineScript: |
+                    az webapp deploy --resource-group rg --name app
+        """,
+    )
+    document = _load_workflow_document(workflow_path)
+    jobs = document["jobs"]
+    assert _is_deploy_job("build", jobs["build"]) is False
+    assert _is_deploy_job("ship", jobs["ship"]) is True
+
+
+def test_resolve_local_reusable_workflow_path_rejects_non_local_ref(tmp_path):
+    from ghcp import _resolve_local_reusable_workflow_path
+
+    root = tmp_path / "root-only"
+    root.mkdir()
+    assert (
+        _resolve_local_reusable_workflow_path(
+            root, "octo-org/other-repo/.github/workflows/x.yml@main"
+        )
+        is None
+    )
+
+
+def test_resolve_local_reusable_workflow_path_rejects_traversal_segment(tmp_path):
+    from ghcp import _resolve_local_reusable_workflow_path
+
+    root = tmp_path / "root-only"
+    root.mkdir()
+    assert _resolve_local_reusable_workflow_path(root, "./../outside.yml") is None
+
+
+def test_resolve_local_reusable_workflow_path_rejects_missing_file(tmp_path):
+    from ghcp import _resolve_local_reusable_workflow_path
+
+    root = tmp_path / "root-only"
+    root.mkdir()
+    assert (
+        _resolve_local_reusable_workflow_path(
+            root, "./.github/workflows/does-not-exist.yml"
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# Readiness review, item 2: rule 3's CTK/application-probe check must
+# require a *recognized runner invocation* -- the actual command being run
+# is literally `ctk`/`probes` -- never merely a marker word appearing
+# anywhere in a `grep`/`cat`/`find`/`echo`-argument or a log filename.
+# ---------------------------------------------------------------------------
+
+
+def test_ctk_probe_via_grep_command_does_not_satisfy_rule_3(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path, 'grep -r "ctk application-probe" .'
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_via_cat_log_filename_does_not_satisfy_rule_3(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path, "cat ctk-application-probe.log"
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_via_find_command_does_not_satisfy_rule_3(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path, "find . -iname '*ctk*application-probe*'"
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_via_real_run_but_marker_only_in_log_redirect_filename_still_fails(
+    tmp_path,
+):
+    """A step that runs something real, but only mentions the CTK/
+    application-probe markers in a *log filename* it redirects output to
+    -- never actually running either -- must not satisfy rule 3."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path, "pytest tests/ > ctk-application-probe-results.log"
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_python3_m_invocation_still_satisfies_rule_3(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        'python3 -m ctk run-vectors\n                      '
+        'python3 -m probes run-application-probe',
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+def test_ctk_probe_dot_slash_invocation_still_satisfies_rule_3(tmp_path):
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        "./ctk run-vectors\n                      "
+        "./probes run-application-probe",
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+def test_ctk_probe_recognized_runner_helper_rejects_grep_and_accepts_real_invocation():
+    from ghcp import _ci_probes_satisfied
+
+    assert _ci_probes_satisfied('grep -r "ctk application-probe" .') is False
+    assert _ci_probes_satisfied("cat ctk-application-probe.log") is False
+    assert (
+        _ci_probes_satisfied(
+            "python -m ctk run-vectors\npython -m probes run-application-probe"
+        )
+        is True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Readiness review, item 3: applicable infrastructure ownership discovery
+# must also recognize concrete deployment descriptors -- an Azure Developer
+# CLI manifest, a Dockerfile variant, a Kubernetes manifest, or a Helm
+# chart -- actually present in the repository, deterministically and
+# conservatively (never inventing an absent category).
+# ---------------------------------------------------------------------------
+
+
+def _write_ctk_probe_ci_workflow(root: Path) -> None:
+    _write_workflow(
+        root,
+        "ci.yml",
+        """\
+        name: CI
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Run CTK and application probes
+                run: |
+                  python -m ctk run-vectors
+                  python -m probes run-application-probe
+        """,
+    )
+
+
+def test_azure_yaml_manifest_at_root_requires_codeowners_coverage(tmp_path):
+    root = tmp_path / "azd-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "azure.yaml").write_text("name: myapp\n", encoding="utf-8")
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "azure.yaml" in finding.details
+
+
+def test_azure_yaml_manifest_with_codeowners_coverage_clears_ghcp_002(tmp_path):
+    root = tmp_path / "azd-covered-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "azure.yaml").write_text("name: myapp\n", encoding="utf-8")
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS + ("azure.yaml",))
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+def test_dockerfile_variant_in_subdirectory_requires_its_own_containing_directory(
+    tmp_path,
+):
+    root = tmp_path / "dockerfile-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "backend").mkdir(parents=True)
+    (root / "backend" / "Dockerfile.prod").write_text(
+        "FROM python:3.12\n", encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "backend/**" in finding.details
+
+
+def test_bare_root_dockerfile_requires_exact_file_coverage(tmp_path):
+    root = tmp_path / "root-dockerfile-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "Dockerfile" in finding.details
+
+
+def test_kubernetes_manifest_requires_its_own_containing_directory(tmp_path):
+    root = tmp_path / "k8s-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "k8s").mkdir(parents=True)
+    (root / "k8s" / "deployment.yaml").write_text(
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app\n",
+        encoding="utf-8",
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "k8s/**" in finding.details
+
+
+def test_unrelated_yaml_file_is_never_mistaken_for_a_kubernetes_manifest(tmp_path):
+    root = tmp_path / "plain-yaml-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "config").mkdir(parents=True)
+    (root / "config" / "settings.yaml").write_text(
+        "featureFlags:\n  beta: true\n", encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+
+
+def test_helm_chart_yaml_requires_its_own_containing_directory(tmp_path):
+    root = tmp_path / "helm-repo"
+    _write_ctk_probe_ci_workflow(root)
+    (root / "charts" / "myapp" / "templates").mkdir(parents=True)
+    (root / "charts" / "myapp" / "Chart.yaml").write_text(
+        "apiVersion: v2\nname: myapp\n", encoding="utf-8"
+    )
+    _write_codeowners(root, _CLEAN_CODEOWNERS_PATTERNS)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "must-fix"
+    assert "charts/**" in finding.details
+
+
+def test_deployment_descriptor_repo_with_no_matching_category_has_no_behavior_change(
+    tmp_path,
+):
+    """A repository with none of the newly-recognized deployment
+    descriptors (or any prior infra/IaC surface) at all must produce the
+    exact same CODEOWNERS result as before this feature existed."""
+    root = _write_clean_repo(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+    assert finding.reason_code == "branch-protection-not-verified-statically"
+
+
+def test_discover_infrastructure_requirements_covers_all_deployment_descriptors(
+    tmp_path,
+):
+    from ghcp import _discover_infrastructure_codeowners_requirements
+
+    root = tmp_path / "all-descriptors-repo"
+    root.mkdir()
+    (root / "azure.yaml").write_text("name: myapp\n", encoding="utf-8")
+    (root / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
+    (root / "backend").mkdir()
+    (root / "backend" / "Dockerfile.dev").write_text(
+        "FROM python:3.12\n", encoding="utf-8"
+    )
+    (root / "k8s").mkdir()
+    (root / "k8s" / "deployment.yaml").write_text(
+        "apiVersion: apps/v1\nkind: Deployment\n", encoding="utf-8"
+    )
+    (root / "charts" / "myapp").mkdir(parents=True)
+    (root / "charts" / "myapp" / "Chart.yaml").write_text(
+        "apiVersion: v2\nname: myapp\n", encoding="utf-8"
+    )
+    (root / "unrelated.yaml").write_text("foo: bar\n", encoding="utf-8")
+    discovered = _discover_infrastructure_codeowners_requirements(root)
+    assert discovered == (
+        "Dockerfile",
+        "azure.yaml",
+        "backend/**",
+        "charts/**",
+        "k8s/**",
+    )
