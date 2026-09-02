@@ -27,6 +27,7 @@ from typing import List, Sequence
 
 import pytest
 
+import canonical
 import ghcp
 from ghcp import (
     ChangePlaneResult,
@@ -7538,6 +7539,31 @@ def test_live_github_environments_missing_key_is_not_verified():
     assert result.finding.finding_id == "GHCP-002"
 
 
+def test_live_github_success_includes_collected_sha256_digest_over_canonical_data(fake_runner):
+    result = collect_live_github("aiappsgbb/threadlight-skills", "main", run=fake_runner)
+    digest = result.data["collected_sha256"]
+    assert isinstance(digest, str) and digest.startswith("sha256:")
+    assert len(digest) == len("sha256:") + 64
+    # The digest must be computed over exactly the rest of the returned
+    # data -- never including itself -- so recomputing it over every other
+    # key must reproduce the exact same value.
+    payload_without_digest = {k: v for k, v in result.data.items() if k != "collected_sha256"}
+    expected = f"sha256:{canonical.sha256_hex(canonical.canonical_bytes(payload_without_digest))}"
+    assert digest == expected
+
+
+def test_live_github_digest_changes_when_state_changes():
+    runner_a = _FakeRunner(
+        [_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
+    )
+    runner_b = _FakeRunner(
+        [_ok('[{"id": 1}]'), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
+    )
+    result_a = collect_live_github("owner/repo", "main", run=runner_a)
+    result_b = collect_live_github("owner/repo", "main", run=runner_b)
+    assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
+
+
 @pytest.fixture
 def fake_azure_runner() -> _FakeRunner:
     return _FakeRunner(
@@ -7609,6 +7635,27 @@ def test_live_azure_collects_identity_and_role_evidence(fake_azure_runner):
         assert "token" not in joined
 
 
+def test_live_azure_success_includes_collected_sha256_digest_over_canonical_data(fake_azure_runner):
+    result = collect_live_azure(
+        "SUBSCRIPTION", "STAGING_RG", "DEPLOY_IDENTITY", run=fake_azure_runner
+    )
+    digest = result.data["collected_sha256"]
+    assert isinstance(digest, str) and digest.startswith("sha256:")
+    assert len(digest) == len("sha256:") + 64
+    payload_without_digest = {k: v for k, v in result.data.items() if k != "collected_sha256"}
+    expected = f"sha256:{canonical.sha256_hex(canonical.canonical_bytes(payload_without_digest))}"
+    assert digest == expected
+
+
+def test_live_azure_digest_changes_when_state_changes():
+    runner_a = _FakeRunner([_ok("[]"), _ok("[]")])
+    runner_b = _FakeRunner([_ok('[{"id": 1}]'), _ok("[]")])
+    result_a = collect_live_azure("sub", "rg", "identity", run=runner_a)
+    result_b = collect_live_azure("sub", "rg", "identity", run=runner_b)
+    assert result_a.status == result_b.status == "pass"
+    assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
+
+
 def test_live_azure_federated_credential_failure_is_ghcp_005(fake_runner_403):
     result = collect_live_azure("sub", "rg", "identity", run=fake_runner_403)
     assert result.status == "not-verified"
@@ -7648,11 +7695,16 @@ def test_live_azure_cli_failure_retains_exit_code_and_error_class():
         "null",
     ],
 )
-def test_live_azure_malformed_federated_credentials_is_ghcp_006(malformed_stdout):
+def test_live_azure_malformed_federated_credentials_is_ghcp_005(malformed_stdout):
+    # A malformed/incomplete federated-credential-list response is unusable
+    # OIDC/WIF evidence -- exactly as unusable as the command failing
+    # outright -- so it must attribute to GHCP-005, the same control an
+    # outright command failure at this step already attributes to, never
+    # GHCP-006 (which is reserved for role-assignment/definition evidence).
     runner = _FakeRunner([_ok(malformed_stdout)])
     result = collect_live_azure("sub", "rg", "identity", run=runner)
     assert result.status == "not-verified"
-    assert result.finding.finding_id == "GHCP-006"
+    assert result.finding.finding_id == "GHCP-005"
     assert result.evidence == ()
 
 

@@ -3279,6 +3279,19 @@ _GITHUB_STEPS: Tuple[Tuple[str, str, str, Callable[[object], bool]], ...] = (
 )
 
 
+def _with_collected_digest(data: Mapping[str, object]) -> Dict[str, object]:
+    """Return a copy of *data* with a deterministic ``collected_sha256``
+    integrity digest added -- a canonical SHA-256 hash of *data* itself
+    (never including the digest, since it is computed before the digest
+    key is added), so any later re-collection with the exact same live
+    state reproduces the exact same digest, and any change to that state
+    changes it. The digest is payload-free (a hash, never the underlying
+    values) and exposes nothing beyond what *data* already carries.
+    """
+    digest = canonical.sha256_hex(canonical.canonical_bytes(data))
+    return {**data, "collected_sha256": f"sha256:{digest}"}
+
+
 def collect_live_github(
     repository: str, default_branch: str, run: CommandRunner
 ) -> LiveEvidenceResult:
@@ -3328,7 +3341,7 @@ def collect_live_github(
         "environments": _github_environment_protection(collected["environments"]),
         "oidc_customization_sub": collected["oidc_customization_sub"],
     }
-    return LiveEvidenceResult(status="pass", data=data, evidence=(), finding=None)
+    return LiveEvidenceResult(status="pass", data=_with_collected_digest(data), evidence=(), finding=None)
 
 
 def _azure_not_verified(
@@ -3412,14 +3425,16 @@ def collect_live_azure(
     a secret. A missing *subscription*/*resource_group*/*deploy_identity*
     is reported ``"not-verified"`` before any command runs at all (there
     is nothing safe to query). A federated-credential-list command that
-    fails outright (non-zero exit, missing CLI, unparseable output) is
-    attributed to GHCP-005 -- this is exactly the OIDC/WIF evidence that
-    control needs. Every other failure -- a role-assignment-list or
-    role-definition-list command that fails outright, or *any* of the
-    three commands succeeding but returning a payload that is not shaped
+    fails outright (non-zero exit, missing CLI, unparseable output), or
+    that succeeds but returns a payload that is not the JSON array Azure's
+    real CLI output always is, is attributed to GHCP-005 -- either way
+    the OIDC/WIF evidence that control needs is unusable, and an
+    incomplete result is exactly as unusable as no result at all. A
+    role-assignment-list or role-definition-list command that fails
+    outright, or that succeeds but returns a payload that is not shaped
     the way Azure's real CLI output always is (not a JSON array, an
     assignment entry that is not itself a JSON object, or a missing/
-    blank/non-string ``roleDefinitionName``) -- is attributed to GHCP-006
+    blank/non-string ``roleDefinitionName``), is attributed to GHCP-006
     (least-privilege / identity-separation evidence): an incomplete or
     unrecognized result can never prove identities are actually separate
     and least-privileged, so it must never be reported "pass". This
@@ -3457,7 +3472,7 @@ def collect_live_azure(
         )
     if not _is_json_list(federated_credentials):
         return _azure_not_verified(
-            "GHCP-006",
+            "GHCP-005",
             "azure-federated-credential-evidence-malformed",
             "A read-only 'az identity federated-credential list' call "
             "returned a response that was not the expected JSON array",
@@ -3533,7 +3548,7 @@ def collect_live_azure(
         "role_assignments": role_assignments,
         "role_definitions": role_definitions,
     }
-    return LiveEvidenceResult(status="pass", data=data, evidence=(), finding=None)
+    return LiveEvidenceResult(status="pass", data=_with_collected_digest(data), evidence=(), finding=None)
 
 # --- read-only git metadata resolution (never a subprocess, never a
 # fabricated placeholder) ------------------------------------------------
