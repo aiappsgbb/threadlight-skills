@@ -1110,6 +1110,41 @@ def test_manifest_summary_partial_when_required_evidence_phase_mismatches_refere
     assert manifest["summary"]["verdict"] == "partial"
 
 
+def test_manifest_summary_partial_when_required_evidence_phase_matches_none_of_multiple_citers():
+    # Quality review: two findings with distinct phases both cite the
+    # same evidence entry, whose own phase matches *neither* of them --
+    # this must not launder into "governed" just because more than one
+    # finding cites it; it is exactly as untrustworthy as a single-citer
+    # mismatch.
+    findings = [
+        _finding("MED-001", "pass", phase="design", evidence_refs=("EVID-shared",)),
+        _finding("MED-002", "pass", phase="post-deploy", evidence_refs=("EVID-shared",)),
+    ]
+    evidence = [_evidence("EVID-shared", phase="pre-deploy")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_manifest_summary_governed_when_required_evidence_phase_matches_one_of_multiple_citers():
+    # The complementary case: an evidence entry cited by findings with two
+    # distinct phases remains trusted as long as its own phase matches
+    # *any one* of them -- matching any citing finding's phase is
+    # sufficient, never requiring agreement across every citer.
+    findings = [
+        _finding("MED-001", "pass", phase="design", evidence_refs=("EVID-shared",)),
+        _finding("MED-002", "pass", phase="post-deploy", evidence_refs=("EVID-shared",)),
+    ]
+    evidence = [_evidence("EVID-shared", phase="design")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "fresh"
+    assert manifest["summary"]["verdict"] == "governed"
+
+
 def test_manifest_summary_partial_when_required_evidence_policy_set_sha256_mismatches():
     findings = [_finding("MED-001", "pass", evidence_refs=("EVID-wrong-policy",))]
     evidence = [_evidence("EVID-wrong-policy", policy_set_sha256=_sha256_of("not-the-real-policy-set"))]
@@ -1206,6 +1241,11 @@ def test_freshness_missing_captured_at_degrades_to_stale():
     # timestamp: a missing trusted capture instant degrades to this
     # module's own placeholder, never a fabricated real instant.
     assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
+    # Quality review: a missing captured_at must never let an
+    # all-trustworthy set of required evidence launder into "governed" on
+    # the strength of a capture instant this manifest cannot actually
+    # vouch for -- the truthful verdict is "partial".
+    assert manifest["summary"]["verdict"] == "partial"
 
 
 def test_freshness_invalid_captured_at_degrades_to_stale():
@@ -1218,6 +1258,21 @@ def test_freshness_invalid_captured_at_degrades_to_stale():
     _assert_valid_manifest(manifest)
     assert manifest["freshness"]["status"] == "stale"
     assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
+    assert manifest["summary"]["verdict"] == "partial"
+
+
+def test_freshness_missing_captured_at_with_no_required_evidence_still_governed():
+    # The no-required-evidence carveout is unaffected by a missing/
+    # unparseable captured_at: with nothing here needing evidentiary
+    # proof of freshness, the legitimate "stale" freshness status over an
+    # empty window must never prevent "governed" -- exactly the same
+    # carveout as when captured_at is present and valid.
+    findings = [_finding("MED-001", "pass")]
+    result = _base_result(findings=findings, captured_at=None)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "stale"
+    assert manifest["summary"]["verdict"] == "governed"
 
 
 def test_freshness_captured_at_is_never_derived_from_newest_evidence():

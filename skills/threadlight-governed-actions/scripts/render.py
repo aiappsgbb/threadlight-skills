@@ -820,9 +820,12 @@ def _required_evidence_is_untrustworthy(
     * ``repository``/``source_commit`` does not match this assessment's
       own ``result.source`` -- foreign-repository or wrong-commit
       evidence can never be trusted for *this* assessment;
-    * ``phase`` disagrees with the single, unambiguous phase of every
-      finding that cites it (a reference cited by findings with more
-      than one distinct phase, or cited only by probes, is left
+    * ``phase`` disagrees with every finding that cites it -- an evidence
+      entry whose own ``phase`` matches *any one* of the (possibly more
+      than one distinct) phases among the findings that cite it in their
+      own ``evidence_refs`` remains trusted, but an entry cited only by
+      findings whose phases it matches none of is not (a reference cited
+      only by probes, which carry no ``phase`` of their own, is left
       unchecked here rather than guessing which phase is authoritative);
     * a non-null ``policy_set_sha256`` does not match the canonical
       digest this assessment's own ``policy_hashes`` collapse to.
@@ -862,7 +865,7 @@ def _required_evidence_is_untrustworthy(
         if ref.source_commit != result.source.commit:
             return True
         finding_phases = finding_phases_by_evidence.get(evidence_id, set())
-        if len(finding_phases) == 1 and ref.phase not in finding_phases:
+        if finding_phases and ref.phase not in finding_phases:
             return True
         if ref.policy_set_sha256 is not None and ref.policy_set_sha256 != expected_policy_set_sha256:
             return True
@@ -935,7 +938,7 @@ def _summary(
     findings: Sequence[Dict[str, object]],
     dirty: bool,
     required_evidence_untrustworthy: bool,
-    freshness_expired: bool,
+    freshness_unproven: bool,
 ) -> Dict[str, object]:
     by_status: Dict[str, List[str]] = {status: [] for status in contracts.STATUSES}
     for finding in findings:
@@ -949,20 +952,30 @@ def _summary(
 
     if must_fix:
         verdict = "ungoverned"
-    elif should_fix or not_verified or dirty or required_evidence_untrustworthy or freshness_expired:
+    elif should_fix or not_verified or dirty or required_evidence_untrustworthy or freshness_unproven:
         # A dirty source tree can never bind evidence to a unique commit,
         # so it can never earn "governed". Exactly the same truthful
         # degradation applies when a finding's or probe's own *required*
         # evidence fails this module's identity/timestamp trust checks
         # (foreign repository, wrong commit, a future timestamp, a
-        # mismatched phase or policy-set binding) or is simply too old
-        # (the assessment's own trusted capture instant exceeds
-        # ``oldest_source_at`` plus ``valid_for_hours``) -- without
-        # inventing a finding beyond what the assessor actually observed,
-        # the truthful verdict is "partial". An assessment with no
-        # required evidence at all (nothing here needed evidentiary
-        # proof of freshness) is unaffected by either check and can still
-        # earn "governed".
+        # mismatched phase or policy-set binding), or when required
+        # evidence exists but this manifest's own rendered freshness
+        # status is anything other than ``"fresh"``: ``"expired"`` (the
+        # assessment's own trusted capture instant exceeds
+        # ``oldest_source_at`` plus ``valid_for_hours``), or ``"stale"``
+        # -- most commonly a missing/unparseable ``captured_at``, which
+        # :func:`_freshness_from_pairs` itself already degrades to
+        # ``"stale"`` rather than inventing a trusted instant to compare
+        # against, so an otherwise all-trustworthy set of required
+        # evidence can never launder into "governed" on the strength of a
+        # capture instant this manifest cannot actually vouch for.
+        # Without inventing a finding beyond what the assessor actually
+        # observed, the truthful verdict is "partial". ``freshness_unproven``
+        # is deliberately gated on *required* timestamp pairs actually
+        # existing: an assessment with no required evidence at all
+        # (nothing here needed evidentiary proof of freshness) renders a
+        # legitimate ``"stale"`` freshness status over an empty window,
+        # and that alone must never prevent "governed".
         verdict = "partial"
     else:
         verdict = "governed"
@@ -1023,6 +1036,12 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     required_timestamp_pairs = _required_trustworthy_timestamp_pairs(result)
     required_evidence_untrustworthy = _required_evidence_is_untrustworthy(result, captured_instant)
     freshness = _freshness_from_pairs(required_timestamp_pairs, captured_instant, required_evidence_untrustworthy)
+    # Gated on *required* timestamp pairs actually existing -- see
+    # ``_summary``'s own docstring comment for why an assessment with no
+    # required evidence at all must not be penalized for the legitimate
+    # ``"stale"`` freshness status ``_freshness_from_pairs`` renders over
+    # an empty window.
+    freshness_unproven = bool(required_timestamp_pairs) and freshness["status"] != "fresh"
 
     return {
         "schema": MANIFEST_SCHEMA,
@@ -1056,7 +1075,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
             findings,
             result.source.dirty,
             required_evidence_untrustworthy,
-            freshness["status"] == "expired",
+            freshness_unproven,
         ),
     }
 
