@@ -934,6 +934,35 @@ _SAFE_IDENTITY_REF_RE = re.compile(
 )
 
 
+def _canonicalize_github_expression_reference(value: str) -> Optional[str]:
+    """The canonical form of ``value`` as a single, validated GitHub
+    Actions context reference (a bare dotted path like
+    ``secrets.AZURE_CLIENT_ID``, wrapped in ``${{ ... }}`` and nothing
+    else), or ``None`` if it is not one at all.
+
+    Two spellings of the exact same context reference can differ
+    purely in incidental, semantically meaningless ways -- extra or
+    missing whitespace just inside the ``${{ ... }}`` wrapper
+    (``${{ secrets.X }}`` vs. ``${{secrets.X}}`` vs. ``${{  secrets.X  }}``),
+    or bracket-indexed property access used as an exact equivalent of
+    dotted access (``secrets['X']`` vs. ``secrets.X``). Comparing two
+    such references for identity by their raw, as-written text would
+    treat them as different identities even though they resolve to the
+    exact same underlying secret/variable/output, which is precisely
+    backwards for rule 6's shared-identity detection: this function
+    normalizes bracket-indexed access to its dotted equivalent and
+    strips all internal whitespace *before* validating the result
+    against :data:`_SAFE_IDENTITY_REF_RE`, so every such variant
+    canonicalizes to the identical, whitespace-free
+    ``${{context.path}}`` form.
+    """
+    normalized = _normalize_indexed_github_expression(value.strip())
+    normalized = re.sub(r"\s+", "", normalized)
+    if _SAFE_IDENTITY_REF_RE.match(normalized):
+        return normalized
+    return None
+
+
 def _redact_identity_ref(value: str) -> str:
     """A workflow's own literal ``client-id``/``creds`` text, safe to
     retain and render anywhere in this module's evidence only when it
@@ -955,11 +984,21 @@ def _redact_identity_ref(value: str) -> str:
     occurrences of the very same inline value can still be recognized
     as equal across a report without the underlying credential ever
     appearing in any finding, log, or report.
+
+    A validated reference is returned in its *canonical* form (see
+    :func:`_canonicalize_github_expression_reference`), not the exact
+    as-written text -- two semantically identical references that
+    differ only in incidental whitespace or bracket-vs-dot indexing
+    must compare equal wherever this module intersects/deduplicates
+    identity references, not merely where they happen to be spelled
+    identically.
     """
-    if _SAFE_IDENTITY_REF_RE.match(value.strip()):
-        return value
+    canonical = _canonicalize_github_expression_reference(value)
+    if canonical is not None:
+        return canonical
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
     return f"<inline-identity-value-redacted:sha256:{digest}>"
+
 
 
 def _dedupe_preserve_order(items: Sequence[str]) -> Tuple[str, ...]:
@@ -1188,6 +1227,57 @@ def _checkout_value_is_provably_trusted(
     return True
 
 
+def _raw_git_checkout_line_is_untrusted(
+    line: str, document: Mapping, job: Mapping, step: Mapping
+) -> bool:
+    """True if a single physical `run:` line naming a raw `git fetch`/
+    `checkout`/`clone`/`pull` command (an equivalent checkout mechanism
+    to `actions/checkout`'s own `ref:`/`repository:` inputs) can be
+    shown to touch the pull request's own attacker-controlled head
+    content or head repository fork -- fail-closed, exactly the same
+    trust standard rule 1 already applies to `actions/checkout`'s own
+    inputs, just scoped to this one line rather than the whole
+    (possibly multi-line) `run:` block, to avoid an unrelated
+    expression elsewhere in the same step's script incidentally
+    tripping this check.
+
+    A trailing shell comment on the line is stripped first (a bare
+    ``#`` split, consistent with this module's existing conservative,
+    non-shell-quote-aware comment handling) so an unrelated expression
+    mentioned only in commentary can never affect the result. Any
+    `${{ env.NAME }}` indirection used as a command operand is resolved
+    from the step's/job's/workflow's own `env:` declarations and
+    re-evaluated recursively by the same rule; an unresolved env name,
+    or any other dynamic expression this module cannot actually reason
+    about as base-scoped, fails closed exactly like an unrecognized
+    `actions/checkout` input does.
+    """
+    stripped_line = line.split("#", 1)[0]
+    normalized_line = _normalize_indexed_github_expression(stripped_line)
+    if not _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(normalized_line):
+        return False
+    if any(marker in normalized_line for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
+        return True
+    if "${{" not in normalized_line:
+        return False
+    segments = _EXPRESSION_SEGMENT_RE.findall(normalized_line)
+    if not segments:
+        return False  # no well-formed expression on this line to resolve
+    for inner in segments:
+        inner = inner.strip()
+        env_match = re.match(r"^env\.([A-Za-z_][A-Za-z0-9_]*)$", inner)
+        if env_match:
+            resolved = _resolve_env_literal(document, job, step, env_match.group(1))
+            if resolved is None or not _checkout_value_is_provably_trusted(
+                resolved, document, job, step, _depth=1
+            ):
+                return True
+            continue
+        if not _expression_is_trusted_checkout_context(inner):
+            return True
+    return False
+
+
 def _has_untrusted_checkout(document: Mapping) -> bool:
     """True if any step -- an `actions/checkout` step's own `ref:` *or*
     `repository:` input, or a raw `git fetch`/`checkout`/`clone`/`pull`
@@ -1206,11 +1296,13 @@ def _has_untrusted_checkout(document: Mapping) -> bool:
     checked fail-closed via :func:`_checkout_value_is_provably_trusted`
     -- a dynamic expression is rejected unless it is actually shown to
     stay base-scoped, not merely because it fails to match a known-bad
-    marker by name. The raw-git-command path keeps a narrower,
-    marker-only check (after the same indexed-expression
-    normalization) rather than the full allowlist, since free-form
-    shell text is far more prone to incidental false positives against
-    an allowlist built for structured `with:` inputs.
+    marker by name. The raw-git-command path applies the very same
+    fail-closed standard, per :func:`_raw_git_checkout_line_is_untrusted`,
+    scoped to just the physical line naming the git command (rather
+    than the whole free-form `run:` block) -- including resolving any
+    `${{ env.NAME }}` indirection used as a command operand -- so an
+    unresolved or otherwise-unrecognized dynamic ref/repository operand
+    fails closed exactly like it would for `actions/checkout` itself.
     """
     for job, step in _job_steps(document):
         uses = str(step.get("uses", "")).split("@", 1)[0].strip().lower()
@@ -1227,11 +1319,9 @@ def _has_untrusted_checkout(document: Mapping) -> bool:
                         return True
         run_text = step.get("run")
         if isinstance(run_text, str):
-            normalized_run = _normalize_indexed_github_expression(run_text)
-            if _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(normalized_run) and any(
-                marker in normalized_run for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS
-            ):
-                return True
+            for line in run_text.splitlines():
+                if _raw_git_checkout_line_is_untrusted(line, document, job, step):
+                    return True
     return False
 
 
@@ -1542,6 +1632,49 @@ def _codeowners_pattern_basename_glob(pattern: str) -> str:
     return normalized.rstrip("/")
 
 
+def _codeowners_anchored_pattern_regex(pattern: str) -> Optional["re.Pattern[str]"]:
+    """Compile a root-anchored, `/`-bearing CODEOWNERS pattern (one
+    with an internal path separator, such as ``.github/workflows/*.yml``
+    or ``src/*/README.md``) into a regex matching a full repo-relative
+    POSIX path, honoring gitignore-style wildcard semantics: a `*`
+    matches any run of characters *within* one path segment only (it
+    never crosses a `/`, so ``.github/workflows/*.yml`` never matches
+    something nested one directory deeper), and a `?` matches exactly
+    one such character. A literal `**` run is treated as an unbounded
+    ``.*`` -- deliberately more permissive than strict segment-only
+    gitignore ``**`` semantics -- so a pattern using it is never
+    under-matched here; this module otherwise has no reason to treat a
+    doubled wildcard as anything other than "matches more, not less"
+    when the goal is conservatively detecting a possible last-match
+    override, not precisely replicating full gitignore matching.
+
+    Returns ``None`` for a pattern with no internal `/` at all --
+    depth-unanchored basename patterns are matched separately, at any
+    depth, via :func:`_codeowners_pattern_is_depth_unanchored` callers.
+    """
+    normalized = pattern.strip().lstrip("/").rstrip("/")
+    if "/" not in normalized:
+        return None
+    parts = ["^"]
+    index = 0
+    length = len(normalized)
+    while index < length:
+        char = normalized[index]
+        if char == "*" and index + 1 < length and normalized[index + 1] == "*":
+            parts.append(".*")
+            index += 2
+            continue
+        if char == "*":
+            parts.append("[^/]*")
+        elif char == "?":
+            parts.append("[^/]")
+        else:
+            parts.append(re.escape(char))
+        index += 1
+    parts.append("$")
+    return re.compile("".join(parts))
+
+
 def _codeowners_pattern_nested_within(pattern: str, required_prefix: str) -> bool:
     """True if a declared ``pattern`` is a proper subset of the directory
     tree named by ``required_prefix`` -- the reverse relationship of
@@ -1675,16 +1808,22 @@ def _codeowners_pattern_covers(declared_pattern: str, requirement: str) -> bool:
 
     # The requirement is an exact file path: covered by the identical
     # literal pattern, by a recursive directory glob that is an
-    # ancestor of it, or by a depth-unanchored basename pattern whose
-    # glob matches the exact file's own basename -- GitHub's own
+    # ancestor of it, by a depth-unanchored basename pattern whose glob
+    # matches the exact file's own basename (GitHub's own
     # gitignore-style matching applies such a pattern at any depth,
-    # including to a single exact required file.
+    # including to a single exact required file), or by an anchored,
+    # `/`-bearing nested-path glob (``.github/workflows/*.yml``) whose
+    # own wildcarded path matches the exact file's full path.
     target = requirement.strip().lstrip("/")
     if declared_prefix is not None:
         return _is_ancestor_or_equal(declared_prefix, target)
     if _codeowners_pattern_is_depth_unanchored(declared_pattern):
         basename_glob = _codeowners_pattern_basename_glob(declared_pattern)
         if fnmatch.fnmatch(target.rsplit("/", 1)[-1], basename_glob):
+            return True
+    else:
+        nested_pattern_regex = _codeowners_anchored_pattern_regex(declared_pattern)
+        if nested_pattern_regex is not None and nested_pattern_regex.match(target):
             return True
     return declared_pattern.strip().lstrip("/") == target
 
@@ -2058,6 +2197,14 @@ def _distinct_identities_confirmed(
     back to what these specific workflows actually declare -- proves
     nothing about whether deploy and build/test truly use separate
     identities.
+
+    ``deploy_identities``/``other_identities`` are already in this
+    module's own canonical reference form (see
+    :func:`_canonicalize_github_expression_reference`); the supplied
+    mapping's own keys are canonicalized the same way before lookup,
+    so a caller keying that mapping with an incidental whitespace or
+    bracket-vs-dot spelling variant of the same reference still
+    resolves correctly rather than silently missing the match.
     """
     if not live_azure:
         return None
@@ -2066,8 +2213,12 @@ def _distinct_identities_confirmed(
         return None
     if not deploy_identities or not other_identities:
         return None
-    deploy_principals = {identity_principal_ids.get(ref) for ref in deploy_identities}
-    other_principals = {identity_principal_ids.get(ref) for ref in other_identities}
+    canonical_principal_ids = {
+        _canonicalize_github_expression_reference(str(key)) or key: principal
+        for key, principal in identity_principal_ids.items()
+    }
+    deploy_principals = {canonical_principal_ids.get(ref) for ref in deploy_identities}
+    other_principals = {canonical_principal_ids.get(ref) for ref in other_identities}
     if None in deploy_principals or None in other_principals:
         # A declared identity reference this live evidence never resolved
         # at all can never be treated as confirmed distinct.
