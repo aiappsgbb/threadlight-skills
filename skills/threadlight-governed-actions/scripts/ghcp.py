@@ -237,11 +237,36 @@ _MAX_YAML_NESTING_DEPTH = 100
 # a deploy action's own declared inputs. Matched against variable/flag
 # *names*, never a value, so a finding can report *that* a secret-shaped
 # credential is used without ever echoing the credential itself.
+#
+# Beyond the `AZURE_`/`ARM_`-prefixed names, also flag the bare canonical
+# names a service-principal secret is conventionally stored under
+# regardless of vendor prefix -- `SP_PASSWORD`, `CLIENT_SECRET`, and
+# `SERVICE_PRINCIPAL_SECRET` -- but only as a *whole* env var name (both
+# `\b` boundaries anchor against the surrounding underscores too, since
+# `_` is a word character): this catches the exact canonical key without
+# widening into an unrelated name that merely contains one of these
+# words as a sub-part of a longer identifier.
 _SECRET_ENV_VAR_NAME_RE = re.compile(
-    r"\b(?:AZURE|ARM)_(?:CLIENT_SECRET|PASSWORD|CREDENTIALS)\b", re.IGNORECASE
+    r"\b(?:(?:AZURE|ARM)_(?:CLIENT_SECRET|PASSWORD|CREDENTIALS)"
+    r"|SP_PASSWORD|CLIENT_SECRET|SERVICE_PRINCIPAL_SECRET)\b",
+    re.IGNORECASE,
 )
+# `az login --service-principal ... --password SECRET` and its exact
+# short-flag equivalent `az login --service-principal ... -p SECRET` are
+# both the same long-lived-secret login path -- the short `-p` form is
+# just as canonical as the long flag and must not be missed. `-p` is
+# matched only as its own standalone token (not preceded or followed by
+# a word/hyphen character) so this never fires on an unrelated long
+# flag that merely contains "-p" as a substring (`--param`, `--profile`,
+# `-profile`, ...). The scan for either flag form is confined to the
+# same shell command as `az login` itself -- it stops at the next
+# `&&`/`;`/`|` command separator -- so a `-p` (or `--password`) flag
+# belonging to a different, chained command on the same `run:` line
+# (`az login --identity && curl -o out -p file`) is never misread as
+# `az login`'s own secret flag.
 _AZ_LOGIN_SECRET_FLAG_RE = re.compile(
-    r"\baz\s+login\b[^\n]*--(?:password|service-principal-secret)\b",
+    r"\baz\s+login\b(?:(?!&&|;|\||\n).)*?"
+    r"(?:--(?:password|service-principal-secret)\b|(?<![-\w])-p(?![-\w]))",
     re.IGNORECASE,
 )
 _PUBLISH_PROFILE_RUN_RE = re.compile(r"publish[-_]profile", re.IGNORECASE)
@@ -621,10 +646,12 @@ def _env_key_names(document: Mapping) -> Tuple[str, ...]:
 def _has_secret_azure_run_or_env(document: Mapping) -> bool:
     """True if the workflow authenticates to Azure with a long-lived
     secret *outside* any action's own declared ``with:`` inputs: a step
-    shelling out to ``az login`` with a raw ``--password``/
+    shelling out to ``az login`` with a raw ``--password``/``-p``/
     ``--service-principal-secret`` flag, a raw ``publish-profile`` deploy
     command, or an ``env:`` block (at any scope) declaring a variable
-    named like an Azure/ARM client secret, password, or credentials blob.
+    named like an Azure/ARM client secret, password, or credentials blob
+    (or the bare canonical names ``SP_PASSWORD``, ``CLIENT_SECRET``,
+    ``SERVICE_PRINCIPAL_SECRET``).
     Every check matches variable *names* or fixed command flags only --
     never a secret's actual value -- so this can report *that* a secret-
     shaped credential path exists without ever echoing the credential

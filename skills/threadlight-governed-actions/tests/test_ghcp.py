@@ -1879,6 +1879,184 @@ def test_secret_env_var_detection_never_leaks_the_actual_secret_value(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Final blocker: `az login`'s exact short-flag password form
+# (`--service-principal ... -p SECRET`) is just as much a long-lived
+# secret login as the long `--password`/`--service-principal-secret`
+# flags, and must be detected the same way -- plus a handful of
+# additional bare canonical secret env var names beyond the existing
+# `AZURE_`/`ARM_`-prefixed set, without ever matching an unrelated flag
+# or env var name that merely resembles one.
+# ---------------------------------------------------------------------------
+
+
+def test_az_login_short_password_flag_in_run_command_is_must_fix(tmp_path):
+    workflow_path = _write_workflow(
+        tmp_path,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Azure login
+                run: |
+                  az login --service-principal -u $ARM_CLIENT_ID -p ${{ secrets.ARM_CLIENT_SECRET }} --tenant $ARM_TENANT_ID
+        """,
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif == "must-fix"
+
+
+def test_az_login_unrelated_dash_p_prefixed_flag_is_not_flagged(tmp_path):
+    """`--profile`/`--param`-style long flags that merely contain the
+    substring "-p" must never be misread as the short password flag."""
+    workflow_path = _write_workflow(
+        tmp_path,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Azure login
+                run: |
+                  az login --service-principal -u $ARM_CLIENT_ID --profile prod --param extra
+        """,
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif != "must-fix"
+
+
+def test_az_login_short_flag_belonging_to_a_different_chained_command_is_not_flagged(
+    tmp_path,
+):
+    """A `-p` flag on a *different*, `&&`-chained command sharing the same
+    `run:` line as an unrelated `az login --identity` call must not be
+    misattributed to `az login` as its own secret flag."""
+    workflow_path = _write_workflow(
+        tmp_path,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - name: Azure login
+                run: |
+                  az login --identity && curl -o out.txt -p extra-flag
+        """,
+    )
+    result = assess_workflow(workflow_path)
+    assert result.oidc_wif != "must-fix"
+
+
+@pytest.mark.parametrize(
+    "env_var_name",
+    ["SP_PASSWORD", "CLIENT_SECRET", "SERVICE_PRINCIPAL_SECRET"],
+)
+def test_broadened_secret_env_var_name_alone_is_must_fix(tmp_path, env_var_name):
+    root = tmp_path / f"broadened-secret-{env_var_name.lower()}"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        f"""\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            env:
+              {env_var_name}: ${{{{ secrets.{env_var_name} }}}}
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo deploying
+        """,
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-005")
+    assert finding.status == "must-fix"
+
+
+def test_broadened_secret_env_var_name_never_leaks_the_actual_value(tmp_path):
+    root = tmp_path / "broadened-secret-leak-check"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            env:
+              SP_PASSWORD: totally-real-hunter2-secret-value
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo deploying
+        """,
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-005")
+    assert "totally-real-hunter2-secret-value" not in finding.details
+    assert "totally-real-hunter2-secret-value" not in " ".join(finding.affected_paths)
+
+
+def test_unrelated_env_var_name_merely_containing_client_secret_substring_not_flagged(
+    tmp_path,
+):
+    """A prefixed name that is not itself one of the exact canonical
+    secret names (bare, or `AZURE_`/`ARM_`-prefixed) must not be flagged
+    -- this scan only ever recognizes the precise canonical shapes, never
+    a loose substring match that would sweep in unrelated identifiers."""
+    root = tmp_path / "unrelated-client-secret-substring"
+    _write_workflow(
+        root,
+        "deploy.yml",
+        """\
+        name: Deploy
+        on:
+          pull_request:
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            env:
+              MY_CLIENT_SECRETARY_CONTACT: not-a-secret-at-all
+            steps:
+              - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+              - run: echo deploying
+        """,
+    )
+    result = assess_workflow(root / ".github" / "workflows" / "deploy.yml")
+    assert result.oidc_wif != "must-fix"
+
+
+# ---------------------------------------------------------------------------
 # Quality-fix 2: rule 3 requires that *at least one* pull_request-triggered
 # workflow runs the full required CI (CTK, application probe, and an eval
 # suite's exact runner command if one exists) -- not that every single
