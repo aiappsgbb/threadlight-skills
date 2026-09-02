@@ -29,6 +29,62 @@ import canonical
 import contracts
 import render
 
+try:
+    from markdown_it import MarkdownIt
+except ImportError:  # pragma: no cover - environment without markdown-it-py
+    MarkdownIt = None
+
+
+def _iter_all_tokens(tokens):
+    """Yield every token in *tokens*, recursing into each token's
+    ``children`` (inline tokens are only ever exposed this way)."""
+    for token in tokens:
+        yield token
+        if token.children:
+            yield from _iter_all_tokens(token.children)
+
+
+def _parse_with_commonmark(markdown_text: str):
+    """Parse *markdown_text* with a genuine CommonMark-compliant parser
+    (``markdown-it-py``'s ``commonmark`` preset, with GFM's ``table`` and
+    ``strikethrough`` extensions enabled) and return its full, flattened
+    token stream, so a test can assert directly against the parser's own
+    AST rather than merely against substring presence in the raw
+    Markdown source.
+
+    ``linkify`` -- markdown-it-py's closest analog to GFM's *extended
+    autolink* extension -- is deliberately left disabled: the
+    ``linkify-it-py`` package it requires is not installed in this
+    environment, and installing it would add a new dependency this
+    project does not otherwise declare or require. This does not weaken
+    what these tests actually prove, though. The property under test --
+    that a CommonMark code span's content is a hard AST boundary that no
+    later positional inline rule (any autolink/linkify extension
+    included) ever re-scans, and that text on either side of a code span
+    is never stitched back together into one contiguous run for such a
+    rule to match against -- is a *structural* guarantee of the
+    CommonMark code-span algorithm itself, not something specific to
+    ``linkify`` or to GFM's own autolink extension. It is reproducible,
+    and is reproduced here, using only the ``table``/``strikethrough``
+    extensions: this project's bare-URL/``www.``/email neutralization is
+    proven correct by showing the wrapped trigger substring becomes a
+    dedicated ``code_inline`` token -- never left merged into a plain
+    ``text`` token, which is the only kind of token any positional
+    autolink/linkify rule (this engine's or GFM's) ever scans.
+    """
+    parser = MarkdownIt("commonmark").enable("table").enable("strikethrough")
+    return list(_iter_all_tokens(parser.parse(markdown_text)))
+
+
+def _matrix_markdown_table_source(text: str) -> str:
+    """Extract just the raw ``| ... |`` table lines of the rendered
+    Pass/fail matrix section, so they can be fed to a real Markdown
+    parser as a syntactically complete, standalone table."""
+    start = text.index("## Pass/fail matrix")
+    end = text.index("## Residual-risk register")
+    lines = text[start:end].splitlines()
+    return "\n".join(line for line in lines if line.startswith("|"))
+
 
 REFERENCES = Path(__file__).resolve().parent.parent / "references"
 
@@ -36,6 +92,15 @@ _REPOSITORY = "aiappsgbb/threadlight-skills"
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _COLLECTED_AT_EARLY = "2026-01-01T00:00:00Z"
 _COLLECTED_AT_LATE = "2026-01-01T06:00:00Z"
+# The deterministic, fixed assessment-capture instant every test fixture
+# uses unless it explicitly overrides ``captured_at`` -- this is never
+# derived from evidence, so it is chosen independently of
+# ``_COLLECTED_AT_EARLY``/``_COLLECTED_AT_LATE`` while still landing
+# within one freshness window (24h) of them, so existing fixtures that
+# expect an overall "fresh" verdict continue to get one without any
+# fixture needing to be touched purely because of this new field's
+# introduction.
+_CAPTURED_AT_DEFAULT = _COLLECTED_AT_EARLY
 
 
 def _manifest_schema() -> Dict[str, object]:
@@ -196,6 +261,7 @@ def _base_result(
     evidence: Sequence[contracts.EvidenceRef] = (),
     dirty: bool = False,
     residual_risks: Sequence[Dict[str, object]] = (),
+    captured_at: Optional[str] = _CAPTURED_AT_DEFAULT,
 ) -> contracts.AssessmentResult:
     return contracts.AssessmentResult(
         source=_source(dirty=dirty),
@@ -238,6 +304,7 @@ def _base_result(
             "identities": ({"identity": "deploy-identity", "kind": "managed-identity"},),
         },
         residual_risks=tuple(residual_risks),
+        captured_at=captured_at,
     )
 
 
@@ -486,6 +553,7 @@ def _shuffled(result: contracts.AssessmentResult, seed: int) -> contracts.Assess
         conformance_reports=tuple(result.conformance_reports),
         change_plane=result.change_plane,
         residual_risks=tuple(result.residual_risks),
+        captured_at=result.captured_at,
     )
 
 
@@ -563,6 +631,14 @@ def test_apply_plan_never_invents_an_owner_when_declared():
 # ---------------------------------------------------------------------------
 # Freshness
 # ---------------------------------------------------------------------------
+#
+# Freshness is a claim about the assessment's own trusted capture instant
+# (``result.captured_at`` -- never derived from evidence, never the newest
+# evidence timestamp this manifest happens to carry) measured against the
+# oldest trustworthy timestamp among only the evidence a finding or
+# application-path probe actually *requires* (``_required_evidence_ids``) --
+# never unrelated evidence nothing here needed.
+# ---------------------------------------------------------------------------
 
 
 def test_freshness_valid_for_hours_is_24():
@@ -570,16 +646,16 @@ def test_freshness_valid_for_hours_is_24():
     assert manifest["freshness"]["valid_for_hours"] == 24
 
 
-def test_freshness_derives_oldest_source_at_and_expires_at():
+def test_freshness_derives_oldest_source_at_from_required_evidence():
     manifest = render.build_manifest(_full_result())
     freshness = manifest["freshness"]
     assert freshness["oldest_source_at"] == _COLLECTED_AT_EARLY
     assert freshness["expires_at"] is not None
 
 
-def test_freshness_no_trustworthy_timestamp_is_not_fresh():
-    findings = [_finding("MED-001", "pass")]
+def test_freshness_no_trustworthy_required_timestamp_is_not_fresh():
     evidence = [_evidence("EVID-untimed", collected_at=None)]
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-untimed",))]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     assert manifest["freshness"]["status"] != "fresh"
@@ -596,16 +672,17 @@ _INSTANT_LATER_BUT_LEXICALLY_EARLIER = "2025-12-31T23:00:00Z"  # == 2025-12-31T2
 # as February 30th exists, so ``datetime.fromisoformat`` raises ``ValueError``.
 _MALFORMED_COLLECTED_AT = "2026-02-30T10:00:00Z"
 # Two trustworthy instants 48 hours apart -- more than FRESHNESS_VALID_FOR_HOURS
-# (24h) -- so the *newest* (captured_at) instant exceeds the *oldest*
-# (oldest_source_at) instant plus valid_for_hours, and freshness.status must
-# be "expired" (not because the oldest timestamp itself looks stale, but
-# because the newest evidence was captured too long after the oldest one).
+# (24h) -- so an assessment *captured* at the later instant, whose own
+# required evidence was only collected as of the earlier one, must report
+# "expired" (not because the oldest timestamp itself looks stale, but
+# because the assessment's own capture instant is too long after the
+# oldest evidence it actually required).
 _OLDEST_TRUSTWORTHY_TIMESTAMP = "2026-01-01T00:00:00Z"
-_NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED = "2026-01-03T00:00:00Z"
+_CAPTURED_AT_EXPIRED = "2026-01-03T00:00:00Z"  # 48h after _OLDEST_TRUSTWORTHY_TIMESTAMP
 
 
-def test_freshness_orders_by_actual_instant_not_lexical_string():
-    findings = [_finding("MED-001", "pass")]
+def test_freshness_oldest_source_at_orders_by_actual_instant_not_lexical_string():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-a", "EVID-b"))]
     evidence = [
         _evidence("EVID-a", collected_at=_INSTANT_EARLIER_BUT_LEXICALLY_LATER),
         _evidence("EVID-b", collected_at=_INSTANT_LATER_BUT_LEXICALLY_EARLIER),
@@ -616,13 +693,10 @@ def test_freshness_orders_by_actual_instant_not_lexical_string():
     # though its string sorts lexically after EVID-b's -- oldest_source_at
     # must reflect the real instant, not the raw string order.
     assert manifest["freshness"]["oldest_source_at"] == _INSTANT_EARLIER_BUT_LEXICALLY_LATER
-    # The chronologically *latest* instant is EVID-b's timestamp -- captured_at
-    # must likewise reflect the real instant, not the raw string order.
-    assert manifest["captured_at"] == _INSTANT_LATER_BUT_LEXICALLY_EARLIER
 
 
-def test_freshness_instant_ordering_is_independent_of_evidence_list_order():
-    findings = [_finding("MED-001", "pass")]
+def test_freshness_oldest_source_at_is_independent_of_evidence_list_order():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-a", "EVID-b"))]
     forward = _base_result(
         findings=findings,
         evidence=[
@@ -643,19 +717,20 @@ def test_freshness_instant_ordering_is_independent_of_evidence_list_order():
     assert manifest_forward["captured_at"] == manifest_reversed["captured_at"]
 
 
-def test_manifest_tolerates_malformed_collected_at_without_raising():
-    findings = [_finding("MED-001", "pass")]
+def test_manifest_tolerates_malformed_required_collected_at_without_raising():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-bad",))]
     evidence = [_evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT)]
     result = _base_result(findings=findings, evidence=evidence)
     # Must not raise ValueError (or any other exception) building the manifest.
     manifest = render.build_manifest(result)
     _assert_valid_manifest(manifest)
     # The malformed timestamp is untrustworthy for freshness purposes, so it
-    # is excluded exactly as if collected_at had been absent/None.
+    # is excluded exactly as if collected_at had been absent/None; since
+    # this finding's own required evidence is untrustworthy, the overall
+    # verdict is truthfully "stale".
     assert manifest["freshness"]["status"] == "stale"
     assert manifest["freshness"]["oldest_source_at"] is None
     assert manifest["freshness"]["expires_at"] is None
-    assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
     # A calendar-impossible collected_at can never validate against the
     # manifest schema's timestamp format, so it is degraded to the
     # schema's own "absent" representation (None) -- never raw garbage,
@@ -666,8 +741,8 @@ def test_manifest_tolerates_malformed_collected_at_without_raising():
     assert evidence_entry["live_verified"] is False
 
 
-def test_manifest_mixed_valid_and_invalid_collected_at_uses_only_valid():
-    findings = [_finding("MED-001", "pass")]
+def test_manifest_required_evidence_mixed_valid_and_invalid_uses_only_valid_for_oldest():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-bad", "EVID-good"))]
     evidence = [
         _evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT),
         _evidence("EVID-good", collected_at=_COLLECTED_AT_EARLY),
@@ -675,9 +750,13 @@ def test_manifest_mixed_valid_and_invalid_collected_at_uses_only_valid():
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     _assert_valid_manifest(manifest)
-    assert manifest["freshness"]["status"] != "stale"
+    # The invalid entry is excluded from the oldest-instant computation
+    # entirely; the valid one still anchors oldest_source_at.
     assert manifest["freshness"]["oldest_source_at"] == _COLLECTED_AT_EARLY
-    assert manifest["captured_at"] == _COLLECTED_AT_EARLY
+    # But this finding's own required evidence set still contains one
+    # entry (EVID-bad) that cannot be trusted, so the overall verdict is
+    # truthfully "stale" even though a window could otherwise be computed.
+    assert manifest["freshness"]["status"] == "stale"
     bad_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-bad")
     good_entry = next(e for e in manifest["evidence"] if e["evidence_id"] == "EVID-good")
     assert bad_entry["collected_at"] is None
@@ -710,7 +789,9 @@ def test_manifest_never_trusts_overclaimed_freshness_for_missing_collected_at():
     # collected_at is the *only* trustworthy signal; freshness_seconds=42
     # and live_verified=True on the input must never leak through just
     # because collected_at happens to be entirely absent.
-    findings = [_finding("MED-001", "pass")]
+    findings = [
+        _finding("MED-001", "pass", evidence_refs=("EVID-overclaim-missing",))
+    ]
     evidence = [_overclaiming_evidence("EVID-overclaim-missing", collected_at=None)]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
@@ -726,7 +807,9 @@ def test_manifest_never_trusts_overclaimed_freshness_for_invalid_collected_at():
     # Same adversarial shape, but collected_at is present and looks like a
     # timestamp yet fails to parse as a real instant -- freshness_seconds
     # and live_verified must degrade exactly as for the missing case.
-    findings = [_finding("MED-001", "pass")]
+    findings = [
+        _finding("MED-001", "pass", evidence_refs=("EVID-overclaim-invalid",))
+    ]
     evidence = [
         _overclaiming_evidence("EVID-overclaim-invalid", collected_at=_MALFORMED_COLLECTED_AT)
     ]
@@ -777,13 +860,13 @@ def test_residual_risk_live_evidence_freshness_wording_is_precise():
     assert "null" in description
     assert "live_verified" in description
     assert "false" in description
-    assert "excluded" in description
     # Precisely distinguishes the two possible non-fresh outcomes: no
     # trustworthy timestamp at all -> stale. Expiration is never described
     # as the *oldest* timestamp itself "falling outside a window that
     # starts there" (that framing is circular/false); it must instead say
-    # the newest trustworthy instant (captured_at) exceeds the oldest
-    # trustworthy instant (oldest_source_at) plus valid_for_hours.
+    # the assessment's own trusted capture instant (captured_at) exceeds
+    # the oldest trustworthy required-evidence instant (oldest_source_at)
+    # plus valid_for_hours.
     assert "stale" in description
     assert "expired" in description
     assert "captured_at" in description
@@ -793,32 +876,31 @@ def test_residual_risk_live_evidence_freshness_wording_is_precise():
 
 
 def test_residual_risk_live_evidence_freshness_wording_matches_stale_case():
-    findings = [_finding("MED-001", "pass")]
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-bad",))]
     evidence = [_evidence("EVID-bad", collected_at=_MALFORMED_COLLECTED_AT)]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     assert manifest["freshness"]["status"] == "stale"
     # The description's claims are exercised, not just asserted in the
-    # abstract: this fixture's only evidence has an invalid collected_at,
-    # is excluded from freshness, and the manifest is truthfully "stale".
+    # abstract: this fixture's only required evidence has an invalid
+    # collected_at, is excluded from freshness, and the manifest is
+    # truthfully "stale".
     description = _live_evidence_freshness_risk(manifest)["description"]
     assert "stale" in description
 
 
 def test_residual_risk_live_evidence_freshness_wording_matches_expired_case():
-    findings = [_finding("MED-001", "pass")]
-    evidence = [
-        _evidence("EVID-oldest", collected_at=_OLDEST_TRUSTWORTHY_TIMESTAMP),
-        _evidence("EVID-newest", collected_at=_NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED),
-    ]
-    result = _base_result(findings=findings, evidence=evidence)
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-oldest",))]
+    evidence = [_evidence("EVID-oldest", collected_at=_OLDEST_TRUSTWORTHY_TIMESTAMP)]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_CAPTURED_AT_EXPIRED)
     manifest = render.build_manifest(result)
-    # Exercise the real mechanics this wording claims: the newest
-    # trustworthy instant (captured_at) is 48 hours after the oldest
-    # (oldest_source_at), which exceeds valid_for_hours (24) -- so the
-    # manifest is truthfully "expired", not because oldest_source_at
-    # itself looks old in isolation.
-    assert manifest["captured_at"] == _NEWEST_TRUSTWORTHY_TIMESTAMP_EXPIRED
+    # Exercise the real mechanics this wording claims: the assessment's
+    # own trusted capture instant (captured_at) is 48 hours after the
+    # oldest trustworthy required-evidence instant (oldest_source_at),
+    # which exceeds valid_for_hours (24) -- so the manifest is truthfully
+    # "expired", not because oldest_source_at itself looks old in
+    # isolation.
+    assert manifest["captured_at"] == _CAPTURED_AT_EXPIRED
     assert manifest["freshness"]["oldest_source_at"] == _OLDEST_TRUSTWORTHY_TIMESTAMP
     assert manifest["freshness"]["status"] == "expired"
     description = _live_evidence_freshness_risk(manifest)["description"]
@@ -921,16 +1003,104 @@ def test_freshness_required_evidence_trustworthy_ignores_unrelated_invalid_evide
     assert manifest["freshness"]["status"] == "fresh"
 
 
-def test_freshness_with_no_findings_or_probes_has_no_required_evidence_to_check():
-    # No finding or probe references any evidence at all: the new guard
-    # must be a strict no-op here, identical to this module's prior,
-    # already-established behavior for evidence-free findings.
+def test_freshness_with_no_findings_or_probes_has_no_required_evidence_to_prove_freshness():
+    # No finding or probe references any evidence at all: there is
+    # nothing this manifest can point to as proof of freshness, so the
+    # conservative, schema-compatible verdict is "stale" -- never a
+    # fabricated "fresh" just because unrelated evidence this manifest
+    # merely happens to carry looks fresh in isolation.
     findings = [_finding("MED-001", "pass")]
     evidence = [_evidence("EVID-unrelated-fresh", collected_at=_COLLECTED_AT_EARLY)]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "stale"
+    assert manifest["freshness"]["oldest_source_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: freshness is bound to the assessment's own trusted
+# capture instant, never to the newest evidence timestamp this manifest
+# happens to carry, and never to evidence unrelated findings/probes did not
+# require (issue 2, final rereview)
+# ---------------------------------------------------------------------------
+
+
+def test_freshness_unrelated_old_evidence_does_not_expire_current_required_evidence():
+    # A required evidence entry is current and trustworthy; a separate,
+    # unrelated evidence entry that nothing requires is far older -- the
+    # unrelated old entry must never drag oldest_source_at (or the
+    # overall freshness verdict) down.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-required",))]
+    evidence = [
+        _evidence("EVID-required", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-unrelated-ancient", collected_at="2020-01-01T00:00:00Z"),
+    ]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_COLLECTED_AT_EARLY)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["oldest_source_at"] == _COLLECTED_AT_EARLY
     assert manifest["freshness"]["status"] == "fresh"
+
+
+def test_freshness_old_required_evidence_expires_at_a_later_captured_at():
+    # A required evidence entry was collected in the past; the
+    # assessment's own trusted capture instant is well past that entry's
+    # freshness window -- the manifest must truthfully report "expired",
+    # bound to the assessment's own capture instant, never to any
+    # evidence timestamp.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-required",))]
+    evidence = [_evidence("EVID-required", collected_at=_OLDEST_TRUSTWORTHY_TIMESTAMP)]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_CAPTURED_AT_EXPIRED)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "expired"
+
+
+def test_freshness_missing_captured_at_degrades_to_stale():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-required",))]
+    evidence = [_evidence("EVID-required", collected_at=_COLLECTED_AT_EARLY)]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=None)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "stale"
+    # oldest_source_at is still derivable from the trustworthy required
+    # evidence even though captured_at itself is untrustworthy; only the
+    # verdict, not the window computation, degrades.
+    assert manifest["freshness"]["oldest_source_at"] == _COLLECTED_AT_EARLY
+    # The manifest schema requires captured_at to be a non-null, valid
+    # timestamp: a missing trusted capture instant degrades to this
+    # module's own placeholder, never a fabricated real instant.
+    assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
+
+
+def test_freshness_invalid_captured_at_degrades_to_stale():
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-required",))]
+    evidence = [_evidence("EVID-required", collected_at=_COLLECTED_AT_EARLY)]
+    result = _base_result(
+        findings=findings, evidence=evidence, captured_at=_MALFORMED_COLLECTED_AT
+    )
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "stale"
+    assert manifest["captured_at"] == render.FALLBACK_TIMESTAMP
+
+
+def test_freshness_captured_at_is_never_derived_from_newest_evidence():
+    # The assessment's trusted capture instant is deliberately *earlier*
+    # than the newest required evidence timestamp -- captured_at must
+    # reflect only ``result.captured_at``, never the newest evidence
+    # entry this manifest happens to carry.
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-a", "EVID-b"))]
+    evidence = [
+        _evidence("EVID-a", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-b", collected_at=_COLLECTED_AT_LATE),
+    ]
+    result = _base_result(findings=findings, evidence=evidence, captured_at=_COLLECTED_AT_EARLY)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["captured_at"] == _COLLECTED_AT_EARLY
+    assert manifest["captured_at"] != _COLLECTED_AT_LATE
 
 
 # ---------------------------------------------------------------------------
@@ -1852,7 +2022,7 @@ def test_stage_temp_file_removes_partial_temp_on_write_failure(tmp_path, monkeyp
 
 
 def test_freshness_expires_at_preserves_fractional_seconds():
-    findings = [_finding("MED-001", "pass")]
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-frac",))]
     evidence = [_evidence("EVID-frac", collected_at="2026-01-01T00:00:00.123456Z")]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
@@ -1896,7 +2066,7 @@ def test_freshness_degrades_collected_at_beyond_six_fractional_digits(fractional
     # untrustworthy/absent, never a silently truncated false-fresh instant.
     fractional = "1" * fractional_digits
     collected_at = f"2026-01-01T00:00:00.{fractional}Z"
-    findings = [_finding("MED-001", "pass")]
+    findings = [_finding("MED-001", "pass", evidence_refs=("EVID-boundary",))]
     evidence = [_evidence("EVID-boundary", collected_at=collected_at)]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
@@ -1910,7 +2080,9 @@ def test_freshness_degrades_collected_at_beyond_six_fractional_digits(fractional
 
 
 def test_freshness_mixed_valid_and_over_precision_collected_at_uses_only_valid():
-    findings = [_finding("MED-001", "pass")]
+    findings = [
+        _finding("MED-001", "pass", evidence_refs=("EVID-overprecise", "EVID-precise"))
+    ]
     evidence = [
         _evidence("EVID-overprecise", collected_at="2026-01-01T00:00:00.1234567Z"),
         _evidence("EVID-precise", collected_at=_COLLECTED_AT_EARLY),
@@ -2782,6 +2954,8 @@ _HOSTILE_REFERENCE_LINK = "[click me][evil]"
 _HOSTILE_ANGLE_AUTOLINK = "<https://evil.example/steal>"
 _HOSTILE_BARE_AUTOLINK = "visit https://evil.example/steal now"
 _HOSTILE_WWW_AUTOLINK = "visit www.evil.example now"
+_HOSTILE_WWW_AUTOLINK_UPPERCASE = "visit WWW.evil.example now"
+_HOSTILE_WWW_AUTOLINK_MIXED_CASE = "visit Www.Evil.Example now"
 
 
 def _escaping_finding(summary: str) -> Sequence[contracts.Finding]:
@@ -2812,6 +2986,8 @@ def _escaping_finding(summary: str) -> Sequence[contracts.Finding]:
         _HOSTILE_ANGLE_AUTOLINK,
         _HOSTILE_BARE_AUTOLINK,
         _HOSTILE_WWW_AUTOLINK,
+        _HOSTILE_WWW_AUTOLINK_UPPERCASE,
+        _HOSTILE_WWW_AUTOLINK_MIXED_CASE,
     ],
 )
 def test_evidence_pack_neutralizes_active_markdown_link_and_image_forms(hostile_text):
@@ -2828,14 +3004,24 @@ def test_evidence_pack_neutralizes_active_markdown_link_and_image_forms(hostile_
     assert "<https://" not in matrix_section
     assert "<http://" not in matrix_section
     # GitHub Flavored Markdown's extended autolink extension can also turn
-    # a bare "scheme://" or "www." run into a live link with no brackets
-    # at all -- the literal trigger substrings must not survive either.
+    # a bare "scheme://" or "www." run (in any letter case) into a live
+    # link with no brackets at all. This module defends against that by
+    # wrapping just the trigger substring (e.g. "https://" or "WWW.") in
+    # its own double-backtick code span, which fragments the token stream
+    # so the scheme/host (or "www."/host) can never again appear as one
+    # contiguous run of characters for a downstream autolink/linkify rule
+    # to match against -- so the *exact original* contiguous trigger
+    # substring must never survive rendering, even though the individual
+    # characters remain fully present (and readable) on either side of
+    # the inserted code-span boundary.
     assert "https://evil.example" not in matrix_section
     assert "http://evil.example" not in matrix_section
     assert "www.evil.example" not in matrix_section
+    assert "WWW.evil.example" not in matrix_section
+    assert "Www.Evil.Example" not in matrix_section
     # The value must still be readable, safe literal text rather than
     # being dropped or replaced with a placeholder.
-    assert "evil.example" in matrix_section or "click me" in matrix_section or "alt text" in matrix_section
+    assert "evil.example" in matrix_section.lower() or "click me" in matrix_section or "alt text" in matrix_section
 
 
 def test_evidence_pack_neutralizes_javascript_url_inline_link():
@@ -2907,12 +3093,22 @@ def test_evidence_pack_neutralizes_bare_email_autolink(hostile_text):
     # ``local@domain.tld``-shaped run (case-insensitively, and -- unlike
     # its separate www./scheme:// domain grammar -- with underscores
     # permitted anywhere in the domain, including its last segments) with
-    # no brackets at all and turns it into a live ``mailto:`` link -- the
-    # literal, unescaped trigger substring must never survive rendering.
+    # no brackets at all and turns it into a live ``mailto:`` link. This
+    # module defends against that by wrapping the *entire* trigger
+    # substring in its own double-backtick code span -- unlike the
+    # scheme/www defenses above, the whole "local@domain" run is wrapped
+    # together (rather than just a short prefix) since there is no
+    # separate literal "domain" text left outside the span to remain
+    # readable on its own. The trigger substring therefore does still
+    # appear (fully readable), but it must only ever appear wrapped
+    # inside its own double-backtick code span -- never as bare,
+    # unwrapped text that a downstream autolink/linkify rule could scan.
     local_part, domain = hostile_text.split("@", 1)
     domain = domain.split(" ", 1)[0]
     local_part = local_part.rsplit(" ", 1)[-1]
-    assert f"{local_part}@{domain}" not in matrix_section
+    trigger = f"{local_part}@{domain}"
+    assert f"``{trigger}``" in matrix_section
+    assert matrix_section.count(trigger) == matrix_section.count(f"``{trigger}``")
     # The value must still be readable, safe literal text (case preserved).
     assert domain in matrix_section
 
@@ -2924,6 +3120,125 @@ def test_evidence_pack_bare_email_autolink_does_not_affect_non_email_at_signs():
     result = _base_result(findings=_escaping_finding("cc @some-handle for review"))
     text = render.render_evidence_pack(result)
     assert "@some-handle" in text
+
+
+# ---------------------------------------------------------------------------
+# Quality review: backslash-escaping a bare "scheme://"/"www."/email
+# autolink trigger does not actually defeat GitHub Flavored Markdown's
+# extended autolink extension -- a compliant renderer strips the backslash
+# (as an ordinary backslash escape) while assembling the plain-text content
+# handed to that extension, so the exact same trigger substring reforms and
+# still renders as a live link regardless. The fix wraps just the trigger
+# substring in its own inline code span instead: a code span's content is a
+# genuine CommonMark AST boundary that is never re-scanned by any inline
+# construct (autolink extensions included), and text on either side of it
+# is never stitched back into one contiguous run either. These tests prove
+# that structural property directly against a real, independent
+# CommonMark-compliant parser's own token stream (not merely against
+# substring presence in the raw Markdown source), using markdown-it-py's
+# ``commonmark`` preset with only the ``table``/``strikethrough``
+# extensions enabled (see ``_parse_with_commonmark`` for why a disabled
+# ``linkify`` does not weaken what is being proven here). markdown-it-py is
+# already present in this environment (a transitive dependency of `rich`,
+# itself already relied upon elsewhere); no new dependency is added to
+# exercise it, and every test below degrades to a skip if it is absent.
+# ---------------------------------------------------------------------------
+
+_REQUIRES_MARKDOWN_IT = pytest.mark.skipif(
+    MarkdownIt is None, reason="markdown-it-py is not available in this environment"
+)
+
+
+@_REQUIRES_MARKDOWN_IT
+@pytest.mark.parametrize(
+    "hostile_text,expected_code_span_content",
+    [
+        (_HOSTILE_BARE_AUTOLINK, "https://"),
+        ("visit HTTP://evil.example now", "HTTP://"),
+        (_HOSTILE_WWW_AUTOLINK, "www."),
+        (_HOSTILE_WWW_AUTOLINK_UPPERCASE, "WWW."),
+        (_HOSTILE_WWW_AUTOLINK_MIXED_CASE, "Www."),
+        (_HOSTILE_BARE_EMAIL_AUTOLINK, "user@evil.example"),
+        (_HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE, "User@Evil.EXAMPLE"),
+        (_HOSTILE_BARE_EMAIL_AUTOLINK_UNDERSCORE_DOMAIN, "user@bar_baz.evil.example"),
+    ],
+)
+def test_evidence_pack_autolink_defense_verified_by_real_commonmark_parser(
+    hostile_text, expected_code_span_content
+):
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_source = _matrix_markdown_table_source(text)
+    tokens = _parse_with_commonmark(matrix_source)
+    # No autolink/linkify extension of any kind can ever fire for a live
+    # link here -- assert this directly against the real parser's token
+    # stream as a standing regression guard.
+    assert not any(token.type == "link_open" for token in tokens)
+    # The table itself must still parse into exactly the header's 7
+    # columns -- the defense must never corrupt table structure.
+    assert sum(1 for token in tokens if token.type == "th_open") == 7
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert expected_code_span_content in code_span_contents
+
+
+@_REQUIRES_MARKDOWN_IT
+def test_evidence_pack_autolink_defense_survives_touching_scheme_and_email_triggers():
+    # Two independently-wrapped code spans landing directly adjacent, with
+    # nothing between them in the original hostile text (the "https://"
+    # scheme trigger immediately followed by a "user@evil.example" email
+    # trigger), must never merge their double-backtick delimiters into one
+    # ambiguous, longer backtick run -- which would desynchronize both
+    # spans' intended open/close pairing and could leave raw, broken
+    # Markdown syntax (or an unintended live autolink) in the output.
+    hostile_text = "leak https://user@evil.example now"
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    assert "```" not in matrix_section  # no ambiguous 3+ backtick run anywhere
+    matrix_source = _matrix_markdown_table_source(text)
+    tokens = _parse_with_commonmark(matrix_source)
+    assert not any(token.type == "link_open" for token in tokens)
+    assert sum(1 for token in tokens if token.type == "th_open") == 7
+    code_span_contents = [token.content for token in tokens if token.type == "code_inline"]
+    assert "https://" in code_span_contents
+    assert "user@evil.example" in code_span_contents
+
+
+@_REQUIRES_MARKDOWN_IT
+def test_evidence_pack_autolink_defense_within_full_table_row_context():
+    # A full, realistic Pass/fail matrix row (not just an isolated
+    # fragment) embedding a hostile bare-URL value must still parse as a
+    # single, well-formed table row with exactly 7 cells and no live link,
+    # confirming the defense composes correctly with this module's other
+    # per-cell escaping (evidence refs, remediation kind, etc.) rather
+    # than only working in isolation.
+    findings = [
+        contracts.Finding(
+            finding_id="MED-001",
+            status="pass",
+            phase="design",
+            plane="runtime",
+            reason_code="reason",
+            summary=_HOSTILE_BARE_AUTOLINK,
+            details="details",
+            affected_actions=(),
+            affected_paths=(),
+            evidence_refs=("ev-1",),
+            remediation_ids=(),
+            residual_risk_ref=None,
+        )
+    ]
+    evidence = [_evidence("ev-1")]
+    result = _base_result(findings=findings, evidence=evidence)
+    text = render.render_evidence_pack(result)
+    matrix_source = _matrix_markdown_table_source(text)
+    tokens = _parse_with_commonmark(matrix_source)
+    row_th_count = sum(1 for token in tokens if token.type == "th_open")
+    row_td_count = sum(1 for token in tokens if token.type == "td_open")
+    assert row_th_count == 7
+    assert row_td_count % 7 == 0  # every data row still has exactly 7 cells
+    assert not any(token.type == "link_open" for token in tokens)
 
 
 # ---------------------------------------------------------------------------

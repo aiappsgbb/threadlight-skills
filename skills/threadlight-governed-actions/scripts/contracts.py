@@ -196,3 +196,17 @@ class AssessmentResult:
     conformance_reports: Tuple[Mapping[str, object], ...] = ()
     change_plane: Mapping[str, object] = field(default_factory=dict)
     residual_risks: Tuple[Mapping[str, object], ...] = ()
+    #: The trusted, deterministic instant this assessment was captured at
+    #: (an RFC3339 timestamp string), independent of any evidence's own
+    #: ``collected_at``. Freshness is evaluated *at* this instant, never
+    #: at the newest evidence timestamp -- an assessment made from a mix
+    #: of evidence collected at different times must judge staleness
+    #: relative to when the assessment itself ran, not relative to
+    #: whichever evidence happens to be newest. Optional and defaulting
+    #: to ``None`` for backward compatibility with existing callers built
+    #: before this field existed; a missing/unparseable value degrades
+    #: freshness conservatively (schema-compatible stale/nulls) rather
+    #: than inventing a trusted instant. Intended to be populated from
+    #: ``AssessmentOptions.now`` once an orchestrator wires the two
+    #: together.
+    captured_at: Optional[str] = None

@@ -158,21 +158,28 @@ _MANDATORY_RESIDUAL_RISKS: Tuple[Dict[str, object], ...] = (
         "description": (
             "Live evidence (branch protection, required checks, identity "
             "separation) is only as current as its own trustworthy "
-            "collection timestamp. An evidence entry whose collected_at "
-            "is missing or does not parse as a real instant is rendered "
-            "with collected_at null and live_verified false (never the "
-            "input's own claimed live_verified/freshness_seconds), and is "
-            "excluded from this manifest's freshness computation entirely. "
-            "When no evidence carries a trustworthy timestamp, "
-            "freshness.status is reported stale; when the newest "
-            "trustworthy timestamp (captured_at) exceeds the oldest "
-            "trustworthy timestamp (oldest_source_at) plus this "
-            "manifest's valid_for_hours, freshness.status is reported "
-            "expired; and when a finding or application-path probe cites "
-            "its own required evidence entry that cannot be trusted, "
-            "freshness.status is reported stale even if other, unrelated "
-            "evidence in this manifest is itself fresh -- none of these "
-            "cases is ever assumed to still be fresh."
+            "collection timestamp, and freshness is judged only against "
+            "the evidence a finding or application-path probe actually "
+            "requires -- never unrelated evidence this manifest merely "
+            "happens to carry. An evidence entry whose collected_at is "
+            "missing or does not parse as a real instant is rendered with "
+            "collected_at null and live_verified false (never the input's "
+            "own claimed live_verified/freshness_seconds), and is "
+            "excluded from this manifest's freshness computation "
+            "entirely. captured_at is this assessment's own trusted "
+            "capture instant -- never derived from evidence, and never "
+            "the newest evidence timestamp this manifest happens to "
+            "carry. When no required evidence carries a trustworthy "
+            "timestamp, or captured_at itself cannot be trusted, "
+            "freshness.status is reported stale; when captured_at "
+            "exceeds the oldest trustworthy required-evidence timestamp "
+            "(oldest_source_at) plus this manifest's valid_for_hours, "
+            "freshness.status is reported expired; and when a finding or "
+            "application-path probe cites its own required evidence "
+            "entry that cannot be trusted, freshness.status is reported "
+            "stale even if other, unrelated evidence in this manifest is "
+            "itself fresh -- none of these cases is ever assumed to "
+            "still be fresh."
         ),
     },
     {
@@ -710,30 +717,38 @@ def _add_hours(moment: datetime, hours: int) -> datetime:
     return moment + timedelta(hours=hours)
 
 
-def _trustworthy_timestamp_pairs(result: AssessmentResult) -> List[Tuple[datetime, str]]:
-    """Every evidence ``collected_at`` that parses to a real instant,
-    paired with its own original (never reformatted) string, sorted by
-    ``(instant, original string)``.
+def _required_trustworthy_timestamp_pairs(result: AssessmentResult) -> List[Tuple[datetime, str]]:
+    """Every *required* evidence ``collected_at`` that parses to a real
+    instant, paired with its own original (never reformatted) string,
+    sorted by ``(instant, original string)``.
+
+    "Required" means the evidence is actually cited by a finding's or an
+    application-path probe's own ``evidence_refs``
+    (:func:`_required_evidence_ids`) -- freshness is a claim about the
+    evidence this manifest's findings/probes actually depend on to
+    justify their own status, never about incidental evidence nothing
+    here needed. An evidence entry that no finding or probe cites can be
+    perfectly fresh (or perfectly stale) without changing
+    ``oldest_source_at``/``expires_at`` at all.
 
     Sorting by the parsed instant first (not the raw string) is what makes
-    ``fresh``/``expired``/``oldest_source_at`` correct regardless of
-    per-entry UTC-offset or fractional-second spelling; the original
-    string is kept as a deterministic tiebreaker for entries that name the
-    identical instant in different but equivalent spellings, so which
-    input ordering the caller happened to supply evidence in never changes
-    which exact string is chosen to render.
+    ``oldest_source_at`` correct regardless of per-entry UTC-offset or
+    fractional-second spelling; the original string is kept as a
+    deterministic tiebreaker for entries that name the identical instant
+    in different but equivalent spellings, so which input ordering the
+    caller happened to supply evidence in never changes which exact
+    string is chosen to render.
     """
+    required_ids = _required_evidence_ids(result)
     pairs: List[Tuple[datetime, str]] = []
     for ref in result.evidence:
+        if ref.evidence_id not in required_ids:
+            continue
         instant = _try_parse_rfc3339(ref.collected_at)
         if instant is not None:
             pairs.append((instant, ref.collected_at))
     pairs.sort(key=lambda pair: (pair[0], pair[1]))
     return pairs
-
-
-def _captured_at_from_pairs(pairs: Sequence[Tuple[datetime, str]]) -> str:
-    return pairs[-1][1] if pairs else FALLBACK_TIMESTAMP
 
 
 def _required_evidence_ids(result: AssessmentResult) -> Set[str]:
@@ -790,10 +805,11 @@ def _freshness_from_pairs(
     required_evidence_untrustworthy: bool = False,
 ) -> Dict[str, object]:
     if not pairs:
-        # No evidence carries a trustworthy collection timestamp (either
-        # none was ever supplied, or every supplied value failed to parse
-        # as a real instant): freshness cannot be proven, so this is
-        # recorded as conservatively as the schema's fixed status
+        # No *required* evidence carries a trustworthy collection
+        # timestamp (either none was ever supplied, or every supplied
+        # value failed to parse as a real instant, or no finding/probe
+        # required any evidence at all): freshness cannot be proven, so
+        # this is recorded as conservatively as the schema's fixed status
         # vocabulary allows -- "stale" rather than an invented "fresh" --
         # instead of a fabricated window.
         return {
@@ -804,15 +820,26 @@ def _freshness_from_pairs(
         }
     oldest_instant, oldest_source_at = pairs[0]
     expires_instant = _add_hours(oldest_instant, FRESHNESS_VALID_FOR_HOURS)
-    if captured_instant is not None and captured_instant <= expires_instant:
+    if captured_instant is None:
+        # The assessment's own trusted capture instant is missing or
+        # unparseable: this is exactly as untrustworthy as having no
+        # required evidence at all, so it degrades the same way -- never
+        # a fabricated "expired" just because ``None`` compares as
+        # "not <= expires_instant" -- and never a fabricated "fresh"
+        # either.
+        status = "stale"
+    elif captured_instant <= expires_instant:
         # Otherwise-fresh evidence can still fail to make a finding or
         # probe's own *required* evidence trustworthy: a report crowded
         # with fresh, unrelated evidence must never mask the one required
         # reference this manifest cannot actually vouch for, so that case
         # is reported "stale" -- never a fabricated "fresh" -- even though
-        # the raw oldest/newest instants pass the freshness window.
+        # the raw oldest instant and the assessment's own capture instant
+        # pass the freshness window.
         status = "stale" if required_evidence_untrustworthy else "fresh"
     else:
+        # The assessment's trusted capture instant exceeds the oldest
+        # trustworthy required-evidence instant plus valid_for_hours.
         status = "expired"
     return {
         "status": status,
@@ -892,9 +919,17 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     residual_risks = _assemble_residual_risks(result)
     risk_ids = {str(entry["residual_risk_id"]) for entry in residual_risks}
     findings = [_finding_to_dict(finding, risk_ids) for finding in _sorted_findings(result.findings, risk_ids)]
-    timestamp_pairs = _trustworthy_timestamp_pairs(result)
-    captured_at = _captured_at_from_pairs(timestamp_pairs)
-    captured_instant = timestamp_pairs[-1][0] if timestamp_pairs else None
+    # ``captured_at`` is the assessment's own trusted capture instant --
+    # never derived from evidence, and never the newest evidence
+    # timestamp this manifest happens to carry. A missing or unparseable
+    # ``result.captured_at`` degrades conservatively: the rendered field
+    # still names a schema-valid timestamp (the field is required and
+    # non-null), but ``captured_instant`` used for the freshness
+    # comparison below becomes ``None``, which :func:`_freshness_from_pairs`
+    # treats as untrustworthy (``stale``), never a fabricated real instant.
+    captured_instant = _try_parse_rfc3339(result.captured_at)
+    captured_at = result.captured_at if captured_instant is not None else FALLBACK_TIMESTAMP
+    required_timestamp_pairs = _required_trustworthy_timestamp_pairs(result)
 
     return {
         "schema": MANIFEST_SCHEMA,
@@ -923,7 +958,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
         "freshness": _freshness_from_pairs(
-            timestamp_pairs, captured_instant, _required_evidence_is_untrustworthy(result)
+            required_timestamp_pairs, captured_instant, _required_evidence_is_untrustworthy(result)
         ),
         "residual_risks": residual_risks,
         "summary": _summary(findings, result.source.dirty),
@@ -1021,6 +1056,15 @@ def build_apply_plan(result: AssessmentResult) -> Dict[str, object]:
 _BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
 
 
+#: Matches a bare ``www.`` run, in *any* letter case -- GFM's own
+#: ``www_match`` recognizer (cmark-gfm's ``extensions/autolink.c``) lower-
+#: cases each candidate byte before comparing it against ``"www."``, so
+#: ``WWW.``/``Www.``/etc. are just as live a trigger as lowercase
+#: ``www.``; a plain case-sensitive substring match would silently miss
+#: every non-lowercase spelling.
+_BARE_WWW_RE = re.compile(r"(?i)\bwww\.")
+
+
 #: Matches a bare ``local@domain.tld``-shaped run so it can be defused
 #: even with no surrounding angle brackets -- GitHub Flavored Markdown's
 #: extended autolink extension also recognizes a bare email address like
@@ -1042,6 +1086,58 @@ _BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
 _BARE_EMAIL_RE = re.compile(
     r"(?i)([a-z0-9._%+\-]+)@((?:[a-z0-9_-]+\.)+[a-z0-9_-]*[a-z0-9])"
 )
+
+
+def _wrap_code_span_fragment(fragment: str) -> str:
+    """Wrap *fragment* (never containing a backtick -- every input
+    backtick is already replaced with a plain apostrophe earlier in
+    :func:`_md_escape_inline`) in a *double*-backtick-delimited inline
+    code span.
+
+    A code span's content is never re-scanned for inline constructs --
+    not by CommonMark's own core syntax (links, emphasis, raw HTML), and
+    not by GitHub Flavored Markdown's *extended autolink* extension
+    either, since that extension (like any linkify-style extension)
+    recognizes a bare URL/``www.``/email trigger by scanning the
+    already-assembled plain-text content of the document, and a code
+    span's content is excluded from that scan entirely -- once a run of
+    characters is consumed as a code span, no later positional scan ever
+    revisits it, and no positional scan ever reaches back across a code
+    span's boundary to stitch text from either side of it into one
+    contiguous run either. This is what makes a code span -- unlike a
+    backslash escape -- a representation that is actually inert in GFM:
+    a backslash escape is only a *parse-time* marker that gets stripped
+    before the assembled plain-text content is ever handed to the
+    autolink extension, so the trigger substring reforms exactly as if
+    the backslash had never been there, whereas a code span's delimiters
+    survive as real structural boundaries all the way through parsing.
+
+    Uses a *double*-backtick delimiter (not a single one) so this
+    function's own inserted span can never collide with the single-
+    backtick delimiters :func:`_md_code_span` adds when it wraps an
+    entire escaped value a second time: CommonMark requires a code
+    span's closing delimiter to be a backtick run of the exact same
+    length as its opener, so a lone embedded backtick from this
+    function's own double-backtick markers can never prematurely close
+    an outer single-backtick span, and if this value is never
+    additionally wrapped, the double backticks still open and close a
+    perfectly ordinary code span on their own.
+    """
+    return f"``{fragment}``"
+
+
+#: Guards against two independently-wrapped code spans this function
+#: inserts landing back-to-back with zero characters between them (this
+#: happens whenever, e.g., a bare ``scheme://`` run is immediately
+#: followed by a bare ``user@domain`` run with no separator, as in
+#: ``https://user@evil.example``): CommonMark's code-span algorithm
+#: matches a *maximal* run of backticks as one single delimiter, so two
+#: adjacent, unrelated double-backtick pairs with nothing between them
+#: would merge into one ambiguous four-backtick run and desynchronize
+#: both spans' intended open/close pairing. Splitting any such run with
+#: a real (if invisible) character in between keeps each of this
+#: function's own double-backtick pairs independently well-formed.
+_TOUCHING_CODE_SPAN_DELIMITERS_RE = re.compile(r"``(?=`)")
 
 
 def _md_escape_inline(value: object) -> str:
@@ -1085,13 +1181,33 @@ def _md_escape_inline(value: object) -> str:
     an inline code span this module wraps identifier-like values in
     elsewhere). ``<``/``>`` are HTML-entity-escaped, which defeats both a
     raw HTML tag and an angle-bracket autolink (``<https://...>``):
-    neither can ever open or close once escaped. Finally, a bare
-    ``scheme://``/``www.`` run, or a bare ``local@domain.tld``-shaped
-    email address (in any letter case) -- either of which GitHub Flavored
-    Markdown's extended autolink extension can turn into a live link with
-    no brackets or angle brackets present at all -- has its trigger
-    substring broken with a backslash so the exact literal text it
-    matches against no longer appears.
+    neither can ever open or close once escaped.
+
+    Finally, a bare ``scheme://`` run, a bare ``www.`` run (in any letter
+    case), or a bare ``local@domain.tld``-shaped email address (in any
+    letter case) -- any of which GitHub Flavored Markdown's extended
+    autolink extension can turn into a live link with no brackets or
+    angle brackets present at all -- has its exact trigger substring
+    wrapped in its own double-backtick-delimited inline code span (see
+    :func:`_wrap_code_span_fragment`) rather than merely backslash-
+    escaped. A backslash escape is *not* effective here: it is only a
+    parse-time marker that a CommonMark/GFM renderer strips before ever
+    handing the assembled plain-text content to the autolink extension,
+    so the exact same trigger substring (``https://``, ``www.``,
+    ``user@domain``) reforms in that assembled text regardless of
+    whether a backslash preceded it in the source -- ``https:\\/\\/``,
+    ``www\\.``, and ``user\\@domain`` all still render as live GFM
+    autolinks. A code span's content, in contrast, is a genuine
+    structural boundary that survives parsing: it is never re-scanned by
+    the autolink extension (or any other inline construct), and text on
+    either side of it is never stitched back together into one
+    contiguous run for the extension to match against, so wrapping the
+    trigger substring this way is actually inert rather than only
+    apparently escaped. Two such wraps landing back-to-back with nothing
+    between them (e.g. a bare ``scheme://`` run immediately followed by
+    a bare ``user@domain`` run) are kept apart by inserting a single
+    invisible character between them, so their double-backtick
+    delimiters can never merge into one ambiguous longer backtick run.
 
     All of this keeps the value fully human-readable; it is applied to
     every assessment-influenceable string this module ever interpolates
@@ -1108,9 +1224,10 @@ def _md_escape_inline(value: object) -> str:
     text = text.replace("|", "\\|")
     text = text.replace("`", "'")
     text = text.replace("<", "&lt;").replace(">", "&gt;")
-    text = _BARE_URL_SCHEME_RE.sub(lambda match: f"{match.group(1)}:\\/\\/", text)
-    text = text.replace("www.", "www\\.")
-    text = _BARE_EMAIL_RE.sub(lambda match: f"{match.group(1)}\\@{match.group(2)}", text)
+    text = _BARE_URL_SCHEME_RE.sub(lambda match: _wrap_code_span_fragment(match.group(0)), text)
+    text = _BARE_WWW_RE.sub(lambda match: _wrap_code_span_fragment(match.group(0)), text)
+    text = _BARE_EMAIL_RE.sub(lambda match: _wrap_code_span_fragment(match.group(0)), text)
+    text = _TOUCHING_CODE_SPAN_DELIMITERS_RE.sub("``\u200b", text)
     return text
 
 
