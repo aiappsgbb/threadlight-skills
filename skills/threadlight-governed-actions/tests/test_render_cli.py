@@ -270,6 +270,7 @@ def _base_result(
     residual_risks: Sequence[Dict[str, object]] = (),
     captured_at: Optional[str] = _CAPTURED_AT_DEFAULT,
     phase: Optional[str] = None,
+    live_github_selected: bool = False,
 ) -> contracts.AssessmentResult:
     return contracts.AssessmentResult(
         source=_source(dirty=dirty),
@@ -314,6 +315,7 @@ def _base_result(
         residual_risks=tuple(residual_risks),
         captured_at=captured_at,
         phase=phase,
+        live_github_selected=live_github_selected,
     )
 
 
@@ -4180,3 +4182,205 @@ def test_exit_code_gate_pre_deploy_ignores_optional_unselected_live_not_verified
     )
     assert governed_actions.exit_code(result, gate=True) == 0
     assert governed_actions.exit_code(result, gate=False) == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 10 spec-compliance fixes ("complete lifecycle assessment coverage"):
+#
+# 1. design must emit explicit not-verified markers for runtime and GHCP
+#    live coverage instead of staying silent about them.
+# 2. pre-deploy must never silently skip APR-001/OUT-001 coverage.
+# 3. pre-deploy must populate pins/change_plane/conformance_claims instead
+#    of leaving them empty.
+# 4. --gate must fail on an unresolved GHCP-002 branch-protection finding
+#    when --live-github was explicitly selected, not just when it wasn't.
+# 5. the default branch must never silently fall back to "main".
+# ---------------------------------------------------------------------------
+
+
+_OUTPUT_STREAMING_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "output-streaming"
+
+
+def test_design_marks_runtime_and_ghcp_checks_not_verified(tmp_path):
+    # design only ever builds the action inventory and validates
+    # SAFE-completeness; it must never execute an application probe or a
+    # GHCP static/live change-plane check. But a SAFE-complete,
+    # design-only assessment must also never look like every runtime and
+    # GHCP live check is already covered -- so it emits an explicit
+    # not-verified marker for each instead of staying silent.
+    root = _init_governed_actions_target(tmp_path)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="design", now=_CAPTURED_AT_DEFAULT)
+    )
+    assert result.phase == "design"
+
+    runtime_markers = [
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001" and finding.phase == "design"
+    ]
+    assert len(runtime_markers) == 1
+    assert runtime_markers[0].status == "not-verified"
+
+    ghcp_markers = [
+        finding
+        for finding in result.findings
+        if finding.finding_id == "GHCP-002" and finding.phase == "design"
+    ]
+    assert len(ghcp_markers) == 1
+    assert ghcp_markers[0].status == "not-verified"
+    # Design's own reason code must be distinct from pre-deploy's own
+    # "attempted a static check but couldn't confirm live" GHCP-002 reason
+    # code -- design never attempts any GHCP check at all, so reusing
+    # that exact reason code here would misrepresent what actually ran.
+    assert ghcp_markers[0].reason_code != "branch-protection-not-verified-statically"
+
+    # Preserved gate semantics: these new not-verified findings never fail
+    # the design gate -- only an ACT-001/ACT-002 must-fix finding can.
+    assert governed_actions.exit_code(result, gate=True) == 0
+
+
+def test_pre_deploy_reports_approval_and_output_not_verified_when_no_probe_contract(tmp_path):
+    # Neither the approval anti-replay probe (APR-001) nor the output
+    # mediation probe (OUT-001) may ever be silently skipped: pre-deploy
+    # must explicitly report both not-verified when no deterministic,
+    # non-fabricated input for them exists, rather than never assessing
+    # them at all.
+    root = _init_governed_actions_target(tmp_path)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    approval_findings = [finding for finding in result.findings if finding.finding_id == "APR-001"]
+    assert len(approval_findings) == 1
+    assert approval_findings[0].status == "not-verified"
+
+    output_findings = [finding for finding in result.findings if finding.finding_id == "OUT-001"]
+    assert len(output_findings) == 1
+    assert output_findings[0].status == "not-verified"
+
+
+def test_output_coverage_runs_real_probe_when_output_contract_available():
+    # No deterministic, non-business-specific approval binding can ever
+    # exist (subject/tenant/policy would have to be fabricated), so
+    # APR-001 always stays an explicit not-verified marker. OUT-001,
+    # though, is wired for real -- using the same fixed, synthetic "deny"
+    # verdict `run_privacy_probe_set` already uses for AUD-001 -- whenever
+    # the target actually declares a usable output probe contract.
+    probe_results, findings = governed_actions._run_output_coverage(
+        _OUTPUT_STREAMING_FIXTURE, "pre-deploy"
+    )
+    assert len(probe_results) == 1
+    assert probe_results[0].status == "pass"
+    assert findings == ()
+
+
+def test_pre_deploy_populates_pins_change_plane_and_conformance_claims(tmp_path):
+    # pins/change_plane/conformance_claims must be populated with
+    # deterministic, payload-free summaries of data pre-deploy already
+    # computes (the observed MAF tuple comparison and the GHCP
+    # change-plane assessment), not left empty.
+    root = _init_governed_actions_target(tmp_path)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert result.pins
+    assert result.pins["dependencies"]
+    assert result.pins["specifications"]
+    for entry in tuple(result.pins["dependencies"]) + tuple(result.pins["specifications"]):
+        assert set(entry) == {"name", "version"}
+
+    assert result.change_plane
+    assert result.change_plane["repository"] == "acme/widget"
+    assert result.change_plane["workflows"] == ()
+    assert result.change_plane["identities"] == ()
+
+    assert result.conformance_claims
+    claim_ids = {claim["claim_id"] for claim in result.conformance_claims}
+    # The one boolean GHCP control (never a Status string) must never be
+    # coerced into a conformance-claim status.
+    assert "ghcp_internal_loop_intercepted" not in claim_ids
+    assert "ghcp_codeowners" in claim_ids
+    for claim in result.conformance_claims:
+        assert set(claim) == {"claim_id", "description", "status", "evidence_refs"}
+
+
+def test_exit_code_gate_pre_deploy_fails_on_selected_live_github_not_verified():
+    # When --live-github was explicitly selected, an unresolved
+    # branch-protection finding must fail the gate -- the exemption is
+    # only for a live capability that was never even requested.
+    result = _base_result(
+        findings=[
+            _finding(
+                "GHCP-002",
+                "not-verified",
+                phase="pre-deploy",
+                reason_code="branch-protection-not-verified-statically",
+            )
+        ],
+        phase="pre-deploy",
+        live_github_selected=True,
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_resolve_default_branch_returns_none_when_local_ref_unavailable(tmp_path):
+    # No arbitrary "main" fallback: when the local checkout has no
+    # `origin/HEAD` ref recorded (e.g. `git remote set-head origin
+    # --auto` was never run), the ambiguity is reported honestly as
+    # unresolved rather than silently guessed at.
+    root = _init_governed_actions_target(tmp_path)
+    assert governed_actions._resolve_default_branch(root) is None
+
+
+def test_collect_selected_live_evidence_never_calls_github_with_unresolved_default_branch(tmp_path, monkeypatch):
+    # An unresolved default branch must never be silently converted into
+    # a guessed "main": collect_live_github must never even be called
+    # with a fabricated branch name, and the ambiguity itself must
+    # surface as an explicit not-verified finding.
+    root = _init_governed_actions_target(tmp_path)
+
+    def _fail_if_called(repository, default_branch, run):
+        raise AssertionError(
+            "collect_live_github must not be called with an unresolved default branch"
+        )
+
+    monkeypatch.setattr(governed_actions.ghcp, "collect_live_github", _fail_if_called)
+    options = contracts.AssessmentOptions(
+        root=root,
+        phase="pre-deploy",
+        live_github=True,
+        repository="acme/widget",
+        now=_CAPTURED_AT_DEFAULT,
+    )
+    live_github, live_azure, findings = governed_actions._collect_selected_live_evidence(
+        root, options, None
+    )
+    assert live_github is None
+    assert any(finding.reason_code == "github-live-evidence-unavailable" for finding in findings)
+
+
+def test_selected_live_github_with_unresolvable_default_branch_reports_not_verified(tmp_path):
+    # End-to-end: --live-github selected against a checkout with no
+    # resolvable default branch must never crash (exit 3) and never
+    # silently pass -- it surfaces as an explicit not-verified finding.
+    root = _init_governed_actions_target(tmp_path)
+    exit_status = governed_actions.main(
+        [
+            "--target",
+            str(root),
+            "--phase",
+            "pre-deploy",
+            "--live-github",
+            "--repo",
+            "acme/widget",
+            "--emit",
+        ]
+    )
+    assert exit_status == 0
+    manifest = json.loads(
+        (root / render.DEFAULT_MANIFEST_RELATIVE_PATH).read_text(encoding="utf-8")
+    )
+    reason_codes = {finding["reason_code"] for finding in manifest["findings"]}
+    assert "github-live-evidence-unavailable" in reason_codes

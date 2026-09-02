@@ -225,3 +225,14 @@ class AssessmentResult:
     #: to be populated from ``AssessmentOptions.phase`` once an
     #: orchestrator wires the two together.
     phase: Optional[Phase] = None
+    #: Whether ``--live-github`` was explicitly selected for *this* run,
+    #: mirroring ``AssessmentOptions.live_github``. Exists only so
+    #: ``exit_code`` can distinguish an optional, unselected live
+    #: capability (still not-verified, still gate-exempt) from one the
+    #: CLI explicitly requested but that came back unresolved or
+    #: incomplete (which must fail ``--gate``) -- without any global
+    #: mutable state. Defaults to ``False`` for backward compatibility
+    #: with existing callers built before this field existed. Intended to
+    #: be populated from ``AssessmentOptions.live_github`` once an
+    #: orchestrator wires the two together.
+    live_github_selected: bool = False

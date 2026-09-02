@@ -36,7 +36,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import alerts
 import canonical
@@ -74,20 +74,18 @@ _UPSTREAM_PIN_PATH = _REFERENCES_DIR / "upstream-pin.json"
 #: opted into these probes, an entirely expected condition.
 _PROBE_CONTRACT_RELATIVE_PATH = Path("governance") / "probe-contract.json"
 
-#: Fallback default branch name used only when a local git ref for the
-#: remote's HEAD cannot be resolved (e.g. ``origin/HEAD`` was never set
-#: locally). This is a technical default for shelling out to
-#: ``gh api .../branches/{default_branch}/...``, never a business policy
-#: choice -- it only ever matters when ``--live-github`` is also passed.
-_DEFAULT_BRANCH_FALLBACK = "main"
-
 #: The reason codes GHCP's own ``assess_change_plane`` assigns to a
 #: control that is simply *statically unverifiable* -- i.e. one that was
 #: never actually attempted because no corresponding ``--live-github``/
 #: live-Azure evidence was requested at all, as opposed to one that was
 #: requested and failed. Per the gate semantics this module implements,
 #: an optional, unselected live capability may remain not-verified
-#: without failing ``--gate``; a selected-but-failed one may not.
+#: without failing ``--gate``; a selected-but-failed one may not. Note
+#: that ``"branch-protection-not-verified-statically"`` is *conditionally*
+#: exempt (see :func:`exit_code`): it is only ever "optional and
+#: unselected" when ``--live-github`` was not itself selected for this
+#: run, since a selected-but-incomplete live GitHub check is never
+#: exempt.
 _OPTIONAL_UNSELECTED_LIVE_REASON_CODES = frozenset(
     {
         "branch-protection-not-verified-statically",
@@ -280,19 +278,25 @@ def resolve_source(root: Path) -> contracts.SourceRef:
     )
 
 
-def _resolve_default_branch(root: Path) -> str:
+def _resolve_default_branch(root: Path) -> Optional[str]:
     """Best-effort local read of the remote's default branch, used only
-    to shape a ``--live-github`` request. Never raises: falls back to
-    :data:`_DEFAULT_BRANCH_FALLBACK` when the local ref is unavailable
-    (e.g. this checkout never ran ``git remote set-head origin --auto``),
-    since this is a technical fallback, not a business decision the CLI
-    may legitimately invent evidence around.
+    to shape a ``--live-github`` request. Never raises and never
+    fabricates a guess: when the local ref is unavailable (e.g. this
+    checkout never ran ``git remote set-head origin --auto``) or resolves
+    to an empty string, this returns ``None`` rather than an arbitrary
+    fallback branch name (``"main"`` or otherwise) -- an assumed branch
+    that happens not to be the real default would silently mis-scope a
+    live branch-protection check into checking the wrong branch. The
+    caller is responsible for reporting this ambiguity as an explicit
+    not-verified finding rather than converting it into a pass.
     """
     try:
         ref = _run_git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root)
     except ValueError:
-        return _DEFAULT_BRANCH_FALLBACK
-    return ref.rsplit("/", 1)[-1] if ref else _DEFAULT_BRANCH_FALLBACK
+        return None
+    if not ref:
+        return None
+    return ref.rsplit("/", 1)[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -347,17 +351,86 @@ def _spec_section_8_evidence(
     )
 
 
+def _design_runtime_not_verified_finding() -> contracts.Finding:
+    """design never executes any runtime application probe (enforcement,
+    privacy, approval, or output mediation) -- only pre-deploy/post-deploy
+    do. Reported explicitly so a SAFE-complete, design-only assessment
+    can never be mistaken for one where runtime governance is already
+    proven; reuses ENF-001 (the catalog's own "no enforcement seam
+    confirmed" finding) with a design-specific reason code distinguishing
+    this from a real, attempted-but-failing enforcement check.
+    """
+    return contracts.Finding(
+        finding_id="ENF-001",
+        status="not-verified",
+        phase="design",
+        plane="runtime",
+        reason_code="runtime-checks-not-verified-in-design",
+        summary="Runtime application probes are not run during design.",
+        details=(
+            "design only builds the action inventory and validates "
+            "SAFE-completeness of declared actions; no enforcement, "
+            "privacy, approval, or output-mediation probe is ever "
+            "executed at this phase, so runtime governance coverage "
+            "remains not-verified until at least pre-deploy runs."
+        ),
+    )
+
+
+def _design_ghcp_not_verified_finding() -> contracts.Finding:
+    """design never runs GHCP's static workflow analysis or collects any
+    ``--live-github``/``--live-azure`` evidence -- only pre-deploy does.
+    Reported explicitly so a SAFE-complete, design-only assessment can
+    never be mistaken for one where the GitHub Copilot change plane is
+    already proven; reuses GHCP-002 (the catalog's own "branch
+    protection/CODEOWNERS coverage missing or unavailable" finding) with
+    a reason code distinct from pre-deploy's own
+    ``branch-protection-not-verified-statically`` -- design never even
+    attempts a GHCP check, so reusing that exact reason code would
+    misrepresent what actually ran.
+    """
+    return contracts.Finding(
+        finding_id="GHCP-002",
+        status="not-verified",
+        phase="design",
+        plane="change",
+        reason_code="ghcp-not-assessed-in-design",
+        summary="GitHub Copilot change-plane checks are not run during design.",
+        details=(
+            "design never runs GHCP's static workflow analysis or any "
+            "--live-github/--live-azure evidence collection; branch "
+            "protection, required checks, CODEOWNERS coverage, and every "
+            "other change-plane control remain not-verified until at "
+            "least pre-deploy runs."
+        ),
+    )
+
+
 def _assess_design(
     root: Path, source: contracts.SourceRef, options: contracts.AssessmentOptions
 ) -> contracts.AssessmentResult:
-    """design: inventory and SAFE-requirement validation only."""
+    """design: inventory and SAFE-requirement validation only.
+
+    Never executes a runtime application probe or a GHCP static/live
+    change-plane check -- but never lets that absence of coverage go
+    unreported either: two explicit not-verified findings mark both as
+    preliminary, unproven evidence rather than silence, so a
+    SAFE-complete design-only assessment can never claim full governed
+    status. Neither finding is ever ``must-fix``, so this never widens
+    design's own gate (see :func:`exit_code`: only an ACT-001/ACT-002
+    must-fix finding can fail it).
+    """
     inv = inventory.build_action_inventory(root)
+    findings = inv.findings + (
+        _design_runtime_not_verified_finding(),
+        _design_ghcp_not_verified_finding(),
+    )
     return contracts.AssessmentResult(
         source=source,
         actions=inv.actions,
         paths=(),
         probes=(),
-        findings=inv.findings,
+        findings=findings,
         evidence=_spec_section_8_evidence(inv, source, options.now),
         policy_hashes=(),
         pins={},
@@ -399,16 +472,228 @@ def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult
     return probe_results, probes.findings_from_probes(probe_results)
 
 
+def _approval_not_verified_finding(phase: str) -> contracts.Finding:
+    """APR-001 (approval binding/anti-replay) is always reported explicit
+    not-verified in pre-deploy, never silently skipped and never
+    "wired" for real: ``probes.run_approval_probe`` requires a
+    customer/business-specific :class:`probes.ApprovalBinding` (subject,
+    tenant, policy, nonce ledger, ...) this orchestrator has no safe,
+    non-fabricated source for. Reporting not-verified is always truthful
+    here; inventing a placeholder binding to get a "pass" would not be.
+    """
+    return contracts.Finding(
+        finding_id="APR-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="approval-binding-unavailable",
+        summary="Approval anti-replay probe could not be run: no deterministic approval binding is available.",
+        details=(
+            "run_approval_probe requires a customer/business-specific "
+            "ApprovalBinding (subject, tenant, policy, nonce ledger, ...) "
+            "this orchestrator has no safe, non-fabricated source for, so "
+            "the APR-001 approval-binding/anti-replay probe was never "
+            "run; this is reported not-verified rather than inferred as "
+            "a pass or invented from placeholder approver/policy data."
+        ),
+    )
+
+
+def _output_contract_unavailable_finding(phase: str) -> contracts.Finding:
+    """A single, explicit not-verified finding standing in for the
+    OUT-001 output-mediation probe when the target never declared a
+    usable output probe contract -- reported rather than allowing
+    ``probes.load_output_contract``/``run_output_probe`` to raise for
+    what is, for the great majority of targets, an entirely expected,
+    non-error absence.
+    """
+    return contracts.Finding(
+        finding_id="OUT-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="output-contract-unavailable",
+        summary="Output mediation probe could not be run: no output probe contract declared.",
+        details=(
+            "governance/probe-contract.json does not declare a usable "
+            "output-mediation contract (dispatch/audit_sink/"
+            "observation_ledger), so the OUT-001 output-mediation probe "
+            "was never run; this is reported not-verified rather than "
+            "inferred as a pass."
+        ),
+    )
+
+
+def _run_output_coverage(
+    root: Path, phase: str
+) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
+    """Explicit OUT-001 output-mediation coverage.
+
+    Runs the deterministic, side-effect-free ``"deny"`` verdict probe --
+    the same fixed synthetic verdict ``run_privacy_probe_set`` already
+    uses for AUD-001 -- whenever the target declares a usable output
+    probe contract; never fabricates approver/output/threshold data or a
+    different verdict. When no such contract is declared, reports
+    OUT-001 not-verified explicitly instead of silently never assessing
+    it.
+    """
+    try:
+        result = probes.run_output_probe(root, "deny")
+    except probes.ProbeContractError:
+        return (), (_output_contract_unavailable_finding(phase),)
+    return (result,), probes.findings_from_probes((result,))
+
+
+#: The assessor's own tested complete-tuple pin, split into the two
+#: manifest-schema pin groups. Purely a technical grouping of
+#: :data:`maf_adapter._OBSERVED_TUPLE_KEYS` -- never a business policy
+#: choice about which dependency/specification "matters more".
+_PIN_DEPENDENCY_TUPLE_KEYS: Tuple[str, ...] = ("agent-hooks-sdk", "agent-framework-core")
+_PIN_SPECIFICATION_TUPLE_KEYS: Tuple[str, ...] = (
+    "agent-hooks-spec",
+    "ctk-vectors",
+    "conformance-python",
+    "acs-policy-schema",
+)
+
+
+def _pins_summary(expected_tuple: Mapping[str, str]) -> Dict[str, object]:
+    """Deterministic, payload-free ``pins`` summary built from the
+    assessor's own tested complete pin tuple (``pin_comparison.expected``,
+    read straight from ``references/upstream-pin.json`` -- never the
+    target's own possibly-absent "observed" state), so it is always
+    available regardless of whether the target declared
+    ``governance/installed-packages.json`` at all. Each value already
+    carries its own commit/hash provenance (see
+    ``maf_adapter._expected_tuple_from_pin``); ``probe_suite`` is left
+    unset since ``render._normalize_pins`` already fills in a
+    schema-compatible default for it.
+    """
+    return {
+        "dependencies": tuple(
+            {"name": key, "version": expected_tuple[key]} for key in _PIN_DEPENDENCY_TUPLE_KEYS
+        ),
+        "specifications": tuple(
+            {"name": key, "version": expected_tuple[key]} for key in _PIN_SPECIFICATION_TUPLE_KEYS
+        ),
+    }
+
+
+def _change_plane_workflows(
+    root: Path, evidence: Sequence[contracts.EvidenceRef]
+) -> Tuple[Mapping[str, object], ...]:
+    """Per-workflow-file ``{path, sha256}`` entries for the change-plane
+    artifact, derived only from the already-computed aggregate
+    ``ghcp-workflows`` evidence reference this same pre-deploy run
+    already collected -- never re-walks the filesystem independently.
+    Returns an empty tuple whenever that evidence is absent (e.g. a dirty
+    workflow set, or no workflow files at all) rather than fabricating
+    one.
+    """
+    for item in evidence:
+        if item.evidence_id != "ghcp-workflows":
+            continue
+        paths = tuple(line for line in item.source.split("\n") if line)
+        try:
+            hashed = canonical.hash_files(root, paths)
+        except canonical.CanonicalizationError:
+            return ()
+        return tuple(hashed["files"])
+    return ()
+
+
+def _change_plane_summary(
+    root: Path,
+    source: contracts.SourceRef,
+    options: contracts.AssessmentOptions,
+    evidence: Sequence[contracts.EvidenceRef],
+) -> Dict[str, object]:
+    """Deterministic, payload-free ``change_plane`` summary: the assessed
+    repository, the tested workflow file hashes, and -- only when the CLI
+    itself supplied a deploy identity (``--deploy-identity``), never a
+    raw federated-credential/role-assignment payload from live Azure
+    evidence -- a single conservative ``deploy`` identity entry.
+    """
+    identities: Tuple[Mapping[str, object], ...] = ()
+    if options.deploy_identity:
+        identities = ({"identity": options.deploy_identity, "kind": "deploy"},)
+    return {
+        "repository": source.repository,
+        "workflows": _change_plane_workflows(root, evidence),
+        "identities": identities,
+    }
+
+
+def _conformance_claims_from_controls(
+    controls: Mapping[str, object]
+) -> Tuple[Mapping[str, object], ...]:
+    """One conformance claim per GHCP change-plane ``Status`` control --
+    a mechanical, non-invented pass-through of what
+    ``ghcp.assess_change_plane`` already computed, never a new judgment
+    of its own. The one boolean control
+    (``ghcp_internal_loop_intercepted``) is skipped: it is never a
+    ``Status`` value and a conformance claim's own ``status`` field can
+    never accept one.
+    """
+    return tuple(
+        {
+            "claim_id": key,
+            "description": f"GitHub Copilot change-plane control: {key}.",
+            "status": value,
+            "evidence_refs": (),
+        }
+        for key, value in controls.items()
+        if isinstance(value, str)
+    )
+
+
+def _default_branch_unresolved_finding() -> contracts.Finding:
+    """``--live-github`` was selected, but no default branch could be
+    established at all (neither ``--default-branch`` nor a local
+    ``origin/HEAD`` ref) -- so no live branch-protection request is ever
+    sent for a guessed branch name. Reuses GHCP's own
+    ``github-live-evidence-unavailable`` reason code (the same one
+    ``ghcp._github_not_verified`` assigns to any other failed live
+    GitHub collection): this is semantically the same "live GitHub
+    evidence could not be collected" outcome, and -- since that reason
+    code is not in :data:`_OPTIONAL_UNSELECTED_LIVE_REASON_CODES`,
+    unlike ``branch-protection-not-verified-statically`` -- it correctly
+    fails ``--gate`` without any further exemption logic.
+    """
+    return contracts.Finding(
+        finding_id="GHCP-002",
+        status="not-verified",
+        phase="pre-deploy",
+        plane="change",
+        reason_code="github-live-evidence-unavailable",
+        summary="Live GitHub branch-protection evidence could not be collected: no default branch could be established.",
+        details=(
+            "--live-github was selected, but neither --default-branch "
+            "nor a local origin/HEAD ref could establish this "
+            "repository's default branch; rather than guess a branch "
+            "name (e.g. an assumed 'main'), no live GitHub evidence "
+            "collection was attempted at all."
+        ),
+    )
+
+
 def _collect_selected_live_evidence(
     root: Path,
     options: contracts.AssessmentOptions,
-    default_branch: str,
+    default_branch: Optional[str],
 ) -> Tuple[Optional[Mapping[str, object]], Optional[Mapping[str, object]], List[contracts.Finding]]:
     """Collect only the live evidence explicitly selected by CLI
     arguments -- ``--live-github`` for GitHub, all three of
     ``--subscription``/``--staging-resource-group``/``--deploy-identity``
     together for Azure -- appending any resulting not-verified finding.
     Never invents a selection the CLI did not make.
+
+    When ``--live-github`` was selected but *default_branch* is
+    ``None`` (no local ``origin/HEAD`` ref and no ``--default-branch``
+    override), never calls ``ghcp.collect_live_github`` with a guessed
+    branch name: it appends
+    :func:`_default_branch_unresolved_finding` instead and leaves
+    ``live_github`` as ``None``.
     """
     findings: List[contracts.Finding] = []
     live_github: Optional[Mapping[str, object]] = None
@@ -416,10 +701,13 @@ def _collect_selected_live_evidence(
         repository = options.repository
         if not repository:
             raise ValueError("--live-github requires --repo owner/repository")
-        result = ghcp.collect_live_github(repository, default_branch, _default_command_runner)
-        if result.finding is not None:
-            findings.append(result.finding)
-        live_github = result.data
+        if default_branch is None:
+            findings.append(_default_branch_unresolved_finding())
+        else:
+            result = ghcp.collect_live_github(repository, default_branch, _default_command_runner)
+            if result.finding is not None:
+                findings.append(result.finding)
+            live_github = result.data
 
     live_azure: Optional[Mapping[str, object]] = None
     if options.subscription and options.staging_resource_group and options.deploy_identity:
@@ -465,6 +753,11 @@ def _assess_pre_deploy(
     probe_results, probe_findings = _run_probe_sets(root, "pre-deploy")
     findings.extend(probe_findings)
 
+    findings.append(_approval_not_verified_finding("pre-deploy"))
+    output_probe_results, output_findings = _run_output_coverage(root, "pre-deploy")
+    probe_results = probe_results + output_probe_results
+    findings.extend(output_findings)
+
     alert_finding, alert_evidence = alerts.assess_alerts(root, "pre-deploy", None)
     findings.append(alert_finding)
     evidence.extend(alert_evidence)
@@ -479,6 +772,10 @@ def _assess_pre_deploy(
     findings.extend(change_plane_result.findings)
     evidence.extend(change_plane_result.evidence)
 
+    pins = _pins_summary(pin_comparison.expected)
+    change_plane = _change_plane_summary(root, source, options, evidence)
+    conformance_claims = _conformance_claims_from_controls(change_plane_result.controls)
+
     findings.sort(key=lambda finding: (finding.finding_id, finding.reason_code))
     return contracts.AssessmentResult(
         source=source,
@@ -488,13 +785,14 @@ def _assess_pre_deploy(
         findings=tuple(findings),
         evidence=tuple(evidence),
         policy_hashes=policy_hashes,
-        pins={},
-        conformance_claims=(),
+        pins=pins,
+        conformance_claims=conformance_claims,
         conformance_reports=(),
-        change_plane={},
+        change_plane=change_plane,
         residual_risks=(),
         captured_at=options.now,
         phase="pre-deploy",
+        live_github_selected=options.live_github,
     )
 
 
@@ -537,6 +835,7 @@ def _assess_post_deploy(
         residual_risks=(),
         captured_at=options.now,
         phase="post-deploy",
+        live_github_selected=options.live_github,
     )
 
 
@@ -590,9 +889,16 @@ def exit_code(result: contracts.AssessmentResult, gate: bool) -> int:
       selected on the CLI" (see
       :data:`_OPTIONAL_UNSELECTED_LIVE_REASON_CODES`) -- an optional,
       unselected live capability may remain not-verified, keeps the
-      verdict partial, and does not fail the gate. Every live capability
-      the CLI *did* select surfaces its own failure (when collection
-      fails) via a different reason code
+      verdict partial, and does not fail the gate. ``"branch-protection-
+      not-verified-statically"`` is exempted only when ``--live-github``
+      itself was *not* selected for this run
+      (``result.live_github_selected``); when it *was* selected, this
+      reason code means static-only fallback happened despite an
+      explicit live request (e.g. GHCP's static analysis ran ahead of --
+      or instead of -- live collection actually completing), so it must
+      fail the gate like any other selected-but-incomplete live
+      evidence. Every live capability the CLI *did* select surfaces its
+      own failure (when collection fails) via a different reason code
       (``github-live-evidence-unavailable`` and friends), which is never
       exempted here -- exactly "every live capability explicitly selected
       by CLI arguments" must resolve.
@@ -608,11 +914,14 @@ def exit_code(result: contracts.AssessmentResult, gate: bool) -> int:
         return 0
 
     for finding in result.findings:
-        if (
-            finding.status == "not-verified"
-            and finding.reason_code not in _OPTIONAL_UNSELECTED_LIVE_REASON_CODES
-        ):
-            return 1
+        if finding.status != "not-verified":
+            continue
+        if finding.reason_code == "branch-protection-not-verified-statically":
+            if not result.live_github_selected:
+                continue
+        elif finding.reason_code in _OPTIONAL_UNSELECTED_LIVE_REASON_CODES:
+            continue
+        return 1
 
     return 0
 
