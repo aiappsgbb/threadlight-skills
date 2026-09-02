@@ -127,8 +127,8 @@ def approval_root(tmp_path: Path) -> Path:
     # the whole point — atomic one-time redemption), so each test must
     # start from its own untouched nonce space rather than share one
     # with every other test in this module.
-    destination = tmp_path / "approval-replay"
-    shutil.copytree(FIXTURES_DIR / "approval-replay", destination)
+    destination = tmp_path / "conformant-maf"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", destination)
     return destination
 
 
@@ -139,8 +139,8 @@ def test_probe_case_is_frozen():
 
 
 def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
-    contract = load_probe_contract(fixture_root / "interceptor-failure")
-    assert contract["dispatch"] == "app.agent:dispatch_probe"
+    contract = load_probe_contract(fixture_root / "conformant-maf")
+    assert contract["dispatch"] == "app.agent:dispatch"
     assert contract["audit_sink"] == "app.agent:AUDIT_EVENTS"
     assert contract["timeout_ms"] == 100
     assert contract["side_effect_mode"] == "synthetic"
@@ -691,7 +691,7 @@ def test_run_application_probe_rejects_unknown_fault(fixture_root: Path):
 def test_run_enforcement_probe_set_covers_the_standard_suite_and_all_pass(
     fixture_root: Path,
 ):
-    results = run_enforcement_probe_set(fixture_root / "interceptor-failure")
+    results = run_enforcement_probe_set(fixture_root / "conformant-maf")
     assert len(results) == 5
     assert {result.probe_id for result in results} == {
         "deny",
@@ -745,7 +745,7 @@ def test_enforcement_probe_classification_is_stable_under_repeated_runs(
     # crash/timeout/malformed-verdict faults are all fail-closed in this
     # fixture, so they must consistently pass, never spuriously flip to
     # ENF-002 because a slow machine ate into the fault's own budget.
-    root = fixture_root / "interceptor-failure"
+    root = fixture_root / "conformant-maf"
     for _ in range(10):
         results = run_enforcement_probe_set(root)
         by_probe_id = {result.probe_id: result for result in results}
@@ -1308,14 +1308,14 @@ def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
 
 
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
-    result = run_output_probe(fixture_root / "output-streaming", verdict="deny")
+    result = run_output_probe(fixture_root / "conformant-maf", verdict="deny")
     assert result.status == "pass"
     assert result.observed == "zero_bytes_egressed"
     assert findings_from_probes((result,)) == ()
 
 
 def test_output_probe_allows_buffered_release_after_verdict(fixture_root: Path):
-    result = run_output_probe(fixture_root / "output-streaming", verdict="allow")
+    result = run_output_probe(fixture_root / "conformant-maf", verdict="allow")
     assert result.status == "pass"
     assert result.observed == "buffered_release_after_verdict"
 
@@ -1323,7 +1323,7 @@ def test_output_probe_allows_buffered_release_after_verdict(fixture_root: Path):
 def test_output_probe_passes_when_stream_is_chunk_mediated_within_declared_bound(
     fixture_root: Path,
 ):
-    result = run_output_probe(fixture_root / "output-streaming", verdict="stream")
+    result = run_output_probe(fixture_root / "conformant-maf", verdict="stream")
     assert result.status == "pass"
     assert result.observed == "chunk_mediated_within_bound"
     assert findings_from_probes((result,)) == ()
@@ -1722,7 +1722,7 @@ def test_audit_probe_passes_payload_free_record(fixture_root: Path):
     # Drives its own synthetic call against the real, checked-in,
     # conformant approval-replay fixture and independently validates
     # what it actually produced.
-    results = run_privacy_probe_set(fixture_root / "approval-replay")
+    results = run_privacy_probe_set(fixture_root / "conformant-maf")
     passing = [result for result in results if result.status == "pass"]
     assert passing
     assert all(result.observed == "payload_free_audit_record" for result in passing)
@@ -1730,29 +1730,37 @@ def test_audit_probe_passes_payload_free_record(fixture_root: Path):
 
     # Never mutates the real, checked-in fixture.
     assert not (
-        fixture_root / "approval-replay" / "governance" / "nonce-ledger.jsonl"
+        fixture_root / "conformant-maf" / "governance" / "nonce-ledger.jsonl"
     ).exists()
-    assert list(
-        (fixture_root / "approval-replay" / "governance").iterdir()
-    ) == [fixture_root / "approval-replay" / "governance" / "probe-contract.json"]
+    assert sorted(
+        (fixture_root / "conformant-maf" / "governance").iterdir()
+    ) == [
+        fixture_root / "conformant-maf" / "governance" / name
+        for name in (
+            "alerts.json",
+            "change-plane.json",
+            "installed-packages.json",
+            "probe-contract.json",
+        )
+    ]
 
 
 def test_audit_probe_set_assesses_real_output_target_evidence(fixture_root: Path):
     # Same non-hardcoded-sample proof, for the output-mediation family:
     # drives its own synthetic "deny" call against the real,
     # checked-in, conformant output-streaming fixture.
-    results = run_privacy_probe_set(fixture_root / "output-streaming")
+    results = run_privacy_probe_set(fixture_root / "conformant-maf")
     passing = [result for result in results if result.status == "pass"]
     assert passing
     assert all(result.observed == "payload_free_audit_record" for result in passing)
     assert findings_from_probes(tuple(passing)) == ()
     assert not (
-        fixture_root / "output-streaming" / "governance" / "output-ledger.jsonl"
+        fixture_root / "conformant-maf" / "governance" / "output-ledger.jsonl"
     ).exists()
 
 
 def test_audit_probe_set_is_idempotent_and_never_mutates_target(fixture_root: Path):
-    root = fixture_root / "approval-replay"
+    root = fixture_root / "conformant-maf"
     first = run_privacy_probe_set(root)
     second = run_privacy_probe_set(root)
     summarize = lambda results: [  # noqa: E731
@@ -1760,8 +1768,14 @@ def test_audit_probe_set_is_idempotent_and_never_mutates_target(fixture_root: Pa
     ]
     assert summarize(first) == summarize(second)
     assert not (root / "governance" / "nonce-ledger.jsonl").exists()
-    assert list((root / "governance").iterdir()) == [
-        root / "governance" / "probe-contract.json"
+    assert sorted((root / "governance").iterdir()) == [
+        root / "governance" / name
+        for name in (
+            "alerts.json",
+            "change-plane.json",
+            "installed-packages.json",
+            "probe-contract.json",
+        )
     ]
 
 

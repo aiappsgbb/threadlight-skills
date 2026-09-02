@@ -581,7 +581,7 @@ def test_maf_adapter_accepts_only_complete_tested_tuple(fixture_root):
 
 def test_any_tuple_drift_requires_ctk_and_application_probe_rerun(fixture_root):
     observed = json.loads(
-        (fixture_root / "upstream-version-drift/installed-packages.json").read_text()
+        (fixture_root / "upstream-version-drift/governance/installed-packages.json").read_text()
     )
     result = compare_upstream_tuple(observed, load_upstream_pin(PIN_PATH))
     assert result.status == "must-fix"

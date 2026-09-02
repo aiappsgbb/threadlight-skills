@@ -31,9 +31,11 @@ Trust boundaries this module preserves (never re-derives, never widens):
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
@@ -504,38 +506,142 @@ def _missing_probe_contract_finding(phase: str) -> contracts.Finding:
 
 
 def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
+    """Run the enforcement and privacy application probe suites.
+
+    Returns the raw probe results plus only the findings that stand in
+    for a probe suite that was never run at all; every finding *derived
+    from* a probe result is produced later, by
+    :func:`_bind_probe_evidence`, so that a probe whose cited evidence
+    cannot be resolved is downgraded before -- never after -- its
+    finding is derived.
+
+    A declared but malformed/tampered ``governance/probe-contract.json``
+    deliberately propagates ``probes.ProbeContractError`` (a
+    ``ValueError``) rather than being reported as a benign absent
+    contract: a contract that exists but cannot be trusted is an error
+    the operator must see, never a quiet not-verified.
+    """
     if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
         return (), (_missing_probe_contract_finding(phase),)
-    # A declared ``governance/probe-contract.json`` may be a purpose-specific
-    # contract that only ever satisfies ``load_approval_contract`` or
-    # ``load_output_contract`` (both far looser than the enforcement
-    # suite's own ``load_probe_contract``, which additionally requires
-    # ``timeout_ms``/``side_effect_mode``/``observation_ledger``/``actions``).
-    # Mirroring ``_run_output_coverage``'s own established, symmetric
-    # handling of the very same "contract present but not shaped for this
-    # probe kind" case, the enforcement suite is reported not-verified
-    # here rather than letting ``probes.ProbeContractError`` propagate
-    # and abort the whole assessment.
-    try:
-        enforcement_results = probes.run_enforcement_probe_set(root)
-    except probes.ProbeContractError:
-        enforcement_results = ()
-        enforcement_findings: Tuple[contracts.Finding, ...] = (_missing_probe_contract_finding(phase),)
-    else:
-        enforcement_findings = probes.findings_from_probes(enforcement_results)
-    privacy_results = probes.run_privacy_probe_set(root)
-    probe_results = enforcement_results + privacy_results
-    return probe_results, enforcement_findings + probes.findings_from_probes(privacy_results)
+    probe_results = probes.run_enforcement_probe_set(root) + probes.run_privacy_probe_set(root)
+    return probe_results, ()
+
+
+#: Which finding id an unresolvable-evidence downgrade must be reported
+#: under, per probe kind. Purely a mapping onto the existing finding
+#: catalog -- never a new control or business policy.
+_PROBE_FINDING_IDS: Mapping[str, str] = {
+    probes._APPROVAL_PROBE_ID: "APR-001",
+    probes._OUTPUT_PROBE_ID: "OUT-001",
+    probes._AUDIT_PROBE_ID: "AUD-001",
+}
+_DEFAULT_PROBE_FINDING_ID = "ENF-001"
+
+
+def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str) -> contracts.Finding:
+    """An explicit not-verified finding for a probe that cited evidence
+    the probe pipeline could not actually resolve to an observed
+    artifact.
+
+    Never binds the citation to invented provenance and never lets the
+    probe's own status stand on evidence that does not exist: the
+    result is reported not-verified so it fails ``--gate`` exactly like
+    any other unproven control.
+    """
+    finding_id = _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    return contracts.Finding(
+        finding_id=finding_id,
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="probe-evidence-unresolved",
+        summary="Probe outcome could not be trusted: cited evidence was never resolved to an observed artifact.",
+        details=(
+            f"Probe {probe.probe_id!r} cited evidence this assessment "
+            "could not bind to any artifact the probe pipeline actually "
+            "observed, so its outcome is reported not-verified rather "
+            "than bound to invented provenance or accepted on an "
+            "unresolvable citation."
+        ),
+        affected_actions=(probe.action_id,) if probe.action_id else (),
+    )
+
+
+def _bind_probe_evidence(
+    probe_results: Sequence[contracts.ProbeResult],
+    source: contracts.SourceRef,
+    options: contracts.AssessmentOptions,
+    policy_hashes: Sequence[Mapping[str, str]],
+) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...], Tuple[contracts.EvidenceRef, ...]]:
+    """Bind every probe-cited evidence id to a real :class:`contracts.EvidenceRef`.
+
+    Each entry is built *only* from provenance the probe pipeline
+    itself observed (``ProbeResult.evidence_items``: the artifact kind,
+    the target-declared source it came from, and the SHA-256 of the
+    artifact's actual canonical bytes) and bound to this assessment's
+    own repository, source commit, phase, capture instant, and policy
+    set. Nothing is ever synthesized from the evidence id itself, and
+    no probe payload is ever carried into an evidence entry.
+
+    A probe citing an id with no such observed provenance is downgraded
+    to not-verified (with an explicit finding) instead of being bound
+    to invented evidence, so a missing underlying artifact can never
+    become a pass -- or a ``governed`` verdict.
+    """
+    policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
+    kept: List[contracts.ProbeResult] = []
+    findings: List[contracts.Finding] = []
+    evidence_by_id: Dict[str, contracts.EvidenceRef] = {}
+    for probe in probe_results:
+        items = {item.evidence_id: item for item in probe.evidence_items}
+        if any(ref not in items for ref in probe.evidence_refs):
+            kept.append(
+                replace(
+                    probe,
+                    status="not-verified",
+                    reason_code="probe-evidence-unresolved",
+                    evidence_refs=(),
+                    evidence_items=(),
+                )
+            )
+            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            continue
+        kept.append(probe)
+        for ref in probe.evidence_refs:
+            if ref in evidence_by_id:
+                continue
+            item = items[ref]
+            evidence_by_id[ref] = contracts.EvidenceRef(
+                evidence_id=item.evidence_id,
+                kind=item.kind,
+                source=item.source,
+                sha256=item.sha256,
+                collected_at=options.now,
+                freshness_seconds=0,
+                live_verified=False,
+                phase=options.phase,
+                repository=source.repository,
+                source_commit=source.commit,
+                target_environment=None,
+                policy_set_sha256=policy_set_sha256,
+            )
+    findings.extend(probes.findings_from_probes(tuple(kept)))
+    evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
+    return tuple(kept), tuple(findings), evidence
 
 
 def _approval_not_verified_finding(phase: str) -> contracts.Finding:
-    """APR-001 (approval binding/anti-replay) is always reported explicit
-    not-verified in pre-deploy, never silently skipped and never
-    "wired" for real: ``probes.run_approval_probe`` requires a
-    customer/business-specific :class:`probes.ApprovalBinding` (subject,
-    tenant, policy, nonce ledger, ...) this orchestrator has no safe,
-    non-fabricated source for. Reporting not-verified is always truthful
-    here; inventing a placeholder binding to get a "pass" would not be.
+    """APR-001 is reported explicit not-verified whenever the target
+    declares no usable, deterministic approval binding of its own --
+    never silently skipped, and never "wired" from invented data.
+
+    ``probes.run_approval_probe`` requires a complete, customer/
+    business-specific :class:`probes.ApprovalBinding` (subject, role,
+    tenant, policy, arguments, validity window, nonce). This
+    orchestrator never invents one: it runs the probe only against a
+    binding the *target itself* declared in its own probe contract (see
+    :func:`_declared_approval_binding`), and otherwise reports
+    not-verified, which is always truthful.
     """
     return contracts.Finding(
         finding_id="APR-001",
@@ -545,14 +651,104 @@ def _approval_not_verified_finding(phase: str) -> contracts.Finding:
         reason_code="approval-binding-unavailable",
         summary="Approval anti-replay probe could not be run: no deterministic approval binding is available.",
         details=(
-            "run_approval_probe requires a customer/business-specific "
-            "ApprovalBinding (subject, tenant, policy, nonce ledger, ...) "
-            "this orchestrator has no safe, non-fabricated source for, so "
-            "the APR-001 approval-binding/anti-replay probe was never "
-            "run; this is reported not-verified rather than inferred as "
-            "a pass or invented from placeholder approver/policy data."
+            "run_approval_probe requires a complete, customer/business-"
+            "specific ApprovalBinding (subject, role, tenant, policy, "
+            "arguments, validity window, nonce); the target declared no "
+            "usable approval binding of its own in "
+            "governance/probe-contract.json, so the APR-001 approval-"
+            "binding/anti-replay probe was never run. This is reported "
+            "not-verified rather than inferred as a pass or invented "
+            "from placeholder approver/policy data."
         ),
     )
+
+
+#: The exact, complete field set a target must declare under the probe
+#: contract's ``approval_binding`` object for APR-001 to be runnable.
+#: Every field is required and none is ever defaulted: an approver,
+#: tenant, policy, nonce, or validity window this orchestrator invented
+#: would make an APR-001 "pass" meaningless.
+_APPROVAL_BINDING_FIELDS: Tuple[str, ...] = (
+    "target_scope",
+    "requesting_subject",
+    "approving_subject",
+    "approving_role",
+    "tenant",
+    "policy_id",
+    "policy_hash",
+    "action_id",
+    "arguments",
+    "issued_at",
+    "expires_at",
+    "nonce",
+)
+
+
+def _declared_approval_binding(root: Path) -> Optional[probes.ApprovalBinding]:
+    """The exact approval binding the *target itself* declared, or ``None``.
+
+    Read from ``governance/probe-contract.json``'s ``approval_binding``
+    object, which must declare exactly :data:`_APPROVAL_BINDING_FIELDS`
+    -- no missing field is defaulted and no extra field is accepted --
+    with non-empty string values and flat, scalar ``arguments``.
+
+    Redeeming a nonce necessarily appends to the target's own declared,
+    persistent nonce ledger, so this additionally requires the contract
+    to declare ``side_effect_mode: "synthetic"``: an explicit, target-
+    side opt-in that the declared binding is synthetic probe data, never
+    a real approval. Anything else -- absent object, wrong shape, live
+    side-effect mode, unparseable contract -- yields ``None``, and
+    APR-001 stays explicitly not-verified.
+    """
+    contract_path = root / _PROBE_CONTRACT_RELATIVE_PATH
+    if not contract_path.is_file():
+        return None
+    try:
+        raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, Mapping) or raw.get("side_effect_mode") != "synthetic":
+        return None
+    declared = raw.get("approval_binding")
+    if not isinstance(declared, Mapping) or set(declared) != set(_APPROVAL_BINDING_FIELDS):
+        return None
+    arguments = declared["arguments"]
+    if not isinstance(arguments, Mapping) or not all(
+        isinstance(key, str) and isinstance(value, (str, int, float)) and not isinstance(value, bool)
+        for key, value in arguments.items()
+    ):
+        return None
+    values: Dict[str, object] = {"arguments": {str(key): value for key, value in arguments.items()}}
+    for field in _APPROVAL_BINDING_FIELDS:
+        if field == "arguments":
+            continue
+        value = declared[field]
+        if not isinstance(value, str) or not value:
+            return None
+        values[field] = value
+    return probes.ApprovalBinding(**values)  # type: ignore[arg-type]
+
+
+def _run_approval_coverage(
+    root: Path, phase: str, now: str
+) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
+    """Explicit APR-001 approval-binding/anti-replay coverage.
+
+    Runs the real ``probes.run_approval_probe`` against the exact
+    binding the target declared for itself, at this assessment's own
+    ``now`` -- so a target whose anti-replay control genuinely holds
+    earns an honest APR-001 pass, and one that fails open earns an
+    honest must-fix. When no usable declared binding exists, reports
+    APR-001 not-verified explicitly rather than inventing one.
+    """
+    binding = _declared_approval_binding(root)
+    if binding is None:
+        return (), (_approval_not_verified_finding(phase),)
+    try:
+        result = probes.run_approval_probe(root, binding, now=now)
+    except probes.ProbeContractError:
+        return (), (_approval_not_verified_finding(phase),)
+    return (result,), ()
 
 
 def _output_contract_unavailable_finding(phase: str) -> contracts.Finding:
@@ -597,7 +793,7 @@ def _run_output_coverage(
         result = probes.run_output_probe(root, "deny")
     except probes.ProbeContractError:
         return (), (_output_contract_unavailable_finding(phase),)
-    return (result,), probes.findings_from_probes((result,))
+    return (result,), ()
 
 
 #: The assessor's own tested complete-tuple pin, split into the two
@@ -809,10 +1005,21 @@ def _assess_pre_deploy(
     probe_results, probe_findings = _run_probe_sets(root, "pre-deploy")
     findings.extend(probe_findings)
 
-    findings.append(_approval_not_verified_finding("pre-deploy"))
+    approval_probe_results, approval_findings = _run_approval_coverage(
+        root, "pre-deploy", options.now
+    )
+    findings.extend(approval_findings)
     output_probe_results, output_findings = _run_output_coverage(root, "pre-deploy")
-    probe_results = probe_results + output_probe_results
     findings.extend(output_findings)
+
+    probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
+        probe_results + approval_probe_results + output_probe_results,
+        source,
+        options,
+        policy_hashes,
+    )
+    findings.extend(derived_findings)
+    evidence.extend(probe_evidence)
 
     alert_finding, alert_evidence = alerts.assess_alerts(root, "pre-deploy", None)
     findings.append(alert_finding)
@@ -865,6 +1072,12 @@ def _assess_post_deploy(
     probe_results, findings = _run_probe_sets(root, "post-deploy")
     findings = list(findings)
     evidence: List[contracts.EvidenceRef] = []
+
+    probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
+        probe_results, source, options, ()
+    )
+    findings.extend(derived_findings)
+    evidence.extend(probe_evidence)
 
     default_branch = options.default_branch or _resolve_default_branch(root)
     live_github, live_azure, live_findings = _collect_selected_live_evidence(

@@ -35,12 +35,12 @@
 
 ## Application-path probe evidence
 
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:940c683438f92157e1b7aa0188b0dececda41e1917b3f6c3823147beb0d45e65
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
 - `crash` action=`payments.refund` path=`None` status=pass reason=crash-blocked evidence=audit-0001
 - `deny` action=`payments.refund` path=`None` status=pass reason=deny-enforced evidence=audit-0001
 - `malformed-verdict` action=`payments.refund` path=`None` status=pass reason=malformed-verdict-blocked evidence=audit-0001
 - `output-mediation` action=`None` path=`None` status=pass reason=output-mediation-enforced evidence=none
-- `payload-free-audit` action=`None` path=`None` status=not-verified reason=audit-probe-outcome-not-verified evidence=none
+- `payload-free-audit` action=`None` path=`None` status=pass reason=payload-free-audit-enforced evidence=audit-approval-audit-probe-nonce
 - `timeout` action=`payments.refund` path=`None` status=pass reason=timeout-blocked evidence=audit-0001
 - `transform` action=`payments.refund` path=`None` status=pass reason=transform-enforced evidence=audit-0001, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b
 
@@ -55,11 +55,12 @@
 | --- | --- | --- | --- | --- | --- |
 | EVID-spec-section-8 | static-file-hash | specs/SPEC.md#section-8 | sha256:f1879370f7552799dc50d0e04ed0e4d1f85553e4f739ef4f2c7e259c087ff67d | 2026-09-01T12:00:00Z | False |
 | alert-catalog | file-set | governance/alerts.json | sha256:c5ed00d05bcfa6950957100fa7eaf6fd15d78bfd4c82411807438df7a5bedfeb | unknown | False |
-| audit-0001 | probe-evidence | probes | sha256:49e792bf1f87ad2b5212574a3e39fb4acc7d35b12b6abb52cf40b0dd472fae23 | 2026-09-01T12:00:00Z | False |
-| ghcp-workflows | file-set | .github/workflows/ci.yml | sha256:f3a028768d8868d3446a19737f23851ba5db83b65a1df4ae2e5fa3f63637c617 | unknown | False |
-| sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | probe-evidence | probes | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | 2026-09-01T12:00:00Z | False |
-| sha256:940c683438f92157e1b7aa0188b0dececda41e1917b3f6c3823147beb0d45e65 | probe-evidence | probes | sha256:940c683438f92157e1b7aa0188b0dececda41e1917b3f6c3823147beb0d45e65 | 2026-09-01T12:00:00Z | False |
-| sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | probe-evidence | probes | sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | 2026-09-01T12:00:00Z | False |
+| audit-0001 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:381f4739271102cd6f2d740cd27fa73e10ea2478a8fee0cc07f35c0063f1a60a | 2026-09-01T12:00:00Z | False |
+| audit-approval-audit-probe-nonce | probe-audit-record | app.agent:AUDIT_EVENTS | sha256:891ad27bce12dd0036cab84b211b9f3d8798656c89d100b07b1da07e3df78a35 | 2026-09-01T12:00:00Z | False |
+| ghcp-workflows | file-set | .github/workflows/governed-actions.yml | sha256:16819e03d140b14bd7bf5d4007a8b0755170e7881180bcfab2cef328abac3fc1 | unknown | False |
+| sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | probe-argument-hash | governance/probe-ledger.jsonl | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | 2026-09-01T12:00:00Z | False |
+| sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | approval-binding-digest | governance/nonce-ledger.jsonl | sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | 2026-09-01T12:00:00Z | False |
+| sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | probe-argument-hash | governance/probe-ledger.jsonl | sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | 2026-09-01T12:00:00Z | False |
 
 ## Pass/fail matrix
 

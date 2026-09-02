@@ -1,8 +1,31 @@
 {
-  "dispatch": "app.agent:dispatch_probe",
+  "actions": [
+    "payments.refund",
+    "payments.capture"
+  ],
+  "approval_binding": {
+    "action_id": "payments.refund",
+    "approving_role": "role:synthetic-reviewer",
+    "approving_subject": "subject:pseudonymous-approver",
+    "arguments": {
+      "amount": 7,
+      "currency": "USD"
+    },
+    "expires_at": "2026-12-31T00:00:00Z",
+    "issued_at": "2026-01-01T00:00:00Z",
+    "nonce": "nonce-conformant-0001",
+    "policy_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+    "policy_id": "policy:refund-v1",
+    "requesting_subject": "subject:pseudonymous-requester",
+    "target_scope": "account:synthetic-001",
+    "tenant": "tenant:synthetic-001"
+  },
   "audit_sink": "app.agent:AUDIT_EVENTS",
-  "timeout_ms": 100,
-  "side_effect_mode": "synthetic",
+  "chunk_mediation": true,
+  "dispatch": "app.agent:dispatch",
+  "exposure_bound_bytes": 4096,
+  "nonce_ledger": "governance/nonce-ledger.jsonl",
   "observation_ledger": "governance/probe-ledger.jsonl",
-  "actions": ["payments.refund"]
+  "side_effect_mode": "synthetic",
+  "timeout_ms": 100
 }

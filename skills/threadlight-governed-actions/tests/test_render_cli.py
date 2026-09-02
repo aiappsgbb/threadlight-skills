@@ -4251,7 +4251,7 @@ def test_exit_code_gate_pre_deploy_ignores_optional_unselected_live_not_verified
 # ---------------------------------------------------------------------------
 
 
-_OUTPUT_STREAMING_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "output-streaming"
+_OUTPUT_STREAMING_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "conformant-maf"
 
 
 def test_design_marks_runtime_and_ghcp_checks_not_verified(tmp_path):

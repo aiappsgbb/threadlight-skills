@@ -1,87 +1,172 @@
-"""Synthetic application fixture for Task 5 hermetic enforcement probes.
+"""The conformant-maf fixture's single declared application module.
 
-Models a minimal application dispatch seam for the ``payments.refund``
-action, a synthetic (never real) tool service, and a set of deliberately
-faulty "interceptor" behaviors selected by ``fault``. Every fault is
-exercised in an isolated subprocess by ``probes.run_application_probe`` —
-this module never runs in-process with the assessor, never performs a real
-refund, and never talks to a real payment system.
+Its ``payments.capture`` crash path deliberately fails open (see
+``dispatch_probe``); every other seam behaves exactly as the conformant
+fixture's does.
 
-Ledger discipline: every observable step (interceptor entry, tool
-invocation, final decision) is appended to the caller-supplied observation
-ledger as a single flushed-and-fsynced JSON line *before* whatever comes
-next (sleeping past the timeout, raising, or invoking the tool) — so a
-parent that kills this process mid-fault can still read back exactly how
-far it got. Ledger records and the ``dispatch_probe`` return value never
-carry the raw ``arguments`` payload, only a canonical SHA-256 hash of
-whatever the synthetic tool actually received.
+This one module is everything the fixture declares under ``app/``: the
+statically-inspected action declarations and mediation graph, *and* the
+one real dispatch seam every probe kind drives. ``dispatch`` below is the
+single callable named by ``governance/probe-contract.json``; it routes to
+the enforcement seam (``dispatch_probe``), the approval seam (``redeem``),
+or the output seam (``emit_output``) purely by the shape of the arguments
+the probe harness passes, so a target never has to declare -- or a
+fixture tree never has to carry -- a separate module per probe kind.
 
-Two faults are deliberately dishonest about that discipline, on purpose:
-``stub`` never writes to the ledger at all (not even a "start" record)
-while still returning a clean, well-formed self-report, proving the
-harness must never trust a self-report that the ledger does not
-corroborate. ``slow_correct_transform`` correctly applies the same
-transform policy as ``transform`` and reaches the tool with the right
-arguments, but then hangs past ``timeout_ms`` instead of ever reporting a
-decision, proving the harness must not fabricate a fail-open finding
-merely because a transform-family fault's own contract expects the tool
-to be reached.
-
-Every real decision (every fault except ``stub``) durably mirrors its
-audit event to the observation ledger, not only to the in-memory
-``AUDIT_EVENTS`` sink, via ``_record_audit_with_ledger``: the sink is
-only ever drained by the parent *after* ``dispatch_probe`` returns
-normally, so a crashed or killed child's audit trail would otherwise
-never surface at all. ``raise`` and ``sleep`` record that ledger audit
-event immediately before crashing/hanging, proving a visible operational
-signal was recorded even though the process never gets to complete —
-this is what lets a fail-closed crash/timeout probe pass on real
-evidence rather than on silence. ``silent_crash`` deliberately omits
-that audit record (crashes right after only a "start" record) to prove
-the opposite: a "start" record alone is never enough evidence for a
-pass. ``double_invoke_transform`` and ``crash_before_transform_invoke``
-are further deliberately negative transform-family regressions: the
-former invokes the tool twice (once correctly transformed, once with
-the raw/untransformed arguments) while still self-reporting a single
-clean invocation, proving the harness counts the ledger's own
-invocation records rather than trusting a self-reported count; the
-latter crashes before ever invoking the tool at all, proving an
-incomplete transform-family run is truthfully unverified, never a
-fabricated policy-violation finding. ``raw_passthrough_transform`` is a
-further deliberately negative regression, fully self-report/ledger
-consistent yet still wrong: it self-reports a clean "transform"
-decision, corroborated by every ledger record the harness checks, but
-never actually applies the transform policy — the tool receives the
-raw arguments completely unchanged. Proves the harness must not treat
-self-report/ledger *consistency* alone as proof a transform happened:
-it must also prove the ledger shows the tool actually received
-something different from what the case started with.
-``transform_missing_original_hash`` is a final deliberately negative
-regression: it correctly applies the transform policy and reaches the
-tool with the right arguments, and every other ledger/self-report
-field is fully consistent, but its own "invocation" ledger record
-omits the "original_argument_hash" field entirely — as if an older or
-buggy ledger writer never recorded it. Proves the harness must never
-treat a completed transform as a pass (or even a truthful no-op
-finding) when the ledger cannot actually prove whether the arguments
-changed at all; incomplete mandatory evidence is a tooling failure,
-never a laundered pass just because everything else about the
-self-report looks clean.
-
-Every ledger "invocation" record carries both the hash of the
-arguments the synthetic tool actually received and a hash of the
-case's original, pre-transform arguments — still payload-free, never
-the raw values — so the harness can prove a transform actually changed
-something (the two hashes differ) without ever needing the payload
-itself.
+Nothing here is ever imported or executed in-process by the assessor: the
+static analysis paths only inspect this source, and every probe path runs
+it in an isolated child subprocess. No record this module writes, to a
+ledger or to ``AUDIT_EVENTS``, ever carries a raw argument payload -- only
+canonical hashes and payload-free identifiers.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import time
-from typing import Mapping, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping
+
+
+class _Namespace:
+    """Minimal stand-in for a mediation seam namespace.
+
+    mediation.py recognizes mediation evidence by statically inspecting the
+    *shape* of calls in dispatch function bodies (bare ``name.attr(...)``
+    call expressions); it never imports or executes this module, so these
+    stand-ins only need to exist to keep the module free of unresolved-name
+    lint noise -- they are never actually invoked at runtime.
+    """
+
+    def __getattr__(self, _name: str) -> Callable[..., Any]:
+        def _call(*args: Any, **kwargs: Any) -> None:
+            return None
+
+        return _call
+
+
+agent_hooks = _Namespace()
+tool_service = _Namespace()
+output_mediator = _Namespace()
+audit_sink = _Namespace()
+
+
+def tool(*, name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Minimal stand-in for a framework tool-registration decorator."""
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        func.__tool_name__ = name
+        return func
+
+    return decorator
+
+
+@tool(name="customer.lookup")
+def customer_lookup(customer_id: str) -> dict[str, Any]:
+    """Look up a customer record. Read-only; no state mutation."""
+    return {"customer_id": customer_id}
+
+
+@tool(name="payments.refund")
+def payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    """Issue a refund. Irreversible; requires approval per SPEC section 8."""
+    return {"payment_id": payment_id, "amount": amount}
+
+
+# ---------------------------------------------------------------------------
+# Mediation dispatch functions.
+#
+# mediation.py recognizes these functions by static AST inspection using the
+# convention ``_mode_action_function_name(action_id, mode)`` ==
+# ``"{mode}_{action_id}"`` (hyphens and dots normalized to underscores). Every
+# non-exclusively-provider-hosted action is assessed across all five
+# REQUIRED_NON_PROVIDER_MODES, so both ``customer.lookup`` and
+# ``payments.refund`` need one dispatch function per mode below. Each
+# function is never imported or executed -- mediation.py only inspects the
+# call shapes in its body: a bare ``agent_hooks.pre_tool_call(...)`` call
+# that source-precedes a bare ``tool_service.*``/``provider.*`` call proves a
+# pre-action seam mediates the tool-service invocation.
+
+
+def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="customer.lookup", mode="interactive")
+    result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+    agent_hooks.post_tool_call(action_id="customer.lookup", mode="interactive")
+    return result
+
+
+def batch_customer_lookup(customer_id: str) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="customer.lookup", mode="batch")
+    result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+    agent_hooks.post_tool_call(action_id="customer.lookup", mode="batch")
+    return result
+
+
+def background_customer_lookup(customer_id: str) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="customer.lookup", mode="background")
+    result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+    agent_hooks.post_tool_call(action_id="customer.lookup", mode="background")
+    return result
+
+
+def subagent_customer_lookup(customer_id: str) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="customer.lookup", mode="subagent")
+    result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+    agent_hooks.post_tool_call(action_id="customer.lookup", mode="subagent")
+    return result
+
+
+def direct_tool_customer_lookup(customer_id: str) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="customer.lookup", mode="direct-tool")
+    result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+    agent_hooks.post_tool_call(action_id="customer.lookup", mode="direct-tool")
+    return result
+
+
+def interactive_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="interactive")
+    agent_hooks.require_approval(action_id="payments.refund", mode="interactive")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="interactive")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="interactive")
+    return result
+
+
+def batch_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="batch")
+    agent_hooks.require_approval(action_id="payments.refund", mode="batch")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="batch")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="batch")
+    return result
+
+
+def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+
+
+def subagent_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="subagent")
+    agent_hooks.require_approval(action_id="payments.refund", mode="subagent")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="subagent")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="subagent")
+    return result
+
+
+def direct_tool_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="direct-tool")
+    agent_hooks.require_approval(action_id="payments.refund", mode="direct-tool")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="direct-tool")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="direct-tool")
+    return result
 
 
 # Payload-free audit sink named by the probe contract's ``audit_sink``
@@ -222,6 +307,15 @@ def dispatch_probe(
     action_id = str(case["action_id"])
     fault = str(case["fault"])
     arguments = case["arguments"]
+
+    if action_id == "payments.capture" and fault == "raise":
+        # This fixture's declared defect: the ``payments.capture``
+        # interceptor invokes the protected tool *before* the fault
+        # reaches it, so an abnormal termination leaves a real side
+        # effect behind. Routed through the module's own already-correct
+        # fail-open implementation so the defect is the routing decision
+        # itself, never a second, divergent copy of the seam.
+        fault = "fail_open"
 
     if fault == "stub":
         # Deliberately buggy seam: never writes anything to the
@@ -491,3 +585,109 @@ def dispatch_probe(
         }
 
     raise ValueError(f"unknown probe fault: {fault!r}")
+
+# ---------------------------------------------------------------------------
+# Approval seam: synthetic, service-side atomic nonce redemption.
+#
+# A first non-expired attempt for a nonce is durably recorded
+# ``accepted: true`` and only then followed by a durable ``invocation``
+# record; any later attempt for the same nonce -- byte-identical replay or
+# mutated-field reuse -- is durably recorded ``accepted: false`` and never
+# invokes the protected tool, even under concurrent racing callers (the
+# whole read-check-decide-append critical section is guarded by an
+# exclusive OS file lock). Only the caller-supplied canonical digest is
+# ever persisted; never a raw approval argument payload.
+# ---------------------------------------------------------------------------
+
+
+def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str) -> None:
+    with open(ledger_path, "a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.seek(0)
+            existing = [
+                json.loads(line) for line in handle.read().splitlines() if line.strip()
+            ]
+            already_accepted = any(
+                record.get("event") == "decision"
+                and record.get("nonce") == nonce
+                and record.get("accepted") is True
+                for record in existing
+            )
+            expired = now >= expires_at
+            accepted = (not expired) and (not already_accepted)
+            handle.write(
+                json.dumps(
+                    {
+                        "event": "decision",
+                        "nonce": nonce,
+                        "digest": digest,
+                        "accepted": accepted,
+                    }
+                )
+                + "\n"
+            )
+            handle.flush()
+            if accepted:
+                handle.write(json.dumps({"event": "invocation", "nonce": nonce}) + "\n")
+                handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    AUDIT_EVENTS.append(
+        {
+            "audit_id": f"audit-approval-{nonce}",
+            "event": "approval_redemption_attempt",
+            "digest_hash": digest,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Output seam: verdict-first, fully buffered mediation.
+#
+# The verdict is durably recorded before anything is ever released, a
+# denied verdict releases exactly zero bytes, and an allowed verdict
+# releases one single buffered ``egress`` record (never incremental
+# ``chunk`` records) -- so no output can ever precede, or contradict, the
+# mediation decision that authorized it.
+# ---------------------------------------------------------------------------
+
+
+def emit_output(verdict: str, ledger_path: str) -> None:
+    _append_ledger(ledger_path, "verdict_received", verdict=verdict)
+    if verdict == "deny":
+        released = 0
+    else:
+        released = 32
+        _append_ledger(ledger_path, "egress", bytes=released, mediated=True)
+    AUDIT_EVENTS.append(
+        {
+            "audit_id": f"audit-output-{verdict}",
+            "event": "output_mediation_decision",
+            "decision": verdict,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# The single declared dispatch callable.
+# ---------------------------------------------------------------------------
+
+
+def dispatch(*args: object) -> object:
+    """Route one probe call to the seam its own argument shape names.
+
+    ``redeem`` is the only five-argument seam; ``emit_output`` is the only
+    two-argument seam whose first argument is a plain verdict string;
+    everything else is the enforcement seam's ``(case, ledger_path)``.
+    Deliberately shape-based rather than mode-flagged: a probe harness
+    never passes a "which seam" selector, and this fixture never invents
+    one.
+    """
+    if len(args) == 5:
+        return redeem(*args)  # type: ignore[arg-type]
+    if len(args) == 2 and isinstance(args[0], str):
+        return emit_output(*args)  # type: ignore[arg-type]
+    return dispatch_probe(*args)  # type: ignore[arg-type]

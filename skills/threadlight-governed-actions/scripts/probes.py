@@ -165,7 +165,7 @@ from typing import Callable, List, Mapping, Optional, Tuple
 from urllib.parse import urlsplit
 
 import canonical
-from contracts import Finding, Phase, ProbeResult, UnsafeTargetError
+from contracts import Finding, Phase, ProbeEvidence, ProbeResult, UnsafeTargetError
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -690,7 +690,12 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs(created_dirs)
 
-    return _build_probe_result(case, outcome)
+    return _build_probe_result(
+        case,
+        outcome,
+        str(contract["observation_ledger"]),
+        str(contract["dispatch"]),
+    )
 
 
 def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
@@ -778,6 +783,95 @@ def _completed_report_is_ledger_supported(
     return has_start and has_matching_decision and has_audit_id
 
 
+def _digest_evidence(digest: str, kind: str, source: str) -> ProbeEvidence:
+    """Provenance for an evidence id that *is itself* a content digest.
+
+    The target's own canonical ``sha256:`` argument/binding digests are
+    already the hash of the exact bytes the probe observed, so the id is
+    reused verbatim as ``sha256`` -- never re-hashed, and never derived
+    from the id string as if it were arbitrary text.
+    """
+    return ProbeEvidence(evidence_id=digest, kind=kind, source=source, sha256=digest)
+
+
+def _record_evidence(
+    evidence_id: str, kind: str, source: str, record: Mapping[str, object]
+) -> ProbeEvidence:
+    """Provenance for an evidence id carried by an observed *record*.
+
+    ``sha256`` is the canonical digest of the actual record the probe
+    read back (a ledger event, an audit record, or a child's own
+    validated self-report envelope) -- real observed content, never the
+    id string and never a fabricated placeholder. The record itself is
+    only ever hashed here, never retained or returned.
+    """
+    return ProbeEvidence(
+        evidence_id=evidence_id,
+        kind=kind,
+        source=source,
+        sha256="sha256:" + canonical.sha256_hex(canonical.canonical_bytes(dict(record))),
+    )
+
+
+def _evidence_items_for(
+    outcome: Mapping[str, object],
+    refs: Tuple[str, ...],
+    ledger_source: str,
+    report_source: str,
+) -> Tuple[ProbeEvidence, ...]:
+    """Bind each id in *refs* to the artifact this run actually observed.
+
+    Every id an application probe cites comes from exactly one of three
+    real observed places: a canonical ``sha256:`` argument hash (the
+    target's own digest of what the synthetic tool received), a durable
+    ``"audit"`` record in the observation ledger, or the completed
+    child's own validated self-report envelope. Each is bound to the
+    corresponding artifact here, hashing the real record rather than the
+    id. An id that resolves to none of them yields no entry at all --
+    deliberately, so an orchestrator sees an unresolvable citation
+    instead of invented provenance.
+    """
+    events = list(outcome["events"])
+    report = outcome["child_report"]
+    ledger_digests = {
+        digest
+        for event in events
+        if event.get("event") == "invocation"
+        for digest in (event.get("argument_hash"), event.get("original_argument_hash"))
+        if digest
+    }
+    items: List[ProbeEvidence] = []
+    for ref in refs:
+        if ref.startswith("sha256:"):
+            items.append(
+                _digest_evidence(
+                    ref,
+                    "probe-argument-hash",
+                    ledger_source if ref in ledger_digests else report_source,
+                )
+            )
+            continue
+        event = next(
+            (
+                event
+                for event in events
+                if event.get("event") == "audit" and event.get("audit_id") == ref
+            ),
+            None,
+        )
+        if event is not None:
+            items.append(
+                _record_evidence(ref, "probe-audit-ledger-record", ledger_source, event)
+            )
+        elif report is not None and ref in tuple(report.get("audit_ids", ()) or ()):
+            items.append(
+                _record_evidence(
+                    ref, "probe-self-reported-audit-record", report_source, report
+                )
+            )
+    return tuple(items)
+
+
 def _abnormal_evidence_refs(case: ProbeCase, outcome: Mapping[str, object]) -> Tuple[str, ...]:
     """Payload-free evidence for an abnormal (crash/timeout/malformed) outcome.
 
@@ -808,7 +902,12 @@ def _abnormal_evidence_refs(case: ProbeCase, outcome: Mapping[str, object]) -> T
     return tuple(sorted(refs))
 
 
-def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> ProbeResult:
+def _build_probe_result(
+    case: ProbeCase,
+    outcome: Mapping[str, object],
+    ledger_source: str,
+    report_source: str,
+) -> ProbeResult:
     expected = _EXPECTED_BY_FAULT[case.fault]
     invoked = bool(outcome["invoked"])
     report = outcome["child_report"]
@@ -953,6 +1052,9 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
             expected=expected,
             observed=observed,
             evidence_refs=evidence_refs,
+            evidence_items=_evidence_items_for(
+                outcome, evidence_refs, ledger_source, report_source
+            ),
         )
 
     # Every other outcome is abnormal: the child crashed, timed out,
@@ -1051,6 +1153,9 @@ def _build_probe_result(case: ProbeCase, outcome: Mapping[str, object]) -> Probe
         expected=expected,
         observed=observed,
         evidence_refs=evidence_refs,
+        evidence_items=_evidence_items_for(
+            outcome, evidence_refs, ledger_source, report_source
+        ),
     )
 
 
@@ -1959,6 +2064,16 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
         expected=_APPROVAL_EXPECTED,
         observed=observed,
         evidence_refs=(digest,),
+        # The cited digest is the canonical hash of the exact 12-field
+        # binding this attempt redeemed -- the same value the target's
+        # own ledger records for it -- bound here to the declared nonce
+        # ledger it was redeemed against. Payload-free: no approver,
+        # argument, or ledger record content ever leaves this call.
+        evidence_items=(
+            _digest_evidence(
+                digest, "approval-binding-digest", str(contract["nonce_ledger"])
+            ),
+        ),
     )
 
 
@@ -2307,6 +2422,18 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
             continue
         audit_id = record.get("audit_id")
         audit_id_text = str(audit_id) if audit_id else None
+        audit_evidence: Tuple[ProbeEvidence, ...] = (
+            (
+                _record_evidence(
+                    audit_id_text,
+                    "probe-audit-record",
+                    str(contract["audit_sink"]),
+                    record,
+                ),
+            )
+            if audit_id_text
+            else ()
+        )
         try:
             canonical.validate_payload_free_audit(record)
         except canonical.PayloadExposureError:
@@ -2320,6 +2447,7 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
                     expected=_AUDIT_EXPECTED,
                     observed="payload_bearing_audit_record",
                     evidence_refs=(audit_id_text,) if audit_id_text else (),
+                    evidence_items=audit_evidence,
                 )
             )
         else:
@@ -2333,6 +2461,7 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
                     expected=_AUDIT_EXPECTED,
                     observed="payload_free_audit_record",
                     evidence_refs=(audit_id_text,) if audit_id_text else (),
+                    evidence_items=audit_evidence,
                 )
             )
 

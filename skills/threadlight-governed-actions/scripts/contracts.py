@@ -154,6 +154,30 @@ class AdapterObservations:
 
 
 @dataclass(frozen=True)
+class ProbeEvidence:
+    """Payload-free provenance for one evidence id a probe actually cites.
+
+    A :class:`ProbeResult` names the evidence its status rests on only by
+    id (``evidence_refs``); an orchestrator that has to bind that id to a
+    real :class:`EvidenceRef` needs to know *what artifact the probe
+    actually observed* and *what its content hashes to* -- neither of
+    which can ever be derived from the id string itself. This carries
+    exactly that, and nothing else: never the observed record's own
+    contents, arguments, or any other raw probe payload.
+
+    ``sha256`` is always the digest of a real artifact the probe observed
+    or generated (a canonical argument/binding digest the target itself
+    recorded, or the canonical digest of an actually-observed ledger/
+    audit record) -- never a hash of *evidence_id*.
+    """
+
+    evidence_id: str
+    kind: str
+    source: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class ProbeResult:
     probe_id: str
     action_id: Optional[str]
@@ -163,6 +187,13 @@ class ProbeResult:
     expected: str
     observed: str
     evidence_refs: Tuple[str, ...]
+    #: Provenance for the ids in ``evidence_refs``, when the probe that
+    #: produced this result observed the underlying artifacts itself.
+    #: Empty when a probe reports no evidence at all; an ``evidence_refs``
+    #: id with no matching entry here is an unresolvable citation, which
+    #: an orchestrator must treat as not-verified rather than bind to
+    #: invented provenance.
+    evidence_items: Tuple[ProbeEvidence, ...] = ()
 
 
 @dataclass(frozen=True)

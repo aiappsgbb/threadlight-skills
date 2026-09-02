@@ -773,19 +773,28 @@ def _required_evidence_ids(result: AssessmentResult) -> Set[str]:
     return ids
 
 
-def _canonical_policy_set_sha256(result: AssessmentResult) -> str:
-    """The canonical policy-set digest this assessment's own
-    ``policy_hashes`` collapse to.
+def canonical_policy_set_sha256(policy_hashes: Sequence[Mapping[str, object]]) -> str:
+    """The canonical digest a set of ``{path, sha256}`` policy hashes
+    collapses to.
 
     Computed exactly like :func:`canonical.hash_files`'s own
     ``set_sha256`` -- the established representation for a hashed *set*
     of ``{path, sha256}`` entries: normalized, sorted by path, then
-    canonically serialized and hashed -- so an evidence entry's own
-    declared ``policy_set_sha256`` can be checked against the *actual*
-    policy set this assessment observed, never an invented expectation.
+    canonically serialized and hashed. Shared so an orchestrator binding
+    an evidence entry's ``policy_set_sha256`` and this module's own
+    trust check can never drift apart into two different expectations.
     """
-    normalized = _normalize_policy_hashes(result.policy_hashes)
+    normalized = _normalize_policy_hashes(policy_hashes)
     return f"sha256:{canonical.sha256_hex(canonical.canonical_bytes(normalized))}"
+
+
+def _canonical_policy_set_sha256(result: AssessmentResult) -> str:
+    """The canonical policy-set digest this assessment's own
+    ``policy_hashes`` collapse to -- so an evidence entry's own declared
+    ``policy_set_sha256`` can be checked against the *actual* policy set
+    this assessment observed, never an invented expectation.
+    """
+    return canonical_policy_set_sha256(result.policy_hashes)
 
 
 def _evidence_finding_phases(result: AssessmentResult) -> Dict[str, Set[str]]:

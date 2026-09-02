@@ -1,0 +1,10 @@
+{
+  "unmediated-action": {"enabled": true, "reason_code": "unmediated-action-detected", "correlation_id": "alert-unmediated-action"},
+  "interceptor-failure": {"enabled": true, "reason_code": "interceptor-failure-detected", "correlation_id": "alert-interceptor-failure"},
+  "approval-replay": {"enabled": true, "reason_code": "approval-replay-detected", "correlation_id": "alert-approval-replay"},
+  "output-mediator-failure": {"enabled": true, "reason_code": "output-mediator-failure-detected", "correlation_id": "alert-output-mediator-failure"},
+  "audit-delivery-failure": {"enabled": true, "reason_code": "audit-delivery-failure-detected", "correlation_id": "alert-audit-delivery-failure"},
+  "tuple-drift": {"enabled": true, "reason_code": "tuple-drift-detected", "correlation_id": "alert-tuple-drift"},
+  "repository-protection-drift": {"enabled": true, "reason_code": "repository-protection-drift-detected", "correlation_id": "alert-repository-protection-drift"},
+  "deployment-identity-drift": {"enabled": true, "reason_code": "deployment-identity-drift-detected", "correlation_id": "alert-deployment-identity-drift"}
+}
