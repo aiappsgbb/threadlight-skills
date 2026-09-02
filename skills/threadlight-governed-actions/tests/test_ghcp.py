@@ -8141,3 +8141,166 @@ def test_live_azure_unpaired_surrogate_federated_credential_is_ghcp_005():
     assert result.evidence == ()
     assert result.data.get("error_class") == "malformed-json"
     assert "\\ud800" not in json.dumps(result.data)
+
+
+# ---------------------------------------------------------------------------
+# Round 10: a GitHub Environment's real ``protection_rules`` list can carry
+# a ``wait_timer`` entry -- a mere deployment delay, not any actual
+# authorization control -- and previous code treated *any* non-empty
+# ``protection_rules`` list as proof the environment is "protected". A
+# wait_timer-only environment must never be classified protected: only a
+# recognized restrictive rule (``required_reviewers`` or ``branch_policy``)
+# is real evidence of an authorization/deployment-branch restriction. An
+# unrecognized rule ``type`` must fail closed (never counted as proof of
+# protection either).
+# ---------------------------------------------------------------------------
+
+
+def test_live_github_environment_wait_timer_only_is_not_protected():
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [
+                            {"type": "wait_timer", "wait_timer": 30}
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "pass"
+    assert result.data["environments"] == {"staging": {"protected": False}}
+
+
+def test_live_github_environment_required_reviewers_is_protected():
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [
+                            {"type": "required_reviewers", "reviewers": [{"type": "Team", "id": 1}]}
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.data["environments"] == {"staging": {"protected": True}}
+
+
+def test_live_github_environment_branch_policy_is_protected():
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [{"type": "branch_policy"}],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.data["environments"] == {"staging": {"protected": True}}
+
+
+def test_live_github_environment_wait_timer_plus_required_reviewers_is_protected():
+    # At least one recognized restrictive rule alongside a wait_timer is
+    # still real authorization evidence -- the wait_timer entry simply
+    # never counts *for* protection, it just never counts *against* it
+    # either.
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [
+                            {"type": "wait_timer", "wait_timer": 30},
+                            {"type": "required_reviewers", "reviewers": []},
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.data["environments"] == {"staging": {"protected": True}}
+
+
+def test_live_github_environment_unknown_rule_type_is_not_protected():
+    # An unrecognized protection-rule type must never be guessed at --
+    # it fails closed, exactly like an empty or wait_timer-only list.
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [{"type": "some_future_rule_type"}],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.data["environments"] == {"staging": {"protected": False}}
+
+
+def test_live_github_environment_rule_missing_type_is_not_protected():
+    responses = _valid_github_responses()
+    responses[3] = _ok(
+        json.dumps(
+            {
+                "environments": [
+                    {
+                        "name": "staging",
+                        "protection_rules": [{"id": 1}],
+                    }
+                ]
+            }
+        )
+    )
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.data["environments"] == {"staging": {"protected": False}}
+
+
+def test_environment_protection_confirmed_rejects_wait_timer_only_normalized_entry():
+    """Task 7's ``_environment_protection_confirmed`` consumes the already
+    -normalized ``{name: {"protected": bool}}`` shape -- proving here that
+    a wait-timer-only environment, once correctly normalized to
+    ``protected: False`` by the live collector, is still never confirmed
+    (never silently upgraded to a pass) by that consumer either."""
+    assert (
+        ghcp._environment_protection_confirmed(
+            {"environments": {"staging": {"protected": False}}},
+            {"staging"},
+        )
+        is False
+    )
+    assert (
+        ghcp._environment_protection_confirmed(
+            {"environments": {"staging": {"protected": True}}},
+            {"staging"},
+        )
+        is True
+    )

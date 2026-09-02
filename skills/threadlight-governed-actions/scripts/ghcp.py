@@ -3293,17 +3293,54 @@ def _github_not_verified(
     )
 
 
+#: A GitHub Environment's real ``protection_rules`` entries are objects
+#: naming a ``type``. Only these two are actual authorization/deployment
+#: -branch restrictions -- ``required_reviewers`` (an explicit human
+#: approval gate) and ``branch_policy`` (a deployment-branch restriction).
+#: ``wait_timer`` is a mere delay with no approval or restriction of any
+#: kind, and is deliberately excluded: this project never treats a
+#: wait-timer-only environment as "protected". Any rule ``type`` this
+#: project does not itself recognize -- including any future GitHub rule
+#: type -- fails closed the same way: it is simply never counted toward
+#: protection, rather than being guessed at either way.
+_RESTRICTIVE_ENVIRONMENT_PROTECTION_RULE_TYPES = frozenset(
+    {"required_reviewers", "branch_policy"}
+)
+
+
+def _environment_protection_rule_is_restrictive(rule: object) -> bool:
+    """Whether a single ``protection_rules`` entry is itself recognized,
+    real evidence of an authorization/deployment-branch restriction --
+    never an invented reviewer identity or approval-count threshold, just
+    whether GitHub's own ``type`` field names one of the two rule kinds
+    that actually restrict who/what can deploy. A non-mapping entry, or
+    one missing/naming an unrecognized ``type``, is never restrictive."""
+    if not isinstance(rule, Mapping):
+        return False
+    return rule.get("type") in _RESTRICTIVE_ENVIRONMENT_PROTECTION_RULE_TYPES
+
+
 def _github_environment_protection(payload: object) -> Dict[str, object]:
     """Transform GitHub's real ``GET /repos/{repo}/environments`` response
     shape (``{"environments": [{"name": ..., "protection_rules": [...]}]}``)
     into the ``{name: {"protected": bool}}`` mapping ``assess_change_plane``
-    already consumes as ``live_github["environments"]``. "Protected" is
-    inferred from a non-empty ``protection_rules`` list -- a direct,
-    non-fabricated transform of what GitHub itself reported, never an
-    invented policy. Any entry this function cannot recognize is skipped
-    rather than guessed at; the caller validates the top-level shape
-    before this is ever invoked, so a malformed *payload* is never
-    silently accepted here either.
+    already consumes as ``live_github["environments"]``.
+
+    "Protected" is never inferred from a merely non-empty
+    ``protection_rules`` list -- a ``wait_timer`` entry is only a
+    deployment delay, not any actual authorization control, so a
+    wait-timer-only (or empty, or entirely unrecognized-rule-type) list
+    is always ``protected: False``. Only a recognized restrictive rule
+    (``required_reviewers`` or ``branch_policy``; see
+    ``_RESTRICTIVE_ENVIRONMENT_PROTECTION_RULE_TYPES``) makes an entry
+    ``protected: True`` -- a direct, non-fabricated transform of what
+    GitHub itself reported, never an invented reviewer identity or
+    threshold. An unrecognized rule ``type`` fails closed the same way
+    an absent rule does: it is simply never counted toward protection.
+    Any environment entry this function cannot recognize (no string
+    ``name``) is skipped rather than guessed at; the caller validates
+    the top-level shape before this is ever invoked, so a malformed
+    *payload* is never silently accepted here either.
     """
     environments: Dict[str, object] = {}
     entries = payload.get("environments") if isinstance(payload, Mapping) else None
@@ -3314,7 +3351,11 @@ def _github_environment_protection(payload: object) -> Dict[str, object]:
             name = entry.get("name")
             if not isinstance(name, str):
                 continue
-            environments[name] = {"protected": bool(entry.get("protection_rules"))}
+            rules = entry.get("protection_rules")
+            protected = isinstance(rules, list) and any(
+                _environment_protection_rule_is_restrictive(rule) for rule in rules
+            )
+            environments[name] = {"protected": protected}
     return environments
 
 
