@@ -143,6 +143,36 @@ _INDEXED_EXPRESSION_ACCESS_RE = re.compile(r"\[\s*['\"]([A-Za-z0-9_]+)['\"]\s*\]
 # at a time.
 _EXPRESSION_SEGMENT_RE = re.compile(r"\$\{\{\s*(?P<inner>.*?)\s*\}\}", re.DOTALL)
 
+# A raw `git` command run in a `run:` step executes in an actual POSIX
+# shell, which GitHub Actions itself feeds every declared `env:` entry
+# to as a real OS-level environment variable -- so a workflow author
+# can route the very same untrusted PR-head data into a raw git
+# command's operand via ordinary shell variable syntax
+# (`git fetch origin $PR_REF` / `git fetch origin "${PR_REF}"`)
+# instead of a `${{ env.PR_REF }}` GitHub-expression indirection, and
+# it is exactly as dangerous. `${VAR}` is matched as a distinct
+# alternative from bare `$VAR` (rather than one pattern with optional
+# braces) precisely so neither alternative can ever consume the `${{`
+# that opens a GitHub expression segment: the char immediately after
+# `${` in `${{ ... }}` is itself `{`, which never satisfies either
+# alternative's identifier-start requirement, so the two syntaxes can
+# never be confused for one another.
+_SHELL_VARIABLE_REFERENCE_RE = re.compile(
+    r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _shell_variable_reference_names(text: str) -> List[str]:
+    """Every distinct shell `$VAR`/`${VAR}` variable name referenced in
+    ``text`` -- never a GitHub `${{ ... }}` expression segment, which
+    uses a syntactically distinct, non-overlapping form (see
+    :data:`_SHELL_VARIABLE_REFERENCE_RE`).
+    """
+    names = []
+    for match in _SHELL_VARIABLE_REFERENCE_RE.finditer(text):
+        names.append(match.group(1) or match.group(2))
+    return names
+
 # The only GitHub context expressions this module can actually reason
 # about as always resolving to trusted, base-branch/base-repository-
 # scoped data for a `pull_request_target` checkout's own `ref:`/
@@ -933,6 +963,23 @@ _SAFE_IDENTITY_REF_RE = re.compile(
     r"^\$\{\{\s*[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_-]+)+\s*\}\}$"
 )
 
+_IDENTITY_REF_PARTS_RE = re.compile(
+    r"^\$\{\{([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_-]+)+)\}\}$"
+)
+
+# GitHub Actions documents `secrets`/`vars` -- both the context name
+# itself and every name looked up on it -- as genuinely case-insensitive:
+# a secret/variable is stored (and looked up) as uppercase regardless of
+# how its name was entered or referenced, so `secrets.AZURE_CLIENT_ID`
+# and `SECRETS.azure_client_id` name the exact same underlying secret.
+# This is a documented special case, not a general rule: ordinary
+# property dereference elsewhere (`github.sha` vs. `github.SHA`,
+# `env.FOO` vs. `env.foo`, `needs.build.outputs.id`, ...) remains
+# case-sensitive, since GitHub Actions does not uppercase-normalize
+# environment-variable names, job/step ids, or output names the way it
+# does for `secrets`/`vars`.
+_CASE_INSENSITIVE_IDENTITY_CONTEXTS = frozenset({"secrets", "vars"})
+
 
 def _canonicalize_github_expression_reference(value: str) -> Optional[str]:
     """The canonical form of ``value`` as a single, validated GitHub
@@ -944,23 +991,38 @@ def _canonicalize_github_expression_reference(value: str) -> Optional[str]:
     purely in incidental, semantically meaningless ways -- extra or
     missing whitespace just inside the ``${{ ... }}`` wrapper
     (``${{ secrets.X }}`` vs. ``${{secrets.X}}`` vs. ``${{  secrets.X  }}``),
-    or bracket-indexed property access used as an exact equivalent of
-    dotted access (``secrets['X']`` vs. ``secrets.X``). Comparing two
-    such references for identity by their raw, as-written text would
-    treat them as different identities even though they resolve to the
-    exact same underlying secret/variable/output, which is precisely
-    backwards for rule 6's shared-identity detection: this function
-    normalizes bracket-indexed access to its dotted equivalent and
-    strips all internal whitespace *before* validating the result
+    bracket-indexed property access used as an exact equivalent of
+    dotted access (``secrets['X']`` vs. ``secrets.X``), or -- only for
+    the `secrets`/`vars` contexts specifically, per GitHub's own
+    documented case-insensitive storage/lookup for those two contexts
+    -- differing letter case in the context name and/or the
+    secret/variable name itself (``${{ SECRETS.Azure_Client_Id }}`` is
+    the identical secret as ``${{ secrets.AZURE_CLIENT_ID }}``).
+    Comparing two such references for identity by their raw,
+    as-written text would treat them as different identities even
+    though they resolve to the exact same underlying secret/variable/
+    output, which is precisely backwards for rule 6's shared-identity
+    detection: this function normalizes bracket-indexed access to its
+    dotted equivalent, strips all internal whitespace, and -- only for
+    a `secrets`/`vars` reference -- uppercases the context keyword and
+    the full remaining dotted path, before validating the result
     against :data:`_SAFE_IDENTITY_REF_RE`, so every such variant
-    canonicalizes to the identical, whitespace-free
-    ``${{context.path}}`` form.
+    canonicalizes to the identical form. A non-`secrets`/`vars`
+    reference (`github.*`, `env.*`, `needs.*`, ...) is left exactly as
+    normalized -- its case is semantically significant and must not be
+    collapsed.
     """
     normalized = _normalize_indexed_github_expression(value.strip())
     normalized = re.sub(r"\s+", "", normalized)
-    if _SAFE_IDENTITY_REF_RE.match(normalized):
+    if not _SAFE_IDENTITY_REF_RE.match(normalized):
+        return None
+    parts_match = _IDENTITY_REF_PARTS_RE.match(normalized)
+    if parts_match is None:
         return normalized
-    return None
+    context_name, rest = parts_match.group(1), parts_match.group(2)
+    if context_name.lower() in _CASE_INSENSITIVE_IDENTITY_CONTEXTS:
+        return "${{" + context_name.lower() + rest.upper() + "}}"
+    return normalized
 
 
 def _redact_identity_ref(value: str) -> str:
@@ -1227,6 +1289,66 @@ def _checkout_value_is_provably_trusted(
     return True
 
 
+def _shell_operand_is_provably_trusted(
+    value: str,
+    document: Mapping,
+    job: Mapping,
+    step: Mapping,
+    _depth: int = 0,
+) -> bool:
+    """True only if ``value`` -- as an actual POSIX shell executing a
+    raw `git fetch`/`checkout`/`clone`/`pull` command's `run:` line
+    would see it -- can be shown to stay on the trusted base branch/
+    repository, fail-closed exactly like
+    :func:`_checkout_value_is_provably_trusted`. Recognizes and
+    resolves *both* forms a workflow author can freely mix within the
+    very same shell command: a `${{ ... }}` GitHub-expression segment,
+    and a raw shell `$VAR`/`${VAR}` variable reference -- since GitHub
+    Actions itself feeds every declared `env:` entry to the runner
+    shell as a real OS-level environment variable, `git fetch origin
+    $PR_REF` is exactly as capable of touching untrusted PR-head
+    content as `git fetch origin ${{ env.PR_REF }}`, just spelled with
+    ordinary shell syntax instead of a GitHub expression. Either form
+    is resolved from the same step/job/workflow `env:` scopes and its
+    resolved value re-checked recursively by this same rule -- an
+    unresolved variable name, or a resolved value that is itself
+    untrusted or unrecognized (through further `${{ ... }}` or further
+    chained `$VAR` syntax), fails closed.
+    """
+    if _depth > 5:
+        return False  # unbounded/self-referential indirection: fail closed
+    normalized = _normalize_indexed_github_expression(value)
+    if any(marker in normalized for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
+        return False
+    has_expression = "${{" in normalized
+    shell_var_names = _shell_variable_reference_names(normalized)
+    if not has_expression and not shell_var_names:
+        return True  # plain literal text: never driven by PR event data
+    if has_expression:
+        segments = _EXPRESSION_SEGMENT_RE.findall(normalized)
+        if not segments:
+            return False  # malformed/unbalanced expression syntax: fail closed
+        for inner in segments:
+            inner = inner.strip()
+            env_match = re.match(r"^env\.([A-Za-z_][A-Za-z0-9_]*)$", inner)
+            if env_match:
+                resolved = _resolve_env_literal(document, job, step, env_match.group(1))
+                if resolved is None or not _shell_operand_is_provably_trusted(
+                    resolved, document, job, step, _depth + 1
+                ):
+                    return False
+                continue
+            if not _expression_is_trusted_checkout_context(inner):
+                return False
+    for name in shell_var_names:
+        resolved = _resolve_env_literal(document, job, step, name)
+        if resolved is None or not _shell_operand_is_provably_trusted(
+            resolved, document, job, step, _depth + 1
+        ):
+            return False
+    return True
+
+
 def _raw_git_checkout_line_is_untrusted(
     line: str, document: Mapping, job: Mapping, step: Mapping
 ) -> bool:
@@ -1244,38 +1366,21 @@ def _raw_git_checkout_line_is_untrusted(
     A trailing shell comment on the line is stripped first (a bare
     ``#`` split, consistent with this module's existing conservative,
     non-shell-quote-aware comment handling) so an unrelated expression
-    mentioned only in commentary can never affect the result. Any
-    `${{ env.NAME }}` indirection used as a command operand is resolved
-    from the step's/job's/workflow's own `env:` declarations and
-    re-evaluated recursively by the same rule; an unresolved env name,
-    or any other dynamic expression this module cannot actually reason
-    about as base-scoped, fails closed exactly like an unrecognized
-    `actions/checkout` input does.
+    mentioned only in commentary can never affect the result. The line
+    is then evaluated by :func:`_shell_operand_is_provably_trusted`,
+    which resolves *both* `${{ env.NAME }}` GitHub-expression
+    indirection *and* raw shell `$VAR`/`${VAR}` variable indirection
+    against the step's/job's/workflow's own `env:` declarations,
+    recursively; an unresolved name, or any other dynamic content this
+    module cannot actually reason about as base-scoped, fails closed
+    exactly like an unrecognized `actions/checkout` input does.
     """
     stripped_line = line.split("#", 1)[0]
-    normalized_line = _normalize_indexed_github_expression(stripped_line)
-    if not _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(normalized_line):
+    if not _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(
+        _normalize_indexed_github_expression(stripped_line)
+    ):
         return False
-    if any(marker in normalized_line for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
-        return True
-    if "${{" not in normalized_line:
-        return False
-    segments = _EXPRESSION_SEGMENT_RE.findall(normalized_line)
-    if not segments:
-        return False  # no well-formed expression on this line to resolve
-    for inner in segments:
-        inner = inner.strip()
-        env_match = re.match(r"^env\.([A-Za-z_][A-Za-z0-9_]*)$", inner)
-        if env_match:
-            resolved = _resolve_env_literal(document, job, step, env_match.group(1))
-            if resolved is None or not _checkout_value_is_provably_trusted(
-                resolved, document, job, step, _depth=1
-            ):
-                return True
-            continue
-        if not _expression_is_trusted_checkout_context(inner):
-            return True
-    return False
+    return not _shell_operand_is_provably_trusted(stripped_line, document, job, step)
 
 
 def _has_untrusted_checkout(document: Mapping) -> bool:
@@ -1625,11 +1730,28 @@ def _codeowners_pattern_is_depth_unanchored(pattern: str) -> bool:
     return "/" not in normalized and normalized not in ("", "*", "**")
 
 
-def _codeowners_pattern_basename_glob(pattern: str) -> str:
-    normalized = pattern.strip()
+def _codeowners_strip_leading_recursive_glob(pattern: str) -> str:
+    """``pattern``, with an optional single leading ``/`` root anchor
+    and every *repeated* leading ``**/`` segment stripped, plus any
+    trailing ``/``.
+
+    GitHub's own gitignore-style matching treats a leading ``**/`` as
+    matching *zero or more* leading directory segments -- ``**/foo``
+    matches a root-level ``foo`` exactly as readily as a deeply nested
+    ``a/b/foo``. Every place this module derives a path or prefix from
+    a declared pattern's own text for an ancestor/equality/overlap
+    comparison needs that same "zero-or-more" allowance applied first,
+    or the *shallowest* (zero-directory) match a leading ``**/``
+    pattern is equally capable of would be silently missed.
+    """
+    normalized = pattern.strip().lstrip("/")
     while normalized.startswith("**/"):
         normalized = normalized[3:]
     return normalized.rstrip("/")
+
+
+def _codeowners_pattern_basename_glob(pattern: str) -> str:
+    return _codeowners_strip_leading_recursive_glob(pattern)
 
 
 def _codeowners_anchored_pattern_regex(pattern: str) -> Optional["re.Pattern[str]"]:
@@ -1648,14 +1770,32 @@ def _codeowners_anchored_pattern_regex(pattern: str) -> Optional["re.Pattern[str
     when the goal is conservatively detecting a possible last-match
     override, not precisely replicating full gitignore matching.
 
-    Returns ``None`` for a pattern with no internal `/` at all --
-    depth-unanchored basename patterns are matched separately, at any
-    depth, via :func:`_codeowners_pattern_is_depth_unanchored` callers.
+    A *leading* ``**/`` (after any repeated occurrence) is handled
+    distinctly from one occurring elsewhere in the pattern: it compiles
+    to an *optional* ``(?:.*/)?`` group rather than an unconditional
+    ``.*`` immediately followed by a literal ``/`` -- gitignore's own
+    leading ``**/`` matches *zero or more* leading directory segments,
+    so ``**/.github/workflows/*.yml`` must match the exact root-level
+    file ``.github/workflows/x.yml`` (zero leading segments) just as
+    readily as a deeper ``vendor/.github/workflows/x.yml``; requiring
+    a literal ``/`` unconditionally right after the leading ``**``
+    would wrongly reject the very shallowest, most common case.
+
+    Returns ``None`` for a pattern with no internal `/` at all *after*
+    stripping any leading ``**/`` -- depth-unanchored basename patterns
+    are matched separately, at any depth, via
+    :func:`_codeowners_pattern_is_depth_unanchored` callers.
     """
     normalized = pattern.strip().lstrip("/").rstrip("/")
+    leading_any_depth = False
+    while normalized.startswith("**/"):
+        leading_any_depth = True
+        normalized = normalized[3:]
     if "/" not in normalized:
         return None
     parts = ["^"]
+    if leading_any_depth:
+        parts.append("(?:.*/)?")
     index = 0
     length = len(normalized)
     while index < length:
@@ -1698,8 +1838,10 @@ def _codeowners_pattern_nested_within(pattern: str, required_prefix: str) -> boo
             required_prefix, declared_prefix
         )
     # An exact-file (or single-level glob) pattern still carves out a
-    # hole if its own literal path falls inside the required tree.
-    target = pattern.strip().lstrip("/")
+    # hole if its own literal path falls inside the required tree -- a
+    # leading `**/` is stripped first, since it can resolve to that
+    # literal path with zero leading directories too.
+    target = _codeowners_strip_leading_recursive_glob(pattern)
     return _is_ancestor_or_equal(required_prefix, target)
 
 
@@ -1765,11 +1907,19 @@ def _codeowners_recursive_prefix(pattern: str) -> Optional[str]:
     slash to the repository root regardless of whether it is also
     prefixed with one. A bare ``*``/``**`` (with or without a leading
     slash) is the repository-wide catch-all and returns ``""``, an
-    ancestor of every path.
+    ancestor of every path. A leading, repeated ``**/`` is stripped
+    first too -- it matches zero or more leading directory segments, so
+    ``**/tests/**`` covers exactly the same root-relative ``"tests"``
+    tree ``tests/**`` does (plus additional, irrelevant nested-elsewhere
+    matches no required pattern here would ever ask about).
     """
     normalized = pattern.strip().lstrip("/")
     if normalized in ("", "*", "**"):
         return ""
+    while normalized.startswith("**/"):
+        normalized = normalized[3:]
+        if normalized in ("", "*", "**"):
+            return ""
     if normalized.endswith("/**"):
         return normalized[: -len("/**")]
     if normalized.endswith("/"):
@@ -1812,8 +1962,9 @@ def _codeowners_pattern_covers(declared_pattern: str, requirement: str) -> bool:
     # matches the exact file's own basename (GitHub's own
     # gitignore-style matching applies such a pattern at any depth,
     # including to a single exact required file), or by an anchored,
-    # `/`-bearing nested-path glob (``.github/workflows/*.yml``) whose
-    # own wildcarded path matches the exact file's full path.
+    # `/`-bearing nested-path glob (``.github/workflows/*.yml``,
+    # ``**/.github/workflows/*.yml``) whose own wildcarded path
+    # matches the exact file's full path.
     target = requirement.strip().lstrip("/")
     if declared_prefix is not None:
         return _is_ancestor_or_equal(declared_prefix, target)
@@ -1825,7 +1976,8 @@ def _codeowners_pattern_covers(declared_pattern: str, requirement: str) -> bool:
         nested_pattern_regex = _codeowners_anchored_pattern_regex(declared_pattern)
         if nested_pattern_regex is not None and nested_pattern_regex.match(target):
             return True
-    return declared_pattern.strip().lstrip("/") == target
+    return _codeowners_strip_leading_recursive_glob(declared_pattern) == target
+
 
 
 def _discover_eval_suite_files(root: Path) -> Tuple[Path, ...]:

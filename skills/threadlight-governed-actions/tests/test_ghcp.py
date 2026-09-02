@@ -2364,7 +2364,147 @@ def test_codeowners_nested_path_glob_does_not_match_deeper_nested_file(tmp_path)
 
 
 # ---------------------------------------------------------------------------
-# Quality-fix 1: rule 5's secret-credential scan also covers `run:` commands
+# Final static review, item 2: a leading `**/` matches *zero or more*
+# leading directory segments (GitHub's own gitignore-style semantics) --
+# `**/foo` must match a root-level `foo` exactly as readily as one nested
+# several directories deep, in both the exact-file-coverage and the
+# recursive-tree overlap/override logic.
+# ---------------------------------------------------------------------------
+
+
+def test_codeowners_leading_recursive_glob_bare_filename_satisfies_exact_requirement(
+    tmp_path,
+):
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            "**/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_leading_recursive_glob_nested_path_satisfies_exact_requirement(
+    tmp_path,
+):
+    """`**/.github/workflows/*.yml` must match the exact required file
+    at zero leading directories -- not merely one nested at least one
+    directory below the repository root."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            "**/.github/workflows/*.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_ownerless_leading_recursive_glob_breaks_exact_requirement(
+    tmp_path,
+):
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "**/.github/workflows/*.yml",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    # The later ownerless leading-`**/` pattern still matches the exact
+    # required file at zero leading directories, so it overrides the
+    # earlier full coverage.
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_leading_recursive_glob_overlaps_required_recursive_tree(
+    tmp_path,
+):
+    """A later, differently-owned `**/tests/**` matches the required
+    `tests/**` tree at zero leading directories too -- it must be
+    recognized as overlapping/overriding that tree, not dismissed
+    merely because its own raw text carries a `**/` prefix the
+    required tree's own pattern does not."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "**/tests/**",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_leading_recursive_glob_nested_exact_file_overlaps_required_tree(
+    tmp_path,
+):
+    """A later ownerless `**/tests/governed-actions-manifest.json`
+    resolves, at zero leading directories, to exactly the required
+    nested file inside the `tests/**` tree -- it must be recognized as
+    carving a hole out of that tree's coverage."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "**/tests/governed-actions-manifest.json",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_leading_recursive_glob_does_not_match_unrelated_deeper_directory(
+    tmp_path,
+):
+    """`**/workflows/*.yml` still requires the segment *immediately*
+    preceding the wildcard filename to be literally `workflows` --
+    zero-or-more leading directories is not license to match an
+    unrelated deeper path that never actually contains that
+    component."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "**/nonexistent-dir/*.yml",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+
 # and `env:` blocks directly -- a raw `az login --password`/
 # `--service-principal-secret` shell command, a raw `publish-profile` deploy
 # invocation, or a secret-shaped `AZURE_`/`ARM_` env var name -- never just
@@ -3660,6 +3800,239 @@ def test_pull_request_target_raw_git_command_direct_dynamic_expression_is_must_f
     )
     result = assess_workflow(workflow_path)
     assert result.pr_gate == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# Final static review, item 1: a raw `git` command run in a `run:` step
+# executes in a real shell, so a workflow author can route the very same
+# untrusted PR-head env value into the command via ordinary shell `$VAR`/
+# `${VAR}` syntax instead of a `${{ env.VAR }}` GitHub-expression
+# indirection -- it must be resolved and fail-closed exactly the same way.
+# ---------------------------------------------------------------------------
+
+
+def test_pull_request_target_raw_git_command_bare_shell_var_untrusted_is_must_fix(
+    tmp_path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  PR_REF: ${{ github.event.pull_request.head.ref }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch PR head via bare shell variable
+                    run: git fetch origin $PR_REF
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_raw_git_command_braced_shell_var_untrusted_is_must_fix(
+    tmp_path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  PR_REF: ${{ github.event.pull_request.head.ref }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch PR head via braced shell variable
+                    run: git fetch origin "${PR_REF}"
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_raw_git_command_undeclared_shell_var_is_must_fix(
+    tmp_path,
+):
+    """No `env:` block anywhere declares `PR_REF` at all -- an
+    unresolved shell-variable indirection must fail closed exactly
+    like an unresolved `${{ env.NAME }}` indirection does."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch via undeclared shell variable
+                    run: git fetch origin $PR_REF
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_raw_git_command_shell_var_trusted_literal_stays_pass(
+    tmp_path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  BASE_REF: main
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch base branch via bare shell variable
+                    run: git fetch origin $BASE_REF
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_target_raw_git_command_shell_var_trusted_context_stays_pass(
+    tmp_path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  BASE_SHA: ${{ github.sha }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch base commit via braced shell variable
+                    run: git fetch origin "${BASE_SHA}"
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_target_raw_git_command_chained_shell_var_untrusted_is_must_fix(
+    tmp_path,
+):
+    """A shell-variable value that is itself another shell-variable
+    reference, chained through to an untrusted PR-head expression,
+    must still fail closed via recursive resolution."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  OUTER_REF: $INNER_REF
+                  INNER_REF: ${{ github.event.pull_request.head.sha }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch via chained shell variable indirection
+                    run: git fetch origin $OUTER_REF
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_raw_git_command_shell_var_never_confused_with_gh_expression(
+    tmp_path,
+):
+    """A GitHub `${{ ... }}` expression segment must never be
+    misparsed as a shell `${VAR}` reference -- the two syntaxes are
+    distinct and a trusted GitHub context expression alone (no bare
+    shell variable at all) must stay pass."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - name: Fetch base commit via trusted GitHub expression
+                    run: git fetch origin ${{ github.sha }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
 
 
 def test_pull_request_target_trusted_repository_input_stays_pass(tmp_path):
@@ -5045,6 +5418,121 @@ def test_identity_separation_catches_bracket_vs_dot_shared_identity_within_workf
     finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
     assert finding.status == "must-fix"
     assert finding.reason_code == "shared-identity"
+
+
+# ---------------------------------------------------------------------------
+# Final static review, item 3: GitHub documents the `secrets`/`vars`
+# contexts specifically as case-insensitive -- both the context keyword
+# itself and every secret/variable name looked up on it are stored and
+# resolved as uppercase regardless of how they were entered or
+# referenced, so `${{ SECRETS.Azure_Client_Id }}` and
+# `${{ secrets.AZURE_CLIENT_ID }}` name the exact same secret. Every
+# other context (`github`, `env`, `needs`, ...) remains case-sensitive
+# and must never have its case collapsed.
+# ---------------------------------------------------------------------------
+
+
+def test_identity_refs_differing_only_in_secrets_context_case_canonicalize_equal(
+    tmp_path,
+):
+    workflow = _workflow_with_client_id(tmp_path, "${{ SECRETS.AZURE_CLIENT_ID }}")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{secrets.AZURE_CLIENT_ID}}",)
+    workflow2 = _workflow_with_client_id(tmp_path, "${{ secrets.AZURE_CLIENT_ID }}")
+    result2 = assess_workflow(workflow2)
+    assert result2.identity_refs == result.identity_refs
+
+
+def test_identity_refs_differing_only_in_secret_name_case_canonicalize_equal(
+    tmp_path,
+):
+    """A secret's own *name*, not merely the `secrets` context keyword,
+    is documented case-insensitive and stored uppercase -- differing
+    only in the name's own letter case must still canonicalize
+    identically."""
+    workflow = _workflow_with_client_id(tmp_path, "${{ secrets.Azure_Client_Id }}")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{secrets.AZURE_CLIENT_ID}}",)
+
+
+def test_identity_refs_differing_only_in_vars_context_case_canonicalize_equal(
+    tmp_path,
+):
+    workflow = _workflow_with_client_id(tmp_path, "${{ VARS.azure_client_id }}")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{vars.AZURE_CLIENT_ID}}",)
+
+
+def test_identity_separation_catches_secrets_case_variant_shared_identity(tmp_path):
+    """A build/test job spelling its identity in one letter case and a
+    deploy job spelling the exact same secret with a differently-cased
+    context/name, side by side in the very same workflow file, must
+    still be caught as a shared identity."""
+    root = tmp_path / "secrets-case-identity-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci-and-deploy.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI and Deploy
+            on:
+              pull_request:
+              workflow_dispatch:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ SECRETS.Shared_Client_Id }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.SHARED_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "shared-identity"
+
+
+def test_identity_refs_differing_case_in_noncase_insensitive_context_stay_distinct(
+    tmp_path,
+):
+    """`github`/`env`/`needs`/etc. are not documented case-insensitive
+    contexts -- their case must never be collapsed, unlike
+    `secrets`/`vars`."""
+    workflow = _workflow_with_client_id(tmp_path, "${{ env.AZURE_CLIENT_ID }}")
+    result = assess_workflow(workflow)
+    assert result.identity_refs == ("${{env.AZURE_CLIENT_ID}}",)
+    workflow2 = _workflow_with_client_id(tmp_path, "${{ env.azure_client_id }}")
+    result2 = assess_workflow(workflow2)
+    assert result2.identity_refs == ("${{env.azure_client_id}}",)
+    assert result.identity_refs != result2.identity_refs
 
 
 def test_identity_separation_live_mapping_key_with_extra_whitespace_still_resolves(
