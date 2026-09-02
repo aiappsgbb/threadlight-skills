@@ -7032,6 +7032,120 @@ def test_ctk_probe_recognized_runner_helper_rejects_grep_and_accepts_real_invoca
 
 
 # ---------------------------------------------------------------------------
+# Quality fix: the Task 11 scaffold's own generated workflow must never
+# itself satisfy rule 3 merely because its `run:` lines are real,
+# recognized CTK/application-probe invocations by design. `ghcp` marks
+# that file with an exact workflow-level
+# `env.GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"` and refuses to
+# count it as CI-probe evidence while that key/value pair is present.
+# These tests exercise that recognition directly, against synthetic
+# workflows built the same way every other rule-3 test in this file is;
+# see tests/test_scaffold.py for the integration-level tests against
+# the real scaffold/template output.
+# ---------------------------------------------------------------------------
+
+_REAL_CTK_PROBE_COMMANDS = (
+    "python -m ctk run-vectors\n                      "
+    "python -m probes run-application-probe"
+)
+
+
+def _workflow_with_ci_probe_run_and_env(
+    tmp_path: Path, run_body: str, env_yaml: str, *, filename: str = "ci.yml"
+) -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / filename
+    text = (
+        "name: CI\n"
+        "on:\n"
+        "  pull_request:\n"
+        "permissions:\n"
+        "  contents: read\n"
+        f"{env_yaml}"
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c\n"
+        "      - name: Run CTK and application probes\n"
+        "        run: |\n"
+        f"          {run_body}\n"
+    )
+    workflow_path.write_text(text, encoding="utf-8")
+    return workflow_path
+
+
+def test_workflow_level_scaffold_marker_forces_ci_probes_must_fix_even_with_real_commands(
+    tmp_path,
+):
+    workflow = _workflow_with_ci_probe_run_and_env(
+        tmp_path,
+        _REAL_CTK_PROBE_COMMANDS,
+        'env:\n  GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"\n',
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_scaffold_marker_match_is_exact_key_and_value_not_mere_presence(tmp_path):
+    """A workflow that happens to declare the same env *key* with a
+    different value, or a similarly-named but different key, must never
+    be treated as an unmodified scaffold: only the exact
+    ``GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"`` pair is ever
+    recognized, never a loose "any marker-shaped env var" heuristic.
+    """
+    wrong_value = _workflow_with_ci_probe_run_and_env(
+        tmp_path,
+        _REAL_CTK_PROBE_COMMANDS,
+        'env:\n  GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "false"\n',
+        filename="wrong-value.yml",
+    )
+    wrong_key = _workflow_with_ci_probe_run_and_env(
+        tmp_path,
+        _REAL_CTK_PROBE_COMMANDS,
+        'env:\n  SOME_OTHER_UNMODIFIED_MARKER: "true"\n',
+        filename="wrong-key.yml",
+    )
+    assert assess_workflow(wrong_value).ci_probes == "pass"
+    assert assess_workflow(wrong_key).ci_probes == "pass"
+
+
+def test_real_pr_workflow_without_scaffold_marker_still_passes_ci_probes(tmp_path):
+    """Guardrail for the scaffold-marker fix: a genuine workflow that
+    runs recognized CTK/application-probe commands and carries no
+    `env:` block at all must still satisfy rule 3 exactly as before the
+    fix -- the marker is the only new signal this fix adds, and it must
+    never make CTK/application-probe detection stricter for a workflow
+    that never opts into being flagged.
+    """
+    workflow = _workflow_with_ci_probe_run(tmp_path, _REAL_CTK_PROBE_COMMANDS)
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+def test_scaffold_marker_removal_restores_ci_probes_pass(tmp_path):
+    """Removing exactly the marker's `env:` block -- simulating
+    deliberate customer wiring -- with the CTK/application-probe `run:`
+    commands themselves left untouched, is the only thing that should
+    flip rule 3 back to `pass`.
+    """
+    workflow = _workflow_with_ci_probe_run_and_env(
+        tmp_path,
+        _REAL_CTK_PROBE_COMMANDS,
+        'env:\n  GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"\n',
+    )
+    assert assess_workflow(workflow).ci_probes == "must-fix"
+
+    wired_text = workflow.read_text(encoding="utf-8").replace(
+        'env:\n  GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"\n', ""
+    )
+    workflow.write_text(wired_text, encoding="utf-8")
+
+    assert assess_workflow(workflow).ci_probes == "pass"
+
+
+# ---------------------------------------------------------------------------
 # Readiness review, item 3: applicable infrastructure ownership discovery
 # must also recognize concrete deployment descriptors -- an Azure Developer
 # CLI manifest, a Dockerfile variant, a Kubernetes manifest, or a Helm

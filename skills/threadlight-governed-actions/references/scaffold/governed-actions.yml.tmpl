@@ -15,6 +15,15 @@ on:
 permissions:
   contents: read
 
+# GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED marks this workflow as still an
+# unreviewed Task 11 scaffold: the GHCP change-plane assessor recognizes
+# this exact key/value pair and refuses to count this file's CTK/
+# application-probe commands as CI evidence until it is wired up for
+# real. Remove this `env:` block (or this one key) once you have
+# reviewed and committed to what this workflow actually runs.
+env:
+  GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED: "true"
+
 jobs:
   governed-actions-contract:
     runs-on: ubuntu-latest

@@ -1991,9 +1991,53 @@ def _governance_relevant_run_command_texts(document: Mapping) -> Tuple[str, ...]
     return tuple(texts)
 
 
+#: The exact workflow-level `env` key the Task 11 scaffold's own
+#: ``governed-actions.yml.tmpl`` sets to mark itself as still an
+#: unmodified, customer-unreviewed placeholder -- never present in any
+#: workflow this module does not itself ship a template for, and never
+#: matched against anything but this precise key/value pair (never a
+#: comment, a job/step name, or any other free-text marker word).
+_SCAFFOLD_UNMODIFIED_ENV_NAME = "GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED"
+_SCAFFOLD_UNMODIFIED_ENV_VALUE = "true"
+
+
+def _is_unmodified_scaffold_workflow(document: Mapping) -> bool:
+    """True only if *document* still carries the Task 11 scaffold's own
+    unmodified-marker: a workflow-level ``env.
+    GOVERNED_ACTIONS_SCAFFOLD_UNMODIFIED`` set to the exact literal
+    string ``"true"``.
+
+    This is the *only* signal rule 3 ever uses to tell a still-
+    scaffolded, customer-unreviewed workflow apart from a real one that
+    happens to run the same recognized CTK/application-probe commands
+    -- the scaffold's own `run:` lines are deliberately real, runnable
+    commands (so the template can be wired up by simply deleting this
+    one key), not a fake/broken placeholder that would fail rule 3 on
+    its own merits regardless of whether a customer ever reviewed it.
+    A customer wiring this workflow for real removes (or changes the
+    value of) this key as part of actually reviewing what it runs, at
+    which point this returns ``False`` again and the workflow is
+    assessed exactly like any other pull_request-triggered workflow.
+    """
+    env = document.get("env")
+    if not isinstance(env, Mapping):
+        return False
+    return env.get(_SCAFFOLD_UNMODIFIED_ENV_NAME) == _SCAFFOLD_UNMODIFIED_ENV_VALUE
+
+
 def _ci_probes_static_status(document: Mapping, triggers: Tuple[str, ...]) -> Status:
     if "pull_request" not in triggers:
         return "pass"  # rule 3 only binds required (PR-triggered) CI
+    if _is_unmodified_scaffold_workflow(document):
+        # An unmodified copy of the Task 11 scaffold's own workflow
+        # template must never itself count as CI-probe evidence: its
+        # `run:` lines exist so the template is realistic and easy to
+        # wire up, not because a customer has actually reviewed and
+        # committed to running it. Every other still-scaffolded control
+        # in this repository stays must-fix/not-verified until a
+        # customer acts; rule 3 must not be the one exception that a
+        # bare `--scaffold maf --confirm-scaffold` flips to pass.
+        return "must-fix"
     # Deliberately searched against the actual, execution-reachable
     # `run:` command text only -- never a step `name`, a `uses:`
     # reference, a YAML comment, a disabled/always-false step, or a bare

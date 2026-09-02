@@ -21,6 +21,7 @@ import pytest
 import yaml
 
 import contracts
+import ghcp
 import governed_actions
 import render
 import scaffold
@@ -429,6 +430,91 @@ def test_workflow_template_runs_ctk_and_application_probe():
         and "application-probe" in line.lower()
         for line in lines
     )
+
+
+# ---------------------------------------------------------------------------
+# Quality fix: an unmodified copy of this scaffold's own workflow must
+# never itself satisfy GHCP rule 3's CTK/application-probe evidence. The
+# template's `run:` lines are deliberately real, recognized invocations
+# (asserted above) so the template is realistic and trivial to wire up --
+# but that realism must never let a bare `--scaffold maf
+# --confirm-scaffold`, with not one byte of customer review, flip
+# `ghcp_ci_probes` (and its backing GHCP-003 finding) to `pass` on its
+# own. Every assertion here goes through `ghcp`'s own public
+# `assess_workflow`/`assess_change_plane` -- never a private helper a
+# real caller could not reach -- against the *actual* template/scaffold
+# output, so a regression in either the template or the assessor's
+# marker recognition fails these tests, not a hand-rolled substitute.
+# ---------------------------------------------------------------------------
+
+
+def test_workflow_template_declares_the_ghcp_unmodified_scaffold_marker():
+    """The template itself must carry the exact workflow-level `env`
+    key/value `ghcp`'s static assessor recognizes as "still an
+    unmodified Task 11 scaffold" -- checked structurally (parsed YAML,
+    exact key/value), never by searching the raw template text for an
+    arbitrary substring.
+    """
+    text = (scaffold._TEMPLATES_DIR / "governed-actions.yml.tmpl").read_text(encoding="utf-8")
+    document = yaml.safe_load(text)
+    env = document.get("env")
+    assert isinstance(env, dict)
+    assert env.get(ghcp._SCAFFOLD_UNMODIFIED_ENV_NAME) == ghcp._SCAFFOLD_UNMODIFIED_ENV_VALUE
+
+
+def test_unmodified_scaffold_workflow_fails_ghcp_ci_probes(tmp_path):
+    """Reproduces the Task 11 quality defect directly against
+    `scaffold.scaffold`'s real output: an unmodified scaffold's own
+    workflow must be assessed `must-fix` on rule 3, not `pass`, even
+    though its `run:` lines are recognized CTK/application-probe
+    invocations by design.
+    """
+    scaffold.scaffold(tmp_path, "maf", True)
+    workflow_path = tmp_path / ".github" / "workflows" / "governed-actions.yml"
+
+    assessment = ghcp.assess_workflow(workflow_path)
+
+    assert assessment.ci_probes == "must-fix"
+
+
+def test_unmodified_scaffold_keeps_ghcp_ci_probes_control_and_finding_must_fix(tmp_path):
+    """The specific GHCP-003 (CI CTK/application-probe coverage) control
+    and finding -- not merely the overall assessment verdict -- must
+    stay `must-fix` for an unmodified scaffold: `ghcp.assess_change_plane`
+    is the single source of truth this repository's governance manifest
+    ultimately reports through, so asserting against it directly proves
+    the fix at the layer the defect actually lives in.
+    """
+    scaffold.scaffold(tmp_path, "maf", True)
+
+    result = ghcp.assess_change_plane(tmp_path)
+
+    assert result.controls["ghcp_ci_probes"] in ("must-fix", "not-verified")
+    ci_probe_findings = [f for f in result.findings if f.finding_id == "GHCP-003"]
+    assert ci_probe_findings, "expected a GHCP-003 finding for an unmodified scaffold"
+    assert all(f.status in ("must-fix", "not-verified") for f in ci_probe_findings)
+
+
+def test_deliberate_marker_removal_is_the_only_thing_that_restores_ci_probes_pass(tmp_path):
+    """Marker removal -- simulating a customer who has actually reviewed
+    and wired this workflow up for real -- is the *only* thing that
+    should ever flip rule 3 back to `pass` for this file; the underlying
+    CTK/application-probe `run:` lines never change. This also guards
+    against the fix being implemented as a blanket "scaffold workflows
+    always fail" rule: once the one marker key is gone, the file is
+    assessed exactly like any other pull_request-triggered workflow.
+    """
+    scaffold.scaffold(tmp_path, "maf", True)
+    workflow_path = tmp_path / ".github" / "workflows" / "governed-actions.yml"
+    document = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert ghcp.assess_workflow(workflow_path).ci_probes == "must-fix"  # still-scaffolded baseline
+
+    del document["env"][ghcp._SCAFFOLD_UNMODIFIED_ENV_NAME]
+    if not document["env"]:
+        del document["env"]
+    workflow_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert ghcp.assess_workflow(workflow_path).ci_probes == "pass"
 
 
 # ---------------------------------------------------------------------------
