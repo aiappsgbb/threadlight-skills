@@ -2414,6 +2414,16 @@ _STAGING_CANARY_REQUEST_TIMEOUT_SECONDS = 10.0
 #: ``not-verified`` rather than hashed.
 _STAGING_CANARY_MAX_RESPONSE_BODY_BYTES = 1_048_576  # 1 MiB
 
+#: A fixed technical safety chunk size (in characters) used to encode a
+#: ``str`` canary response body to UTF-8 incrementally rather than all at
+#: once -- bounds the worst-case memory a single oversized/adversarial
+#: ``str`` body can force this project to allocate before the byte cap
+#: is enforced, never a customer content-size policy. A plain Python
+#: ``str`` slice always falls on a valid code-point boundary, so each
+#: chunk can be encoded independently with no multi-byte-character
+#: splitting risk.
+_STAGING_CANARY_BODY_ENCODE_CHUNK_CHARS = 65_536
+
 #: Fixed technical safety caps on a canary response's header mapping --
 #: bound the cost of iterating/searching an adversarially large or
 #: pathological header set for a deployment-id value, never a customer
@@ -2635,6 +2645,42 @@ def _status_in_2xx_4xx(status_code: object) -> bool:
     return _is_valid_http_status(status_code) and 200 <= status_code <= 499
 
 
+def _bounded_utf8_body_bytes(raw_body: str, max_bytes: int) -> Optional[bytes]:
+    """Encode a ``str`` canary response body to UTF-8 without ever
+    allocating more than roughly *max_bytes* worth of encoded bytes plus
+    one chunk's worth of overhead, returning ``None`` (meaning: reject as
+    oversized) the instant the cap is provably exceeded instead of only
+    *after* the full string has already been encoded.
+
+    Every UTF-8-encoded character occupies at least one byte, so
+    ``len(raw_body)`` -- the character count -- is always a valid lower
+    bound on the eventual encoded byte length. This lets the common
+    "obviously far too large" case be rejected immediately from the
+    character count alone, with no encoding at all. For a *str* that
+    passes that cheap precheck but still contains enough multi-byte
+    characters to exceed the cap once encoded, this function encodes in
+    small, fixed-size character chunks (a plain Python ``str`` slice is
+    always a valid code-point boundary, so ``chunk.encode("utf-8")`` per
+    slice is safe) and accumulates a running byte total, bailing out
+    before the running total is ever allowed to exceed *max_bytes* --
+    bounding worst-case memory to roughly *max_bytes* plus one chunk's
+    worth of maximum-width UTF-8 characters, never the full original
+    string's encoded size.
+    """
+    if len(raw_body) > max_bytes:
+        return None
+    encoded_chunks = []
+    total_bytes = 0
+    chunk_chars = _STAGING_CANARY_BODY_ENCODE_CHUNK_CHARS
+    for start in range(0, len(raw_body), chunk_chars):
+        chunk_bytes = raw_body[start : start + chunk_chars].encode("utf-8")
+        total_bytes += len(chunk_bytes)
+        if total_bytes > max_bytes:
+            return None
+        encoded_chunks.append(chunk_bytes)
+    return b"".join(encoded_chunks)
+
+
 def run_staging_canary(
     contract: Mapping[str, object],
     run: HttpReadRunner,
@@ -2820,8 +2866,13 @@ def run_staging_canary(
             observed=f"malformed_body_type={type(raw_body).__name__}",
             evidence_refs=(),
         )
-    body_bytes = raw_body if isinstance(raw_body, bytes) else raw_body.encode("utf-8")
-    if len(body_bytes) > _STAGING_CANARY_MAX_RESPONSE_BODY_BYTES:
+    if isinstance(raw_body, bytes):
+        body_bytes: Optional[bytes] = raw_body
+        if len(body_bytes) > _STAGING_CANARY_MAX_RESPONSE_BODY_BYTES:
+            body_bytes = None
+    else:
+        body_bytes = _bounded_utf8_body_bytes(raw_body, _STAGING_CANARY_MAX_RESPONSE_BODY_BYTES)
+    if body_bytes is None:
         return ProbeResult(
             probe_id="staging-canary",
             action_id=None,

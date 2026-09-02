@@ -68,6 +68,18 @@ _MAX_ALERT_CATALOG_BYTES = 2_000_000
 #: into a finding regardless.
 _MAX_ALERT_IDENTIFIER_LENGTH = 200
 
+#: The *closed* allowlist of field names design section 17 permits in an
+#: alert definition -- ``enabled`` (must be declared and ``True``) plus
+#: the stable ``reason_code``/``correlation_id`` pair it requires, and
+#: nothing else. This is a positive allowlist, not a deny-list of known
+#: payload-shaped names: a field this project never anticipated (for
+#: example ``event_payload`` or ``request_body``, neither of which
+#: exactly matches any name :func:`canonical.validate_payload_free_audit`
+#: bans) is rejected by default for not being on this list, rather than
+#: silently passed through because it happens not to match a banned
+#: name.
+_ALERT_DEFINITION_ALLOWED_KEYS = frozenset({"enabled", "reason_code", "correlation_id"})
+
 
 def _is_bounded_nonblank_identifier(value: object) -> bool:
     """Whether *value* is a string this project trusts as a stable
@@ -154,17 +166,22 @@ def _load_alert_catalog(root: Path) -> Tuple[Optional[Mapping[str, object]], Opt
 
 
 def _definition_is_complete(definition: object) -> bool:
-    """True only if *definition* is enabled, declares a non-blank
-    (once stripped of surrounding whitespace), length-bounded, stable
-    ``reason_code``/``correlation_id`` pair, and contains no payload
-    field.
+    """True only if *definition* declares *exactly* the closed
+    :data:`_ALERT_DEFINITION_ALLOWED_KEYS` field set (nothing more,
+    nothing this project did not itself require), is enabled, and
+    declares a non-blank (once stripped of surrounding whitespace),
+    length-bounded, stable ``reason_code``/``correlation_id`` pair.
 
     Any other shape -- disabled, missing/blank/whitespace-only/
-    non-string/oversized identifiers, or a payload-bearing key such as
-    ``message``/``body``/``output`` -- is reported incomplete rather
-    than guessed at as acceptable.
+    non-string/oversized identifiers, or *any* field name outside the
+    closed allowlist (whether an obviously payload-shaped name such as
+    ``event_payload``/``request_body``, or an innocuous-looking one such
+    as ``description``) -- is reported incomplete rather than guessed at
+    as acceptable.
     """
     if not isinstance(definition, Mapping):
+        return False
+    if not all(key in _ALERT_DEFINITION_ALLOWED_KEYS for key in definition):
         return False
     if definition.get("enabled") is not True:
         return False

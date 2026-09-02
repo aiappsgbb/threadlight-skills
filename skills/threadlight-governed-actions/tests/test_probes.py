@@ -2915,3 +2915,85 @@ def test_staging_canary_deployment_id_at_cap_is_recorded(safe_canary, trusted_st
     result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
     assert result.status == "pass"
     assert deployment_id_at_cap in result.observed
+
+
+# --- Round 8, issue 1: a ``str`` canary response body must never be
+# fully UTF-8-encoded (and thus fully allocated) before the byte-size
+# cap is enforced -- ``_bounded_utf8_body_bytes`` bounds worst-case
+# memory via a cheap character-count precheck plus incremental,
+# fixed-size-chunk encoding that bails out the instant the running byte
+# total would exceed the cap. -----------------------------------------
+
+
+def test_bounded_utf8_body_bytes_matches_full_encode_for_ascii_under_cap():
+    text = "hello world" * 10
+    result = probes._bounded_utf8_body_bytes(text, max_bytes=1024)
+    assert result == text.encode("utf-8")
+
+
+def test_bounded_utf8_body_bytes_matches_full_encode_across_chunk_boundary():
+    # A run of 2-byte-per-character text long enough to straddle the
+    # internal chunking boundary at least once, to prove chunk-wise
+    # encoding never mis-splits a multi-byte code point.
+    chunk = probes._STAGING_CANARY_BODY_ENCODE_CHUNK_CHARS
+    text = "\u00e9" * (chunk + 5)
+    max_bytes = len(text.encode("utf-8")) + 1
+    result = probes._bounded_utf8_body_bytes(text, max_bytes=max_bytes)
+    assert result == text.encode("utf-8")
+
+
+def test_bounded_utf8_body_bytes_rejects_obviously_oversized_char_count():
+    # Character count alone already exceeds max_bytes, so this must be
+    # rejected by the cheap precheck without ever encoding.
+    text = "a" * 2000
+    assert probes._bounded_utf8_body_bytes(text, max_bytes=1000) is None
+
+
+def test_bounded_utf8_body_bytes_rejects_multibyte_body_under_char_precheck():
+    # 600_000 characters is under a 1_048_576-byte cap in character-count
+    # terms (so the cheap precheck alone would let it through), but each
+    # character is 2 UTF-8 bytes, so the true encoded size
+    # (1_200_000 bytes) exceeds the cap -- this must only be caught by
+    # the incremental running-total check.
+    max_bytes = 1_048_576
+    text = "\u00e9" * 600_000
+    assert len(text) <= max_bytes  # precheck alone would not reject this
+    assert probes._bounded_utf8_body_bytes(text, max_bytes=max_bytes) is None
+
+
+def test_bounded_utf8_body_bytes_accepts_exact_cap_with_multibyte_chars():
+    max_bytes = 1_048_576
+    assert max_bytes % 2 == 0
+    text = "\u00e9" * (max_bytes // 2)
+    result = probes._bounded_utf8_body_bytes(text, max_bytes=max_bytes)
+    assert result == text.encode("utf-8")
+    assert len(result) == max_bytes
+
+
+def test_staging_canary_oversized_multibyte_str_body_is_not_verified_without_echo(
+    safe_canary, trusted_staging_origin
+):
+    oversized_text = "\u00e9" * 600_000  # 1_200_000 UTF-8 bytes, > 1 MiB cap
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body=oversized_text)
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert oversized_text[:100] not in result.observed
+    assert "response_sha256" not in result.observed
+
+
+def test_staging_canary_str_body_at_cap_is_still_hashed(safe_canary, trusted_staging_origin):
+    body_at_cap = "\u00e9" * (probes._STAGING_CANARY_MAX_RESPONSE_BODY_BYTES // 2)
+
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body=body_at_cap)
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "pass"
+    assert "response_sha256" in result.observed
+    assert result.observed.endswith(
+        f"response_sha256=sha256:{hashlib.sha256(body_at_cap.encode('utf-8')).hexdigest()}"
+    )

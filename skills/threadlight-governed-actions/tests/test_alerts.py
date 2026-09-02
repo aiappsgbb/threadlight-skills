@@ -141,6 +141,9 @@ def test_missing_alert_class_is_should_fix(tmp_path):
         {"reason_code": "   "},
         {"reason_code": "\t\n  "},
         {"correlation_id": "   "},
+        {"event_payload": {"data": "unexpected"}},
+        {"request_body": "raw bytes"},
+        {"description": "even a benign-looking extra field is rejected"},
     ],
 )
 def test_incomplete_definition_is_should_fix(tmp_path, patch):
@@ -441,3 +444,39 @@ def test_invalid_utf8_catalog_bytes_is_should_fix_never_crashes(tmp_path):
     assert "\xff" not in finding.details
     assert "\ufffd" not in finding.details
     assert str(tmp_path) not in finding.details
+
+
+# --- Round 8, issue 2: alert definitions use a *closed allowlist*
+# schema -- only ``enabled``/``reason_code``/``correlation_id`` are ever
+# permitted -- rather than a deny-list of known payload-shaped names, so
+# a field this project never anticipated (``event_payload``,
+# ``request_body``, or even an innocuous-looking ``description``) is
+# rejected by default instead of slipping through because it happens
+# not to exactly match a banned name. ---------------------------------
+
+
+def test_unknown_definition_field_is_should_fix_without_echo(tmp_path):
+    _write_catalog(
+        tmp_path,
+        overrides={"tuple-drift": {"event_payload": {"secret": "sekrit-value-should-not-leak"}}},
+    )
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert "sekrit-value-should-not-leak" not in finding.details
+    assert "event_payload" not in finding.details
+    assert evidence == ()
+
+
+def test_definition_is_complete_rejects_unknown_fields():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    assert alerts._definition_is_complete(base) is True
+    assert alerts._definition_is_complete({**base, "event_payload": {"x": 1}}) is False
+    assert alerts._definition_is_complete({**base, "request_body": "raw"}) is False
+    assert alerts._definition_is_complete({**base, "description": "benign-looking"}) is False
+
+
+def test_definition_is_complete_allowlist_is_exactly_three_fields():
+    assert alerts._ALERT_DEFINITION_ALLOWED_KEYS == frozenset(
+        {"enabled", "reason_code", "correlation_id"}
+    )
