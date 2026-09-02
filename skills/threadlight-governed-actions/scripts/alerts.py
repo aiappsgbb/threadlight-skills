@@ -124,13 +124,34 @@ def _incomplete_alert_classes(catalog: Mapping[str, object]) -> Tuple[str, ...]:
     )
 
 
-def _string_tuple(live_evidence: Optional[Mapping[str, object]], key: str) -> Tuple[str, ...]:
-    if not live_evidence:
+def _validate_alert_class_list(values: object) -> Optional[Tuple[str, ...]]:
+    """Validate a live-evidence alert-class list (``dropped_alert_classes``
+    or ``unavailable_alert_classes``).
+
+    Returns:
+
+    - ``()`` when *values* is absent (``None``) -- no claim was made.
+    - A deduplicated, sorted tuple of alert-class names when *values* is
+      a ``list``/``tuple`` of at most eight entries, every one of which
+      is a ``str`` drawn from :data:`REQUIRED_ALERT_CLASSES`.
+    - ``None`` for any other shape -- a bare ``str``/``bytes``, a
+      ``Mapping``, anything else that is not a ``list``/``tuple``, a
+      collection longer than the eight recognized alert classes, or one
+      containing any entry that is not itself one of those exact eight
+      recognized names -- signalling to the caller that this live
+      evidence cannot be trusted and must never be echoed back.
+    """
+    if values is None:
         return ()
-    values = live_evidence.get(key)
-    if not values:
-        return ()
-    return tuple(str(value) for value in values)
+    if isinstance(values, (str, bytes)):
+        return None
+    if not isinstance(values, (list, tuple)):
+        return None
+    if len(values) > len(REQUIRED_ALERT_CLASSES):
+        return None
+    if not all(isinstance(value, str) and value in REQUIRED_ALERT_CLASSES for value in values):
+        return None
+    return tuple(sorted(set(values)))
 
 
 def _catalog_evidence(root: Path, phase: Phase) -> Tuple[EvidenceRef, ...]:
@@ -199,8 +220,15 @@ def assess_alerts(
     was handed (never collecting any of it itself).
 
     Reports exactly one ``OPS-001`` :class:`Finding`, in this fail-closed
-    precedence:
+    precedence -- applied only *after* *live_evidence* itself has been
+    validated:
 
+    0. ``"not-verified"`` when *live_evidence* is present but is not a
+       ``Mapping``, or when its ``dropped_alert_classes``/
+       ``unavailable_alert_classes`` entries are not each a bounded list
+       of recognized alert-class names -- malformed live evidence can
+       never be trusted enough to even evaluate precedence, and its raw
+       value is never echoed back.
     1. ``"must-fix"`` when *live_evidence* proves a mandatory alert class
        was actually dropped (``live_evidence["dropped_alert_classes"]``)
        -- proven event loss is never merely a "should fix".
@@ -211,9 +239,16 @@ def assess_alerts(
        class's live delivery state could not be confirmed
        (``live_evidence["unavailable_alert_classes"]``) -- an
        inaccessible live check is never silently treated as passing.
-    4. ``"pass"`` only once every required alert class is confirmed
-       complete on disk and no live evidence reports either drop or
-       unavailability.
+    4. ``"not-verified"`` when the catalog is complete but this
+       function's own evidence for it cannot be source-bound to a real,
+       clean git checkout (no ``.git``, unresolved repository/commit, or
+       a working tree dirty with respect to the catalog file) -- a
+       complete-looking catalog is not itself proof unless it can be
+       tied to the exact repository/commit assessed.
+    5. ``"pass"`` only once every required alert class is confirmed
+       complete on disk, no live evidence reports either drop or
+       unavailability, and clean, source-bound evidence for the catalog
+       could actually be built.
 
     Never includes a definition's ``reason_code``/``correlation_id``/any
     other field value in the returned finding -- only the affected alert
@@ -221,7 +256,39 @@ def assess_alerts(
     without exposing catalog contents that might themselves carry an
     operational secret.
     """
-    dropped = _string_tuple(live_evidence, "dropped_alert_classes")
+    if live_evidence is not None and not isinstance(live_evidence, Mapping):
+        return (
+            _alert_finding(
+                phase,
+                "not-verified",
+                "alert-live-evidence-malformed",
+                "Live evidence about alert delivery was not in a recognized shape.",
+                "The supplied live evidence was not a JSON object, so it could not "
+                "be interpreted.",
+            ),
+            (),
+        )
+
+    dropped = _validate_alert_class_list(
+        live_evidence.get("dropped_alert_classes") if live_evidence else None
+    )
+    unavailable = _validate_alert_class_list(
+        live_evidence.get("unavailable_alert_classes") if live_evidence else None
+    )
+    if dropped is None or unavailable is None:
+        return (
+            _alert_finding(
+                phase,
+                "not-verified",
+                "alert-live-evidence-malformed",
+                "Live evidence about alert delivery was not in a recognized shape.",
+                "dropped_alert_classes/unavailable_alert_classes must each be a list "
+                "of at most eight recognized alert-class names; the supplied value "
+                "was not, so it could not be interpreted.",
+            ),
+            (),
+        )
+
     if dropped:
         return (
             _alert_finding(
@@ -231,7 +298,7 @@ def assess_alerts(
                 "Live evidence proved a mandatory governance alert event was not "
                 "delivered.",
                 "The following mandatory alert class(es) were proven dropped rather "
-                f"than delivered: {', '.join(sorted(dropped))}.",
+                f"than delivered: {', '.join(dropped)}.",
             ),
             (),
         )
@@ -266,7 +333,6 @@ def assess_alerts(
             (),
         )
 
-    unavailable = _string_tuple(live_evidence, "unavailable_alert_classes")
     if unavailable:
         return (
             _alert_finding(
@@ -276,7 +342,23 @@ def assess_alerts(
                 "Live delivery state for a required governance alert class could "
                 "not be confirmed.",
                 "Live delivery state could not be confirmed for the following "
-                f"alert class(es): {', '.join(sorted(unavailable))}.",
+                f"alert class(es): {', '.join(unavailable)}.",
+            ),
+            (),
+        )
+
+    catalog_evidence = _catalog_evidence(root, phase)
+    if not catalog_evidence:
+        return (
+            _alert_finding(
+                phase,
+                "not-verified",
+                "alert-catalog-evidence-unbound",
+                "The production alert catalog looked complete but could not be "
+                "bound to real, clean git provenance.",
+                f"{_ALERTS_CATALOG_RELATIVE_PATH.as_posix()} could not be tied to a "
+                "genuine, clean git checkout's repository and commit, so its "
+                "completeness cannot be treated as proven.",
             ),
             (),
         )
@@ -292,5 +374,5 @@ def assess_alerts(
             "enabled, and payload-free in "
             f"{_ALERTS_CATALOG_RELATIVE_PATH.as_posix()}.",
         ),
-        _catalog_evidence(root, phase),
+        catalog_evidence,
     )

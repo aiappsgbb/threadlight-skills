@@ -162,6 +162,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, List, Mapping, Optional, Tuple
+from urllib.parse import urlsplit
 
 import canonical
 from contracts import Finding, Phase, ProbeResult, UnsafeTargetError
@@ -2374,11 +2375,22 @@ HttpReadRunner = Callable[[Mapping[str, object]], object]
 
 _STAGING_CANARY_ALLOWED_METHODS = frozenset({"GET", "HEAD"})
 
-#: Header names :func:`run_staging_canary` never allows literally on a
-#: canary request -- checked case-insensitively, exact match only (never
-#: a substring match, so an unrelated header is never rejected by
-#: coincidence).
-_STAGING_CANARY_FORBIDDEN_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+#: The *only* request header names :func:`run_staging_canary` ever allows
+#: on a canary request -- checked case-insensitively, exact match only.
+#: This is a positive allowlist of known-harmless names, not merely a
+#: deny-list of known-dangerous ones, so a header this project never
+#: anticipated is rejected by default rather than passed through by
+#: omission.
+_STAGING_CANARY_ALLOWED_HEADER_NAMES = frozenset(
+    {
+        "accept",
+        "accept-encoding",
+        "accept-language",
+        "user-agent",
+        "x-request-id",
+        "x-correlation-id",
+    }
+)
 
 #: The response header names (checked case-insensitively, in this order)
 #: :func:`run_staging_canary` looks in for a deployment-identifying value
@@ -2414,18 +2426,85 @@ def validate_post_deploy_target(phase: Phase, staging: bool, destructive: bool) 
         )
 
 
-def _forbidden_canary_header(headers: object) -> Optional[str]:
+def _disallowed_canary_header(headers: object) -> Optional[str]:
+    """The first request header name *headers* declares that is not on
+    this probe's positive allowlist of harmless canary headers -- or
+    ``None`` when *headers* is ``None`` or every header it declares is
+    allowed. *headers* being anything other than ``None`` or a mapping
+    is itself a contract violation, never silently ignored.
+    """
     if headers is None:
         return None
     if not isinstance(headers, Mapping):
         raise UnsafeTargetError("staging canary headers must be a mapping")
     for key in headers:
-        if str(key).strip().lower() in _STAGING_CANARY_FORBIDDEN_HEADERS:
+        if str(key).strip().lower() not in _STAGING_CANARY_ALLOWED_HEADER_NAMES:
             return str(key)
     return None
 
 
-def _validate_canary_contract(contract: Mapping[str, object]) -> None:
+def _is_valid_http_status(value: object) -> bool:
+    """Whether *value* is a plausible HTTP status code: an ``int`` (never
+    a bare ``bool``, which is technically an ``int`` subclass) in the
+    100-599 range every real HTTP status line uses."""
+    return isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599
+
+
+def _is_valid_canary_headers(headers: object) -> bool:
+    """Whether *headers* is a mapping of plain string names to plain
+    string values -- the only shape :func:`run_staging_canary` ever
+    trusts enough to search for a deployment-id header."""
+    if not isinstance(headers, Mapping):
+        return False
+    return all(
+        isinstance(key, str) and isinstance(value, str) for key, value in headers.items()
+    )
+
+
+def _parse_canary_https_url(url: object, *, what: str) -> str:
+    """Validate *url* is a plain ``https://host[:port]/path`` URL with no
+    embedded userinfo, query string, or fragment, returning its
+    normalized ``https://host[:port]`` origin.
+
+    Raises :class:`UnsafeTargetError` (naming *what*, e.g. ``"staging
+    canary url"`` or ``"trusted staging origin"``) for anything else: a
+    non-``https`` scheme, embedded credentials, a missing hostname, a
+    query string, or a fragment -- any of which could smuggle a
+    credential or silently redirect the canary somewhere other than the
+    one origin actually intended.
+    """
+    if not isinstance(url, str):
+        raise UnsafeTargetError(f"{what} must be an https:// URL string; got {url!r}")
+    parsed = urlsplit(url)
+    if parsed.scheme != "https":
+        raise UnsafeTargetError(f"{what} must use https://; got {url!r}")
+    if parsed.username is not None or parsed.password is not None:
+        raise UnsafeTargetError(f"{what} must not contain embedded userinfo")
+    if not parsed.hostname:
+        raise UnsafeTargetError(f"{what} must name a host")
+    if parsed.query:
+        raise UnsafeTargetError(f"{what} must not contain a query string")
+    if parsed.fragment:
+        raise UnsafeTargetError(f"{what} must not contain a fragment")
+    origin = f"https://{parsed.hostname}"
+    if parsed.port is not None:
+        origin += f":{parsed.port}"
+    return origin
+
+
+def _validate_canary_contract(contract: Mapping[str, object], trusted_origin: object) -> str:
+    """Validate *contract* is safe to run at all, returning the single
+    HTTPS origin (``scheme://host[:port]``) it is bound to.
+
+    The canary URL must resolve to a plain ``https://host[:port]/path``
+    with no userinfo, query string, or fragment, and that resolved
+    origin must exactly match *trusted_origin* -- an independently
+    supplied, caller-owned staging origin. This project never infers
+    "is this really staging" from the contract's own self-asserted
+    ``environment`` field, or from a hostname that merely looks like
+    staging; only an exact match against a value the caller supplied
+    out-of-band is ever trusted.
+    """
     if contract.get("environment") != "staging":
         raise UnsafeTargetError(
             f"staging canary requires environment 'staging'; got "
@@ -2438,20 +2517,29 @@ def _validate_canary_contract(contract: Mapping[str, object]) -> None:
         raise UnsafeTargetError(
             f"staging canary allows only HTTPS GET/HEAD; got method {method!r}"
         )
-    url = contract.get("url")
-    if not isinstance(url, str) or not url.startswith("https://"):
-        raise UnsafeTargetError(f"staging canary requires an https:// URL; got {url!r}")
-    if "?" in url:
-        raise UnsafeTargetError("staging canary URL must not contain a query string")
+    origin = _parse_canary_https_url(contract.get("url"), what="staging canary url")
+    trusted = _parse_canary_https_url(trusted_origin, what="trusted staging origin")
+    if origin != trusted:
+        raise UnsafeTargetError(
+            "staging canary url origin does not match the independently "
+            "supplied trusted staging origin"
+        )
     if contract.get("query"):
         raise UnsafeTargetError("staging canary must not send request query parameters")
     if contract.get("body"):
         raise UnsafeTargetError("staging canary must not send a request body")
-    forbidden_header = _forbidden_canary_header(contract.get("headers"))
-    if forbidden_header is not None:
+    disallowed_header = _disallowed_canary_header(contract.get("headers"))
+    if disallowed_header is not None:
         raise UnsafeTargetError(
-            f"staging canary must not send a literal {forbidden_header!r} header"
+            f"staging canary must not send a non-allowlisted {disallowed_header!r} header"
         )
+    expected_status = contract.get("expected_status")
+    if expected_status is not None and not _is_valid_http_status(expected_status):
+        raise UnsafeTargetError(
+            f"staging canary expected_status must be an int in 100..599; got "
+            f"{expected_status!r}"
+        )
+    return origin
 
 
 def _canary_deployment_id(headers: Mapping[str, object]) -> Optional[str]:
@@ -2469,33 +2557,55 @@ def _status_in_2xx_4xx(status_code: object) -> bool:
     ``bool``, which is technically an ``int`` subclass) or one outside
     200-499 (for example a 5xx server error) is never accepted merely
     because nothing more specific was asked for."""
-    return isinstance(status_code, int) and not isinstance(status_code, bool) and 200 <= status_code <= 499
+    return _is_valid_http_status(status_code) and 200 <= status_code <= 499
 
 
 def run_staging_canary(
-    contract: Mapping[str, object], run: HttpReadRunner
+    contract: Mapping[str, object],
+    run: HttpReadRunner,
+    *,
+    trusted_origin: str,
 ) -> ProbeResult:
     """Run one optional, narrowly-bounded live HTTP canary against a
     staging environment.
 
     Accepts only a contract declaring ``environment: "staging"``,
     ``destructive: false``, an HTTPS ``GET``/``HEAD`` *method*, a *url*
-    with no query string, no request *body*, and no literal
-    authorization-style header; any other contract raises
-    :class:`UnsafeTargetError` before *run* is ever invoked, so an unsafe
-    canary can never reach the network at all.
+    with no userinfo, query string, or fragment, no request *body*, and
+    only allowlisted (never authorization-style) headers; any other
+    contract raises :class:`UnsafeTargetError` before *run* is ever
+    invoked, so an unsafe canary can never reach the network at all.
+
+    Requires *trusted_origin* -- an independently supplied, caller-owned
+    ``https://host[:port]`` staging origin -- and refuses to run at all
+    unless the contract's URL resolves to exactly that origin; this
+    project never infers "is this really staging" from the contract's
+    own self-asserted ``environment`` field or from a hostname that
+    merely looks like staging. The outbound request always asks the
+    runner not to follow redirects; if the runner nonetheless reports a
+    final response URL, that URL must resolve to the same https origin
+    or the result is reported ``not-verified`` rather than trusted.
+
+    The response itself is validated just as strictly: a non-integer or
+    out-of-range status code, a headers value that is not a mapping of
+    plain strings, or a body that is not ``bytes``/``str`` is reported
+    ``not-verified`` -- naming only the malformed value's type, never
+    the value itself -- rather than trusted at face value.
 
     Records only the observed HTTP status code, the wall-clock duration
     of the call, any deployment-id-style response header, and a hash of
     the response body -- the actual body content is read only long
     enough to hash it and is never itself stored, logged, or returned.
     """
-    _validate_canary_contract(contract)
+    origin = _validate_canary_contract(contract, trusted_origin)
     request = {
         "method": str(contract["method"]).upper(),
         "url": contract["url"],
         "headers": dict(contract.get("headers") or {}),
+        "allow_redirects": False,
     }
+    expected_status = contract.get("expected_status")
+    expected_label = f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx"
     started = time.monotonic()
     try:
         response = run(request)
@@ -2506,25 +2616,75 @@ def run_staging_canary(
             path_id=None,
             status="not-verified",
             reason_code="staging-canary-unreachable",
-            expected=f"HTTP {contract.get('expected_status')}",
+            expected=expected_label,
             observed=f"error_class={type(error).__name__}",
             evidence_refs=(),
         )
     duration_ms = (time.monotonic() - started) * 1000.0
 
+    final_url = getattr(response, "url", None)
+    if final_url is not None:
+        try:
+            final_origin = _parse_canary_https_url(final_url, what="staging canary response url")
+        except UnsafeTargetError:
+            final_origin = None
+        if final_origin != origin:
+            return ProbeResult(
+                probe_id="staging-canary",
+                action_id=None,
+                path_id=None,
+                status="not-verified",
+                reason_code="staging-canary-off-origin-redirect",
+                expected=expected_label,
+                observed="response_url_off_origin=True",
+                evidence_refs=(),
+            )
+
     status_code = getattr(response, "status_code", None)
+    if not _is_valid_http_status(status_code):
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed=f"malformed_status_type={type(status_code).__name__}",
+            evidence_refs=(),
+        )
     headers = getattr(response, "headers", None)
+    if headers is not None and not _is_valid_canary_headers(headers):
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed=f"malformed_headers_type={type(headers).__name__}",
+            evidence_refs=(),
+        )
     headers = headers if isinstance(headers, Mapping) else {}
     deployment_id = _canary_deployment_id(headers)
     raw_body = getattr(response, "body", b"")
-    body_bytes = raw_body if isinstance(raw_body, bytes) else str(raw_body).encode("utf-8")
+    if not isinstance(raw_body, (bytes, str)):
+        return ProbeResult(
+            probe_id="staging-canary",
+            action_id=None,
+            path_id=None,
+            status="not-verified",
+            reason_code="staging-canary-malformed-response",
+            expected=expected_label,
+            observed=f"malformed_body_type={type(raw_body).__name__}",
+            evidence_refs=(),
+        )
+    body_bytes = raw_body if isinstance(raw_body, bytes) else raw_body.encode("utf-8")
     response_hash = canonical.sha256_hex(body_bytes)
 
     observed = (
         f"status={status_code} duration_ms={duration_ms:.1f} "
         f"deployment_id={deployment_id!r} response_sha256=sha256:{response_hash}"
     )
-    expected_status = contract.get("expected_status")
     if expected_status is not None:
         status_matches_contract = status_code == expected_status
     else:
@@ -2536,7 +2696,7 @@ def run_staging_canary(
             path_id=None,
             status="not-verified",
             reason_code="staging-canary-unexpected-status",
-            expected=f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx",
+            expected=expected_label,
             observed=observed,
             evidence_refs=(),
         )
@@ -2546,7 +2706,7 @@ def run_staging_canary(
         path_id=None,
         status="pass",
         reason_code="staging-canary-nondestructive-read",
-        expected=f"HTTP {expected_status}" if expected_status is not None else "HTTP 2xx-4xx",
+        expected=expected_label,
         observed=observed,
         evidence_refs=(),
     )

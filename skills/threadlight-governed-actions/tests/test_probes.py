@@ -2181,10 +2181,16 @@ def test_finding_templates_agree_with_catalog_plane_for_shared_ids():
 
 
 class _FakeHttpResponse:
-    def __init__(self, status_code, headers=None, body=b""):
+    def __init__(self, status_code, headers=None, body=b"", url=None):
         self.status_code = status_code
         self.headers = dict(headers or {})
         self.body = body
+        # Only set ``self.url`` when a test actually cares about a final
+        # response URL, so ``getattr(response, "url", None)`` defaults
+        # to ``None`` (no redirect same-origin check at all) for every
+        # test that never supplies one.
+        if url is not None:
+            self.url = url
 
 
 class _FakeHttpRunner:
@@ -2202,6 +2208,11 @@ def fake_http_runner():
     return _FakeHttpRunner(
         _FakeHttpResponse(204, headers={"X-Deployment-Id": "dep-123"}, body=b"")
     )
+
+
+@pytest.fixture
+def trusted_staging_origin():
+    return "https://staging.example.invalid"
 
 
 @pytest.fixture
@@ -2237,8 +2248,12 @@ def test_non_post_deploy_phase_is_unaffected_by_staging_flag():
     validate_post_deploy_target(phase="design", staging=False, destructive=True)
 
 
-def test_staging_canary_allows_only_nondestructive_https_read(safe_canary, fake_http_runner):
-    result = run_staging_canary(safe_canary, run=fake_http_runner)
+def test_staging_canary_allows_only_nondestructive_https_read(
+    safe_canary, fake_http_runner, trusted_staging_origin
+):
+    result = run_staging_canary(
+        safe_canary, run=fake_http_runner, trusted_origin=trusted_staging_origin
+    )
     assert result.status == "pass"
     assert fake_http_runner.requests[0]["method"] == "HEAD"
 
@@ -2252,57 +2267,69 @@ def test_staging_canary_allows_only_nondestructive_https_read(safe_canary, fake_
         ("url", "http://staging.example.invalid/governance/health"),
     ],
 )
-def test_staging_canary_rejects_unsafe_contract(field, value, safe_canary):
+def test_staging_canary_rejects_unsafe_contract(field, value, safe_canary, trusted_staging_origin):
     with pytest.raises(UnsafeTargetError):
-        run_staging_canary({**safe_canary, field: value}, run=lambda request: None)
+        run_staging_canary(
+            {**safe_canary, field: value},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
 
 
-def test_staging_canary_rejects_request_body(safe_canary):
+def test_staging_canary_rejects_request_body(safe_canary, trusted_staging_origin):
     with pytest.raises(UnsafeTargetError):
-        run_staging_canary({**safe_canary, "body": "some-body"}, run=lambda request: None)
+        run_staging_canary(
+            {**safe_canary, "body": "some-body"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
 
 
-def test_staging_canary_rejects_query_string(safe_canary):
+def test_staging_canary_rejects_query_string(safe_canary, trusted_staging_origin):
     with pytest.raises(UnsafeTargetError):
         run_staging_canary(
             {**safe_canary, "url": safe_canary["url"] + "?token=abc"},
             run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
         )
 
 
-def test_staging_canary_rejects_literal_authorization_header(safe_canary):
+def test_staging_canary_rejects_literal_authorization_header(safe_canary, trusted_staging_origin):
     with pytest.raises(UnsafeTargetError):
         run_staging_canary(
             {**safe_canary, "headers": {"Authorization": "Bearer xyz"}},
             run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
         )
 
 
 def test_staging_canary_records_status_duration_deployment_id_and_response_hash_only(
-    safe_canary, fake_http_runner
+    safe_canary, fake_http_runner, trusted_staging_origin
 ):
-    result = run_staging_canary(safe_canary, run=fake_http_runner)
+    result = run_staging_canary(safe_canary, run=fake_http_runner, trusted_origin=trusted_staging_origin)
     assert "204" in result.observed
     assert "dep-123" in result.observed
     assert "sha256" in result.observed
 
 
-def test_staging_canary_never_records_raw_response_body(safe_canary):
+def test_staging_canary_never_records_raw_response_body(safe_canary, trusted_staging_origin):
     def _runner(request):
         return _FakeHttpResponse(204, headers={}, body=b"super-secret-customer-payload")
 
-    result = run_staging_canary(safe_canary, run=_runner)
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
     assert "super-secret-customer-payload" not in result.observed
     assert "super-secret-customer-payload" not in (result.reason_code or "")
 
 
-def test_staging_canary_get_method_is_also_allowed(safe_canary, fake_http_runner):
-    result = run_staging_canary({**safe_canary, "method": "GET"}, run=fake_http_runner)
+def test_staging_canary_get_method_is_also_allowed(safe_canary, fake_http_runner, trusted_staging_origin):
+    result = run_staging_canary(
+        {**safe_canary, "method": "GET"}, run=fake_http_runner, trusted_origin=trusted_staging_origin
+    )
     assert result.status == "pass"
     assert fake_http_runner.requests[0]["method"] == "GET"
 
 
-def test_staging_canary_without_expected_status_accepts_2xx_4xx_status(safe_canary):
+def test_staging_canary_without_expected_status_accepts_2xx_4xx_status(safe_canary, trusted_staging_origin):
     # A contract that never declares an ``expected_status`` still documents
     # (and must actually enforce) an "HTTP 2xx-4xx" acceptance range --
     # never silently accepting *any* status merely because none was named.
@@ -2311,17 +2338,197 @@ def test_staging_canary_without_expected_status_accepts_2xx_4xx_status(safe_cana
     def _runner(request):
         return _FakeHttpResponse(404, headers={}, body=b"")
 
-    result = run_staging_canary(contract, run=_runner)
+    result = run_staging_canary(contract, run=_runner, trusted_origin=trusted_staging_origin)
     assert result.status == "pass"
     assert result.expected == "HTTP 2xx-4xx"
 
 
-def test_staging_canary_without_expected_status_rejects_5xx_status(safe_canary):
+def test_staging_canary_without_expected_status_rejects_5xx_status(safe_canary, trusted_staging_origin):
     contract = {key: value for key, value in safe_canary.items() if key != "expected_status"}
 
     def _runner(request):
         return _FakeHttpResponse(503, headers={}, body=b"")
 
-    result = run_staging_canary(contract, run=_runner)
+    result = run_staging_canary(contract, run=_runner, trusted_origin=trusted_staging_origin)
     assert result.status == "not-verified"
     assert result.reason_code == "staging-canary-unexpected-status"
+
+
+def test_staging_canary_rejects_url_with_userinfo(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": "https://user:pass@staging.example.invalid/governance/health"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_rejects_url_with_fragment(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": safe_canary["url"] + "#section"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_rejects_url_not_matching_trusted_origin(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": "https://other-host.invalid/governance/health"},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_never_infers_staging_from_hostname_naming(safe_canary):
+    # A URL host that merely *contains* "staging" must never itself be
+    # trusted as staging -- only an exact origin match against the
+    # independently supplied ``trusted_origin`` counts.
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "url": "https://staging.evil.invalid/governance/health"},
+            run=lambda request: None,
+            trusted_origin="https://staging.example.invalid",
+        )
+
+
+def test_staging_canary_rejects_malformed_trusted_origin(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            safe_canary,
+            run=lambda request: None,
+            trusted_origin="not-a-url",
+        )
+
+
+def test_staging_canary_rejects_trusted_origin_with_query(safe_canary):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            safe_canary,
+            run=lambda request: None,
+            trusted_origin="https://staging.example.invalid?x=1",
+        )
+
+
+def test_staging_canary_requires_trusted_origin_keyword(safe_canary):
+    with pytest.raises(TypeError):
+        run_staging_canary(safe_canary, run=lambda request: None)
+
+
+def test_staging_canary_rejects_non_allowlisted_header(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "headers": {"X-Custom-Trace": "abc"}},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_allows_allowlisted_header(safe_canary, fake_http_runner, trusted_staging_origin):
+    result = run_staging_canary(
+        {**safe_canary, "headers": {"X-Request-Id": "abc"}},
+        run=fake_http_runner,
+        trusted_origin=trusted_staging_origin,
+    )
+    assert result.status == "pass"
+    assert fake_http_runner.requests[0]["headers"] == {"X-Request-Id": "abc"}
+
+
+def test_staging_canary_request_always_disables_redirects(
+    safe_canary, fake_http_runner, trusted_staging_origin
+):
+    run_staging_canary(safe_canary, run=fake_http_runner, trusted_origin=trusted_staging_origin)
+    assert fake_http_runner.requests[0]["allow_redirects"] is False
+
+
+def test_staging_canary_off_origin_response_redirect_is_not_verified(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _FakeHttpResponse(
+            204, headers={}, body=b"", url="https://attacker.invalid/other"
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-off-origin-redirect"
+    assert "attacker.invalid" not in result.observed
+
+
+def test_staging_canary_same_origin_response_url_passes(safe_canary, trusted_staging_origin):
+    def _runner(request):
+        return _FakeHttpResponse(
+            204,
+            headers={},
+            body=b"",
+            url="https://staging.example.invalid/governance/health",
+        )
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "pass"
+
+
+@pytest.mark.parametrize("malformed_status", [True, "204", 204.0, 1000, 0])
+def test_staging_canary_rejects_malformed_status(
+    safe_canary, trusted_staging_origin, malformed_status
+):
+    def _runner(request):
+        return _FakeHttpResponse(malformed_status, headers={}, body=b"")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert str(malformed_status) not in result.observed
+
+
+def test_staging_canary_rejects_non_mapping_headers(safe_canary, trusted_staging_origin):
+    def _runner(request):
+        response = _FakeHttpResponse(204, headers={}, body=b"")
+        response.headers = ["not", "a", "mapping"]
+        return response
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+
+
+def test_staging_canary_rejects_non_string_header_values(safe_canary, trusted_staging_origin):
+    def _runner(request):
+        response = _FakeHttpResponse(204, headers={}, body=b"")
+        response.headers = {"X-Deployment-Id": 12345}
+        return response
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+
+
+def test_staging_canary_rejects_non_bytes_str_body(safe_canary, trusted_staging_origin):
+    def _runner(request):
+        response = _FakeHttpResponse(204, headers={}, body=b"")
+        response.body = 12345
+        return response
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert "12345" not in result.observed
+
+
+def test_staging_canary_rejects_out_of_range_expected_status(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "expected_status": 1000},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )
+
+
+def test_staging_canary_rejects_boolean_expected_status(safe_canary, trusted_staging_origin):
+    with pytest.raises(UnsafeTargetError):
+        run_staging_canary(
+            {**safe_canary, "expected_status": True},
+            run=lambda request: None,
+            trusted_origin=trusted_staging_origin,
+        )

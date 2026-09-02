@@ -61,6 +61,7 @@ import hashlib
 import json
 import re
 import struct
+import subprocess
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -3148,6 +3149,15 @@ class LiveEvidenceResult:
     finding: Optional[Finding]
 
 
+#: Hard upper bound on a read-only command's stdout, in bytes, this module
+#: will ever attempt to parse as JSON. This is a bounded-external-result
+#: guard, not a business policy: no real ``gh``/``az`` read-only response
+#: this module queries is ever legitimately this large, so anything past it
+#: is treated as unusable (and never even handed to ``json.loads``) rather
+#: than risking pathological parse/canonicalization cost.
+_MAX_LIVE_COMMAND_STDOUT_BYTES = 2_000_000
+
+
 def _run_read_only_command(
     run: CommandRunner, command: List[str]
 ) -> Tuple[Optional[object], Optional[str], Optional[int]]:
@@ -3157,20 +3167,43 @@ def _run_read_only_command(
     Returns ``(payload, None, exit_code)`` on success or
     ``(None, error_class, exit_code)`` on failure. *error_class* is
     always one of a small, fixed set of labels (``"missing-cli"``,
-    ``"cli-error"``, ``"malformed-json"``) -- never the command's raw
-    stderr text -- so a failure can be reported without ever exposing
-    whatever the real CLI actually printed (which could itself carry a
-    token, an internal hostname, or other operator-only detail).
-    *exit_code* is the real, numeric process exit code whenever one
-    actually exists (``None`` only when the command could never even
-    start, i.e. a missing CLI binary) -- redacting stderr must never
-    also discard the one CLI-failure detail (the exit code itself) that
-    carries no secret and is genuinely useful for triage.
+    ``"timeout"``, ``"cli-error"``, ``"malformed-json"``) -- never the
+    command's raw stderr text -- so a failure can be reported without
+    ever exposing whatever the real CLI actually printed (which could
+    itself carry a token, an internal hostname, or other operator-only
+    detail). *exit_code* is the real, numeric process exit code
+    whenever one actually exists (``None`` only when the command could
+    never even start, i.e. a missing CLI binary or a timeout) --
+    redacting stderr must never also discard the one CLI-failure detail
+    (the exit code itself) that carries no secret and is genuinely
+    useful for triage.
+
+    Only the runner-boundary failures a real command runner (for
+    example one wired to ``subprocess.run``) can actually declare are
+    ever caught here: a missing CLI binary (``FileNotFoundError``), a
+    runner-enforced timeout (``subprocess.TimeoutExpired``), any other
+    declared subprocess failure (``subprocess.SubprocessError``), or a
+    lower-level OS failure (``OSError``). A programmer error in *run*
+    that is none of these is never silently swallowed here.
+
+    A successful response is still only ever as usable as it is
+    actually well-formed: stdout larger than
+    :data:`_MAX_LIVE_COMMAND_STDOUT_BYTES`, text that is not valid JSON
+    (or is nested/circular deeply enough to exhaust recursion), and a
+    value that parses as JSON but cannot itself be canonicalized (for
+    example a non-finite ``NaN``/``Infinity`` float ``json.loads``
+    itself would otherwise silently accept) are all reported the same
+    ``"malformed-json"`` way -- never partially trusted merely because
+    parsing itself happened to succeed.
     """
     try:
         completed = run(command)
     except FileNotFoundError:
         return None, "missing-cli", None
+    except subprocess.TimeoutExpired:
+        return None, "timeout", None
+    except subprocess.SubprocessError:
+        return None, "cli-error", None
     except OSError:
         return None, "cli-error", None
     exit_code = getattr(completed, "returncode", None)
@@ -3178,9 +3211,16 @@ def _run_read_only_command(
         exit_code = None
     if exit_code != 0:
         return None, "cli-error", exit_code
+    stdout = getattr(completed, "stdout", "")
+    if isinstance(stdout, (str, bytes)) and len(stdout) > _MAX_LIVE_COMMAND_STDOUT_BYTES:
+        return None, "malformed-json", exit_code
     try:
-        payload = json.loads(getattr(completed, "stdout", ""))
-    except (TypeError, ValueError):
+        payload = json.loads(stdout)
+    except (TypeError, ValueError, RecursionError):
+        return None, "malformed-json", exit_code
+    try:
+        canonical.canonical_bytes(payload)
+    except canonical.CanonicalizationError:
         return None, "malformed-json", exit_code
     return payload, None, exit_code
 
@@ -3200,6 +3240,26 @@ def _is_json_list(payload: object) -> bool:
 
 def _is_json_mapping(payload: object) -> bool:
     return isinstance(payload, Mapping)
+
+
+def _is_nonempty_json_mapping(payload: object) -> bool:
+    """Whether *payload* is a JSON object with at least one field -- a
+    real GitHub API response for the endpoints this guards is never
+    legitimately an empty ``{}``; an empty mapping proves nothing and
+    must never be treated as complete evidence merely because it parsed
+    as valid JSON.
+    """
+    return isinstance(payload, Mapping) and len(payload) > 0
+
+
+def _is_json_list_of_mappings(payload: object) -> bool:
+    """Whether *payload* is a JSON array whose every element is itself a
+    JSON object -- the shape every real GitHub/Azure "list" response
+    uses for its entries. An empty list is still accepted here (zero
+    rulesets, zero federated credentials, etc. is a legitimate real
+    state); only an element that is not itself an object is rejected.
+    """
+    return isinstance(payload, list) and all(isinstance(entry, Mapping) for entry in payload)
 
 
 def _github_not_verified(
@@ -3259,7 +3319,59 @@ def _github_environment_protection(payload: object) -> Dict[str, object]:
 
 
 def _validate_github_environments_payload(payload: object) -> bool:
-    return isinstance(payload, Mapping) and isinstance(payload.get("environments"), list)
+    """Whether *payload* is a usable ``GET /repos/{repo}/environments``
+    response: a mapping with an ``environments`` list, and -- unlike a
+    transform that would merely skip an entry it cannot recognize -- a
+    single unrecognized entry (not itself an object, a blank/non-string
+    ``name``, or a non-list ``protection_rules`` when present) fails the
+    *entire* payload. An empty ``environments`` list is still accepted
+    (a repository can legitimately have zero environments configured);
+    only an entry that is present but malformed is ever rejected.
+    """
+    if not isinstance(payload, Mapping):
+        return False
+    entries = payload.get("environments")
+    if not isinstance(entries, list):
+        return False
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            return False
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            return False
+        protection_rules = entry.get("protection_rules")
+        if protection_rules is not None and not isinstance(protection_rules, list):
+            return False
+    return True
+
+
+def _validate_github_actions_permissions_payload(payload: object) -> bool:
+    """Whether *payload* is a usable ``GET
+    /repos/{repo}/actions/permissions/workflow`` response: a nonempty
+    mapping naming a nonblank string ``default_workflow_permissions`` --
+    the one field every real response of this endpoint always carries,
+    and the field GHCP-002's least-privilege workflow-permissions check
+    actually needs.
+    """
+    if not _is_nonempty_json_mapping(payload):
+        return False
+    permissions = payload.get("default_workflow_permissions")
+    return isinstance(permissions, str) and bool(permissions)
+
+
+def _validate_github_oidc_customization_payload(payload: object) -> bool:
+    """Whether *payload* is a usable ``GET
+    /repos/{repo}/actions/oidc/customization/sub`` response: a nonempty
+    mapping naming an ``include_claim_keys`` list -- the one field every
+    real response of this endpoint always carries, and the field
+    GHCP-005's OIDC/WIF subject-claim check actually needs. An empty
+    ``include_claim_keys`` list is still accepted (GitHub's own default
+    is an empty customization); only a missing or non-list value is
+    rejected.
+    """
+    if not _is_nonempty_json_mapping(payload):
+        return False
+    return isinstance(payload.get("include_claim_keys"), list)
 
 
 #: Each of ``collect_live_github``'s five endpoints, in call order, paired
@@ -3271,12 +3383,37 @@ def _validate_github_environments_payload(payload: object) -> bool:
 #: exactly the two controls the design's collector contract ever attributes
 #: a GitHub live-evidence gap to.
 _GITHUB_STEPS: Tuple[Tuple[str, str, str, Callable[[object], bool]], ...] = (
-    ("rulesets", "rulesets?includes_parents=true", "GHCP-002", _is_json_list),
-    ("branch_protection", "branches/{default_branch}/protection", "GHCP-002", _is_json_mapping),
-    ("actions_permissions_workflow", "actions/permissions/workflow", "GHCP-002", _is_json_mapping),
+    ("rulesets", "rulesets?includes_parents=true", "GHCP-002", _is_json_list_of_mappings),
+    ("branch_protection", "branches/{default_branch}/protection", "GHCP-002", _is_nonempty_json_mapping),
+    ("actions_permissions_workflow", "actions/permissions/workflow", "GHCP-002", _validate_github_actions_permissions_payload),
     ("environments", "environments", "GHCP-002", _validate_github_environments_payload),
-    ("oidc_customization_sub", "actions/oidc/customization/sub", "GHCP-005", _is_json_mapping),
+    ("oidc_customization_sub", "actions/oidc/customization/sub", "GHCP-005", _validate_github_oidc_customization_payload),
 )
+
+
+def _sorted_by_field(
+    entries: Sequence[Mapping[str, object]], field: str
+) -> List[Mapping[str, object]]:
+    """Return *entries* (each already known to be a JSON mapping) sorted
+    into one deterministic, fully reproducible order.
+
+    Primarily sorted by *field* whenever a given entry names it as a
+    nonblank string; an entry missing that field (or naming it with
+    something other than a nonblank string) sorts after every entry
+    that has one, ordered among themselves by that entry's own
+    canonical JSON bytes. This makes a live-evidence digest invariant
+    to whatever transient order the live API itself happened to return
+    elements in on a given call, and makes it change only when the
+    actual *set* of elements genuinely changes.
+    """
+
+    def _key(entry: Mapping[str, object]) -> Tuple[int, str]:
+        value = entry.get(field)
+        if isinstance(value, str) and value:
+            return (0, value)
+        return (1, canonical.canonical_bytes(entry).decode("utf-8", "replace"))
+
+    return sorted(entries, key=_key)
 
 
 def _with_collected_digest(data: Mapping[str, object]) -> Dict[str, object]:
@@ -3311,17 +3448,33 @@ def collect_live_github(
     surfaces from ``gh`` as a non-zero exit, a missing ``gh`` binary as
     ``FileNotFoundError``, and each is reported the same "not-verified"
     way -- and also stops at the first response that parses as JSON but
-    is not shaped the way that endpoint's real GitHub API response
-    always is (for example rulesets that is not a JSON array, or an
-    environments response missing its own ``environments`` list): an
-    incomplete or unrecognized payload is exactly as unusable as no
-    payload at all, and must never be reported ``"pass"`` merely because
-    it happened to parse. Every failure is attributed to whichever GHCP
-    control that specific endpoint's live evidence affects (GHCP-002 for
-    every endpoint except the OIDC subject-customization one, which
-    affects GHCP-005), never blurred into a single generic control. This
-    function never records a raw stderr string -- only a small fixed
-    error-class label and the real numeric process exit code.
+    is not shaped (and, where the endpoint's real API response always
+    carries a required field, not *populated*) the way that endpoint's
+    real GitHub API response always is: for example rulesets that is
+    not a JSON array of objects, a branch-protection or workflow-
+    permissions response that is an empty ``{}``, a workflow-permissions
+    response missing its own ``default_workflow_permissions`` string, an
+    environments response with even one entry missing a nonblank
+    ``name``, or an OIDC customization response missing its own
+    ``include_claim_keys`` list. An incomplete or unrecognized payload
+    is exactly as unusable as no payload at all, and must never be
+    reported ``"pass"`` merely because it happened to parse. Every
+    failure is attributed to whichever GHCP control that specific
+    endpoint's live evidence affects (GHCP-002 for every endpoint except
+    the OIDC subject-customization one, which affects GHCP-005), never
+    blurred into a single generic control. This function never records
+    a raw stderr string -- only a small fixed error-class label and the
+    real numeric process exit code.
+
+    ``rulesets`` is sorted by name (falling back to each entry's own
+    canonical bytes when unnamed) before it is stored or hashed, so the
+    returned evidence -- and its ``collected_sha256`` digest -- is
+    invariant to whatever transient order the live API happened to
+    return elements in, and changes only when the actual live state
+    does. The returned *data* also names the *repository*/
+    *default_branch* scope this collection is bound to, so the digest
+    itself is bound to that scope and can never be silently reused
+    across a different repository or branch.
     """
     collected: Dict[str, object] = {}
     for key, endpoint_suffix, finding_id, validate in _GITHUB_STEPS:
@@ -3334,8 +3487,9 @@ def collect_live_github(
         collected[key] = payload
 
     data: Dict[str, object] = {
+        "repository": repository,
         "default_branch": default_branch,
-        "rulesets": collected["rulesets"],
+        "rulesets": _sorted_by_field(collected["rulesets"], "name"),
         "branch_protection": {default_branch: collected["branch_protection"]},
         "actions_permissions_workflow": collected["actions_permissions_workflow"],
         "environments": _github_environment_protection(collected["environments"]),
@@ -3399,6 +3553,26 @@ def _validate_role_assignment_role_names(role_assignments: object) -> Optional[T
     return tuple(sorted(names))
 
 
+def _matching_role_definition(role_name: str, definition: object) -> Optional[Mapping[str, object]]:
+    """The single role-definition object a real ``az role definition
+    list --name {role_name}`` response names for *role_name* -- or
+    ``None`` when *definition* is not a JSON array, does not contain
+    *exactly* one entry, that one entry is not itself a JSON object, or
+    that entry's own ``roleName`` does not match *role_name*. Azure's
+    real CLI, queried by exact ``--name``, always resolves to precisely
+    one matching definition for a role that genuinely exists; anything
+    else (zero matches, more than one, or a mismatched name) is an
+    ambiguous or incomplete result that can never prove what
+    *role_name* actually grants.
+    """
+    if not isinstance(definition, list) or len(definition) != 1:
+        return None
+    entry = definition[0]
+    if not isinstance(entry, Mapping) or entry.get("roleName") != role_name:
+        return None
+    return entry
+
+
 def collect_live_azure(
     subscription: str,
     resource_group: str,
@@ -3426,21 +3600,36 @@ def collect_live_azure(
     is reported ``"not-verified"`` before any command runs at all (there
     is nothing safe to query). A federated-credential-list command that
     fails outright (non-zero exit, missing CLI, unparseable output), or
-    that succeeds but returns a payload that is not the JSON array Azure's
-    real CLI output always is, is attributed to GHCP-005 -- either way
-    the OIDC/WIF evidence that control needs is unusable, and an
-    incomplete result is exactly as unusable as no result at all. A
-    role-assignment-list or role-definition-list command that fails
-    outright, or that succeeds but returns a payload that is not shaped
-    the way Azure's real CLI output always is (not a JSON array, an
-    assignment entry that is not itself a JSON object, or a missing/
-    blank/non-string ``roleDefinitionName``), is attributed to GHCP-006
-    (least-privilege / identity-separation evidence): an incomplete or
-    unrecognized result can never prove identities are actually separate
-    and least-privileged, so it must never be reported "pass". This
-    function never records a raw stderr string or any command argument
-    beyond the identifiers the caller supplied -- only a small fixed
-    error-class label and the real numeric process exit code.
+    that succeeds but returns a payload that is not a JSON array of
+    objects the way Azure's real CLI output always is, is attributed to
+    GHCP-005 -- either way the OIDC/WIF evidence that control needs is
+    unusable, and an incomplete result is exactly as unusable as no
+    result at all. A role-assignment-list or role-definition-list
+    command that fails outright, or that succeeds but returns a payload
+    that is not shaped the way Azure's real CLI output always is (not a
+    JSON array, an assignment entry that is not itself a JSON object, a
+    missing/blank/non-string ``roleDefinitionName``, or a role-
+    definition-list response that does not resolve to *exactly one*
+    matching definition object naming the same role), is attributed to
+    GHCP-006 (least-privilege / identity-separation evidence): an
+    incomplete, ambiguous, or unrecognized result can never prove
+    identities are actually separate and least-privileged, so it must
+    never be reported "pass". This function never records a raw stderr
+    string or any command argument beyond the identifiers the caller
+    supplied -- only a small fixed error-class label and the real
+    numeric process exit code.
+
+    ``federated_credentials`` and ``role_assignments`` are each sorted
+    (by ``name``/``roleDefinitionName`` respectively, falling back to
+    each entry's own canonical bytes when unnamed) before they are
+    stored or hashed, so the returned evidence -- and its
+    ``collected_sha256`` digest -- is invariant to whatever transient
+    order the live API happened to return elements in, and changes only
+    when the actual live state does. The returned *data* also names the
+    *subscription*/*resource_group*/*deploy_identity* scope this
+    collection is bound to, so the digest itself is bound to that scope
+    and can never be silently reused across a different identity or
+    subscription.
     """
     if not subscription or not resource_group or not deploy_identity:
         return _azure_not_verified(
@@ -3470,12 +3659,12 @@ def collect_live_azure(
             error_class,
             exit_code,
         )
-    if not _is_json_list(federated_credentials):
+    if not _is_json_list_of_mappings(federated_credentials):
         return _azure_not_verified(
             "GHCP-005",
             "azure-federated-credential-evidence-malformed",
             "A read-only 'az identity federated-credential list' call "
-            "returned a response that was not the expected JSON array",
+            "returned a response that was not the expected JSON array of objects",
             "malformed-shape",
             exit_code,
         )
@@ -3531,21 +3720,25 @@ def collect_live_azure(
                 error_class,
                 exit_code,
             )
-        if not _is_json_list(definition):
+        matching_definition = _matching_role_definition(role_name, definition)
+        if matching_definition is None:
             return _azure_not_verified(
                 "GHCP-006",
                 "azure-role-definition-evidence-malformed",
                 f"A read-only 'az role definition list' call for role "
-                f"{role_name!r} returned a response that was not the "
-                "expected JSON array",
+                f"{role_name!r} did not resolve to exactly one matching "
+                "role-definition object",
                 "malformed-shape",
                 exit_code,
             )
-        role_definitions[role_name] = definition
+        role_definitions[role_name] = matching_definition
 
     data: Dict[str, object] = {
-        "federated_credentials": federated_credentials,
-        "role_assignments": role_assignments,
+        "subscription": subscription,
+        "resource_group": resource_group,
+        "deploy_identity": deploy_identity,
+        "federated_credentials": _sorted_by_field(federated_credentials, "name"),
+        "role_assignments": _sorted_by_field(role_assignments, "roleDefinitionName"),
         "role_definitions": role_definitions,
     }
     return LiveEvidenceResult(status="pass", data=_with_collected_digest(data), evidence=(), finding=None)

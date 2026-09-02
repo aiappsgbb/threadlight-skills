@@ -7412,6 +7412,23 @@ def _ok(stdout: str) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
 
+def _valid_github_responses() -> List[subprocess.CompletedProcess]:
+    """A fresh, independently-mutable list of five ``_ok(...)`` responses,
+    one per ``collect_live_github`` endpoint in call order, each shaped
+    exactly the way that endpoint's real (non-empty, fully-populated)
+    GitHub API response always is -- the baseline every adversarial
+    "one endpoint is malformed" test starts from and overrides exactly
+    one entry of.
+    """
+    return [
+        _ok("[]"),
+        _ok(json.dumps({"required_status_checks": {"strict": True, "contexts": []}})),
+        _ok(json.dumps({"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})),
+        _ok(json.dumps({"environments": []})),
+        _ok(json.dumps({"include_claim_keys": []})),
+    ]
+
+
 def _forbidden() -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(
         args=[], returncode=1, stdout="", stderr="HTTP 403 Forbidden"
@@ -7423,10 +7440,10 @@ def fake_runner() -> _FakeRunner:
     return _FakeRunner(
         [
             _ok("[]"),
-            _ok("{}"),
-            _ok("{}"),
+            _ok(json.dumps({"required_status_checks": {"strict": True, "contexts": []}})),
+            _ok(json.dumps({"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})),
             _ok(json.dumps({"environments": [{"name": "staging", "protection_rules": []}]})),
-            _ok("{}"),
+            _ok(json.dumps({"include_claim_keys": ["repository", "ref"]})),
         ]
     )
 
@@ -7502,7 +7519,9 @@ def test_live_github_cli_failure_retains_exit_code_and_error_class(fake_runner_4
 
 
 def test_live_github_oidc_endpoint_failure_is_ghcp_005():
-    runner = _FakeRunner([_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _forbidden()])
+    responses = _valid_github_responses()
+    responses[4] = _forbidden()
+    runner = _FakeRunner(responses)
     result = collect_live_github("owner/repo", "main", run=runner)
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-005"
@@ -7513,16 +7532,24 @@ def test_live_github_oidc_endpoint_failure_is_ghcp_005():
     "index,malformed_stdout,expected_finding_id",
     [
         (0, "{}", "GHCP-002"),  # rulesets must be a JSON array, not a mapping
+        (0, "[1]", "GHCP-002"),  # rulesets entries must each be a JSON object
         (1, "[]", "GHCP-002"),  # branch protection must be a JSON object
+        (1, "{}", "GHCP-002"),  # branch protection must not be an empty object
         (2, "[]", "GHCP-002"),  # actions/permissions/workflow must be a JSON object
+        (2, "{}", "GHCP-002"),  # actions/permissions/workflow must not be empty
+        (2, json.dumps({"other": "field"}), "GHCP-002"),  # must name default_workflow_permissions
         (3, "[]", "GHCP-002"),  # environments must be a JSON object with an "environments" list
+        (3, json.dumps({"environments": [{"protection_rules": []}]}), "GHCP-002"),  # entry needs a name
+        (3, json.dumps({"environments": [{"name": "prod", "protection_rules": "nope"}]}), "GHCP-002"),
         (4, "[]", "GHCP-005"),  # oidc customization must be a JSON object
+        (4, "{}", "GHCP-005"),  # oidc customization must not be empty
+        (4, json.dumps({"other": "field"}), "GHCP-005"),  # must name include_claim_keys
     ],
 )
 def test_live_github_malformed_endpoint_shape_is_not_verified(
     index, malformed_stdout, expected_finding_id
 ):
-    responses = [_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
+    responses = _valid_github_responses()
     responses[index] = _ok(malformed_stdout)
     runner = _FakeRunner(responses)
     result = collect_live_github("owner/repo", "main", run=runner)
@@ -7532,7 +7559,8 @@ def test_live_github_malformed_endpoint_shape_is_not_verified(
 
 
 def test_live_github_environments_missing_key_is_not_verified():
-    responses = [_ok("[]"), _ok("{}"), _ok("{}"), _ok("{}"), _ok("{}")]
+    responses = _valid_github_responses()
+    responses[3] = _ok("{}")
     runner = _FakeRunner(responses)
     result = collect_live_github("owner/repo", "main", run=runner)
     assert result.status == "not-verified"
@@ -7553,15 +7581,37 @@ def test_live_github_success_includes_collected_sha256_digest_over_canonical_dat
 
 
 def test_live_github_digest_changes_when_state_changes():
-    runner_a = _FakeRunner(
-        [_ok("[]"), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
-    )
-    runner_b = _FakeRunner(
-        [_ok('[{"id": 1}]'), _ok("{}"), _ok("{}"), _ok(json.dumps({"environments": []})), _ok("{}")]
-    )
+    responses_a = _valid_github_responses()
+    responses_b = _valid_github_responses()
+    responses_b[0] = _ok('[{"id": 1, "name": "a-ruleset"}]')
+    runner_a = _FakeRunner(responses_a)
+    runner_b = _FakeRunner(responses_b)
     result_a = collect_live_github("owner/repo", "main", run=runner_a)
     result_b = collect_live_github("owner/repo", "main", run=runner_b)
+    assert result_a.status == result_b.status == "pass"
     assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
+
+
+def test_live_github_digest_is_invariant_to_ruleset_return_order():
+    # The live GitHub API offers no ordering guarantee across two separate
+    # ``rulesets`` calls; the digest must depend only on the *set* of
+    # rulesets actually returned, never on the transient order two
+    # equivalent calls happened to return them in.
+    responses_a = _valid_github_responses()
+    responses_a[0] = _ok(json.dumps([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]))
+    responses_b = _valid_github_responses()
+    responses_b[0] = _ok(json.dumps([{"id": 2, "name": "b"}, {"id": 1, "name": "a"}]))
+    result_a = collect_live_github("owner/repo", "main", run=_FakeRunner(responses_a))
+    result_b = collect_live_github("owner/repo", "main", run=_FakeRunner(responses_b))
+    assert result_a.data["collected_sha256"] == result_b.data["collected_sha256"]
+
+
+def test_live_github_digest_is_bound_to_repository_and_branch_scope():
+    result_a = collect_live_github("owner/repo-a", "main", run=_FakeRunner(_valid_github_responses()))
+    result_b = collect_live_github("owner/repo-b", "main", run=_FakeRunner(_valid_github_responses()))
+    assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
+    assert result_a.data["repository"] == "owner/repo-a"
+    assert result_b.data["repository"] == "owner/repo-b"
 
 
 @pytest.fixture
@@ -7578,8 +7628,8 @@ def fake_azure_runner() -> _FakeRunner:
                     ]
                 )
             ),
-            _ok("[]"),
-            _ok("[]"),
+            _ok(json.dumps([{"roleName": "Contributor"}])),
+            _ok(json.dumps([{"roleName": "Reader"}])),
         ]
     )
 
@@ -7747,6 +7797,144 @@ def test_live_azure_non_list_role_definition_response_is_ghcp_006():
     assert result.status == "not-verified"
     assert result.finding.finding_id == "GHCP-006"
     assert result.evidence == ()
+
+
+@pytest.mark.parametrize(
+    "definition_stdout",
+    [
+        "[]",  # zero matching definitions
+        json.dumps([{"roleName": "Owner"}, {"roleName": "Owner"}]),  # more than one match
+        json.dumps([{"roleName": "SomeOtherRole"}]),  # single entry but wrong role name
+        json.dumps(["not-a-mapping"]),  # single entry but not itself a JSON object
+    ],
+)
+def test_live_azure_role_definition_ambiguous_or_mismatched_is_ghcp_006(definition_stdout):
+    # Azure's real CLI, queried by exact --name, always resolves to exactly
+    # one matching definition for a role that genuinely exists; anything
+    # else can never prove what the assigned role actually grants.
+    runner = _FakeRunner(
+        [_ok("[]"), _ok(json.dumps([{"roleDefinitionName": "Owner"}])), _ok(definition_stdout)]
+    )
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-006"
+    assert result.evidence == ()
+
+
+def test_live_azure_role_definition_exact_single_match_passes():
+    runner = _FakeRunner(
+        [
+            _ok("[]"),
+            _ok(json.dumps([{"roleDefinitionName": "Owner"}])),
+            _ok(json.dumps([{"roleName": "Owner", "id": "role-owner"}])),
+        ]
+    )
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "pass"
+    assert result.data["role_definitions"] == {"Owner": {"roleName": "Owner", "id": "role-owner"}}
+
+
+def test_live_azure_digest_is_bound_to_scope():
+    result_a = collect_live_azure("sub-a", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
+    result_b = collect_live_azure("sub-b", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
+    assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
+    assert result_a.data["subscription"] == "sub-a"
+    assert result_b.data["subscription"] == "sub-b"
+
+
+def test_live_azure_federated_credentials_entry_must_be_a_mapping():
+    runner = _FakeRunner([_ok(json.dumps(["not-a-mapping"]))])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-005"
+
+
+def test_live_azure_digest_invariant_to_role_assignment_return_order():
+    responses_a = [
+        _ok("[]"),
+        _ok(json.dumps([{"roleDefinitionName": "Owner"}, {"roleDefinitionName": "Reader"}])),
+        _ok(json.dumps([{"roleName": "Owner"}])),
+        _ok(json.dumps([{"roleName": "Reader"}])),
+    ]
+    responses_b = [
+        _ok("[]"),
+        _ok(json.dumps([{"roleDefinitionName": "Reader"}, {"roleDefinitionName": "Owner"}])),
+        _ok(json.dumps([{"roleName": "Owner"}])),
+        _ok(json.dumps([{"roleName": "Reader"}])),
+    ]
+    result_a = collect_live_azure("sub", "rg", "identity", run=_FakeRunner(responses_a))
+    result_b = collect_live_azure("sub", "rg", "identity", run=_FakeRunner(responses_b))
+    assert result_a.data["collected_sha256"] == result_b.data["collected_sha256"]
+
+
+# --- Issue 3: collector runner hardening (timeouts, malformed JSON,
+# NaN/nonfinite floats, oversized stdout, recursion) ------------------------
+
+
+def test_collect_live_github_runner_timeout_is_not_verified():
+    def _raise_timeout(command):
+        raise subprocess.TimeoutExpired(cmd=command, timeout=5)
+
+    result = collect_live_github("owner/repo", "main", run=_raise_timeout)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+    assert result.data["error_class"] == "timeout"
+    assert result.evidence == ()
+
+
+def test_collect_live_azure_runner_timeout_is_not_verified():
+    def _raise_timeout(command):
+        raise subprocess.TimeoutExpired(cmd=command, timeout=5)
+
+    result = collect_live_azure("sub", "rg", "identity", run=_raise_timeout)
+    assert result.status == "not-verified"
+    assert result.data["error_class"] == "timeout"
+
+
+def test_collect_live_github_runner_declared_subprocess_error_is_not_verified():
+    def _raise_subprocess_error(command):
+        raise subprocess.SubprocessError("boom")
+
+    result = collect_live_github("owner/repo", "main", run=_raise_subprocess_error)
+    assert result.status == "not-verified"
+    assert result.data["error_class"] == "cli-error"
+
+
+def test_collect_live_github_rejects_nonfinite_float_in_payload():
+    # ``json.loads`` itself silently accepts ``NaN``/``Infinity`` by
+    # default; this module must never treat such a payload as usable
+    # evidence merely because it happened to parse.
+    responses = _valid_github_responses()
+    responses[1] = _ok(json.dumps({"weight": 1}).replace("1", "NaN"))
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+    assert result.data["error_class"] == "malformed-json"
+
+
+def test_collect_live_github_rejects_oversized_stdout():
+    responses = _valid_github_responses()
+    huge = json.dumps({"padding": "x" * (ghcp._MAX_LIVE_COMMAND_STDOUT_BYTES + 1)})
+    responses[1] = _ok(huge)
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.data["error_class"] == "malformed-json"
+
+
+def test_collect_live_github_rejects_deeply_recursive_json():
+    # A JSON array nested deep enough to exhaust the interpreter's
+    # recursion limit during parsing or canonicalization must be
+    # rejected as unusable, never allowed to propagate an unhandled
+    # ``RecursionError`` out of the collector.
+    deeply_nested = "[" * 100000 + "]" * 100000
+    responses = _valid_github_responses()
+    responses[1] = _ok(deeply_nested)
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.data["error_class"] == "malformed-json"
 
 
 @pytest.mark.parametrize(
