@@ -392,6 +392,265 @@ def test_pull_request_target_untrusted_ref_variants_are_must_fix(
     assert result.pr_gate == "must-fix"
 
 
+# ---------------------------------------------------------------------------
+# High-priority fix 1: rule 1's `pull_request_target` checkout trust check
+# fails closed for a `ref:`/`repository:` expression it cannot actually
+# reason about as base-scoped -- an unrecognized dynamic expression is
+# never assumed safe merely because it fails to match a known-bad marker
+# by name; only a small allowlist of GitHub contexts this module can
+# actually prove stay base-scoped, or a statically-resolvable `env.NAME`
+# indirection recursively bound to one of those, is treated as trusted.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ref_expression",
+    [
+        "${{ inputs.target_ref }}",
+        "${{ github.event.pull_request.number }}",
+        "${{ vars.SOME_REF }}",
+        "${{ needs.build.outputs.ref }}",
+        "${{ fromJSON(github.event.client_payload).ref }}",
+    ],
+)
+def test_pull_request_target_unrecognized_dynamic_ref_is_must_fix(
+    tmp_path, ref_expression
+):
+    """An expression this module cannot actually reason about as
+    resolving to trusted, base-scoped data must fail closed -- it is
+    never assumed safe merely because it fails to match a known-bad
+    marker by name."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: {ref_expression}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_bracket_indexed_untrusted_ref_is_must_fix(tmp_path):
+    """A bracket-indexed equivalent (`['head']['ref']`) of an already-
+    recognized dotted-path marker (`.head.ref`) is normalized to its
+    dotted form before matching -- it cannot dodge the denylist purely
+    by using bracket notation."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ github.event.pull_request['head']['ref'] }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+@pytest.mark.parametrize(
+    "ref_expression",
+    [
+        "${{ github.repository }}",
+        "${{ github.sha }}",
+        "${{ github.ref }}",
+        "${{ github.base_ref }}",
+        "${{ github.event.repository.default_branch }}",
+        "${{ github.event.pull_request.base.ref }}",
+        "${{ github.event.pull_request.base.sha }}",
+    ],
+)
+def test_pull_request_target_trusted_expression_ref_stays_pass(tmp_path, ref_expression):
+    """A `${{ ... }}` expression referencing one of the small set of
+    GitHub contexts this module can actually reason about as always
+    resolving to trusted, base-branch/base-repository-scoped data is
+    not a false positive -- new coverage previously untested against a
+    fully fail-open default."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            f"""\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: {ref_expression}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_target_env_indirection_to_trusted_literal_stays_pass(tmp_path):
+    """A `${{ env.NAME }}` indirection whose value is statically
+    declared in the workflow's own `env:` block, and itself resolves to
+    a plain literal (no further expression), is trusted -- static env
+    indirection can be safely resolved rather than failing closed on
+    every dynamic-looking expression indiscriminately."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            env:
+              BASE_REF: main
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ env.BASE_REF }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_target_env_indirection_to_trusted_expression_stays_pass(tmp_path):
+    """A job-level `env:` value that itself resolves to a trusted
+    expression is recursively re-evaluated by the same trust rule, not
+    assumed safe merely because it was indirected through `env.NAME`
+    once."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  BASE_REF: ${{ github.event.pull_request.base.ref }}
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ env.BASE_REF }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "pass"
+
+
+def test_pull_request_target_unresolvable_env_indirection_is_must_fix(tmp_path):
+    """A `${{ env.NAME }}` indirection whose name is declared nowhere in
+    the step's, job's, or workflow's own `env:` blocks cannot be
+    resolved at all -- unresolvable indirection fails closed rather
+    than being assumed safe."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ env.UNDECLARED_REF }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
+def test_pull_request_target_env_indirection_to_untrusted_ref_is_must_fix(tmp_path):
+    """An `env.NAME` indirection that itself resolves to an
+    attacker-controlled ref must still fail closed -- indirection
+    through `env:` is never itself proof of trust."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow_path = workflow_dir / "label.yml"
+    workflow_path.write_text(
+        textwrap.dedent(
+            """\
+            name: Label
+            on:
+              pull_request_target:
+            env:
+              BASE_REF: ${{ github.event.pull_request.head.ref }}
+            permissions:
+              contents: read
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      ref: ${{ env.BASE_REF }}
+            """
+        ),
+        encoding="utf-8",
+    )
+    result = assess_workflow(workflow_path)
+    assert result.pr_gate == "must-fix"
+
+
 def test_direct_push_deploy_is_must_fix(tmp_path):
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True)
@@ -912,18 +1171,50 @@ def test_protected_declared_environment_confirms_pass(tmp_path):
     assert "GHCP-002" not in {f.finding_id for f in result.findings}
 
 
-def test_missing_environment_evidence_never_blocks_pass_on_its_own(tmp_path):
+def test_missing_environment_evidence_never_confirms_a_silent_pass(tmp_path):
     """A deploy job that declares an ``environment:`` but live evidence
-    supplies no ``environments`` mapping at all must not be blocked by
-    that absence alone -- environment protection is confirmed only "as
-    available"."""
+    supplies no ``environments`` mapping at all must never be treated
+    as confirmed by that silence -- a provenance-free/incomplete
+    mapping is exactly as inconclusive as no live evidence at all, and
+    can never upgrade GHCP-002 to a pass."""
     root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
     live_github = {
         "default_branch": "main",
         "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
     }
     result = assess_change_plane(root, live_github=live_github, live_azure=None)
-    assert "GHCP-002" not in {f.finding_id for f in result.findings}
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_environments_mapping_missing_declared_name_stays_not_verified(tmp_path):
+    """The ``environments`` mapping is present but simply omits the
+    deploy job's own declared environment name entirely -- still not
+    itself confirmation the environment is protected."""
+    root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+        "environments": {"staging": {"protected": True}},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
+
+
+def test_environment_entry_missing_protected_key_stays_not_verified(tmp_path):
+    """The declared environment's own entry is present but omits the
+    ``protected`` key entirely (rather than explicitly declaring it
+    ``False``) -- an incomplete mapping still cannot confirm a pass."""
+    root = _write_clean_repo_with_deploy_environment(tmp_path, "production")
+    live_github = {
+        "default_branch": "main",
+        "branch_protection": {"main": _STRONG_BRANCH_PROTECTION},
+        "environments": {"production": {}},
+    }
+    result = assess_change_plane(root, live_github=live_github, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
+    assert finding.status == "not-verified"
 
 
 # ---------------------------------------------------------------------------
@@ -1049,6 +1340,81 @@ def test_identity_separation_stays_not_verified_when_a_ref_is_unmapped(tmp_path)
     result = assess_change_plane(root, live_github=None, live_azure=live_azure)
     finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
     assert finding.status == "not-verified"
+
+
+# ---------------------------------------------------------------------------
+# High-priority fix 5: identity separation is compared at *job*, not
+# whole-workflow, granularity -- a single workflow file mixing a build/test
+# job with a separate deploy job, where the two jobs happen to reuse the
+# exact same identity, must still be caught even though both jobs live in
+# the very same file (and the file's own whole-workflow `is_deploy` flag is
+# a single shared boolean that would otherwise fold both jobs' identity
+# references into the same bucket).
+# ---------------------------------------------------------------------------
+
+
+def _repo_with_shared_identity_within_one_mixed_workflow(tmp_path: Path) -> Path:
+    root = tmp_path / "mixed-identity-repo"
+    workflow_dir = root / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "ci-and-deploy.yml").write_text(
+        textwrap.dedent(
+            """\
+            name: CI and Deploy
+            on:
+              pull_request:
+              workflow_dispatch:
+            permissions:
+              contents: read
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.SHARED_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - name: Run CTK and application probes
+                    run: |
+                      python -m ctk run-vectors
+                      python -m probes run-application-probe
+              deploy:
+                runs-on: ubuntu-latest
+                permissions:
+                  contents: read
+                  id-token: write
+                steps:
+                  - uses: actions/checkout@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                  - uses: azure/login@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+                    with:
+                      client-id: ${{ secrets.SHARED_CLIENT_ID }}
+                      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+                  - uses: azure/webapps-deploy@0ad4c47a9e566829e19b6099ee3458ac923f5d3c
+            """
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_identity_separation_catches_shared_identity_within_single_workflow(tmp_path):
+    """A build/test job and a deploy job sharing the exact same
+    identity, side by side in the *very same* workflow file, must be
+    flagged -- classifying jobs at whole-workflow granularity (a single
+    shared `is_deploy` boolean for the entire file) would fold both
+    jobs' identity references into the same bucket and never catch
+    this; job-scoped classification catches it correctly."""
+    root = _repo_with_shared_identity_within_one_mixed_workflow(tmp_path)
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    finding = next(f for f in result.findings if f.finding_id == "GHCP-006")
+    assert finding.status == "must-fix"
+    assert finding.reason_code == "shared-identity"
 
 
 # ---------------------------------------------------------------------------
@@ -1760,6 +2126,121 @@ def test_codeowners_unrelated_patterns_still_flagged_missing(tmp_path):
     assert "GHCP-002" in {f.finding_id for f in result.findings}
     finding = next(f for f in result.findings if f.finding_id == "GHCP-002")
     assert finding.status == "must-fix"
+
+
+# ---------------------------------------------------------------------------
+# High-priority fix 2: CODEOWNERS wildcard-overlap semantics -- a
+# depth-unanchored basename pattern (`*.json`, `*.yml`, a bare filename)
+# matches GitHub's own gitignore-style matching at *any* depth, not just
+# where a pattern is textually declared. Such a pattern can both satisfy
+# an exact-file requirement directly, and -- appearing *later* in the
+# file with a different (or no) owner -- carve a conservative override
+# hole out of an otherwise fully-owned recursive tree requirement.
+# ---------------------------------------------------------------------------
+
+
+def test_codeowners_depth_unanchored_pattern_satisfies_exact_file_requirements(
+    tmp_path,
+):
+    """A bare `*.yml`/`*.json` basename glob, with an owner, can satisfy
+    the exact-file governance requirements directly -- GitHub applies
+    such a pattern at any depth, including to these specific files."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            "*.yml @octo-org/governance",
+            "*.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
+
+
+def test_codeowners_ownerless_depth_unanchored_pattern_grants_no_coverage(tmp_path):
+    """The same bare basename glob, declared with *no* owner token at
+    all, is a valid CODEOWNERS shape that disowns whatever it matches --
+    it must never be treated as satisfying the exact-file requirement it
+    happens to also textually match."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            "*.yml",
+            "*.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_later_unanchored_different_owner_breaks_recursive_coverage(
+    tmp_path,
+):
+    """A later, depth-unanchored `*.json` pattern with a *different*
+    owner than the broad `tests/**` line that otherwise fully covers the
+    required tree must be treated as a potential override -- GitHub's
+    own matching applies it at any depth inside that tree, and this
+    module cannot enumerate the tree's real contents from pattern text
+    alone to rule that out."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "*.json @octo-org/other-team",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_later_unanchored_ownerless_breaks_recursive_coverage(tmp_path):
+    """A later, depth-unanchored, *ownerless* pattern is exactly as much
+    an override as one reassigning a different owner -- an empty owner
+    set still differs from the covering tree's own non-empty one."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "*.md",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "must-fix"
+
+
+def test_codeowners_later_unanchored_same_owner_does_not_break_coverage(tmp_path):
+    """A later depth-unanchored pattern that re-declares the *identical*
+    owner set is not a real override in substance and must not break
+    coverage that would otherwise be fully confirmed."""
+    root = _repo_with_codeowners(
+        tmp_path,
+        [
+            "src/governance/** @octo-org/governance",
+            "policies/** @octo-org/governance",
+            "tests/** @octo-org/governance",
+            ".github/workflows/governed-actions.yml @octo-org/governance",
+            "tests/governed-actions-manifest.json @octo-org/governance",
+            "tests/governed-actions-apply-plan.json @octo-org/governance",
+            "*.json @octo-org/governance",
+        ],
+    )
+    result = assess_change_plane(root, live_github=None, live_azure=None)
+    assert _codeowners_finding(result).status == "not-verified"
 
 
 # ---------------------------------------------------------------------------
@@ -3027,6 +3508,69 @@ def test_ctk_probe_with_unrelated_comment_line_still_passes(tmp_path):
         "# Run governance CTK/probe checks\n                      "
         "python -m ctk run-vectors\n                      "
         "python -m probes run-application-probe",
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+# ---------------------------------------------------------------------------
+# High-priority fix 3: shell command segments (chained at `&&`/`||`/`;`/`|`)
+# are inspected individually -- a step cannot smuggle a CTK/application-probe
+# marker past rule 3's inert-line filter merely by chaining an
+# echo/printf/comment fragment alongside a marker word on the same physical
+# line, since that line never itself *starts* with `echo`/`printf`.
+# ---------------------------------------------------------------------------
+
+
+def test_ctk_probe_chained_after_true_via_echo_is_must_fix(tmp_path):
+    """`true && echo "...ctk..."` never itself starts with `echo`, so a
+    whole-line-only inert filter would let it through; each shell
+    segment is inspected on its own, and the `echo`-only segment here
+    still contributes nothing but inert text."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        'true && echo "python -m ctk run-vectors"\n                      '
+        'true && echo "python -m probes run-application-probe"',
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_chained_after_pipe_to_cat_is_must_fix(tmp_path):
+    """A marker appearing only after a `|` pipe into an inert command
+    (`cat`) must not satisfy the check either -- the marker-bearing
+    segment is itself inert output, not a real invocation."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        'echo "python -m ctk run-vectors" | cat\n                      '
+        'echo "python -m probes run-application-probe" | cat',
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "must-fix"
+
+
+def test_ctk_probe_real_command_chained_with_trailing_echo_still_passes(tmp_path):
+    """A genuine invocation chained on the same line as a *trailing*
+    inert echo must still be recognized -- segment splitting only
+    filters the inert segment, it never discards a real command that
+    happens to share a line with one."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        'python -m ctk run-vectors && echo "done"\n                      '
+        'python -m probes run-application-probe && echo "done"',
+    )
+    result = assess_workflow(workflow)
+    assert result.ci_probes == "pass"
+
+
+def test_ctk_probe_trailing_inline_comment_on_real_command_still_passes(tmp_path):
+    """A genuine invocation followed by a trailing `#`-comment fragment
+    on the very same segment is unaffected -- only the comment
+    fragment itself is stripped, not the real command preceding it."""
+    workflow = _workflow_with_ci_probe_run(
+        tmp_path,
+        "python -m ctk run-vectors  # runs governance vectors\n                      "
+        "python -m probes run-application-probe  # runs app probe",
     )
     result = assess_workflow(workflow)
     assert result.ci_probes == "pass"

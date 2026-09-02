@@ -36,6 +36,7 @@ live proof.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import re
 import struct
@@ -124,6 +125,41 @@ _UNTRUSTED_CHECKOUT_REF_MARKERS: Tuple[str, ...] = (
     "github.event.pull_request.merge_commit_sha",
     "github.head_ref",
     "refs/pull/",
+)
+
+# GitHub Actions expression syntax allows bracket-indexed property access
+# (`github.event.pull_request['head']['ref']`,
+# `github.event.pull_request["head"]["sha"]`) as an exact equivalent to
+# dotted access (`github.event.pull_request.head.ref`) -- purely
+# rewriting a marker's dotted form into bracket notation must never be
+# enough to dodge the substring checks above. Every recognized
+# `['name']`/`["name"]` index is rewritten to its dotted equivalent
+# before any marker or trust check is attempted, so both forms are
+# caught identically.
+_INDEXED_EXPRESSION_ACCESS_RE = re.compile(r"\[\s*['\"]([A-Za-z0-9_]+)['\"]\s*\]")
+
+# A single `${{ ... }}` expression segment, captured non-greedily so a
+# value embedding more than one expression is inspected one expression
+# at a time.
+_EXPRESSION_SEGMENT_RE = re.compile(r"\$\{\{\s*(?P<inner>.*?)\s*\}\}", re.DOTALL)
+
+# The only GitHub context expressions this module can actually reason
+# about as always resolving to trusted, base-branch/base-repository-
+# scoped data for a `pull_request_target` checkout's own `ref:`/
+# `repository:` input -- exact context field names, checked as-is
+# (never a prefix match), plus a small set of dotted-object prefixes
+# whose *entire* subtree is base-scoped.
+_TRUSTED_CHECKOUT_EXPRESSIONS: Tuple[str, ...] = (
+    "github.repository",
+    "github.sha",
+    "github.ref",
+    "github.ref_name",
+    "github.ref_type",
+    "github.base_ref",
+)
+_TRUSTED_CHECKOUT_EXPRESSION_PREFIXES: Tuple[str, ...] = (
+    "github.event.repository.",
+    "github.event.pull_request.base.",
 )
 
 # A raw `git fetch`/`checkout`/`clone`/`pull` command run directly in a
@@ -356,6 +392,8 @@ class WorkflowAssessment:
     ci_probes: Status
     identity_refs: Tuple[str, ...]
     sha_violations: Tuple[str, ...]
+    deploy_identity_refs: Tuple[str, ...] = ()
+    non_deploy_identity_refs: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -924,6 +962,16 @@ def _redact_identity_ref(value: str) -> str:
     return f"<inline-identity-value-redacted:sha256:{digest}>"
 
 
+def _dedupe_preserve_order(items: Sequence[str]) -> Tuple[str, ...]:
+    seen: Set[str] = set()
+    unique: List[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return tuple(unique)
+
+
 def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[str, ...]:
     """Every distinct client-id/creds reference from *every* ``azure/
     login`` step in a workflow -- not merely its first one. A workflow
@@ -948,13 +996,7 @@ def _identity_refs(login_job_steps: Sequence[Tuple[Mapping, Mapping]]) -> Tuple[
             value = with_block.get(key)
             if value:
                 refs.append(_redact_identity_ref(str(value)))
-    seen: Set[str] = set()
-    unique: List[str] = []
-    for ref in refs:
-        if ref not in seen:
-            seen.add(ref)
-            unique.append(ref)
-    return tuple(unique)
+    return _dedupe_preserve_order(refs)
 
 
 # ---------------------------------------------------------------------------
@@ -980,6 +1022,172 @@ def _is_deploy_workflow(document: Mapping) -> bool:
     return any("deploy" in label for label in labels)
 
 
+def _is_deploy_job(job_id: object, job: Mapping) -> bool:
+    """True if *this specific* job -- not necessarily the workflow as a
+    whole -- deploys: one of its own steps references a known Azure
+    deploy action or runs a raw Azure/azd CLI deploy command directly,
+    or the job's own id/name says so. Mirrors
+    :func:`_is_deploy_workflow`'s three signals, but scoped to just
+    this one job's own steps/id/name rather than the whole document --
+    a workflow mixing a build/test job and a separate deploy job side
+    by side must have each job classified on its own terms, since rule
+    6's identity-separation check needs to know precisely which job
+    within a workflow is the deploying one, not merely whether *some*
+    job in the whole workflow deploys.
+    """
+    steps = job.get("steps")
+    step_list = (
+        [step for step in steps if isinstance(step, Mapping)]
+        if isinstance(steps, list)
+        else []
+    )
+    uses_refs = [
+        str(step.get("uses", "")).split("@", 1)[0].strip().lower()
+        for step in step_list
+        if step.get("uses")
+    ]
+    if any(marker in ref for ref in uses_refs for marker in _DEPLOY_ACTION_MARKERS):
+        return True
+    run_text = "\n".join(
+        step["run"] for step in step_list if isinstance(step.get("run"), str)
+    )
+    if _DEPLOY_RUN_COMMAND_RE.search(run_text):
+        return True
+    labels = [str(job_id).lower()]
+    job_name = job.get("name")
+    if job_name:
+        labels.append(str(job_name).lower())
+    return any("deploy" in label for label in labels)
+
+
+def _job_scoped_identity_refs(
+    document: Mapping,
+) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """Every distinct client-id/creds reference from every ``azure/
+    login`` step in this workflow, bucketed by whether *that step's own
+    job* -- not the workflow as a whole -- is itself a deploy job:
+    returns ``(deploy_identity_refs, non_deploy_identity_refs)``.
+
+    A workflow can mix a build/test job with a separate deploy job side
+    by side in the very same file; rule 6 must compare identities at
+    this same job-scoped granularity, or a build/test job and a deploy
+    job that happen to share the exact same identity within a single
+    workflow file would never be caught -- the whole-workflow-level
+    :attr:`WorkflowAssessment.is_deploy` flag folds both jobs'
+    identity references into the very same bucket, since it only asks
+    whether *some* job in the file deploys.
+    """
+    deploy_refs: List[str] = []
+    other_refs: List[str] = []
+    jobs = document.get("jobs")
+    if isinstance(jobs, Mapping):
+        for job_id, job in jobs.items():
+            if not isinstance(job, Mapping):
+                continue
+            steps = job.get("steps")
+            if not isinstance(steps, list):
+                continue
+            bucket = deploy_refs if _is_deploy_job(job_id, job) else other_refs
+            for step in steps:
+                if not isinstance(step, Mapping):
+                    continue
+                uses = str(step.get("uses", "")).split("@", 1)[0].strip().lower()
+                if uses != "azure/login":
+                    continue
+                with_block = step.get("with")
+                if not isinstance(with_block, Mapping):
+                    continue
+                for key in ("client-id", "creds"):
+                    value = with_block.get(key)
+                    if value:
+                        bucket.append(_redact_identity_ref(str(value)))
+    return _dedupe_preserve_order(deploy_refs), _dedupe_preserve_order(other_refs)
+
+
+def _normalize_indexed_github_expression(text: str) -> str:
+    return _INDEXED_EXPRESSION_ACCESS_RE.sub(r".\1", text)
+
+
+def _expression_is_trusted_checkout_context(inner: str) -> bool:
+    if inner in _TRUSTED_CHECKOUT_EXPRESSIONS:
+        return True
+    return any(
+        inner.startswith(prefix) for prefix in _TRUSTED_CHECKOUT_EXPRESSION_PREFIXES
+    )
+
+
+def _resolve_env_literal(
+    document: Mapping, job: Mapping, step: Mapping, name: str
+) -> Optional[str]:
+    """The raw value declared for `env.NAME`, resolved from the
+    *narrowest* scope that actually declares it -- this step's own
+    `env:`, then its containing job's, then the workflow-level default
+    -- or ``None`` if no scope declares it at all. The returned value
+    may itself still be another expression (or a secret reference);
+    the caller re-applies the same trust evaluation to it rather than
+    assuming a resolved value is automatically safe.
+    """
+    for env in (step.get("env"), job.get("env"), document.get("env")):
+        if isinstance(env, Mapping) and name in env:
+            value = env.get(name)
+            return None if value is None else str(value)
+    return None
+
+
+def _checkout_value_is_provably_trusted(
+    value: str,
+    document: Mapping,
+    job: Mapping,
+    step: Mapping,
+    _depth: int = 0,
+) -> bool:
+    """True only if ``value`` (a `pull_request_target` checkout's own
+    `ref:`/`repository:` input) can actually be shown to stay on the
+    trusted base branch/repository -- fail-closed: an unrecognized
+    dynamic expression this module cannot actually reason about is
+    never assumed safe merely because it fails to match a known-bad
+    marker.
+
+    A plain literal string with no `${{ ... }}` expression at all is
+    always trusted (it is whatever static text the workflow author
+    hardcoded, not driven by pull-request event data). An expression is
+    trusted only when *every* `${{ ... }}` segment it contains is
+    itself one of a small set of GitHub contexts this module can
+    actually reason about as always resolving to base-branch-scoped
+    data (see :data:`_TRUSTED_CHECKOUT_EXPRESSIONS`/
+    :data:`_TRUSTED_CHECKOUT_EXPRESSION_PREFIXES`), or a
+    `${{ env.NAME }}` indirection whose own value is statically
+    declared (in the step's, job's, or workflow's own `env:` block)
+    and itself resolves to something provably trusted by this same
+    rule, applied recursively. Every other expression -- referencing
+    `inputs.*`, `vars.*`, `needs.*`, a function call, or an
+    unresolvable/self-referential env indirection -- fails closed.
+    """
+    if _depth > 5:
+        return False  # unbounded/self-referential env indirection: fail closed
+    normalized = _normalize_indexed_github_expression(value)
+    if any(marker in normalized for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
+        return False
+    if "${{" not in normalized:
+        return True
+    segments = _EXPRESSION_SEGMENT_RE.findall(normalized)
+    if not segments:
+        return False  # malformed/unbalanced expression syntax: fail closed
+    for inner in segments:
+        inner = inner.strip()
+        env_match = re.match(r"^env\.([A-Za-z_][A-Za-z0-9_]*)$", inner)
+        if env_match:
+            resolved = _resolve_env_literal(document, job, step, env_match.group(1))
+            if resolved is None or not _checkout_value_is_provably_trusted(
+                resolved, document, job, step, _depth + 1
+            ):
+                return False
+            continue
+        if not _expression_is_trusted_checkout_context(inner):
+            return False
+    return True
+
+
 def _has_untrusted_checkout(document: Mapping) -> bool:
     """True if any step -- an `actions/checkout` step's own `ref:` *or*
     `repository:` input, or a raw `git fetch`/`checkout`/`clone`/`pull`
@@ -993,23 +1201,36 @@ def _has_untrusted_checkout(document: Mapping) -> bool:
     attacker-controlled `ref:` on the trusted repository, since either
     one alone hands `pull_request_target`'s elevated permissions/
     secrets to content the pull request's author actually controls.
+
+    An `actions/checkout` step's own `ref:`/`repository:` value is
+    checked fail-closed via :func:`_checkout_value_is_provably_trusted`
+    -- a dynamic expression is rejected unless it is actually shown to
+    stay base-scoped, not merely because it fails to match a known-bad
+    marker by name. The raw-git-command path keeps a narrower,
+    marker-only check (after the same indexed-expression
+    normalization) rather than the full allowlist, since free-form
+    shell text is far more prone to incidental false positives against
+    an allowlist built for structured `with:` inputs.
     """
-    for step in _all_steps(document):
+    for job, step in _job_steps(document):
         uses = str(step.get("uses", "")).split("@", 1)[0].strip().lower()
         if uses == "actions/checkout":
             with_block = step.get("with")
             if isinstance(with_block, Mapping):
                 for key in ("ref", "repository"):
-                    value = str(with_block.get(key, ""))
-                    if any(
-                        marker in value for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS
+                    raw_value = with_block.get(key)
+                    if not raw_value:
+                        continue
+                    if not _checkout_value_is_provably_trusted(
+                        str(raw_value), document, job, step
                     ):
                         return True
         run_text = step.get("run")
-        if isinstance(run_text, str) and _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(
-            run_text
-        ):
-            if any(marker in run_text for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS):
+        if isinstance(run_text, str):
+            normalized_run = _normalize_indexed_github_expression(run_text)
+            if _UNTRUSTED_CHECKOUT_RUN_COMMAND_RE.search(normalized_run) and any(
+                marker in normalized_run for marker in _UNTRUSTED_CHECKOUT_REF_MARKERS
+            ):
                 return True
     return False
 
@@ -1122,20 +1343,43 @@ def _is_statically_disabled(step: Mapping, job: Optional[Mapping]) -> bool:
     return False
 
 
+# Shell operators GitHub Actions' own `bash`/`sh` step shells use to
+# chain, conditionally chain, or pipe multiple distinct commands
+# together on a single `run:` line.
+_SHELL_SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||[;|]")
+
+
+def _shell_command_segments(line: str) -> List[str]:
+    return [segment.strip() for segment in _SHELL_SEGMENT_SPLIT_RE.split(line)]
+
+
 def _governance_relevant_run_text(run: str) -> str:
-    """A step's own ``run:`` text, with shell comment lines and bare
-    output-only (``echo``/``printf``/``print(...)``) lines stripped --
-    what remains is the only part of a step's command text rule 3's
-    CTK/application-probe/eval-runner checks may ever treat as evidence
-    something was actually invoked.
+    """A step's own ``run:`` text, split into its individual shell
+    command segments (at ``&&``/``||``/``;``/``|``), with a whole
+    comment line, a trailing ``#``-comment fragment on a segment, and a
+    bare output-only (``echo``/``printf``/``print(...)``) segment all
+    stripped -- what remains is the only part of a step's command text
+    rule 3's CTK/application-probe/eval-runner checks may ever treat as
+    evidence something was actually invoked.
+
+    Segment-level filtering matters because a line that does not itself
+    *start* with ``echo``/``printf`` can still chain one in
+    (``true && echo "python -m ctk run-vectors"``) purely to smuggle a
+    marker word past a whole-line-only check without ever actually
+    invoking anything; each segment on a line is therefore inspected,
+    and filtered, entirely on its own.
     """
-    kept_lines = [
-        line
-        for line in run.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-        and not _INERT_RUN_LINE_RE.match(line.strip())
-    ]
-    return "\n".join(kept_lines)
+    kept_segments: List[str] = []
+    for line in run.splitlines():
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("#"):
+            continue
+        for segment in _shell_command_segments(stripped_line):
+            segment = segment.split("#", 1)[0].strip()
+            if not segment or _INERT_RUN_LINE_RE.match(segment):
+                continue
+            kept_segments.append(segment)
+    return "\n".join(kept_segments)
 
 
 def _governance_relevant_run_command_texts(document: Mapping) -> Tuple[str, ...]:
@@ -1196,6 +1440,7 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     sha_pins, sha_violations = _sha_pin_status(document)
     login_job_steps = _azure_login_job_steps(document)
     deploy_action_job_steps = _azure_deploy_action_job_steps(document)
+    deploy_identity_refs, non_deploy_identity_refs = _job_scoped_identity_refs(document)
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -1212,6 +1457,8 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
         ci_probes=_ci_probes_static_status(document, triggers),
         identity_refs=_identity_refs(login_job_steps),
         sha_violations=sha_violations,
+        deploy_identity_refs=deploy_identity_refs,
+        non_deploy_identity_refs=non_deploy_identity_refs,
     )
 
 
@@ -1267,6 +1514,34 @@ def _parse_codeowners_entries(path: Path) -> Tuple[Tuple[str, Tuple[str, ...]], 
     return tuple(entries)
 
 
+def _codeowners_pattern_is_depth_unanchored(pattern: str) -> bool:
+    """True if ``pattern`` is a *depth-unanchored* CODEOWNERS pattern --
+    GitHub's own gitignore-style matching applies a pattern with no
+    internal ``/`` (ignoring a leading ``**/`` and/or a trailing ``/``)
+    at *every* depth in the repository tree, not merely at the
+    repository root or one specific relative path. ``*.md``, a bare
+    ``README.md``, and ``**/*.yml`` are all depth-unanchored this way;
+    ``src/README.md`` and a leading-``/``-anchored ``/README.md`` are
+    not. The bare repository-wide catch-all (``*``/``**``) is excluded
+    here -- it is already handled as a universal ancestor by
+    :func:`_codeowners_recursive_prefix`/:func:`_is_ancestor_or_equal`.
+    """
+    normalized = pattern.strip()
+    if normalized.startswith("/"):
+        return False
+    while normalized.startswith("**/"):
+        normalized = normalized[3:]
+    normalized = normalized.rstrip("/")
+    return "/" not in normalized and normalized not in ("", "*", "**")
+
+
+def _codeowners_pattern_basename_glob(pattern: str) -> str:
+    normalized = pattern.strip()
+    while normalized.startswith("**/"):
+        normalized = normalized[3:]
+    return normalized.rstrip("/")
+
+
 def _codeowners_pattern_nested_within(pattern: str, required_prefix: str) -> bool:
     """True if a declared ``pattern`` is a proper subset of the directory
     tree named by ``required_prefix`` -- the reverse relationship of
@@ -1274,7 +1549,16 @@ def _codeowners_pattern_nested_within(pattern: str, required_prefix: str) -> boo
     under real last-match-wins resolution, carves an override out of an
     otherwise fully-owned required tree rather than one that covers the
     whole tree itself.
+
+    A depth-unanchored pattern (``*.md``, ``**/*.yml``, a bare
+    ``README.md``, ...) is conservatively always treated as a potential
+    override: GitHub's own matching applies it at *any* depth,
+    including deep inside this required tree, and this module cannot
+    enumerate the tree's actual file contents from pattern text alone
+    to rule that out.
     """
+    if _codeowners_pattern_is_depth_unanchored(pattern):
+        return True
     declared_prefix = _codeowners_recursive_prefix(pattern)
     if declared_prefix is not None:
         return declared_prefix != required_prefix and _is_ancestor_or_equal(
@@ -1390,11 +1674,18 @@ def _codeowners_pattern_covers(declared_pattern: str, requirement: str) -> bool:
         )
 
     # The requirement is an exact file path: covered by the identical
-    # literal pattern, or by a recursive directory glob that is an
-    # ancestor of it.
+    # literal pattern, by a recursive directory glob that is an
+    # ancestor of it, or by a depth-unanchored basename pattern whose
+    # glob matches the exact file's own basename -- GitHub's own
+    # gitignore-style matching applies such a pattern at any depth,
+    # including to a single exact required file.
     target = requirement.strip().lstrip("/")
     if declared_prefix is not None:
         return _is_ancestor_or_equal(declared_prefix, target)
+    if _codeowners_pattern_is_depth_unanchored(declared_pattern):
+        basename_glob = _codeowners_pattern_basename_glob(declared_pattern)
+        if fnmatch.fnmatch(target.rsplit("/", 1)[-1], basename_glob):
+            return True
     return declared_pattern.strip().lstrip("/") == target
 
 
@@ -1502,25 +1793,32 @@ def _deploy_job_environment_names(assessments: Tuple["WorkflowAssessment", ...])
 def _environment_protection_confirmed(
     live_github: Optional[Mapping], declared_environments: Set[str]
 ) -> bool:
-    """True unless live evidence explicitly says a deploy job's own
-    declared GitHub Environment is unprotected.
+    """True only if live evidence *explicitly, completely* confirms every
+    one of a deploy job's own declared GitHub Environments is itself
+    protected.
 
-    Checked only "as available": a workflow that declares no
-    environment, or live evidence that supplies no ``environments``
-    mapping at all, never blocks confirmation on this alone -- GitHub
-    Environments are optional, and this module can never require
-    evidence for a control the target may not even use.
+    Checked only when at least one environment is actually declared: a
+    workflow that names no environment has nothing here to confirm.
+    Once at least one environment *is* declared, though, this can never
+    default to "confirmed" merely because live evidence is silent about
+    it -- an absent ``live_github``, a missing ``environments`` mapping,
+    a declared environment name missing from that mapping, or an entry
+    that does not itself explicitly say ``protected: true`` are all
+    exactly the same "not actually confirmed" gap, not proof of
+    anything: a provenance-free or incomplete mapping can never be
+    accepted as confirmation any more than live evidence GitHub itself
+    reported as unprotected can.
     """
     if not declared_environments:
         return True
     if not live_github:
-        return True
+        return False
     environments = live_github.get("environments")
     if not isinstance(environments, Mapping):
-        return True
+        return False
     for name in declared_environments:
         entry = environments.get(name)
-        if isinstance(entry, Mapping) and entry.get("protected") is False:
+        if not isinstance(entry, Mapping) or entry.get("protected") is not True:
             return False
     return True
 
@@ -2738,10 +3036,10 @@ def _assess_identity_separation(
     controls: Dict[str, "Status | bool"],
 ) -> None:
     deploy_identities = {
-        ref for a in assessments if a.is_deploy for ref in a.identity_refs
+        ref for a in assessments for ref in a.deploy_identity_refs
     }
     other_identities = {
-        ref for a in assessments if not a.is_deploy for ref in a.identity_refs
+        ref for a in assessments for ref in a.non_deploy_identity_refs
     }
 
     if not deploy_identities and not other_identities:
