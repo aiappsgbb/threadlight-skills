@@ -14,6 +14,7 @@ Run with:
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import random
@@ -825,6 +826,114 @@ def test_residual_risk_live_evidence_freshness_wording_matches_expired_case():
 
 
 # ---------------------------------------------------------------------------
+# Hardening round: a finding/probe's own *required* evidence must never be
+# masked by unrelated, incidental evidence that happens to be fresh (issue 1)
+# ---------------------------------------------------------------------------
+
+
+def test_freshness_required_finding_evidence_invalid_is_not_masked_by_unrelated_fresh_evidence():
+    findings = [
+        _finding(
+            "GHCP-002",
+            "not-verified",
+            plane="change",
+            evidence_refs=("EVID-required",),
+        )
+    ]
+    evidence = [
+        _evidence("EVID-required", collected_at=None),
+        _evidence("EVID-unrelated-fresh", collected_at=_COLLECTED_AT_EARLY),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # The unrelated evidence entry alone carries a perfectly trustworthy
+    # timestamp and would otherwise make the whole manifest look "fresh"
+    # -- but the one finding actually citing evidence never got a
+    # trustworthy timestamp for it, so the overall freshness must never
+    # claim "fresh" on the strength of evidence nothing here needed.
+    assert manifest["freshness"]["status"] != "fresh"
+    # Never invents a status the schema's fixed vocabulary does not have.
+    assert manifest["freshness"]["status"] in ("stale", "expired")
+
+
+def test_freshness_required_finding_evidence_dangling_reference_is_not_masked_by_unrelated_fresh_evidence():
+    findings = [
+        _finding(
+            "GHCP-002",
+            "not-verified",
+            plane="change",
+            evidence_refs=("EVID-does-not-exist",),
+        )
+    ]
+    evidence = [_evidence("EVID-unrelated-fresh", collected_at=_COLLECTED_AT_EARLY)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # The required reference does not even resolve to an evidence entry
+    # at all -- this must be treated exactly as untrustworthy as a
+    # present-but-invalid timestamp would be, never silently ignored.
+    assert manifest["freshness"]["status"] != "fresh"
+
+
+def test_freshness_required_probe_evidence_invalid_is_not_masked_by_unrelated_fresh_evidence():
+    findings = [_finding("MED-001", "pass")]
+    action = _action("act-1")
+    path = _path("path-1", "act-1")
+    probe = contracts.ProbeResult(
+        probe_id="probe-1",
+        action_id="act-1",
+        path_id="path-1",
+        status="pass",
+        reason_code="probe-ok",
+        expected="expected-value",
+        observed="observed-value",
+        evidence_refs=("EVID-required",),
+    )
+    evidence = [
+        _evidence("EVID-required", collected_at=None),
+        _evidence("EVID-unrelated-fresh", collected_at=_COLLECTED_AT_EARLY),
+    ]
+    result = _base_result(
+        actions=[action], paths=[path], probes=[probe], findings=findings, evidence=evidence
+    )
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # An application-path probe's own required evidence is exactly as
+    # authoritative here as a finding's -- an unrelated fresh evidence
+    # entry must not mask an untrustworthy one a probe actually needed.
+    assert manifest["freshness"]["status"] != "fresh"
+
+
+def test_freshness_required_evidence_trustworthy_ignores_unrelated_invalid_evidence():
+    findings = [_finding("GHCP-002", "pass", evidence_refs=("EVID-required",))]
+    evidence = [
+        _evidence("EVID-required", collected_at=_COLLECTED_AT_EARLY),
+        _evidence("EVID-unrelated-invalid", collected_at=None),
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    # Control case: every required reference IS trustworthy, so an
+    # unrelated evidence entry's own untrustworthy timestamp must never
+    # drag the overall freshness down -- this guard is one-directional,
+    # never a blanket "any invalid evidence anywhere" rule.
+    assert manifest["freshness"]["status"] == "fresh"
+
+
+def test_freshness_with_no_findings_or_probes_has_no_required_evidence_to_check():
+    # No finding or probe references any evidence at all: the new guard
+    # must be a strict no-op here, identical to this module's prior,
+    # already-established behavior for evidence-free findings.
+    findings = [_finding("MED-001", "pass")]
+    evidence = [_evidence("EVID-unrelated-fresh", collected_at=_COLLECTED_AT_EARLY)]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["freshness"]["status"] == "fresh"
+
+
+# ---------------------------------------------------------------------------
 # write_artifacts
 # ---------------------------------------------------------------------------
 
@@ -1399,6 +1508,87 @@ def test_write_artifacts_held_open_parent_fd_survives_ancestor_symlink_swap(
 
 
 # ---------------------------------------------------------------------------
+# Hardening round: the assessed root itself must be race-resistant -- a
+# symlink root is rejected outright, and a mid-transaction rename/symlink
+# swap of the root is explicitly detected and rejected (issue 3, 4th
+# rereview)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_rejects_root_that_is_itself_a_symlink(tmp_path):
+    real_root = tmp_path / "real-root"
+    real_root.mkdir()
+    root_symlink = tmp_path / "root-symlink"
+    root_symlink.symlink_to(real_root, target_is_directory=True)
+
+    result = _full_result()
+
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            root_symlink,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+
+    # Rejected before any write occurred through the symlink into the
+    # real, otherwise-legitimate directory it points at.
+    assert not list(real_root.iterdir())
+
+
+def test_write_artifacts_detects_root_rename_and_symlink_swap_mid_transaction(
+    tmp_path, monkeypatch
+):
+    # Unlike an *ancestor* swap (e.g. the shared ``tests/`` directory),
+    # which stays safely tolerated purely because every mutating
+    # operation is already descriptor-relative, a swap of the *root*
+    # itself -- the one path this call resolves and opens by name, up
+    # front, before any fd exists to anchor against -- is explicitly
+    # checked for and rejected at each transaction checkpoint.
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+
+    root_saved = tmp_path.parent / f"{tmp_path.name}-saved-by-attacker"
+    attacker_target = tmp_path.parent / f"{tmp_path.name}-attacker-target"
+    attacker_target.mkdir()
+
+    original_stage = render._stage_temp_file
+    swap_done = {"value": False}
+
+    def _spy_stage(parent_fd, dest, leaf_name, data):
+        staged_name = original_stage(parent_fd, dest, leaf_name, data)
+        # Immediately after the *first* artifact is staged, an attacker
+        # renames the assessed root itself out of the way and replaces
+        # its old path with a symlink pointing outside the assessed
+        # root, before the remaining artifacts are staged or committed.
+        if not swap_done["value"]:
+            tmp_path.rename(root_saved)
+            tmp_path.symlink_to(attacker_target, target_is_directory=True)
+            swap_done["value"] = True
+        return staged_name
+
+    monkeypatch.setattr(render, "_stage_temp_file", _spy_stage)
+
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+        )
+
+    # No outside write ever landed in the attacker's symlink target,
+    # proving the checkpoint caught the swap before any commit.
+    assert not list(attacker_target.iterdir())
+    # And nothing was left half-written in the original (now-renamed)
+    # root directory either -- staged temp files were cleaned up too.
+    original_root_contents = list(root_saved.rglob("*"))
+    assert not any(path.name.endswith(".stage") for path in original_root_contents)
+
+
+# ---------------------------------------------------------------------------
 # Hardening round: rollback failures are never swallowed (issue 3)
 # ---------------------------------------------------------------------------
 
@@ -1479,6 +1669,108 @@ def test_write_artifacts_rollback_failure_is_not_swallowed(tmp_path, monkeypatch
     # succeeded, despite the manifest's own rollback failing.
     assert Path(evidence_path.parent) in fsync_calls
     assert Path(apply_plan_path.parent) in fsync_calls
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: rollback of a newly created (no-prior-backup) artifact
+# must fsync its parent directory too, not only a successfully restored
+# backup's (issue 4, 4th rereview)
+# ---------------------------------------------------------------------------
+
+
+def test_write_artifacts_fsyncs_parent_dir_after_removing_newly_created_artifact_on_rollback(
+    tmp_path, monkeypatch
+):
+    # A completely fresh root: every destination is newly created (no
+    # prior artifact to back up), so a forced failure on the very last
+    # commit must roll back the first two via the "created without
+    # backup" removal path -- and that removal's own parent-directory
+    # fsync must actually happen, not be skipped.
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+
+    original_fsync_dir = render._fsync_dir
+    fsync_calls_after_removal: List[Path] = []
+
+    def _spy_fsync_dir(dest: Path, parent_fd: int) -> None:
+        # A fsync that happens *after* dest's own file has already been
+        # removed from disk can only be this rollback step's own
+        # unlink-then-fsync sequence -- the ordinary forward-commit fsync
+        # always runs while the just-created file is still present.
+        if not Path(dest).exists():
+            fsync_calls_after_removal.append(Path(dest))
+        original_fsync_dir(dest, parent_fd)
+
+    monkeypatch.setattr(render, "_fsync_dir", _spy_fsync_dir)
+
+    calls = {"count": 0}
+
+    def _replace(src: Path, dst: Path) -> None:
+        calls["count"] += 1
+        if calls["count"] == 3:
+            # Fail the third (apply-plan) commit -- manifest and
+            # evidence were both already newly created by this point.
+            raise OSError("synthetic forward failure on third commit")
+        os.replace(src, dst)
+
+    with pytest.raises(render.ArtifactWriteError):
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+            replace=_replace,
+        )
+
+    # Both newly created artifacts removed during rollback also had
+    # their parent directory fsynced afterward.
+    assert len(fsync_calls_after_removal) >= 2
+    assert not manifest_path.exists()
+    assert not evidence_path.exists()
+    assert not apply_plan_path.exists()
+
+
+def test_write_artifacts_rollback_reports_incomplete_when_fsync_after_removal_fails(
+    tmp_path, monkeypatch
+):
+    result = _full_result()
+    manifest_path, evidence_path, apply_plan_path = _artifact_paths(tmp_path)
+
+    original_fsync_dir = render._fsync_dir
+
+    def _failing_fsync_dir(dest: Path, parent_fd: int) -> None:
+        if not Path(dest).exists():
+            raise OSError("synthetic fsync failure after removal")
+        original_fsync_dir(dest, parent_fd)
+
+    monkeypatch.setattr(render, "_fsync_dir", _failing_fsync_dir)
+
+    calls = {"count": 0}
+
+    def _replace(src: Path, dst: Path) -> None:
+        calls["count"] += 1
+        if calls["count"] == 3:
+            raise OSError("synthetic forward failure on third commit")
+        os.replace(src, dst)
+
+    with pytest.raises(render.ArtifactWriteError) as excinfo:
+        render.write_artifacts(
+            tmp_path,
+            result,
+            render.DEFAULT_MANIFEST_RELATIVE_PATH,
+            render.DEFAULT_EVIDENCE_RELATIVE_PATH,
+            render.DEFAULT_APPLY_PLAN_RELATIVE_PATH,
+            replace=_replace,
+        )
+
+    message = str(excinfo.value)
+    assert "ROLLBACK DID NOT FULLY RESTORE" in message
+    # The unlink itself still succeeded despite the fsync failure -- the
+    # newly created artifacts are gone from disk regardless of whether
+    # their removal's own durability fsync could be confirmed.
+    assert not manifest_path.exists()
+    assert not evidence_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -1974,6 +2266,209 @@ def test_manifest_findings_with_tied_primary_key_still_order_independent():
     assert len(manifest_forward["findings"]) == 2
 
 
+def test_manifest_pin_dependencies_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    pins_forward = {
+        **base.pins,
+        "dependencies": (
+            {"name": "tied-dep", "version": "1.0.0"},
+            {"name": "tied-dep", "version": "2.0.0"},
+        ),
+    }
+    pins_reordered = {
+        **base.pins,
+        "dependencies": (
+            {"name": "tied-dep", "version": "2.0.0"},
+            {"name": "tied-dep", "version": "1.0.0"},
+        ),
+    }
+    result_forward = dataclasses.replace(base, pins=pins_forward)
+    result_reordered = dataclasses.replace(base, pins=pins_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["pins"]["dependencies"]) == 2
+
+
+def test_manifest_pin_specifications_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    pins_forward = {
+        **base.pins,
+        "specifications": (
+            {"name": "tied-spec", "version": "1.0.0"},
+            {"name": "tied-spec", "version": "2.0.0"},
+        ),
+    }
+    pins_reordered = {
+        **base.pins,
+        "specifications": (
+            {"name": "tied-spec", "version": "2.0.0"},
+            {"name": "tied-spec", "version": "1.0.0"},
+        ),
+    }
+    result_forward = dataclasses.replace(base, pins=pins_forward)
+    result_reordered = dataclasses.replace(base, pins=pins_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["pins"]["specifications"]) == 2
+
+
+def test_manifest_policy_hashes_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    hashes_forward = (
+        {"path": "governance/tied.json", "sha256": _sha256_of("policy-a")},
+        {"path": "governance/tied.json", "sha256": _sha256_of("policy-b")},
+    )
+    hashes_reordered = (
+        {"path": "governance/tied.json", "sha256": _sha256_of("policy-b")},
+        {"path": "governance/tied.json", "sha256": _sha256_of("policy-a")},
+    )
+    result_forward = dataclasses.replace(base, policy_hashes=hashes_forward)
+    result_reordered = dataclasses.replace(base, policy_hashes=hashes_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["policy_hashes"]) == 2
+
+
+def test_manifest_change_plane_workflows_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    change_plane_forward = {
+        **base.change_plane,
+        "workflows": (
+            {"path": ".github/workflows/tied.yml", "sha256": _sha256_of("workflow-a")},
+            {"path": ".github/workflows/tied.yml", "sha256": _sha256_of("workflow-b")},
+        ),
+    }
+    change_plane_reordered = {
+        **base.change_plane,
+        "workflows": (
+            {"path": ".github/workflows/tied.yml", "sha256": _sha256_of("workflow-b")},
+            {"path": ".github/workflows/tied.yml", "sha256": _sha256_of("workflow-a")},
+        ),
+    }
+    result_forward = dataclasses.replace(base, change_plane=change_plane_forward)
+    result_reordered = dataclasses.replace(base, change_plane=change_plane_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["change_plane"]["workflows"]) == 2
+
+
+def test_manifest_change_plane_identities_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    change_plane_forward = {
+        **base.change_plane,
+        "identities": (
+            {"identity": "tied-identity", "kind": "managed-identity"},
+            {"identity": "tied-identity", "kind": "service-principal"},
+        ),
+    }
+    change_plane_reordered = {
+        **base.change_plane,
+        "identities": (
+            {"identity": "tied-identity", "kind": "service-principal"},
+            {"identity": "tied-identity", "kind": "managed-identity"},
+        ),
+    }
+    result_forward = dataclasses.replace(base, change_plane=change_plane_forward)
+    result_reordered = dataclasses.replace(base, change_plane=change_plane_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["change_plane"]["identities"]) == 2
+
+
+def test_manifest_conformance_claims_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    claims_forward = (
+        {
+            "claim_id": "CLAIM-tied",
+            "description": "description A",
+            "status": "pass",
+            "evidence_refs": (),
+        },
+        {
+            "claim_id": "CLAIM-tied",
+            "description": "description B",
+            "status": "not-applicable",
+            "evidence_refs": (),
+        },
+    )
+    claims_reordered = tuple(reversed(claims_forward))
+    result_forward = dataclasses.replace(base, conformance_claims=claims_forward)
+    result_reordered = dataclasses.replace(base, conformance_claims=claims_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["conformance"]["claims"]) == 2
+
+
+def test_manifest_conformance_reports_with_tied_primary_key_still_order_independent():
+    findings = [_finding("MED-001", "pass")]
+    base = _base_result(findings=findings)
+    reports_forward = (
+        {
+            "report_id": "REPORT-tied",
+            "tool": "tool-a",
+            "version": "1.0.0",
+            "generated_at": _COLLECTED_AT_EARLY,
+            "summary": "summary A",
+            "evidence_refs": (),
+        },
+        {
+            "report_id": "REPORT-tied",
+            "tool": "tool-b",
+            "version": "2.0.0",
+            "generated_at": _COLLECTED_AT_EARLY,
+            "summary": "summary B",
+            "evidence_refs": (),
+        },
+    )
+    reports_reordered = tuple(reversed(reports_forward))
+    result_forward = dataclasses.replace(base, conformance_reports=reports_forward)
+    result_reordered = dataclasses.replace(base, conformance_reports=reports_reordered)
+
+    manifest_forward = render.build_manifest(result_forward)
+    manifest_reordered = render.build_manifest(result_reordered)
+    _assert_valid_manifest(manifest_forward)
+    assert canonical.canonical_bytes(manifest_forward) == canonical.canonical_bytes(
+        manifest_reordered
+    )
+    assert len(manifest_forward["conformance"]["reports"]) == 2
+
+
 # ---------------------------------------------------------------------------
 # Hardening round: residual-risk id collisions are rejected (issue 8)
 # ---------------------------------------------------------------------------
@@ -2231,4 +2726,49 @@ def test_evidence_pack_neutralizes_angle_bracket_autolink():
     text = render.render_evidence_pack(result)
     assert "<https://evil.example/steal>" not in text
     assert "evil.example" in text
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: GFM bare-email autolinks must also be neutralized, in all
+# case variants, not just bare "http(s)://"/"www." runs (issue 5, 3rd
+# rereview)
+# ---------------------------------------------------------------------------
+
+_HOSTILE_BARE_EMAIL_AUTOLINK = "contact user@evil.example for access"
+_HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE = "contact User@Evil.EXAMPLE for access"
+_HOSTILE_BARE_EMAIL_AUTOLINK_COMPLEX_LOCAL = "contact first.last+tag@evil.example for access"
+
+
+@pytest.mark.parametrize(
+    "hostile_text",
+    [
+        _HOSTILE_BARE_EMAIL_AUTOLINK,
+        _HOSTILE_BARE_EMAIL_AUTOLINK_UPPERCASE,
+        _HOSTILE_BARE_EMAIL_AUTOLINK_COMPLEX_LOCAL,
+    ],
+)
+def test_evidence_pack_neutralizes_bare_email_autolink(hostile_text):
+    result = _base_result(findings=_escaping_finding(hostile_text))
+    text = render.render_evidence_pack(result)
+    matrix_start = text.index("## Pass/fail matrix")
+    matrix_section = text[matrix_start : text.index("## Residual-risk register")]
+    # GFM's extended-autolink extension recognizes a bare
+    # ``local@domain.tld``-shaped run (case-insensitively) with no
+    # brackets at all and turns it into a live ``mailto:`` link -- the
+    # literal, unescaped trigger substring must never survive rendering.
+    assert "user@evil.example" not in matrix_section
+    assert "User@Evil.EXAMPLE" not in matrix_section
+    assert "first.last+tag@evil.example" not in matrix_section
+    # The value must still be readable, safe literal text (case preserved).
+    domain = hostile_text.split("@", 1)[1].split(" ", 1)[0]
+    assert domain in matrix_section
+
+
+def test_evidence_pack_bare_email_autolink_does_not_affect_non_email_at_signs():
+    # An "@" with no dotted domain after it (e.g. an unqualified handle)
+    # is not a GFM autolink trigger at all -- it must be left untouched
+    # rather than over-escaped.
+    result = _base_result(findings=_escaping_finding("cc @some-handle for review"))
+    text = render.render_evidence_pack(result)
+    assert "@some-handle" in text
 

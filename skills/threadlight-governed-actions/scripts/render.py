@@ -168,7 +168,11 @@ _MANDATORY_RESIDUAL_RISKS: Tuple[Dict[str, object], ...] = (
             "trustworthy timestamp (captured_at) exceeds the oldest "
             "trustworthy timestamp (oldest_source_at) plus this "
             "manifest's valid_for_hours, freshness.status is reported "
-            "expired -- neither is ever assumed to still be fresh."
+            "expired; and when a finding or application-path probe cites "
+            "its own required evidence entry that cannot be trusted, "
+            "freshness.status is reported stale even if other, unrelated "
+            "evidence in this manifest is itself fresh -- none of these "
+            "cases is ever assumed to still be fresh."
         ),
     },
     {
@@ -349,8 +353,15 @@ def _sorted_evidence(evidence: Sequence[EvidenceRef]) -> List[EvidenceRef]:
     )
 
 
-def _sorted_mappings(items: Sequence[Mapping[str, object]], key: str) -> List[Dict[str, object]]:
-    return sorted((dict(item) for item in items), key=lambda item: str(item[key]))
+def _sorted_mappings_by_canonical(items: Sequence[Mapping[str, object]], key: str) -> List[Dict[str, object]]:
+    """Sort already-normalized, schema-shaped dicts by their own primary
+    key, with a full canonical-bytes tiebreak so entries that share a
+    primary key (a caller-rejected but still defensively handled
+    identity collision) still resolve to one deterministic order rather
+    than depending on input iteration order.
+    """
+    normalized = [dict(item) for item in items]
+    return sorted(normalized, key=lambda item: (str(item[key]), _canonical_tiebreak(item)))
 
 
 # ---------------------------------------------------------------------------
@@ -507,13 +518,11 @@ def _normalize_pin(pin: Mapping[str, object]) -> Dict[str, object]:
 
 
 def _normalize_pins(pins: Mapping[str, object]) -> Dict[str, object]:
-    dependencies = sorted(
-        (_normalize_pin(pin) for pin in pins.get("dependencies", ())),
-        key=lambda pin: str(pin["name"]),
+    dependencies = _sorted_mappings_by_canonical(
+        (_normalize_pin(pin) for pin in pins.get("dependencies", ())), "name"
     )
-    specifications = sorted(
-        (_normalize_pin(pin) for pin in pins.get("specifications", ())),
-        key=lambda pin: str(pin["name"]),
+    specifications = _sorted_mappings_by_canonical(
+        (_normalize_pin(pin) for pin in pins.get("specifications", ())), "name"
     )
     probe_suite = pins.get("probe_suite") or {
         "name": f"{ASSESSOR_NAME}-probe-suite",
@@ -527,10 +536,8 @@ def _normalize_pins(pins: Mapping[str, object]) -> Dict[str, object]:
 
 
 def _normalize_policy_hashes(policy_hashes: Sequence[Mapping[str, object]]) -> List[Dict[str, object]]:
-    return [
-        {"path": str(entry["path"]), "sha256": str(entry["sha256"])}
-        for entry in _sorted_mappings(policy_hashes, "path")
-    ]
+    normalized = ({"path": str(entry["path"]), "sha256": str(entry["sha256"])} for entry in policy_hashes)
+    return _sorted_mappings_by_canonical(normalized, "path")
 
 
 def _normalize_change_plane_workflow(entry: Mapping[str, object]) -> Dict[str, object]:
@@ -543,13 +550,12 @@ def _normalize_change_plane_identity(entry: Mapping[str, object]) -> Dict[str, o
 
 def _normalize_change_plane(change_plane: Mapping[str, object], default_repository: str) -> Dict[str, object]:
     repository = change_plane.get("repository", default_repository)
-    workflows = sorted(
-        (_normalize_change_plane_workflow(entry) for entry in change_plane.get("workflows", ())),
-        key=lambda entry: str(entry["path"]),
+    workflows = _sorted_mappings_by_canonical(
+        (_normalize_change_plane_workflow(entry) for entry in change_plane.get("workflows", ())), "path"
     )
-    identities = sorted(
+    identities = _sorted_mappings_by_canonical(
         (_normalize_change_plane_identity(entry) for entry in change_plane.get("identities", ())),
-        key=lambda entry: str(entry["identity"]),
+        "identity",
     )
     return {"repository": repository, "workflows": workflows, "identities": identities}
 
@@ -575,11 +581,11 @@ def _normalize_report(entry: Mapping[str, object]) -> Dict[str, object]:
 
 
 def _sorted_claims(claims: Sequence[Mapping[str, object]]) -> List[Dict[str, object]]:
-    return sorted((_normalize_claim(entry) for entry in claims), key=lambda entry: entry["claim_id"])
+    return _sorted_mappings_by_canonical((_normalize_claim(entry) for entry in claims), "claim_id")
 
 
 def _sorted_reports(reports: Sequence[Mapping[str, object]]) -> List[Dict[str, object]]:
-    return sorted((_normalize_report(entry) for entry in reports), key=lambda entry: entry["report_id"])
+    return _sorted_mappings_by_canonical((_normalize_report(entry) for entry in reports), "report_id")
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +697,47 @@ def _captured_at_from_pairs(pairs: Sequence[Tuple[datetime, str]]) -> str:
     return pairs[-1][1] if pairs else FALLBACK_TIMESTAMP
 
 
+def _required_evidence_ids(result: AssessmentResult) -> Set[str]:
+    """Every evidence id a finding or an application-path probe actually
+    relies on to justify its own status.
+
+    A finding/probe that references no evidence at all contributes
+    nothing here; this deliberately mirrors the design's own phrase
+    "evidence refs needed for findings/probes" rather than every
+    ``PathRecord.evidence_refs`` a mediation path happens to cite.
+    """
+    ids: Set[str] = set()
+    for finding in result.findings:
+        ids.update(finding.evidence_refs)
+    for probe in result.probes:
+        ids.update(probe.evidence_refs)
+    return ids
+
+
+def _required_evidence_is_untrustworthy(result: AssessmentResult) -> bool:
+    """True when at least one finding or probe *requires* an evidence
+    entry whose own collection timestamp cannot be trusted -- either the
+    referenced ``evidence_id`` has no matching entry in ``result.evidence``
+    at all, or the entry it matches has a missing/unparseable
+    ``collected_at``.
+
+    This check is deliberately independent of how many *other*, unrelated
+    evidence entries happen to carry a trustworthy timestamp: an
+    assessment that supplies plenty of fresh evidence for findings/probes
+    that never cited it must never be allowed to mask the one finding or
+    probe whose own required evidence cannot be trusted, and must never
+    render an overall ``fresh`` freshness verdict on the strength of
+    evidence nothing actually needed.
+    """
+    required_ids = _required_evidence_ids(result)
+    if not required_ids:
+        return False
+    trustworthy_ids = {
+        ref.evidence_id for ref in result.evidence if _try_parse_rfc3339(ref.collected_at) is not None
+    }
+    return not required_ids.issubset(trustworthy_ids)
+
+
 def _phase_for(result: AssessmentResult) -> str:
     phases = {finding.phase for finding in result.findings} | {ref.phase for ref in result.evidence}
     if not phases:
@@ -699,12 +746,14 @@ def _phase_for(result: AssessmentResult) -> str:
 
 
 def _freshness_from_pairs(
-    pairs: Sequence[Tuple[datetime, str]], captured_instant: Optional[datetime]
+    pairs: Sequence[Tuple[datetime, str]],
+    captured_instant: Optional[datetime],
+    required_evidence_untrustworthy: bool = False,
 ) -> Dict[str, object]:
     if not pairs:
-        # No required evidence carries a trustworthy collection timestamp
-        # (either none was ever supplied, or every supplied value failed to
-        # parse as a real instant): freshness cannot be proven, so this is
+        # No evidence carries a trustworthy collection timestamp (either
+        # none was ever supplied, or every supplied value failed to parse
+        # as a real instant): freshness cannot be proven, so this is
         # recorded as conservatively as the schema's fixed status
         # vocabulary allows -- "stale" rather than an invented "fresh" --
         # instead of a fabricated window.
@@ -716,9 +765,16 @@ def _freshness_from_pairs(
         }
     oldest_instant, oldest_source_at = pairs[0]
     expires_instant = _add_hours(oldest_instant, FRESHNESS_VALID_FOR_HOURS)
-    status = (
-        "fresh" if captured_instant is not None and captured_instant <= expires_instant else "expired"
-    )
+    if captured_instant is not None and captured_instant <= expires_instant:
+        # Otherwise-fresh evidence can still fail to make a finding or
+        # probe's own *required* evidence trustworthy: a report crowded
+        # with fresh, unrelated evidence must never mask the one required
+        # reference this manifest cannot actually vouch for, so that case
+        # is reported "stale" -- never a fabricated "fresh" -- even though
+        # the raw oldest/newest instants pass the freshness window.
+        status = "stale" if required_evidence_untrustworthy else "fresh"
+    else:
+        status = "expired"
     return {
         "status": status,
         "valid_for_hours": FRESHNESS_VALID_FOR_HOURS,
@@ -820,7 +876,9 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
         "change_plane": _normalize_change_plane(result.change_plane, result.source.repository),
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
-        "freshness": _freshness_from_pairs(timestamp_pairs, captured_instant),
+        "freshness": _freshness_from_pairs(
+            timestamp_pairs, captured_instant, _required_evidence_is_untrustworthy(result)
+        ),
         "residual_risks": residual_risks,
         "summary": _summary(findings, result.source.dirty),
     }
@@ -917,6 +975,17 @@ def build_apply_plan(result: AssessmentResult) -> Dict[str, object]:
 _BARE_URL_SCHEME_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
 
 
+#: Matches a bare ``local@domain.tld``-shaped run so it can be defused
+#: even with no surrounding angle brackets -- GitHub Flavored Markdown's
+#: extended autolink extension also recognizes a bare email address like
+#: this as a live ``mailto:`` link, entirely independent of the
+#: ``scheme://``/``www.`` triggers above, and independent of the local
+#: part's letter case or the domain's.
+_BARE_EMAIL_RE = re.compile(
+    r"(?i)([a-z0-9][a-z0-9._%+\-]*)@([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)"
+)
+
+
 def _md_escape_inline(value: object) -> str:
     """Sanitize *value* for inclusion in a single rendered Markdown table
     cell, list item, or heading-adjacent line, so it can only ever render
@@ -943,11 +1012,13 @@ def _md_escape_inline(value: object) -> str:
     module wraps identifier-like values in elsewhere). ``<``/``>`` are
     HTML-entity-escaped, which defeats both a raw HTML tag and an
     angle-bracket autolink (``<https://...>``): neither can ever open or
-    close once escaped. Finally, a bare ``scheme://`` or ``www.`` run --
-    which GitHub Flavored Markdown's extended autolink extension can turn
-    into a live link even with no brackets or angle brackets present at
-    all -- has its trigger substring broken with a backslash so the exact
-    literal text it matches against no longer appears.
+    close once escaped. Finally, a bare ``scheme://``/``www.`` run, or a
+    bare ``local@domain.tld``-shaped email address (in any letter case)
+    -- either of which GitHub Flavored Markdown's extended autolink
+    extension can turn into a live link with no brackets or angle
+    brackets present at all -- has its trigger substring broken with a
+    backslash so the exact literal text it matches against no longer
+    appears.
 
     All of this keeps the value fully human-readable; it is applied to
     every assessment-influenceable string this module ever interpolates
@@ -965,6 +1036,7 @@ def _md_escape_inline(value: object) -> str:
     text = text.replace("<", "&lt;").replace(">", "&gt;")
     text = _BARE_URL_SCHEME_RE.sub(lambda match: f"{match.group(1)}:\\/\\/", text)
     text = text.replace("www.", "www\\.")
+    text = _BARE_EMAIL_RE.sub(lambda match: f"{match.group(1)}\\@{match.group(2)}", text)
     return text
 
 
@@ -1608,6 +1680,92 @@ def _perform_replace(
     replace(src_display, dst_display)
 
 
+def _open_verified_root(root: Path) -> Tuple[int, Path]:
+    """Open and return a held-open, no-follow-verified fd for the assessed
+    *root* directory itself, plus its purely lexical resolved ``Path``
+    (built from the verified parent and the caller-named leaf, never by a
+    second, independent filesystem resolve of the whole candidate).
+
+    Resolving *root* with ``Path.resolve()`` and only then separately
+    reopening that resolved path (the naive sequence this replaces)
+    leaves a TOCTOU window in which the root itself could be renamed away
+    and replaced -- e.g. by an attacker-controlled symlink -- between
+    those two independent steps. Instead, only *root*'s parent is
+    resolved (its own ancestors remain the same implicitly-trusted
+    directories every other part of this module already treats as such);
+    root's own leaf directory entry is then opened from that parent's fd
+    with ``O_NOFOLLOW`` in one atomic step, so a root that is itself a
+    symlink -- to anywhere, even an otherwise-harmless in-root directory
+    -- is rejected outright rather than transparently followed.
+    """
+    root = Path(root)
+    parent = root.parent
+    if parent == root:
+        # ``root`` names the filesystem root itself (e.g. "/"): there is
+        # no distinct parent/leaf pair to no-follow-verify against, so
+        # fall back to a single resolved open of the root exactly as
+        # named.
+        root_resolved = root.resolve()
+        try:
+            root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
+        except OSError as error:
+            raise ArtifactWriteError(
+                f"could not open the assessed root directory: {root} ({error})"
+            ) from error
+        return root_fd, root_resolved
+    parent_resolved = parent.resolve()
+    try:
+        parent_fd = os.open(parent_resolved, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError as error:
+        raise ArtifactWriteError(
+            "could not open the assessed root's parent directory: "
+            f"{parent_resolved} ({error})"
+        ) from error
+    try:
+        try:
+            root_fd = os.open(
+                root.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd
+            )
+        except OSError as error:
+            raise ArtifactWriteError(
+                "the assessed root is unsafe (missing, not a plain "
+                f"directory, or itself a symlink): {root} ({error})"
+            ) from error
+    finally:
+        os.close(parent_fd)
+    root_resolved = parent_resolved / root.name
+    return root_fd, root_resolved
+
+
+def _verify_root_still_bound(root_resolved: Path, root_fd: int, display: Path) -> None:
+    """Re-verify that *root_resolved* is still, right now, exactly the
+    same directory *root_fd* was opened against -- neither renamed away
+    nor replaced (e.g. by a symlink) -- by comparing ``(st_dev, st_ino)``
+    identity between a fresh no-follow ``lstat`` of the path and
+    ``root_fd``'s own ``fstat``.
+
+    Called at transaction checkpoints so a root-level swap that happens
+    *after* the fd was opened (but before every mutating step has
+    completed) is explicitly caught and this call fails closed, rather
+    than silently trusting that the one check made when the fd was first
+    opened still holds. Every actual mutating operation elsewhere in this
+    module already goes through descriptor-relative (``dir_fd=``) calls
+    anchored on this same held-open root fd, so this check is a
+    deliberate, explicit rejection of the tampering itself -- not the
+    only thing standing between a swap and an unsafe write.
+    """
+    try:
+        current = os.lstat(root_resolved)
+    except OSError as error:
+        raise ArtifactWriteError(
+            f"the assessed root is no longer accessible at {display}: {error}"
+        ) from error
+    expected = os.fstat(root_fd)
+    if (current.st_dev, current.st_ino) != (expected.st_dev, expected.st_ino):
+        raise ArtifactWriteError(
+            "the assessed root was renamed or replaced (e.g. by a symlink) "
+            f"during this call: {display}"
+        )
 
 
 def write_artifacts(
@@ -1657,41 +1815,57 @@ def write_artifacts(
 
     If any step of the staging, backup, or replace phase fails, every
     backup already made is restored, every destination this call itself
-    newly created is removed, and every staged temp file is cleaned up,
-    before :class:`ArtifactWriteError` is raised -- the on-disk artifact
-    set is left exactly as it was found, never a mix of old and new
-    generations. If restoring a backup itself fails, that failure is never
-    swallowed: the backup file is preserved (never deleted) for manual
-    recovery, a successfully restored file's parent directory is fsynced,
-    and the raised :class:`ArtifactWriteError` explicitly states that
-    rollback did not fully restore the prior artifact set rather than
-    claiming it did. Backups are deleted only once every replacement in
-    the whole transaction has succeeded.
+    newly created is removed (its parent directory fsynced afterward too,
+    not only a successfully restored backup's), and every staged temp file
+    is cleaned up, before :class:`ArtifactWriteError` is raised -- the
+    on-disk artifact set is left exactly as it was found, never a mix of
+    old and new generations. If restoring a backup itself fails, that
+    failure is never swallowed: the backup file is preserved (never
+    deleted) for manual recovery, a successfully restored file's parent
+    directory is fsynced, and the raised :class:`ArtifactWriteError`
+    explicitly states that rollback did not fully restore the prior
+    artifact set rather than claiming it did. Backups are deleted only
+    once every replacement in the whole transaction has succeeded.
+
+    The assessed root itself is opened once, up front, via a no-follow
+    open of its own leaf directory entry from its (separately resolved)
+    parent -- never by resolving the whole root path and only then
+    separately reopening it by path, which would leave a TOCTOU window in
+    which the root could be renamed away and replaced (e.g. by a symlink)
+    between those two steps. A root that is itself a symlink is rejected
+    outright. That same held-open root fd's identity is then explicitly
+    re-verified (by comparing ``(st_dev, st_ino)``) at two further
+    checkpoints -- immediately before preflight, and again immediately
+    before the backup/commit mutating phase begins -- so a root-level
+    rename-and-replace attack that happens *during* this call's own
+    rendering or staging work is explicitly detected and rejected, rather
+    than only implicitly tolerated because every mutating operation is
+    already descriptor-relative and thus immune to it regardless.
     """
-    root_resolved = Path(root).resolve()
-    manifest = build_manifest(result)
-    evidence_pack = render_evidence_pack(result)
-    apply_plan = build_apply_plan(result)
-
-    _validate_manifest(manifest)
-    _validate_apply_plan(apply_plan)
-
-    destinations = (
-        (
-            _resolve_destination(root_resolved, manifest_path),
-            canonical.canonical_bytes(manifest) + b"\n",
-        ),
-        (_resolve_destination(root_resolved, evidence_path), evidence_pack.encode("utf-8")),
-        (
-            _resolve_destination(root_resolved, apply_plan_path),
-            canonical.canonical_bytes(apply_plan) + b"\n",
-        ),
-    )
-
-    _preflight_destinations(root_resolved, [dest for dest, _data in destinations])
-
-    root_fd = os.open(root_resolved, os.O_RDONLY | os.O_DIRECTORY)
+    root_fd, root_resolved = _open_verified_root(Path(root))
     try:
+        manifest = build_manifest(result)
+        evidence_pack = render_evidence_pack(result)
+        apply_plan = build_apply_plan(result)
+
+        _validate_manifest(manifest)
+        _validate_apply_plan(apply_plan)
+
+        destinations = (
+            (
+                _resolve_destination(root_resolved, manifest_path),
+                canonical.canonical_bytes(manifest) + b"\n",
+            ),
+            (_resolve_destination(root_resolved, evidence_path), evidence_pack.encode("utf-8")),
+            (
+                _resolve_destination(root_resolved, apply_plan_path),
+                canonical.canonical_bytes(apply_plan) + b"\n",
+            ),
+        )
+
+        _verify_root_still_bound(root_resolved, root_fd, Path(root))
+        _preflight_destinations(root_resolved, [dest for dest, _data in destinations])
+
         # Open (and hold open for the rest of this call) one verified,
         # no-follow parent-directory fd per destination *before* any
         # staging begins, so every later step -- including the very first
@@ -1726,6 +1900,11 @@ def write_artifacts(
             backups: List[Tuple[Path, int, str, str]] = []
             created_without_backup: List[Tuple[Path, int, str]] = []
             try:
+                # Re-verified here (not just once, before preflight) so a
+                # root-level rename/symlink-swap that happened *during*
+                # staging is still caught before the mutating backup and
+                # commit steps below ever run.
+                _verify_root_still_bound(root_resolved, root_fd, Path(root))
                 for dest, parent_fd, leaf_name, _staged_name in staged:
                     _verify_leaf_absent_or_regular(parent_fd, leaf_name, dest)
                     if _fd_leaf_exists(parent_fd, leaf_name):
@@ -1767,6 +1946,15 @@ def write_artifacts(
                     except OSError as unlink_error:
                         rollback_errors.append(
                             f"could not remove newly created artifact {dest}: {unlink_error}"
+                        )
+                        continue
+                    try:
+                        _fsync_dir(dest, parent_fd)
+                    except OSError as fsync_error:
+                        rollback_errors.append(
+                            f"removed newly created artifact {dest} but could not "
+                            f"fsync its parent directory (rollback may not be "
+                            f"durable): {fsync_error}"
                         )
                 for dest, parent_fd, leaf_name, backup_name in backups:
                     backup_display = dest.parent / backup_name
