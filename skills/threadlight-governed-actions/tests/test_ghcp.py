@@ -8110,3 +8110,34 @@ def test_live_azure_never_records_raw_stderr(fake_runner_403):
     result = collect_live_azure("sub", "rg", "identity", run=fake_runner_403)
     assert "Forbidden" not in result.finding.details
     assert "Forbidden" not in json.dumps(result.data)
+
+
+# --- Round 9: a live payload containing an unpaired Unicode surrogate
+# code point (a value ``json.loads`` will happily reconstruct from a
+# real CLI's JSON text, e.g. ``"\ud800"``) cannot itself be UTF-8
+# encoded when this module canonicalizes/hashes the collected payload.
+# That must be contained as an ordinary "malformed-json" collector
+# failure -- the same outcome any other unusable payload produces --
+# never allowed to propagate as an unhandled ``UnicodeEncodeError``. ---
+
+
+def test_live_github_unpaired_surrogate_payload_is_not_verified_without_echo():
+    responses = _valid_github_responses()
+    responses[0] = _ok(json.dumps([{"note": "\ud800"}]))
+    runner = _FakeRunner(responses)
+    result = collect_live_github("owner/repo", "main", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-002"
+    assert result.evidence == ()
+    assert result.data.get("error_class") == "malformed-json"
+    assert "\\ud800" not in json.dumps(result.data)
+
+
+def test_live_azure_unpaired_surrogate_federated_credential_is_ghcp_005():
+    runner = _FakeRunner([_ok(json.dumps([{"note": "\ud800"}]))])
+    result = collect_live_azure("sub", "rg", "identity", run=runner)
+    assert result.status == "not-verified"
+    assert result.finding.finding_id == "GHCP-005"
+    assert result.evidence == ()
+    assert result.data.get("error_class") == "malformed-json"
+    assert "\\ud800" not in json.dumps(result.data)

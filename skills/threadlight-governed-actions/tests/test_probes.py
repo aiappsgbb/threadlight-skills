@@ -2997,3 +2997,35 @@ def test_staging_canary_str_body_at_cap_is_still_hashed(safe_canary, trusted_sta
     assert result.observed.endswith(
         f"response_sha256=sha256:{hashlib.sha256(body_at_cap.encode('utf-8')).hexdigest()}"
     )
+
+
+# --- Round 9: an unpaired Unicode surrogate in a canary response body
+# (a lone high/low surrogate code point, which Python's ``str`` type can
+# perfectly well hold -- for example decoded from a runner's own
+# permissive text handling -- cannot be encoded to UTF-8 with the
+# strict error handler; encoding it must be *contained*, never allowed
+# to propagate an unhandled ``UnicodeEncodeError`` out of this module.
+# ------------------------------------------------------------------
+
+
+def test_bounded_utf8_body_bytes_rejects_lone_surrogate():
+    assert probes._bounded_utf8_body_bytes("\ud800", max_bytes=1_000_000) is None
+
+
+def test_bounded_utf8_body_bytes_rejects_lone_surrogate_within_chunk():
+    chunk = probes._STAGING_CANARY_BODY_ENCODE_CHUNK_CHARS
+    text = ("a" * (chunk + 5)) + "\ud800"
+    assert probes._bounded_utf8_body_bytes(text, max_bytes=1_000_000) is None
+
+
+def test_staging_canary_lone_surrogate_str_body_is_not_verified_without_echo(
+    safe_canary, trusted_staging_origin
+):
+    def _runner(request):
+        return _FakeHttpResponse(204, headers={}, body="\ud800")
+
+    result = run_staging_canary(safe_canary, run=_runner, trusted_origin=trusted_staging_origin)
+    assert result.status == "not-verified"
+    assert result.reason_code == "staging-canary-malformed-response"
+    assert "\\ud800" not in result.observed
+    assert "response_sha256" not in result.observed

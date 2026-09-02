@@ -249,6 +249,24 @@ def test_canonical_bytes_is_utf8_and_ascii_preserving():
     )
 
 
+def test_canonical_bytes_rejects_unpaired_surrogate():
+    """A lone surrogate code point (e.g. ``\\ud800``) is a value
+    ``json.dumps(..., ensure_ascii=False)`` happily returns as a ``str``
+    but that ``str`` cannot itself be encoded to UTF-8 with the strict
+    error handler this function uses. That ``UnicodeEncodeError`` must
+    be contained here and surfaced as the same
+    :class:`canonical.CanonicalizationError` every other unencodable
+    value raises -- never leaked to callers as an unrelated,
+    uncontained ``UnicodeEncodeError``."""
+    with pytest.raises(canonical.CanonicalizationError):
+        canonical.canonical_bytes({"name": "\ud800"})
+
+
+def test_canonical_bytes_rejects_unpaired_surrogate_nested_in_list():
+    with pytest.raises(canonical.CanonicalizationError):
+        canonical.canonical_bytes(["ok", {"x": ["\udc00"]}])
+
+
 def test_canonical_bytes_rejects_unsupported_type():
     """A type json.dumps cannot serialize (e.g. a set) must surface as a
     CanonicalizationError, not an unrelated TypeError leaking straight out

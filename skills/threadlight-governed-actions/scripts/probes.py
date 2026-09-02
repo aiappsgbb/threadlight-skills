@@ -2666,6 +2666,14 @@ def _bounded_utf8_body_bytes(raw_body: str, max_bytes: int) -> Optional[bytes]:
     bounding worst-case memory to roughly *max_bytes* plus one chunk's
     worth of maximum-width UTF-8 characters, never the full original
     string's encoded size.
+
+    A chunk containing an unpaired Unicode surrogate code point (a
+    ``str`` this project's own runner boundary can perfectly well hand
+    back, for example from a caller that decoded raw bytes leniently)
+    cannot be encoded to UTF-8 at all with the strict error handler this
+    function uses; that ``UnicodeEncodeError`` is contained here and
+    reported the same way as any other unusable body -- ``None`` --
+    rather than allowed to propagate as an unhandled exception.
     """
     if len(raw_body) > max_bytes:
         return None
@@ -2673,7 +2681,10 @@ def _bounded_utf8_body_bytes(raw_body: str, max_bytes: int) -> Optional[bytes]:
     total_bytes = 0
     chunk_chars = _STAGING_CANARY_BODY_ENCODE_CHUNK_CHARS
     for start in range(0, len(raw_body), chunk_chars):
-        chunk_bytes = raw_body[start : start + chunk_chars].encode("utf-8")
+        try:
+            chunk_bytes = raw_body[start : start + chunk_chars].encode("utf-8")
+        except UnicodeEncodeError:
+            return None
         total_bytes += len(chunk_bytes)
         if total_bytes > max_bytes:
             return None

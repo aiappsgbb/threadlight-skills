@@ -480,3 +480,21 @@ def test_definition_is_complete_allowlist_is_exactly_three_fields():
     assert alerts._ALERT_DEFINITION_ALLOWED_KEYS == frozenset(
         {"enabled", "reason_code", "correlation_id"}
     )
+
+
+# --- Round 9: an unpaired Unicode surrogate code point in an alert
+# definition (e.g. a ``reason_code`` value round-tripped through
+# ``json.dumps``/``json.loads`` as ``"\ud800"``) cannot itself be
+# canonicalized/hashed with the strict UTF-8 encoder the catalog loader
+# uses -- that must be contained as an ordinary "catalog incomplete"
+# should-fix outcome, never allowed to propagate as an unhandled
+# ``UnicodeEncodeError``, and never echoed. ----------------------------
+
+
+def test_unpaired_surrogate_definition_is_should_fix_without_echo(tmp_path):
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"reason_code": "\ud800"}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert finding.reason_code == "alert-catalog-incomplete"
+    assert evidence == ()
+    assert "\\ud800" not in finding.details

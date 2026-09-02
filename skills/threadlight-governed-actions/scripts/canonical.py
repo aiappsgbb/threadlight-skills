@@ -94,6 +94,16 @@ def canonical_bytes(value: object) -> bytes:
     is translated into a :class:`CanonicalizationError` with a useful
     message rather than leaking an unrelated built-in exception type to
     callers who only expect canonicalization failures.
+
+    A string containing an unpaired Unicode surrogate code point (for
+    example ``"\\ud800"``) is one ``json.dumps(..., ensure_ascii=False)``
+    happily returns as a ``str`` -- it is not itself invalid JSON text --
+    but that ``str`` cannot be encoded to UTF-8 at all with the strict
+    error handler this function uses to produce final bytes. That
+    ``UnicodeEncodeError`` is contained here too and reported as the
+    same :class:`CanonicalizationError` every other unencodable value
+    raises, never leaked to callers as an unrelated, uncontained
+    exception.
     """
     try:
         _reject_non_finite(value)
@@ -117,7 +127,13 @@ def canonical_bytes(value: object) -> bytes:
         raise CanonicalizationError(
             f"value cannot be canonicalized to JSON: {error}"
         ) from error
-    return text.encode("utf-8")
+    try:
+        return text.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise CanonicalizationError(
+            "value contains an unpaired Unicode surrogate that cannot be "
+            "encoded to UTF-8"
+        ) from error
 
 
 def sha256_hex(data: bytes) -> str:
