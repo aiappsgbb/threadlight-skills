@@ -567,6 +567,28 @@ def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str)
     )
 
 
+def _disambiguated_evidence_id(evidence_id: str, item: contracts.ProbeEvidence) -> str:
+    """A deterministic, payload-free id for one distinct observed
+    provenance among several that collide under *evidence_id*.
+
+    Separate probe child processes commonly emit the exact same
+    ``evidence_id`` text (a target's own audit-sequence counter is
+    typically a fresh module global in every subprocess, so each
+    probe's first durable audit record is always literally
+    ``"audit-0001"``) while each backing it with a genuinely different
+    real ledger record. Built only from the original id and the
+    sha256 digest the probe itself actually observed for *that*
+    artifact -- never from any raw record/payload value, and never
+    Python's randomized ``hash()`` -- so the result is identical
+    across processes and every ``PYTHONHASHSEED``. The same (kind,
+    source, sha256) recurring under *evidence_id* always yields this
+    same rewritten id, so a citation that is genuinely re-observed
+    unchanged is never needlessly rewritten twice differently.
+    """
+    digest_hex = item.sha256.split(":", 1)[-1] if ":" in item.sha256 else item.sha256
+    return f"{evidence_id}~{digest_hex[:16]}"
+
+
 def _bind_probe_evidence(
     probe_results: Sequence[contracts.ProbeResult],
     source: contracts.SourceRef,
@@ -587,14 +609,61 @@ def _bind_probe_evidence(
     to not-verified (with an explicit finding) instead of being bound
     to invented evidence, so a missing underlying artifact can never
     become a pass -- or a ``governed`` verdict.
+
+    A single evidence id is never allowed to represent conflicting
+    provenance either. Separate probes -- most often separate probe
+    child processes -- routinely cite the exact same id while each
+    having actually observed a different real artifact (see
+    :func:`_disambiguated_evidence_id`); an id whose citing probes
+    disagree on (kind, source, sha256) is *never* collapsed onto
+    whichever probe happened to bind first. Each distinct observed
+    tuple is instead rewritten, deterministically, to its own unique
+    canonical id -- honestly preserving every real artifact rather than
+    publishing false shared provenance -- and every citing probe's
+    ``evidence_refs``/``evidence_items`` (and, through
+    :func:`probes.findings_from_probes`, every finding derived from it)
+    is updated to cite that rewritten id, so no dangling original id
+    survives once it was ever ambiguous. Only when a rewritten id would
+    itself collide with a *different* id's already-bound, differently
+    provenanced evidence -- meaning safe disambiguation is not possible
+    -- is that one probe's citation instead downgraded to not-verified
+    through the same ``probe-evidence-unresolved`` semantics, never
+    reused as if it were safe. An id cited by only one distinct
+    (kind, source, sha256) tuple, however many probes share it, is
+    left exactly as it was: real repeated identical provenance is
+    still deduplicated to a single evidence entry.
     """
     policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
-    kept: List[contracts.ProbeResult] = []
     findings: List[contracts.Finding] = []
-    evidence_by_id: Dict[str, contracts.EvidenceRef] = {}
-    for probe in probe_results:
+
+    # First pass: filter out probes citing an id their own
+    # evidence_items never resolved at all -- unchanged from before,
+    # and kept separate from provenance-conflict detection below, which
+    # only ever looks at probes that did resolve every citation.
+    resolved: Dict[int, Tuple[contracts.ProbeResult, Dict[str, contracts.ProbeEvidence]]] = {}
+    invalid_indices: List[int] = []
+    for index, probe in enumerate(probe_results):
         items = {item.evidence_id: item for item in probe.evidence_items}
         if any(ref not in items for ref in probe.evidence_refs):
+            invalid_indices.append(index)
+            continue
+        resolved[index] = (probe, items)
+
+    # Which ids carry more than one distinct (kind, source, sha256)
+    # tuple among the probes that did resolve -- i.e. ids whose
+    # citing probes actually disagree on provenance, never an id
+    # legitimately shared by probes that observed the same artifact.
+    provenance_by_id: Dict[str, set] = {}
+    for probe, items in resolved.values():
+        for ref in probe.evidence_refs:
+            item = items[ref]
+            provenance_by_id.setdefault(ref, set()).add((item.kind, item.source, item.sha256))
+    conflicting_ids = {ref for ref, provenances in provenance_by_id.items() if len(provenances) > 1}
+
+    kept: List[contracts.ProbeResult] = []
+    evidence_by_id: Dict[str, contracts.EvidenceRef] = {}
+    for index, probe in enumerate(probe_results):
+        if index in invalid_indices:
             kept.append(
                 replace(
                     probe,
@@ -606,12 +675,52 @@ def _bind_probe_evidence(
             )
             findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
             continue
-        kept.append(probe)
+
+        _, items = resolved[index]
+        rewritten_refs: List[str] = []
+        rewritten_items: List[contracts.ProbeEvidence] = []
+        unresolvable = False
         for ref in probe.evidence_refs:
-            if ref in evidence_by_id:
-                continue
             item = items[ref]
-            evidence_by_id[ref] = contracts.EvidenceRef(
+            final_id = ref
+            if ref in conflicting_ids:
+                final_id = _disambiguated_evidence_id(ref, item)
+                existing = evidence_by_id.get(final_id)
+                if existing is not None and (
+                    existing.kind,
+                    existing.source,
+                    existing.sha256,
+                ) != (item.kind, item.source, item.sha256):
+                    # The deterministic rewrite would collide with a
+                    # different id's already-bound, differently
+                    # provenanced evidence -- never safe to reuse, so
+                    # this probe's citation is downgraded instead.
+                    unresolvable = True
+                    break
+            rewritten_refs.append(final_id)
+            rewritten_items.append(replace(item, evidence_id=final_id))
+
+        if unresolvable:
+            kept.append(
+                replace(
+                    probe,
+                    status="not-verified",
+                    reason_code="probe-evidence-unresolved",
+                    evidence_refs=(),
+                    evidence_items=(),
+                )
+            )
+            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            continue
+
+        probe = replace(
+            probe, evidence_refs=tuple(rewritten_refs), evidence_items=tuple(rewritten_items)
+        )
+        kept.append(probe)
+        for final_id, item in zip(rewritten_refs, rewritten_items):
+            if final_id in evidence_by_id:
+                continue
+            evidence_by_id[final_id] = contracts.EvidenceRef(
                 evidence_id=item.evidence_id,
                 kind=item.kind,
                 source=item.source,

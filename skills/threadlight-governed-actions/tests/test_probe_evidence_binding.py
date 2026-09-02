@@ -23,6 +23,7 @@ Run with:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -39,6 +40,8 @@ import render
 REPOSITORY = "octo-org/probe-evidence"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 NOW = "2026-09-01T12:00:00Z"
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 # A synthetic, deterministic approval binding a *target* declares for
 # itself. Nothing here is ever supplied by the orchestrator.
@@ -458,3 +461,263 @@ def test_raw_probe_values_never_enter_artifacts(target: Path):
     assert SECRET_MARKER not in evidence_pack
     for ref in result.evidence:
         assert SECRET_MARKER not in json.dumps(ref.__dict__, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Colliding evidence ids: separate probe processes reusing the same id
+# ---------------------------------------------------------------------------
+#
+# Separate probe child processes commonly each emit the *same* evidence
+# id (e.g. the checked-in ``conformant-maf`` fixture's own audit-sequence
+# counter is a fresh module global in every subprocess, so each probe
+# case's first durable audit record is always literally "audit-0001")
+# while backing it with a *different* real ledger record and digest.
+# ``_bind_probe_evidence`` must never silently publish the first such
+# digest as if it were every colliding probe's own provenance.
+
+
+def _copy_git_fixture(tmp_path: Path, fixture_name: str) -> Path:
+    """Copy a checked-in ``tests/fixtures`` root into an isolated temp
+    directory and commit it as a disposable git repo, exactly as
+    ``test_golden_fixtures.py`` does -- never mutating the checked-in
+    tree itself.
+    """
+    dest = tmp_path / fixture_name
+    shutil.copytree(FIXTURES_DIR / fixture_name, dest)
+    _git(dest, "init", "-q", "-b", "main")
+    _git(dest, "remote", "add", "origin", f"https://github.com/{REPOSITORY}.git")
+    _git(dest, "add", "-A")
+    _git(dest, "commit", "-qm", "fixture")
+    return dest
+
+
+def test_conformant_maf_fixture_still_reproduces_the_colliding_id(tmp_path: Path):
+    # Pins the defect's own reproduction: pure probe-side provenance,
+    # independent of any orchestration binding, must still show at
+    # least one evidence id backed by more than one distinct
+    # (kind, source, sha256) tuple -- five, for "audit-0001" -- or this
+    # regression would no longer be testing what it claims to.
+    root = _copy_git_fixture(tmp_path, "conformant-maf")
+    raw = probes.run_enforcement_probe_set(root) + probes.run_privacy_probe_set(root)
+    provenance_by_id = {}
+    for probe in raw:
+        for item in probe.evidence_items:
+            provenance_by_id.setdefault(item.evidence_id, set()).add(
+                (item.kind, item.source, item.sha256)
+            )
+    conflicting = {ref: provs for ref, provs in provenance_by_id.items() if len(provs) > 1}
+    assert conflicting.keys() == {"audit-0001"}
+    assert len(conflicting["audit-0001"]) == 5
+
+
+def _fake_collect_live_evidence(root, options, default_branch):
+    """Fixture-local stand-in for a live GitHub/Azure read, exactly as
+    ``test_golden_fixtures.py`` uses: reads ``conformant-maf``'s own
+    ``governance/change-plane.json`` in place of a real API call.
+    Production code never reads this file on its own.
+    """
+    change_plane_path = Path(root) / "governance" / "change-plane.json"
+    if not change_plane_path.is_file():
+        return None, None, ()
+    data = json.loads(change_plane_path.read_text(encoding="utf-8"))
+    github = data.get("github")
+    azure = data.get("azure")
+    return (
+        github if isinstance(github, dict) else None,
+        azure if isinstance(azure, dict) else None,
+        (),
+    )
+
+
+def test_pre_deploy_binds_every_probe_citation_to_its_own_exact_provenance(
+    tmp_path: Path, monkeypatch
+):
+    # The core regression: every final probe citation in the assessed
+    # result must resolve to an EvidenceRef whose kind/source/sha256
+    # matches *that exact probe's* own observed provenance -- never
+    # another colliding probe's -- and a probe whose citation was
+    # rewritten to a new canonical id must have that id, not the
+    # original, as its own citation (no dangling old id).
+    root = _copy_git_fixture(tmp_path, "conformant-maf")
+    monkeypatch.setattr(
+        governed_actions, "_collect_selected_live_evidence", _fake_collect_live_evidence
+    )
+    result = governed_actions._assess_pre_deploy(
+        root,
+        contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False),
+        contracts.AssessmentOptions(
+            root=root,
+            phase="pre-deploy",
+            live_github=True,
+            live_azure=True,
+            repository=REPOSITORY,
+            now=NOW,
+        ),
+    )
+
+    citing = [probe for probe in result.probes if probe.evidence_refs]
+    assert citing, "expected at least one probe citing evidence"
+    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
+    for probe in citing:
+        assert len(probe.evidence_items) == len(probe.evidence_refs)
+        for ref, item in zip(probe.evidence_refs, probe.evidence_items):
+            # No dangling old id: the probe's own citation and its own
+            # provenance item agree on the id actually being cited.
+            assert item.evidence_id == ref
+            bound = evidence_by_id[ref]
+            assert (bound.kind, bound.source, bound.sha256) == (
+                item.kind,
+                item.source,
+                item.sha256,
+            )
+
+    # The original colliding id must never be a live citation once its
+    # provenance actually conflicted -- every citation that used to
+    # share it now carries its own distinct, rewritten id.
+    rewritten = {
+        ref
+        for probe in citing
+        for ref in probe.evidence_refs
+        if ref != "audit-0001" and ref.startswith("audit-0001")
+    }
+    assert len(rewritten) >= 2
+
+    # No probe was falsely downgraded merely because independent probes
+    # collided on an id: every distinct observed artifact is honestly
+    # represented, so the fixture remains governed.
+    assert not [
+        finding
+        for finding in result.findings
+        if finding.reason_code == "probe-evidence-unresolved"
+    ]
+    manifest = render.build_manifest(result)
+    assert manifest["summary"]["verdict"] == "governed"
+
+
+def test_repeated_identical_provenance_is_still_deduplicated_to_one_id():
+    # Two probes legitimately citing the exact same real artifact under
+    # the same id must keep sharing that one id and one EvidenceRef --
+    # collision handling must never rewrite an id that was never
+    # actually in conflict.
+    tuple_ = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "a" * 64)
+    item = contracts.ProbeEvidence(evidence_id="audit-0001", kind=tuple_[0], source=tuple_[1], sha256=tuple_[2])
+    probe_a = contracts.ProbeResult(
+        probe_id="deny", action_id="payments.refund", path_id=None, status="pass",
+        reason_code="ENF-PASS", expected="tool_not_invoked", observed="tool_not_invoked",
+        evidence_refs=("audit-0001",), evidence_items=(item,),
+    )
+    probe_b = contracts.ProbeResult(
+        probe_id="raise", action_id="payments.refund", path_id=None, status="pass",
+        reason_code="ENF-PASS", expected="tool_not_invoked", observed="tool_not_invoked",
+        evidence_refs=("audit-0001",), evidence_items=(item,),
+    )
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe_a, probe_b),
+        contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False),
+        contracts.AssessmentOptions(root=Path("."), phase="pre-deploy", now=NOW),
+        (),
+    )
+    assert [probe.evidence_refs for probe in kept] == [("audit-0001",), ("audit-0001",)]
+    assert [ref.evidence_id for ref in evidence] == ["audit-0001"]
+    assert (evidence[0].kind, evidence[0].source, evidence[0].sha256) == tuple_
+    assert not [f for f in findings if f.reason_code == "probe-evidence-unresolved"]
+
+
+def _synthetic_probe(probe_id: str, evidence_id: str, tuple_) -> contracts.ProbeResult:
+    kind, source, sha256 = tuple_
+    return contracts.ProbeResult(
+        probe_id=probe_id,
+        action_id="payments.refund",
+        path_id=None,
+        status="pass",
+        reason_code="ENF-PASS",
+        expected="tool_not_invoked",
+        observed="tool_not_invoked",
+        evidence_refs=(evidence_id,),
+        evidence_items=(
+            contracts.ProbeEvidence(evidence_id=evidence_id, kind=kind, source=source, sha256=sha256),
+        ),
+    )
+
+
+def test_conflicting_ids_are_deterministically_separated_never_reusing_false_evidence():
+    # Two probes citing the *same* id but backed by genuinely different
+    # observed provenance must each resolve to their own unique,
+    # rewritten canonical id -- reusing the first probe's digest for
+    # the second is exactly the defect this regression pins.
+    tuple_a = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "a" * 64)
+    tuple_b = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "b" * 64)
+    probe_a = _synthetic_probe("deny", "audit-0001", tuple_a)
+    probe_b = _synthetic_probe("transform", "audit-0001", tuple_b)
+
+    source = contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False)
+    options = contracts.AssessmentOptions(root=Path("."), phase="pre-deploy", now=NOW)
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe_a, probe_b), source, options, ()
+    )
+
+    assert not [f for f in findings if f.reason_code == "probe-evidence-unresolved"]
+    ref_a = kept[0].evidence_refs[0]
+    ref_b = kept[1].evidence_refs[0]
+    assert ref_a != ref_b
+    assert ref_a != "audit-0001" or ref_b != "audit-0001"
+    evidence_by_id = {ref.evidence_id: ref for ref in evidence}
+    assert (evidence_by_id[ref_a].kind, evidence_by_id[ref_a].source, evidence_by_id[ref_a].sha256) == tuple_a
+    assert (evidence_by_id[ref_b].kind, evidence_by_id[ref_b].source, evidence_by_id[ref_b].sha256) == tuple_b
+
+    # Deterministic and payload-free: rerunning with the exact same
+    # (unordered) inputs -- and with the process's own hash seed
+    # varying -- must produce byte-identical rewritten ids.
+    kept_again, _, _ = governed_actions._bind_probe_evidence(
+        (probe_b, probe_a), source, options, ()
+    )
+    ids_again = {probe.probe_id: probe.evidence_refs[0] for probe in kept_again}
+    assert ids_again["deny"] == ref_a
+    assert ids_again["transform"] == ref_b
+
+
+def test_conflicting_id_fails_closed_when_canonical_rewrite_would_collide(tmp_path: Path):
+    # If a deterministically-rewritten id would collide with a
+    # different id's already-bound (and differently-provenanced)
+    # evidence, that specific probe's citation is never silently
+    # reused as if it were safe: it is downgraded through the existing
+    # probe-evidence-unresolved semantics instead, while a sibling
+    # colliding probe whose rewrite does not collide is still honestly
+    # bound and kept passing.
+    colliding_tuple = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "a" * 64)
+    disambiguated_id = governed_actions._disambiguated_evidence_id(
+        "audit-0001",
+        contracts.ProbeEvidence(evidence_id="audit-0001", kind=colliding_tuple[0], source=colliding_tuple[1], sha256=colliding_tuple[2]),
+    )
+    # An unrelated, non-conflicting probe whose own (real) evidence id
+    # happens to already equal the string our rewrite would produce.
+    preexisting_tuple = ("static-file-hash", "specs/SPEC.md", "sha256:" + "f" * 64)
+    probe_pre = _synthetic_probe("pre-existing", disambiguated_id, preexisting_tuple)
+    probe_a = _synthetic_probe("deny", "audit-0001", colliding_tuple)
+    other_tuple = ("probe-audit-ledger-record", "governance/ledger.jsonl", "sha256:" + "b" * 64)
+    probe_b = _synthetic_probe("transform", "audit-0001", other_tuple)
+
+    source = contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False)
+    options = contracts.AssessmentOptions(root=Path("."), phase="pre-deploy", now=NOW)
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe_pre, probe_a, probe_b), source, options, ()
+    )
+
+    by_probe_id = {probe.probe_id: probe for probe in kept}
+    assert by_probe_id["pre-existing"].evidence_refs == (disambiguated_id,)
+    # The colliding rewrite is never reused as if it were safe: "deny"
+    # is downgraded rather than silently bound to "pre-existing"'s
+    # evidence.
+    assert by_probe_id["deny"].status == "not-verified"
+    assert by_probe_id["deny"].reason_code == "probe-evidence-unresolved"
+    assert by_probe_id["deny"].evidence_refs == ()
+    downgraded = [f for f in findings if f.reason_code == "probe-evidence-unresolved"]
+    assert len(downgraded) == 1
+    assert downgraded[0].affected_actions == ("payments.refund",)
+    # The sibling conflicting probe, whose rewrite does not collide,
+    # still gets its own distinct, correctly-bound id.
+    assert by_probe_id["transform"].status == "pass"
+    ref_b = by_probe_id["transform"].evidence_refs[0]
+    evidence_by_id = {ref.evidence_id: ref for ref in evidence}
+    assert (evidence_by_id[ref_b].kind, evidence_by_id[ref_b].source, evidence_by_id[ref_b].sha256) == other_tuple
+    assert evidence_by_id[disambiguated_id].sha256 == preexisting_tuple[2]
