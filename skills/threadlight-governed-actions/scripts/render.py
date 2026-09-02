@@ -873,10 +873,30 @@ def _required_evidence_is_untrustworthy(
 
 
 def _phase_for(result: AssessmentResult) -> str:
-    phases = {finding.phase for finding in result.findings} | {ref.phase for ref in result.evidence}
-    if not phases:
+    """The manifest/evidence-pack's assessment-level lifecycle phase.
+
+    ``result.phase`` -- when an orchestrator has supplied it, mirroring
+    ``AssessmentOptions.phase`` -- is authoritative: it names what phase
+    this assessment run was actually judging, never a computed aggregate.
+
+    When it is absent (``None``, the common case before such an
+    orchestrator exists), the phase is derived conservatively from the
+    assessment's own assertions -- the distinct ``Finding.phase`` values
+    present -- taking the latest lifecycle stage among them. Evidence's own
+    ``EvidenceRef.phase`` is never consulted here: it describes when a
+    piece of evidence was collected, not what phase the assessment itself
+    claims to be judging, so an uncited, probe-only, or explicitly
+    distrusted evidence record can never escalate (or otherwise redefine)
+    the assessment's own lifecycle claim. An assessment with no findings at
+    all (for example, a probe-only run) conservatively defaults to
+    ``"design"``, the earliest supported phase.
+    """
+    if result.phase is not None:
+        return result.phase
+    finding_phases = {finding.phase for finding in result.findings}
+    if not finding_phases:
         return "design"
-    return max(phases, key=contracts.SUPPORTED_PHASES.index)
+    return max(finding_phases, key=contracts.SUPPORTED_PHASES.index)
 
 
 def _freshness_from_pairs(

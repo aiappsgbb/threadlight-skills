@@ -210,3 +210,18 @@ class AssessmentResult:
     #: ``AssessmentOptions.now`` once an orchestrator wires the two
     #: together.
     captured_at: Optional[str] = None
+    #: The lifecycle phase this assessment was actually run at, mirroring
+    #: ``AssessmentOptions.phase``: an assessment-level claim ("what phase
+    #: was *this run* judging"), never a computed aggregate of the phases
+    #: any individual finding or evidence record happens to carry. Optional
+    #: and defaulting to ``None`` for backward compatibility with existing
+    #: callers built before this field existed; a ``None`` value is
+    #: rendered as a conservative fallback derived only from the
+    #: assessment's own assertions (``Finding.phase``), never from
+    #: ``EvidenceRef.phase`` -- evidence describes when it was collected,
+    #: not what phase the assessment itself claims to be judging, so an
+    #: uncited, probe-only, or explicitly distrusted evidence record must
+    #: never be able to escalate or otherwise redefine that claim. Intended
+    #: to be populated from ``AssessmentOptions.phase`` once an
+    #: orchestrator wires the two together.
+    phase: Optional[Phase] = None

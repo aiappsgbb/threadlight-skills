@@ -267,6 +267,7 @@ def _base_result(
     dirty: bool = False,
     residual_risks: Sequence[Dict[str, object]] = (),
     captured_at: Optional[str] = _CAPTURED_AT_DEFAULT,
+    phase: Optional[str] = None,
 ) -> contracts.AssessmentResult:
     return contracts.AssessmentResult(
         source=_source(dirty=dirty),
@@ -310,6 +311,7 @@ def _base_result(
         },
         residual_risks=tuple(residual_risks),
         captured_at=captured_at,
+        phase=phase,
     )
 
 
@@ -1185,13 +1187,107 @@ def test_manifest_summary_ignores_unrelated_evidence_identity_mismatch():
     _assert_valid_manifest(manifest)
     assert manifest["freshness"]["status"] == "fresh"
     assert manifest["summary"]["verdict"] == "governed"
+    # The unrelated evidence's own "post-deploy" label must never leak into
+    # the assessment-level phase claim: nothing here found or asserted
+    # anything at post-deploy.
+    assert manifest["phase"] == "design"
 
 
 # ---------------------------------------------------------------------------
-# Hardening round: freshness is bound to the assessment's own trusted
-# capture instant, never to the newest evidence timestamp this manifest
-# happens to carry, and never to evidence unrelated findings/probes did not
-# require (issue 2, final rereview)
+# Hardening round: the manifest/evidence-pack's assessment-level "phase"
+# claim is never derived from evidence labels -- only from the assessment's
+# own assertions (``Finding.phase``), or from an explicit, authoritative
+# ``AssessmentResult.phase`` when an orchestrator has supplied one. Evidence
+# describes when it was collected, not what phase the assessment itself
+# claims to be judging: an uncited, probe-only, or explicitly distrusted
+# evidence record must never be able to escalate that claim (quality
+# rereview).
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_phase_ignores_uncited_post_deploy_evidence():
+    # A design-only finding cites no evidence at all; a wholly uncited
+    # evidence entry happens to carry a "post-deploy" label. That label
+    # must never escalate the assessment's own phase claim.
+    findings = [_finding("MED-001", "pass", phase="design")]
+    evidence = [_evidence("EVID-uncited", phase="post-deploy")]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "design"
+
+
+def test_manifest_phase_ignores_probe_only_evidence():
+    # Evidence cited only by a probe (never by any finding) still must not
+    # define the assessment's lifecycle claim: ``ProbeResult`` carries no
+    # ``phase`` field at all, so a probe-only evidence citation is exactly
+    # as irrelevant to the phase claim as an uncited one.
+    findings = [_finding("MED-001", "pass", phase="design")]
+    probes = [_probe("PROBE-001", None, None)]
+    evidence = [_evidence("EVID-PROBE-001", phase="post-deploy")]
+    result = _base_result(findings=findings, probes=probes, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "design"
+
+
+def test_manifest_phase_ignores_mismatched_distrusted_evidence_label():
+    # Evidence cited by a design-phase finding, but the evidence record is
+    # itself untrustworthy (foreign repository) *and* carries a
+    # "post-deploy" label. Neither the mismatch nor the label may escalate
+    # the assessment's phase claim -- only ``Finding.phase`` may.
+    findings = [_finding("MED-001", "pass", phase="design", evidence_refs=("EVID-distrusted",))]
+    evidence = [
+        _evidence(
+            "EVID-distrusted",
+            phase="post-deploy",
+            repository="someone-else/other-repo",
+            source_commit="f" * 40,
+        )
+    ]
+    result = _base_result(findings=findings, evidence=evidence)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "design"
+
+
+def test_manifest_phase_derives_from_latest_finding_phase_when_no_explicit_phase():
+    # Regression: with no explicit ``AssessmentResult.phase``, the phase
+    # claim is still the latest lifecycle stage among the assessment's own
+    # findings -- this is a legitimate assertion, unlike an evidence label.
+    findings = [
+        _finding("MED-001", "pass", phase="design"),
+        _finding("MED-002", "pass", phase="post-deploy"),
+    ]
+    result = _base_result(findings=findings)
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "post-deploy"
+
+
+def test_manifest_phase_defaults_to_design_with_no_findings_and_no_explicit_phase():
+    # An empty-finding assessment (for example, a probe-only run with no
+    # findings recorded yet) must still conservatively default to
+    # "design" -- unchanged compatibility behavior.
+    result = _base_result(findings=(), evidence=())
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "design"
+
+
+def test_manifest_phase_uses_explicit_result_phase_over_findings_and_evidence():
+    # An explicit, orchestrator-supplied ``AssessmentResult.phase`` is
+    # authoritative: it wins over both the derived finding-phase maximum
+    # and any evidence label.
+    findings = [_finding("MED-001", "pass", phase="design")]
+    evidence = [_evidence("EVID-post-deploy", phase="post-deploy")]
+    result = _base_result(findings=findings, evidence=evidence, phase="pre-deploy")
+    manifest = render.build_manifest(result)
+    _assert_valid_manifest(manifest)
+    assert manifest["phase"] == "pre-deploy"
+
+
+
 # ---------------------------------------------------------------------------
 
 
