@@ -303,7 +303,7 @@ field.
   `--staging-resource-group`. Findings are the fixed 18-ID taxonomy
   `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `APR-001`, `OUT-001`,
   `AUD-001`, `PIN-001`, `GHCP-001..006`, `OPS-001`; the manifest is
-  `threadlight.governed-actions/v1` at schema `1.0.0`. Evidence is
+  `threadlight-governed-actions-manifest/v1` at schema `1.0.0`. Evidence is
   **payload-free** — no raw prompts, arguments, outputs, or secrets are
   recorded. `threadlight-production-ready` (skill v0.12.0) consumes the
   manifest as leg-verified AGT-007 / HITL-008 / SUP-014 evidence, and

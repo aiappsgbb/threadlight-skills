@@ -141,6 +141,53 @@ def test_skill_md_version_matches_the_cli_assessor_version():
     )
 
 
+# ---------------------------------------------------------------------------
+# Published prose (CHANGELOG.md / SKILL.md) must never drift from the
+# manifest schema this skill actually emits — Task 15 spec-review findings.
+# ---------------------------------------------------------------------------
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+CHANGELOG_MD = REPO_ROOT / "CHANGELOG.md"
+
+
+def test_changelog_publishes_the_exact_manifest_schema_identifier():
+    """CHANGELOG.md must cite the manifest ``schema`` const the skill
+    actually emits (``render.MANIFEST_SCHEMA``), never the unpublished
+    dotted spelling ``threadlight.governed-actions/v1``."""
+    import render
+
+    changelog = CHANGELOG_MD.read_text(encoding="utf-8")
+
+    assert (
+        "threadlight.governed-actions/v1" not in changelog
+    ), "CHANGELOG.md must not cite the unpublished 'threadlight.governed-actions/v1' schema id"
+    assert f"`{render.MANIFEST_SCHEMA}`" in changelog, (
+        f"CHANGELOG.md must cite the exact emitted schema id `{render.MANIFEST_SCHEMA}`"
+    )
+    assert render.MANIFEST_SCHEMA == _manifest_schema()["properties"]["schema"]["const"]
+
+
+def test_skill_md_never_claims_the_manifest_records_a_ghcp_internal_loop_field():
+    """The ``changePlane`` def in the manifest schema is closed
+    (``additionalProperties: false``) and has no
+    ``ghcp_internal_loop_intercepted`` property, so SKILL.md must not claim
+    the manifest "always records" that field. It may only describe the
+    boundary: this assessor never claims/intercepts GitHub Copilot's
+    internal loop and evaluates solely declared/static change-plane
+    controls.
+    """
+    skill = SKILL_MD.read_text(encoding="utf-8")
+    change_plane_props = set(_manifest_schema()["$defs"]["changePlane"]["properties"])
+
+    assert "ghcp_internal_loop_intercepted" not in change_plane_props
+    assert "ghcp_internal_loop_intercepted" not in skill, (
+        "SKILL.md must not name a manifest output field that the schema does not emit"
+    )
+    assert "never claims, and never intercepts, GitHub Copilot's own internal loop" in skill
+    assert "declared, static change-plane controls" in skill
+
+
 def _manifest_schema():
     return json.loads(
         (REFERENCES / "governed-actions-manifest.schema.json").read_text(

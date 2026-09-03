@@ -210,9 +210,11 @@ Read these as *published limits*, not caveats to be softened later.
   repeats that constraint rather than absorbing it.
 - **The GitHub Copilot change plane is not the Copilot loop.** This assessor
   governs how an agent's changes reach a branch and an environment; it
-  **never intercepts GitHub Copilot's own internal loop** — its reasoning and
-  tool-calling stay outside this boundary — and the manifest always records
-  `ghcp_internal_loop_intercepted: false`.
+  **never claims, and never intercepts, GitHub Copilot's own internal loop**
+  — its reasoning and tool-calling stay outside this boundary — and it
+  evaluates only the declared, static change-plane controls (branch
+  protection, required checks, pinning, OIDC, identity separation) that the
+  manifest's `change_plane` object records.
 - **Customer policy stays with the customer.** No business threshold,
   authorization rule, named approver, tenant identity, or risk appetite is ever
   invented here; a missing one produces an explicit customer-decision
