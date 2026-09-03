@@ -65,7 +65,7 @@ CONSUMPTION_IQ = (
     REPO / "skills" / "threadlight-consumption-iq" / "scripts" / "consumption_iq.py"
 )
 
-AUTO_VERSION = "1.2.0"
+AUTO_VERSION = "1.3.0"
 PROD_VERSION = "0.12.0"
 
 # The stage list is a contract, not an implementation detail: production-ready,

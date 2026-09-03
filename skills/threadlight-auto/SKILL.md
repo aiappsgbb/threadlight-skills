@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -79,7 +79,60 @@ design            local-test       deploy             safe-check
 > `threadlight-router-bench` to harvest a grounded learnings digest (failure
 > taxonomy + recommendations) and, optionally, a model-router cost/quality
 > scorecard. It never drives prod-pipeline, customer-onboarding, or offline
-> self-improvement legs.
+> self-improvement legs. **`threadlight-governed-actions` is also not driven
+> here** — see [§ Governed actions](#governed-actions--recommended-manually-owned).
+
+## Governed actions — recommended, manually owned
+
+`threadlight-governed-actions` assesses whether every consequential action the
+agent can take reaches pre-action mediation, whether approvals bind, and
+whether the GitHub change plane is controlled. That leg is **manual and
+explicit**: `threadlight-auto` recommends it and reads what it already wrote,
+and does nothing else with it.
+
+| Auto does | Auto never does |
+|---|---|
+| Recommend the three lifecycle steps, verbatim (below) | Run, schedule, or cascade into the skill |
+| Summarise an already committed `tests/governed-actions-manifest.json` | Re-run any governed-actions probe, or import the assessor |
+| Recommend a re-run when that manifest cannot be trusted | Scaffold, apply a policy or remediation plan, enforce, deploy, run a production canary, merge, or roll anything out |
+
+The orchestrator surfaces the handoff as `governed_actions` in its decision
+JSON — a recommendation payload, never a stage. `threadlight-governed-actions`
+is deliberately absent from `STAGES`, `STAGE_PROBES`, `LEG_CONTRACTS`, and the
+manual live-leg handoffs, so no cascade or resumption path can reach it. The
+recommended wording is fixed:
+
+| Key | Recommendation |
+|---|---|
+| `execution` | `manual-explicit` |
+| `design` | `run threadlight-governed-actions --phase design after threadlight-design` |
+| `pre_deploy` | `run threadlight-governed-actions --phase pre-deploy before deploy` |
+| `post_deploy` | `run threadlight-governed-actions --phase post-deploy against staging only` |
+| `manifest` | `tests/governed-actions-manifest.json` |
+
+The handoff appears only when the workspace declares a consequential action
+(`specs/manifest.json` `consequential_actions: true`, or a root action registry
+declaring a non-read `consequence`) or already carries a manifest — an
+unrelated pilot is never nagged.
+
+**Manifest summary (`governed_actions_manifest`).** When
+`tests/governed-actions-manifest.json` exists, `summarize_governed_actions_manifest()`
+reads it as untrusted JSON and checks only what auto can check for itself:
+schema `threadlight-governed-actions-manifest/v1`, a known lifecycle phase, a
+clean source bound to the checked-out commit, freshness, and summary counts
+that agree with the findings they claim to summarise. A schema-valid, fresh,
+commit-bound manifest is reported as `summarized` with its verdict and
+per-status counts. Anything else — stale, expired, dirty, mis-bound,
+miscounted, malformed — is reported as `rerun-recommended` with zeroed counts
+and no verdict, and the recommendation is the same approved lifecycle wording.
+
+**Trust limitations.** The summary is a *read*, not a verification: auto never
+re-derives policy hashes, never resolves evidence, and never validates
+mediation paths — `threadlight-production-ready` does that when it folds the
+manifest into `AGT-007` / `HITL-008` / `SUP-014`. Auto's `summarized` status
+therefore means "this artefact is well-formed, current, and bound to this
+commit", never "this pilot is governed". Enforcement, remediation, and
+production rollout stay with a human running the skill directly.
 
 ## Input parsing
 
