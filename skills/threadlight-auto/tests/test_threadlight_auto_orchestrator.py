@@ -970,6 +970,32 @@ def test_auto_recommends_rerun_for_an_invalid_governed_actions_manifest(tmp_path
     ]
 
 
+def test_auto_recommends_rerun_for_a_non_string_finding_status(tmp_path):
+    # An otherwise schema-valid, commit-bound, fresh manifest must still be
+    # untrusted when a finding's status is untrusted JSON that isn't a
+    # string (e.g. an array or object) rather than raising inside the
+    # findings loop's `status not in observed` membership check.
+    non_string_statuses: dict[str, object] = {
+        "list": ["pass"],
+        "object": {"value": "pass"},
+    }
+
+    for label, status in non_string_statuses.items():
+        manifest = _golden_governed_actions_manifest()
+        manifest["findings"][0]["status"] = status
+        workspace = make_context(tmp_path / label, manifest=manifest)
+        summary = orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL,
+            GOLDEN_COMMIT,
+            now=GOLDEN_FRESH_NOW,
+        )
+        assert summary["status"] == "rerun-recommended", label
+        assert summary["trusted"] is False, label
+        assert "unknown id or status" in summary["reason"], label
+        assert summary["verdict"] is None, label
+        assert summary["recommendation"] == [EXPECTED_HANDOFF["pre_deploy"]], label
+
+
 def test_auto_decision_surfaces_the_manifest_summary(tmp_path):
     manifest = _golden_governed_actions_manifest()
     workspace = make_context(tmp_path, consequential_actions=True, manifest=manifest)

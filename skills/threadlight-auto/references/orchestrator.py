@@ -470,7 +470,11 @@ def summarize_governed_actions_manifest(
             return _governed_actions_untrusted("a finding is not an object", phase)
         finding_id = finding.get("finding_id")
         status = finding.get("status")
-        if not isinstance(finding_id, str) or status not in observed:
+        if (
+            not isinstance(finding_id, str)
+            or not isinstance(status, str)
+            or status not in observed
+        ):
             return _governed_actions_untrusted(
                 "a finding carries an unknown id or status", phase
             )
