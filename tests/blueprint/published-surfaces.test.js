@@ -35,6 +35,13 @@ function extractProducerSectionHeading(text, number) {
   return match[1];
 }
 
+// The single release contract these publication assertions are built from.
+// expectedPipelineSkillCount counts every skill except the threadlight-auto
+// planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
+const expectedVersion = '1.13.0';
+const expectedSkillCount = 23;
+const expectedPipelineSkillCount = 22;
+
 const NEW_SKILLS = [
   'threadlight-qualify',
   'threadlight-connect',
@@ -55,6 +62,7 @@ const THREADLIGHT_SKILLS = [
   'threadlight-evals',
   'threadlight-event-triggers',
   'threadlight-govern',
+  'threadlight-governed-actions',
   'threadlight-ground',
   'threadlight-hitl-patterns',
   'threadlight-loadtest',
@@ -67,6 +75,10 @@ const THREADLIGHT_SKILLS = [
   'threadlight-upgrade',
   'threadlight-workspace-ui',
 ];
+
+// The constant list is itself part of the release contract: a count bump that
+// forgot to name the new skill would otherwise pass every deepStrictEqual below.
+assert.strictEqual(THREADLIGHT_SKILLS.length, expectedSkillCount);
 
 // Active product surfaces that must never carry a stale skill-count claim. NB:
 // "thirteen pillars" / "13 pillars" are production-ready PILLAR counts, not
@@ -81,22 +93,41 @@ const ACTIVE_SURFACES = [
   'docs/index.html',
   'docs/customize.html',
 ];
-const STALE_COUNT = /17 skills|17 total|16 pipeline|13-skill library|sixteen[ -]skill|seventeen[ -]skill|all 17 skills/i;
+// NB: `22 pipeline` is CURRENT (expectedPipelineSkillCount), so only the
+// superseded `21 pipeline` and the superseded `22-skill library` / `all 22
+// skills` / `Threadlight is 22` TOTAL claims are matched here — a bare "22
+// skills" is deliberately not matched, because pipeline-scoped copy may
+// legitimately say it.
+const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 total|13-skill library|22-skill library|all 17 skills|all 22 skills|all 22 threadlight skills|22 threadlight skills|Threadlight is 22|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill/i;
 
-test('filesystem publishes exactly 22 threadlight-* skills', () => {
+test(`filesystem publishes exactly ${expectedSkillCount} threadlight-* skills`, () => {
   const dirs = fs
     .readdirSync(path.join(repoRoot, 'skills'), { withFileTypes: true })
     .filter((d) => d.isDirectory() && d.name.startsWith('threadlight-'))
     .map((d) => d.name);
-  assert.strictEqual(dirs.length, 22, `expected 22 skills, found ${dirs.length}: ${dirs.join(', ')}`);
+  assert.strictEqual(
+    dirs.length,
+    expectedSkillCount,
+    `expected ${expectedSkillCount} skills, found ${dirs.length}: ${dirs.join(', ')}`,
+  );
+  assert.deepStrictEqual(dirs.slice().sort(), THREADLIGHT_SKILLS);
+  for (const skill of THREADLIGHT_SKILLS) {
+    assert.ok(
+      fs.existsSync(path.join(repoRoot, 'skills', skill, 'SKILL.md')),
+      `${skill} must publish a SKILL.md`,
+    );
+  }
 });
 
-test('plugin.json is version 1.12.0 with the 22-total description', () => {
+test(`plugin.json is version ${expectedVersion} with the ${expectedSkillCount}-total description`, () => {
   const plugin = JSON.parse(read('plugin.json'));
-  assert.strictEqual(plugin.version, '1.12.0');
+  assert.strictEqual(plugin.version, expectedVersion);
   assert.match(
     plugin.description,
-    /21 pipeline skills \+ threadlight-auto agent-guided lifecycle planner \(22 total\).*brief to a governed working pilot with an evidence-backed path to production/i,
+    new RegExp(
+      `${expectedPipelineSkillCount} pipeline skills \\+ threadlight-auto agent-guided lifecycle planner \\(${expectedSkillCount} total\\).*brief to a governed working pilot with an evidence-backed path to production`,
+      'i',
+    ),
   );
   assert.doesNotMatch(plugin.description, /full-auto orchestrator/i);
   assert.doesNotMatch(plugin.description, /brief to a deployed, production-ready Foundry agent/i);
@@ -110,23 +141,26 @@ test('marketplace metadata versions stay in parity with plugin.json', () => {
   assert.strictEqual(marketplace.plugins[0].version, plugin.version);
 });
 
-test('published surfaces enumerate the 22-skill pack', () => {
+test(`published surfaces enumerate the ${expectedSkillCount}-skill pack`, () => {
   // The plan's canonical smoke assertions.
-  assert.match(read('plugin.json'), /22 total/);
+  assert.match(read('plugin.json'), new RegExp(`${expectedSkillCount} total`));
   assert.match(read('README.md'), /threadlight-qualify/);
   assert.match(read('THREADLIGHT.md'), /threadlight-upgrade/);
+  for (const surface of ['plugin.json', 'README.md', 'THREADLIGHT.md']) {
+    assert.match(read(surface), /threadlight-governed-actions/, `${surface} must publish the governed-actions skill`);
+  }
 });
 
-test('THREADLIGHT inventory is the exact unique alphabetical 22-skill set', () => {
+test(`THREADLIGHT inventory is the exact unique alphabetical ${expectedSkillCount}-skill set`, () => {
   const briefing = read('THREADLIGHT.md');
   const inventory = briefing.match(
-    /The twenty-two skills \(alphabetical,[\s\S]*?\n```(?:text)?\n([\s\S]*?)\n```/,
+    /The twenty-three skills \(alphabetical,[\s\S]*?\n```(?:text)?\n([\s\S]*?)\n```/,
   );
-  assert.ok(inventory, 'THREADLIGHT.md must contain the fenced twenty-two-skill inventory');
+  assert.ok(inventory, 'THREADLIGHT.md must contain the fenced twenty-three-skill inventory');
 
   const published = inventory[1].match(/threadlight-[a-z0-9-]+/g) || [];
   assert.deepStrictEqual(published, THREADLIGHT_SKILLS);
-  assert.strictEqual(new Set(published).size, 22, 'inventory skill IDs must be unique');
+  assert.strictEqual(new Set(published).size, expectedSkillCount, 'inventory skill IDs must be unique');
 });
 
 test('README, THREADLIGHT and plugin.json each name all five new skills', () => {
@@ -162,17 +196,34 @@ test('funnel metadata reflects the governed working pilot framing', () => {
   assert.match(funnel, /<title>Threadlight — governed working pilot funnel\.<\/title>/);
   assert.match(
     funnel,
-    /<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.match(
     funnel,
-    /<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.match(
     funnel,
-    /<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.doesNotMatch(funnel, /eleven-skill|deployed agent in one session/i);
+});
+
+test('funnel chain enumeration counts governed-actions and adds up to the published totals', () => {
+  const funnel = read('docs/funnel.html');
+
+  // 3 named gates + 6 supporting skills + the entry/evidence/lifecycle legs
+  // must equal expectedPipelineSkillCount, and threadlight-auto takes the
+  // library to expectedSkillCount. Publishing governed-actions without
+  // adding it to this enumeration leaves the arithmetic one leg short.
+  assert.match(funnel, /thirteen entry, evidence, and lifecycle legs/i);
+  assert.match(funnel, /<code>governed-actions<\/code>/, 'the leg list must name governed-actions');
+  assert.match(
+    funnel,
+    new RegExp(`3 \\+ 6 \\+ 13 = <strong>${expectedPipelineSkillCount} pipeline skills</strong>`),
+  );
+  assert.match(funnel, new RegExp(`<strong>${expectedSkillCount}-skill library</strong>`));
+  assert.doesNotMatch(funnel, /3 \+ 6 \+ 12|twelve entry, evidence, and lifecycle legs/i);
 });
 
 test('industries copy stays CI/CD-only and never reintroduces a laptop deploy command', () => {
@@ -190,19 +241,22 @@ test('grab-shots targets the process library section, not the deprecated sector 
   assert.doesNotMatch(grabShots, /#sector-grid/);
 });
 
-test('index + customize render the accurate 22 count', () => {
+test(`index + customize render the accurate ${expectedSkillCount} count`, () => {
   const index = read('docs/index.html');
   const twitterDescription = index.match(
     /<meta name="twitter:description"\s+content="([^"]+)">/,
   );
   assert.ok(twitterDescription, 'expected twitter description meta tag');
-  assert.match(index, /Threadlight is 22/);
+  assert.match(index, new RegExp(`Threadlight is ${expectedSkillCount}`));
   assert.strictEqual(
     twitterDescription[1],
     'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
   );
   assert.doesNotMatch(twitterDescription[1], /self-driving/i);
-  assert.match(read('docs/customize.html'), /22 skills/);
+  // The customize overlay diagram labels the whole upstream `threadlight-skills`
+  // repo ("N skills · never edited"), not the pipeline subset, so it tracks
+  // expectedSkillCount.
+  assert.match(read('docs/customize.html'), new RegExp(`${expectedSkillCount} skills &middot; never edited`));
 });
 
 test('no active product surface carries a stale skill-count claim', () => {
@@ -224,12 +278,28 @@ test('plugin.json and marketplace metadata use governed-pilot planner wording', 
   ];
 
   for (const [label, description] of descriptions) {
-    assert.match(description, /22 total/);
+    assert.match(description, new RegExp(`${expectedSkillCount} total`));
     assert.match(description, /agent-guided lifecycle planner/i, `${label} must call threadlight-auto a planner`);
     assert.match(description, /governed working pilot/i, `${label} must describe a governed pilot`);
     assert.doesNotMatch(description, /full-auto orchestrator/i, `${label} must not claim full-auto orchestration`);
     assert.doesNotMatch(description, /brief to a deployed, production-ready Foundry agent/i, `${label} must not claim brief-to-production-ready`);
-    assert.doesNotMatch(description, /17 total|16 pipeline/i, `${label} must not keep the stale count`);
+    assert.doesNotMatch(description, /17 total|16 pipeline|22 total/i, `${label} must not keep the stale count`);
+  }
+});
+
+test('marketplace metadata publishes the governed-actions skill count parity', () => {
+  const marketplace = JSON.parse(read('.github/plugin/marketplace.json'));
+
+  assert.strictEqual(marketplace.metadata.version, expectedVersion);
+  assert.strictEqual(marketplace.plugins[0].version, expectedVersion);
+  for (const description of [
+    marketplace.metadata.description,
+    marketplace.plugins[0].description,
+  ]) {
+    assert.match(
+      description,
+      new RegExp(`${expectedPipelineSkillCount} pipeline skills \\+ threadlight-auto agent-guided lifecycle planner \\(${expectedSkillCount} total\\)`, 'i'),
+    );
   }
 });
 
@@ -344,7 +414,7 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(consumptionIq, /production-ready consumes verified artifacts and does not query or recompute/i);
   assert.doesNotMatch(consumptionIq, /Live actual-cost queries[\s\S]{0,120}threadlight-production-ready/i);
 
-  assert.match(productionReadyHead, /v0\.11\.0/);
+  assert.match(productionReadyHead, /v0\.12\.0/);
   assert.doesNotMatch(productionReadyHead, /v0\.3\.0/);
   assert.ok(!productionReadyHead.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
 
@@ -424,6 +494,124 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
     assert.match(block, /RDY-002[\s\S]{0,80}warning/i, `${label} must describe RDY-002 as a warning`);
     assert.doesNotMatch(block, /RDY-002[\s\S]{0,80}finding/i, `${label} must not describe RDY-002 as a finding`);
   }
+});
+
+const GOVERNED_ACTIONS_FINDING_IDS = [
+  'ACT-001',
+  'ACT-002',
+  'MED-001',
+  'MED-002',
+  'MED-003',
+  'ENF-001',
+  'ENF-002',
+  'APR-001',
+  'OUT-001',
+  'AUD-001',
+  'PIN-001',
+  'GHCP-001',
+  'GHCP-002',
+  'GHCP-003',
+  'GHCP-004',
+  'GHCP-005',
+  'GHCP-006',
+  'OPS-001',
+];
+
+const GOVERNED_ACTIONS_ALERT_CLASSES = [
+  'unmediated-action',
+  'interceptor-failure',
+  'approval-replay',
+  'output-mediator-failure',
+  'audit-delivery-failure',
+  'tuple-drift',
+  'repository-protection-drift',
+  'deployment-identity-drift',
+];
+
+test('the governed-actions SKILL.md publishes its contract, taxonomy, and trust boundaries', () => {
+  const skill = read('skills/threadlight-governed-actions/SKILL.md');
+
+  assert.match(skill, /^name: threadlight-governed-actions$/m);
+  assert.match(skill, /^ {2}version: "0\.1\.0"$/m);
+
+  assert.strictEqual(
+    GOVERNED_ACTIONS_FINDING_IDS.length,
+    18,
+    'the published taxonomy is exactly 18 finding IDs',
+  );
+  for (const findingId of GOVERNED_ACTIONS_FINDING_IDS) {
+    assert.match(skill, new RegExp(`\\b${findingId}\\b`), `SKILL.md must document ${findingId}`);
+  }
+  for (const alertClass of GOVERNED_ACTIONS_ALERT_CLASSES) {
+    assert.match(skill, new RegExp(`\`${alertClass}\``), `SKILL.md must document the ${alertClass} alert`);
+  }
+
+  // Inputs, outputs, lifecycle, and write posture.
+  for (const input of [
+    'specs/SPEC.md',
+    'agent.yaml',
+    'tool-registry.json',
+    'governance/**',
+    'policies/**',
+    'tests/**',
+    '.github/workflows/',
+    'CODEOWNERS',
+  ]) {
+    assert.ok(skill.includes(input), `SKILL.md must document the ${input} input`);
+  }
+  for (const output of [
+    'tests/governed-actions-manifest.json',
+    'docs/governance/evidence-pack.md',
+    'tests/governed-actions-apply-plan.json',
+  ]) {
+    assert.ok(skill.includes(output), `SKILL.md must document the ${output} output`);
+  }
+  assert.match(skill, /read-only\s+by\s+default/i);
+  assert.match(skill, /`--emit`/);
+  assert.match(skill, /`--scaffold maf`[\s\S]{0,200}`--confirm-scaffold`/);
+  assert.match(skill, /post-deploy[\s\S]{0,200}staging/i);
+  assert.match(skill, /--staging-resource-group/);
+  for (const exitRow of [
+    /\| `0` \|/,
+    /\| `1` \|/,
+    /\| `2` \|/,
+    /\| `3` \|/,
+  ]) {
+    assert.match(skill, exitRow, 'SKILL.md must publish the four exit codes');
+  }
+
+  // Privacy and trust boundaries that must never be softened. The prose is
+  // markdown-wrapped, so every phrase assertion tolerates a line break where
+  // the published sentence has a space.
+  assert.match(
+    skill,
+    /never\s+records\s+raw\s+prompts,\s+tool\s+arguments,\s+model\s+output,\s+or\s+secrets/i,
+    'SKILL.md must publish the payload-free evidence prohibition',
+  );
+  assert.match(skill, /Agent Hooks[\s\S]{0,200}cooperative/i);
+  assert.match(skill, /not\s+a\s+security\s+boundary/i);
+  assert.match(skill, /Microsoft Agent Framework[\s\S]{0,120}experimental/i);
+  assert.match(skill, /conformance[\s\S]{0,80}not\s+certification/i);
+  assert.match(skill, /provider-hosted/i);
+  assert.match(
+    skill,
+    /the\s+called\s+service\s+still\s+owns[\s\S]{0,200}authorization[\s\S]{0,200}idempotency/i,
+    'SKILL.md must keep server-side controls with the called service',
+  );
+  assert.match(skill, /never\s+intercepts[\s\S]{0,120}internal\s+loop/i);
+  assert.match(skill, /SAFE[\s\S]{0,120}design\s+framework/i);
+  assert.match(skill, /Agent Constraint Service[\s\S]{0,160}policy-decision/i);
+  assert.match(skill, /ASSERT[\s\S]{0,160}offline\s+assurance/i);
+  assert.doesNotMatch(
+    skill,
+    /ASSERT[^.]{0,120}(?:is|are|provides?|acts? as) (?:a )?runtime enforcement/i,
+    'ASSERT/evals must never be published as runtime enforcement',
+  );
+
+  // The rejected alternatives the approved design requires this skill to record.
+  assert.match(skill, /threadlight-production-ready[\s\S]{0,200}consume[\s\S]{0,200}aggregate/i);
+  assert.match(skill, /threadlight-safe-check[\s\S]{0,160}threadlight-hitl-patterns/i);
+  assert.match(skill, /MAF\s+is\s+first,\s+behind\s+the\s+explicit\s+`RuntimeAdapter`\s+contract/i);
 });
 
 test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {

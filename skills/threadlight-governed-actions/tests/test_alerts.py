@@ -1,0 +1,502 @@
+"""Tests for threadlight-governed-actions' operational alert catalog
+assessment (Task 8, design section 17).
+
+Governance is only as useful as its own failure-signaling: if an
+interceptor crash, an approval replay, an audit-delivery failure, or a
+drifted branch-protection/deployment-identity control would never itself
+raise an alert, a customer could be silently unprotected. ``assess_alerts``
+proves the assessed repository actually declares all eight required alert
+classes as enabled, stable (a ``reason_code``/``correlation_id`` pair), and
+payload-free -- never inventing a business policy, threshold, or approver
+of its own -- and reports the single ``OPS-001`` finding this project's
+finding catalog already reserves for that gap.
+
+Run with:
+    python3 -m pytest skills/threadlight-governed-actions/tests/test_alerts.py -q
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+import alerts
+from alerts import REQUIRED_ALERT_CLASSES, assess_alerts
+
+
+_REQUIRED_ALERT_CLASSES = (
+    "unmediated-action",
+    "interceptor-failure",
+    "approval-replay",
+    "output-mediator-failure",
+    "audit-delivery-failure",
+    "tuple-drift",
+    "repository-protection-drift",
+    "deployment-identity-drift",
+)
+
+
+def _write_catalog(root: Path, overrides=None, omit=()) -> Path:
+    definitions = {
+        name: {
+            "enabled": True,
+            "reason_code": f"ALERT-{name.upper()}",
+            "correlation_id": f"corr-{name}",
+        }
+        for name in _REQUIRED_ALERT_CLASSES
+        if name not in omit
+    }
+    if overrides:
+        for name, patch in overrides.items():
+            definitions.setdefault(name, {}).update(patch)
+    governance_dir = root / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    catalog_path = governance_dir / "alerts.json"
+    catalog_path.write_text(json.dumps(definitions), encoding="utf-8")
+    return catalog_path
+
+
+def _init_git_repo(root: Path) -> str:
+    """Turn ``root`` into a real, standalone git repository with a single
+    commit of its current contents, returning that commit's full SHA."""
+    run = lambda *args: subprocess.run(  # noqa: E731 - local test helper
+        args, cwd=root, capture_output=True, text=True, check=True
+    )
+    run("git", "init", "--quiet")
+    run("git", "config", "user.email", "ghcp-test@example.com")
+    run("git", "config", "user.name", "GHCP Test")
+    run("git", "remote", "add", "origin", "https://github.com/octo-org/octo-repo.git")
+    run("git", "add", "-A")
+    run("git", "commit", "--quiet", "-m", "initial commit")
+    return run("git", "rev-parse", "HEAD").stdout.strip()
+
+
+def test_required_alert_classes_match_design_section_17():
+    assert REQUIRED_ALERT_CLASSES == _REQUIRED_ALERT_CLASSES
+
+
+def test_complete_catalog_passes(tmp_path):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "pass"
+    assert len(evidence) == 1
+    assert evidence[0].source_commit != ""
+    assert len(evidence[0].source_commit) == 40
+
+
+def test_complete_catalog_without_git_provenance_is_not_verified(tmp_path):
+    # A complete, on-disk catalog is not enough to *pass* -- without real
+    # git provenance to bind it to a specific repository/commit, this
+    # function must never fabricate an EvidenceRef merely because the
+    # catalog contents happened to look complete.
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+    assert evidence == ()
+
+
+def test_complete_catalog_with_dirty_working_tree_is_not_verified(tmp_path):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    # Modify the catalog after the commit without committing again --
+    # the working tree is now dirty with respect to the very file being
+    # hashed, so this can never be trusted as clean, source-bound
+    # evidence.
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"reason_code": "CHANGED"}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+    assert evidence == ()
+
+
+def test_missing_catalog_file_is_should_fix(tmp_path):
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_missing_alert_class_is_should_fix(tmp_path):
+    _write_catalog(tmp_path, omit=("audit-delivery-failure",))
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "should-fix"
+    assert "audit-delivery-failure" in finding.details
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"enabled": False},
+        {"enabled": "yes"},
+        {"reason_code": ""},
+        {"reason_code": 1},
+        {"correlation_id": ""},
+        {"correlation_id": None},
+        {"reason_code": "   "},
+        {"reason_code": "\t\n  "},
+        {"correlation_id": "   "},
+        {"event_payload": {"data": "unexpected"}},
+        {"request_body": "raw bytes"},
+        {"description": "even a benign-looking extra field is rejected"},
+    ],
+)
+def test_incomplete_definition_is_should_fix(tmp_path, patch):
+    _write_catalog(tmp_path, overrides={"tuple-drift": patch})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+
+
+# --- Round 7, issue 2: reason_code/correlation_id must be non-blank once
+# stripped and bounded in length -- a whitespace-only value carries no
+# real identifying content, and an unbounded value cannot be trusted or
+# ever echoed back into a finding. -----------------------------------
+
+
+def test_oversized_reason_code_is_should_fix_without_echo(tmp_path):
+    oversized = "r" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"reason_code": oversized}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert oversized not in finding.details
+    assert evidence == ()
+
+
+def test_oversized_correlation_id_is_should_fix_without_echo(tmp_path):
+    oversized = "c" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"correlation_id": oversized}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert oversized not in finding.details
+    assert evidence == ()
+
+
+def test_definition_is_complete_boundary_length():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    at_max = {**base, "reason_code": "x" * alerts._MAX_ALERT_IDENTIFIER_LENGTH}
+    over_max = {**base, "reason_code": "x" * (alerts._MAX_ALERT_IDENTIFIER_LENGTH + 1)}
+    assert alerts._definition_is_complete(at_max) is True
+    assert alerts._definition_is_complete(over_max) is False
+
+
+def test_definition_is_complete_rejects_whitespace_only_identifiers():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    assert alerts._definition_is_complete({**base, "reason_code": "   "}) is False
+    assert alerts._definition_is_complete({**base, "correlation_id": "\t\n"}) is False
+
+
+def test_definition_with_payload_field_is_should_fix(tmp_path):
+    _write_catalog(
+        tmp_path, overrides={"tuple-drift": {"message": "do not leak this customer payload"}}
+    )
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "do not leak this customer payload" not in finding.details
+
+
+def test_proven_mandatory_event_loss_is_must_fix(tmp_path):
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path,
+        phase="pre-deploy",
+        live_evidence={"dropped_alert_classes": ("interceptor-failure",)},
+    )
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "must-fix"
+
+
+def test_inaccessible_live_state_is_not_verified(tmp_path):
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path,
+        phase="pre-deploy",
+        live_evidence={"unavailable_alert_classes": ("audit-delivery-failure",)},
+    )
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+
+
+def test_dropped_event_takes_precedence_over_unavailable_live_state(tmp_path):
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path,
+        phase="pre-deploy",
+        live_evidence={
+            "dropped_alert_classes": ("interceptor-failure",),
+            "unavailable_alert_classes": ("audit-delivery-failure",),
+        },
+    )
+    assert finding.status == "must-fix"
+
+
+def test_pass_never_leaks_definition_contents_into_finding(tmp_path):
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert "ALERT-" not in finding.details
+    assert "corr-" not in finding.details
+
+
+def test_finding_phase_matches_requested_phase(tmp_path):
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="post-deploy", live_evidence=None)
+    assert finding.phase == "post-deploy"
+
+
+def test_empty_catalog_object_is_should_fix(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    (governance_dir / "alerts.json").write_text("{}", encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+
+
+def test_malformed_catalog_json_is_should_fix(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    (governance_dir / "alerts.json").write_text("not json", encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+
+
+# --- Round 5, issue 4: bound the on-disk catalog file's bytes/nesting/
+# collection size -- a malformed or adversarially large catalog must never
+# crash this assessment with an unhandled exception. --------------------
+
+
+def test_oversized_catalog_file_is_should_fix(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    oversized = json.dumps({"padding": "x" * (alerts._MAX_ALERT_CATALOG_BYTES + 1)})
+    (governance_dir / "alerts.json").write_text(oversized, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_deeply_nested_value_in_catalog_is_should_fix_never_crashes(tmp_path):
+    # A deeply-nested value tucked inside an otherwise well-formed catalog
+    # (rather than nesting so deep it changes the catalog's own top-level
+    # JSON type) must still be rejected as unusable -- and must never
+    # crash this assessment with an unhandled RecursionError -- because
+    # ``canonical_bytes`` cannot safely canonicalize it either.
+    catalog_path = _write_catalog(tmp_path)
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["extra_top_level_value"] = "NESTED-VALUE-PLACEHOLDER"
+    serialized = json.dumps(catalog).replace(
+        '"NESTED-VALUE-PLACEHOLDER"', "[" * 10000 + "]" * 10000
+    )
+    catalog_path.write_text(serialized, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_deeply_nested_catalog_json_is_should_fix_never_crashes(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    deeply_nested = "[" * 100000 + "]" * 100000
+    (governance_dir / "alerts.json").write_text(deeply_nested, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+def test_catalog_with_nonfinite_float_value_is_should_fix(tmp_path):
+    # Even a catalog whose eight required definitions all look complete
+    # must never pass if some other value in the same file is a
+    # non-finite float ``json.loads`` itself would otherwise silently
+    # accept -- the whole catalog must be canonicalizable, not merely
+    # the eight definitions this function inspects directly.
+    catalog_path = _write_catalog(tmp_path)
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["extra_top_level_value"] = "NaN-PLACEHOLDER"
+    text = json.dumps(catalog).replace('"NaN-PLACEHOLDER"', "NaN")
+    catalog_path.write_text(text, encoding="utf-8")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+
+
+# --- Issue 5: alert live-evidence validation -------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_live_evidence",
+    [
+        "interceptor-failure",  # a bare string, not a mapping
+        ["interceptor-failure"],  # a list, not a mapping
+        object(),
+    ],
+)
+def test_non_mapping_live_evidence_is_not_verified(tmp_path, bad_live_evidence):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=bad_live_evidence)
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+    assert evidence == ()
+
+
+@pytest.mark.parametrize("key", ["dropped_alert_classes", "unavailable_alert_classes"])
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        "interceptor-failure",  # a bare string is iterable-of-chars, not a list
+        b"interceptor-failure",
+        {"interceptor-failure": True},  # a mapping, not a list/tuple
+        ("not-a-real-alert-class",),  # not one of the exact eight recognized names
+        ("interceptor-failure", 123),  # mixed types
+        tuple(REQUIRED_ALERT_CLASSES) + ("interceptor-failure",),  # 9 entries, exceeds the 8-class bound
+        123,
+        3.5,
+    ],
+)
+def test_malformed_alert_class_list_is_not_verified_and_never_echoed(tmp_path, key, bad_value):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path, phase="pre-deploy", live_evidence={key: bad_value}
+    )
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+    assert evidence == ()
+    # The malformed raw value itself must never be echoed back into the
+    # finding, whatever shape it happens to be.
+    assert repr(bad_value) not in finding.details
+
+
+def test_malformed_dropped_alert_classes_is_not_verified_even_when_catalog_is_also_broken(tmp_path):
+    # Validation of the live-evidence shape happens before any catalog
+    # precedence logic runs, so a malformed live-evidence value is
+    # reported on its own terms even when the on-disk catalog is
+    # separately broken too.
+    finding, evidence = assess_alerts(
+        tmp_path, phase="pre-deploy", live_evidence={"dropped_alert_classes": "not-a-list"}
+    )
+    assert finding.finding_id == "OPS-001"
+    assert finding.status == "not-verified"
+    assert evidence == ()
+
+
+def test_valid_empty_alert_class_lists_still_pass(tmp_path):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path,
+        phase="pre-deploy",
+        live_evidence={"dropped_alert_classes": (), "unavailable_alert_classes": ()},
+    )
+    assert finding.status == "pass"
+
+
+def test_valid_dropped_alert_classes_still_reported_as_must_fix(tmp_path):
+    _write_catalog(tmp_path)
+    _init_git_repo(tmp_path)
+    finding, evidence = assess_alerts(
+        tmp_path,
+        phase="pre-deploy",
+        live_evidence={"dropped_alert_classes": ["interceptor-failure", "interceptor-failure"]},
+    )
+    assert finding.status == "must-fix"
+    assert "interceptor-failure" in finding.details
+
+
+_REFERENCES = Path(__file__).resolve().parent.parent / "references"
+
+
+def test_ops_001_plane_is_both_and_matches_finding_catalog(tmp_path):
+    """OPS-001 is a design-mandated "both" (change *and* runtime) finding:
+    alert-catalog completeness is knowable from the repository at
+    pre-deploy time, but proven event loss is only ever knowable from
+    live/runtime evidence -- so the plane can never be narrowed to just
+    one. This must never drift from the project's own finding catalog."""
+    catalog = json.loads((_REFERENCES / "finding-catalog.json").read_text(encoding="utf-8"))
+    entry = next(item for item in catalog["findings"] if item["finding_id"] == "OPS-001")
+    assert entry["plane"] == "both"
+
+    _write_catalog(tmp_path)
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.plane == entry["plane"] == "both"
+
+
+# --- Round 6, issue 3: invalid-UTF-8 catalog bytes must never crash this
+# assessment with an unhandled ``UnicodeDecodeError`` -- read failure is
+# already a conservative "should-fix", and unreadable-as-text bytes are no
+# different from any other unreadable file. ------------------------------
+
+
+def test_invalid_utf8_catalog_bytes_is_should_fix_never_crashes(tmp_path):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    # 0xFF is not a valid UTF-8 lead byte in any position; this is not
+    # decodable as UTF-8 text at all, unlike a merely-malformed JSON
+    # string that still happens to be valid UTF-8.
+    (governance_dir / "alerts.json").write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert evidence == ()
+    assert "\xff" not in finding.details
+    assert "\ufffd" not in finding.details
+    assert str(tmp_path) not in finding.details
+
+
+# --- Round 8, issue 2: alert definitions use a *closed allowlist*
+# schema -- only ``enabled``/``reason_code``/``correlation_id`` are ever
+# permitted -- rather than a deny-list of known payload-shaped names, so
+# a field this project never anticipated (``event_payload``,
+# ``request_body``, or even an innocuous-looking ``description``) is
+# rejected by default instead of slipping through because it happens
+# not to exactly match a banned name. ---------------------------------
+
+
+def test_unknown_definition_field_is_should_fix_without_echo(tmp_path):
+    _write_catalog(
+        tmp_path,
+        overrides={"tuple-drift": {"event_payload": {"secret": "sekrit-value-should-not-leak"}}},
+    )
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert "tuple-drift" in finding.details
+    assert "sekrit-value-should-not-leak" not in finding.details
+    assert "event_payload" not in finding.details
+    assert evidence == ()
+
+
+def test_definition_is_complete_rejects_unknown_fields():
+    base = {"enabled": True, "reason_code": "R", "correlation_id": "C"}
+    assert alerts._definition_is_complete(base) is True
+    assert alerts._definition_is_complete({**base, "event_payload": {"x": 1}}) is False
+    assert alerts._definition_is_complete({**base, "request_body": "raw"}) is False
+    assert alerts._definition_is_complete({**base, "description": "benign-looking"}) is False
+
+
+def test_definition_is_complete_allowlist_is_exactly_three_fields():
+    assert alerts._ALERT_DEFINITION_ALLOWED_KEYS == frozenset(
+        {"enabled", "reason_code", "correlation_id"}
+    )
+
+
+# --- Round 9: an unpaired Unicode surrogate code point in an alert
+# definition (e.g. a ``reason_code`` value round-tripped through
+# ``json.dumps``/``json.loads`` as ``"\ud800"``) cannot itself be
+# canonicalized/hashed with the strict UTF-8 encoder the catalog loader
+# uses -- that must be contained as an ordinary "catalog incomplete"
+# should-fix outcome, never allowed to propagate as an unhandled
+# ``UnicodeEncodeError``, and never echoed. ----------------------------
+
+
+def test_unpaired_surrogate_definition_is_should_fix_without_echo(tmp_path):
+    _write_catalog(tmp_path, overrides={"tuple-drift": {"reason_code": "\ud800"}})
+    finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
+    assert finding.status == "should-fix"
+    assert finding.reason_code == "alert-catalog-incomplete"
+    assert evidence == ()
+    assert "\\ud800" not in finding.details

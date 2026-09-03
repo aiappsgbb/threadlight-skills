@@ -1,7 +1,7 @@
 # Threadlight — Technical Briefing
 
 > **Engineering reference for a governed working pilot with an evidence-backed path to production.**
-> Threadlight is a library of twenty-two `threadlight-*` skills (21 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a governed working pilot with auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Threadlight is a library of twenty-three `threadlight-*` skills (22 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a governed working pilot with auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
@@ -30,7 +30,7 @@ ready production scorecard, and measured outcome KPIs.
 > to end.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
-The twenty-two skills (alphabetical, but the canonical flow order is given in
+The twenty-three skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
@@ -45,6 +45,7 @@ threadlight-design
 threadlight-evals
 threadlight-event-triggers
 threadlight-govern
+threadlight-governed-actions
 threadlight-ground
 threadlight-hitl-patterns
 threadlight-loadtest
@@ -78,6 +79,7 @@ skill sounds most exciting.
 | The agent is deployed and you need an **AI Red Teaming** adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content) before sign-off | `threadlight-redteam` (writes `docs/redteam-report.md` + `specs/redteam-manifest.json`; runs the PyRIT-based AI Red Teaming Agent) | production-ready (pillar 7 SAFE-101..106 verifies the scan ran) |
 | The agent grounds answers on a **knowledge source** and you need to prove retrieval is ACL-safe, cited, and honest about what it doesn't know | `threadlight-ground` (writes `specs/ground-manifest.json` GRD-001..004 from caller-supplied ACL / citation / refusal probe evidence; a coordinator — never calls Foundry IQ, never runs a live probe) | production-ready (GRD-001..004). **Manual hand-off — `threadlight-auto` never runs probes** |
 | You need to **govern the agent runtime** — wire AGT policy + in-process middleware at the container boundary and emit a committed verifier report | `threadlight-govern` (writes `specs/govern-manifest.json`; wraps `foundry-agt`) | production-ready (pillar 2 AGT-001..005 + pillar 7 RAI-002/003 verify the artefact) |
+| You need to **prove the agent's consequential actions are governed** — action inventory, interceptor mediation, fail-closed enforcement, one-time approvals, output gating, payload-free audit, and the GitHub Copilot change plane | `threadlight-governed-actions` (read-only by default; `--emit` writes `tests/governed-actions-manifest.json` + `docs/governance/evidence-pack.md`) | production-ready (AGT-007 / HITL-008 / SUP-014 consume the manifest as leg-verified evidence) |
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | You need **real latency / throughput / error-rate evidence** under a hard budget cap before go-live | `threadlight-loadtest` (writes `specs/load-manifest.json` LOAD-001..003 from one budget-capped k6/locust run; aborts if the projection exceeds `budget_ceiling_usd` or a production endpoint lacks explicit `allow_production`; never installs engines, never loops) | production-ready (LOAD-001..003). **Manual, live, cost-bearing — `threadlight-auto` does not run it** |
 | Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
@@ -485,7 +487,49 @@ artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7
 
 ---
 
-### 15. `threadlight-loadtest` ([SKILL.md](skills/threadlight-loadtest/SKILL.md))
+### 15. `threadlight-governed-actions` ([SKILL.md](skills/threadlight-governed-actions/SKILL.md))
+
+**Purpose.** The **governed-actions evidence leg** — proves whether every
+*consequential* action the pilot can take is **inventoried, mediated,
+enforced, approved, and auditable**, then renders a customer-facing
+**Governance Evidence Pack**. Read-only by default: it assesses and reports,
+and only writes artefacts under `--emit`.
+
+**Inputs.** SPEC § 8 (the declared consequential actions), the action /
+tool registries, the runtime + middleware wiring, the policy / approval /
+test / workflow files, and — optionally — live evidence (repository
+protection, required checks, deployment identity) when the caller supplies it.
+
+**Outputs.** `tests/governed-actions-manifest.json`
+(`threadlight-governed-actions-manifest/v1`, schema `1.0.0`) with the 18-finding
+taxonomy — `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `APR-001`,
+`OUT-001`, `AUD-001`, `PIN-001`, `GHCP-001..006`, `OPS-001` — plus
+`docs/governance/evidence-pack.md`. `--gate` turns the verdict into an exit
+code (`0` pass, `1` must-fix, `2` usage error, `3` internal error). The MAF
+interceptor scaffold is a bounded, double-opt-in write
+(`--scaffold maf --confirm-scaffold`).
+
+**Lifecycle.** `--phase` is explicit and required: `design`
+(pre-implementation), `pre-deploy` (the main pre-ship assessment), and
+`post-deploy`, which is **staging-only** and requires an explicit
+`--staging-resource-group`.
+
+**Trust boundaries.** Evidence is **payload-free** — never raw prompts,
+arguments, outputs, or secrets. Agent Hooks is a **cooperative alpha, not a
+security boundary**; MAF interceptors are **experimental**; the result is
+**conformance, not certification**; provider-hosted execution cannot be
+intercepted in-process; the service still repeats authorization, validation,
+idempotency and transaction controls; and GHCP's internal loop is **not**
+intercepted. Customer policy, thresholds, approvers, identities, and risk
+appetite come from the customer — this leg never invents them.
+
+**Depends on.** A specced (and, for the deeper phases, implemented) pilot.
+Consumed by `production-ready` as AGT-007 / HITL-008 / SUP-014 evidence. It
+does **not** own the production rollout.
+
+---
+
+### 16. `threadlight-loadtest` ([SKILL.md](skills/threadlight-loadtest/SKILL.md))
 
 **Purpose.** The **LOAD leg** — real latency / throughput / error-rate
 evidence instead of a static claim. A **manual, live, cost-bearing** skill:
@@ -508,7 +552,7 @@ Never persists secrets, payloads, or raw stdout.
 
 ---
 
-### 16. `threadlight-production-ready` ([SKILL.md](skills/threadlight-production-ready/SKILL.md))
+### 17. `threadlight-production-ready` ([SKILL.md](skills/threadlight-production-ready/SKILL.md))
 
 **Purpose.** **The bridge between a green safe-check and a real customer
 architecture review.** The advisory production-readiness gate. Takes a
@@ -579,7 +623,7 @@ is for your records.
 
 ---
 
-### 17. `threadlight-cicd` ([SKILL.md](skills/threadlight-cicd/SKILL.md))
+### 18. `threadlight-cicd` ([SKILL.md](skills/threadlight-cicd/SKILL.md))
 
 The production-leg companion for the common real-world case where the
 agent **cannot** run `azd up` directly: prod deploys go through a CI/CD
@@ -649,7 +693,7 @@ pipeline orchestrator — this is a manual handoff step.
 
 ---
 
-### 18. `threadlight-customize` ([SKILL.md](skills/threadlight-customize/SKILL.md))
+### 19. `threadlight-customize` ([SKILL.md](skills/threadlight-customize/SKILL.md))
 
 **Purpose.** The final leg: **fork the Threadlight pipeline and onboard it
 into one specific customer's environment** — landing zones, identity, RBAC,
@@ -694,7 +738,7 @@ human-led manual handoff — `auto` stops at the pilot.
 
 ---
 
-### 19. `threadlight-upgrade` ([SKILL.md](skills/threadlight-upgrade/SKILL.md))
+### 20. `threadlight-upgrade` ([SKILL.md](skills/threadlight-upgrade/SKILL.md))
 
 **Purpose.** The **UPGRADE leg** — turns "our compatibility matrix says X is
 drifting" into an ordered, file-by-file migration plan. **Plan-only**: a

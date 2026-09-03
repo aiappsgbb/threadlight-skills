@@ -1,0 +1,10 @@
+# Decoy ownership data. This file is intentionally named `CODEOWNERS.absent`,
+# not `CODEOWNERS` or `.github/CODEOWNERS`, so it must never be treated as a
+# real ownership file by the assessor -- even though its declared patterns
+# below would otherwise fully satisfy the required governance coverage.
+src/governance/** @octo-org/governance
+policies/** @octo-org/governance
+tests/** @octo-org/governance
+.github/workflows/governed-actions.yml @octo-org/governance
+tests/governed-actions-manifest.json @octo-org/governance
+tests/governed-actions-apply-plan.json @octo-org/governance

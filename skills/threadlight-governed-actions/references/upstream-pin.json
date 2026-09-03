@@ -1,0 +1,47 @@
+{
+  "pin_schema_version": "1.0.0",
+  "status": "alpha-experimental",
+  "agent_hooks": {
+    "spec": "AGENT-HOOKS-0.1",
+    "spec_version": "0.1.0-alpha",
+    "repository": "https://github.com/responsibleai/agent-hooks",
+    "repository_commit": "0821ebbae252c45cd225304a464d1130963b82a8",
+    "spec_blob_sha": "5f13c1c8972d2f0186bcae4b7e585b25824b651b"
+  },
+  "sdk": {
+    "distribution": "agent-hooks-sdk",
+    "version": "0.1.0a5",
+    "source_commit": "4f7af786c2757e26711b141e69144b6a336f403b",
+    "artifact": "agent_hooks_sdk-0.1.0a5.tar.gz",
+    "artifact_sha256": "4ae452b0a1d51540a1b74b0005b0a51f75fd4b80e9aca1a7403dece4dd6f9e46"
+  },
+  "ctk": {
+    "vector_source_commit": "4f7af786c2757e26711b141e69144b6a336f403b",
+    "total_vectors": 51,
+    "applicable_vectors": 47,
+    "passed_vectors": 47,
+    "skipped_vectors": 4
+  },
+  "maf": {
+    "distribution": "agent-framework-core",
+    "version": "1.13.0",
+    "source_commit": "4b1afd90520310547cb0e9cdc70f644d80161e82",
+    "integration_packages": {
+      "agent-framework-core": "1.13.0"
+    },
+    "integration_status": "experimental"
+  },
+  "acs": {
+    "policy_schema": null,
+    "status": "not-applicable"
+  },
+  "conformance_report": {
+    "repository_commit": "0821ebbae252c45cd225304a464d1130963b82a8",
+    "path": "conformance/claims/maf/REPORT.md",
+    "blob_sha": "e4a97194e7091a15555afbc541da637765d819bf",
+    "claim": "section-13.1",
+    "certification": false
+  },
+  "conformance_python": "3.12.3",
+  "drift_policy": "exact-tuple-rerun-ctk-and-application-probes"
+}

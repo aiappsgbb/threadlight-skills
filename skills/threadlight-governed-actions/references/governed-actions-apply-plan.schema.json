@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threadlight.dev/schemas/governed-actions-apply-plan-1.0.0.json",
+  "title": "threadlight-governed-actions apply plan",
+  "description": "Emitted by threadlight-governed-actions alongside a manifest. Enumerates, per non-passing finding, what kind of remediation it needs and who/what applies it. self_applying is always false: threadlight-governed-actions never edits the target repository itself; every item is repo-edit (someone edits code), sibling-skill (a different skill applies it), manual (a human acts), or deferred-to-pipeline (a downstream CI/CD stage acts).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "assessor_version",
+    "source_commit",
+    "captured_at",
+    "manifest_sha256",
+    "self_applying",
+    "items"
+  ],
+  "properties": {
+    "schema": {
+      "const": "threadlight-governed-actions-apply-plan/v1"
+    },
+    "assessor_version": {
+      "type": "string"
+    },
+    "source_commit": {
+      "$ref": "#/$defs/commit"
+    },
+    "captured_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "self_applying": {
+      "const": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Full 40-character lowercase-hex git commit SHA."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 date-time (e.g. 2026-01-01T00:00:00Z or with a numeric UTC offset). The pattern enforces the RFC 3339 shape directly so validation is not silently a no-op when a validator is built without format assertions enabled.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "findingId": {
+      "type": "string",
+      "description": "Bound to the fixed threadlight-governed-actions finding catalog (references/finding-catalog.json) — exactly these 18 finding_id values exist in this taxonomy.",
+      "enum": [
+        "ACT-001",
+        "ACT-002",
+        "MED-001",
+        "MED-002",
+        "MED-003",
+        "ENF-001",
+        "ENF-002",
+        "APR-001",
+        "OUT-001",
+        "AUD-001",
+        "PIN-001",
+        "GHCP-001",
+        "GHCP-002",
+        "GHCP-003",
+        "GHCP-004",
+        "GHCP-005",
+        "GHCP-006",
+        "OPS-001"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
+    },
+    "plane": {
+      "type": "string",
+      "enum": ["runtime", "change", "both"]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "status",
+        "plane",
+        "affected_actions",
+        "affected_paths",
+        "remediation_kind",
+        "evidence_required",
+        "owner",
+        "depends_on"
+      ],
+      "properties": {
+        "finding_id": {
+          "$ref": "#/$defs/findingId"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "plane": {
+          "$ref": "#/$defs/plane"
+        },
+        "affected_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remediation_kind": {
+          "type": "string",
+          "enum": ["repo-edit", "sibling-skill", "manual", "deferred-to-pipeline"]
+        },
+        "evidence_required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+tools:
+  - id: customer.lookup
+    consequence: read
+    execution_modes: [interactive, batch]
+    provider_hosted: false
+  - id: payments.refund
+    consequence: irreversible
+    execution_modes: [interactive, background, subagent, direct-tool]
+    provider_hosted: false
+  # This fixture's declared defect: an external-egress action that runs
+  # exclusively inside the provider's own tool runtime, where this
+  # repository's pre-action seam can never reach it. ``search.lookup``
+  # is the same shape with a read consequence, present so the assessor
+  # has to tell the two apart rather than flag provider hosting itself.
+  - id: mail.send
+    consequence: external-egress
+    execution_modes: [provider-hosted-tool]
+    provider_hosted: true
+  - id: search.lookup
+    consequence: read
+    execution_modes: [provider-hosted-tool]
+    provider_hosted: true

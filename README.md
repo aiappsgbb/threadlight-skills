@@ -2,7 +2,7 @@
 
 > **A business process becomes a governed working pilot with an evidence-backed path to production.**
 >
-> Twenty-one pipeline skills plus one agent-guided lifecycle planner (22 total) take a brief into a governed working pilot. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Twenty-two pipeline skills plus one agent-guided lifecycle planner (23 total) take a brief into a governed working pilot. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe,
 > measurement source, and maturity policy. Its public arc is forecast →
@@ -31,6 +31,7 @@ ready production scorecard, and measured outcome KPIs.
 | [`threadlight-evals`](skills/threadlight-evals/) | **NEW v0.1.0** — the **DISCOVER/GOVERN evals leg**. Runs offline batch quality evals (delegates invoke+score to `foundry-evals`), wires **Foundry Continuous Evaluation** on live threads (`create_agent_evaluation` → App Insights), and an **A/B champion–challenger** comparison gate before a model/prompt swap. Emits `specs/evals-manifest.json` that `production-ready` pillar 6 (EVAL-001..004) consumes as leg-verified evidence. |
 | [`threadlight-redteam`](skills/threadlight-redteam/) | **NEW v0.1.0** — the **DISCOVER safety leg**. Runs the **AI Red Teaming Agent** (PyRIT-based) adversarial scan for jailbreak / prompt-injection / data-exfiltration / harmful-content, emits `docs/redteam-report.md` + `specs/redteam-manifest.json`. Maps attack-success-rate to `production-ready` pillar 7 SAFE-101..106 findings. |
 | [`threadlight-govern`](skills/threadlight-govern/) | **NEW v0.1.0** — the **PROTECT/AGT leg**. Wraps `foundry-agt`: scaffolds/validates the agent-runtime governance policy artefact, verifies in-process middleware is wired at the container boundary, and emits a committed verifier report + `specs/govern-manifest.json`. Produces the artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look for. |
+| [`threadlight-governed-actions`](skills/threadlight-governed-actions/) | **NEW v0.1.0** — the **GOVERNED-ACTIONS evidence leg**. Read-only by default: proves whether every *consequential* action the pilot can take is inventoried, mediated, enforced, approved, and auditable, then renders a customer-facing **Governance Evidence Pack**. Inventories declared vs implemented actions, traces mediation across all six execution modes, runs hermetic application-path probes (deny / transform / crash / timeout / malformed verdict / approval replay / output gating / payload-free audit), and assesses the **GitHub Copilot change plane** (PR-only, CODEOWNERS, required checks, SHA pins, OIDC/WIF, identity separation). Emits `tests/governed-actions-manifest.json` + `docs/governance/evidence-pack.md` under `--emit`; the MAF interceptor scaffold needs `--scaffold maf --confirm-scaffold`. **Conformance, not certification** — Agent Hooks is a cooperative alpha, not a security boundary, and this leg does **not** own the production rollout. `production-ready` consumes it as AGT-007 / HITL-008 / SUP-014 evidence. |
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | Advisory scorecard/handoff, not certification; remediation and deployment are explicit separate choices. BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI. Hard dep on `bicep` CLI; no regex fallback. Pillars 2/6/7 consume the govern/evals/red-team leg manifests when present + fresh, plus the connect/ground/load/upgrade gap-evidence legs. |
 | [`threadlight-loadtest`](skills/threadlight-loadtest/) | **NEW v0.1.0** — the **LOAD leg** (manual, live, cost-bearing). Runs one budget-capped load profile through **k6 / locust** (or an injected adapter) and emits `specs/load-manifest.json` (`threadlight.load/v1`, LOAD-001..003) with real p50/p95/p99 latency, error-rate, and tokens/request evidence. Aborts before any run if the projected cost exceeds `budget_ceiling_usd`, or if a production endpoint lacks explicit `allow_production`; never installs k6/locust; never loops. `threadlight-auto` does **not** run it. |
 | [`threadlight-upgrade`](skills/threadlight-upgrade/) | **NEW v0.1.0** — the **UPGRADE leg** (plan-only). Scans dependency pins, hosted-agent runtime policy, governance profile, and model families against a dated `compatibility-matrix.json` and emits `specs/upgrade-manifest.json` (UPG-001..003) + **one ordered migration plan**. No network calls, no `--apply` — it **never edits the project**. Acting on the plan is a manual, human-driven step. |
@@ -38,14 +39,14 @@ ready production scorecard, and measured outcome KPIs.
 | [`threadlight-customize`](skills/threadlight-customize/) | **NEW v0.1.0** — the **fork-and-customize final leg**. Instructions/runbooks (not automation) for forking the Threadlight pipeline and onboarding it into **one customer's environment** — landing zones, RBAC, pipelines, governance — with **production onboarding priority #1**. Four moves: intake gate (customer-profile workbook), customization map (fork-vs-keep), test-in-customer-env runbook (private-VNet via **Azure ML VS Code** / **GH Codespaces**), and an explicit non-coverage boundary. Ships a fork-runbook (`upstream-pin` + overlay). Manual handoff — `threadlight-auto` does **not** drive it. |
 | [`threadlight-router-bench`](skills/threadlight-router-bench/) | **NEW v0.1.0** — the **IMPROVE leg**. Offline self-improvement cold-path: `learn <run_id>` harvests ONE finished CI run (green *or* red) into a grounded learnings digest — phase parity, a reality-tuned failure taxonomy, and recommendations; optional `bench <candidate> <baseline>` is a paired model-router **cost/quality scorecard** from Azure Monitor token metrics. Offline — `threadlight-auto` does **not** drive it. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Agent-guided lifecycle planner** — `orchestrator.py` decides, coding agent executes; manual/live/cost-bearing/plan-only legs are handoffs. Reads evidence, chooses the next stage, resumes from `.threadlight/auto-state.json`, and smart-recovers quota/RBAC/ImagePull failures. Does **not** drive the manual legs (qualify, connect, ground, loadtest, upgrade, cicd, customize) or the offline router-bench. |
-| **Threadlight Lifecycle Canvas** | **GitHub Copilot App enhancement** - an outcome-oriented cockpit for all 22 skills. Starts a pilot from a brief, projects progress from canonical artifacts, and sends safe next-action intents back to chat. Optional; existing CLI/Cowork/Coding Agent flows are unchanged. |
+| **Threadlight Lifecycle Canvas** | **GitHub Copilot App enhancement** - an outcome-oriented cockpit for all 23 skills. Starts a pilot from a brief, projects progress from canonical artifacts, and sends safe next-action intents back to chat. Optional; existing CLI/Cowork/Coding Agent flows are unchanged. |
 
 ### Canonical lifecycle classification
 
 | Stage class | What runs | Evidence boundary |
 |---|---|---|
 | No-repo entry | qualify; declared evidence, no Azure | sizing only; no runtime artifacts |
-| Agent-guided pilot path | design, optional local test, deploy, safe-check, forecast, invoke, evals, red-team, govern; Auto plans, coding agent executes | pilot evidence and review artifacts |
+| Agent-guided pilot path | design, optional local test, deploy, safe-check, forecast, invoke, evals, red-team, govern, governed-actions; Auto plans, coding agent executes | pilot evidence and review artifacts |
 | Manual live evidence | connect, ground, load-test | live, customer, and cost-bearing evidence captured by handoff |
 | Optional handoff | production-ready, CI/CD, customize | advisory or deployment/runbook handoffs |
 | Later-pilot evidence | settled actuals and reconciliation | post-pilot value evidence and cost reconciliation |
@@ -60,7 +61,8 @@ threadlight-safe-check (gate) → threadlight-consumption-iq (cost) →
 CONNECT: threadlight-connect (mock→real tool swap — manual, evidence-gated) →
 DISCOVER: threadlight-evals (offline + online CE) + threadlight-redteam (adversarial scan) +
           threadlight-ground (ACL / citation / refusal grounding — manual) →
-PROTECT: threadlight-govern (AGT runtime governance) →
+PROTECT: threadlight-govern (AGT runtime governance) +
+         threadlight-governed-actions (consequential-action mediation evidence — read-only) →
 foundry-observability →
 threadlight-loadtest (budget-capped, production-confirmed load evidence — manual) →
 threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →
@@ -76,8 +78,10 @@ threadlight-customize (fork + onboard into the customer's own environment)
 The spine maps to the Microsoft Responsible-AI-for-Foundry operating loop —
 **Design → Build/Deploy → Discover → Protect → Govern → Improve**. The
 **Discover** legs (`threadlight-evals`, `threadlight-redteam`, and the
-`threadlight-ground` grounding leg) and the **Protect** leg
-(`threadlight-govern`) run *before* the readiness gate so that
+`threadlight-ground` grounding leg) and the **Protect** legs
+(`threadlight-govern` for runtime governance policy, and
+`threadlight-governed-actions` for consequential-action mediation, enforcement,
+approval, and audit evidence) run *before* the readiness gate so that
 `threadlight-production-ready` verifies each control-plane leg actually ran and
 its artefact is fresh, rather than only scoring whether one was declared. The
 loop's **Improve** phase is `threadlight-router-bench` — an offline leg that
@@ -124,7 +128,7 @@ order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 ## Quickstart in GitHub Codespaces
 
 Want to try the skills without installing anything? Open this repo in a
-Codespace and you get **GitHub Copilot CLI with all 22 threadlight skills
+Codespace and you get **GitHub Copilot CLI with all 23 threadlight skills
 pre-wired** from the checkout.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)

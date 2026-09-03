@@ -1,0 +1,6 @@
+src/governance/** @octo-org/governance
+policies/** @octo-org/governance
+tests/** @octo-org/governance
+.github/workflows/governed-actions.yml @octo-org/governance
+tests/governed-actions-manifest.json @octo-org/governance
+tests/governed-actions-apply-plan.json @octo-org/governance

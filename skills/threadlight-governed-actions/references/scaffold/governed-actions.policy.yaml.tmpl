@@ -1,0 +1,47 @@
+# Scaffolded governed-actions policy (Task 11 bounded MAF scaffold).
+#
+# ============================================================================
+#  THIS FILE IS INTENTIONALLY EMPTY. IT DOES NOT GOVERN ANYTHING YET.
+# ============================================================================
+#
+# threadlight-governed-actions never authors customer policy: no business
+# threshold, named approver, tenant id, role assignment, or deployment
+# target is invented anywhere in this file. Every field below is either a
+# fixed, deny-by-default structural placeholder or an explicit statement
+# that this policy has not yet been authored.
+#
+# Turning this into a real policy -- adding rules, approvers, and any
+# other customer-specific governance decision -- is delegated entirely to
+# the `foundry-agt` skill (policy authoring). This scaffold only ever
+# creates the file; it never fills it in.
+#
+# Until `rules` below is non-empty, `src/governance/agent_hooks_interceptor.py`
+# (also scaffolded) denies every action id it is asked about -- see that
+# file's own docstring. An empty policy is not "no policy"; it is a
+# deliberate, deny-by-default starting point.
+
+policy_schema_version: "1.0.0"
+
+# Deny-by-default for every consequential action: nothing may proceed
+# except through an explicit rule a customer adds below. This scaffold
+# never adds a rule on a customer's behalf, and never adds an "allow
+# everything" fallback rule.
+default_decision: deny
+
+# Exact-match rules the interceptor consults, in list order. Empty until a
+# customer authors real ones (via `foundry-agt`); this scaffold never
+# invents a rule, a business threshold, or a named approver here.
+rules: []
+
+# Approvers empowered to satisfy an approval-required rule above. Empty
+# for the same reason `rules` is empty: no name, email, group, or tenant
+# identity is invented by this scaffold.
+approvers: []
+
+# This policy governs actions only within the customer's own,
+# self-declared project boundary -- it is never treated as covering a
+# shared platform, a third-party tenant, or any other project.
+# `customer_owned` is always `true` in this scaffold; it is not a runtime
+# toggle a customer is expected to flip to `false`.
+authorization:
+  customer_owned: true

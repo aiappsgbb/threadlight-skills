@@ -34,6 +34,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -245,6 +246,308 @@ class StageDecision:
     artifacts_seen: list[str] = field(default_factory=list)
     artifacts_missing: list[str] = field(default_factory=list)
     hard_stop_signature: str | None = None
+
+
+# -----------------------------------------------------------------------------
+# Governed-actions lifecycle — recommendation only (Task 14)
+# -----------------------------------------------------------------------------
+#
+# `threadlight-governed-actions` owns the consequential-action assessment and
+# every high-impact change that follows from it (enforcement scaffolding,
+# policy application, production rollout). None of that is auto's to take.
+#
+# So this module does exactly two things and nothing else:
+#
+#   1. It RECOMMENDS the three explicit lifecycle steps, verbatim, when the
+#      workspace shows a consequential action or already carries an assessment.
+#   2. It SUMMARISES an already committed manifest — a read of committed JSON,
+#      never an execution or import of the producer, its probes, or its
+#      scaffold — and recommends a re-run when that manifest cannot be trusted.
+#
+# The skill is deliberately absent from `STAGES`, `STAGE_PROBES`,
+# `LEG_CONTRACTS`, and `MANUAL_HANDOFFS`: it is never dispatched, never
+# scheduled, and never cascaded into. Ownership stays manual and explicit.
+
+GOVERNED_ACTIONS_MANIFEST = "tests/governed-actions-manifest.json"
+
+# Exact, approved wording. Auto never authors any other governed-actions
+# instruction — no enforcement, no policy application, no rollout.
+GOVERNED_ACTIONS_HANDOFF = {
+    "execution": "manual-explicit",
+    "design": (
+        "run threadlight-governed-actions --phase design "
+        "after threadlight-design"
+    ),
+    "pre_deploy": (
+        "run threadlight-governed-actions --phase pre-deploy before deploy"
+    ),
+    "post_deploy": (
+        "run threadlight-governed-actions --phase post-deploy "
+        "against staging only"
+    ),
+    "manifest": GOVERNED_ACTIONS_MANIFEST,
+}
+
+_GOVERNED_ACTIONS_SCHEMA = "threadlight-governed-actions-manifest/v1"
+_GOVERNED_ACTIONS_PHASE_KEYS = {
+    "design": "design",
+    "pre-deploy": "pre_deploy",
+    "post-deploy": "post_deploy",
+}
+_GOVERNED_ACTIONS_VERDICTS = frozenset({"governed", "partial", "ungoverned"})
+_GOVERNED_ACTIONS_SUMMARY_BUCKETS = (
+    ("pass", "pass"),
+    ("must_fix", "must-fix"),
+    ("should_fix", "should-fix"),
+    ("not_verified", "not-verified"),
+    ("not_applicable", "not-applicable"),
+)
+_GOVERNED_ACTIONS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_ZERO_GOVERNED_ACTIONS_COUNTS = {key: 0 for key, _status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS}
+
+# The signals auto can read for itself, without an assessor: a declared
+# consequence class in a root action registry, or an explicit SPEC-side
+# declaration. Auto never infers a consequence from a name or a verb — an
+# undeclared workspace simply produces no recommendation.
+_CONSEQUENTIAL_REGISTRY_FILENAMES = (
+    "agent.yaml",
+    "agent.yml",
+    "tool-registry.json",
+    "tool_registry.json",
+)
+_CONSEQUENCE_DECLARATION_RE = re.compile(
+    r"[\"']?consequence[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9_.-]+)", re.IGNORECASE
+)
+_READ_ONLY_CONSEQUENCES = frozenset({"read", "read-only", "readonly", "none", "null"})
+
+
+def detect_consequential_actions(workspace: Path) -> bool:
+    """True when the workspace *declares* a non-read consequential action.
+
+    Two explicit declarations are honoured, in this order:
+
+      * `specs/manifest.json` with `"consequential_actions": true`;
+      * a root action registry (`agent.yaml|yml`, `tool-registry.json`,
+        `tool_registry.json`) declaring any `consequence` other than a
+        read-only class.
+
+    Never infers, never guesses, never raises.
+    """
+    spec_manifest = _parse_json_object(workspace / "specs" / "manifest.json")
+    if spec_manifest is not None and spec_manifest.get("consequential_actions") is True:
+        return True
+    for filename in _CONSEQUENTIAL_REGISTRY_FILENAMES:
+        candidate = workspace / filename
+        if not candidate.is_file():
+            continue
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for value in _CONSEQUENCE_DECLARATION_RE.findall(text):
+            if value.strip().casefold() not in _READ_ONLY_CONSEQUENCES:
+                return True
+    return False
+
+
+def _governed_actions_rerun_recommendation(phase: str | None) -> list[str]:
+    """Approved lifecycle wording to re-run, given a trustworthy *phase*.
+
+    An unreadable or untrustworthy phase gets the whole ordered lifecycle
+    rather than a guess at which single step to repeat.
+    """
+    key = _GOVERNED_ACTIONS_PHASE_KEYS.get(phase or "")
+    if key is None:
+        return [
+            GOVERNED_ACTIONS_HANDOFF["design"],
+            GOVERNED_ACTIONS_HANDOFF["pre_deploy"],
+            GOVERNED_ACTIONS_HANDOFF["post_deploy"],
+        ]
+    return [GOVERNED_ACTIONS_HANDOFF[key]]
+
+
+def _parse_rfc3339(value: Any) -> datetime | None:
+    """`_parse_iso` for untrusted input: a non-string is simply unusable."""
+    return _parse_iso(value) if isinstance(value, str) else None
+
+
+def _governed_actions_untrusted(reason: str, phase: str | None = None) -> dict[str, Any]:
+    return {
+        "manifest": GOVERNED_ACTIONS_MANIFEST,
+        "status": "rerun-recommended",
+        "trusted": False,
+        "reason": reason,
+        "phase": phase,
+        "verdict": None,
+        "counts": dict(_ZERO_GOVERNED_ACTIONS_COUNTS),
+        "recommendation": _governed_actions_rerun_recommendation(phase),
+    }
+
+
+def summarize_governed_actions_manifest(
+    path: Path,
+    source_commit: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Summarise a committed governed-actions manifest, or recommend a re-run.
+
+    Reads `path` as JSON and checks only what auto can check on its own:
+    schema version, lifecycle phase, a clean source bound to *source_commit*,
+    freshness against *now*, and summary counts that agree with the findings
+    they claim to summarise. Nothing here executes or imports
+    `threadlight-governed-actions`, its probes, or its scaffold — the manifest
+    is untrusted input and a failed check only ever produces a recommendation
+    to re-run the skill manually.
+
+    Returns a dict; never raises.
+    """
+    moment = (now or datetime.now(timezone.utc))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    moment = moment.astimezone(timezone.utc)
+
+    manifest = _parse_json_object(path)
+    if manifest is None:
+        return _governed_actions_untrusted(
+            "the manifest is absent, unreadable, or not a JSON object"
+        )
+    if manifest.get("schema") != _GOVERNED_ACTIONS_SCHEMA:
+        return _governed_actions_untrusted(
+            f"the manifest schema is not {_GOVERNED_ACTIONS_SCHEMA}"
+        )
+
+    phase = manifest.get("phase")
+    if not isinstance(phase, str) or phase not in _GOVERNED_ACTIONS_PHASE_KEYS:
+        return _governed_actions_untrusted("the manifest declares an unknown phase")
+
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        return _governed_actions_untrusted("the manifest declares no source", phase)
+    commit = source.get("commit")
+    if not isinstance(commit, str) or not _GOVERNED_ACTIONS_COMMIT_RE.match(commit):
+        return _governed_actions_untrusted(
+            "the manifest source commit is not a resolved commit sha", phase
+        )
+    if source.get("dirty") is not False:
+        return _governed_actions_untrusted(
+            "the assessment was captured from a dirty working tree", phase
+        )
+    if not isinstance(source_commit, str) or commit != source_commit:
+        return _governed_actions_untrusted(
+            "the manifest was captured from a different commit than the one checked out",
+            phase,
+        )
+
+    captured_at = _parse_rfc3339(manifest.get("captured_at"))
+    if captured_at is None:
+        return _governed_actions_untrusted(
+            "captured_at is not an RFC3339 timestamp with a timezone", phase
+        )
+    freshness = manifest.get("freshness")
+    if not isinstance(freshness, dict):
+        return _governed_actions_untrusted("the manifest declares no freshness", phase)
+    if freshness.get("status") != "fresh":
+        return _governed_actions_untrusted(
+            "the assessment did not report itself fresh when it was captured", phase
+        )
+    expires_at = _parse_rfc3339(freshness.get("expires_at"))
+    if expires_at is None:
+        return _governed_actions_untrusted(
+            "freshness.expires_at is not an RFC3339 timestamp with a timezone", phase
+        )
+    if moment < captured_at:
+        return _governed_actions_untrusted("captured_at is in the future", phase)
+    if moment > expires_at:
+        return _governed_actions_untrusted("the assessment has expired", phase)
+
+    findings = manifest.get("findings")
+    if not isinstance(findings, list):
+        return _governed_actions_untrusted("findings is not an array", phase)
+    observed: dict[str, list[str]] = {status: [] for _key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            return _governed_actions_untrusted("a finding is not an object", phase)
+        finding_id = finding.get("finding_id")
+        status = finding.get("status")
+        if (
+            not isinstance(finding_id, str)
+            or not isinstance(status, str)
+            or status not in observed
+        ):
+            return _governed_actions_untrusted(
+                "a finding carries an unknown id or status", phase
+            )
+        observed[status].append(finding_id)
+
+    summary = manifest.get("summary")
+    expected_summary_keys = {"verdict"} | {key for key, _status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS}
+    if not isinstance(summary, dict) or set(summary) != expected_summary_keys:
+        return _governed_actions_untrusted(
+            "summary does not match the summary contract", phase
+        )
+    verdict = summary["verdict"]
+    if not isinstance(verdict, str) or verdict not in _GOVERNED_ACTIONS_VERDICTS:
+        return _governed_actions_untrusted("summary.verdict is not a known verdict", phase)
+    counts: dict[str, int] = {}
+    for key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS:
+        bucket = summary[key]
+        if not isinstance(bucket, list) or any(not isinstance(v, str) for v in bucket):
+            return _governed_actions_untrusted(
+                f"summary.{key} is not an array of finding ids", phase
+            )
+        # Multiset comparison: duplicate ids are legal, so a dropped one is a
+        # real disagreement rather than noise.
+        if sorted(bucket) != sorted(observed[status]):
+            return _governed_actions_untrusted(
+                f"summary.{key} disagrees with the findings it summarises", phase
+            )
+        counts[key] = len(bucket)
+
+    return {
+        "manifest": GOVERNED_ACTIONS_MANIFEST,
+        "status": "summarized",
+        "trusted": True,
+        "reason": "schema-valid, commit-bound, and still fresh",
+        "phase": phase,
+        "verdict": verdict,
+        "counts": counts,
+        "recommendation": [],
+    }
+
+
+def _git_head_commit(workspace: Path) -> str:
+    """Resolved HEAD of *workspace*, or "" when it cannot be read."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 - a missing/unusable git is just "unknown"
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _governed_actions_projection(workspace: Path) -> tuple[dict[str, str] | None, dict[str, Any] | None]:
+    """`(handoff, manifest_summary)` for the workspace.
+
+    The handoff appears only when the workspace declares a consequential
+    action or already carries an assessment — an unrelated pilot is never
+    nagged. Both halves are advisory: nothing is dispatched, scheduled, or
+    applied here.
+    """
+    manifest_path = workspace / GOVERNED_ACTIONS_MANIFEST
+    manifest_present = manifest_path.is_file()
+    if not manifest_present and not detect_consequential_actions(workspace):
+        return None, None
+    summary = (
+        summarize_governed_actions_manifest(manifest_path, _git_head_commit(workspace))
+        if manifest_present
+        else None
+    )
+    return dict(GOVERNED_ACTIONS_HANDOFF), summary
 
 
 # -----------------------------------------------------------------------------
@@ -969,12 +1272,17 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     decisions = _cascade_invalidations(decisions)
 
     hard_stop = next((d for d in decisions if d.decision == "hard_stop"), None)
+    governed_handoff, governed_manifest = _governed_actions_projection(workspace)
 
     return {
         "workspace": str(workspace),
         "state_file": str(state_path) if state_path else None,
         "stages": list(STAGES),
         "manual_handoffs": _manual_handoffs(workspace),
+        # Recommendation only: `threadlight-governed-actions` is never a stage
+        # and is never dispatched from here.
+        "governed_actions": governed_handoff,
+        "governed_actions_manifest": governed_manifest,
         "decisions": [
             {
                 "stage": d.name,
@@ -1018,6 +1326,24 @@ def _print_human(report: dict[str, Any]) -> None:
         run = ", ".join(na["stages_to_run"]) or "(none — all stages complete)"
         print(f"Skip:  {skip}")
         print(f"Run:   {run}")
+    _print_governed_actions(report)
+
+
+def _print_governed_actions(report: dict[str, Any]) -> None:
+    """Print the governed-actions recommendation, when there is one.
+
+    Recommendation only — auto never runs the skill, and never prints an
+    instruction beyond the approved lifecycle wording.
+    """
+    handoff = report.get("governed_actions")
+    if not handoff:
+        return
+    print(f"\nGoverned actions (execution: {handoff['execution']}):")
+    for key in ("design", "pre_deploy", "post_deploy"):
+        print(f"  • {handoff[key]}")
+    summary = report.get("governed_actions_manifest")
+    if summary:
+        print(f"  {summary['manifest']}: {summary['status']} — {summary['reason']}")
 
 
 def main(argv: list[str] | None = None) -> int:

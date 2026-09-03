@@ -21,6 +21,48 @@ read-only / suggestion-only agents it is `not-applicable`.
 | `HITL-005` | HITL decision SLA documented | `should-fix` if absent |
 | `HITL-006` | Every skill contract declares a **substantive** idempotency statement | `must-fix` if a contract declares none |
 | `HITL-007` | SPEC § 8 names the resume trigger and the state it rehydrates | `should-fix` if absent |
+| `HITL-008` | **Aggregate** roll-up of the `threadlight-governed-actions` approval/output verdict — see below | `not-verified` if no trustworthy manifest |
+
+### `HITL-008` — governed-actions approval/output evidence (aggregate)
+
+`threadlight-governed-actions` owns the detailed approval-and-output assessment.
+production-ready never re-runs any of its probes and never imports the assessor;
+it reads that skill's `tests/governed-actions-manifest.json` and rolls the
+**approval + output** domain up into this single finding.
+
+`HITL-008` owns exactly three child findings — `APR-001` (approval binding:
+an approval is bound to the action it approved and cannot be replayed),
+`OUT-001` (outputs are payload-free), and `AUD-001` (audit-trail completeness).
+None of them is shared with another aggregate, so a governed-actions approval or
+output problem shows up here and nowhere else; conversely a runtime or
+change-plane child never leaks into this pillar.
+
+The aggregate takes the **worst** status among those three —
+`must-fix` > `not-verified` > `should-fix` > `pass` > `not-applicable` — and
+names which are open. The child findings are deliberately **not** restated as
+production-ready findings: their IDs never enter this skill's catalog, and the
+governed-actions manifest remains the single source of truth for the detail.
+
+**Trust limits.** The manifest is untrusted repository content, so before any
+child status is believed production-ready re-derives what it can for itself:
+schema and exact top-level shape, a supported assessor name and version (an
+unreviewed future assessor buys no forward trust), a `pre-deploy`/`post-deploy`
+phase, a clean source bound to the repository and commit under assessment,
+**recomputed** policy hashes and policy-set digest matched against every
+relied-upon evidence entry, a single target environment consistent with the
+selected azd environment, an intact freshness window, resolvable evidence
+references collected no later than capture, and a `summary` agreeing exactly
+with its own findings. Missing, malformed, stale, dirty, or mismatched evidence
+makes `HITL-008` `not-verified` with the reason attached — never `pass`, and
+never a `must-fix` manufactured from evidence we could not stand behind.
+`summary.verdict` alone is never believed: a `governed` verdict over a
+`must-fix` child still reports `must-fix`.
+
+**Conformance is not certification.** A trusted, all-`pass` manifest means the
+assessor ran against this exact repository state and raised nothing about
+approvals, outputs, or the audit trail. That is a scoped, expiring conformance
+record — not a certification or a sign-off, and advisory like everything else
+this skill reports.
 
 ### Run durability (HITL-006 / HITL-007)
 

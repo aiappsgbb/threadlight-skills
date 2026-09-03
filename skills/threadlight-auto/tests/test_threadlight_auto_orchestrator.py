@@ -744,6 +744,347 @@ def test_cost_projection_resumability_requires_strictly_newer_than_last_deploy(t
     assert decision.decision == "run"
 
 
+# ---------------------------------------------------------------------------
+# Governed-actions lifecycle (Task 14): recommendation-only, never a stage.
+#
+# `threadlight-governed-actions` owns consequential-action assessment,
+# enforcement scaffolding, and every high-impact change. `threadlight-auto`
+# may only *recommend* the explicit lifecycle steps and summarise an already
+# committed manifest. It never runs the skill, never adds it to the stage
+# runner, and never emits a scaffold / policy-application / canary / merge /
+# deploy command of its own.
+# ---------------------------------------------------------------------------
+
+decide = orch.decide
+STAGES = orch.STAGES
+LEG_CONTRACTS = orch.LEG_CONTRACTS
+
+GOVERNED_ACTIONS_MANIFEST_REL = "tests/governed-actions-manifest.json"
+GOLDEN_GOVERNED_ACTIONS_MANIFEST = (
+    REPO
+    / "skills"
+    / "threadlight-governed-actions"
+    / "tests"
+    / "golden"
+    / "conformant-manifest.json"
+)
+GOLDEN_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+# Inside the golden's own freshness window (2026-09-01T12:00Z .. 2026-09-02T12:00Z).
+GOLDEN_FRESH_NOW = datetime(2026, 9, 1, 18, 0, 0, tzinfo=timezone.utc)
+
+EXPECTED_HANDOFF = {
+    "execution": "manual-explicit",
+    "design": (
+        "run threadlight-governed-actions --phase design "
+        "after threadlight-design"
+    ),
+    "pre_deploy": (
+        "run threadlight-governed-actions --phase pre-deploy before deploy"
+    ),
+    "post_deploy": (
+        "run threadlight-governed-actions --phase post-deploy "
+        "against staging only"
+    ),
+    "manifest": "tests/governed-actions-manifest.json",
+}
+
+# Privileged verbs auto must never emit. `deploy`/`design` on their own are
+# deliberately absent: the approved lifecycle wording contains them, and this
+# guard is about *commands* auto could be read as authorising.
+FORBIDDEN_COMMAND_TOKENS = (
+    "--scaffold",
+    "scaffold",
+    "--apply",
+    "apply-plan",
+    "apply the policy",
+    "policy apply",
+    "canary",
+    "rollout",
+    "merge",
+    "azd up",
+    "azd deploy",
+    "az deployment",
+    "gh pr",
+    "git push",
+)
+
+
+def _golden_governed_actions_manifest() -> dict:
+    return json.loads(GOLDEN_GOVERNED_ACTIONS_MANIFEST.read_text(encoding="utf-8"))
+
+
+def make_context(
+    tmp_path: Path,
+    *,
+    consequential_actions: bool = False,
+    manifest: dict | None = None,
+) -> Path:
+    """Build a workspace and return it (the orchestrator's only input).
+
+    `consequential_actions=True` writes the smallest honest signal auto can
+    read on its own: a root tool registry declaring a non-`read` action.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    if consequential_actions:
+        _write_json(
+            tmp_path / "tool-registry.json",
+            {
+                "actions": [
+                    {"id": "issue_refund", "consequence": "financial"},
+                    {"id": "read_claim", "consequence": "read"},
+                ]
+            },
+        )
+    if manifest is not None:
+        _write_json(tmp_path / "tests" / "governed-actions-manifest.json", manifest)
+    return tmp_path
+
+
+def test_auto_recommends_explicit_governed_actions_lifecycle_handoffs(tmp_path):
+    decision = decide(make_context(tmp_path, consequential_actions=True))
+    assert decision["governed_actions"] == EXPECTED_HANDOFF
+    assert orch.GOVERNED_ACTIONS_HANDOFF == EXPECTED_HANDOFF
+
+
+def test_auto_never_schedules_governed_actions_or_rollout():
+    assert "governed_actions" not in STAGES
+    assert all(
+        leg.get("skill") != "threadlight-governed-actions"
+        for leg in LEG_CONTRACTS.values()
+    )
+    # Not a stage probe, and not one of the four advisory live legs either.
+    assert "governed_actions" not in orch.STAGE_PROBES
+    assert "threadlight-governed-actions" not in orch.MANUAL_HANDOFFS
+
+
+def test_auto_omits_governed_actions_handoff_without_signal(tmp_path):
+    decision = decide(make_context(tmp_path))
+    assert decision["governed_actions"] is None
+    assert decision["governed_actions_manifest"] is None
+
+
+def test_auto_recommends_handoff_when_only_a_manifest_exists(tmp_path):
+    workspace = make_context(tmp_path, manifest=_golden_governed_actions_manifest())
+    decision = decide(workspace)
+    assert decision["governed_actions"] == EXPECTED_HANDOFF
+
+
+def test_auto_summarizes_a_schema_valid_governed_actions_manifest(tmp_path):
+    workspace = make_context(
+        tmp_path,
+        consequential_actions=True,
+        manifest=_golden_governed_actions_manifest(),
+    )
+    summary = orch.summarize_governed_actions_manifest(
+        workspace / GOVERNED_ACTIONS_MANIFEST_REL,
+        GOLDEN_COMMIT,
+        now=GOLDEN_FRESH_NOW,
+    )
+    assert summary["status"] == "summarized"
+    assert summary["trusted"] is True
+    assert summary["phase"] == "pre-deploy"
+    assert summary["verdict"] == "governed"
+    assert summary["counts"] == {
+        "pass": 1,
+        "must_fix": 0,
+        "should_fix": 0,
+        "not_verified": 0,
+        "not_applicable": 0,
+    }
+    assert summary["recommendation"] == []
+
+
+def test_auto_recommends_rerun_for_a_stale_governed_actions_manifest(tmp_path):
+    workspace = make_context(tmp_path, manifest=_golden_governed_actions_manifest())
+    summary = orch.summarize_governed_actions_manifest(
+        workspace / GOVERNED_ACTIONS_MANIFEST_REL,
+        GOLDEN_COMMIT,
+        now=GOLDEN_FRESH_NOW + timedelta(days=3),
+    )
+    assert summary["status"] == "rerun-recommended"
+    assert summary["trusted"] is False
+    assert "expired" in summary["reason"]
+    assert summary["counts"] == {
+        "pass": 0,
+        "must_fix": 0,
+        "should_fix": 0,
+        "not_verified": 0,
+        "not_applicable": 0,
+    }
+    # Rerun wording is exactly the approved lifecycle recommendation.
+    assert summary["recommendation"] == [EXPECTED_HANDOFF["pre_deploy"]]
+
+
+def test_auto_recommends_rerun_for_an_invalid_governed_actions_manifest(tmp_path):
+    cases: dict[str, dict] = {}
+
+    wrong_schema = _golden_governed_actions_manifest()
+    wrong_schema["schema"] = "threadlight-governed-actions-manifest/v2"
+    cases["schema"] = wrong_schema
+
+    wrong_commit = _golden_governed_actions_manifest()
+    wrong_commit["source"] = dict(wrong_commit["source"], commit="f" * 40)
+    cases["commit"] = wrong_commit
+
+    dirty = _golden_governed_actions_manifest()
+    dirty["source"] = dict(dirty["source"], dirty=True)
+    cases["dirty"] = dirty
+
+    miscounted = _golden_governed_actions_manifest()
+    miscounted["summary"] = {
+        **miscounted["summary"],
+        "pass": [],
+        "must_fix": ["OPS-001"],
+    }
+    cases["summary"] = miscounted
+
+    for label, manifest in cases.items():
+        workspace = make_context(tmp_path / label, manifest=manifest)
+        summary = orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL,
+            GOLDEN_COMMIT,
+            now=GOLDEN_FRESH_NOW,
+        )
+        assert summary["status"] == "rerun-recommended", label
+        assert summary["trusted"] is False, label
+        assert summary["verdict"] is None, label
+        assert summary["recommendation"], label
+        assert all(
+            rec in EXPECTED_HANDOFF.values() for rec in summary["recommendation"]
+        ), label
+
+    # Unparseable JSON is untrusted too, and never crashes the orchestrator.
+    broken = tmp_path / "broken"
+    (broken / "tests").mkdir(parents=True)
+    (broken / "tests" / "governed-actions-manifest.json").write_text(
+        "{ not json", encoding="utf-8"
+    )
+    summary = orch.summarize_governed_actions_manifest(
+        broken / GOVERNED_ACTIONS_MANIFEST_REL, GOLDEN_COMMIT, now=GOLDEN_FRESH_NOW
+    )
+    assert summary["status"] == "rerun-recommended"
+    assert summary["recommendation"] == [
+        EXPECTED_HANDOFF["design"],
+        EXPECTED_HANDOFF["pre_deploy"],
+        EXPECTED_HANDOFF["post_deploy"],
+    ]
+
+
+def test_auto_recommends_rerun_for_a_non_string_finding_status(tmp_path):
+    # An otherwise schema-valid, commit-bound, fresh manifest must still be
+    # untrusted when a finding's status is untrusted JSON that isn't a
+    # string (e.g. an array or object) rather than raising inside the
+    # findings loop's `status not in observed` membership check.
+    non_string_statuses: dict[str, object] = {
+        "list": ["pass"],
+        "object": {"value": "pass"},
+    }
+
+    for label, status in non_string_statuses.items():
+        manifest = _golden_governed_actions_manifest()
+        manifest["findings"][0]["status"] = status
+        workspace = make_context(tmp_path / label, manifest=manifest)
+        summary = orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL,
+            GOLDEN_COMMIT,
+            now=GOLDEN_FRESH_NOW,
+        )
+        assert summary["status"] == "rerun-recommended", label
+        assert summary["trusted"] is False, label
+        assert "unknown id or status" in summary["reason"], label
+        assert summary["verdict"] is None, label
+        assert summary["recommendation"] == [EXPECTED_HANDOFF["pre_deploy"]], label
+
+
+def test_auto_decision_surfaces_the_manifest_summary(tmp_path):
+    manifest = _golden_governed_actions_manifest()
+    workspace = make_context(tmp_path, consequential_actions=True, manifest=manifest)
+    decision = decide(workspace)
+    summary = decision["governed_actions_manifest"]
+    assert summary is not None
+    # The committed golden is long expired against wall-clock now, so auto must
+    # recommend a rerun rather than believe it.
+    assert summary["status"] == "rerun-recommended"
+    assert summary["manifest"] == GOVERNED_ACTIONS_MANIFEST_REL
+
+
+def test_auto_output_carries_no_privileged_commands(tmp_path):
+    """The governed-actions surface authors recommendations, never commands.
+
+    Scoped to that surface on purpose: auto legitimately drives `azd up` at its
+    own deploy stage, and this guard is about what the governed-actions handoff
+    hands an agent, not about the pilot driver's existing stage prose.
+    """
+    workspace = make_context(
+        tmp_path,
+        consequential_actions=True,
+        manifest=_golden_governed_actions_manifest(),
+    )
+    decision = decide(workspace)
+    blob = json.dumps(
+        {
+            "governed_actions": decision["governed_actions"],
+            "governed_actions_manifest": decision["governed_actions_manifest"],
+        }
+    )
+    for approved in EXPECTED_HANDOFF.values():
+        blob = blob.replace(approved, "")
+    low = blob.casefold()
+    for token in FORBIDDEN_COMMAND_TOKENS:
+        assert token not in low, token
+
+
+def test_auto_never_imports_or_executes_the_governed_actions_skill():
+    source = Path(orch.__file__).read_text(encoding="utf-8")
+    for forbidden in (
+        "threadlight-governed-actions/scripts",
+        '"threadlight-governed-actions"',
+        "threadlight_governed_actions",
+        "import probes",
+        "import render",
+        "import scaffold",
+        "import governed_actions",
+    ):
+        assert forbidden not in source, forbidden
+    # The summary is a pure read of committed JSON: no producer module is
+    # imported as a side effect of running it.
+    before = set(sys.modules)
+    orch.summarize_governed_actions_manifest(
+        Path("does-not-exist.json"), GOLDEN_COMMIT, now=GOLDEN_FRESH_NOW
+    )
+    assert not {
+        name
+        for name in set(sys.modules) - before
+        if name in {"probes", "render", "scaffold", "governed_actions", "mediation"}
+    }
+
+
+def test_auto_human_output_prints_recommendations_only(tmp_path, capsys):
+    workspace = make_context(
+        tmp_path,
+        consequential_actions=True,
+        manifest=_golden_governed_actions_manifest(),
+    )
+    orch._print_human(decide(workspace))
+    printed = capsys.readouterr().out
+    for key in ("design", "pre_deploy", "post_deploy"):
+        assert EXPECTED_HANDOFF[key] in printed
+    assert "execution: manual-explicit" in printed
+    # Scoped to the governed-actions block: the pilot driver's own deploy
+    # stage legitimately says it will run `azd up`.
+    block = printed[printed.index("Governed actions") :]
+    for approved in EXPECTED_HANDOFF.values():
+        block = block.replace(approved, "")
+    low = block.casefold()
+    for token in ("--scaffold", "--apply", "--canary", "azd up", "gh pr merge"):
+        assert token not in low, token
+
+
+def test_auto_human_output_stays_silent_without_a_signal(tmp_path, capsys):
+    orch._print_human(decide(make_context(tmp_path)))
+    assert "governed actions" not in capsys.readouterr().out.casefold()
+
+
 def run(workspace: Path) -> dict:
     out = subprocess.run(
         [sys.executable, str(ORCH), "--workspace", str(workspace), "--dry-run", "--output", "json"],
