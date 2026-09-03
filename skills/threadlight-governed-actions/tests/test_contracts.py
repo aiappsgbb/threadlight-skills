@@ -416,10 +416,17 @@ def test_hash_files_binds_repo_relative_path_and_exact_bytes(tmp_path):
 
 
 def test_hash_files_rejects_paths_that_escape_root(tmp_path):
-    outside = tmp_path.parent / "outside.json"
+    # Both the assessment root and the escaping file must live inside this
+    # test's own unique tmp_path -- never in the shared basetemp
+    # (tmp_path.parent), which is reused across many tests in the same run
+    # and would leak a stray "outside.json" into unrelated ground/upgrade
+    # path-escape tests.
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
     outside.write_bytes(b"{}")
     with pytest.raises(canonical.CanonicalizationError):
-        canonical.hash_files(tmp_path, [outside])
+        canonical.hash_files(root, [outside])
 
 
 def test_hash_files_set_sha256_is_invariant_to_input_order(tmp_path):
