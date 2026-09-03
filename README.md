@@ -128,7 +128,7 @@ order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 ## Quickstart in GitHub Codespaces
 
 Want to try the skills without installing anything? Open this repo in a
-Codespace and you get **GitHub Copilot CLI with all 22 threadlight skills
+Codespace and you get **GitHub Copilot CLI with all 23 threadlight skills
 pre-wired** from the checkout.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)

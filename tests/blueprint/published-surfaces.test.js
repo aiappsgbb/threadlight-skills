@@ -98,7 +98,7 @@ const ACTIVE_SURFACES = [
 // skills` / `Threadlight is 22` TOTAL claims are matched here — a bare "22
 // skills" is deliberately not matched, because pipeline-scoped copy may
 // legitimately say it.
-const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 total|13-skill library|22-skill library|all 17 skills|all 22 skills|Threadlight is 22|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill/i;
+const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 total|13-skill library|22-skill library|all 17 skills|all 22 skills|all 22 threadlight skills|22 threadlight skills|Threadlight is 22|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill/i;
 
 test(`filesystem publishes exactly ${expectedSkillCount} threadlight-* skills`, () => {
   const dirs = fs
