@@ -285,6 +285,59 @@ field.
   URL/credential-shaped content). No raw evidence from the probed
   subscription is retained anywhere in this repository.
 
+## [1.13.0] - 2026-09-01
+
+### Added
+
+- **`threadlight-governed-actions` (skill v0.1.0) — the governed-actions
+  evidence leg.** Proves whether every *consequential* action a pilot agent
+  can take is **inventoried, mediated, enforced, approved, and auditable**,
+  then renders a customer-facing **Governance Evidence Pack**. Read-only by
+  default; artefacts are written only under `--emit`
+  (`tests/governed-actions-manifest.json`,
+  `docs/governance/evidence-pack.md`), `--gate` maps the verdict onto exit
+  codes `0` pass / `1` must-fix / `2` usage / `3` internal, and the MAF
+  interceptor scaffold is a bounded double-opt-in write
+  (`--scaffold maf --confirm-scaffold`). Phases are `design`, `pre-deploy`,
+  and a **staging-only** `post-deploy` that requires an explicit
+  `--staging-resource-group`. Findings are the fixed 18-ID taxonomy
+  `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `APR-001`, `OUT-001`,
+  `AUD-001`, `PIN-001`, `GHCP-001..006`, `OPS-001`; the manifest is
+  `threadlight.governed-actions/v1` at schema `1.0.0`. Evidence is
+  **payload-free** — no raw prompts, arguments, outputs, or secrets are
+  recorded. `threadlight-production-ready` (skill v0.12.0) consumes the
+  manifest as leg-verified AGT-007 / HITL-008 / SUP-014 evidence, and
+  `threadlight-auto` (skill v1.3.0) treats the leg as a recommendation only.
+  Published as part of plugin **1.13.0** (22 pipeline skills + the
+  `threadlight-auto` planner, 23 total).
+
+  **Tested upstream tuple** (from
+  `skills/threadlight-governed-actions/references/upstream-pin.json` and the
+  committed conformance claim — the authoritative pin files, not prose):
+  Agent Hooks spec `AGENT-HOOKS-0.1` version `0.1.0-alpha` at repository
+  commit `0821ebbae252c45cd225304a464d1130963b82a8`; SDK
+  `agent-hooks-sdk 0.1.0a5`; CTK 47 of 51 vectors applicable and **47
+  passed** (4 skipped); MAF `agent-framework-core 1.13.0`
+  (`integration_status: experimental`); ACS policy schema
+  `not-applicable`; conformance report
+  `conformance/claims/maf/REPORT.md` claim `section-13.1` with
+  `certification: false`; conformance python `3.12.3`; drift policy
+  `exact-tuple-rerun-ctk-and-application-probes`.
+
+  **Boundaries.** The result is **conformance, not certification**. Agent
+  Hooks is a **cooperative alpha, not a security boundary**; MAF
+  interceptors are **experimental**; provider-hosted execution cannot be
+  intercepted in-process; the service must still repeat authorization,
+  validation, idempotency, and transaction controls; and the GitHub Copilot
+  internal loop is **not** intercepted — only its change plane (PR-only,
+  CODEOWNERS, required checks, SHA pins, OIDC/WIF, identity separation) is
+  assessed. Customer policy, thresholds, approvers, identities, and risk
+  appetite are **customer inputs** and are never invented by the skill.
+  **This release does not own the production rollout** — enabling
+  interceptors, approvals, or change-plane controls in a production
+  environment stays a separate, human-owned decision delivered through
+  `threadlight-cicd` / customer platform ownership.
+
 ## [1.12.0] - 2026-08-18
 
 ### Added

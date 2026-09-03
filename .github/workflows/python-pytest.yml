@@ -59,6 +59,12 @@ name: python-pytest
 #     compatibility/preview-drift scan against a fixture matrix; no network)
 #   - skills/threadlight-safe-check/tests/        (completeness gate, incl. the
 #     applied mock→real integration-binding recognition; static, no network)
+#   - skills/threadlight-governed-actions/tests/  (governed-actions evidence
+#     assessor — action inventory, mediation trace, hermetic application-path
+#     probes (deny/transform/crash/timeout/malformed/replay/output/audit), GHCP
+#     change-plane assessment, manifest + evidence-pack render. Needs
+#     jsonschema[format] for the manifest schema check; deterministic, no
+#     network, no Azure, no live GitHub API)
 #
 # Every step is a hard gate — no `continue-on-error`. Stdlib-only suites that
 # expose `t_*` functions plus a main() instead of pytest-collectable `test_*`
@@ -79,7 +85,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip pytest pyyaml packaging
+      - run: python -m pip install --upgrade pip pytest pyyaml packaging "jsonschema[format]"
       - name: Guard - SKILL.md description length (<=1024 chars)
         # Deterministic per-PR guard for the silent loader-drop regression:
         # any skills/*/SKILL.md whose parsed `description` exceeds 1024 chars
@@ -187,3 +193,5 @@ jobs:
         # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
         # markdown, runs no azd, no network.
         run: python -m pytest skills/threadlight-deploy/tests/ -v
+      - name: Test threadlight-governed-actions
+        run: python -m pytest skills/threadlight-governed-actions/tests -q

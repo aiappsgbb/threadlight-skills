@@ -97,6 +97,50 @@ def test_public_constants_match_spec():
     assert contracts.VERDICTS == ("governed", "partial", "ungoverned")
 
 
+# ---------------------------------------------------------------------------
+# Published skill version (SKILL.md frontmatter)
+# ---------------------------------------------------------------------------
+
+
+SKILL_MD = Path(__file__).resolve().parent.parent / "SKILL.md"
+
+
+def _skill_frontmatter() -> str:
+    """Return the SKILL.md YAML frontmatter block (between the first two
+    ``---`` fences), the same slice the Copilot CLI skill loader parses."""
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), "SKILL.md must open with YAML frontmatter"
+    return text.split("---", 2)[1]
+
+
+def test_skill_md_frontmatter_declares_the_published_skill_name():
+    assert "name: threadlight-governed-actions\n" in _skill_frontmatter()
+
+
+def test_skill_md_version_matches_the_cli_assessor_version():
+    """The published skill version, the skill constant, and the assessor
+    version the CLI stamps into every artifact are one number.
+
+    ``render.build_manifest``/``render.build_apply_plan`` write
+    ``contracts.ASSESSOR_VERSION`` into ``assessor_version``, so a
+    customer reading the evidence pack can only trace it back to a
+    published skill version if these never drift. Importing the CLI entry
+    module here (rather than re-reading the constant from ``contracts``
+    alone) proves the value the CLI actually resolves is the published
+    one.
+    """
+    import governed_actions
+    import render
+
+    assert contracts.SKILL_VERSION == "0.1.0"
+    assert contracts.ASSESSOR_VERSION == contracts.SKILL_VERSION
+    assert governed_actions.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION
+    assert render.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION
+    assert f'version: "{contracts.SKILL_VERSION}"' in _skill_frontmatter(), (
+        f'SKILL.md frontmatter must declare version: "{contracts.SKILL_VERSION}"'
+    )
+
+
 def _manifest_schema():
     return json.loads(
         (REFERENCES / "governed-actions-manifest.schema.json").read_text(
