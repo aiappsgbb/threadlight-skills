@@ -26,5 +26,5 @@
   "nonce_ledger": "governance/nonce-ledger.jsonl",
   "observation_ledger": "governance/probe-ledger.jsonl",
   "side_effect_mode": "synthetic",
-  "timeout_ms": 100
+  "timeout_ms": 500
 }

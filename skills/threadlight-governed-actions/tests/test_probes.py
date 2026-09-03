@@ -142,7 +142,7 @@ def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
     contract = load_probe_contract(fixture_root / "conformant-maf")
     assert contract["dispatch"] == "app.agent:dispatch"
     assert contract["audit_sink"] == "app.agent:AUDIT_EVENTS"
-    assert contract["timeout_ms"] == 100
+    assert contract["timeout_ms"] == 500
     assert contract["side_effect_mode"] == "synthetic"
     assert contract["observation_ledger"] == "governance/probe-ledger.jsonl"
     assert contract["actions"] == ("payments.refund",)

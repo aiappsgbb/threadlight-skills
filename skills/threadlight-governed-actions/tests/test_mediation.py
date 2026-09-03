@@ -504,18 +504,10 @@ def test_adapter_declared_paths_never_supply_provider_hosted_mode(
 # ---------------------------------------------------------------------------
 
 
-def test_equivalent_control_evidence_covers_a_non_provider_path_without_a_seam(
+def test_unverified_equivalent_control_never_masks_a_non_provider_bypass(
     tmp_path: Path,
 ):
-    """A non-provider path with no Agent Hooks pre-tool call in code can
-    still be covered by a *declared* equivalent server-side control that
-    names all three of authorization, idempotency, and transaction refs —
-    the same evidence bar ``assess_provider_paths`` already enforces for
-    provider-hosted tools, now honored for direct-tool/batch/etc. paths
-    too, since a downstream service that itself independently proves
-    those checks is real pre-action mediation even without a client-side
-    seam call.
-    """
+    """Three target-controlled strings cannot suppress a proven bypass."""
     (tmp_path / "agent.yaml").write_text(
         textwrap.dedent(
             """
@@ -561,13 +553,11 @@ def test_equivalent_control_evidence_covers_a_non_provider_path_without_a_seam(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "pass"
-    assert direct_tool_path.covered is True
-    assert direct_tool_path.equivalent_control_ref is not None
-    for required in ("authorization_ref", "idempotency_ref", "transaction_ref"):
-        assert required in direct_tool_path.equivalent_control_ref
+    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.covered is False
+    assert direct_tool_path.equivalent_control_ref is None
 
-    assert not any(
+    assert any(
         finding.finding_id == "MED-001"
         and "payments.settle" in finding.affected_actions
         for finding in graph.findings
@@ -1491,7 +1481,7 @@ def test_read_only_provider_hosted_action_is_not_applicable(fixture_root: Path):
     )
 
 
-def test_equivalent_control_evidence_must_name_all_three_server_side_refs(
+def test_declared_equivalent_control_requires_independent_verification(
     tmp_path: Path,
 ):
     complete_root = tmp_path / "complete"
@@ -1516,13 +1506,15 @@ def test_equivalent_control_evidence_must_name_all_three_server_side_refs(
     complete_actions = inventory.build_action_inventory(complete_root).actions
     complete_graph = assess_provider_paths(complete_root, complete_actions)
 
-    assert complete_graph.findings == ()
+    assert len(complete_graph.findings) == 1
+    complete_finding = complete_graph.findings[0]
+    assert complete_finding.finding_id == "MED-003"
+    assert complete_finding.status == "not-verified"
+    assert complete_finding.reason_code == "equivalent-control-not-verified"
     complete_path = complete_graph.paths[0]
-    assert complete_path.status == "pass"
-    assert complete_path.covered is True
-    assert complete_path.equivalent_control_ref is not None
-    for required in ("authorization_ref", "idempotency_ref", "transaction_ref"):
-        assert required in complete_path.equivalent_control_ref
+    assert complete_path.status == "not-verified"
+    assert complete_path.covered is False
+    assert complete_path.equivalent_control_ref is None
 
     partial_root = tmp_path / "partial"
     partial_root.mkdir()

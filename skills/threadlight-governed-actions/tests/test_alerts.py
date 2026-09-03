@@ -289,9 +289,11 @@ def test_deeply_nested_value_in_catalog_is_should_fix_never_crashes(tmp_path):
     # ``canonical_bytes`` cannot safely canonicalize it either.
     catalog_path = _write_catalog(tmp_path)
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    nested = json.loads("[" * 10000 + "]" * 10000)
-    catalog["extra_top_level_value"] = nested
-    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    catalog["extra_top_level_value"] = "NESTED-VALUE-PLACEHOLDER"
+    serialized = json.dumps(catalog).replace(
+        '"NESTED-VALUE-PLACEHOLDER"', "[" * 10000 + "]" * 10000
+    )
+    catalog_path.write_text(serialized, encoding="utf-8")
     finding, evidence = assess_alerts(tmp_path, phase="pre-deploy", live_evidence=None)
     assert finding.status == "should-fix"
     assert evidence == ()

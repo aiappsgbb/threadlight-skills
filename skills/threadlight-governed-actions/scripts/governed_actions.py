@@ -750,7 +750,7 @@ def _bind_probe_evidence(
                 target_environment=None,
                 policy_set_sha256=policy_set_sha256,
             )
-    findings.extend(probes.findings_from_probes(tuple(kept)))
+    findings.extend(probes.findings_from_probes(tuple(kept), phase=options.phase))
     evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
     return tuple(kept), tuple(findings), evidence
 
@@ -1261,12 +1261,13 @@ def _collect_selected_live_evidence(
     return live_github, live_azure, findings
 
 
-def _assess_pre_deploy(
-    root: Path, source: contracts.SourceRef, options: contracts.AssessmentOptions
+def _assess_repository_controls(
+    root: Path,
+    source: contracts.SourceRef,
+    options: contracts.AssessmentOptions,
+    phase: str,
 ) -> contracts.AssessmentResult:
-    """pre-deploy: inventory, pins, static mediation graph, policy
-    hashing, approval binding (via the same mediation graph), probes,
-    alerts, and GHCP static/live checks."""
+    """Assess the complete repository control set for a deploy phase."""
     inv = inventory.build_action_inventory(root)
     findings: List[contracts.Finding] = list(inv.findings)
     evidence: List[contracts.EvidenceRef] = list(_spec_section_8_evidence(inv, source, options.now))
@@ -1279,7 +1280,7 @@ def _assess_pre_deploy(
     observed_tuple = maf_adapter.MAFAdapter().resolved_tuple(root)
     pin_comparison = maf_adapter.compare_upstream_tuple(observed_tuple, pin)
     if pin_comparison.finding is not None:
-        findings.append(pin_comparison.finding)
+        findings.append(replace(pin_comparison.finding, phase=phase))
 
     graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
     provider_graph = mediation.assess_provider_paths(root, inv.actions)
@@ -1287,14 +1288,14 @@ def _assess_pre_deploy(
     findings.extend(graph.findings)
     findings.extend(provider_graph.findings)
 
-    probe_results, probe_findings = _run_probe_sets(root, "pre-deploy")
+    probe_results, probe_findings = _run_probe_sets(root, phase)
     findings.extend(probe_findings)
 
     approval_probe_results, approval_findings = _run_approval_coverage(
-        root, "pre-deploy", options.now
+        root, phase, options.now
     )
     findings.extend(approval_findings)
-    output_probe_results, output_findings = _run_output_coverage(root, "pre-deploy")
+    output_probe_results, output_findings = _run_output_coverage(root, phase)
     findings.extend(output_findings)
 
     probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
@@ -1306,7 +1307,7 @@ def _assess_pre_deploy(
     findings.extend(derived_findings)
     evidence.extend(probe_evidence)
 
-    alert_finding, alert_evidence = alerts.assess_alerts(root, "pre-deploy", None)
+    alert_finding, alert_evidence = alerts.assess_alerts(root, phase, None)
     findings.append(alert_finding)
     evidence.extend(alert_evidence)
 
@@ -1314,11 +1315,11 @@ def _assess_pre_deploy(
     live_github, live_azure, live_findings = _collect_selected_live_evidence(
         root, options, default_branch
     )
-    findings.extend(live_findings)
+    findings.extend(replace(finding, phase=phase) for finding in live_findings)
 
     change_plane_result = ghcp.assess_change_plane(root, live_github, live_azure)
-    findings.extend(change_plane_result.findings)
-    evidence.extend(change_plane_result.evidence)
+    findings.extend(replace(finding, phase=phase) for finding in change_plane_result.findings)
+    evidence.extend(replace(ref, phase=phase) for ref in change_plane_result.evidence)
 
     pins = _pins_summary(pin_comparison.expected)
     change_plane = _change_plane_summary(root, source, options, evidence)
@@ -1354,60 +1355,25 @@ def _assess_pre_deploy(
         change_plane=change_plane,
         residual_risks=(),
         captured_at=options.now,
-        phase="pre-deploy",
+        phase=phase,
         live_github_selected=options.live_github,
         live_azure_selected=options.live_azure,
     )
+
+
+def _assess_pre_deploy(
+    root: Path, source: contracts.SourceRef, options: contracts.AssessmentOptions
+) -> contracts.AssessmentResult:
+    """Run the complete pre-deploy repository and application assessment."""
+    return _assess_repository_controls(root, source, options, "pre-deploy")
 
 
 def _assess_post_deploy(
     root: Path, source: contracts.SourceRef, options: contracts.AssessmentOptions
 ) -> contracts.AssessmentResult:
-    """post-deploy: rerun only the non-destructive application probes,
-    plus whatever live evidence the CLI explicitly selected. Never reruns
-    GHCP's static change-plane analysis (that is a pre-deploy-only,
-    static-artifact concern) and never runs a destructive probe."""
+    """Rerun the complete assessment against a non-production deployment."""
     probes.validate_post_deploy_target("post-deploy", options.staging, destructive=False)
-
-    probe_results, findings = _run_probe_sets(root, "post-deploy")
-    findings = list(findings)
-    evidence: List[contracts.EvidenceRef] = []
-
-    probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
-        probe_results, source, options, ()
-    )
-    findings.extend(derived_findings)
-    evidence.extend(probe_evidence)
-
-    default_branch = options.default_branch or _resolve_default_branch(root)
-    live_github, live_azure, live_findings = _collect_selected_live_evidence(
-        root, options, default_branch
-    )
-    findings.extend(live_findings)
-    # live_github/live_azure payloads carry no trustworthy, locally-bound
-    # provenance of their own (see ghcp.LiveEvidenceResult); only their
-    # findings -- never a fabricated EvidenceRef -- are surfaced here.
-    del live_github, live_azure
-
-    findings.sort(key=lambda finding: (finding.finding_id, finding.reason_code))
-    return contracts.AssessmentResult(
-        source=source,
-        actions=(),
-        paths=(),
-        probes=probe_results,
-        findings=tuple(findings),
-        evidence=tuple(evidence),
-        policy_hashes=(),
-        pins={},
-        conformance_claims=(),
-        conformance_reports=(),
-        change_plane={},
-        residual_risks=(),
-        captured_at=options.now,
-        phase="post-deploy",
-        live_github_selected=options.live_github,
-        live_azure_selected=options.live_azure,
-    )
+    return _assess_repository_controls(root, source, options, "post-deploy")
 
 
 def assess(options: contracts.AssessmentOptions) -> contracts.AssessmentResult:

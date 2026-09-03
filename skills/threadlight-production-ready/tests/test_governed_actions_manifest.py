@@ -346,6 +346,7 @@ def test_loader_returns_the_parsed_manifest(tmp_path):
     "child,owner",
     [
         ("MED-001", "AGT-007"),
+        ("MED-003", "AGT-007"),
         ("ENF-002", "AGT-007"),
         ("PIN-001", "AGT-007"),
         ("APR-001", "HITL-008"),

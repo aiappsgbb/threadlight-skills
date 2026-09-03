@@ -766,12 +766,15 @@ def _equivalent_control_for(
     return None
 
 
-def _is_complete_equivalent_control(control: Optional[Mapping[str, object]]) -> bool:
+def _has_complete_equivalent_control_declaration(
+    control: Optional[Mapping[str, object]],
+) -> bool:
     """True only if *control* names all three required server-side refs.
 
     Each of ``authorization_ref``, ``idempotency_ref``, and
-    ``transaction_ref`` must be present as a non-empty string — naming only
-    one or two of the three is never sufficient equivalent-control proof.
+    ``transaction_ref`` must be present as a non-empty string. This validates
+    declaration shape only; target-controlled strings are not independent
+    evidence that the section 5 equivalent-control criteria are satisfied.
     """
     if control is None:
         return False
@@ -782,25 +785,16 @@ def _is_complete_equivalent_control(control: Optional[Mapping[str, object]]) -> 
     return True
 
 
-def _serialize_control(control: Mapping[str, object]) -> str:
-    return ";".join(
-        f"{key}={control[key]}" for key in _REQUIRED_EQUIVALENT_CONTROL_REFS
-    )
-
-
 def _equivalent_control_applies(
     root: Path, action: ActionRecord
 ) -> Tuple[bool, Optional[Mapping[str, object]]]:
-    """Whether a fully-named equivalent control is declared for *action*.
+    """Whether independently verified equivalent control applies to *action*.
 
-    Only relevant for side-effecting actions (read actions have no state
-    to protect, so a "control" over them is meaningless); consequence is
-    read directly from the registry, never inferred.
+    The current assessor has no verifier for the seven section 5 criteria, so
+    a target-owned declaration can never cover a path by itself.
     """
-    if action.consequence not in _SIDE_EFFECTING_CONSEQUENCES:
-        return False, None
-    control = _equivalent_control_for(root, action.action_id)
-    return _is_complete_equivalent_control(control), control
+    del root, action
+    return False, None
 
 
 # ---------------------------------------------------------------------------
@@ -1056,18 +1050,15 @@ def assess_provider_paths(
 ) -> MediationGraph:
     """Assess every provider-hosted-tool path for pre-interception support.
 
-    A provider-hosted tool has no pre-tool interception point of its own,
-    so it is supported only via a *declared* equivalent server-side
-    control naming all three of ``authorization_ref``, ``idempotency_ref``,
-    and ``transaction_ref`` (read directly from the target's own
-    ``agent.yaml``/``agent.yml``, never inferred). A side-effecting
-    (write/external-egress/irreversible) provider-hosted tool without that
-    complete evidence is ``MED-003``/``must-fix``/``unsupported``. A
-    read-only provider-hosted tool has no state to protect, so it is
-    ``not-applicable`` instead — never a false ``must-fix``, and never a
-    silently-assumed ``pass``. This family is assessed here exclusively;
-    ``build_mediation_graph`` never builds or recomputes a
-    ``provider-hosted-tool`` path.
+    A provider-hosted tool has no pre-tool interception point of its own.
+    Target-owned reference strings are declarations, not independent proof
+    of the seven section 5 equivalent-control criteria, so a complete
+    declaration remains ``MED-003``/``not-verified``. A missing or incomplete
+    declaration for a side-effecting action is
+    ``MED-003``/``must-fix``/``unsupported``. A read-only provider-hosted tool
+    has no state to protect, so it is ``not-applicable`` instead. This family
+    is assessed here exclusively; ``build_mediation_graph`` never builds or
+    recomputes a ``provider-hosted-tool`` path.
     """
     root_path = Path(root).resolve()
     paths: List[PathRecord] = []
@@ -1083,7 +1074,7 @@ def assess_provider_paths(
             nodes = ("entry", "tool-router", "tool-service")
             path_id = _path_id(action.action_id, mode, nodes)
             control = _equivalent_control_for(root_path, action.action_id)
-            control_complete = _is_complete_equivalent_control(control)
+            control_complete = _has_complete_equivalent_control_declaration(control)
             side_effecting = action.consequence in _SIDE_EFFECTING_CONSEQUENCES
 
             if not side_effecting:
@@ -1091,10 +1082,36 @@ def assess_provider_paths(
                 covered = False
                 equivalent_control_ref: Optional[str] = None
             elif control_complete:
-                status = "pass"
-                covered = True
-                assert control is not None  # narrowed by control_complete
-                equivalent_control_ref = _serialize_control(control)
+                status = "not-verified"
+                covered = False
+                equivalent_control_ref = None
+                findings.append(
+                    Finding(
+                        finding_id="MED-003",
+                        status="not-verified",
+                        phase="design",
+                        plane="runtime",
+                        reason_code="equivalent-control-not-verified",
+                        summary=(
+                            f"{action.action_id} provider-hosted equivalent "
+                            "control is declared but not independently verified"
+                        ),
+                        details=(
+                            f"'{action.action_id}' declares authorization, "
+                            "idempotency, and transaction references, but "
+                            "target-controlled strings do not prove the "
+                            "equivalent-control criteria: pre-side-effect "
+                            "execution, complete path coverage, deny/transform "
+                            "behavior, fail-closed faults, bound approval, "
+                            "payload-free audit, and non-bypassability. This "
+                            "path remains not verified until independent "
+                            "evidence or a probe validates those properties."
+                        ),
+                        affected_actions=(action.action_id,),
+                        affected_paths=(path_id,),
+                        evidence_refs=action.declaration_refs,
+                    )
+                )
             else:
                 status = "must-fix"
                 covered = False

@@ -4897,3 +4897,77 @@ def test_consecutive_assessments_are_deterministic_and_residue_free(tmp_path):
         render.build_manifest(first)["summary"]["verdict"]
         == render.build_manifest(second)["summary"]["verdict"]
     )
+
+
+def test_post_deploy_reassesses_the_complete_control_set(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(
+            root=root,
+            phase="post-deploy",
+            staging=True,
+            staging_resource_group="rg-pilot-staging",
+            now=_CAPTURED_AT_DEFAULT,
+        )
+    )
+
+    assert result.actions
+    assert result.paths
+    assert result.policy_hashes
+    assert result.pins["dependencies"]
+    assert result.pins["specifications"]
+    assert result.change_plane["workflows"]
+    assert governed_actions.probes._APPROVAL_PROBE_ID in {
+        probe.probe_id for probe in result.probes
+    }
+    assert governed_actions.probes._OUTPUT_PROBE_ID in {
+        probe.probe_id for probe in result.probes
+    }
+    assert any(finding.finding_id == "OPS-001" for finding in result.findings)
+    assert render.build_manifest(result)["summary"]["verdict"] != "governed"
+
+
+def test_post_deploy_gates_a_fail_open_approval_seam(tmp_path):
+    root = _prepare_probe_target(tmp_path, fail_open=True)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(
+            root=root,
+            phase="post-deploy",
+            staging=True,
+            staging_resource_group="rg-pilot-staging",
+            now=_CAPTURED_AT_DEFAULT,
+        )
+    )
+
+    assert any(
+        finding.finding_id == "APR-001" and finding.status == "must-fix"
+        for finding in result.findings
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_post_deploy_probe_findings_are_bound_to_post_deploy_phase(tmp_path):
+    root = tmp_path / "interceptor-failure"
+    shutil.copytree(_CONFORMANT_FIXTURE_ROOT.parent / "interceptor-failure", root)
+    _run_git_command(["init", "-q"], root)
+    _run_git_command(["config", "user.email", "governed-actions-tests@example.com"], root)
+    _run_git_command(["config", "user.name", "Governed Actions Tests"], root)
+    _run_git_command(
+        ["remote", "add", "origin", "https://github.com/acme/governed-actions.git"], root
+    )
+    _run_git_command(["add", "-A"], root)
+    _run_git_command(["commit", "-q", "-m", "fixture"], root)
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(
+            root=root,
+            phase="post-deploy",
+            staging=True,
+            staging_resource_group="rg-pilot-staging",
+            now=_CAPTURED_AT_DEFAULT,
+        )
+    )
+    finding = next(f for f in result.findings if f.finding_id == "ENF-002")
+
+    assert finding.phase == "post-deploy"
+    assert render.build_manifest(result)["freshness"]["status"] == "fresh"

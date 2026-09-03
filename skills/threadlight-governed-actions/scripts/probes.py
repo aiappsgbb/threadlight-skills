@@ -723,7 +723,9 @@ def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     return tuple(results)
 
 
-def findings_from_probes(probes: Tuple[ProbeResult, ...]) -> Tuple[Finding, ...]:
+def findings_from_probes(
+    probes: Tuple[ProbeResult, ...], phase: str = "pre-deploy"
+) -> Tuple[Finding, ...]:
     """Turn non-passing probe results into catalog findings.
 
     A passing, ``not-applicable``, or ``not-verified`` probe never
@@ -750,7 +752,7 @@ def findings_from_probes(probes: Tuple[ProbeResult, ...]) -> Tuple[Finding, ...]
             Finding(
                 finding_id=finding_id,
                 status=probe.status,
-                phase=template["phase"],
+                phase=phase,
                 plane=template["plane"],
                 reason_code=probe.reason_code,
                 summary=template["summary"],
