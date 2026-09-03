@@ -17,6 +17,35 @@ field.
 
 ### Fixed
 
+- **`threadlight-governed-actions` never actually exercised approval
+  anti-replay, and its approval probe wrote growing state into the target
+  repository.** `_run_approval_coverage` invoked `probes.run_approval_probe`
+  exactly once per assessment, so the only thing an `APR-001` "pass" ever
+  proved was that a *first* redemption was accepted: a target whose
+  redemption seam fails open on a replayed or mutated binding gated `0`
+  with no finding at all on its first run. The probe also redeemed against
+  the target's own contract-declared `nonce_ledger`, so a plain read-only
+  assessment (no `--emit`) created and then unboundedly grew
+  `governance/nonce-ledger.jsonl` inside the assessed repository, and each
+  run's result depended on residue the previous run left behind. The new
+  `probes.run_approval_probe_sequence` drives the real sequence within one
+  assessment — first use, byte-identical replay, and one mutated-binding
+  attempt per design § 7.3 dimension (action, arguments, target scope,
+  tenant, requesting/approving subject, approving role, policy id, policy
+  hash, expiry), all reusing the same already-consumed nonce — against an
+  exclusive, assessment-private ledger removed in a `finally` (including
+  crash, timeout, and tooling-failure paths). `run_approval_probe` gained a
+  strictly validated, keyword-only `ledger_path` override (absolute, an
+  existing regular file, never a symlink, and never resolving onto the
+  target's declared ledger, which stays read-only); its default behaviour
+  and signature are otherwise unchanged. The `approval-replay` fixture's
+  binding is no longer already expired at the frozen Task 12 clock, so it
+  proves the replay defect it is named after instead of a stale expiry, and
+  the four goldens were regenerated through the approved deterministic
+  path. Design/pre-deploy assessments without `--emit` now leave the target
+  byte-identical, and consecutive runs at the same commit produce identical
+  verdicts, findings, and manifests with no ledger growth or residue.
+
 - **E2E job-start `azd auth login` had zero retry against an external OIDC
   outage (run #32296600274).** The initial `azd auth login (federated OIDC)`
   step waited ~47s and then failed with `ClientAssertionCredential: fetching

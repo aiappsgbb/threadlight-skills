@@ -1012,21 +1012,28 @@ def _run_approval_coverage(
 ) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
     """Explicit APR-001 approval-binding/anti-replay coverage.
 
-    Runs the real ``probes.run_approval_probe`` against the exact
-    binding the target declared for itself, at this assessment's own
-    ``now`` -- so a target whose anti-replay control genuinely holds
-    earns an honest APR-001 pass, and one that fails open earns an
-    honest must-fix. When no usable declared binding exists, reports
-    APR-001 not-verified explicitly rather than inventing one.
+    Runs the real ``probes.run_approval_probe_sequence`` against the
+    exact binding the target declared for itself, at this assessment's
+    own ``now``. The whole point is that a single redemption attempt
+    can only ever prove a *first* use was accepted: the sequence
+    additionally replays that binding byte-for-byte and reuses its
+    already-consumed nonce once per design-required mutated dimension,
+    so a target whose anti-replay control genuinely holds earns an
+    honest APR-001 pass on its first assessment, and one that fails
+    open on a replay or a mutated binding earns an honest must-fix on
+    that same first assessment -- never only on a second run, and never
+    depending on state left behind in the target. When no usable
+    declared binding (or contract) exists, reports APR-001 not-verified
+    explicitly rather than inventing one.
     """
     binding = _declared_approval_binding(root)
     if binding is None:
         return (), (_approval_not_verified_finding(phase),)
     try:
-        result = probes.run_approval_probe(root, binding, now=now)
+        results = probes.run_approval_probe_sequence(root, binding, now=now)
     except probes.ProbeContractError:
         return (), (_approval_not_verified_finding(phase),)
-    return (result,), ()
+    return results, ()
 
 
 def _output_contract_unavailable_finding(phase: str) -> contracts.Finding:

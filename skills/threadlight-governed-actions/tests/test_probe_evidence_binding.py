@@ -339,44 +339,90 @@ def test_declared_approval_binding_yields_honest_apr001_pass(approval_target: Pa
     approval_probes = [
         probe for probe in result.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 1
-    assert approval_probes[0].status == "pass"
-    assert approval_probes[0].observed == "approval_accepted"
-    assert approval_probes[0].evidence_refs
-    assert set(approval_probes[0].evidence_refs) <= {ref.evidence_id for ref in result.evidence}
+    # One assessment drives the whole anti-replay sequence: the first
+    # use, a byte-identical replay of it, and one mutated-binding
+    # attempt per design-required dimension -- never a lone first use,
+    # which could only ever have proven the acceptance.
+    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert {probe.status for probe in approval_probes} == {"pass"}
+    observed = [probe.observed for probe in approval_probes]
+    assert observed[0] == "approval_accepted"
+    assert observed.count("replay_rejected") == 1
+    assert observed.count("binding_mismatch_rejected") == len(
+        probes._APPROVAL_MUTATION_FIELDS
+    )
+    evidence_ids = {ref.evidence_id for ref in result.evidence}
+    for probe in approval_probes:
+        assert probe.evidence_refs
+        assert set(probe.evidence_refs) <= evidence_ids
 
 
-def test_replaying_a_declared_binding_yields_apr001_must_fix(approval_target: Path):
+def test_assessment_ignores_prior_target_side_nonce_state(approval_target: Path):
+    # Probe redemption state is this assessment's own, never the
+    # target's: a nonce ledger already sitting in the target -- even one
+    # that already recorded the declared nonce as consumed -- must not
+    # change a single thing about the assessment, and must itself be
+    # left exactly as it was found.
+    ledger = approval_target / "governance" / "nonce-ledger.jsonl"
     binding = governed_actions._declared_approval_binding(approval_target)
     assert binding is not None
-    first = probes.run_approval_probe(approval_target, binding, now=NOW)
-    assert first.status == "pass"
+    stale = (
+        json.dumps(
+            {
+                "event": "decision",
+                "nonce": binding.nonce,
+                "digest": probes.approval_digest(binding),
+                "accepted": True,
+            }
+        )
+        + "\n"
+        + json.dumps({"event": "invocation", "nonce": binding.nonce})
+        + "\n"
+    )
+    ledger.write_text(stale, encoding="utf-8")
 
     result = _assess(approval_target)
+
+    assert [finding for finding in result.findings if finding.finding_id == "APR-001"] == []
     approval_probes = [
         probe for probe in result.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 1
-    assert approval_probes[0].status == "pass"
-    assert approval_probes[0].observed == "replay_rejected"
+    assert approval_probes[0].observed == "approval_accepted"
+    assert ledger.read_text(encoding="utf-8") == stale
+    assert not list((approval_target / "governance").glob(".approval-probe-*"))
 
-    # A target that fails open on replay is a real must-fix.
-    ledger = approval_target / "governance" / "nonce-ledger.jsonl"
-    ledger.write_text("", encoding="utf-8")
+
+def test_fail_open_redemption_yields_apr001_must_fix_on_the_first_assessment(
+    approval_target: Path,
+):
+    # The defect this pins: a redemption seam that grants every attempt
+    # must be caught by the very first assessment of an untouched
+    # target, with no prior probe run and nothing pre-seeded -- the
+    # assessment itself replays and mutates the binding.
     agent = approval_target / "app" / "agent.py"
     agent.write_text(
         agent.read_text(encoding="utf-8").replace(
-            "accepted = now < expires_at and not any(", "accepted = now < expires_at or any("
+            "accepted = now < expires_at and not any(",
+            "accepted = now < expires_at or any(",
         ),
         encoding="utf-8",
     )
-    probes.run_approval_probe(approval_target, binding, now=NOW)
-    replayed = _assess(approval_target)
+
+    result = _assess(approval_target)
+
     failing = [
-        probe for probe in replayed.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
+        probe
+        for probe in result.probes
+        if probe.probe_id == probes._APPROVAL_PROBE_ID and probe.status == "must-fix"
     ]
-    assert failing[0].status == "must-fix"
-    assert failing[0].reason_code == "APR-001"
+    assert failing
+    assert {probe.reason_code for probe in failing} == {"APR-001"}
+    approval_findings = [
+        finding for finding in result.findings if finding.finding_id == "APR-001"
+    ]
+    assert approval_findings
+    assert {finding.status for finding in approval_findings} == {"must-fix"}
+    assert not (approval_target / "governance" / "nonce-ledger.jsonl").exists()
 
 
 def test_absent_approval_binding_remains_not_verified(target: Path):

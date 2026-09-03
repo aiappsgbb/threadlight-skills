@@ -139,13 +139,21 @@ anti-replay, output mediation, and payload-free audit). Their
 ``redeem``/``emit_output`` dispatch seams run in the exact same kind of
 isolated, sanitized subprocess as the application-path probes above —
 a target whose dispatch seam hangs, exits the interpreter, or crashes
-outright can never hang or kill this assessor process itself. Anti-
-replay's own persistent, service-side nonce ledger is still a real,
-fixed-path file on disk that survives across sequential calls within
-one test; the isolation only changes *how* the dispatch callable is
-invoked, never where its evidence is durably recorded. See
-``run_approval_probe``, ``run_output_probe``, and
-``run_privacy_probe_set`` for each family's own docstring.
+outright can never hang or kill this assessor process itself.
+
+Anti-replay needs real, durable, service-side redemption state — a
+replay is only a replay if the store remembers the first use — but that
+state is never the target's own declared, checked-in nonce ledger and
+never outlives the assessment that created it.
+``run_approval_probe_sequence`` allocates one exclusive, private ledger
+per sequence, drives the whole first-use/replay/mutated-binding
+sequence against it, and removes it again in a ``finally`` — so the
+target repository is left byte-identical whether the sequence
+succeeded, failed, timed out, or raised, and consecutive assessments at
+the same commit always start from the same empty nonce space. See
+``run_approval_probe``, ``run_approval_probe_sequence``,
+``run_output_probe``, and ``run_privacy_probe_set`` for each family's
+own docstring.
 """
 from __future__ import annotations
 
@@ -158,7 +166,7 @@ import tempfile
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, List, Mapping, Optional, Tuple
@@ -1685,6 +1693,55 @@ _APPROVAL_PROBE_ID = "approval-anti-replay"
 _APPROVAL_EXPECTED = "single_use_canonical_binding_enforced"
 _APPROVAL_PASS_REASON = "approval-anti-replay-enforced"
 
+#: Every binding dimension design section 7.3 requires an approval to be
+#: bound to, one mutation variant each: the canonical action (its own
+#: identifier and its arguments, which together are the canonical action
+#: hash), the target scope/environment, the tenant boundary, both acting
+#: subjects and the approving role, the policy version and its hash, and
+#: the approval's own expiry. ``run_approval_probe_sequence`` drives one
+#: attempt per entry, each reusing the *same*, already-consumed nonce --
+#: the exact "an approval for one canonical action hash cannot authorize
+#: a changed X" scenario. Ordered, so a sequence's results are stable.
+_APPROVAL_MUTATION_FIELDS: Tuple[str, ...] = (
+    "action_id",
+    "approving_role",
+    "approving_subject",
+    "arguments",
+    "expires_at",
+    "policy_hash",
+    "policy_id",
+    "requesting_subject",
+    "target_scope",
+    "tenant",
+)
+
+#: Fixed, synthetic mutation values. Every one is derived so the mutated
+#: binding's digest can never accidentally equal the original's: plain
+#: string fields get an unmistakable suffix, and the two fields whose
+#: shape matters (a ``sha256:`` policy hash and an RFC 3339 expiry) pick
+#: a second constant whenever the declared value already equals the
+#: first. The expiry mutations are both far-future, so an expiry
+#: mutation is judged purely as a binding mismatch and never confused
+#: with a separate stale-expiry rejection.
+_APPROVAL_MUTATION_SUFFIX = "#threadlight-approval-probe-mutation"
+_APPROVAL_MUTATED_ARGUMENT_KEY = "threadlight_approval_probe_mutation"
+_APPROVAL_MUTATED_ARGUMENT_VALUES: Tuple[str, str] = ("mutated", "mutated-alternate")
+_APPROVAL_MUTATED_POLICY_HASHES: Tuple[str, str] = (
+    "sha256:" + "b" * 64,
+    "sha256:" + "c" * 64,
+)
+_APPROVAL_MUTATED_EXPIRES_AT: Tuple[str, str] = (
+    "9999-12-31T23:59:59Z",
+    "9999-12-30T23:59:59Z",
+)
+
+#: Appended to the declared ``nonce_ledger`` path when a probe redeemed
+#: against an assessment-private, isolated ledger rather than the
+#: target's own declared one -- so the evidence entry names the declared
+#: service-side store it stands for without ever claiming the target's
+#: read-only, checked-in path was written.
+_APPROVAL_ISOLATED_LEDGER_SOURCE_SUFFIX = "#assessment-isolated"
+
 _OUTPUT_PROBE_ID = "output-mediation"
 _OUTPUT_EXPECTED = "output_buffered_or_bound_chunk_mediated"
 _OUTPUT_PASS_REASON = "output-mediation-enforced"
@@ -1879,7 +1936,83 @@ def _first_event_index(events, event_type: str) -> Optional[int]:
     return None
 
 
-def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeResult:
+def _validated_isolated_ledger(
+    root_path: Path, contract: Mapping[str, object], ledger_path: object
+) -> Path:
+    """Validate an assessment-private nonce ledger override.
+
+    Only ever accepted from this module's own
+    :func:`run_approval_probe_sequence`, and validated strictly rather
+    than trusted: it must be an absolute path to an already-created
+    regular file (the caller creates it exclusively), it must not itself
+    be a symlink, and it must never resolve onto the target's own
+    declared ``nonce_ledger``. That last rule is what keeps the
+    target-owned contract path strictly read-only -- an override can
+    isolate probe state away from the target, never redirect it back
+    onto the repository the assessment is only allowed to read.
+    """
+    if not isinstance(ledger_path, (str, Path)) or not str(ledger_path):
+        raise ProbeContractError(
+            f"approval probe ledger override must be a path; got {ledger_path!r}"
+        )
+    candidate = Path(ledger_path)
+    if not candidate.is_absolute():
+        raise ProbeContractError(
+            "approval probe ledger override must be an absolute path to an "
+            f"assessment-private ledger; got {str(ledger_path)!r}"
+        )
+    if candidate.is_symlink():
+        raise ProbeContractError(
+            "approval probe ledger override must not be a symlink "
+            "(symlink escape?)"
+        )
+    resolved = candidate.resolve()
+    if not resolved.is_file():
+        raise ProbeContractError(
+            "approval probe ledger override must already exist as a regular "
+            "file created exclusively by the caller"
+        )
+    declared = (root_path / str(contract["nonce_ledger"])).resolve()
+    if resolved == declared:
+        raise ProbeContractError(
+            "approval probe ledger override must never resolve onto the "
+            "target's own declared nonce ledger, which stays read-only"
+        )
+    return resolved
+
+
+def _mutated_binding(binding: ApprovalBinding, field: str) -> ApprovalBinding:
+    """One deterministic single-field mutation of *binding*.
+
+    Never a random or partially-random value, and never equal to the
+    field it replaces: the resulting canonical digest is always
+    different, so a target that accepts the mutated attempt is always
+    proven to have accepted a binding it was never granted.
+    """
+    if field == "arguments":
+        mutated = dict(binding.arguments)
+        first, alternate = _APPROVAL_MUTATED_ARGUMENT_VALUES
+        mutated[_APPROVAL_MUTATED_ARGUMENT_KEY] = (
+            alternate if mutated.get(_APPROVAL_MUTATED_ARGUMENT_KEY) == first else first
+        )
+        return replace(binding, arguments=mutated)
+    current = getattr(binding, field)
+    if field == "policy_hash":
+        first, alternate = _APPROVAL_MUTATED_POLICY_HASHES
+        return replace(binding, policy_hash=alternate if current == first else first)
+    if field == "expires_at":
+        first, alternate = _APPROVAL_MUTATED_EXPIRES_AT
+        return replace(binding, expires_at=alternate if current == first else first)
+    return replace(binding, **{field: f"{current}{_APPROVAL_MUTATION_SUFFIX}"})
+
+
+def run_approval_probe(
+    root: Path,
+    binding: ApprovalBinding,
+    now: str,
+    *,
+    ledger_path: Optional[Path] = None,
+) -> ProbeResult:
     """Prove one approval binding's anti-replay control at time *now*.
 
     Every scenario a passing probe proves here demonstrates the control
@@ -1956,11 +2089,27 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
     that is ``run_privacy_probe_set``'s job alone, precisely so an
     audit-trail violation (``AUD-001``) can never mask, or be masked
     by, this probe's own independent anti-replay finding.
+
+    ``ledger_path`` is an optional, strictly validated override naming
+    an assessment-private nonce ledger the caller already created
+    exclusively (see :func:`run_approval_probe_sequence`, this module's
+    only user of it). It can never redirect onto the target's own
+    declared ``nonce_ledger``, which stays read-only. Without it, the
+    declared contract path is used exactly as before -- which is what
+    lets a caller drive its own explicit, ordered sequence against a
+    ledger it owns rather than one the target ships.
     """
     root_path = Path(root).resolve()
     contract = load_approval_contract(root_path)
     digest = approval_digest(binding)
-    nonce_ledger_path = root_path / contract["nonce_ledger"]
+    if ledger_path is None:
+        nonce_ledger_path = root_path / contract["nonce_ledger"]
+        evidence_source = str(contract["nonce_ledger"])
+    else:
+        nonce_ledger_path = _validated_isolated_ledger(root_path, contract, ledger_path)
+        evidence_source = (
+            f"{contract['nonce_ledger']}{_APPROVAL_ISOLATED_LEDGER_SOURCE_SUFFIX}"
+        )
 
     before_records = _read_nonce_records(nonce_ledger_path)
     prior_accepted_digest: Optional[str] = None
@@ -2066,15 +2215,105 @@ def run_approval_probe(root: Path, binding: ApprovalBinding, now: str) -> ProbeR
         evidence_refs=(digest,),
         # The cited digest is the canonical hash of the exact 12-field
         # binding this attempt redeemed -- the same value the target's
-        # own ledger records for it -- bound here to the declared nonce
-        # ledger it was redeemed against. Payload-free: no approver,
-        # argument, or ledger record content ever leaves this call.
+        # own ledger records for it -- bound here to the nonce ledger it
+        # was redeemed against, marked when that ledger was this
+        # assessment's own private, isolated one rather than the
+        # target's declared path. Payload-free: no approver, argument,
+        # or ledger record content ever leaves this call.
         evidence_items=(
-            _digest_evidence(
-                digest, "approval-binding-digest", str(contract["nonce_ledger"])
-            ),
+            _digest_evidence(digest, "approval-binding-digest", evidence_source),
         ),
     )
+
+
+def run_approval_probe_sequence(
+    root: Path, binding: ApprovalBinding, now: str
+) -> Tuple[ProbeResult, ...]:
+    """Actually exercise anti-replay for *binding*, within one assessment.
+
+    A single redemption attempt only ever proves that a *first* use was
+    accepted; it can never prove the approval was single-use, because
+    nothing was ever replayed against it. This drives the whole ordered
+    sequence a real anti-replay control has to survive, in one bounded
+    run: the first, legitimate redemption; a byte-identical replay of
+    it; and one mutated-binding attempt per dimension design section 7.3
+    requires (:data:`_APPROVAL_MUTATION_FIELDS` -- the canonical action
+    and its arguments, target scope, tenant, both subjects and the
+    approving role, policy id and hash, and expiry), every one of them
+    reusing the same, already-consumed nonce.
+
+    All of it runs against a single, freshly created, exclusive,
+    *private* nonce ledger under the target's own ``governance``
+    directory -- never the target's declared, checked-in
+    ``nonce_ledger`` path, which this never reads or writes. The
+    redemption state a real service-side store must keep is therefore
+    genuinely durable across the attempts of one sequence (that is what
+    makes the replay a replay), and just as genuinely gone once the
+    sequence ends: the ledger and the private directory holding it are
+    removed in a ``finally``, so a crash, a hung target bounded by the
+    dispatch child's own timeout, or an outright tooling failure all
+    still leave the target byte-identical. Consecutive sequences at the
+    same commit therefore always start from the same empty nonce space
+    and always produce the same results, with no ledger growth and no
+    residue.
+
+    Rejects a ``governance`` directory that resolves outside *root* (a
+    symlink escape) before creating anything, and raises
+    :class:`ProbeToolingError` when that private ledger cannot be
+    created at all -- an unprovable outcome, never a silent pass.
+
+    Each result is reported against the action actually under test (the
+    declared binding's own ``action_id``), so a mutated-action variant
+    never publishes a synthetic action identifier that exists in no
+    inventory; the mutation itself stays fully evidenced by the distinct
+    canonical binding digest each attempt cites.
+    """
+    root_path = Path(root).resolve()
+    # Validated up front for its own sake: an absent, malformed, or
+    # unsafe approval contract is refused before anything is created,
+    # exactly as each individual attempt below would refuse it.
+    load_approval_contract(root_path)
+
+    governance_dir = root_path / "governance"
+    try:
+        governance_dir.resolve().relative_to(root_path)
+    except ValueError as error:
+        raise ProbeContractError(
+            "probe contract's governance directory resolves outside the "
+            "target root (symlink escape?)"
+        ) from error
+
+    private_dir = governance_dir / f".approval-probe-{uuid.uuid4().hex}"
+    try:
+        private_dir.mkdir(parents=False, exist_ok=False)
+        descriptor, raw_ledger_path = tempfile.mkstemp(
+            dir=str(private_dir), prefix="nonce-ledger-", suffix=".jsonl"
+        )
+        os.close(descriptor)
+    except OSError as error:
+        _remove_created_dirs([private_dir])
+        raise ProbeToolingError(
+            "cannot create the assessment-private approval anti-replay "
+            f"ledger: {error}"
+        ) from error
+
+    ledger_path = Path(raw_ledger_path)
+    attempts = (binding, binding) + tuple(
+        _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
+    )
+    results: List[ProbeResult] = []
+    try:
+        for attempt in attempts:
+            result = run_approval_probe(
+                root_path, attempt, now, ledger_path=ledger_path
+            )
+            if attempt.action_id != binding.action_id:
+                result = replace(result, action_id=binding.action_id)
+            results.append(result)
+    finally:
+        ledger_path.unlink(missing_ok=True)
+        _remove_created_dirs([private_dir])
+    return tuple(results)
 
 
 def run_output_probe(root: Path, verdict: str) -> ProbeResult:

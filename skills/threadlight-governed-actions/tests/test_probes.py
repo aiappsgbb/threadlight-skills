@@ -1307,6 +1307,318 @@ def test_approval_probe_concurrent_same_nonce_redemption_has_exactly_one_winner(
     assert invocation_records[0]["nonce"] == nonce
 
 
+# --------------------------------------------------------------------
+# Task 6 (final review): the bounded, isolated approval anti-replay
+# *sequence*.
+#
+# A single redemption attempt only ever proves a first use was accepted;
+# it can never prove the control is single-use. ``run_approval_probe_
+# sequence`` is the one place that actually exercises anti-replay end to
+# end within a single assessment -- first use, byte-identical replay,
+# and one mutated-binding variant per design-required dimension, all
+# against one private, per-assessment nonce ledger that never touches
+# the target's own declared, target-owned ledger and never survives the
+# call.
+# --------------------------------------------------------------------
+
+
+def _tree_snapshot(root: Path) -> dict:
+    """A ``relative-path -> sha256`` map of every regular file under
+    *root*, used to prove a probe run left the target byte-identical."""
+    return {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _write_fail_open_approval_target(root: Path) -> Path:
+    """A deliberately fail-open, non-atomic nonce store: it grants every
+    attempt (and invokes the protected tool every time), never consulting
+    the prior decisions already recorded for the nonce."""
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": True}
+            )
+            + "\\n"
+        )
+        handle.write(json.dumps({"event": "invocation", "nonce": nonce}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_approval_sequence_covers_every_design_required_binding_dimension():
+    # Design section 7.3: "An approval for one canonical action hash
+    # cannot authorize changed arguments, target, tenant, actor, policy
+    # version, or expiry." Every one of those dimensions -- plus the
+    # action identity the canonical hash itself binds -- must be an
+    # exercised mutation variant, never a documented intention.
+    assert set(probes._APPROVAL_MUTATION_FIELDS) == {
+        "arguments",
+        "action_id",
+        "target_scope",
+        "tenant",
+        "requesting_subject",
+        "approving_subject",
+        "approving_role",
+        "policy_id",
+        "policy_hash",
+        "expires_at",
+    }
+
+
+def test_approval_sequence_accepts_first_use_then_rejects_replay_and_mutations(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    results = probes.run_approval_probe_sequence(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+
+    assert len(results) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert results[0].observed == "approval_accepted"
+    assert results[1].observed == "replay_rejected"
+    assert [probe.observed for probe in results[2:]] == [
+        "binding_mismatch_rejected"
+    ] * len(probes._APPROVAL_MUTATION_FIELDS)
+    assert {probe.status for probe in results} == {"pass"}
+    assert findings_from_probes(results) == ()
+
+    # Every attempt is reported against the action actually under test,
+    # never against a synthetic mutated action identifier.
+    assert {probe.action_id for probe in results} == {approval_binding.action_id}
+    assert {probe.probe_id for probe in results} == {probes._APPROVAL_PROBE_ID}
+
+    # The replay cites the exact same binding digest as the accepted
+    # first use; every mutation cites a genuinely different one.
+    digests = [probe.evidence_refs[0] for probe in results]
+    assert digests[0] == digests[1] == approval_digest(approval_binding)
+    assert len(set(digests[1:])) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+
+
+def test_approval_sequence_never_writes_target_state(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    before = _tree_snapshot(approval_root)
+    probes.run_approval_probe_sequence(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    assert _tree_snapshot(approval_root) == before
+    contract = probes.load_approval_contract(approval_root)
+    assert not (approval_root / str(contract["nonce_ledger"])).exists()
+    assert not list((approval_root / "governance").glob(".approval-probe-*"))
+
+
+def test_consecutive_approval_sequences_are_identical_and_residue_free(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    first = probes.run_approval_probe_sequence(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    after_first = _tree_snapshot(approval_root)
+    second = probes.run_approval_probe_sequence(
+        approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    assert [(p.status, p.observed, p.evidence_refs) for p in first] == [
+        (p.status, p.observed, p.evidence_refs) for p in second
+    ]
+    assert _tree_snapshot(approval_root) == after_first
+
+
+def test_approval_sequence_flags_fail_open_replay_and_every_mutation(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    root = _write_fail_open_approval_target(tmp_path / "fail-open-nonce-store")
+    results = probes.run_approval_probe_sequence(
+        root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+
+    assert results[0].status == "pass"
+    assert results[0].observed == "approval_accepted"
+    replays_and_mutations = results[1:]
+    assert len(replays_and_mutations) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert {probe.status for probe in replays_and_mutations} == {"must-fix"}
+    assert {probe.reason_code for probe in replays_and_mutations} == {"APR-001"}
+    assert {probe.observed for probe in replays_and_mutations} == {
+        "fail_open_replay_or_mutation_accepted"
+    }
+    findings = findings_from_probes(results)
+    assert findings
+    assert {(f.finding_id, f.status) for f in findings} == {("APR-001", "must-fix")}
+
+
+def test_approval_sequence_flags_rejection_that_invokes_the_tool_anyway(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    # A target that correctly records a rejection but reaches the
+    # protected tool regardless is still fail-open: a replay/mutation
+    # must be rejected *without* invocation, never merely "rejected".
+    root = tmp_path / "invoke-on-rejection-sequence"
+    app_dir = root / "app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "agent.py").write_text(
+        '''
+import json
+
+AUDIT_EVENTS = []
+
+
+def _records(ledger_path):
+    try:
+        with open(ledger_path, "r", encoding="utf-8") as handle:
+            return [json.loads(line) for line in handle.read().splitlines() if line.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def redeem(nonce, digest, expires_at, now, ledger_path):
+    already = any(
+        record.get("event") == "decision"
+        and record.get("nonce") == nonce
+        and record.get("accepted") is True
+        for record in _records(ledger_path)
+    )
+    accepted = not already and now < expires_at
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"event": "decision", "nonce": nonce, "digest": digest, "accepted": accepted}
+            )
+            + "\\n"
+        )
+        # Always reaches the protected tool, even for a rejection.
+        handle.write(json.dumps({"event": "invocation", "nonce": nonce}) + "\\n")
+''',
+        encoding="utf-8",
+    )
+    governance_dir = root / "governance"
+    governance_dir.mkdir()
+    (governance_dir / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "dispatch": "app.agent:redeem",
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "nonce_ledger": "governance/nonce-ledger.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    results = probes.run_approval_probe_sequence(
+        root, approval_binding, now="2026-09-01T12:00:00Z"
+    )
+    assert results[0].status == "pass"
+    rejected = results[1:]
+    assert {probe.status for probe in rejected} == {"must-fix"}
+    assert {probe.observed for probe in rejected} == {
+        "fail_open_invocation_on_rejection"
+    }
+
+
+def test_approval_sequence_cleans_up_its_private_ledger_on_failure(
+    monkeypatch, approval_root: Path, approval_binding: ApprovalBinding
+):
+    def _explode(*_args, **_kwargs):
+        raise ProbeToolingError("simulated dispatch failure")
+
+    monkeypatch.setattr(probes, "_dispatch_task6_child", _explode)
+    before = _tree_snapshot(approval_root)
+    with pytest.raises(ProbeToolingError):
+        probes.run_approval_probe_sequence(
+            approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+        )
+    assert _tree_snapshot(approval_root) == before
+    assert not list((approval_root / "governance").glob(".approval-probe-*"))
+
+
+def test_approval_sequence_rejects_a_target_without_an_approval_contract(
+    tmp_path: Path, approval_binding: ApprovalBinding
+):
+    with pytest.raises(ProbeContractError):
+        probes.run_approval_probe_sequence(
+            tmp_path / "not-a-target", approval_binding, now="2026-09-01T12:00:00Z"
+        )
+
+
+@pytest.mark.parametrize("relative", ["governance/nonce-ledger.jsonl", "ledger.jsonl"])
+def test_approval_probe_rejects_a_relative_ledger_override(
+    approval_root: Path, approval_binding: ApprovalBinding, relative: str
+):
+    with pytest.raises(ProbeContractError):
+        run_approval_probe(
+            approval_root,
+            approval_binding,
+            now="2026-09-01T12:00:00Z",
+            ledger_path=relative,
+        )
+
+
+def test_approval_probe_rejects_a_missing_ledger_override(
+    approval_root: Path, approval_binding: ApprovalBinding, tmp_path: Path
+):
+    with pytest.raises(ProbeContractError):
+        run_approval_probe(
+            approval_root,
+            approval_binding,
+            now="2026-09-01T12:00:00Z",
+            ledger_path=tmp_path / "never-created.jsonl",
+        )
+
+
+def test_approval_probe_override_never_targets_the_declared_nonce_ledger(
+    approval_root: Path, approval_binding: ApprovalBinding
+):
+    # The target-owned contract path stays strictly read-only: an
+    # override that resolves onto it -- directly or through a symlink --
+    # is refused rather than silently writing target state.
+    contract = probes.load_approval_contract(approval_root)
+    declared = approval_root / str(contract["nonce_ledger"])
+    declared.parent.mkdir(parents=True, exist_ok=True)
+    declared.write_text("", encoding="utf-8")
+    with pytest.raises(ProbeContractError):
+        run_approval_probe(
+            approval_root,
+            approval_binding,
+            now="2026-09-01T12:00:00Z",
+            ledger_path=declared.resolve(),
+        )
+
+    link = approval_root / "governance" / "linked-ledger.jsonl"
+    link.symlink_to(declared)
+    with pytest.raises(ProbeContractError):
+        run_approval_probe(
+            approval_root,
+            approval_binding,
+            now="2026-09-01T12:00:00Z",
+            ledger_path=link,
+        )
+    assert declared.read_text(encoding="utf-8") == ""
+
+
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
     result = run_output_probe(fixture_root / "conformant-maf", verdict="deny")
     assert result.status == "pass"

@@ -18,6 +18,7 @@ import dataclasses
 import json
 import os
 import random
+import shutil
 import stat
 import subprocess
 import textwrap
@@ -4740,3 +4741,159 @@ def test_assess_binds_live_azure_selected_from_options_every_phase(tmp_path, mon
         kwargs["staging"] = True
     result = governed_actions.assess(contracts.AssessmentOptions(**kwargs))
     assert result.live_azure_selected is True
+
+
+# ---------------------------------------------------------------------------
+# Final-review defects: approval anti-replay must actually be exercised
+# within one assessment, and no assessment may leave probe state behind.
+#
+# 1. A single redemption attempt only ever proves a first use was
+#    accepted. An otherwise-conformant target whose redemption seam fails
+#    open on replay/mutated bindings must be gated on the very first run,
+#    not on a lucky second one.
+# 2. A plain assessment without ``--emit`` is read-only: it must leave
+#    the target byte-identical, and two consecutive runs at the same
+#    commit must produce identical findings with no ledger growth.
+# ---------------------------------------------------------------------------
+
+
+_CONFORMANT_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "conformant-maf"
+
+#: The exact conformant redemption decision the fail-open graft replaces.
+_CONFORMANT_REDEEM_DECISION = "            accepted = (not expired) and (not already_accepted)"
+_FAIL_OPEN_REDEEM_DECISION = "            accepted = True  # grafted fail-open redemption seam"
+
+
+def _prepare_probe_target(tmp_path: Path, *, fail_open: bool = False) -> Path:
+    """A real git checkout of the checked-in conformant fixture.
+
+    With *fail_open*, the fixture's own atomic, single-use redemption
+    decision is replaced by an unconditional grant -- every replayed and
+    every mutated binding is accepted and reaches the protected tool --
+    while every other seam in the fixture stays exactly as conformant as
+    it ships.
+    """
+    root = tmp_path / "probe-target"
+    shutil.copytree(_CONFORMANT_FIXTURE_ROOT, root)
+    if fail_open:
+        agent = root / "app" / "agent.py"
+        source = agent.read_text(encoding="utf-8")
+        assert _CONFORMANT_REDEEM_DECISION in source
+        agent.write_text(
+            source.replace(_CONFORMANT_REDEEM_DECISION, _FAIL_OPEN_REDEEM_DECISION),
+            encoding="utf-8",
+        )
+    _run_git_command(["init", "-q"], root)
+    _run_git_command(["config", "user.email", "governed-actions-tests@example.com"], root)
+    _run_git_command(["config", "user.name", "Governed Actions Tests"], root)
+    _run_git_command(
+        ["remote", "add", "origin", "https://github.com/acme/governed-actions.git"], root
+    )
+    _run_git_command(["add", "-A"], root)
+    _run_git_command(["commit", "-q", "-m", "fixture"], root)
+    return root
+
+
+def _content_snapshot(root: Path) -> Dict[str, str]:
+    """``relative-path -> sha256`` for every regular file under *root*
+    (``.git`` excluded): a byte-level proof that a read-only assessment
+    added, removed, or changed nothing at all."""
+    return {
+        str(path.relative_to(root)): canonical.sha256_hex(path.read_bytes())
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and ".git" not in path.relative_to(root).parts
+    }
+
+
+def _finding_signature(result) -> List[Tuple[str, str, str, Tuple[str, ...]]]:
+    return sorted(
+        (
+            finding.finding_id,
+            finding.status,
+            finding.reason_code,
+            tuple(sorted(finding.evidence_refs)),
+        )
+        for finding in result.findings
+    )
+
+
+def test_fail_open_approval_seam_is_gated_on_the_first_assessment(tmp_path):
+    root = _prepare_probe_target(tmp_path, fail_open=True)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(
+            root=root, phase="pre-deploy", gate=True, now=_CAPTURED_AT_DEFAULT
+        )
+    )
+    approval_findings = [
+        finding for finding in result.findings if finding.finding_id == "APR-001"
+    ]
+    assert approval_findings
+    assert {finding.status for finding in approval_findings} == {"must-fix"}
+    assert governed_actions.exit_code(result, gate=True) == 1
+    assert (
+        governed_actions.main(
+            ["--target", str(root), "--phase", "pre-deploy", "--gate"]
+        )
+        == 1
+    )
+
+
+def test_conformant_approval_seam_still_passes_the_first_assessment(tmp_path):
+    # Paired positive control: the unmodified fixture's genuinely
+    # single-use redemption seam must still earn an honest APR-001 pass
+    # (no finding at all) while being driven through the full replay and
+    # mutated-binding sequence.
+    root = _prepare_probe_target(tmp_path)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(
+            root=root, phase="pre-deploy", gate=True, now=_CAPTURED_AT_DEFAULT
+        )
+    )
+    assert [f for f in result.findings if f.finding_id == "APR-001"] == []
+    approval_probes = [
+        probe
+        for probe in result.probes
+        if probe.probe_id == governed_actions.probes._APPROVAL_PROBE_ID
+    ]
+    assert len(approval_probes) == 2 + len(
+        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+    )
+    assert {probe.status for probe in approval_probes} == {"pass"}
+    observed = [probe.observed for probe in approval_probes]
+    assert observed[0] == "approval_accepted"
+    assert "replay_rejected" in observed
+    assert observed.count("binding_mismatch_rejected") == len(
+        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+    )
+    assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy"]) == 0
+
+
+@pytest.mark.parametrize("phase", ["design", "pre-deploy", "post-deploy"])
+def test_assessment_without_emit_leaves_the_target_byte_identical(tmp_path, phase):
+    root = _prepare_probe_target(tmp_path)
+    before = _content_snapshot(root)
+    argv = ["--target", str(root), "--phase", phase]
+    if phase == "post-deploy":
+        argv += ["--staging-resource-group", "rg-pilot-staging"]
+    assert governed_actions.main(argv) == 0
+    assert _content_snapshot(root) == before
+
+
+def test_consecutive_assessments_are_deterministic_and_residue_free(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    before = _content_snapshot(root)
+    options = contracts.AssessmentOptions(
+        root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT
+    )
+    first = governed_actions.assess(options)
+    after_first = _content_snapshot(root)
+    second = governed_actions.assess(options)
+
+    assert after_first == before
+    assert _content_snapshot(root) == before
+    assert _finding_signature(first) == _finding_signature(second)
+    assert render.build_manifest(first) == render.build_manifest(second)
+    assert (
+        render.build_manifest(first)["summary"]["verdict"]
+        == render.build_manifest(second)["summary"]["verdict"]
+    )

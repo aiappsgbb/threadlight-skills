@@ -13,7 +13,7 @@
 ## Architecture and data flow
 
 - 2 declared consequential action(s) across 10 traced mediation path(s).
-- 8 application-path probe result(s) recorded.
+- 19 application-path probe result(s) recorded.
 
 ## Runtime action inventory
 
@@ -35,7 +35,18 @@
 
 ## Application-path probe evidence
 
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:7fcc9bc13f0f9d11ab9a43fa537d7a639da4870436ae47a067c72a9d7aafad97
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:85e2f35dafc595107b0b0c8de43b6b7e5fc4eae6c9cf27a801d2f57f9162e60b
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:890636974f81b6fd3a70ee47419806b268605bffcf50608254ac8ea8889928a5
 - `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9
 - `crash` action=`payments.refund` path=`None` status=pass reason=crash-blocked evidence=audit-0001~2bbdaccc2f5e1092
 - `deny` action=`payments.refund` path=`None` status=pass reason=deny-enforced evidence=audit-0001~381f4739271102cd
 - `malformed-verdict` action=`payments.refund` path=`None` status=pass reason=malformed-verdict-blocked evidence=audit-0001~6037364472d45cf2
@@ -62,8 +73,18 @@
 | audit-0001~f9cf5a5cf02e20f0 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:f9cf5a5cf02e20f0cc808a91b82c374be4d27b15183374c846497c969b4a3f09 | 2026-09-01T12:00:00Z | False |
 | audit-approval-audit-probe-nonce | probe-audit-record | app.agent:AUDIT_EVENTS | sha256:891ad27bce12dd0036cab84b211b9f3d8798656c89d100b07b1da07e3df78a35 | 2026-09-01T12:00:00Z | False |
 | ghcp-workflows | file-set | .github/workflows/governed-actions.yml | sha256:16819e03d140b14bd7bf5d4007a8b0755170e7881180bcfab2cef328abac3fc1 | unknown | False |
+| sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2 | 2026-09-01T12:00:00Z | False |
+| sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6 | 2026-09-01T12:00:00Z | False |
+| sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba | 2026-09-01T12:00:00Z | False |
+| sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65 | 2026-09-01T12:00:00Z | False |
 | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | probe-argument-hash | governance/probe-ledger.jsonl | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | 2026-09-01T12:00:00Z | False |
-| sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | approval-binding-digest | governance/nonce-ledger.jsonl | sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | 2026-09-01T12:00:00Z | False |
+| sha256:7fcc9bc13f0f9d11ab9a43fa537d7a639da4870436ae47a067c72a9d7aafad97 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:7fcc9bc13f0f9d11ab9a43fa537d7a639da4870436ae47a067c72a9d7aafad97 | 2026-09-01T12:00:00Z | False |
+| sha256:85e2f35dafc595107b0b0c8de43b6b7e5fc4eae6c9cf27a801d2f57f9162e60b | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:85e2f35dafc595107b0b0c8de43b6b7e5fc4eae6c9cf27a801d2f57f9162e60b | 2026-09-01T12:00:00Z | False |
+| sha256:890636974f81b6fd3a70ee47419806b268605bffcf50608254ac8ea8889928a5 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:890636974f81b6fd3a70ee47419806b268605bffcf50608254ac8ea8889928a5 | 2026-09-01T12:00:00Z | False |
+| sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f | 2026-09-01T12:00:00Z | False |
+| sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8 | 2026-09-01T12:00:00Z | False |
+| sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8 | 2026-09-01T12:00:00Z | False |
+| sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9 | 2026-09-01T12:00:00Z | False |
 | sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | probe-argument-hash | governance/probe-ledger.jsonl | sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | 2026-09-01T12:00:00Z | False |
 
 ## Pass/fail matrix

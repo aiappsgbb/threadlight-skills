@@ -369,6 +369,34 @@ def test_scenario_matrix_covers_every_declared_fixture_root() -> None:
         assert (FIXTURES_DIR / fixture_name).is_dir(), fixture_name
 
 
+def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) -> None:
+    """``approval-replay`` must fail for the defect it is named after.
+
+    Its declared binding is deliberately still valid at the frozen
+    clock, so its ``APR-001`` can only come from the fixture's own
+    fail-open redemption seam accepting a replay or a mutated binding --
+    never from the far cheaper, far weaker accident of an expired
+    binding being correctly rejected, which would leave the actual
+    anti-replay control completely unexercised.
+    """
+    binding = governed_actions._declared_approval_binding(FIXTURES_DIR / "approval-replay")
+    assert binding is not None
+    assert _FROZEN_NOW < binding.expires_at
+
+    result = assess_fixture(tmp_path, "approval-replay")
+    approval_probes = [
+        probe for probe in result.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
+    ]
+    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert approval_probes[0].observed == "approval_accepted"
+    failing = [probe for probe in approval_probes if probe.status == "must-fix"]
+    assert len(failing) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert {probe.observed for probe in failing} == {
+        "fail_open_replay_or_mutation_accepted"
+    }
+    assert "expired_rejected" not in {probe.observed for probe in approval_probes}
+
+
 def test_conformant_maf_manifest_verdict_is_governed(tmp_path: Path) -> None:
     result = assess_fixture(tmp_path, "conformant-maf")
     manifest = render.build_manifest(result)

@@ -155,6 +155,18 @@ A consequential path without pre-action mediation always emits `MED-001` as
 `must-fix`. A Conformance Test Kit claim alone never satisfies `ENF-001` or
 `ENF-002`: those require this target's own application probes.
 
+`APR-001` is proven by an actual redemption *sequence*, never a single
+redemption — one accepted first use proves only that the approval worked once.
+Within a single assessment the target's declared binding is redeemed once,
+replayed byte-for-byte, and re-presented once per bound dimension (action,
+arguments, target scope, tenant, both subjects, approving role, policy id,
+policy hash, expiry) reusing the same, already-consumed nonce. Any accepted
+replay or mutated binding — and any rejection the target still reaches the
+protected tool for — is `must-fix`. The whole sequence runs against an
+assessment-private nonce ledger that is created and deleted inside that one
+run, so the target's own declared ledger is never read or written and two
+consecutive assessments at the same commit are byte-identical and residue-free.
+
 ## Operational alerts (`OPS-001`)
 
 A control that cannot report its own failure leaves an operator silently
@@ -266,7 +278,7 @@ Recorded so the boundary is not silently re-litigated:
 | `scripts/contracts.py` | typed contracts, fixed constants, and schema version |
 | `scripts/inventory.py` | `build_action_inventory` |
 | `scripts/mediation.py` | `build_mediation_graph` |
-| `scripts/probes.py` | `run_application_probe` (hermetic, subprocess-isolated) |
+| `scripts/probes.py` | `run_application_probe` (hermetic, subprocess-isolated) and `run_approval_probe_sequence` (isolated, self-cleaning anti-replay) |
 | `scripts/ghcp.py` | `assess_change_plane` + optional read-only live collectors |
 | `scripts/alerts.py` | `assess_alerts` |
 | `scripts/maf_adapter.py` | the `RuntimeAdapter` contract and its MAF implementation |
