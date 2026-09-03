@@ -344,7 +344,7 @@ test('cost and readiness skill docs publish the current evidence contracts', () 
   assert.match(consumptionIq, /production-ready consumes verified artifacts and does not query or recompute/i);
   assert.doesNotMatch(consumptionIq, /Live actual-cost queries[\s\S]{0,120}threadlight-production-ready/i);
 
-  assert.match(productionReadyHead, /v0\.11\.0/);
+  assert.match(productionReadyHead, /v0\.12\.0/);
   assert.doesNotMatch(productionReadyHead, /v0\.3\.0/);
   assert.ok(!productionReadyHead.includes('docs/production-readiness.md'), 'intro must not link a missing production-readiness doc');
 
