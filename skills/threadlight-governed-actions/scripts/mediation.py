@@ -15,13 +15,14 @@ skipped.
 
 Neither function ever assigns a passing status by inference: a path is
 ``pass`` only when *positive* call evidence proves the pre-action seam
-runs before the action executes (or a fully-named equivalent server-side
-control is declared for it), ``must-fix`` only when *positive* evidence
-proves a state change happens with neither of those in place (a proven
-bypass), and ``not-verified`` whenever the assessor cannot find enough
-evidence — no dispatch code, no adapter observation, nothing — to decide
-either way. ``not-applicable`` is reserved for a provider-hosted tool whose
-consequence class does not require pre-interception at all (read-only).
+runs before the action executes, ``must-fix`` only when *positive* evidence
+proves a state change happens without that seam (a proven bypass), and
+``not-verified`` whenever the assessor cannot find enough evidence — no
+dispatch code, no adapter observation, nothing — to decide either way.
+Declared equivalent server-side controls remain ``not-verified`` until an
+independent verifier exists. ``not-applicable`` is reserved for a
+provider-hosted tool whose consequence class does not require
+pre-interception at all (read-only).
 
 Every candidate path, wherever it came from, is subject to exactly the
 same recomputation before it is trusted. A ``RuntimeAdapter``'s own
@@ -689,10 +690,8 @@ def _static_evidence(
 # ---------------------------------------------------------------------------
 
 
-def _recompute_coverage(
-    nodes: Tuple[str, ...], equivalent_control_applies: bool
-) -> Tuple[bool, str, bool]:
-    """Recompute ``(covered, status, covered_via_equivalent_control)``.
+def _recompute_coverage(nodes: Tuple[str, ...]) -> Tuple[bool, str]:
+    """Recompute ``(covered, status)``.
 
     This is the sole place a path's verdict is decided, and it is applied
     identically no matter where *nodes* came from — a static AST scan of
@@ -704,21 +703,18 @@ def _recompute_coverage(
       ever reached: indeterminate, ``not-verified``.
     - ``tool-service`` reached with ``pre-action-seam`` proven to precede
       it: ``pass``.
-    - ``tool-service`` reached without that ordering, but a fully-named
-      equivalent server-side control applies: ``pass``, credited to the
-      equivalent control rather than to a client-side seam.
-    - ``tool-service`` reached with neither: a proven bypass, ``must-fix``.
+    - ``tool-service`` reached without that ordering: a proven bypass,
+      ``must-fix``. Declared equivalent controls are reported separately as
+      unverified and can never cover this path.
     """
     if "tool-service" not in nodes:
-        return False, "not-verified", False
+        return False, "not-verified"
 
     service_index = nodes.index("tool-service")
     seam_index = nodes.index("pre-action-seam") if "pre-action-seam" in nodes else None
     if seam_index is not None and seam_index < service_index:
-        return True, "pass", False
-    if equivalent_control_applies:
-        return True, "pass", True
-    return False, "must-fix", False
+        return True, "pass"
+    return False, "must-fix"
 
 
 # ---------------------------------------------------------------------------
@@ -785,18 +781,6 @@ def _has_complete_equivalent_control_declaration(
     return True
 
 
-def _equivalent_control_applies(
-    root: Path, action: ActionRecord
-) -> Tuple[bool, Optional[Mapping[str, object]]]:
-    """Whether independently verified equivalent control applies to *action*.
-
-    The current assessor has no verifier for the seven section 5 criteria, so
-    a target-owned declaration can never cover a path by itself.
-    """
-    del root, action
-    return False, None
-
-
 # ---------------------------------------------------------------------------
 # build_mediation_graph
 # ---------------------------------------------------------------------------
@@ -819,10 +803,10 @@ def _build_path(
     declared observation for the same ``(action_id, mode)`` — if any —
     supply the node evidence instead. Either way, ``covered``/``status``/
     ``equivalent_control_ref`` are always recomputed by this function from
-    the node evidence and independently-checked equivalent-control
-    evidence; nothing supplied by the adapter is ever trusted verbatim. If
-    neither source has anything, the path is ``not-verified`` — evidence
-    absent, not falsely assumed passing or failing. ``ast_index`` and
+    the node evidence; declared equivalent controls never cover a path.
+    Nothing supplied by the adapter is ever trusted verbatim. If neither
+    source has anything, the path is ``not-verified`` — evidence absent,
+    not falsely assumed passing or failing. ``ast_index`` and
     ``candidate_files`` are the shared, once-per-assessment index and
     file list built by :func:`_build_ast_index` and
     :func:`_collect_candidate_files_by_action` for the whole
@@ -851,8 +835,7 @@ def _build_path(
             evidence_refs=entry_refs,
         )
 
-    control_applies, control = _equivalent_control_applies(root, action)
-    covered, status, via_control = _recompute_coverage(nodes, control_applies)
+    covered, status = _recompute_coverage(nodes)
 
     pre_action_seam: Optional[str] = None
     if "pre-action-seam" in nodes:
@@ -866,7 +849,7 @@ def _build_path(
         mode=mode,
         nodes=nodes,
         pre_action_seam=pre_action_seam,
-        equivalent_control_ref=(_serialize_control(control) if via_control and control else None),
+        equivalent_control_ref=None,
         covered=covered,
         status=status,
         evidence_refs=evidence_refs,

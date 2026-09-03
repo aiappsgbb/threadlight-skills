@@ -32,11 +32,7 @@ import canonical
 import contracts
 import governed_actions
 import render
-
-try:
-    from markdown_it import MarkdownIt
-except ImportError:  # pragma: no cover - environment without markdown-it-py
-    MarkdownIt = None
+from markdown_it import MarkdownIt
 
 
 def _iter_all_tokens(tokens):
@@ -3450,17 +3446,10 @@ def test_evidence_pack_bare_email_autolink_does_not_affect_non_email_at_signs():
 # ``commonmark`` preset with only the ``table``/``strikethrough``
 # extensions enabled (see ``_parse_with_commonmark`` for why a disabled
 # ``linkify`` does not weaken what is being proven here). markdown-it-py is
-# already present in this environment (a transitive dependency of `rich`,
-# itself already relied upon elsewhere); no new dependency is added to
-# exercise it, and every test below degrades to a skip if it is absent.
+# an explicit CI dependency: collection must fail rather than silently skip
+# these security-relevant assertions when the parser is unavailable.
 # ---------------------------------------------------------------------------
 
-_REQUIRES_MARKDOWN_IT = pytest.mark.skipif(
-    MarkdownIt is None, reason="markdown-it-py is not available in this environment"
-)
-
-
-@_REQUIRES_MARKDOWN_IT
 @pytest.mark.parametrize(
     "hostile_text,expected_code_span_content",
     [
@@ -3497,7 +3486,6 @@ def test_evidence_pack_autolink_defense_verified_by_real_commonmark_parser(
     assert expected_code_span_content in code_span_contents
 
 
-@_REQUIRES_MARKDOWN_IT
 def test_evidence_pack_autolink_defense_survives_touching_scheme_and_email_triggers():
     # Two independently-wrapped code spans landing directly adjacent, with
     # nothing between them in the original hostile text (the "https://"
@@ -3521,7 +3509,6 @@ def test_evidence_pack_autolink_defense_survives_touching_scheme_and_email_trigg
     assert "user@evil.example" in code_span_contents
 
 
-@_REQUIRES_MARKDOWN_IT
 def test_evidence_pack_autolink_defense_within_full_table_row_context():
     # A full, realistic Pass/fail matrix row (not just an isolated
     # fragment) embedding a hostile bare-URL value must still parse as a
@@ -3730,7 +3717,6 @@ _CODE_SPAN_CALL_SITES = [
 ]
 
 
-@_REQUIRES_MARKDOWN_IT
 @pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
 def test_md_code_span_call_site_survives_bare_email_autolink_trigger_touching_slash(
     label, build
@@ -3744,7 +3730,6 @@ def test_md_code_span_call_site_survives_bare_email_autolink_trigger_touching_sl
     assert _HOSTILE_CODE_SPAN_IDENTIFIER in code_span_contents
 
 
-@_REQUIRES_MARKDOWN_IT
 @pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
 def test_md_code_span_call_site_survives_touching_scheme_and_email_triggers(label, build):
     # A single identifier value combining two hostile triggers with
@@ -3762,7 +3747,6 @@ def test_md_code_span_call_site_survives_touching_scheme_and_email_triggers(labe
     assert _HOSTILE_CODE_SPAN_TOUCHING_TRIGGERS in code_span_contents
 
 
-@_REQUIRES_MARKDOWN_IT
 @pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
 def test_md_code_span_call_site_survives_www_trigger_in_uppercase(label, build):
     result, heading, next_heading = build(_HOSTILE_CODE_SPAN_WWW_UPPERCASE)
@@ -3774,7 +3758,6 @@ def test_md_code_span_call_site_survives_www_trigger_in_uppercase(label, build):
     assert _HOSTILE_CODE_SPAN_WWW_UPPERCASE in code_span_contents
 
 
-@_REQUIRES_MARKDOWN_IT
 @pytest.mark.parametrize("label,build", _CODE_SPAN_CALL_SITES)
 def test_md_code_span_call_site_survives_embedded_backticks(label, build):
     # An identifier containing its own literal backticks must still

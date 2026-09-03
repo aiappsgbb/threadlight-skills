@@ -148,6 +148,30 @@ def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
     assert contract["actions"] == ("payments.refund",)
 
 
+@pytest.mark.parametrize("timeout_ms", [1, 5_000])
+def test_load_probe_contract_accepts_timeout_boundaries(
+    approval_root: Path, timeout_ms: int
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["timeout_ms"] = timeout_ms
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    assert load_probe_contract(approval_root)["timeout_ms"] == timeout_ms
+
+
+def test_load_probe_contract_rejects_timeout_above_assessor_maximum(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["timeout_ms"] = 5_001
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    with pytest.raises(ProbeContractError, match=r"at most 5000 milliseconds"):
+        load_probe_contract(approval_root)
+
+
 def test_load_probe_contract_rejects_missing_contract(tmp_path: Path):
     with pytest.raises(ProbeContractError):
         load_probe_contract(tmp_path / "does-not-exist")

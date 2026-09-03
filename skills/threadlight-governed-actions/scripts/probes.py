@@ -182,6 +182,10 @@ THIS_FILE = Path(__file__).resolve()
 # contract is never permitted to request a live side effect.
 _ALLOWED_SIDE_EFFECT_MODES: Tuple[str, ...] = ("synthetic", "dry-run")
 
+# Target-owned contracts cannot extend an assessor run beyond this fixed
+# application-level budget.
+_MAX_APPLICATION_TIMEOUT_MS: int = 5_000
+
 # The exact JSON keys (and only those keys) a well-formed child stdout
 # report may carry — deliberately narrow so no payload field can slip in.
 _REQUIRED_REPORT_KEYS: Tuple[str, ...] = (
@@ -521,7 +525,8 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
     ``timeout_ms``, ``side_effect_mode``, ``observation_ledger``, and
     ``actions`` (normalized to a tuple). Raises :class:`ProbeContractError`
     for anything missing, malformed, or unsafe — including a
-    ``side_effect_mode`` other than ``synthetic``/``dry-run`` and an
+    ``timeout_ms`` outside the assessor-owned safe range, a
+    ``side_effect_mode`` other than ``synthetic``/``dry-run``, and an
     ``observation_ledger`` that would escape *root*.
     """
     root_path = Path(root)
@@ -558,6 +563,11 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
         raise ProbeContractError(
             f"probe contract 'timeout_ms' must be a positive integer; "
             f"got {timeout_ms!r}"
+        )
+    if timeout_ms > _MAX_APPLICATION_TIMEOUT_MS:
+        raise ProbeContractError(
+            "probe contract 'timeout_ms' must be at most "
+            f"{_MAX_APPLICATION_TIMEOUT_MS} milliseconds; got {timeout_ms!r}"
         )
 
     side_effect_mode = raw.get("side_effect_mode")
