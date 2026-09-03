@@ -1560,4 +1560,3 @@ def test_finding_catalog_ids_match_apply_plan_schema_finding_id_enum():
     schema_ids = set(schema["$defs"]["findingId"]["enum"])
     assert catalog_ids == EXPECTED_FINDING_IDS
     assert schema_ids == EXPECTED_FINDING_IDS
-
