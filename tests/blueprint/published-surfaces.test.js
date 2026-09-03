@@ -93,7 +93,12 @@ const ACTIVE_SURFACES = [
   'docs/index.html',
   'docs/customize.html',
 ];
-const STALE_COUNT = /17 skills|17 total|16 pipeline|22 total|13-skill library|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill|all 17 skills/i;
+// NB: `22 pipeline` is CURRENT (expectedPipelineSkillCount), so only the
+// superseded `21 pipeline` and the superseded `22-skill library` / `all 22
+// skills` / `Threadlight is 22` TOTAL claims are matched here — a bare "22
+// skills" is deliberately not matched, because pipeline-scoped copy may
+// legitimately say it.
+const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 total|13-skill library|22-skill library|all 17 skills|all 22 skills|Threadlight is 22|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill/i;
 
 test(`filesystem publishes exactly ${expectedSkillCount} threadlight-* skills`, () => {
   const dirs = fs
@@ -191,17 +196,34 @@ test('funnel metadata reflects the governed working pilot framing', () => {
   assert.match(funnel, /<title>Threadlight — governed working pilot funnel\.<\/title>/);
   assert.match(
     funnel,
-    /<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.match(
     funnel,
-    /<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.match(
     funnel,
-    /<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*22-skill library[^"]*">/,
+    new RegExp(`<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
   );
   assert.doesNotMatch(funnel, /eleven-skill|deployed agent in one session/i);
+});
+
+test('funnel chain enumeration counts governed-actions and adds up to the published totals', () => {
+  const funnel = read('docs/funnel.html');
+
+  // 3 named gates + 6 supporting skills + the entry/evidence/lifecycle legs
+  // must equal expectedPipelineSkillCount, and threadlight-auto takes the
+  // library to expectedSkillCount. Publishing governed-actions without
+  // adding it to this enumeration leaves the arithmetic one leg short.
+  assert.match(funnel, /thirteen entry, evidence, and lifecycle legs/i);
+  assert.match(funnel, /<code>governed-actions<\/code>/, 'the leg list must name governed-actions');
+  assert.match(
+    funnel,
+    new RegExp(`3 \\+ 6 \\+ 13 = <strong>${expectedPipelineSkillCount} pipeline skills</strong>`),
+  );
+  assert.match(funnel, new RegExp(`<strong>${expectedSkillCount}-skill library</strong>`));
+  assert.doesNotMatch(funnel, /3 \+ 6 \+ 12|twelve entry, evidence, and lifecycle legs/i);
 });
 
 test('industries copy stays CI/CD-only and never reintroduces a laptop deploy command', () => {
@@ -219,19 +241,22 @@ test('grab-shots targets the process library section, not the deprecated sector 
   assert.doesNotMatch(grabShots, /#sector-grid/);
 });
 
-test('index + customize render the accurate 22 count', () => {
+test(`index + customize render the accurate ${expectedSkillCount} count`, () => {
   const index = read('docs/index.html');
   const twitterDescription = index.match(
     /<meta name="twitter:description"\s+content="([^"]+)">/,
   );
   assert.ok(twitterDescription, 'expected twitter description meta tag');
-  assert.match(index, /Threadlight is 22/);
+  assert.match(index, new RegExp(`Threadlight is ${expectedSkillCount}`));
   assert.strictEqual(
     twitterDescription[1],
     'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
   );
   assert.doesNotMatch(twitterDescription[1], /self-driving/i);
-  assert.match(read('docs/customize.html'), /22 skills/);
+  // The customize overlay diagram labels the whole upstream `threadlight-skills`
+  // repo ("N skills · never edited"), not the pipeline subset, so it tracks
+  // expectedSkillCount.
+  assert.match(read('docs/customize.html'), new RegExp(`${expectedSkillCount} skills &middot; never edited`));
 });
 
 test('no active product surface carries a stale skill-count claim', () => {

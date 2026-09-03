@@ -1487,3 +1487,46 @@ test('docs-blueprint workflow keeps pull_request.paths and push.paths symmetric'
     'pull_request.paths and push.paths must list the exact same entries in the exact same order',
   );
 });
+
+test('docs-blueprint runs the tests/ci CI-wiring suite alongside the blueprint suites', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  // tests/ci/*.test.js guards that every pytest suite is wired into
+  // python-pytest.yml — exactly the "green check that lies about coverage"
+  // failure class. It is a node:test suite with no runner of its own, so
+  // unless this workflow's `node --test` command names it, the checker's own
+  // regression tests never execute in CI: the guard's guard is unguarded.
+  assert.match(
+    workflowContent,
+    /run: node --test tests\/blueprint\/\*\.test\.js tests\/ci\/\*\.test\.js/,
+    'the blueprint test step must also run tests/ci/*.test.js',
+  );
+});
+
+test('docs-blueprint workflow paths (pull_request and push) cover the CI-wiring and governed-actions inputs', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  // Files read by the suites this workflow runs but not covered by the
+  // existing docs/**, tests/blueprint/** and skills/threadlight-design/**
+  // entries. Without these the guards can go stale on a change that never
+  // re-triggers them.
+  const requiredCoverage = [
+    // tests/ci/check-test-dirs-wired.test.js and the checker + workflow it reads.
+    'tests/ci/check-test-dirs-wired.test.js',
+    'scripts/ci/check-test-dirs-wired.py',
+    '.github/workflows/python-pytest.yml',
+    // published-surfaces.test.js asserts the governed-actions contract,
+    // taxonomy and trust boundaries straight out of its SKILL.md.
+    'skills/threadlight-governed-actions/SKILL.md',
+  ];
+
+  for (const triggerKey of ['pull_request', 'push']) {
+    const pathEntries = extractWorkflowPathsList(workflowContent, triggerKey);
+    for (const target of requiredCoverage) {
+      assert.ok(
+        workflowPathsCover(pathEntries, target),
+        `${triggerKey}.paths must cover \`${target}\` (directly or via a \`**\` glob) so CI re-runs when it changes`,
+      );
+    }
+  }
+});
