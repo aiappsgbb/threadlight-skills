@@ -561,6 +561,20 @@ def test_evidence_pack_never_contains_banned_payload_keys_as_json():
         assert banned not in text
 
 
+def test_evidence_pack_scope_section_carries_executed_pass_semantic_caveat():
+    section = _section_text(
+        render.render_evidence_pack(_full_result()),
+        "## Scope and trust model",
+        "## Architecture and data flow",
+    )
+    assert (
+        "- `executed=True/pass` means the declared local application dispatch "
+        "was executed under hermetic conformance; it is not deployed "
+        "production enforcement and requires live deployed version/image/"
+        "policy evidence."
+    ) in section
+
+
 # ---------------------------------------------------------------------------
 # Rendering is order-independent
 # ---------------------------------------------------------------------------

@@ -1644,6 +1644,12 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         "deployment supply chain a change travels through is assessed."
     )
     lines.append(
+        "- `executed=True/pass` means the declared local application dispatch "
+        "was executed under hermetic conformance; it is not deployed "
+        "production enforcement and requires live deployed version/image/"
+        "policy evidence."
+    )
+    lines.append(
         "- Provider-hosted tool side effects without an equivalent, "
         "independently verified server-side control are not supported by "
         "this assessment's mediation model."

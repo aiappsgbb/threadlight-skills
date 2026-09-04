@@ -7,6 +7,7 @@
 - Agent Hooks is cooperative/alpha and is never treated as this assessment's security boundary.
 - Conformance recorded in this pack is never a certification.
 - GitHub Copilot coding agent's own internal reasoning/tool-calling loop is never intercepted by this assessment; only the PR/CI/deployment supply chain a change travels through is assessed.
+- `executed=True/pass` means the declared local application dispatch was executed under hermetic conformance; it is not deployed production enforcement and requires live deployed version/image/policy evidence.
 - Provider-hosted tool side effects without an equivalent, independently verified server-side control are not supported by this assessment's mediation model.
 - Tool services are expected to independently re-check authorization, idempotency, and transaction boundaries; this assessment never substitutes for that.
 

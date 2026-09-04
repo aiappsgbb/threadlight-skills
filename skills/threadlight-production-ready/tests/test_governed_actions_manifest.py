@@ -650,6 +650,25 @@ def test_non_list_mediation_paths_is_not_verified(tmp_path):
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 
+def test_non_object_mediation_path_entry_degrades_all_aggregates_without_exception(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"].insert(0, "not-an-object")
+    assert (
+        validation_reason(tmp_path, manifest)
+        == "mediation_paths entries must be objects"
+    )
+    root = make_target(tmp_path, manifest)
+    loaded = pr.load_governed_actions_manifest(root)
+    findings = pr.aggregate_governed_actions(loaded, GOLDEN_COMMIT, FRESH_NOW)
+    expected_reason = (
+        "governed-actions manifest not trusted: "
+        "mediation_paths entries must be objects."
+    )
+    for finding in findings:
+        assert finding.status == "not-verified"
+        assert finding.detail == expected_reason
+
+
 def test_malformed_mediation_path_evidence_refs_is_not_verified(tmp_path):
     manifest = _golden()
     manifest["mediation_paths"][0]["evidence_refs"] = [17]
