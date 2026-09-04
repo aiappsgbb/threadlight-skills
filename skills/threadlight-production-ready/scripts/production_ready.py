@@ -3408,6 +3408,12 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     # the leg has already verified AGT wiring, so report its verdict as
     # evidence rather than re-deriving from heuristics.
     gm = _load_leg_manifest(ctx, "govern-manifest.json")
+    if gm and gm.get("schema") == "threadlight-governance-manifest/v1":
+        # Fail closed until this consumer understands binding-level live proof.
+        return [_not_verified(f"AGT-{number:03d}",
+                              "Binding-level governance manifest requires consumer migration; "
+                              "legacy source markers are not runtime proof")
+                for number in range(1, 7)]
     if gm is not None and gm.get("_fresh"):
         verdict = gm.get("verdict", "?")
         prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
@@ -4842,7 +4848,10 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
     # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
     gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+    if gm and gm.get("schema") == "threadlight-governance-manifest/v1":
+        gm_sar = "not-verified"
+    else:
+        gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
     has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
     if gm_sar is not None:
         out.append(_mk_finding("RAI-002", status=gm_sar,

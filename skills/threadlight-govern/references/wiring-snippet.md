@@ -1,5 +1,10 @@
 # AGT governance wiring — author, gate, attest
 
+> **Archived v4 reference only. Do not use for new bundles.**
+> See [native-bundles.md](native-bundles.md) for the native ACS API and exact
+> pins. The retired templates below no longer ship. These CLI markers are
+> retained in the legacy regression fixture, not accepted as runtime proof.
+
 Governance is proven the way the real Agent Governance Toolkit works: a
 committed, schema-valid **policy** that CI **lints, replays, and verifies**, plus
 a committed **attestation**. No in-process "governance middleware" is imported —

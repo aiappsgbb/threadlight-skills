@@ -1,24 +1,46 @@
 ---
 name: threadlight-govern
 description: >-
-  PROTECT-leg for threadlight pilots: makes the Microsoft Agent Governance
-  Toolkit (AGT) actually govern a deployed agent — not just document it.
-  Scaffolds a real, schema-valid, versioned `policy.yaml`, commits `agt test`
-  fixtures, gates CI on `agt lint-policy` + `agt verify` (OWASP ASI 2026
-  attestation), and emits `specs/govern-manifest.json` for
-  threadlight-production-ready pillars 2 and 7. USE FOR: agent action
-  governance, AGT policy, agt lint-policy, agt test, agt verify, tool
-  allow/deny, excessive-agency guardrail, default-deny policy, OWASP ASI 2026,
-  governance CI gate, policy attestation, responsible-ai policy, PROTECT stage,
-  govern leg, govern-manifest. DO NOT USE FOR: content filtering at the model
-  edge (Azure AI Content Safety) — AGT governs actions; adversarial scanning
-  (threadlight-redteam); quality evals (threadlight-evals); completeness gate
-  (threadlight-safe-check); deep AGT authoring upstream (foundry-agt).
+  Use when authoring native ACS/Rego policy bundles or inspecting declared
+  governance bindings for a Threadlight pilot: AGT policy, SAFE invariants,
+  tool allow/deny, approval escalation, output transformation, PROTECT stage,
+  govern leg, govern-manifest. Offline evidence never proves deployment
+  enforcement. Not for model content filtering, red-team scans, quality evals,
+  or installing host runtime hooks.
 metadata:
-  version: "0.2.0"
+  version: "1.0.0"
 ---
 
-# Threadlight Govern — make AGT *govern*, then prove it
+# Threadlight Govern — native bundles and offline binding evidence
+
+## Current contract (native ACS)
+
+Use [native-bundles.md](references/native-bundles.md) for the current API,
+exact package provenance, proof boundaries, and validation commands.
+`references/policy-templates/manifest.yaml` + `safe.rego` replace the retired
+`conditions[]` templates. SAFE is methodology, not an enforcement engine.
+
+`scripts/govern_check.py` reads `specs/governance-contract.json` (or the explicit
+framework/governance/tools YAML block in `specs/SPEC.md`) and emits the shared
+`threadlight-governance-manifest/v1` with per-binding coverage, gaps, and
+`offline_evidence`. Declared bindings stay **unverified**, unbound tools stay
+**unbound**, and unknown deployment metadata stays **null**. It neither changes
+framework nor installs/intercepts provider tools. Even a valid native bundle
+does not prove a host obeys decisions.
+
+`--emit` retains the existing report paths. `--gate` exits 2 because offline
+inventory cannot satisfy a runtime-enforcement gate. Legacy `--profile` and
+`--freshness-days` flags remain accepted but do not change declared governance
+or turn file age into proof. `--profile none` still emits the honest report.
+The old whole-agent `verdict` and capability-pass fields are not emitted.
+
+## Archived v4 workflow — historical reference only
+
+**Do not execute the remaining v4 authoring or scoring instructions below.**
+They describe the retained legacy fixture, not the native contract above.
+In particular, CLI lint/attestation markers and the `sample-wired` fixture
+do not establish runtime enforcement. Consumer migration is separate; current
+legacy scorecard consumers fail closed on the new manifest.
 
 The **PROTECT** leg of `path2production`. `threadlight-production-ready`
 *scores* agent-runtime governance (pillar 2) and responsible-AI controls

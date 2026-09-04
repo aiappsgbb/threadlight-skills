@@ -556,7 +556,7 @@ def validate_governance_contract(document, *, deployment_target, runtime=None, a
     }
 
 
-def _validate_binding(binding, *, policy_digest):
+def _validate_binding(binding, *, policy_digest, offline=False):
     field = "bindings[]"
     binding = _require_object(binding, field)
     _require_exact_keys(
@@ -592,12 +592,12 @@ def _validate_binding(binding, *, policy_digest):
     safe_principles = _require_unique_string_list(
         binding["safe_principles"],
         "bindings[].safe_principles",
-        allow_empty=False,
+        allow_empty=offline,
     )
     status = _require_member(binding["status"], BINDING_STATUSES, "bindings[].status")
-    binding_policy_digest = _require_sha256(
-        binding["policy_digest"], "bindings[].policy_digest"
-    )
+    binding_policy_digest = binding["policy_digest"]
+    if not offline or binding_policy_digest is not None:
+        _require_sha256(binding_policy_digest, "bindings[].policy_digest")
     probe_ids = _require_unique_string_list(
         binding["probe_ids"],
         "bindings[].probe_ids",
@@ -746,6 +746,9 @@ def validate_governance_manifest(manifest):
 
     if "governed" in manifest or "verdict" in manifest:
         _raise("whole-agent governed booleans or verdicts are forbidden")
+
+    if "offline_evidence" in manifest:
+        return _validate_offline_manifest(manifest)
 
     required_keys = {
         "schema",
@@ -948,7 +951,12 @@ def validate_governance_manifest(manifest):
         if binding["status"] != "enforced" and binding["binding_id"] not in gap_binding_ids:
             _raise("gaps must cover every non-enforced binding")
 
-    coverage = _require_object(manifest["coverage"], "coverage")
+    _validate_coverage(manifest["coverage"], normalized_bindings)
+    return manifest
+
+
+def _validate_coverage(coverage, normalized_bindings):
+    coverage = _require_object(coverage, "coverage")
     coverage_keys = {
         "tools_total",
         "tools_bound",
@@ -989,6 +997,94 @@ def validate_governance_manifest(manifest):
         if actual != expected:
             _raise(f"coverage.{field} must equal the count derived from bindings")
 
+
+def _validate_offline_manifest(manifest):
+    """An explicitly offline variant cannot contain deployment or live proof."""
+    _require_exact_keys(manifest, "manifest", {
+        "schema", "agent", "policy_bundle", "enforcement", "coverage",
+        "bindings", "live_probes", "gaps", "offline_evidence",
+    })
+    if manifest["schema"] != "threadlight-governance-manifest/v1":
+        _raise("schema must be threadlight-governance-manifest/v1")
+    agent = _require_object(manifest["agent"], "agent")
+    _require_exact_keys(agent, "agent", {"runtime", "version", "image_digest"})
+    if agent["runtime"] is not None:
+        _require_member(agent["runtime"], AGENT_RUNTIMES, "agent.runtime")
+    if agent["version"] is not None or agent["image_digest"] is not None:
+        _raise("offline reports cannot assert a deployed agent version or image")
+    enforcement = _require_object(manifest["enforcement"], "enforcement")
+    if dict(enforcement) != {
+        "adapter": "offline-inventory", "mode": "evaluate_only",
+        "agent_hooks_distribution": None, "agent_hooks_artifact_sha256": None,
+        "acs_distribution": None, "acs_artifact_sha256": None,
+    }:
+        _raise("offline reports cannot assert deployed enforcement artifacts")
+    if manifest["live_probes"] != []:
+        _raise("offline reports cannot carry live probes")
+    bundle = manifest["policy_bundle"]
+    digest = None
+    if bundle is not None:
+        bundle = _require_object(bundle, "policy_bundle")
+        _require_exact_keys(bundle, "policy_bundle", {
+            "id", "version", "digest", "signature_verified", "expires_at",
+        })
+        _require_identifier(bundle["id"], "policy_bundle.id")
+        _require_version(bundle["version"], "policy_bundle.version")
+        digest = _require_sha256(bundle["digest"], "policy_bundle.digest")
+        if bundle["signature_verified"] is not False or bundle["expires_at"] is not None:
+            _raise("offline bundle integrity is not signature or freshness verification")
+
+    evidence_refs = set()
+    for evidence in _require_list(manifest["offline_evidence"], "offline_evidence"):
+        _require_object(evidence, "offline_evidence[]")
+        _require_exact_keys(evidence, "offline_evidence[]", {
+            "evidence_ref", "source", "sha256", "reason_code",
+        })
+        ref = _require_evidence_ref(evidence["evidence_ref"], "offline_evidence[].evidence_ref")
+        if ref in evidence_refs:
+            _raise("offline evidence refs must be unique")
+        evidence_refs.add(ref)
+        if evidence["source"] is not None:
+            _require_non_blank_string(evidence["source"], "offline_evidence[].source")
+        if evidence["sha256"] is not None:
+            _require_sha256(evidence["sha256"], "offline_evidence[].sha256")
+        _require_identifier(evidence["reason_code"], "offline_evidence[].reason_code")
+    if not evidence_refs:
+        _raise("offline reports require explicit evidence or an inventory gap")
+
+    bindings = []
+    ids, tool_ids = set(), set()
+    refs_by_binding = {}
+    for binding in _require_list(manifest["bindings"], "bindings"):
+        normalized = _validate_binding(binding, policy_digest=digest, offline=True)
+        if normalized["status"] not in {"unverified", "unbound", "unsupported"}:
+            _raise("offline bindings cannot assert live observation or enforcement")
+        if normalized["mode"] != "evaluate_only" or normalized["probe_ids"]:
+            _raise("offline bindings cannot claim runtime probes or enforce mode")
+        if not normalized["evidence_refs"] or not set(normalized["evidence_refs"]) <= evidence_refs:
+            _raise("offline binding evidence must resolve")
+        if normalized["binding_id"] in ids or normalized["tool_id"] in tool_ids:
+            _raise("offline binding and tool ids must be unique")
+        if agent["runtime"] == "github-copilot-sdk" and normalized["enforcement_path"] == "local-agent-hooks":
+            _raise("github-copilot-sdk does not support local-agent-hooks bindings")
+        ids.add(normalized["binding_id"])
+        tool_ids.add(normalized["tool_id"])
+        refs_by_binding[normalized["binding_id"]] = set(normalized["evidence_refs"])
+        bindings.append(normalized)
+
+    gap_ids = set()
+    for gap in _require_list(manifest["gaps"], "gaps"):
+        _validate_gap(gap, binding_ids=ids, evidence_refs=evidence_refs,
+                      evidence_refs_by_binding=refs_by_binding)
+        if "binding_id" not in gap or gap["binding_id"] in gap_ids:
+            _raise("offline gaps must uniquely reference a declared binding")
+        binding = next(b for b in bindings if b["binding_id"] == gap["binding_id"])
+        if gap["status"] != binding["status"]:
+            _raise("offline gap status must match binding")
+        gap_ids.add(gap["binding_id"])
+    if gap_ids != ids:
+        _raise("offline gaps must cover all declared bindings")
+    _validate_coverage(manifest["coverage"], bindings)
     return manifest
 
 

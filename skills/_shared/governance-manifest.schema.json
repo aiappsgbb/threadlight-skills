@@ -1,6 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "threadlight-governance-manifest/v1",
+  "anyOf": [
+    {"$ref": "#/definitions/runtimeManifest"},
+    {"$ref": "#/definitions/offlineManifest"}
+  ],
+  "definitions": {
+  "runtimeManifest": {
   "type": "object",
   "required": [
     "schema",
@@ -318,8 +324,110 @@
         "$ref": "#/definitions/gap"
       }
     }
+  }
   },
-  "definitions": {
+  "offlineManifest": {
+    "type": "object",
+    "required": ["schema", "agent", "policy_bundle", "enforcement", "coverage", "bindings", "live_probes", "gaps", "offline_evidence"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": {"const": "threadlight-governance-manifest/v1"},
+      "agent": {
+        "type": "object",
+        "required": ["runtime", "version", "image_digest"],
+        "additionalProperties": false,
+        "properties": {
+          "runtime": {"enum": [null, "github-copilot-sdk", "maf-responses", "microsoft-agent-framework"]},
+          "version": {"type": "null"},
+          "image_digest": {"type": "null"}
+        }
+      },
+      "policy_bundle": {
+        "anyOf": [
+          {"type": "null"},
+          {
+            "type": "object",
+            "required": ["id", "version", "digest", "signature_verified", "expires_at"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/definitions/identifier"},
+              "version": {"$ref": "#/definitions/version"},
+              "digest": {"$ref": "#/definitions/sha256Digest"},
+              "signature_verified": {"const": false},
+              "expires_at": {"type": "null"}
+            }
+          }
+        ]
+      },
+      "enforcement": {
+        "const": {
+          "adapter": "offline-inventory",
+          "mode": "evaluate_only",
+          "agent_hooks_distribution": null,
+          "agent_hooks_artifact_sha256": null,
+          "acs_distribution": null,
+          "acs_artifact_sha256": null
+        }
+      },
+      "coverage": {
+        "allOf": [
+          {"$ref": "#/definitions/runtimeManifest/properties/coverage"},
+          {"properties": {"tools_enforced": {"const": 0}, "tools_observed": {"const": 0}, "tools_bypassable": {"const": 0}}}
+        ]
+      },
+      "bindings": {"type": "array", "items": {"$ref": "#/definitions/offlineBinding"}},
+      "live_probes": {"const": []},
+      "gaps": {"type": "array", "items": {"$ref": "#/definitions/gapBinding"}},
+      "offline_evidence": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "required": ["evidence_ref", "source", "sha256", "reason_code"],
+          "additionalProperties": false,
+          "properties": {
+            "evidence_ref": {"$ref": "#/definitions/evidenceRef"},
+            "source": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "\\S"}]},
+            "sha256": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/sha256Digest"}]},
+            "reason_code": {"$ref": "#/definitions/identifier"}
+          }
+        }
+      }
+    },
+    "allOf": [
+      {
+        "if": {"properties": {"agent": {"properties": {"runtime": {"const": "github-copilot-sdk"}}}}},
+        "then": {"properties": {"bindings": {"items": {"properties": {"enforcement_path": {"not": {"const": "local-agent-hooks"}}}}}}}
+      }
+    ]
+  },
+  "offlineBinding": {
+    "type": "object",
+    "required": ["binding_id", "tool_id", "enforcement_path", "intervention_points", "mode", "safe_principles", "status", "policy_digest", "probe_ids", "evidence_refs"],
+    "additionalProperties": false,
+    "properties": {
+      "binding_id": {"$ref": "#/definitions/identifier"},
+      "tool_id": {"$ref": "#/definitions/identifier"},
+      "enforcement_path": {"enum": ["none", "local-agent-hooks", "governed-tool-gateway"]},
+      "intervention_points": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/interventionPoint"}},
+      "mode": {"const": "evaluate_only"},
+      "safe_principles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "\\S"}},
+      "status": {"enum": ["unverified", "unbound", "unsupported"]},
+      "policy_digest": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/sha256Digest"}]},
+      "probe_ids": {"const": []},
+      "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/evidenceRef"}}
+    },
+    "allOf": [
+      {
+        "if": {"properties": {"status": {"const": "unbound"}}},
+        "then": {"properties": {"enforcement_path": {"const": "none"}}}
+      },
+      {
+        "if": {"properties": {"enforcement_path": {"const": "none"}}},
+        "then": {"properties": {"intervention_points": {"maxItems": 0}}}
+      }
+    ]
+  },
     "identifier": {
       "type": "string",
       "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._:-]*$"

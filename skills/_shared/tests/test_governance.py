@@ -83,6 +83,56 @@ def valid_manifest():
     }
 
 
+def offline_manifest():
+    man = valid_manifest()
+    man["agent"] = {"runtime": "maf-responses", "version": None, "image_digest": None}
+    man["policy_bundle"] = None
+    man["enforcement"] = {
+        "adapter": "offline-inventory", "mode": "evaluate_only",
+        "agent_hooks_distribution": None, "agent_hooks_artifact_sha256": None,
+        "acs_distribution": None, "acs_artifact_sha256": None,
+    }
+    binding = set_primary_binding_status(man, status="unverified", mode="evaluate_only")
+    binding.update(policy_digest=None, probe_ids=[], evidence_refs=["EV-offline-1"])
+    man["live_probes"] = []
+    man["gaps"][0]["evidence_refs"] = ["EV-offline-1"]
+    man["offline_evidence"] = [{
+        "evidence_ref": "EV-offline-1", "source": "specs/governance-contract.json",
+        "sha256": "sha256:" + "5" * 64, "reason_code": "binding-declared-only",
+    }]
+    return man
+
+
+def test_offline_manifest_preserves_unknown_metadata_without_live_proof():
+    man = offline_manifest()
+    assert governance_module().validate_governance_manifest(man) == man
+    build_jsonschema_validator().validate(man)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda m: m["bindings"][0].update(status="enforced", mode="enforce"),
+    lambda m: m["bindings"][0].update(status="observed"),
+    lambda m: m["live_probes"].append(valid_manifest()["live_probes"][0]),
+    lambda m: m["agent"].update(image_digest="sha256:" + "9" * 64),
+    lambda m: m["enforcement"].update(mode="enforce"),
+    lambda m: m.update(governed=True),
+    lambda m: m["offline_evidence"][0].update(reason_code=""),
+])
+def test_offline_variant_cannot_launder_runtime_proof(mutation):
+    man = offline_manifest()
+    mutation(man)
+    with pytest.raises(ValueError):
+        governance_module().validate_governance_manifest(man)
+    assert list(build_jsonschema_validator().iter_errors(man))
+
+
+def test_offline_evidence_refs_resolve_and_cover_bindings():
+    man = offline_manifest()
+    man["offline_evidence"][0]["evidence_ref"] = "EV-wrong"
+    with pytest.raises(ValueError):
+        governance_module().validate_governance_manifest(man)
+
+
 _STATUS_TO_COVERAGE_FIELD = {
     "enforced": "tools_enforced",
     "observed": "tools_observed",
@@ -1185,7 +1235,7 @@ def test_shared_upstream_pin_exact_values():
 
     assert json.loads(PIN_PATH.read_text(encoding="utf-8")) == {
         "schema": "threadlight-governance-upstream-pin/v1",
-        "agt": {"distribution": "agent-governance-toolkit", "version": "5.0.0"},
+        "agt": {"distribution": "agent-governance-toolkit-core", "version": "5.0.0"},
         "acs": {
             "distribution": "agent-control-specification",
             "version": "0.3.1b0",

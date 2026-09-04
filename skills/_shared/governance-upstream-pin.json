@@ -1,7 +1,7 @@
 {
   "schema": "threadlight-governance-upstream-pin/v1",
   "agt": {
-    "distribution": "agent-governance-toolkit",
+    "distribution": "agent-governance-toolkit-core",
     "version": "5.0.0"
   },
   "acs": {
