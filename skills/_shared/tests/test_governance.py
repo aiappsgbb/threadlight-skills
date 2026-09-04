@@ -392,6 +392,26 @@ def test_normalize_tool_rejects_local_agent_hooks_without_intervention_points():
         )
 
 
+def test_requirement_vocabulary_normalizes_aliases_and_maps_probe_dimensions():
+    governance = governance_module()
+
+    assert governance.normalize_requirement_token(" Human_Approval_Record ") == (
+        "human-approval-record"
+    )
+    assert governance.normalize_requirement_token("decision_receipt") == "decision-receipt"
+    assert governance.probe_requirement_dimension("approval") == "approval"
+    assert governance.probe_requirement_dimension("output-mediation") == "output"
+    assert governance.probe_requirement_dimension("audit") == "durable_audit"
+    assert governance.probe_requirement_dimension("operator-review") is None
+
+
+def test_requirement_vocabulary_rejects_unknown_token():
+    governance = governance_module()
+
+    with pytest.raises(governance.GovernanceContractError, match="unsupported requirement"):
+        governance.normalize_requirement_token("mystery-proof")
+
+
 def test_normalize_tool_allows_empty_intervention_points_for_governed_tool_gateway():
     governance = governance_module()
 

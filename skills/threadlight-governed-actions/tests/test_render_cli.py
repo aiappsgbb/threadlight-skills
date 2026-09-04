@@ -31,6 +31,7 @@ import pytest
 import canonical
 import contracts
 import governed_actions
+import inventory
 import render
 from markdown_it import MarkdownIt
 
@@ -4817,6 +4818,25 @@ def _rewrite_probe_contract(root: Path, **updates: object) -> None:
     contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _set_registry_alias_and_binding_requirements(root: Path, alias: str) -> None:
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    tools = {tool["id"]: tool for tool in document["tools"]}
+    tools["customer.lookup"]["policy_binding"] = "none"
+    refund = tools["payments.refund"]
+    refund["aliases"] = [alias]
+    refund["policy_binding"] = "returns-write-v1"
+    refund["requires"] = [
+        "human-approval-record",
+        "output-mediation",
+        "decision-receipt",
+        "signed-policy-bundle",
+    ]
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
 def _content_snapshot(root: Path) -> Dict[str, str]:
     """``relative-path -> sha256`` for every regular file under *root*
     (``.git`` excluded): a byte-level proof that a read-only assessment
@@ -4876,19 +4896,84 @@ def test_conformant_approval_seam_still_passes_the_first_assessment(tmp_path):
     approval_probes = [
         probe
         for probe in result.probes
-        if probe.probe_id == governed_actions.probes._APPROVAL_PROBE_ID
+        if probe.probe_id == governed_actions.probes.APPROVAL_PROBE_ID
     ]
     assert len(approval_probes) == 2 + len(
-        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+        governed_actions.probes.APPROVAL_MUTATION_FIELDS
     )
     assert {probe.status for probe in approval_probes} == {"pass"}
     observed = [probe.observed for probe in approval_probes]
     assert observed[0] == "approval_accepted"
     assert "replay_rejected" in observed
     assert observed.count("binding_mismatch_rejected") == len(
-        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+        governed_actions.probes.APPROVAL_MUTATION_FIELDS
     )
     assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy"]) == 0
+
+
+def test_probe_contract_alias_with_case_and_whitespace_resolves_to_canonical_action(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _set_registry_alias_and_binding_requirements(root, "payments.remove")
+    raw_alias = "  Payments.Remove  "
+    _rewrite_probe_contract(
+        root,
+        actions=[raw_alias],
+        action_id=raw_alias,
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["approval_binding"]["action_id"] = raw_alias
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert not any(
+        finding.reason_code
+        in {
+            "probe-action-not-in-inventory",
+            "bound-action-not-probed",
+            "bound-action-missing-enforcement-proof",
+            "bound-action-missing-approval-proof",
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+
+
+def test_probe_contract_ambiguous_alias_fails_closed(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _set_registry_alias_and_binding_requirements(root, "payments.remove")
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    document["tools"].append(
+        {
+            "id": "payments.capture",
+            "consequence": "write",
+            "execution_modes": ["interactive"],
+            "provider_hosted": False,
+            "aliases": ["Payments.Remove"],
+            "policy_binding": "payments-capture-v1",
+            "requires": ["human-approval-record"],
+        }
+    )
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    _rewrite_probe_contract(root, actions=[" Payments.Remove "], action_id=" Payments.Remove ")
+
+    actions = inventory.build_action_inventory(root).actions
+    findings = governed_actions._probe_contract_action_validation_findings(root, actions)
+
+    finding = next(
+        finding for finding in findings if finding.reason_code == "probe-action-not-in-inventory"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.remove",)
 
 
 @pytest.mark.parametrize("binding_style", ["policy_binding", "policy_ids"])
@@ -4916,6 +5001,47 @@ def test_bound_action_missing_from_probe_contract_is_not_verified_and_fails_gate
     assert finding.status == "not-verified"
     assert finding.affected_actions == ("payments.refund",)
     assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_bound_action_with_only_not_verified_enforcement_results_keeps_enf_001(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+
+    original = governed_actions.probes.run_enforcement_probe_set
+
+    def _only_not_verified(_root):
+        return (
+            contracts.ProbeResult(
+                probe_id="deny",
+                action_id="payments.refund",
+                path_id=None,
+                status="not-verified",
+                reason_code="probe-timed-out",
+                expected="tool_not_invoked",
+                observed="timeout",
+                evidence_refs=(),
+            ),
+        )
+
+    governed_actions.probes.run_enforcement_probe_set = _only_not_verified
+    try:
+        result = governed_actions.assess(
+            contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+        )
+    finally:
+        governed_actions.probes.run_enforcement_probe_set = original
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-missing-enforcement-proof"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
 
 
 def test_matching_bound_action_passes_and_unbound_action_may_be_omitted(tmp_path):
@@ -5100,10 +5226,10 @@ def test_post_deploy_reassesses_the_complete_control_set(tmp_path):
     assert result.pins["dependencies"]
     assert result.pins["specifications"]
     assert result.change_plane["workflows"]
-    assert governed_actions.probes._APPROVAL_PROBE_ID in {
+    assert governed_actions.probes.APPROVAL_PROBE_ID in {
         probe.probe_id for probe in result.probes
     }
-    assert governed_actions.probes._OUTPUT_PROBE_ID in {
+    assert governed_actions.probes.OUTPUT_PROBE_ID in {
         probe.probe_id for probe in result.probes
     }
     assert any(finding.finding_id == "OPS-001" for finding in result.findings)

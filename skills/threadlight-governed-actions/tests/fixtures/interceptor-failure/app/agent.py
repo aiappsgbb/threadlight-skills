@@ -1,6 +1,7 @@
 """The conformant-maf fixture's single declared application module.
 
-Its ``payments.capture`` crash path deliberately fails open (see
+Its ``payments.capture`` alias route (canonical inventory action:
+``payments.refund``) deliberately fails open on the crash probe (see
 ``dispatch_probe``); every other seam behaves exactly as the conformant
 fixture's does.
 
@@ -309,12 +310,13 @@ def dispatch_probe(
     arguments = case["arguments"]
 
     if action_id == "payments.capture" and fault == "raise":
-        # This fixture's declared defect: the ``payments.capture``
-        # interceptor invokes the protected tool *before* the fault
-        # reaches it, so an abnormal termination leaves a real side
-        # effect behind. Routed through the module's own already-correct
-        # fail-open implementation so the defect is the routing decision
-        # itself, never a second, divergent copy of the seam.
+        # This fixture's declared defect: the ``payments.capture`` alias
+        # of canonical action ``payments.refund`` invokes the protected
+        # tool *before* the fault reaches it, so an abnormal
+        # termination leaves a real side effect behind. Routed through
+        # the module's own already-correct fail-open implementation so
+        # the defect is the routing decision itself, never a second,
+        # divergent copy of the seam.
         fault = "fail_open"
 
     if fault == "stub":

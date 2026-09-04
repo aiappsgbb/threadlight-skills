@@ -1704,6 +1704,7 @@ def approval_digest(binding: ApprovalBinding) -> str:
 _APPROVAL_PROBE_ID = "approval-anti-replay"
 _APPROVAL_EXPECTED = "single_use_canonical_binding_enforced"
 _APPROVAL_PASS_REASON = "approval-anti-replay-enforced"
+APPROVAL_PROBE_ID = _APPROVAL_PROBE_ID
 
 #: Every binding dimension design section 7.3 requires an approval to be
 #: bound to, one mutation variant each: the canonical action (its own
@@ -1726,6 +1727,7 @@ _APPROVAL_MUTATION_FIELDS: Tuple[str, ...] = (
     "target_scope",
     "tenant",
 )
+APPROVAL_MUTATION_FIELDS = _APPROVAL_MUTATION_FIELDS
 
 #: Fixed, synthetic mutation values. Every one is derived so the mutated
 #: binding's digest can never accidentally equal the original's: plain
@@ -1757,12 +1759,14 @@ _APPROVAL_ISOLATED_LEDGER_SOURCE_SUFFIX = "#assessment-isolated"
 _OUTPUT_PROBE_ID = "output-mediation"
 _OUTPUT_EXPECTED = "output_buffered_or_bound_chunk_mediated"
 _OUTPUT_PASS_REASON = "output-mediation-enforced"
+OUTPUT_PROBE_ID = _OUTPUT_PROBE_ID
 _RECOGNIZED_OUTPUT_VERDICTS: Tuple[str, ...] = ("deny", "allow", "stream")
 
 _AUDIT_EXPECTED = "audit_record_payload_free"
 _AUDIT_PASS_REASON = "payload-free-audit-enforced"
 _AUDIT_PROBE_ID = "payload-free-audit"
 _AUDIT_NOT_VERIFIED_REASON = "audit-probe-outcome-not-verified"
+AUDIT_PROBE_ID = _AUDIT_PROBE_ID
 
 # Fixed, deterministic, synthetic arguments for ``run_privacy_probe_set``'s
 # own single driven dispatch call against an approval-family target —
@@ -1853,6 +1857,10 @@ def _load_raw_contract(root_path: Path) -> Mapping[str, object]:
             f"probe contract must be a JSON object: {contract_path}"
         )
     return raw
+
+
+def load_raw_probe_contract(root: Path) -> Mapping[str, object]:
+    return _load_raw_contract(Path(root))
 
 
 def load_approval_contract(root: Path) -> Mapping[str, object]:

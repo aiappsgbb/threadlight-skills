@@ -248,6 +248,44 @@ def test_governance_schema_accepts_valid_selective_contract():
     }
 
 
+def test_validation_helper_accepts_current_requirement_vocabulary_list_forms():
+    governance = governance_module()
+    document = valid_contract()
+    document["governance"]["lifecycle_bindings"][0]["requires"] = ["signed-policy-bundle"]
+    document["tools"][0]["requires"] = [
+        "human-approval-record",
+        "output-mediation",
+        "decision-receipt",
+        "operator-review",
+        "authorization",
+        "idempotency-or-transaction",
+    ]
+
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="customer-pilot",
+    )["tools"][0]["requires"] == [
+        "human-approval-record",
+        "output-mediation",
+        "decision-receipt",
+        "operator-review",
+        "authorization",
+        "idempotency-or-transaction",
+    ]
+
+
+def test_validation_helper_rejects_unknown_requires_token():
+    governance = governance_module()
+    document = valid_contract()
+    document["tools"][0]["requires"] = ["mystery-proof"]
+
+    with pytest.raises(governance.GovernanceContractError, match="requires"):
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
+
+
 def test_governance_schema_accepts_lifecycle_only_contract_without_tools():
     governance = governance_module()
     document = valid_contract()

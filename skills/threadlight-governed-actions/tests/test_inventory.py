@@ -242,6 +242,33 @@ def test_duplicate_alias_across_two_actions_emits_act_002(tmp_path: Path) -> Non
     )
 
 
+def test_public_normalize_action_id_trims_and_lowercases() -> None:
+    assert inventory.normalize_action_id(" Payments.Refund ") == "payments.refund"
+
+
+def test_public_build_alias_index_keeps_only_unambiguous_aliases(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["Orders.Remove"],
+            },
+            {
+                "id": "orders.delete",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["orders.remove", "orders.erase"],
+            },
+        ],
+    )
+    alias_index = inventory.build_alias_index(inventory.parse_action_registries(tmp_path))
+    assert alias_index["orders.erase"] == "orders.delete"
+    assert "orders.remove" not in alias_index
+
+
 # ---------------------------------------------------------------------------
 # Unknown consequence string -> InventoryError
 # ---------------------------------------------------------------------------
@@ -1202,6 +1229,113 @@ def test_unknown_requires_key_raises_inventory_error(tmp_path: Path) -> None:
         ],
     )
     with pytest.raises(inventory.InventoryError, match="unsupported requirement"):
+        inventory.parse_action_registries(tmp_path)
+
+
+def test_unknown_requires_list_member_raises_inventory_error(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": ["mystery-proof"],
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError, match="unsupported requirement"):
+        inventory.parse_action_registries(tmp_path)
+
+
+def test_list_requires_accepts_task2_vocabulary_and_maps_only_probe_proofs(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "policy_binding": "returns-write-v1",
+                "policy_ids": ["returns-legacy-v0"],
+                "requires": [
+                    "human-approval-record",
+                    "output-mediation",
+                    "decision-receipt",
+                    "signed-policy-bundle",
+                    "operator-review",
+                    "authorization",
+                    "idempotency-or-transaction",
+                ],
+            }
+        ],
+    )
+    record = inventory.parse_action_registries(tmp_path)["payments.refund"]
+    assert record.policy_binding == "returns-write-v1"
+    assert record.policy_ids == ("returns-legacy-v0", "returns-write-v1")
+    assert record.binding_requires_approval is True
+    assert record.binding_requires_output is True
+    assert record.binding_requires_durable_audit is True
+
+
+def test_policy_binding_none_stays_unbound_and_does_not_merge_into_policy_ids(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "returns.lookup",
+                "consequence": "read",
+                "execution_modes": ["interactive"],
+                "policy_binding": "none",
+                "policy_ids": ["returns-read-v1"],
+                "requires": ["operator-review"],
+            }
+        ],
+    )
+    record = inventory.parse_action_registries(tmp_path)["returns.lookup"]
+    assert record.policy_binding is None
+    assert record.policy_ids == ("returns-read-v1",)
+    assert record.binding_requires_approval is None
+    assert record.binding_requires_output is None
+    assert record.binding_requires_durable_audit is None
+
+
+@pytest.mark.parametrize("bad_value", ["true", 1, None])
+def test_requires_mapping_non_boolean_values_raise_inventory_error(
+    tmp_path: Path, bad_value: object
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": {"approval": bad_value},
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError, match="must be a boolean"):
+        inventory.parse_action_registries(tmp_path)
+
+
+def test_requires_list_non_string_member_raises_inventory_error(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": ["human-approval-record", 7],
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError, match="only strings"):
         inventory.parse_action_registries(tmp_path)
 
 

@@ -531,9 +531,9 @@ def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult
 #: under, per probe kind. Purely a mapping onto the existing finding
 #: catalog -- never a new control or business policy.
 _PROBE_FINDING_IDS: Mapping[str, str] = {
-    probes._APPROVAL_PROBE_ID: "APR-001",
-    probes._OUTPUT_PROBE_ID: "OUT-001",
-    probes._AUDIT_PROBE_ID: "AUD-001",
+    probes.APPROVAL_PROBE_ID: "APR-001",
+    probes.OUTPUT_PROBE_ID: "OUT-001",
+    probes.AUDIT_PROBE_ID: "AUD-001",
 }
 _DEFAULT_PROBE_FINDING_ID = "ENF-001"
 
@@ -1091,23 +1091,90 @@ def _action_is_bound(action: contracts.ActionRecord) -> bool:
     return action.policy_binding is not None or bool(action.policy_ids)
 
 
+def _probe_action_resolution(
+    actions: Sequence[contracts.ActionRecord],
+) -> Tuple[Mapping[str, contracts.ActionRecord], Mapping[str, str]]:
+    registry = {action.action_id: action for action in actions}
+    return registry, inventory.build_alias_index(registry)
+
+
+def _canonical_probe_action_id(
+    raw_action_id: str,
+    registry: Mapping[str, contracts.ActionRecord],
+    alias_index: Mapping[str, str],
+) -> str:
+    return inventory.canonicalize_action_id(raw_action_id, registry, alias_index)
+
+
+def _bound_action_missing_enforcement_proof_finding(
+    action: contracts.ActionRecord, phase: str
+) -> contracts.Finding:
+    bindings = action.policy_ids or ((action.policy_binding,) if action.policy_binding else ())
+    binding_text = ", ".join(bindings) if bindings else "declared runtime binding"
+    return contracts.Finding(
+        finding_id="ENF-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="bound-action-missing-enforcement-proof",
+        summary=f"Bound action '{action.action_id}' has no verified enforcement probe proof.",
+        details=(
+            f"Action '{action.action_id}' declares runtime policy binding(s) "
+            f"{binding_text}, and governance/probe-contract.json names it for "
+            "enforcement probing, but every enforcement probe result for that "
+            "action remained not-verified. Unproven enforcement stays an "
+            "explicit ENF-001 finding rather than disappearing."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(action),
+    )
+
+
+def _canonicalize_probe_results(
+    probe_results: Sequence[contracts.ProbeResult],
+    actions: Sequence[contracts.ActionRecord],
+) -> Tuple[contracts.ProbeResult, ...]:
+    registry, alias_index = _probe_action_resolution(actions)
+    normalized: List[contracts.ProbeResult] = []
+    for probe in probe_results:
+        if probe.action_id is None:
+            normalized.append(probe)
+            continue
+        normalized.append(
+            replace(
+                probe,
+                action_id=_canonical_probe_action_id(probe.action_id, registry, alias_index),
+            )
+        )
+    return tuple(normalized)
+
+
 def _probe_contract_action_validation_findings(
     root: Path, actions: Sequence[contracts.ActionRecord]
 ) -> Tuple[contracts.Finding, ...]:
     if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
         return ()
     probes.load_probe_contract(root)
-    raw_contract = probes._load_raw_contract(root)  # type: ignore[attr-defined]
-    declared_actions = {str(action_id) for action_id in raw_contract.get("actions", ())}
+    registry, alias_index = _probe_action_resolution(actions)
+    raw_contract = probes.load_raw_probe_contract(root)
+    declared_actions = {
+        _canonical_probe_action_id(str(action_id), registry, alias_index)
+        for action_id in raw_contract.get("actions", ())
+        if isinstance(action_id, str) and action_id.strip()
+    }
     selected_output_action = raw_contract.get("action_id")
     if isinstance(selected_output_action, str) and selected_output_action:
-        declared_actions.add(selected_output_action)
+        declared_actions.add(
+            _canonical_probe_action_id(selected_output_action, registry, alias_index)
+        )
     approval_binding = raw_contract.get("approval_binding")
     if isinstance(approval_binding, Mapping):
         selected_approval_action = approval_binding.get("action_id")
         if isinstance(selected_approval_action, str) and selected_approval_action:
-            declared_actions.add(selected_approval_action)
-    inventory_actions = {action.action_id for action in actions}
+            declared_actions.add(
+                _canonical_probe_action_id(selected_approval_action, registry, alias_index)
+            )
+    inventory_actions = set(registry)
     unknown = sorted({action_id for action_id in declared_actions if action_id not in inventory_actions})
     findings = tuple(
         contracts.Finding(
@@ -1130,11 +1197,17 @@ def _probe_contract_action_validation_findings(
     return findings
 
 
-def _declared_enforcement_probe_actions(root: Path) -> Tuple[str, ...]:
+def _declared_enforcement_probe_actions(
+    root: Path, actions: Sequence[contracts.ActionRecord]
+) -> Tuple[str, ...]:
     if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
         return ()
+    registry, alias_index = _probe_action_resolution(actions)
     contract = probes.load_probe_contract(root)
-    return tuple(str(action_id) for action_id in contract["actions"])
+    return tuple(
+        _canonical_probe_action_id(str(action_id), registry, alias_index)
+        for action_id in contract["actions"]
+    )
 
 
 def _bound_action_not_probed_finding(
@@ -1193,12 +1266,19 @@ def _reconcile_bound_action_probe_coverage(
     probe_results: Sequence[contracts.ProbeResult],
     phase: str,
 ) -> Tuple[contracts.Finding, ...]:
-    declared_probe_actions = set(_declared_enforcement_probe_actions(root))
+    registry, alias_index = _probe_action_resolution(actions)
+    declared_probe_actions = set(_declared_enforcement_probe_actions(root, actions))
     passing_actions_by_probe: Dict[str, set[str]] = {}
+    enforcement_statuses_by_action: Dict[str, set[str]] = {}
     for probe in probe_results:
-        if probe.status != "pass" or probe.action_id is None:
+        if probe.action_id is None:
             continue
-        passing_actions_by_probe.setdefault(probe.probe_id, set()).add(probe.action_id)
+        canonical_action_id = _canonical_probe_action_id(probe.action_id, registry, alias_index)
+        if probe.probe_id not in _PROBE_FINDING_IDS:
+            enforcement_statuses_by_action.setdefault(canonical_action_id, set()).add(probe.status)
+        if probe.status != "pass":
+            continue
+        passing_actions_by_probe.setdefault(probe.probe_id, set()).add(canonical_action_id)
 
     findings: List[contracts.Finding] = list(
         replace(finding, phase=phase)
@@ -1209,6 +1289,8 @@ def _reconcile_bound_action_probe_coverage(
             continue
         if action.action_id not in declared_probe_actions:
             findings.append(_bound_action_not_probed_finding(action, phase))
+        elif enforcement_statuses_by_action.get(action.action_id) == {"not-verified"}:
+            findings.append(_bound_action_missing_enforcement_proof_finding(action, phase))
 
         approval_required = (
             action.binding_requires_approval is True or action.approval_required is True
@@ -1216,7 +1298,7 @@ def _reconcile_bound_action_probe_coverage(
         if (
             approval_required
             and action.action_id
-            not in passing_actions_by_probe.get(probes._APPROVAL_PROBE_ID, set())
+            not in passing_actions_by_probe.get(probes.APPROVAL_PROBE_ID, set())
         ):
             findings.append(
                 _required_runtime_proof_missing_finding(
@@ -1231,7 +1313,7 @@ def _reconcile_bound_action_probe_coverage(
         if (
             action.binding_requires_output is True
             and action.action_id
-            not in passing_actions_by_probe.get(probes._OUTPUT_PROBE_ID, set())
+            not in passing_actions_by_probe.get(probes.OUTPUT_PROBE_ID, set())
         ):
             findings.append(
                 _required_runtime_proof_missing_finding(
@@ -1246,7 +1328,7 @@ def _reconcile_bound_action_probe_coverage(
         if (
             action.binding_requires_durable_audit is True
             and action.action_id
-            not in passing_actions_by_probe.get(probes._AUDIT_PROBE_ID, set())
+            not in passing_actions_by_probe.get(probes.AUDIT_PROBE_ID, set())
         ):
             findings.append(
                 _required_runtime_proof_missing_finding(
@@ -1476,9 +1558,13 @@ def _assess_repository_controls(
     findings.extend(approval_findings)
     output_probe_results, output_findings = _run_output_coverage(root, phase)
     findings.extend(output_findings)
+    probe_results = _canonicalize_probe_results(
+        probe_results + approval_probe_results + output_probe_results,
+        inv.actions,
+    )
 
     probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
-        probe_results + approval_probe_results + output_probe_results,
+        probe_results,
         source,
         options,
         policy_hashes,

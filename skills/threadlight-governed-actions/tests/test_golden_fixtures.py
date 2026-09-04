@@ -354,12 +354,6 @@ SCENARIOS: Dict[str, Tuple[int, FrozenSet[str]]] = {
     "upstream-version-drift": (1, frozenset({"PIN-001"})),
 }
 
-_RUNTIME_FOCUSED_UNRESOLVED: Dict[str, FrozenSet[str]] = {
-    **{name: SCENARIOS[name][1] for name in _RUNTIME_FOCUSED_SCENARIOS},
-    "interceptor-failure": frozenset({"ENF-001", "ENF-002"}),
-}
-
-
 @pytest.mark.parametrize("fixture_name", sorted(SCENARIOS))
 def test_scenario_matrix_gate_exit_and_must_fix_ids(tmp_path: Path, fixture_name: str) -> None:
     expected_exit, expected_must_fix = SCENARIOS[fixture_name]
@@ -390,12 +384,12 @@ def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) 
 
     result = assess_fixture(tmp_path, "approval-replay")
     approval_probes = [
-        probe for probe in result.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
+        probe for probe in result.probes if probe.probe_id == probes.APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(approval_probes) == 2 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert approval_probes[0].observed == "approval_accepted"
     failing = [probe for probe in approval_probes if probe.status == "must-fix"]
-    assert len(failing) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(failing) == 1 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert {probe.observed for probe in failing} == {
         "fail_open_replay_or_mutation_accepted"
     }
@@ -435,7 +429,7 @@ def test_runtime_focused_scenarios_isolate_only_their_declared_defect(
         for finding in result.findings
         if finding.status not in _CONFORMANT_STATUSES
     }
-    assert unresolved == _RUNTIME_FOCUSED_UNRESOLVED[fixture_name], (
+    assert unresolved == expected_defects, (
         fixture_name,
         sorted(
             (finding.finding_id, finding.status, finding.reason_code)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime, timezone
 import re
+from types import MappingProxyType
 
 from skills._shared.manifest import (
     ManifestValidationError,
@@ -37,6 +38,38 @@ ENFORCEMENT_PATHS = frozenset(
 )
 CONSEQUENCES = frozenset(
     {"read", "write", "external-egress", "irreversible", "unknown"}
+)
+CONTRACT_REQUIREMENT_TOKENS = frozenset(
+    {
+        "approval",
+        "human-approval-record",
+        "output",
+        "output-mediation",
+        "durable-audit",
+        "audit",
+        "decision-receipt",
+        "idempotency",
+        "idempotency-or-transaction",
+        "signed-policy-bundle",
+        "operator-review",
+        "authorization",
+    }
+)
+_PROBE_REQUIREMENT_DIMENSIONS = MappingProxyType(
+    {
+        "approval": "approval",
+        "human-approval-record": "approval",
+        "output": "output",
+        "output-mediation": "output",
+        "durable-audit": "durable_audit",
+        "audit": "durable_audit",
+        "decision-receipt": "durable_audit",
+        "idempotency": None,
+        "idempotency-or-transaction": None,
+        "signed-policy-bundle": None,
+        "operator-review": None,
+        "authorization": None,
+    }
 )
 
 _INTERVENTION_POINTS = frozenset(
@@ -123,6 +156,18 @@ def _require_non_blank_list_string(value, field):
     if not value.strip():
         _raise(f"{field} must be a non-empty string")
     return value
+
+
+def normalize_requirement_token(value, field="requirement"):
+    value = _require_non_blank_string(value, field)
+    normalized = value.lower().replace("_", "-")
+    if normalized not in CONTRACT_REQUIREMENT_TOKENS:
+        _raise(f"{field} declares unsupported requirement {value!r}")
+    return normalized
+
+
+def probe_requirement_dimension(value):
+    return _PROBE_REQUIREMENT_DIMENSIONS[normalize_requirement_token(value)]
 
 
 def _require_identifier(value, field):
@@ -310,7 +355,9 @@ def _validate_lifecycle_binding(raw, *, runtime):
             allow_empty=False,
         ),
         "requires": _require_unique_string_list(
-            binding["requires"], f"{field}.requires"
+            binding["requires"],
+            f"{field}.requires",
+            item_validator=normalize_requirement_token,
         ),
     }
 
@@ -355,7 +402,9 @@ def _validate_contract_tool(raw, *, runtime, as_of=None):
         f"{field}.safe_principles",
     )
     normalized["requires"] = _require_unique_string_list(
-        tool["requires"], f"{field}.requires"
+        tool["requires"],
+        f"{field}.requires",
+        item_validator=normalize_requirement_token,
     )
     if "acceptance_record" in tool:
         normalized["acceptance_record"] = _validate_acceptance_record(

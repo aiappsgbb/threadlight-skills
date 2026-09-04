@@ -49,6 +49,7 @@ from dataclasses import dataclass, replace
 import canonical
 import contracts
 from contracts import ActionRecord, Finding, Status
+from skills._shared import governance as shared_governance
 
 
 class InventoryError(ValueError):
@@ -103,17 +104,6 @@ _SAFE_REQUIREMENT_KEYS: Tuple[str, ...] = (
     "audit",
 )
 
-_RECOGNIZED_BINDING_REQUIREMENT_KEYS: Mapping[str, str] = MappingProxyType(
-    {
-        "approval": "approval",
-        "human_approval_record": "approval",
-        "output": "output",
-        "output_mediation": "output",
-        "durable_audit": "durable_audit",
-        "idempotency": "idempotency",
-    }
-)
-
 _POLICY_GLOBS: Tuple[str, ...] = (
     "governance/**/*.json",
     "governance/**/*.yaml",
@@ -152,7 +142,7 @@ def _sha256_prefixed(data: bytes) -> str:
     return f"sha256:{canonical.sha256_hex(data)}"
 
 
-def _normalize_action_id(raw: str) -> str:
+def normalize_action_id(raw: str) -> str:
     return str(raw).strip().lower()
 
 
@@ -200,7 +190,7 @@ def _extract_action_ids(section_text: str) -> Set[str]:
     ids: Set[str] = set()
     for token in _BACKTICK_TOKEN_PATTERN.findall(section_text):
         if _ACTION_ID_PATTERN.match(token):
-            ids.add(_normalize_action_id(token))
+            ids.add(normalize_action_id(token))
     return ids
 
 
@@ -443,6 +433,17 @@ def _normalize_policy_binding(
 def _normalize_binding_requirements(
     raw: object, *, action_id: str, source_desc: str
 ) -> Tuple[Optional[bool], Optional[bool], Optional[bool]]:
+    def _proof_dimension(value: str) -> Optional[str]:
+        try:
+            return shared_governance.probe_requirement_dimension(
+                shared_governance.normalize_requirement_token(value)
+            )
+        except shared_governance.GovernanceContractError as error:
+            raise InventoryError(
+                f"{source_desc}: action '{action_id}' field 'requires' declares "
+                f"unsupported requirement {value!r}"
+            ) from error
+
     if raw is None:
         return None, None, None
     if isinstance(raw, (list, tuple)):
@@ -453,15 +454,9 @@ def _normalize_binding_requirements(
                     f"{source_desc}: action '{action_id}' field 'requires' must contain "
                     "only strings when declared as a list"
                 )
-            name = _RECOGNIZED_BINDING_REQUIREMENT_KEYS.get(
-                member.strip().lower().replace("-", "_")
-            )
-            if name is None:
-                raise InventoryError(
-                    f"{source_desc}: action '{action_id}' field 'requires' declares "
-                    f"unsupported requirement {member!r}"
-                )
-            normalized_names.add(name)
+            name = _proof_dimension(member)
+            if name is not None:
+                normalized_names.add(name)
         return (
             True if "approval" in normalized_names else None,
             True if "output" in normalized_names else None,
@@ -484,15 +479,9 @@ def _normalize_binding_requirements(
             raise InventoryError(
                 f"{source_desc}: action '{action_id}' field 'requires.{key}' must be a boolean"
             )
-        name = _RECOGNIZED_BINDING_REQUIREMENT_KEYS.get(
-            key.strip().lower().replace("-", "_")
-        )
-        if name is None:
-            raise InventoryError(
-                f"{source_desc}: action '{action_id}' field 'requires' declares "
-                f"unsupported requirement {key!r}"
-            )
-        normalized[name] = value
+        name = _proof_dimension(key)
+        if name is not None:
+            normalized[name] = value
 
     return (
         normalized.get("approval"),
@@ -514,7 +503,7 @@ def _build_registry_action_record(
         raise InventoryError(
             f"registry entry in {declaration_ref} is missing a required 'id'"
         )
-    action_id = _normalize_action_id(raw_entry["id"])
+    action_id = normalize_action_id(raw_entry["id"])
     source_desc = f"registry file {declaration_ref}"
 
     consequence, secondary = _normalize_consequence(
@@ -680,11 +669,11 @@ def _alias_owner_map(registry: Mapping[str, ActionRecord]) -> Dict[str, Set[str]
     owners: Dict[str, Set[str]] = {}
     for action_id, record in registry.items():
         for alias in record.aliases:
-            owners.setdefault(_normalize_action_id(alias), set()).add(action_id)
+            owners.setdefault(normalize_action_id(alias), set()).add(action_id)
     return owners
 
 
-def _build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
+def build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
     """Map each *unambiguous* registry alias to its one canonical action ID.
 
     An alias claimed by more than one action is ambiguous — that ambiguity
@@ -701,7 +690,7 @@ def _build_alias_index(registry: Mapping[str, ActionRecord]) -> Dict[str, str]:
     }
 
 
-def _canonicalize_action_id(
+def canonicalize_action_id(
     raw_id: str, registry: Mapping[str, ActionRecord], alias_index: Mapping[str, str]
 ) -> str:
     """Resolve a discovered (Python/SPEC) *raw_id* to its canonical action ID.
@@ -714,9 +703,10 @@ def _canonicalize_action_id(
     match at all, or an alias claimed by more than one action) is
     returned unchanged rather than guessed at.
     """
-    if raw_id in registry:
-        return raw_id
-    return alias_index.get(raw_id, raw_id)
+    normalized = normalize_action_id(raw_id)
+    if normalized in registry:
+        return normalized
+    return alias_index.get(normalized, normalized)
 
 
 def _canonicalize_ref_map(
@@ -725,11 +715,11 @@ def _canonicalize_ref_map(
     alias_index: Mapping[str, str],
 ) -> Dict[str, Tuple[str, ...]]:
     """Resolve every key of a discovered ``action_id -> paths`` map to its
-    canonical action ID (see :func:`_canonicalize_action_id`), merging the
+    canonical action ID (see :func:`canonicalize_action_id`), merging the
     path sets of any raw IDs that resolve to the same canonical ID."""
     merged: Dict[str, Set[str]] = {}
     for raw_id, paths in refs.items():
-        canonical_id = _canonicalize_action_id(raw_id, registry, alias_index)
+        canonical_id = canonicalize_action_id(raw_id, registry, alias_index)
         merged.setdefault(canonical_id, set()).update(paths)
     return {action_id: tuple(sorted(paths)) for action_id, paths in merged.items()}
 
@@ -823,14 +813,14 @@ def _discover_python_tool_refs(root: Path) -> Dict[str, Tuple[str, ...]]:
                         if isinstance(decorator, ast.Call)
                         else None
                     )
-                    action_id = _normalize_action_id(literal or node.name)
+                    action_id = normalize_action_id(literal or node.name)
                     refs.setdefault(action_id, set()).add(relative)
             elif isinstance(node, ast.Call):
                 call_name = _decorator_or_call_name(node)
                 if call_name in _RECOGNIZED_CALLS:
                     literal = _literal_name_kwarg(node)
                     if literal is not None:
-                        refs.setdefault(_normalize_action_id(literal), set()).add(relative)
+                        refs.setdefault(normalize_action_id(literal), set()).add(relative)
     return {action_id: tuple(sorted(paths)) for action_id, paths in refs.items()}
 
 
@@ -937,7 +927,7 @@ def build_action_inventory(root: Path) -> InventoryResult:
     root_path = Path(root)
 
     registry = parse_action_registries(root_path)
-    alias_index = _build_alias_index(registry)
+    alias_index = build_alias_index(registry)
 
     raw_python_refs = _discover_python_tool_refs(root_path)
     python_refs = _canonicalize_ref_map(raw_python_refs, registry, alias_index)
@@ -946,7 +936,7 @@ def build_action_inventory(root: Path) -> InventoryResult:
     section_text = _read_section_8_text(spec_path)
     raw_spec_action_ids = _extract_action_ids(section_text)
     spec_action_ids = {
-        _canonicalize_action_id(action_id, registry, alias_index)
+        canonicalize_action_id(action_id, registry, alias_index)
         for action_id in raw_spec_action_ids
     }
     spec_section_sha256 = _sha256_prefixed(section_text.encode("utf-8"))
