@@ -1325,10 +1325,93 @@ def test_context_manager_scoped_pre_action_seam_is_not_credited(
     actions = inventory.build_action_inventory(tmp_path).actions
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
     path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
 
     assert path.pre_action_seam is None
     assert path.covered is False
-    assert path.static_assessment == "bypass-proven"
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in findings)
+    assert not any(f.finding_id == "MED-001" for f in findings)
+
+
+def test_try_scoped_pre_action_seam_stays_incomplete_with_honest_receipt(
+    tmp_path: Path,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                try:
+                    agent_hooks.pre_tool_call(**kwargs)
+                except RuntimeError:
+                    pass
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
+
+    assert path.pre_action_seam is None
+    assert path.covered is False
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in findings)
+    assert not any(f.finding_id == "MED-001" for f in findings)
 
 
 def test_helper_delegation_with_valid_receipt_stays_not_verified(

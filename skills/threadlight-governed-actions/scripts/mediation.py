@@ -388,6 +388,7 @@ def _iter_calls_in_order(node: ast.AST, conditional: bool = False):
 @dataclass
 class _CallTrace:
     pre_action_seam: Optional[int] = None
+    pre_action_seam_candidate: Optional[int] = None
     approval_check: Optional[int] = None
     tool_service: Optional[int] = None
     provider: Optional[int] = None
@@ -420,12 +421,11 @@ def _trace_calls(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> _CallTrac
     for statement in func_node.body:
         for call, conditional in _iter_calls_in_order(statement):
             qualified = _call_qualified_name(call)
-            if (
-                qualified == _PRE_ACTION_SEAM_CALL
-                and not conditional
-                and trace.pre_action_seam is None
-            ):
-                trace.pre_action_seam = position
+            if qualified == _PRE_ACTION_SEAM_CALL:
+                if trace.pre_action_seam_candidate is None:
+                    trace.pre_action_seam_candidate = position
+                if not conditional and trace.pre_action_seam is None:
+                    trace.pre_action_seam = position
             elif (
                 qualified == _APPROVAL_CHECK_CALL
                 and not conditional
@@ -553,17 +553,15 @@ def _build_ast_index(
 
 def _node_evidence(
     func_node: "ast.FunctionDef | ast.AsyncFunctionDef", mode: str
-) -> Tuple[Tuple[str, ...], bool]:
-    """Return ``(nodes, is_bypass)`` for one already-located dispatch
+) -> Tuple[Tuple[str, ...], str]:
+    """Return ``(nodes, static_assessment)`` for one located dispatch
     function definition, from its own traced calls alone.
 
-    ``is_bypass`` is true exactly when this definition's own body reaches
-    a state change (``tool_service.*``/``provider.*``) without a
-    pre-action seam call proven to precede it — the same test
-    :func:`_recompute_coverage` applies, computed early so duplicate
-    definitions of the same dispatch name can be reduced (see
-    :func:`_best_definition_evidence`) before a single ``(nodes,
-    found_relative)`` result is chosen for the whole file.
+    A state change is ``bypass-proven`` only when no recognized seam-call
+    candidate occurs before it. A candidate hidden by conditional control
+    flow is not enough to prove mediation, but its presence also prevents
+    static analysis from claiming that the path definitely has no seam;
+    that path is ``incomplete`` until execution evidence resolves it.
     """
     trace = _trace_calls(func_node)
     state_positions = [
@@ -580,6 +578,11 @@ def _node_evidence(
         trace.pre_action_seam is not None
         and state_change_pos is not None
         and trace.pre_action_seam < state_change_pos
+    )
+    seam_candidate_precedes_service = (
+        trace.pre_action_seam_candidate is not None
+        and state_change_pos is not None
+        and trace.pre_action_seam_candidate < state_change_pos
     )
 
     nodes: List[str] = ["entry"]
@@ -605,13 +608,18 @@ def _node_evidence(
     if trace.audit_sink is not None:
         nodes.append("audit-sink")
 
-    is_bypass = state_change_pos is not None and not seam_precedes_service
-    return tuple(nodes), is_bypass
+    if seam_precedes_service:
+        static_assessment = "mediated-candidate"
+    elif state_change_pos is not None and not seam_candidate_precedes_service:
+        static_assessment = "bypass-proven"
+    else:
+        static_assessment = "incomplete"
+    return tuple(nodes), static_assessment
 
 
 def _best_definition_evidence(
     func_nodes: Tuple["ast.FunctionDef | ast.AsyncFunctionDef", ...], mode: str
-) -> Tuple[Tuple[str, ...], bool]:
+) -> Tuple[Tuple[str, ...], str]:
     """Reduce every same-named definition within one file to one verdict.
 
     Any evidenced bypass among the definitions always wins over a
@@ -627,9 +635,9 @@ def _best_definition_evidence(
     yet) is the one that matters.
     """
     evaluated = [_node_evidence(node, mode) for node in func_nodes]
-    for nodes, is_bypass in evaluated:
-        if is_bypass:
-            return nodes, is_bypass
+    for nodes, static_assessment in evaluated:
+        if static_assessment == "bypass-proven":
+            return nodes, static_assessment
     return evaluated[-1]
 
 
@@ -639,8 +647,8 @@ def _static_evidence(
     mode: str,
     ast_index: _AstIndex,
     candidate_files: Tuple[Path, ...],
-) -> Optional[Tuple[Tuple[str, ...], str]]:
-    """Return ``(nodes, found_relative)`` from static AST scanning, or
+) -> Optional[Tuple[Tuple[str, ...], str, str]]:
+    """Return ``(nodes, found_relative, static_assessment)`` from static AST scanning, or
     ``None`` if no matching dispatch function was found anywhere.
 
     Every candidate file is scanned — not just the first one where the
@@ -649,10 +657,9 @@ def _static_evidence(
     mediated implementation left behind alongside a newer bypassing one),
     and (via :func:`_best_definition_evidence`) more than once *within*
     one module too. Whenever any candidate's evidence proves a bypass (a
-    state change with no pre-action seam actually preceding it, and never
-    inferred from a closure that is merely defined but never proven
-    called, or from a call reached only through a conditional branch —
-    see :func:`_trace_calls`), that bypass evidence always wins over a
+    state change with no recognized pre-action seam candidate preceding
+    it, and never inferred from a closure that is merely defined but never
+    proven called — see :func:`_trace_calls`), that bypass evidence always wins over a
     duplicate's mediated evidence — a real bypass is never masked just
     because a differently-named or earlier-sorted file happens to look
     clean. Only when no candidate shows a bypass does the first file (in
@@ -663,7 +670,7 @@ def _static_evidence(
     re-parsed/re-walked per lookup.
     """
     function_name = _mode_action_function_name(action.action_id, mode)
-    matches: List[Tuple[Tuple[str, ...], str, bool]] = []
+    matches: List[Tuple[Tuple[str, ...], str, str]] = []
 
     for candidate in candidate_files:
         functions = ast_index.get(candidate)
@@ -673,18 +680,17 @@ def _static_evidence(
         if not func_nodes:
             continue
 
-        nodes, is_bypass = _best_definition_evidence(func_nodes, mode)
+        nodes, static_assessment = _best_definition_evidence(func_nodes, mode)
         found_relative = candidate.relative_to(root.resolve()).as_posix()
-        matches.append((nodes, found_relative, is_bypass))
+        matches.append((nodes, found_relative, static_assessment))
 
     if not matches:
         return None
 
-    for nodes, found_relative, is_bypass in matches:
-        if is_bypass:
-            return nodes, found_relative
-    first_nodes, first_found_relative, _ = matches[0]
-    return first_nodes, first_found_relative
+    for nodes, found_relative, static_assessment in matches:
+        if static_assessment == "bypass-proven":
+            return nodes, found_relative, static_assessment
+    return matches[0]
 
 
 # ---------------------------------------------------------------------------
@@ -986,15 +992,7 @@ def _build_path(
     """
     static = _static_evidence(root, action, mode, ast_index, candidate_files)
     if static is not None:
-        nodes, found_relative = static
-        statically_covered, _static_status = _recompute_coverage(nodes)
-        static_assessment = (
-            "mediated-candidate"
-            if statically_covered
-            else "bypass-proven"
-            if "tool-service" in nodes
-            else "incomplete"
-        )
+        nodes, found_relative, static_assessment = static
         evidence_refs = tuple(
             sorted(set(entry_refs) | {found_relative})
         )

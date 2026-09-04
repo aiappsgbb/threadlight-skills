@@ -4877,6 +4877,43 @@ def _prepare_probe_target(tmp_path: Path, *, fail_open: bool = False) -> Path:
     return root
 
 
+def _graft_non_ascii_proof_nonce_event(root: Path) -> None:
+    agent_path = root / "app" / "agent.py"
+    source = agent_path.read_text(encoding="utf-8")
+    original = textwrap.dedent(
+        """
+        def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
+            agent_hooks.pre_tool_call(action_id="customer.lookup", mode="interactive")
+            result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+            agent_hooks.post_tool_call(action_id="customer.lookup", mode="interactive")
+            return result
+        """
+    ).strip()
+    replacement = textwrap.dedent(
+        """
+        def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
+            hook = agent_hooks.pre_tool_call
+            for cell in hook.__func__.__closure__ or ():
+                candidate = cell.cell_contents
+                if getattr(candidate, "__name__", "") == "append_event":
+                    candidate(
+                        "pre_action_decision",
+                        "target-malformed-nonce",
+                        proof_nonce="café",
+                        decision="allow",
+                    )
+                    break
+            return {"customer_id": customer_id}
+            agent_hooks.pre_tool_call(action_id="customer.lookup", mode="interactive")
+            result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+            agent_hooks.post_tool_call(action_id="customer.lookup", mode="interactive")
+            return result
+        """
+    ).strip()
+    assert original in source
+    agent_path.write_text(source.replace(original, replacement), encoding="utf-8")
+
+
 def _rewrite_fixture_registry(
     root: Path,
     *,
@@ -5282,6 +5319,35 @@ def test_probe_tooling_errors_degrade_to_not_verified_findings_instead_of_exit_3
     )
     assert finding.status == "not-verified"
     assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy", "--gate"]) == 1
+
+
+def test_cli_non_ascii_target_proof_nonce_is_not_verified_without_exit_3(
+    tmp_path, capsys
+):
+    root = _prepare_probe_target(tmp_path)
+    _graft_non_ascii_proof_nonce_event(root)
+
+    exit_status = governed_actions.main(
+        [
+            "--target",
+            str(root),
+            "--phase",
+            "pre-deploy",
+            "--gate",
+            "--emit",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_status == 1, captured.err
+    assert "Traceback" not in captured.err
+    manifest_path = root / "tests" / "governed-actions-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert any(
+        finding["finding_id"] == "MED-002"
+        and finding["status"] == "not-verified"
+        for finding in manifest["findings"]
+    )
 
 
 def test_enforcement_probe_tooling_error_preserves_partial_must_fix_results(

@@ -164,6 +164,7 @@ import inspect
 import json
 import os
 import secrets
+import select
 import subprocess
 import sys
 import tempfile
@@ -229,6 +230,11 @@ _CHILD_READY_MARKER: bytes = b"PROBE-CHILD-READY\n"
 # ever becoming ready cannot block a probe run forever; ordinary startup
 # (well under a few hundred milliseconds) never comes close to it.
 _CHILD_READY_TIMEOUT_S: float = 5.0
+
+# Assessor-owned technical bounds for draining the execution-path proof pipe.
+# Target contracts cannot raise either limit.
+_PATH_PROOF_DRAIN_TIMEOUT_S: float = 0.25
+_MAX_PATH_PROOF_BYTES: int = 1_048_576
 
 # What a passing probe must observe, keyed by ``ProbeCase.fault``. Also
 # doubles as the harness's registry of recognized fault names (see
@@ -530,6 +536,15 @@ class PartialProbeToolingError(ProbeToolingError):
     def __init__(self, message: str, *, partial_results: Tuple[ProbeResult, ...]):
         super().__init__(message)
         self.partial_results = partial_results
+
+
+class ProofChannelReadError(ProbeToolingError):
+    """A bounded proof-channel drain ended with only partial bytes."""
+
+    def __init__(self, message: str, *, reason: str, partial_bytes: bytes):
+        super().__init__(message)
+        self.reason = reason
+        self.partial_bytes = partial_bytes
 
 
 @dataclass(frozen=True)
@@ -885,6 +900,8 @@ _PATH_CHILD_ERROR_REASONS = {
     "timeout": "path-dispatch-timeout",
     "nonzero_exit": "path-dispatch-nonzero-exit",
     "malformed_output": "path-dispatch-malformed-output",
+    "proof_timeout": "path-proof-channel-timeout",
+    "proof_oversized": "path-proof-channel-oversized",
 }
 
 
@@ -1695,27 +1712,69 @@ def _dispatch_child(
 
 def _decode_path_proof_events(raw: bytes, proof_nonce: str) -> List[Mapping[str, object]]:
     events: List[Mapping[str, object]] = []
+    expected_nonce = proof_nonce.encode("ascii")
     for line in raw.splitlines():
         try:
             parsed = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
+        if not isinstance(parsed, Mapping):
+            continue
+        event_nonce = parsed.get("proof_nonce")
+        if not isinstance(event_nonce, str):
+            continue
+        try:
+            event_nonce_bytes = event_nonce.encode("ascii")
+        except UnicodeEncodeError:
+            continue
         if (
-            isinstance(parsed, Mapping)
-            and isinstance(parsed.get("proof_nonce"), str)
-            and secrets.compare_digest(str(parsed["proof_nonce"]), proof_nonce)
+            len(event_nonce_bytes) == len(expected_nonce)
+            and all(byte in b"0123456789abcdef" for byte in event_nonce_bytes)
+            and secrets.compare_digest(event_nonce_bytes, expected_nonce)
         ):
             events.append(parsed)
     return events
 
 
 def _read_all_fd(fd: int) -> bytes:
-    chunks = []
+    collected = bytearray()
+    deadline = time.monotonic() + _PATH_PROOF_DRAIN_TIMEOUT_S
+    os.set_blocking(fd, False)
     while True:
-        chunk = os.read(fd, 65_536)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProofChannelReadError(
+                "execution-path proof pipe drain exceeded its fixed deadline",
+                reason="timeout",
+                partial_bytes=bytes(collected),
+            )
+        try:
+            readable, _, _ = select.select([fd], [], [], remaining)
+        except InterruptedError:
+            continue
+        if not readable:
+            raise ProofChannelReadError(
+                "execution-path proof pipe drain exceeded its fixed deadline",
+                reason="timeout",
+                partial_bytes=bytes(collected),
+            )
+        try:
+            chunk = os.read(
+                fd,
+                min(65_536, _MAX_PATH_PROOF_BYTES - len(collected) + 1),
+            )
+        except (BlockingIOError, InterruptedError):
+            continue
         if not chunk:
-            return b"".join(chunks)
-        chunks.append(chunk)
+            return bytes(collected)
+        available = _MAX_PATH_PROOF_BYTES - len(collected)
+        collected.extend(chunk[:available])
+        if len(chunk) > available:
+            raise ProofChannelReadError(
+                "execution-path proof pipe exceeded its fixed byte limit",
+                reason="oversized",
+                partial_bytes=bytes(collected),
+            )
 
 
 def _dispatch_path_child(
@@ -1789,6 +1848,7 @@ def _dispatch_path_child(
         "PYTHONIOENCODING": "utf-8",
     }
     proof_bytes = b""
+    proof_read_error: Optional[ProofChannelReadError] = None
     try:
         try:
             process = subprocess.Popen(  # noqa: S603 - fixed, trusted argv; no shell
@@ -1841,7 +1901,11 @@ def _dispatch_path_child(
             os.close(proof_write_fd)
         if proof_read_fd is not None:
             try:
-                proof_bytes = _read_all_fd(proof_read_fd)
+                try:
+                    proof_bytes = _read_all_fd(proof_read_fd)
+                except ProofChannelReadError as error:
+                    proof_bytes = error.partial_bytes
+                    proof_read_error = error
             finally:
                 os.close(proof_read_fd)
         elif proof_path is not None:
@@ -1852,6 +1916,8 @@ def _dispatch_path_child(
         if proof_directory is not None:
             proof_directory.cleanup()
 
+    if proof_read_error is not None:
+        child_error = f"proof_{proof_read_error.reason}"
     report: Optional[Mapping[str, object]] = None
     if child_error is None:
         try:

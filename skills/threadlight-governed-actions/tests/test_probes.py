@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -375,6 +376,129 @@ def test_execution_path_runner_reports_proof_pipe_creation_failure(
 
     with pytest.raises(probes.PartialProbeToolingError, match="proof channel"):
         probes.run_execution_path_probe_set(root, paths)
+
+
+def test_execution_path_proof_decoder_ignores_non_ascii_nonce_event():
+    proof_nonce = "a" * 64
+    malformed = {
+        "event": "pre_action_decision",
+        "evidence_id": "target-malformed-nonce",
+        "proof_nonce": "café",
+    }
+    valid = {
+        "event": "routing_target",
+        "evidence_id": "assessor-valid",
+        "proof_nonce": proof_nonce,
+    }
+    raw = b"\n".join(
+        json.dumps(event, ensure_ascii=False).encode("utf-8")
+        for event in (malformed, valid)
+    )
+
+    assert probes._decode_path_proof_events(raw, proof_nonce) == [valid]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_proof_pipe_drain_deadline_survives_inherited_writer():
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:  # pragma: no cover - assertions run in the parent
+        try:
+            os.close(read_fd)
+            os.write(write_fd, b'{"event":"complete"}\n')
+            time.sleep(1.0)
+        except OSError:
+            pass
+        finally:
+            try:
+                os.close(write_fd)
+            finally:
+                os._exit(0)
+
+    os.close(write_fd)
+    started = time.monotonic()
+    try:
+        with pytest.raises(probes.ProofChannelReadError, match="deadline") as caught:
+            probes._read_all_fd(read_fd)
+        drain_elapsed = time.monotonic() - started
+    finally:
+        os.close(read_fd)
+        os.waitpid(pid, 0)
+
+    assert drain_elapsed < 0.75
+    assert caught.value.partial_bytes == b'{"event":"complete"}\n'
+    assert caught.value.reason == "timeout"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_proof_pipe_drain_caps_oversized_stream_memory():
+    max_bytes = probes._MAX_PATH_PROOF_BYTES
+    read_fd, write_fd = os.pipe()
+    complete_event = b'{"event":"complete"}\n'
+    payload = complete_event + b"x" * (max_bytes + 1)
+
+    def _write_oversized_stream() -> None:
+        view = memoryview(payload)
+        try:
+            while view:
+                written = os.write(write_fd, view)
+                view = view[written:]
+        except BrokenPipeError:
+            pass
+        finally:
+            os.close(write_fd)
+
+    writer = threading.Thread(target=_write_oversized_stream)
+    writer.start()
+    try:
+        with pytest.raises(probes.ProofChannelReadError, match="byte limit") as caught:
+            probes._read_all_fd(read_fd)
+    finally:
+        os.close(read_fd)
+        writer.join(timeout=1.0)
+
+    assert not writer.is_alive()
+    assert caught.value.reason == "oversized"
+    assert len(caught.value.partial_bytes) <= max_bytes
+    assert caught.value.partial_bytes.startswith(complete_event)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_partial_proof_drain_keeps_complete_events_as_not_verified(
+    fixture_root: Path, tmp_path: Path, monkeypatch
+):
+    root = fixture_root / "conformant-maf"
+    contract = load_probe_contract(root)
+    binding = contract["execution_paths"][0]
+    original_read = probes._read_all_fd
+
+    def _fail_after_complete_read(fd: int) -> bytes:
+        raw = original_read(fd)
+        raise probes.ProofChannelReadError(
+            "synthetic proof drain deadline",
+            reason="timeout",
+            partial_bytes=raw,
+        )
+
+    monkeypatch.setattr(probes, "_read_all_fd", _fail_after_complete_read)
+    outcome = probes._dispatch_path_child(
+        root.resolve(),
+        contract,
+        binding,
+        tmp_path / "target-ledger.jsonl",
+        "allow",
+    )
+    result = probes._build_path_probe_result(
+        binding,
+        outcome,
+        "assessor:execution-path-proof-channel",
+        "path-dispatch-allow",
+    )
+
+    assert outcome["child_error"] == "proof_timeout"
+    assert outcome["events"]
+    assert result.status == "not-verified"
+    assert result.evidence_items
 
 
 def test_execution_path_binding_rejects_target_path_id_lie(
@@ -827,21 +951,24 @@ def test_target_cannot_glob_and_forge_assessor_path_receipt(
 
 
 def test_path_proof_events_require_exact_assessor_nonce():
+    proof_nonce = "a" * 64
     expected = {
         "event": "pre_action_decision",
-        "proof_nonce": "assessor-nonce",
+        "proof_nonce": proof_nonce,
     }
     forged = {
         "event": "pre_action_decision",
-        "proof_nonce": "target-forgery",
+        "proof_nonce": "b" * 64,
     }
+    non_hex = {"event": "pre_action_decision", "proof_nonce": "g" * 64}
+    wrong_length = {"event": "pre_action_decision", "proof_nonce": "a" * 63}
     missing = {"event": "pre_action_decision"}
     raw = b"\n".join(
         json.dumps(event, sort_keys=True).encode("utf-8")
-        for event in (forged, expected, missing)
+        for event in (forged, non_hex, wrong_length, expected, missing)
     )
 
-    assert probes._decode_path_proof_events(raw, "assessor-nonce") == [expected]
+    assert probes._decode_path_proof_events(raw, proof_nonce) == [expected]
 
 
 def test_execution_path_cannot_pass_without_resolved_identity_in_ledger():

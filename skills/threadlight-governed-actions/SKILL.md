@@ -126,6 +126,11 @@ does not prove that every undeclared entry point, scheduler, provider runtime,
 or deployed request can reach that dispatcher. Production enforcement still
 requires live deployed evidence from the production routing and control plane;
 local path receipts must never be presented as proof of production reachability.
+The assessor-owned proof channel strengthens this local conformance signal, but
+a hostile target still executes in the same child process and remains outside
+the security boundary. Trust comes from the static source assessment, executed
+path receipts, and live deployed evidence collectively; no one layer is
+sufficient by itself.
 
 ## Outputs
 
@@ -258,6 +263,10 @@ Read these as *published limits*, not caveats to be softened later.
   security boundary.** A caller that skips the hook is not stopped by the hook;
   `ENF-002` exists precisely to name that bypass surface and demand a
   compensating control (allow-list, network policy, provider-side restriction).
+- **The local proof channel is not a hostile-process sandbox.** It narrows and
+  authenticates assessor receipts, but target code shares the probe child
+  process. Static, executed, and live layers must corroborate one another rather
+  than treating the channel alone as a security boundary.
 - **The Microsoft Agent Framework (MAF) integration is experimental.** The
   pinned tuple in `references/upstream-pin.json` records the exact spec,
   SDK, CTK, MAF, and conformance-report versions that were tested; drift is
