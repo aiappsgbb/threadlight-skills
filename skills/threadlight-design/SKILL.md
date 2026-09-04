@@ -301,6 +301,39 @@ cover**:
    `deferred_decisions` list for rows acknowledged but out of pilot scope
    (WAF/Front Door, DR runbook).
 
+**Governance interview/output contract (mandatory whenever tools exist).**
+Classify each tool **one question at a time** and record the result in the
+generated governance contract. `governance.mode` may be `off`, `selective`, or
+`comprehensive`; `off`, `selective`, and `comprehensive` are all valid
+operator choices. `off` means no bound tool records and no lifecycle bindings;
+`selective` means only the classified consequential surfaces are bound; and
+`comprehensive` means every consequential or unknown surface must land on a
+supported runtime binding. The environment posture is fixed in the contract:
+`development`/`staging` run `evaluate_only`; `preproduction`/`production` run
+`enforce`. For every tool, emit a structured record with `id`,
+`consequence`, `policy_binding`, `enforcement_path`, `intervention_points`,
+`safe_principles`, and `requires`, plus lifecycle bindings for ingress/egress
+controls. Legacy string tools remain backwards-compatible only as explicit
+`unknown/unbound` placeholders until upgraded.
+
+Treat every **write / external-egress / irreversible** surface as a governance
+interview trigger. Recommend the strongest compatible binding you can support,
+but keep the operator in control: if the selected binding is incompatible with
+the selected framework/runtime, **do not silently change framework/runtime**.
+Surface the incompatibility as a design decision, explain the consequence,
+**offer MAF**, but **retain the selected runtime unless the operator changes it**.
+`comprehensive` must reject unsupported provider-hosted consequential or
+unknown tools; `production-bound` unbound consequential/unknown tools require an
+explicit acceptance record (`owner`, `justification`, `review_date`, `expiry`)
+rather than a silent waiver.
+
+**Terminology guardrail.** **SAFE is the methodology**. **ACS is the PDP**.
+**Agent Hooks is the runtime contract**. **host/gateway is the PEP**. **AGT is
+the toolkit**. **ASSERT is the assurance layer**. `threadlight-safe-check`,
+policy bundles, templates, and CI checks do not enforce runtime behavior on
+their own; they provide design-time and post-deploy evidence that the live ACS +
+Agent Hooks / host-or-gateway path is wired correctly.
+
 **Emit `specs/foundation.md`** using **`references/foundation-template.md`**
 (YAML decision blocks + a short prose rationale + a decision-summary table) and
 carry forward the resolved `policy_route`.
@@ -509,6 +542,13 @@ Reference: `references/process-traits.md`
    > which writes are in scope and document them in § 8 (Human Interaction
    > Points) with their action gates. A regulated process whose write
    > surface stays at "read-only" forever is a tutorial, not a pilot.
+   >
+   > **Governance follow-on:** if discovery reveals **write / external-egress /
+   > irreversible** tools, run the governance interview **one question at a
+   > time**. Record the selected mode (`off`, `selective`, or
+   > `comprehensive`), classify each tool, recommend a supported binding, and
+   > capture any `production-bound` acceptance record instead of hand-waving an
+   > unbound consequential tool through the design.
 
 9. **Is this process better modeled as an agent conversation or a deterministic workflow?** (Workflow Model trait)
    - **Agent** (default) — open-ended chat, RAG-heavy, user-driven exploration, Q&A
@@ -522,9 +562,12 @@ Reference: `references/process-traits.md`
    >
    > **Both are valid.** Agent mode runs as a MAF Agent with skills + tools.
    > Workflow mode runs as a MAF DurableWorkflow with typed executors and HITL
-   > pause points. Both deploy to Foundry via `threadlight-deploy` and get the
-   > same governance (Citadel + AGT), telemetry, and eval chain. The choice
-   > affects only the runtime container shape.
+   > pause points. Both deploy to Foundry via `threadlight-deploy` and can use
+   > the same governance assurance chain: **SAFE is the methodology**, **ACS is
+   > the PDP**, **Agent Hooks is the runtime contract**, **host/gateway is the
+   > PEP**, **AGT is the toolkit**, and **ASSERT is the assurance layer**. The
+   > choice affects the runtime container shape, not whether policy bundles or
+   > CI somehow become live enforcement on their own.
 
 #### Trait-Driven Branching
 
@@ -621,6 +664,7 @@ Must include all sections from the template:
 10. **Trigger & Run Model** — how/when the process executes, volume, SLA
 10b. **Triggers (Receiver contract)** — receiver type, idempotency key, dedup window, dead-letter rule. **INPUT CONTRACT for `threadlight-event-triggers`.** *Required for event-driven and scheduled processes.*
 11. **Security, Compliance & Governance** — PII, auth, retention, regulatory, audit
+11a. **Runtime Governance Contract** — `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`).
 11b. **Governance Posture (AI Governance Hub spoke — opt-in)** — `governance_hub.required` flag + spoke artifacts needed. **INPUT CONTRACT for the optional governance-hub spoke handoff in `threadlight-deploy`.** *Required for every regulated process.*
 11c. **Tech Stack (Module selectors)** — Bicep module on/off list (cosmos, search, doc-intel, speech, event-grid, service-bus, foundry-iq-index, etc.). **INPUT CONTRACT for the `azd-patterns` Bicep module library and the composer in `threadlight-deploy`.** *Required for every process.*
 
@@ -995,7 +1039,9 @@ Machine-readable deployment contract (lives with the spec):
 > `az resource list -g <RG>` after `azd up`. The mechanical
 > implementation is the **`threadlight-safe-check`** skill — invoke
 > `python3 tests/safe_check.py --phase {design|pre-deploy|post-deploy}`
-> at the corresponding lifecycle points. If you flip a selector
+> at the corresponding lifecycle points. That ASSERT step is assurance
+> evidence, not runtime enforcement; the live guardrail still comes from
+> ACS decisions plus Agent Hooks or a host/gateway PEP. If you flip a selector
 > from `yes` to `no` mid-pilot, **delete the corresponding source
 > folder and Bicep module too** ` orphans break the orphan check.
 

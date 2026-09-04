@@ -467,6 +467,87 @@ How and when the process executes.
   (parallel-run period? shadow-mode? full cutover?), what KPIs prove
   adoption stuck.]
 
+### 11a. Runtime Governance Contract
+
+> **INPUT CONTRACT for runtime governance design.** Validate this machine-readable
+> fragment against `references/governance-contract.schema.json`. `governance.mode`
+> may be `off | selective | comprehensive`. `off` and `selective` are allowed;
+> `comprehensive` is only valid when every consequential or unknown tool has a
+> supported runtime binding. `off` means `lifecycle_bindings: []` and no bound
+> tool records. Legacy string tools remain valid where older
+> manifests still permit them, but in this contract they are explicitly
+> `unknown/unbound` until upgraded to the structured form below.
+>
+> **Layering vocabulary.** **SAFE is the methodology**. **ACS is the PDP**.
+> **Agent Hooks is the runtime contract**. **host/gateway is the PEP**.
+> **AGT is the toolkit**. **ASSERT is the assurance layer**. policy bundles, templates, and CI checks do not enforce runtime behavior on their own; they
+> only prove whether the live PDP + PEP path is designed and verified correctly.
+
+```yaml
+framework: github-copilot-sdk | microsoft-agent-framework
+
+governance:
+  mode: selective                    # off | selective | comprehensive
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings:
+    - lifecycle_point: input         # input | pre_model_call | post_model_call | pre_tool_call | post_tool_call | output | startup | shutdown
+      policy_binding: request-ingress-v1
+      enforcement_path: governed-tool-gateway
+      safe_principles: [scope, audit]
+      requires: [signed-policy-bundle]
+    - lifecycle_point: output
+      policy_binding: response-egress-v1
+      enforcement_path: governed-tool-gateway
+      safe_principles: [egress-review, audit]
+      requires: [decision-receipt]
+
+tools:
+  - id: returns_get_case
+    consequence: read                # read | write | external-egress | irreversible | unknown
+    policy_binding: none             # use `none` only for an explicit unbound gap
+    enforcement_path: none           # none | local-agent-hooks | governed-tool-gateway
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+  - id: returns_apply_decision
+    consequence: write
+    policy_binding: returns-write-v1
+    enforcement_path: governed-tool-gateway
+    intervention_points: [pre_tool_call, post_tool_call]
+    safe_principles: [scope, approval, audit]
+    requires: [human-approval-record, signed-policy-bundle]
+  - id: legacy_export
+    consequence: unknown
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [audit]
+    requires: [operator-review]
+    acceptance_record:
+      owner: risk-owner@contoso.com
+      justification: Temporary waiver while a supported binding is being onboarded.
+      review_date: 2026-09-04
+      expiry: 2026-12-31
+```
+
+- `development: evaluate_only` and `staging: evaluate_only` are fixed design-time
+  expectations; `preproduction: enforce` and `production: enforce` are fixed
+  release expectations.
+- If a tool can **write**, perform **external-egress**, or trigger an
+  **irreversible** outcome, classify it explicitly and recommend the strongest
+  supported binding.
+- If the operator selected a runtime whose supported bindings cannot satisfy the
+  recommended policy path, surface that as a design decision. Offer MAF if it
+  would satisfy the requirement, but do not silently switch runtimes in the
+  spec.
+- `production-bound` unbound consequential or unknown tools require an
+  `acceptance_record` with `owner`, `justification`, `review_date`, and
+  `expiry`.
+
 ### 11b. AI Governance Hub Posture (opt-in spoke)
 
 > **INPUT CONTRACT for the optional governance-hub spoke handoff in
