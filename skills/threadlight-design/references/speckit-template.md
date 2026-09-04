@@ -471,7 +471,7 @@ How and when the process executes.
 
 > **INPUT CONTRACT for runtime governance design.** Validate this machine-readable
 > fragment against `references/governance-contract.schema.json`. `governance.mode`
-> may be `off | selective | comprehensive`. `off` and `selective` are allowed;
+> exact contract text: `mode: off | selective | comprehensive`. `off` and `selective` are allowed;
 > `comprehensive` is only valid when every consequential or unknown tool has a
 > supported runtime binding. `off` means `lifecycle_bindings: []` and no bound
 > tool records. Legacy string tools remain valid where older
@@ -487,7 +487,9 @@ How and when the process executes.
 framework: github-copilot-sdk | microsoft-agent-framework
 
 governance:
-  mode: selective                    # off | selective | comprehensive
+  # Exact contract text:
+  #   mode: off | selective | comprehensive
+  mode: selective
   environment_modes:
     development: evaluate_only
     staging: evaluate_only
@@ -530,8 +532,8 @@ tools:
     acceptance_record:
       owner: risk-owner@contoso.com
       justification: Temporary waiver while a supported binding is being onboarded.
-      review_date: 2026-09-04
-      expiry: 2026-12-31
+      review_date: 2026-09-04T00:00:00Z
+      expiry: 2026-12-31T00:00:00Z
 ```
 
 - `development: evaluate_only` and `staging: evaluate_only` are fixed design-time
@@ -546,7 +548,7 @@ tools:
   spec.
 - `production-bound` unbound consequential or unknown tools require an
   `acceptance_record` with `owner`, `justification`, `review_date`, and
-  `expiry`.
+  `expiry`, both recorded as RFC3339 timestamps.
 
 ### 11b. AI Governance Hub Posture (opt-in spoke)
 

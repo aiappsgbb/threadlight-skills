@@ -91,86 +91,13 @@ def valid_contract() -> dict:
     }
 
 
-def validate_governance_contract(document: dict, *, deployment_target: str = "customer-pilot"):
-    governance = governance_module()
-    build_jsonschema_validator().validate(document)
-
-    mode = document["governance"]["mode"]
-    if mode == "off" and document["governance"]["lifecycle_bindings"]:
-        raise governance.GovernanceContractError(
-            "off mode forbids bound lifecycle bindings"
-        )
-    for binding in document["governance"]["lifecycle_bindings"]:
-        governance.normalize_tool(
-            {
-                "id": f"lifecycle.{binding['lifecycle_point']}",
-                "consequence": "read",
-                "policy_binding": binding["policy_binding"],
-                "enforcement_path": binding["enforcement_path"],
-                "intervention_points": [binding["lifecycle_point"]],
-            },
-            runtime=document["framework"],
-        )
-
-    normalized_tools = []
-    seen_ids = set()
-    consequential_or_unknown = {
-        "write",
-        "external-egress",
-        "irreversible",
-        "unknown",
+def valid_acceptance_record() -> dict:
+    return {
+        "owner": "risk-owner@contoso.com",
+        "justification": "Temporary waiver while the governed gateway is being onboarded.",
+        "review_date": "2026-09-04T00:00:00Z",
+        "expiry": "2026-12-31T00:00:00Z",
     }
-
-    for raw_tool in document["tools"]:
-        if isinstance(raw_tool, str):
-            normalized = governance.normalize_tool(
-                raw_tool, runtime=document["framework"]
-            )
-            acceptance_record = None
-        else:
-            normalized = governance.normalize_tool(
-                {
-                    "id": raw_tool["id"],
-                    "consequence": raw_tool["consequence"],
-                    "policy_binding": raw_tool["policy_binding"],
-                    "enforcement_path": raw_tool["enforcement_path"],
-                    "intervention_points": raw_tool["intervention_points"],
-                },
-                runtime=document["framework"],
-            )
-            acceptance_record = raw_tool.get("acceptance_record")
-
-        if normalized["id"] in seen_ids:
-            raise governance.GovernanceContractError("tools.id values must be unique")
-        seen_ids.add(normalized["id"])
-
-        if mode == "off" and normalized["enforcement_path"] != "none":
-            raise governance.GovernanceContractError(
-                "off mode forbids bound tools"
-            )
-
-        if (
-            mode == "comprehensive"
-            and normalized["consequence"] in consequential_or_unknown
-            and normalized["enforcement_path"] == "none"
-        ):
-            raise governance.GovernanceContractError(
-                "comprehensive governance rejects unsupported provider-hosted consequential or unknown tools"
-            )
-
-        if (
-            deployment_target == "production-bound"
-            and normalized["consequence"] in consequential_or_unknown
-            and normalized["enforcement_path"] == "none"
-            and acceptance_record is None
-        ):
-            raise governance.GovernanceContractError(
-                "production-bound unbound consequential or unknown tools require acceptance_record"
-            )
-
-        normalized_tools.append(normalized)
-
-    return normalized_tools
 
 
 def test_template_declares_governance_modes_and_contract_tokens():
@@ -326,10 +253,9 @@ def test_governance_schema_uses_shared_enums_and_disallows_extra_properties():
     schema = governance_schema()
 
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["framework"]["enum"] == [
-        "github-copilot-sdk",
-        "microsoft-agent-framework",
-    ]
+    assert schema["properties"]["framework"]["enum"] == sorted(
+        governance.CONTRACT_FRAMEWORKS
+    )
     assert set(schema["definitions"]["governance"]["properties"]["mode"]["enum"]) == set(
         governance.GOVERNANCE_MODES
     )
@@ -342,31 +268,114 @@ def test_governance_schema_uses_shared_enums_and_disallows_extra_properties():
         schema["definitions"]["structuredTool"]["properties"]["enforcement_path"]["enum"]
     ) == set(governance.ENFORCEMENT_PATHS)
     assert schema["definitions"]["acceptanceRecord"]["additionalProperties"] is False
+    assert "shared validator is authoritative for cross-record rules not schema-expressible" in schema[
+        "description"
+    ]
 
 
 def test_governance_schema_accepts_valid_selective_contract():
+    governance = governance_module()
     document = valid_contract()
     validator = build_jsonschema_validator()
 
     assert list(validator.iter_errors(document)) == []
-    assert validate_governance_contract(document) == [
-        {
-            "id": "returns_apply_decision",
-            "consequence": "write",
-            "policy_binding": "returns-write-v1",
-            "enforcement_path": "governed-tool-gateway",
-            "intervention_points": ["pre_tool_call", "post_tool_call"],
-        }
-    ]
+    assert governance.validate_governance_contract(document) == {
+        "framework": "microsoft-agent-framework",
+        "deployment_target": "customer-pilot",
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only",
+                "staging": "evaluate_only",
+                "preproduction": "enforce",
+                "production": "enforce",
+            },
+            "lifecycle_bindings": [
+                {
+                    "lifecycle_point": "input",
+                    "policy_binding": "request-ingress-v1",
+                    "enforcement_path": "governed-tool-gateway",
+                    "safe_principles": ["scope"],
+                    "requires": ["signed-policy-bundle"],
+                }
+            ],
+        },
+        "tools": [
+            {
+                "id": "returns_apply_decision",
+                "consequence": "write",
+                "policy_binding": "returns-write-v1",
+                "enforcement_path": "governed-tool-gateway",
+                "intervention_points": ["pre_tool_call", "post_tool_call"],
+                "safe_principles": ["scope", "audit"],
+                "requires": ["human-approval-record"],
+            }
+        ],
+    }
 
 
 def test_governance_schema_accepts_lifecycle_only_contract_without_tools():
+    governance = governance_module()
     document = valid_contract()
     document["tools"] = []
     validator = build_jsonschema_validator()
 
     assert list(validator.iter_errors(document)) == []
-    assert validate_governance_contract(document) == []
+    assert governance.validate_governance_contract(document) == {
+        "framework": "microsoft-agent-framework",
+        "deployment_target": "customer-pilot",
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only",
+                "staging": "evaluate_only",
+                "preproduction": "enforce",
+                "production": "enforce",
+            },
+            "lifecycle_bindings": [
+                {
+                    "lifecycle_point": "input",
+                    "policy_binding": "request-ingress-v1",
+                    "enforcement_path": "governed-tool-gateway",
+                    "safe_principles": ["scope"],
+                    "requires": ["signed-policy-bundle"],
+                }
+            ],
+        },
+        "tools": [],
+    }
+
+
+def test_governance_schema_rejects_off_mode_with_bound_lifecycle_or_tool():
+    document = valid_contract()
+    document["governance"]["mode"] = "off"
+    validator = build_jsonschema_validator()
+
+    messages = [error.message for error in validator.iter_errors(document)]
+    assert messages
+    assert any("lifecycle_bindings" in message or "enforcement_path" in message for message in messages)
+
+
+def test_governance_schema_rejects_comprehensive_unbound_consequential_and_unknown_tools():
+    document = valid_contract()
+    document["governance"]["mode"] = "comprehensive"
+    document["tools"] = [
+        {
+            "id": "returns_apply_decision",
+            "consequence": "write",
+            "policy_binding": "none",
+            "enforcement_path": "none",
+            "intervention_points": [],
+            "safe_principles": ["scope", "audit"],
+            "requires": ["human-approval-record"],
+        },
+        "legacy_export",
+    ]
+    validator = build_jsonschema_validator()
+
+    messages = [error.message for error in validator.iter_errors(document)]
+    assert messages
+    assert any("none" in message or "structuredTool" in message for message in messages)
 
 
 def test_validation_helper_rejects_ghcp_local_agent_hooks():
@@ -376,7 +385,7 @@ def test_validation_helper_rejects_ghcp_local_agent_hooks():
     document["tools"][0]["enforcement_path"] = "local-agent-hooks"
 
     with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
-        validate_governance_contract(document)
+        governance.validate_governance_contract(document)
 
 
 def test_validation_helper_rejects_off_mode_with_bound_contract():
@@ -385,7 +394,7 @@ def test_validation_helper_rejects_off_mode_with_bound_contract():
     document["governance"]["mode"] = "off"
 
     with pytest.raises(governance.GovernanceContractError, match="off"):
-        validate_governance_contract(document)
+        governance.validate_governance_contract(document)
 
 
 def test_validation_helper_rejects_ghcp_local_agent_hooks_for_lifecycle_binding():
@@ -397,10 +406,11 @@ def test_validation_helper_rejects_ghcp_local_agent_hooks_for_lifecycle_binding(
     )
 
     with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
-        validate_governance_contract(document)
+        governance.validate_governance_contract(document)
 
 
 def test_selective_none_allowed_for_read_tool():
+    governance = governance_module()
     document = valid_contract()
     document["framework"] = "github-copilot-sdk"
     document["tools"] = [
@@ -415,15 +425,39 @@ def test_selective_none_allowed_for_read_tool():
         }
     ]
 
-    assert validate_governance_contract(document) == [
-        {
-            "id": "returns_get_case",
-            "consequence": "read",
-            "policy_binding": None,
-            "enforcement_path": "none",
-            "intervention_points": [],
-        }
-    ]
+    assert governance.validate_governance_contract(document) == {
+        "framework": "github-copilot-sdk",
+        "deployment_target": "customer-pilot",
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only",
+                "staging": "evaluate_only",
+                "preproduction": "enforce",
+                "production": "enforce",
+            },
+            "lifecycle_bindings": [
+                {
+                    "lifecycle_point": "input",
+                    "policy_binding": "request-ingress-v1",
+                    "enforcement_path": "governed-tool-gateway",
+                    "safe_principles": ["scope"],
+                    "requires": ["signed-policy-bundle"],
+                }
+            ],
+        },
+        "tools": [
+            {
+                "id": "returns_get_case",
+                "consequence": "read",
+                "policy_binding": None,
+                "enforcement_path": "none",
+                "intervention_points": [],
+                "safe_principles": ["scope"],
+                "requires": [],
+            }
+        ],
+    }
 
 
 def test_validation_helper_rejects_duplicate_tool_ids():
@@ -442,7 +476,7 @@ def test_validation_helper_rejects_duplicate_tool_ids():
     )
 
     with pytest.raises(governance.GovernanceContractError, match="unique"):
-        validate_governance_contract(document)
+        governance.validate_governance_contract(document)
 
 
 def test_validation_helper_rejects_comprehensive_provider_hosted_consequential_tool():
@@ -455,7 +489,7 @@ def test_validation_helper_rejects_comprehensive_provider_hosted_consequential_t
     document["tools"][0]["intervention_points"] = []
 
     with pytest.raises(governance.GovernanceContractError, match="comprehensive"):
-        validate_governance_contract(document)
+        governance.validate_governance_contract(document)
 
 
 def test_production_bound_unknown_or_unbound_requires_acceptance_record():
@@ -475,26 +509,117 @@ def test_production_bound_unknown_or_unbound_requires_acceptance_record():
     ]
 
     with pytest.raises(governance.GovernanceContractError, match="acceptance_record"):
-        validate_governance_contract(document, deployment_target="production-bound")
+        governance.validate_governance_contract(
+            document, deployment_target="production-bound"
+        )
 
-    document["tools"][0]["acceptance_record"] = {
-        "owner": "risk-owner@contoso.com",
-        "justification": "Temporary waiver while the governed gateway is being onboarded.",
-        "review_date": "2026-09-04",
-        "expiry": "2026-12-31",
+    document["tools"][0]["acceptance_record"] = valid_acceptance_record()
+
+    assert governance.validate_governance_contract(
+        document, deployment_target="production-bound"
+    ) == {
+        "framework": "github-copilot-sdk",
+        "deployment_target": "production-bound",
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only",
+                "staging": "evaluate_only",
+                "preproduction": "enforce",
+                "production": "enforce",
+            },
+            "lifecycle_bindings": [
+                {
+                    "lifecycle_point": "input",
+                    "policy_binding": "request-ingress-v1",
+                    "enforcement_path": "governed-tool-gateway",
+                    "safe_principles": ["scope"],
+                    "requires": ["signed-policy-bundle"],
+                }
+            ],
+        },
+        "tools": [
+            {
+                "id": "legacy_export",
+                "consequence": "unknown",
+                "policy_binding": None,
+                "enforcement_path": "none",
+                "intervention_points": [],
+                "safe_principles": ["audit"],
+                "requires": [],
+                "acceptance_record": valid_acceptance_record(),
+            }
+        ],
     }
 
-    assert validate_governance_contract(
-        document, deployment_target="production-bound"
-    ) == [
+
+def test_production_bound_unbound_write_requires_acceptance_record():
+    governance = governance_module()
+    document = valid_contract()
+    document["framework"] = "github-copilot-sdk"
+    document["tools"][0]["policy_binding"] = "none"
+    document["tools"][0]["enforcement_path"] = "none"
+    document["tools"][0]["intervention_points"] = []
+
+    with pytest.raises(governance.GovernanceContractError, match="acceptance_record"):
+        governance.validate_governance_contract(
+            document, deployment_target="production-bound"
+        )
+
+
+def test_validation_helper_rejects_partial_acceptance_record_missing_expiry():
+    governance = governance_module()
+    document = valid_contract()
+    document["framework"] = "github-copilot-sdk"
+    document["tools"] = [
         {
             "id": "legacy_export",
             "consequence": "unknown",
-            "policy_binding": None,
+            "policy_binding": "none",
             "enforcement_path": "none",
             "intervention_points": [],
+            "safe_principles": ["audit"],
+            "requires": [],
+            "acceptance_record": {
+                "owner": "risk-owner@contoso.com",
+                "justification": "Temporary waiver while the governed gateway is being onboarded.",
+                "review_date": "2026-09-04T00:00:00Z",
+            },
         }
     ]
+
+    with pytest.raises(governance.GovernanceContractError, match="expiry"):
+        governance.validate_governance_contract(
+            document, deployment_target="production-bound"
+        )
+
+
+def test_validation_helper_rejects_acceptance_record_expiry_before_review_date():
+    governance = governance_module()
+    document = valid_contract()
+    document["framework"] = "github-copilot-sdk"
+    document["tools"] = [
+        {
+            "id": "legacy_export",
+            "consequence": "unknown",
+            "policy_binding": "none",
+            "enforcement_path": "none",
+            "intervention_points": [],
+            "safe_principles": ["audit"],
+            "requires": [],
+            "acceptance_record": {
+                "owner": "risk-owner@contoso.com",
+                "justification": "Temporary waiver while the governed gateway is being onboarded.",
+                "review_date": "2026-09-05T00:00:00Z",
+                "expiry": "2026-09-04T00:00:00Z",
+            },
+        }
+    ]
+
+    with pytest.raises(governance.GovernanceContractError, match="expiry"):
+        governance.validate_governance_contract(
+            document, deployment_target="production-bound"
+        )
 
 
 def test_legacy_string_tool_remains_allowed_but_normalizes_to_unknown_unbound():
@@ -503,9 +628,31 @@ def test_legacy_string_tool_remains_allowed_but_normalizes_to_unknown_unbound():
     document["framework"] = "github-copilot-sdk"
     document["tools"] = ["legacy_export"]
 
-    assert validate_governance_contract(document) == [
-        governance.normalize_tool("legacy_export", runtime="github-copilot-sdk")
-    ]
+    assert governance.validate_governance_contract(document) == {
+        "framework": "github-copilot-sdk",
+        "deployment_target": "customer-pilot",
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only",
+                "staging": "evaluate_only",
+                "preproduction": "enforce",
+                "production": "enforce",
+            },
+            "lifecycle_bindings": [
+                {
+                    "lifecycle_point": "input",
+                    "policy_binding": "request-ingress-v1",
+                    "enforcement_path": "governed-tool-gateway",
+                    "safe_principles": ["scope"],
+                    "requires": ["signed-policy-bundle"],
+                }
+            ],
+        },
+        "tools": [
+            governance.normalize_tool("legacy_export", runtime="github-copilot-sdk")
+        ],
+    }
 
 
 def test_public_wording_uses_correct_governance_layers_and_no_policy_only_enforcement():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 import re
 
 from skills._shared.manifest import (
@@ -11,8 +12,14 @@ from skills._shared.manifest import (
 
 
 GOVERNANCE_MODES = frozenset({"off", "selective", "comprehensive"})
+CONTRACT_FRAMEWORKS = frozenset(
+    {"github-copilot-sdk", "microsoft-agent-framework"}
+)
 AGENT_RUNTIMES = frozenset(
     {"github-copilot-sdk", "maf-responses", "microsoft-agent-framework"}
+)
+DEPLOYMENT_TARGETS = frozenset(
+    {"demo-sandbox", "customer-pilot", "production-bound"}
 )
 BINDING_STATUSES = frozenset(
     {"enforced", "observed", "unbound", "unsupported", "unverified", "bypassable"}
@@ -36,9 +43,21 @@ _INTERVENTION_POINTS = frozenset(
         "shutdown",
     }
 )
+_GOVERNANCE_ENVIRONMENT_EXPECTATIONS = {
+    "development": "evaluate_only",
+    "staging": "evaluate_only",
+    "preproduction": "enforce",
+    "production": "enforce",
+}
 _ENFORCEMENT_MODES = frozenset({"enforce", "evaluate_only"})
 _PROBE_STATUSES = frozenset({"pass", "fail"})
 LIVE_PROBE_DECISIONS = frozenset({"allow", "deny", "escalate", "transform"})
+_CONSEQUENTIAL_OR_UNKNOWN = frozenset(
+    {"write", "external-egress", "irreversible", "unknown"}
+)
+_LIFECYCLE_ENFORCEMENT_PATHS = frozenset(
+    {"local-agent-hooks", "governed-tool-gateway"}
+)
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 _VERSION_RE = re.compile(r"\d+(?:\.\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?")
 _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
@@ -78,6 +97,13 @@ def _require_non_empty_string(value, field):
     if not isinstance(value, str) or not value:
         _raise(f"{field} must be a non-empty string")
     return value
+
+
+def _require_non_blank_string(value, field):
+    value = _require_non_empty_string(value, field)
+    if not value.strip():
+        _raise(f"{field} must be a non-empty string")
+    return value.strip()
 
 
 def _require_identifier(value, field):
@@ -122,6 +148,12 @@ def _require_timestamp(value, field):
     return value
 
 
+def _parse_timestamp(value, field):
+    value = _require_timestamp(value, field)
+    normalized = value[:-1] + "+00:00" if value[-1] in "Zz" else value
+    return value, datetime.fromisoformat(normalized)
+
+
 def _require_member(value, allowed, field):
     value = _require_non_empty_string(value, field)
     if value not in allowed:
@@ -159,6 +191,144 @@ def _require_evidence_ref(value, field):
 
 def _require_intervention_point(value, field):
     return _require_member(value, _INTERVENTION_POINTS, field)
+
+
+def _validate_environment_modes(raw):
+    field = "governance.environment_modes"
+    modes = _require_object(raw, field)
+    _require_exact_keys(modes, field, set(_GOVERNANCE_ENVIRONMENT_EXPECTATIONS))
+
+    normalized = {}
+    for environment, expected in _GOVERNANCE_ENVIRONMENT_EXPECTATIONS.items():
+        actual = _require_member(
+            modes[environment],
+            _ENFORCEMENT_MODES,
+            f"{field}.{environment}",
+        )
+        if actual != expected:
+            _raise(f"{field}.{environment} must be {expected}")
+        normalized[environment] = actual
+    return normalized
+
+
+def _validate_acceptance_record(raw):
+    field = "acceptance_record"
+    record = _require_object(raw, field)
+    _require_exact_keys(
+        record,
+        field,
+        {"owner", "justification", "review_date", "expiry"},
+    )
+    owner = _require_non_blank_string(record["owner"], f"{field}.owner")
+    justification = _require_non_blank_string(
+        record["justification"], f"{field}.justification"
+    )
+    review_date, review_dt = _parse_timestamp(
+        record["review_date"], f"{field}.review_date"
+    )
+    expiry, expiry_dt = _parse_timestamp(record["expiry"], f"{field}.expiry")
+    if expiry_dt < review_dt:
+        _raise(f"{field}.expiry must be greater than or equal to {field}.review_date")
+    return {
+        "owner": owner,
+        "justification": justification,
+        "review_date": review_date,
+        "expiry": expiry,
+    }
+
+
+def _validate_lifecycle_binding(raw, *, runtime):
+    field = "governance.lifecycle_bindings[]"
+    binding = _require_object(raw, field)
+    _require_exact_keys(
+        binding,
+        field,
+        {
+            "lifecycle_point",
+            "policy_binding",
+            "enforcement_path",
+            "safe_principles",
+            "requires",
+        },
+    )
+    lifecycle_point = _require_intervention_point(
+        binding["lifecycle_point"], f"{field}.lifecycle_point"
+    )
+    enforcement_path = _require_member(
+        binding["enforcement_path"],
+        _LIFECYCLE_ENFORCEMENT_PATHS,
+        f"{field}.enforcement_path",
+    )
+    normalized = normalize_tool(
+        {
+            "id": f"lifecycle.{lifecycle_point}",
+            "consequence": "read",
+            "policy_binding": binding["policy_binding"],
+            "enforcement_path": enforcement_path,
+            "intervention_points": [lifecycle_point],
+        },
+        runtime=runtime,
+    )
+    return {
+        "lifecycle_point": lifecycle_point,
+        "policy_binding": normalized["policy_binding"],
+        "enforcement_path": normalized["enforcement_path"],
+        "safe_principles": _require_unique_string_list(
+            binding["safe_principles"],
+            f"{field}.safe_principles",
+            allow_empty=False,
+        ),
+        "requires": _require_unique_string_list(
+            binding["requires"], f"{field}.requires"
+        ),
+    }
+
+
+def _validate_contract_tool(raw, *, runtime):
+    if isinstance(raw, str):
+        return normalize_tool(raw, runtime=runtime)
+
+    field = "tools[]"
+    tool = _require_object(raw, field)
+    required_keys = {
+        "id",
+        "consequence",
+        "policy_binding",
+        "enforcement_path",
+        "intervention_points",
+        "safe_principles",
+        "requires",
+    }
+    allowed_keys = required_keys | {"acceptance_record"}
+    missing = required_keys.difference(tool)
+    if missing:
+        _raise(f"{field} missing required keys: {', '.join(sorted(missing))}")
+    extra = set(tool).difference(allowed_keys)
+    if extra:
+        _raise(f"{field} contains unsupported keys: {', '.join(sorted(extra))}")
+
+    normalized = normalize_tool(
+        {
+            "id": tool["id"],
+            "consequence": tool["consequence"],
+            "policy_binding": tool["policy_binding"],
+            "enforcement_path": tool["enforcement_path"],
+            "intervention_points": tool["intervention_points"],
+        },
+        runtime=runtime,
+    )
+    normalized["safe_principles"] = _require_unique_string_list(
+        tool["safe_principles"],
+        f"{field}.safe_principles",
+    )
+    normalized["requires"] = _require_unique_string_list(
+        tool["requires"], f"{field}.requires"
+    )
+    if "acceptance_record" in tool:
+        normalized["acceptance_record"] = _validate_acceptance_record(
+            tool["acceptance_record"]
+        )
+    return normalized
 
 
 def normalize_tool(raw, runtime=None):
@@ -212,6 +382,82 @@ def normalize_tool(raw, runtime=None):
         "policy_binding": policy_binding,
         "enforcement_path": enforcement_path,
         "intervention_points": list(intervention_points),
+    }
+
+
+def validate_governance_contract(document, *, deployment_target="customer-pilot", runtime=None):
+    document = _require_object(document, "document")
+    _require_exact_keys(document, "document", {"framework", "governance", "tools"})
+
+    framework = _require_member(
+        document["framework"], CONTRACT_FRAMEWORKS, "document.framework"
+    )
+    if runtime is not None:
+        runtime = _require_member(runtime, CONTRACT_FRAMEWORKS, "runtime")
+        if runtime != framework:
+            _raise("runtime must match document.framework; do not silently switch runtime")
+    else:
+        runtime = framework
+    deployment_target = _require_member(
+        deployment_target, DEPLOYMENT_TARGETS, "deployment_target"
+    )
+
+    governance = _require_object(document["governance"], "governance")
+    _require_exact_keys(
+        governance,
+        "governance",
+        {"mode", "environment_modes", "lifecycle_bindings"},
+    )
+    mode = _require_member(governance["mode"], GOVERNANCE_MODES, "governance.mode")
+    environment_modes = _validate_environment_modes(governance["environment_modes"])
+    lifecycle_bindings = [
+        _validate_lifecycle_binding(binding, runtime=runtime)
+        for binding in _require_list(
+            governance["lifecycle_bindings"], "governance.lifecycle_bindings"
+        )
+    ]
+    if mode == "off" and lifecycle_bindings:
+        _raise("off mode forbids lifecycle bindings")
+
+    tools = []
+    seen_ids = set()
+    for raw_tool in _require_list(document["tools"], "tools"):
+        normalized = _validate_contract_tool(raw_tool, runtime=runtime)
+        if normalized["id"] in seen_ids:
+            _raise("tools.id values must be unique")
+        seen_ids.add(normalized["id"])
+
+        if mode == "off" and normalized["enforcement_path"] != "none":
+            _raise("off mode forbids bound tools")
+        if (
+            mode == "comprehensive"
+            and normalized["consequence"] in _CONSEQUENTIAL_OR_UNKNOWN
+            and normalized["enforcement_path"] == "none"
+        ):
+            _raise(
+                "comprehensive governance rejects consequential or unknown tools with enforcement_path none"
+            )
+        if (
+            deployment_target == "production-bound"
+            and normalized["consequence"] in _CONSEQUENTIAL_OR_UNKNOWN
+            and normalized["enforcement_path"] == "none"
+            and "acceptance_record" not in normalized
+        ):
+            _raise(
+                "production-bound unbound consequential or unknown tools require acceptance_record"
+            )
+
+        tools.append(normalized)
+
+    return {
+        "framework": framework,
+        "deployment_target": deployment_target,
+        "governance": {
+            "mode": mode,
+            "environment_modes": environment_modes,
+            "lifecycle_bindings": lifecycle_bindings,
+        },
+        "tools": tools,
     }
 
 
@@ -655,10 +901,13 @@ __all__ = [
     "AGENT_RUNTIMES",
     "BINDING_STATUSES",
     "CONSEQUENCES",
+    "CONTRACT_FRAMEWORKS",
+    "DEPLOYMENT_TARGETS",
     "ENFORCEMENT_PATHS",
     "GOVERNANCE_MODES",
     "GovernanceContractError",
     "LIVE_PROBE_DECISIONS",
     "normalize_tool",
+    "validate_governance_contract",
     "validate_governance_manifest",
 ]

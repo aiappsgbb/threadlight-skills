@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "threadlight-governance-contract/v1",
-  "description": "Schema for the machine-readable runtime governance contract emitted by threadlight-design. It enforces exact enums, additionalProperties:false, environment mode constants, lifecycle binding shape, and structured tool records. Legacy string tools remain valid for backwards compatibility, but they are shape-only here and must be treated as explicit unknown/unbound placeholders until upgraded. The shared governance.normalize_tool helper plus Python tests remain authoritative for runtime-specific binding compatibility, unique tool ids, comprehensive-mode consequential tool support, and production-bound acceptance requirements.",
+  "description": "Schema for the machine-readable runtime governance contract emitted by threadlight-design. It enforces exact enums, additionalProperties:false, environment mode constants, lifecycle binding shape, and the off/comprehensive conditionals that JSON Schema can express. Legacy string tools remain valid for backwards compatibility, but they are shape-only here and must be treated as explicit unknown/unbound placeholders until upgraded. The shared validator is authoritative for cross-record rules not schema-expressible.",
   "type": "object",
   "required": [
     "framework",
@@ -109,10 +109,10 @@
           "minLength": 1
         },
         "review_date": {
-          "$ref": "#/definitions/date"
+          "$ref": "#/definitions/rfc3339DateTime"
         },
         "expiry": {
-          "$ref": "#/definitions/date"
+          "$ref": "#/definitions/rfc3339DateTime"
         }
       }
     },
@@ -298,6 +298,134 @@
           }
         }
       ]
+    },
+    "rfc3339DateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "mode": {
+                "const": "off"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "governance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "lifecycle_bindings": {
+                "maxItems": 0
+              }
+            }
+          },
+          "tools": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/legacyTool"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/structuredTool"
+                    },
+                    {
+                      "properties": {
+                        "policy_binding": {
+                          "const": "none"
+                        },
+                        "enforcement_path": {
+                          "const": "none"
+                        },
+                        "intervention_points": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "mode": {
+                "const": "comprehensive"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "governance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tools": {
+            "items": {
+              "allOf": [
+                {
+                  "not": {
+                    "$ref": "#/definitions/legacyTool"
+                  }
+                },
+                {
+                  "$ref": "#/definitions/structuredTool"
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "consequence": {
+                        "enum": [
+                          "write",
+                          "external-egress",
+                          "irreversible",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "consequence"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "enforcement_path": {
+                        "not": {
+                          "const": "none"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
 }
