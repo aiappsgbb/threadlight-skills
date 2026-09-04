@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 
 from skills._shared.manifest import (
@@ -15,6 +15,14 @@ GOVERNANCE_MODES = frozenset({"off", "selective", "comprehensive"})
 CONTRACT_FRAMEWORKS = frozenset(
     {"github-copilot-sdk", "microsoft-agent-framework"}
 )
+CONTRACT_RUNTIME_PATHS = {
+    "github-copilot-sdk": ("none", "governed-tool-gateway"),
+    "microsoft-agent-framework": (
+        "none",
+        "local-agent-hooks",
+        "governed-tool-gateway",
+    ),
+}
 AGENT_RUNTIMES = frozenset(
     {"github-copilot-sdk", "maf-responses", "microsoft-agent-framework"}
 )
@@ -58,6 +66,10 @@ _CONSEQUENTIAL_OR_UNKNOWN = frozenset(
 _LIFECYCLE_ENFORCEMENT_PATHS = frozenset(
     {"local-agent-hooks", "governed-tool-gateway"}
 )
+_RUNTIME_ENFORCEMENT_PATHS = {
+    **CONTRACT_RUNTIME_PATHS,
+    "maf-responses": CONTRACT_RUNTIME_PATHS["microsoft-agent-framework"],
+}
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 _VERSION_RE = re.compile(r"\d+(?:\.\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?")
 _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
@@ -104,6 +116,13 @@ def _require_non_blank_string(value, field):
     if not value.strip():
         _raise(f"{field} must be a non-empty string")
     return value.strip()
+
+
+def _require_non_blank_list_string(value, field):
+    value = _require_non_empty_string(value, field)
+    if not value.strip():
+        _raise(f"{field} must be a non-empty string")
+    return value
 
 
 def _require_identifier(value, field):
@@ -173,7 +192,7 @@ def _require_unique_string_list(value, field, *, item_validator=None, allow_empt
         item = (
             item_validator(item, item_field)
             if item_validator is not None
-            else _require_non_empty_string(item, item_field)
+            else _require_non_blank_list_string(item, item_field)
         )
         if item in seen:
             _raise(f"{field} must not contain duplicates")
@@ -211,7 +230,17 @@ def _validate_environment_modes(raw):
     return normalized
 
 
-def _validate_acceptance_record(raw):
+def _normalize_as_of(as_of):
+    if as_of is None:
+        # Use the current UTC clock only when callers do not provide a
+        # deterministic ``as_of`` value.
+        return datetime.now(timezone.utc)
+    if not isinstance(as_of, datetime):
+        _raise("as_of must be a datetime when provided")
+    return as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=timezone.utc)
+
+
+def _validate_acceptance_record(raw, *, as_of=None):
     field = "acceptance_record"
     record = _require_object(raw, field)
     _require_exact_keys(
@@ -229,6 +258,8 @@ def _validate_acceptance_record(raw):
     expiry, expiry_dt = _parse_timestamp(record["expiry"], f"{field}.expiry")
     if expiry_dt < review_dt:
         _raise(f"{field}.expiry must be greater than or equal to {field}.review_date")
+    if expiry_dt < _normalize_as_of(as_of):
+        _raise(f"{field}.expiry must be greater than or equal to as_of")
     return {
         "owner": owner,
         "justification": justification,
@@ -284,7 +315,7 @@ def _validate_lifecycle_binding(raw, *, runtime):
     }
 
 
-def _validate_contract_tool(raw, *, runtime):
+def _validate_contract_tool(raw, *, runtime, as_of=None):
     if isinstance(raw, str):
         return normalize_tool(raw, runtime=runtime)
 
@@ -306,6 +337,8 @@ def _validate_contract_tool(raw, *, runtime):
     extra = set(tool).difference(allowed_keys)
     if extra:
         _raise(f"{field} contains unsupported keys: {', '.join(sorted(extra))}")
+    if tool["policy_binding"] is None:
+        _raise(f"{field}.policy_binding must be an identifier or 'none'")
 
     normalized = normalize_tool(
         {
@@ -326,7 +359,7 @@ def _validate_contract_tool(raw, *, runtime):
     )
     if "acceptance_record" in tool:
         normalized["acceptance_record"] = _validate_acceptance_record(
-            tool["acceptance_record"]
+            tool["acceptance_record"], as_of=as_of
         )
     return normalized
 
@@ -367,14 +400,19 @@ def normalize_tool(raw, runtime=None):
         item_validator=_require_intervention_point,
     )
 
-    if runtime == "github-copilot-sdk" and enforcement_path == "local-agent-hooks":
-        _raise("github-copilot-sdk does not support local-agent-hooks bindings")
+    allowed_paths = _RUNTIME_ENFORCEMENT_PATHS.get(runtime)
+    if allowed_paths is not None and enforcement_path not in allowed_paths:
+        _raise(f"{runtime} does not support {enforcement_path} bindings")
     if enforcement_path != "none" and policy_binding is None:
         _raise("policy_binding is required when enforcement_path is not none")
     if enforcement_path == "none" and policy_binding is not None:
         _raise("unbound tools may not claim a policy binding")
     if enforcement_path == "none" and intervention_points:
         _raise("intervention_points must be empty when enforcement_path is none")
+    if enforcement_path == "local-agent-hooks" and not intervention_points:
+        _raise(
+            "intervention_points must not be empty when enforcement_path is local-agent-hooks"
+        )
 
     return {
         "id": tool_id,
@@ -385,7 +423,7 @@ def normalize_tool(raw, runtime=None):
     }
 
 
-def validate_governance_contract(document, *, deployment_target="customer-pilot", runtime=None):
+def validate_governance_contract(document, *, deployment_target, runtime=None, as_of=None):
     document = _require_object(document, "document")
     _require_exact_keys(document, "document", {"framework", "governance", "tools"})
 
@@ -401,6 +439,7 @@ def validate_governance_contract(document, *, deployment_target="customer-pilot"
     deployment_target = _require_member(
         deployment_target, DEPLOYMENT_TARGETS, "deployment_target"
     )
+    acceptance_as_of = _normalize_as_of(as_of)
 
     governance = _require_object(document["governance"], "governance")
     _require_exact_keys(
@@ -416,13 +455,20 @@ def validate_governance_contract(document, *, deployment_target="customer-pilot"
             governance["lifecycle_bindings"], "governance.lifecycle_bindings"
         )
     ]
+    seen_lifecycle_points = set()
+    for binding in lifecycle_bindings:
+        if binding["lifecycle_point"] in seen_lifecycle_points:
+            _raise("governance.lifecycle_bindings.lifecycle_point values must be unique")
+        seen_lifecycle_points.add(binding["lifecycle_point"])
     if mode == "off" and lifecycle_bindings:
         _raise("off mode forbids lifecycle bindings")
 
     tools = []
     seen_ids = set()
     for raw_tool in _require_list(document["tools"], "tools"):
-        normalized = _validate_contract_tool(raw_tool, runtime=runtime)
+        normalized = _validate_contract_tool(
+            raw_tool, runtime=runtime, as_of=acceptance_as_of
+        )
         if normalized["id"] in seen_ids:
             _raise("tools.id values must be unique")
         seen_ids.add(normalized["id"])
@@ -902,6 +948,7 @@ __all__ = [
     "BINDING_STATUSES",
     "CONSEQUENCES",
     "CONTRACT_FRAMEWORKS",
+    "CONTRACT_RUNTIME_PATHS",
     "DEPLOYMENT_TARGETS",
     "ENFORCEMENT_PATHS",
     "GOVERNANCE_MODES",

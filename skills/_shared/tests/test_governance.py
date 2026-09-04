@@ -377,6 +377,41 @@ def test_normalize_tool_returns_fresh_json_ready_values():
     json.dumps(normalized)
 
 
+def test_normalize_tool_rejects_local_agent_hooks_without_intervention_points():
+    governance = governance_module()
+
+    with pytest.raises(governance.GovernanceContractError, match="intervention_points"):
+        governance.normalize_tool(
+            {
+                "id": "returns_apply_decision",
+                "consequence": "write",
+                "policy_binding": "returns-write-v1",
+                "enforcement_path": "local-agent-hooks",
+                "intervention_points": [],
+            }
+        )
+
+
+def test_normalize_tool_allows_empty_intervention_points_for_governed_tool_gateway():
+    governance = governance_module()
+
+    assert governance.normalize_tool(
+        {
+            "id": "returns_apply_decision",
+            "consequence": "write",
+            "policy_binding": "returns-write-v1",
+            "enforcement_path": "governed-tool-gateway",
+            "intervention_points": [],
+        }
+    ) == {
+        "id": "returns_apply_decision",
+        "consequence": "write",
+        "policy_binding": "returns-write-v1",
+        "enforcement_path": "governed-tool-gateway",
+        "intervention_points": [],
+    }
+
+
 def test_validate_governance_manifest_accepts_valid_minimal_manifest():
     governance = governance_module()
     manifest = valid_manifest()
@@ -834,6 +869,15 @@ def test_validate_governance_manifest_rejects_trailing_newlines_in_exact_match_f
     mutate(manifest)
 
     with pytest.raises(governance.GovernanceContractError, match=message):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_whitespace_only_safe_principles():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["bindings"][0]["safe_principles"] = ["   "]
+
+    with pytest.raises(governance.GovernanceContractError, match="safe_principles"):
         governance.validate_governance_manifest(manifest)
 
 

@@ -474,7 +474,9 @@ How and when the process executes.
 > exact contract text: `mode: off | selective | comprehensive`. `off` and `selective` are allowed;
 > `comprehensive` is only valid when every consequential or unknown tool has a
 > supported runtime binding. `off` means `lifecycle_bindings: []` and no bound
-> tool records. Legacy string tools remain valid where older
+> tool records. `environment_modes only matter when mode != off`; `off` in
+> `production-bound` is still allowed by design but does not make an enforcement
+> claim. Legacy string tools remain valid where older
 > manifests still permit them, but in this contract they are explicitly
 > `unknown/unbound` until upgraded to the structured form below.
 >
@@ -490,6 +492,7 @@ governance:
   # Exact contract text:
   #   mode: off | selective | comprehensive
   mode: selective
+  # environment_modes only matter when mode != off
   environment_modes:
     development: evaluate_only
     staging: evaluate_only
@@ -532,13 +535,13 @@ tools:
     acceptance_record:
       owner: risk-owner@contoso.com
       justification: Temporary waiver while a supported binding is being onboarded.
-      review_date: 2026-09-04T00:00:00Z
-      expiry: 2026-12-31T00:00:00Z
+      review_date: "2026-09-04T00:00:00Z"
+      expiry: "2026-12-31T00:00:00Z"
 ```
 
 - `development: evaluate_only` and `staging: evaluate_only` are fixed design-time
   expectations; `preproduction: enforce` and `production: enforce` are fixed
-  release expectations.
+  release expectations when `mode != off`.
 - If a tool can **write**, perform **external-egress**, or trigger an
   **irreversible** outcome, classify it explicitly and recommend the strongest
   supported binding.
@@ -548,7 +551,9 @@ tools:
   spec.
 - `production-bound` unbound consequential or unknown tools require an
   `acceptance_record` with `owner`, `justification`, `review_date`, and
-  `expiry`, both recorded as RFC3339 timestamps.
+  `expiry`, both recorded as quoted RFC3339 timestamps. `off` is still allowed
+  in `production-bound`, but it does not make an enforcement claim and any
+  consequential or unknown unbound tool still needs acceptance.
 
 ### 11b. AI Governance Hub Posture (opt-in spoke)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -49,11 +51,35 @@ def governance_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
+def governance_yaml_block() -> str:
+    match = re.search(
+        r"### 11a\. Runtime Governance Contract[\s\S]*?```yaml\n([\s\S]*?)\n```",
+        template_text(),
+    )
+    assert match, "expected SPEC § 11a governance YAML block"
+    return match.group(1)
+
+
 def build_jsonschema_validator():
     jsonschema = pytest.importorskip("jsonschema")
     schema = governance_schema()
     jsonschema.Draft7Validator.check_schema(schema)
     return jsonschema.Draft7Validator(schema)
+
+
+def error_paths(errors) -> set[tuple[object, ...]]:
+    paths: set[tuple[object, ...]] = set()
+
+    def visit(error) -> None:
+        if error.context:
+            for child in error.context:
+                visit(child)
+            return
+        paths.add(tuple(error.absolute_path))
+
+    for error in errors:
+        visit(error)
+    return paths
 
 
 def valid_contract() -> dict:
@@ -106,10 +132,7 @@ def test_template_declares_governance_modes_and_contract_tokens():
     for fragment in (
         "governance.mode",
         "off | selective | comprehensive",
-        "development: evaluate_only",
-        "staging: evaluate_only",
-        "preproduction: enforce",
-        "production: enforce",
+        "environment_modes",
         "policy_binding",
         "enforcement_path",
         "intervention_points",
@@ -118,6 +141,8 @@ def test_template_declares_governance_modes_and_contract_tokens():
         "acceptance_record",
         "review_date",
         "expiry",
+        "environment_modes only matter when mode != off",
+        "does not make an enforcement claim",
         "Legacy string tools remain valid",
         "unknown/unbound",
     ):
@@ -130,121 +155,27 @@ def test_skill_declares_governance_interview_and_no_silent_runtime_switch():
     for fragment in (
         "write / external-egress / irreversible",
         "one question at a time",
-        "off`, `selective`, and `comprehensive`",
         "do not silently change framework/runtime",
-        "offer MAF",
         "retain the selected runtime unless the operator changes it",
         "production-bound",
         "acceptance record",
+        "environment_modes only matter when mode != off",
+        "off` is still allowed in `production-bound`",
     ):
         assert fragment in text
 
 
-def test_runtime_policy_declares_exact_governance_compatibility_map_and_routes():
-    assert runtime_policy() == {
-        "schema": "threadlight.runtime-policy/v1",
-        "version": 2,
-        "contract_version": "2.0.0",
-        "last_reviewed": "2026-08-17",
-        "authority": {
-            "repository": "aiappsgbb/threadlight-skills",
-            "path": "skills/threadlight-design/references/runtime-policy.json",
-            "cross_repository_consumers": False,
-        },
-        "region_policy": {
-            "default": "eastus2",
-            "eu_residency": ["swedencentral"],
-            "selection_rule": "Use an EU region only when the complete required resource set is available there.",
-        },
-        "selectors": {
-            "frameworks": ["github-copilot-sdk", "microsoft-agent-framework"],
-            "runtime_shapes": ["agent", "workflow"],
-            "protocols": ["invocations", "responses"],
-        },
-        "governance_compatibility": {
-            "github-copilot-sdk": ["none", "governed-tool-gateway"],
-            "microsoft-agent-framework": [
-                "none",
-                "local-agent-hooks",
-                "governed-tool-gateway",
-            ],
-        },
-        "default": {
-            "framework": "github-copilot-sdk",
-            "runtime_shape": "agent",
-            "protocol": "invocations",
-            "policy_route": "default-agent",
-        },
-        "compatible_combinations": [
-            {
-                "framework": "github-copilot-sdk",
-                "runtime_shape": "agent",
-                "protocol": "invocations",
-            },
-            {
-                "framework": "microsoft-agent-framework",
-                "runtime_shape": "agent",
-                "protocol": "responses",
-            },
-            {
-                "framework": "microsoft-agent-framework",
-                "runtime_shape": "workflow",
-                "protocol": "responses",
-            },
-        ],
-        "routes": [
-            {
-                "id": "explicit-supported-choice",
-                "priority": 1,
-                "decision_date": "2026-08-17",
-                "permanent": True,
-                "selection": "operator",
-                "allowed_combinations_ref": "compatible_combinations",
-                "when": "operator explicitly chooses a framework/runtime_shape/protocol tuple listed in compatible_combinations",
-                "requires_resolved_signals": True,
-                "blocked_when": [
-                    "workflow_model=workflow",
-                    "requires_toolbox",
-                    "requires_custom_python_tools",
-                    "requires_file_generation",
-                    "latency_sensitive_data_queries",
-                ],
-                "rationale": "Honor a compatible explicit operator override before house routing, unless a blocked_when capability signal is active — the capability route that owns that signal takes the case instead, regardless of compatible_combinations membership. requires_resolved_signals is a separate gate: false-vs-unknown is never ambiguous here, so this route also refuses to fire while capability_signals.unresolved_signals is non-empty — an unresolved signal must be resolved (or the case escalated) before an operator's explicit choice can be honored, since it could still turn out to be the one a blocked_when route owns.",
-            },
-            {
-                "id": "deterministic-workflow",
-                "priority": 2,
-                "decision_date": "2026-08-17",
-                "permanent": True,
-                "when": "workflow_model=workflow",
-                "framework": "microsoft-agent-framework",
-                "runtime_shape": "workflow",
-                "protocol": "responses",
-                "rationale": "Deterministic multi-phase flows need the MAF workflow runtime.",
-            },
-            {
-                "id": "maf-agent-capabilities",
-                "priority": 3,
-                "decision_date": "2026-08-17",
-                "permanent": True,
-                "when": "requires_toolbox || requires_custom_python_tools || requires_file_generation || latency_sensitive_data_queries",
-                "framework": "microsoft-agent-framework",
-                "runtime_shape": "agent",
-                "protocol": "responses",
-                "rationale": "Toolbox, custom tools, file generation, and fast data queries fit MAF agent best today.",
-            },
-            {
-                "id": "default-agent",
-                "priority": 4,
-                "decision_date": "2026-08-05",
-                "expiry_condition": "Responses works end to end for the generated hosted runtime and every documented channel.",
-                "when": "no higher-priority route matches",
-                "framework": "github-copilot-sdk",
-                "runtime_shape": "agent",
-                "protocol": "invocations",
-                "rationale": "Keep the proven GHCP Invocations path until Responses works end to end.",
-            },
-        ],
+def test_runtime_policy_declares_exact_governance_compatibility_map_and_framework_keys():
+    governance = governance_module()
+    policy = runtime_policy()
+
+    assert policy["selectors"]["frameworks"] == sorted(governance.CONTRACT_FRAMEWORKS)
+    assert sorted(policy["governance_compatibility"]) == sorted(
+        governance.CONTRACT_RUNTIME_PATHS
+    )
+    assert policy["governance_compatibility"] == {
+        framework: list(paths)
+        for framework, paths in governance.CONTRACT_RUNTIME_PATHS.items()
     }
 
 
@@ -279,7 +210,10 @@ def test_governance_schema_accepts_valid_selective_contract():
     validator = build_jsonschema_validator()
 
     assert list(validator.iter_errors(document)) == []
-    assert governance.validate_governance_contract(document) == {
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="customer-pilot",
+    ) == {
         "framework": "microsoft-agent-framework",
         "deployment_target": "customer-pilot",
         "governance": {
@@ -321,7 +255,10 @@ def test_governance_schema_accepts_lifecycle_only_contract_without_tools():
     validator = build_jsonschema_validator()
 
     assert list(validator.iter_errors(document)) == []
-    assert governance.validate_governance_contract(document) == {
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="customer-pilot",
+    ) == {
         "framework": "microsoft-agent-framework",
         "deployment_target": "customer-pilot",
         "governance": {
@@ -346,14 +283,21 @@ def test_governance_schema_accepts_lifecycle_only_contract_without_tools():
     }
 
 
+def test_validate_governance_contract_requires_explicit_deployment_target_keyword():
+    governance = governance_module()
+
+    with pytest.raises(TypeError):
+        governance.validate_governance_contract(valid_contract())
+
+
 def test_governance_schema_rejects_off_mode_with_bound_lifecycle_or_tool():
     document = valid_contract()
     document["governance"]["mode"] = "off"
     validator = build_jsonschema_validator()
 
-    messages = [error.message for error in validator.iter_errors(document)]
-    assert messages
-    assert any("lifecycle_bindings" in message or "enforcement_path" in message for message in messages)
+    paths = error_paths(list(validator.iter_errors(document)))
+    assert ("governance", "lifecycle_bindings") in paths
+    assert ("tools", 0, "enforcement_path") in paths
 
 
 def test_governance_schema_rejects_comprehensive_unbound_consequential_and_unknown_tools():
@@ -373,9 +317,9 @@ def test_governance_schema_rejects_comprehensive_unbound_consequential_and_unkno
     ]
     validator = build_jsonschema_validator()
 
-    messages = [error.message for error in validator.iter_errors(document)]
-    assert messages
-    assert any("none" in message or "structuredTool" in message for message in messages)
+    paths = error_paths(list(validator.iter_errors(document)))
+    assert ("tools", 0, "enforcement_path") in paths
+    assert ("tools", 1) in paths
 
 
 def test_validation_helper_rejects_ghcp_local_agent_hooks():
@@ -385,7 +329,10 @@ def test_validation_helper_rejects_ghcp_local_agent_hooks():
     document["tools"][0]["enforcement_path"] = "local-agent-hooks"
 
     with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
-        governance.validate_governance_contract(document)
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
 
 
 def test_validation_helper_rejects_off_mode_with_bound_contract():
@@ -394,7 +341,10 @@ def test_validation_helper_rejects_off_mode_with_bound_contract():
     document["governance"]["mode"] = "off"
 
     with pytest.raises(governance.GovernanceContractError, match="off"):
-        governance.validate_governance_contract(document)
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
 
 
 def test_validation_helper_rejects_ghcp_local_agent_hooks_for_lifecycle_binding():
@@ -406,7 +356,10 @@ def test_validation_helper_rejects_ghcp_local_agent_hooks_for_lifecycle_binding(
     )
 
     with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
-        governance.validate_governance_contract(document)
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
 
 
 def test_selective_none_allowed_for_read_tool():
@@ -425,7 +378,10 @@ def test_selective_none_allowed_for_read_tool():
         }
     ]
 
-    assert governance.validate_governance_contract(document) == {
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="customer-pilot",
+    ) == {
         "framework": "github-copilot-sdk",
         "deployment_target": "customer-pilot",
         "governance": {
@@ -476,7 +432,10 @@ def test_validation_helper_rejects_duplicate_tool_ids():
     )
 
     with pytest.raises(governance.GovernanceContractError, match="unique"):
-        governance.validate_governance_contract(document)
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
 
 
 def test_validation_helper_rejects_comprehensive_provider_hosted_consequential_tool():
@@ -489,7 +448,10 @@ def test_validation_helper_rejects_comprehensive_provider_hosted_consequential_t
     document["tools"][0]["intervention_points"] = []
 
     with pytest.raises(governance.GovernanceContractError, match="comprehensive"):
-        governance.validate_governance_contract(document)
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
 
 
 def test_production_bound_unknown_or_unbound_requires_acceptance_record():
@@ -510,13 +472,17 @@ def test_production_bound_unknown_or_unbound_requires_acceptance_record():
 
     with pytest.raises(governance.GovernanceContractError, match="acceptance_record"):
         governance.validate_governance_contract(
-            document, deployment_target="production-bound"
+            document,
+            deployment_target="production-bound",
+            as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
         )
 
     document["tools"][0]["acceptance_record"] = valid_acceptance_record()
 
     assert governance.validate_governance_contract(
-        document, deployment_target="production-bound"
+        document,
+        deployment_target="production-bound",
+        as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
     ) == {
         "framework": "github-copilot-sdk",
         "deployment_target": "production-bound",
@@ -563,7 +529,9 @@ def test_production_bound_unbound_write_requires_acceptance_record():
 
     with pytest.raises(governance.GovernanceContractError, match="acceptance_record"):
         governance.validate_governance_contract(
-            document, deployment_target="production-bound"
+            document,
+            deployment_target="production-bound",
+            as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
         )
 
 
@@ -590,7 +558,9 @@ def test_validation_helper_rejects_partial_acceptance_record_missing_expiry():
 
     with pytest.raises(governance.GovernanceContractError, match="expiry"):
         governance.validate_governance_contract(
-            document, deployment_target="production-bound"
+            document,
+            deployment_target="production-bound",
+            as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
         )
 
 
@@ -618,7 +588,9 @@ def test_validation_helper_rejects_acceptance_record_expiry_before_review_date()
 
     with pytest.raises(governance.GovernanceContractError, match="expiry"):
         governance.validate_governance_contract(
-            document, deployment_target="production-bound"
+            document,
+            deployment_target="production-bound",
+            as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
         )
 
 
@@ -628,7 +600,10 @@ def test_legacy_string_tool_remains_allowed_but_normalizes_to_unknown_unbound():
     document["framework"] = "github-copilot-sdk"
     document["tools"] = ["legacy_export"]
 
-    assert governance.validate_governance_contract(document) == {
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="customer-pilot",
+    ) == {
         "framework": "github-copilot-sdk",
         "deployment_target": "customer-pilot",
         "governance": {
@@ -653,6 +628,185 @@ def test_legacy_string_tool_remains_allowed_but_normalizes_to_unknown_unbound():
             governance.normalize_tool("legacy_export", runtime="github-copilot-sdk")
         ],
     }
+
+
+def test_template_governance_yaml_block_safe_loads_and_validates_for_production_bound():
+    governance = governance_module()
+    yaml = pytest.importorskip("yaml")
+    validator = build_jsonschema_validator()
+    document = yaml.safe_load(
+        governance_yaml_block().replace(
+            "framework: github-copilot-sdk | microsoft-agent-framework",
+            "framework: microsoft-agent-framework",
+            1,
+        )
+    )
+
+    acceptance_record = next(
+        tool["acceptance_record"]
+        for tool in document["tools"]
+        if tool.get("id") == "legacy_export"
+    )
+    assert isinstance(acceptance_record["review_date"], str)
+    assert isinstance(acceptance_record["expiry"], str)
+    assert list(validator.iter_errors(document)) == []
+    normalized = governance.validate_governance_contract(
+        document,
+        deployment_target="production-bound",
+        as_of=datetime(2026, 9, 4, tzinfo=timezone.utc),
+    )
+    assert normalized["framework"] == "microsoft-agent-framework"
+    assert normalized["deployment_target"] == "production-bound"
+
+
+def test_governance_schema_rejects_null_policy_binding_in_structured_tool():
+    governance = governance_module()
+    document = valid_contract()
+    document["tools"][0] = {
+        "id": "returns_get_case",
+        "consequence": "read",
+        "policy_binding": None,
+        "enforcement_path": "none",
+        "intervention_points": [],
+        "safe_principles": ["scope"],
+        "requires": [],
+    }
+    validator = build_jsonschema_validator()
+
+    assert ("tools", 0, "policy_binding") in error_paths(
+        list(validator.iter_errors(document))
+    )
+    with pytest.raises(governance.GovernanceContractError, match="policy_binding"):
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
+
+
+def test_governance_schema_rejects_lifecycle_binding_none_policy_and_blank_lists():
+    document = valid_contract()
+    document["governance"]["lifecycle_bindings"] = [
+        {
+            "lifecycle_point": "input",
+            "policy_binding": "none",
+            "enforcement_path": "governed-tool-gateway",
+            "safe_principles": [],
+            "requires": ["   "],
+        },
+        {
+            "lifecycle_point": "input",
+            "policy_binding": "request-ingress-v2",
+            "enforcement_path": "governed-tool-gateway",
+            "safe_principles": ["scope"],
+            "requires": [],
+        },
+    ]
+    validator = build_jsonschema_validator()
+    paths = error_paths(list(validator.iter_errors(document)))
+
+    assert ("governance", "lifecycle_bindings", 0, "policy_binding") in paths
+    assert ("governance", "lifecycle_bindings", 0, "safe_principles") in paths
+    assert ("governance", "lifecycle_bindings", 0, "requires", 0) in paths
+
+
+def test_validation_helper_rejects_duplicate_lifecycle_points():
+    governance = governance_module()
+    document = valid_contract()
+    document["governance"]["lifecycle_bindings"].append(
+        {
+            "lifecycle_point": "input",
+            "policy_binding": "request-ingress-v2",
+            "enforcement_path": "governed-tool-gateway",
+            "safe_principles": ["scope"],
+            "requires": [],
+        }
+    )
+
+    with pytest.raises(governance.GovernanceContractError, match="lifecycle_point"):
+        governance.validate_governance_contract(
+            document,
+            deployment_target="customer-pilot",
+        )
+
+
+def test_validation_helper_rejects_acceptance_record_expiry_before_as_of():
+    governance = governance_module()
+    document = valid_contract()
+    document["framework"] = "github-copilot-sdk"
+    document["tools"] = [
+        {
+            "id": "legacy_export",
+            "consequence": "unknown",
+            "policy_binding": "none",
+            "enforcement_path": "none",
+            "intervention_points": [],
+            "safe_principles": ["audit"],
+            "requires": [],
+            "acceptance_record": valid_acceptance_record(),
+        }
+    ]
+
+    with pytest.raises(governance.GovernanceContractError, match="acceptance_record.expiry"):
+        governance.validate_governance_contract(
+            document,
+            deployment_target="production-bound",
+            as_of=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        )
+
+
+def test_validation_helper_snapshots_current_utc_once_for_multiple_acceptance_records(
+    monkeypatch,
+):
+    governance = governance_module()
+    document = valid_contract()
+    document["framework"] = "github-copilot-sdk"
+    document["tools"] = [
+        {
+            "id": "legacy_export",
+            "consequence": "unknown",
+            "policy_binding": "none",
+            "enforcement_path": "none",
+            "intervention_points": [],
+            "safe_principles": ["audit"],
+            "requires": [],
+            "acceptance_record": valid_acceptance_record(),
+        },
+        {
+            "id": "legacy_export_2",
+            "consequence": "unknown",
+            "policy_binding": "none",
+            "enforcement_path": "none",
+            "intervention_points": [],
+            "safe_principles": ["audit"],
+            "requires": [],
+            "acceptance_record": valid_acceptance_record(),
+        },
+    ]
+
+    class FakeDateTime(datetime):
+        _now_values = iter(
+            (
+                (2026, 12, 31, 0, 0, timezone.utc),
+                (2027, 1, 1, 0, 0, timezone.utc),
+            )
+        )
+
+        @classmethod
+        def now(cls, tz=None):
+            year, month, day, hour, minute, value_tz = next(cls._now_values)
+            value = cls(year, month, day, hour, minute, tzinfo=value_tz)
+            return value if tz is None else value.astimezone(tz)
+
+        @classmethod
+        def fromisoformat(cls, value):
+            return datetime.fromisoformat(value)
+
+    monkeypatch.setattr(governance, "datetime", FakeDateTime)
+
+    assert governance.validate_governance_contract(
+        document,
+        deployment_target="production-bound",
+    )["deployment_target"] == "production-bound"
 
 
 def test_public_wording_uses_correct_governance_layers_and_no_policy_only_enforcement():

@@ -308,9 +308,9 @@ generated governance contract. `governance.mode` may be `off`, `selective`, or
 operator choices. `off` means no bound tool records and no lifecycle bindings;
 `selective` means only the classified consequential surfaces are bound; and
 `comprehensive` means every consequential or unknown surface must land on a
-supported runtime binding. The environment posture is fixed in the contract:
-`development`/`staging` run `evaluate_only`; `preproduction`/`production` run
-`enforce`. For every tool, emit a structured record with `id`,
+supported runtime binding. `environment_modes only matter when mode != off`.
+The environment posture is fixed in the contract: `development`/`staging` run
+`evaluate_only`; `preproduction`/`production` run `enforce`. For every tool, emit a structured record with `id`,
 `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`,
 `safe_principles`, and `requires`, plus lifecycle bindings for ingress/egress
 controls. Legacy string tools remain backwards-compatible only as explicit
@@ -325,7 +325,9 @@ Surface the incompatibility as a design decision, explain the consequence,
 `comprehensive` must reject unsupported provider-hosted consequential or
 unknown tools; `production-bound` unbound consequential/unknown tools require an
 explicit acceptance record (`owner`, `justification`, `review_date`, `expiry`)
-rather than a silent waiver.
+rather than a silent waiver. `off` is still allowed in `production-bound`, but
+it does not make an enforcement claim; any consequential or unknown unbound
+tool still needs acceptance.
 
 **Terminology guardrail.** **SAFE is the methodology**. **ACS is the PDP**.
 **Agent Hooks is the runtime contract**. **host/gateway is the PEP**. **AGT is
