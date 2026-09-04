@@ -2599,6 +2599,16 @@ def _validate_governed_actions_manifest(
     if not isinstance(findings, list):
         return "findings must be an array"
     referenced: set[str] = set()
+    mediation_paths = manifest["mediation_paths"]
+    if not isinstance(mediation_paths, list):
+        return "mediation_paths must be an array"
+    for path in mediation_paths:
+        if not isinstance(path, dict):
+            return "mediation_paths entries must be objects"
+        refs = path.get("evidence_refs")
+        if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+            return "mediation_paths has malformed evidence_refs"
+        referenced.update(refs)
     phases_by_evidence: dict[str, set[str]] = {}
     observed_buckets: dict[str, list[str]] = {
         status: [] for _key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS

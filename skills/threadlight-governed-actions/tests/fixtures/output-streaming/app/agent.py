@@ -6,16 +6,15 @@ as the conformant fixture's does.
 
 This one module is everything the fixture declares under ``app/``: the
 statically-inspected action declarations and mediation graph, *and* the
-one real dispatch seam every probe kind drives. ``dispatch`` below is the
-single callable named by ``governance/probe-contract.json``; it routes to
-the enforcement seam (``dispatch_probe``), the approval seam (``redeem``),
-or the output seam (``emit_output``) purely by the shape of the arguments
-the probe harness passes, so a target never has to declare -- or a
-fixture tree never has to carry -- a separate module per probe kind.
+generic dispatch seam used by enforcement, approval, and output probes.
+``dispatch`` routes those generic probe families by argument shape, while the
+contract's ``execution_paths`` records point directly to the convention-named
+functions below so mediation proof is bound to the function actually executed.
 
-Nothing here is ever imported or executed in-process by the assessor: the
-static analysis paths only inspect this source, and every probe path runs
-it in an isolated child subprocess. No record this module writes, to a
+The assessor imports this module only in isolated child subprocesses. For
+path probes it executes the bound convention function after replacing the
+hook/tool/provider namespaces with assessor-owned synthetic implementations;
+no target self-report can establish ledger order. No record this module writes, to a
 ledger or to ``AUDIT_EVENTS``, ever carries a raw argument payload -- only
 canonical hashes and payload-free identifiers.
 """
@@ -32,11 +31,10 @@ from typing import Any, Callable, Mapping, MutableMapping
 class _Namespace:
     """Minimal stand-in for a mediation seam namespace.
 
-    mediation.py recognizes mediation evidence by statically inspecting the
-    *shape* of calls in dispatch function bodies (bare ``name.attr(...)``
-    call expressions); it never imports or executes this module, so these
-    stand-ins only need to exist to keep the module free of unresolved-name
-    lint noise -- they are never actually invoked at runtime.
+    These stand-ins keep an ordinary module import executable. The isolated
+    path-probe child replaces them with assessor-owned instrumented namespaces
+    before invoking a bound convention function, so these target stubs are
+    never accepted as mediation evidence or invoked by a path probe.
     """
 
     def __getattr__(self, _name: str) -> Callable[..., Any]:
@@ -83,10 +81,10 @@ def payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
 # non-exclusively-provider-hosted action is assessed across all five
 # REQUIRED_NON_PROVIDER_MODES, so both ``customer.lookup`` and
 # ``payments.refund`` need one dispatch function per mode below. Each
-# function is never imported or executed -- mediation.py only inspects the
-# call shapes in its body: a bare ``agent_hooks.pre_tool_call(...)`` call
-# that source-precedes a bare ``tool_service.*``/``provider.*`` call proves a
-# pre-action seam mediates the tool-service invocation.
+# function is statically discovered and then executed by an isolated path-probe
+# child with assessor-owned instrumented namespaces. Static call shape can find
+# a candidate bypass, but only the assessor-calculated ledger order can pass a
+# path.
 
 
 def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
@@ -286,11 +284,11 @@ def dispatch_probe(
     ``AUDIT_EVENTS`` for audit IDs; this function never returns the raw
     arguments or any tool output.
 
-    ``governance/probe-contract.json`` declares this same function as
-    its ``dispatch`` target for every probe kind this fixture proves
-    (application enforcement, and by extension the base output
-    mediation coverage every fixture is checked against). The output
-    probe harness calls ``dispatch`` with a bare ``(verdict, ledger_path)``
+    ``governance/probe-contract.json`` declares this function as its generic
+    ``dispatch`` target for enforcement and Task 6 probes only; mediation
+    receipts use the separate per-path ``execution_paths`` references. The
+    output probe harness calls ``dispatch`` with a bare
+    ``(verdict, ledger_path)``
     tuple rather than a ``ProbeCase`` mapping, so this seam is never
     mediated by anything other than itself: it records a
     ``verdict_received`` event and zero released bytes, proving this

@@ -332,11 +332,11 @@ def _must_fix_ids(result: contracts.AssessmentResult) -> FrozenSet[str]:
 # ---------------------------------------------------------------------------
 
 SCENARIOS: Dict[str, Tuple[int, FrozenSet[str]]] = {
-    "conformant-maf": (1, frozenset()),
-    "unmediated-background": (1, frozenset()),
+    "conformant-maf": (0, frozenset()),
+    "unmediated-background": (1, frozenset({"MED-001", "MED-002"})),
     "provider-hosted-side-effect": (1, frozenset({"MED-003"})),
     "approval-replay": (1, frozenset({"APR-001"})),
-    "interceptor-failure": (1, frozenset({"ENF-002", "MED-001", "MED-002"})),
+    "interceptor-failure": (1, frozenset({"ENF-002"})),
     "output-streaming": (1, frozenset({"OUT-001"})),
     "unprotected-ghcp": (
         1,
@@ -396,24 +396,50 @@ def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) 
     assert "expired_rejected" not in {probe.observed for probe in approval_probes}
 
 
-def test_conformant_maf_manifest_verdict_is_governed(tmp_path: Path) -> None:
+def test_conformant_maf_executes_every_required_path_and_is_governed(
+    tmp_path: Path,
+) -> None:
     result = assess_fixture(tmp_path, "conformant-maf")
     manifest = render.build_manifest(result)
-    assert manifest["summary"]["verdict"] == "partial"
+    assert manifest["summary"]["verdict"] == "governed"
     assert manifest["summary"]["must_fix"] == []
-    assert "MED-002" in manifest["summary"]["not_verified"]
+    assert not [
+        path
+        for path in manifest["mediation_paths"]
+        if path["status"] != "pass" or not path["discovered"] or not path["executed"]
+    ]
+    assert not [
+        finding for finding in manifest["findings"] if finding["finding_id"].startswith("MED-")
+    ]
+
+
+def test_unmediated_background_executes_actual_bypass_paths(tmp_path: Path) -> None:
+    result = assess_fixture(tmp_path, "unmediated-background")
+    refund_paths = {
+        path.mode: path
+        for path in result.paths
+        if path.action_id == "payments.refund"
+    }
+    for mode in ("batch", "background"):
+        assert refund_paths[mode].executed is True
+        assert refund_paths[mode].status == "must-fix"
+    assert {"MED-001", "MED-002"} <= {
+        finding.finding_id
+        for finding in result.findings
+        if finding.status == "must-fix"
+    }
 
 
 _CONFORMANT_STATUSES: FrozenSet[str] = frozenset({"pass", "not-applicable"})
 
 _RUNTIME_UNRESOLVED_EXPECTATIONS: Dict[str, FrozenSet[str]] = {
-    "conformant-maf": frozenset({"MED-002"}),
-    "unmediated-background": frozenset({"MED-002"}),
-    "provider-hosted-side-effect": frozenset({"MED-002", "MED-003"}),
-    "approval-replay": frozenset({"APR-001", "MED-002"}),
-    "interceptor-failure": frozenset({"ENF-002", "MED-001", "MED-002"}),
-    "output-streaming": frozenset({"MED-002", "OUT-001"}),
-    "upstream-version-drift": frozenset({"MED-002", "PIN-001"}),
+    "conformant-maf": frozenset(),
+    "unmediated-background": frozenset({"MED-001", "MED-002"}),
+    "provider-hosted-side-effect": frozenset({"MED-003"}),
+    "approval-replay": frozenset({"APR-001"}),
+    "interceptor-failure": frozenset({"ENF-002"}),
+    "output-streaming": frozenset({"OUT-001"}),
+    "upstream-version-drift": frozenset({"PIN-001"}),
 }
 
 
@@ -680,9 +706,9 @@ def test_goldens_match_byte_for_byte_against_the_real_pipeline(tmp_path: Path) -
 
 def test_conformant_goldens_share_the_conformant_maf_source() -> None:
     manifest = json.loads(CONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
-    assert manifest["summary"]["verdict"] == "partial"
+    assert manifest["summary"]["verdict"] == "governed"
     assert manifest["summary"]["must_fix"] == []
-    assert "MED-002" in manifest["summary"]["not_verified"]
+    assert manifest["summary"]["not_verified"] == []
     evidence_pack_text = CONFORMANT_EVIDENCE_PACK_GOLDEN.read_text(encoding="utf-8")
     assert evidence_pack_text.strip() != ""
 
@@ -691,8 +717,8 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
     manifest = json.loads(NONCONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
     assert manifest["summary"]["verdict"] != "governed"
     summary = manifest["summary"]
-    assert summary["must_fix"] == []
-    assert set(summary["not_verified"]) == {"MED-002"}
+    assert summary["must_fix"] == ["MED-001", "MED-001", "MED-002"]
+    assert summary["not_verified"] == []
     # The nonconformant golden isolates ``unmediated-background``'s own
     # declared mediation defect: no incidental "control file absent"
     # finding may ride along in the artifact customers read.
@@ -701,7 +727,10 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
         assert not incidental & set(summary[bucket]), (bucket, summary[bucket])
     apply_plan = json.loads(NONCONFORMANT_APPLY_PLAN_GOLDEN.read_text(encoding="utf-8"))
     assert isinstance(apply_plan, dict)
-    assert {item["finding_id"] for item in apply_plan["items"]} == {"MED-002"}
+    assert {item["finding_id"] for item in apply_plan["items"]} == {
+        "MED-001",
+        "MED-002",
+    }
 
 
 # ---------------------------------------------------------------------------

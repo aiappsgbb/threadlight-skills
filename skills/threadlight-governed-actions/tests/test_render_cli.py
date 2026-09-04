@@ -4343,7 +4343,7 @@ def test_conformant_probe_contract_without_top_level_action_id_still_proves_outp
         }
         for finding in result.findings
     )
-    assert governed_actions.exit_code(result, gate=True) == 1
+    assert governed_actions.exit_code(result, gate=True) == 0
 
 
 def test_multi_action_probe_contract_without_attribution_reports_probe_action_unattributed(

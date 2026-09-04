@@ -480,6 +480,8 @@
         "pre_action_seam",
         "equivalent_control_ref",
         "covered",
+        "discovered",
+        "executed",
         "status",
         "evidence_refs"
       ],

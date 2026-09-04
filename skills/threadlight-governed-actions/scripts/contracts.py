@@ -200,6 +200,10 @@ class ProbeResult:
     #: an orchestrator must treat as not-verified rather than bind to
     #: invented provenance.
     evidence_items: Tuple[ProbeEvidence, ...] = ()
+    #: Execution family for a path-bound receipt. Generic enforcement,
+    #: approval, output, audit, and staging probes leave this ``None``;
+    #: without a matching mode a result can never prove a mediation path.
+    mode: Optional[str] = None
 
 
 @dataclass(frozen=True)

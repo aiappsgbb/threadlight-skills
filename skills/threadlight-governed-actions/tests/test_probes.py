@@ -70,6 +70,9 @@ from pathlib import Path
 
 import pytest
 
+import inventory
+import maf_adapter
+import mediation
 import probes
 from contracts import Finding, ProbeResult, UnsafeTargetError
 from probes import (
@@ -146,6 +149,233 @@ def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
     assert contract["side_effect_mode"] == "synthetic"
     assert contract["observation_ledger"] == "governance/probe-ledger.jsonl"
     assert contract["actions"] == ("payments.refund",)
+    assert len(contract["execution_paths"]) == 10
+
+
+def _discovered_fixture_paths(root: Path):
+    actions = inventory.build_action_inventory(root).actions
+    return mediation.build_mediation_graph(root, actions, maf_adapter.MAFAdapter()).paths
+
+
+def test_execution_path_bindings_match_assessor_discovery(fixture_root: Path):
+    root = fixture_root / "conformant-maf"
+    contract = load_probe_contract(root)
+
+    bindings = probes.validate_execution_paths(
+        root, contract, _discovered_fixture_paths(root)
+    )
+
+    assert {
+        (binding["action_id"], binding["mode"], binding["path_id"])
+        for binding in bindings
+    } == {
+        (path.action_id, path.mode, path.path_id)
+        for path in _discovered_fixture_paths(root)
+        if path.discovered
+    }
+
+
+def test_execution_path_probes_exercise_allow_and_deny_receipts(
+    fixture_root: Path,
+):
+    root = fixture_root / "conformant-maf"
+    paths = _discovered_fixture_paths(root)
+
+    results = probes.run_execution_path_probe_set(root, paths)
+
+    assert len(results) == 2 * len([path for path in paths if path.discovered])
+    denied = [result for result in results if result.probe_id == "path-dispatch-deny"]
+    assert len(denied) == len(paths)
+    assert {result.status for result in denied} == {"pass"}
+    assert {result.observed for result in denied} == {
+        "deny_decision_without_invocation"
+    }
+
+
+def test_async_execution_path_uses_awaitable_synthetic_namespaces(
+    tmp_path: Path,
+):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "app" / "agent.py").write_text(
+        """
+class _AsyncNamespace:
+    async def pre_tool_call(self, **kwargs):
+        return {"decision": "allow"}
+
+    async def invoke(self, *args, **kwargs):
+        return {"cancelled": True}
+
+agent_hooks = _AsyncNamespace()
+tool_service = _AsyncNamespace()
+AUDIT_EVENTS = []
+
+async def interactive_orders_cancel(order_id):
+    await agent_hooks.pre_tool_call(
+        action_id="orders.cancel", mode="interactive"
+    )
+    return await tool_service.invoke("orders.cancel", order_id=order_id)
+
+def dispatch(case, ledger_path):
+    return {
+        "decision": "deny",
+        "invocation_count": 0,
+        "argument_hash": None,
+        "exception_class": None,
+    }
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "agent.yaml").write_text(
+        """
+tools:
+  - id: orders.cancel
+    consequence: write
+    execution_modes: [interactive]
+    provider_hosted: false
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "governance").mkdir()
+    actions = inventory.build_action_inventory(tmp_path).actions
+    paths = mediation.build_mediation_graph(
+        tmp_path, actions, maf_adapter.MAFAdapter()
+    ).paths
+    interactive_path = next(path for path in paths if path.mode == "interactive")
+    (tmp_path / "governance" / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "actions": ["orders.cancel"],
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "dispatch": "app.agent:dispatch",
+                "execution_paths": [
+                    {
+                        "action_id": "orders.cancel",
+                        "mode": "interactive",
+                        "path_id": interactive_path.path_id,
+                        "dispatch": "app.agent:interactive_orders_cancel",
+                    }
+                ],
+                "observation_ledger": "governance/probe-ledger.jsonl",
+                "side_effect_mode": "synthetic",
+                "timeout_ms": 500,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    receipts = probes.run_execution_path_probe_set(tmp_path, paths)
+    updated, findings = mediation.apply_execution_receipts(paths, receipts)
+
+    assert next(path for path in updated if path.mode == "interactive").status == "pass"
+    assert all(
+        finding.finding_id != "MED-001"
+        for finding in findings
+        if interactive_path.path_id in finding.affected_paths
+    )
+
+
+def test_execution_path_runner_preserves_partial_results_on_child_start_failure(
+    fixture_root: Path, monkeypatch
+):
+    root = fixture_root / "conformant-maf"
+    paths = _discovered_fixture_paths(root)
+    calls = 0
+
+    def _dispatch(_root, _contract, binding, _ledger, decision):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise ProbeToolingError("synthetic child start failure")
+        event = {
+            "event": "pre_action_decision",
+            "evidence_id": f"decision-{calls}",
+            "action_id": binding["action_id"],
+            "mode": binding["mode"],
+            "path_id": binding["path_id"],
+            "decision": decision,
+        }
+        events = [event]
+        if decision == "allow":
+            events.append(
+                {
+                    "event": "invocation",
+                    "evidence_id": f"invocation-{calls}",
+                    "action_id": binding["action_id"],
+                    "mode": binding["mode"],
+                    "path_id": binding["path_id"],
+                }
+            )
+        return {"events": events, "child_error": None}
+
+    monkeypatch.setattr(probes, "_dispatch_path_child", _dispatch)
+
+    with pytest.raises(probes.PartialProbeToolingError) as caught:
+        probes.run_execution_path_probe_set(root, paths)
+
+    assert len(caught.value.partial_results) == 2
+
+
+def test_execution_path_binding_rejects_target_path_id_lie(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"][0]["path_id"] = "target-declared-lie"
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="does not match assessor-discovered"):
+        probes.validate_execution_paths(
+            approval_root, contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+def test_execution_path_binding_rejects_dispatch_mismatch(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"][0]["dispatch"] = "app.agent:dispatch"
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="convention-named path function"):
+        probes.validate_execution_paths(
+            approval_root, contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+def test_execution_path_binding_rejects_duplicate_path(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"].append(dict(raw["execution_paths"][0]))
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="duplicate execution path binding"):
+        probes.validate_execution_paths(
+            approval_root, contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+def test_execution_path_binding_rejects_unlisted_discovered_path(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"].pop()
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="unlisted assessor-discovered path"):
+        probes.validate_execution_paths(
+            approval_root, contract, _discovered_fixture_paths(approval_root)
+        )
 
 
 @pytest.mark.parametrize("timeout_ms", [1, 5_000])

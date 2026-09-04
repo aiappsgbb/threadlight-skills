@@ -506,7 +506,11 @@ def _missing_probe_contract_finding(phase: str) -> contracts.Finding:
     )
 
 
-def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
+def _run_probe_sets(
+    root: Path,
+    phase: str,
+    discovered_paths: Sequence[contracts.PathRecord],
+) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
     """Run the enforcement and privacy application probe suites.
 
     Returns the raw probe results plus only the findings that stand in
@@ -543,6 +547,23 @@ def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult
             )
         )
     try:
+        path_results = probes.run_execution_path_probe_set(root, discovered_paths)
+    except probes.ProbeToolingError as error:
+        path_results = tuple(getattr(error, "partial_results", ()))
+        findings.append(
+            _probe_tooling_unavailable_finding(
+                finding_id="MED-002",
+                phase=phase,
+                reason_code="execution-path-probe-unavailable",
+                summary="Execution-path probes could not be completed.",
+                details=(
+                    "At least one contract-bound path dispatch did not produce "
+                    "an observable assessor-owned ledger receipt, so mediation "
+                    "coverage remains not-verified."
+                ),
+            )
+        )
+    try:
         privacy_results = probes.run_privacy_probe_set(root)
     except probes.ProbeToolingError as error:
         privacy_results = tuple(getattr(error, "partial_results", ()))
@@ -559,7 +580,7 @@ def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult
                 ),
             )
         )
-    return enforcement_results + privacy_results, tuple(findings)
+    return enforcement_results + path_results + privacy_results, tuple(findings)
 
 
 #: Which finding id an unresolvable-evidence downgrade must be reported
@@ -909,6 +930,7 @@ def _bind_static_source_evidence(
     options: contracts.AssessmentOptions,
     policy_hashes: Sequence[Mapping[str, str]],
     already_collected: FrozenSet[str] = frozenset(),
+    paths: Sequence[contracts.PathRecord] = (),
 ) -> Tuple[contracts.EvidenceRef, ...]:
     """Bind every repository-relative source path a *static* finding
     cites to a real :class:`contracts.EvidenceRef`.
@@ -960,6 +982,13 @@ def _bind_static_source_evidence(
             if not _is_static_source_evidence_ref(reference):
                 continue
             phases_by_reference.setdefault(reference, []).append(finding.phase)
+    for path in paths:
+        for reference in path.evidence_refs:
+            if reference in already_collected:
+                continue
+            if not _is_static_source_evidence_ref(reference):
+                continue
+            phases_by_reference.setdefault(reference, []).append(options.phase)
     collected: List[contracts.EvidenceRef] = []
     for reference in sorted(phases_by_reference):
         digest = _static_source_sha256(root, reference)
@@ -1417,7 +1446,10 @@ def _reconcile_bound_action_probe_coverage(
         if probe.action_id is None:
             continue
         canonical_action_id = _canonical_probe_action_id(probe.action_id, registry, alias_index)
-        if probe.probe_id not in _PROBE_FINDING_IDS:
+        if (
+            probe.probe_id not in _PROBE_FINDING_IDS
+            and probe.probe_id not in probes.PATH_PROBE_IDS
+        ):
             enforcement_statuses_by_action.setdefault(canonical_action_id, set()).add(probe.status)
         if probe.status != "pass":
             continue
@@ -1714,7 +1746,7 @@ def _assess_repository_controls(
     paths = graph.paths + provider_graph.paths
     findings.extend(provider_graph.findings)
 
-    probe_results, probe_findings = _run_probe_sets(root, phase)
+    probe_results, probe_findings = _run_probe_sets(root, phase, graph.paths)
     findings.extend(probe_findings)
     raw_probe_contract, probe_contract = _load_probe_contract_context(root)
 
@@ -1785,6 +1817,7 @@ def _assess_repository_controls(
             options,
             policy_hashes,
             already_collected=frozenset(ref.evidence_id for ref in evidence),
+            paths=paths,
         )
     )
     return contracts.AssessmentResult(

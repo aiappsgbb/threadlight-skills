@@ -979,6 +979,8 @@ def _populated_manifest():
             "pre_action_seam": "policy-gate",
             "equivalent_control_ref": None,
             "covered": True,
+            "discovered": True,
+            "executed": True,
             "status": "pass",
             "evidence_refs": ["evidence-1"],
         }
@@ -1146,6 +1148,8 @@ def test_manifest_schema_accepts_summary_status_array_with_catalog_finding_id(
     [
         ("action_inventory", 0, "consequence"),
         ("mediation_paths", 0, "status"),
+        ("mediation_paths", 0, "discovered"),
+        ("mediation_paths", 0, "executed"),
         ("evidence", 0, "sha256"),
         ("findings", 0, "reason_code"),
     ],

@@ -26,7 +26,7 @@ import contracts
 import inventory
 import maf_adapter
 import mediation
-from contracts import ActionRecord, Finding, PathRecord
+from contracts import ActionRecord, Finding, PathRecord, ProbeEvidence
 from mediation import (
     CANONICAL_NODE_ORDER,
     MediationGraph,
@@ -98,6 +98,55 @@ def _probe_result(
         expected="tool_received_transformed_arguments",
         observed=observed,
         evidence_refs=evidence_refs,
+    )
+
+
+def _path_receipt(
+    probe_id: str,
+    *,
+    status: str = "pass",
+    observed: str = "deny_decision_without_invocation",
+    mode: str = "direct-tool",
+    path_id: str = "path-1",
+    action_id: str = "payments.refund",
+    include_decision: bool = True,
+    include_invocation: bool = False,
+) -> contracts.ProbeResult:
+    decision_ref = f"decision-{probe_id}"
+    refs = []
+    items = []
+    if include_decision:
+        refs.append(decision_ref)
+        items.append(
+            ProbeEvidence(
+                evidence_id=decision_ref,
+                kind="path-pre-action-decision",
+                source="governance/probe-ledger.jsonl",
+                sha256="sha256:" + "a" * 64,
+            )
+        )
+    if include_invocation:
+        invocation_ref = f"invocation-{probe_id}"
+        refs.append(invocation_ref)
+        items.append(
+            ProbeEvidence(
+                evidence_id=invocation_ref,
+                kind="path-tool-invocation",
+                source="governance/probe-ledger.jsonl",
+                sha256="sha256:" + "b" * 64,
+            )
+        )
+    return contracts.ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=path_id,
+        status=status,
+        reason_code="path-dispatch-mediated" if status == "pass" else "ENF-002",
+        expected="pre_action_decision_before_invocation_or_deny",
+        observed=observed,
+        evidence_refs=tuple(refs),
+        evidence_items=tuple(items),
+        mode=mode,
     )
 
 
@@ -396,13 +445,10 @@ def test_correlated_executed_receipt_turns_a_discovered_path_into_pass():
     updated_paths, findings = apply_execution_receipts(
         (path,),
         (
-            _probe_result(
+            _path_receipt(
                 "transform",
-                "payments.refund",
-                "path-1",
-                status="pass",
-                observed="tool_received_transformed_arguments",
-                evidence_refs=("EVID-receipt", "audit-1"),
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
             ),
         ),
     )
@@ -412,7 +458,11 @@ def test_correlated_executed_receipt_turns_a_discovered_path_into_pass():
     assert updated.executed is True
     assert updated.covered is True
     assert updated.status == "pass"
-    assert updated.evidence_refs == ("EVID-receipt", "app/agent.py", "audit-1")
+    assert updated.evidence_refs == (
+        "app/agent.py",
+        "decision-transform",
+        "invocation-transform",
+    )
     assert findings == ()
 
 
@@ -434,12 +484,12 @@ def test_executed_bypass_receipt_remains_must_fix():
     updated_paths, findings = apply_execution_receipts(
         (path,),
         (
-            _probe_result(
+            _path_receipt(
                 "deny",
-                "payments.refund",
-                "path-1",
                 status="must-fix",
-                observed="tool_invoked_despite_fault",
+                observed="tool_invoked_without_pre_action_decision",
+                include_decision=False,
+                include_invocation=True,
             ),
         ),
     )
@@ -452,7 +502,7 @@ def test_executed_bypass_receipt_remains_must_fix():
     assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
 
 
-def test_wrong_action_or_path_receipt_is_ignored():
+def test_wrong_action_or_path_receipt_cannot_verify_the_path():
     path = PathRecord(
         path_id="path-1",
         action_id="payments.refund",
@@ -512,21 +562,17 @@ def test_conflicting_receipts_fail_closed():
     updated_paths, findings = apply_execution_receipts(
         (path,),
         (
-            _probe_result(
+            _path_receipt(
                 "transform",
-                "payments.refund",
-                "path-1",
-                status="pass",
-                observed="tool_received_transformed_arguments",
-                evidence_refs=("EVID-pass",),
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
             ),
-            _probe_result(
+            _path_receipt(
                 "deny",
-                "payments.refund",
-                "path-1",
                 status="must-fix",
-                observed="tool_invoked_despite_fault",
-                evidence_refs=("EVID-fail",),
+                observed="tool_invoked_without_pre_action_decision",
+                include_decision=False,
+                include_invocation=True,
             ),
         ),
     )
@@ -534,8 +580,142 @@ def test_conflicting_receipts_fail_closed():
     updated = updated_paths[0]
     assert updated.executed is True
     assert updated.status == "must-fix"
-    assert ("EVID-fail" in updated.evidence_refs) and ("EVID-pass" in updated.evidence_refs)
+    assert "invocation-deny" in updated.evidence_refs
+    assert "invocation-transform" in updated.evidence_refs
     assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_multiple_valid_fault_receipts_for_one_path_aggregate_to_pass():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+    receipts = (
+        _path_receipt("deny"),
+        _path_receipt("crash"),
+        _path_receipt("timeout"),
+        _path_receipt("malformed-verdict"),
+        _path_receipt(
+            "transform",
+            observed="pre_action_decision_before_invocation",
+            include_invocation=True,
+        ),
+    )
+
+    updated_paths, findings = apply_execution_receipts((path,), receipts)
+
+    assert updated_paths[0].executed is True
+    assert updated_paths[0].status == "pass"
+    assert findings == ()
+
+
+def test_duplicate_probe_id_and_path_receipts_fail_closed():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].status == "must-fix"
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_receipt_mode_must_match_discovered_path():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                mode="background",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is False
+    assert updated_paths[0].status == "not-verified"
+    assert [finding.finding_id for finding in findings] == ["MED-002"]
+
+
+def test_receipt_without_evidence_items_is_not_verified():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is False
+    assert updated_paths[0].status == "not-verified"
+    assert [finding.finding_id for finding in findings] == ["MED-002"]
 
 
 def test_undeclared_execution_mode_is_still_assessed_from_static_evidence(

@@ -630,15 +630,15 @@ def test_pre_deploy_binds_every_probe_citation_to_its_own_exact_provenance(
 
     # No probe was falsely downgraded merely because independent probes
     # collided on an id: every distinct observed artifact is honestly
-    # represented. The mediation verdict still stays partial until every
-    # discovered path is backed by its own executed receipt.
+    # represented. Every discovered path is now backed by its own executed
+    # receipt, so this conformant fixture remains governed.
     assert not [
         finding
         for finding in result.findings
         if finding.reason_code == "probe-evidence-unresolved"
     ]
     manifest = render.build_manifest(result)
-    assert manifest["summary"]["verdict"] == "partial"
+    assert manifest["summary"]["verdict"] == "governed"
 
 
 def test_repeated_identical_provenance_is_still_deduplicated_to_one_id():

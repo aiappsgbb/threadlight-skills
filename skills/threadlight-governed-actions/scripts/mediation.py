@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     # import exists purely so static type checkers can resolve
     # ``RuntimeAdapter`` as the real adapter contract instead of the
     # untyped ``object``.
+    from contracts import ProbeResult
     from maf_adapter import RuntimeAdapter
 
 
@@ -723,30 +724,54 @@ def _matching_receipts(
     return tuple(
         probe
         for probe in probe_results
-        if probe.action_id == path.action_id and probe.path_id == path.path_id
+        if (
+            probe.action_id == path.action_id
+            and probe.path_id == path.path_id
+            and probe.mode == path.mode
+        )
     )
 
 
-def _receipt_proves_tool_execution(probe: "ProbeResult") -> bool:
-    observed = probe.observed
-    return (
-        observed.startswith("tool_received_")
-        or observed.startswith("tool_invoked_")
-        or observed in ("argument_hash_mismatch", "multiple_tool_invocations")
-        or "invocation" in observed
-    )
+def _receipt_evidence_kinds(probe: "ProbeResult") -> frozenset[str]:
+    items_by_id = {item.evidence_id: item for item in probe.evidence_items}
+    if (
+        not probe.evidence_refs
+        or len(items_by_id) != len(probe.evidence_items)
+        or any(reference not in items_by_id for reference in probe.evidence_refs)
+    ):
+        return frozenset()
+    return frozenset(items_by_id[reference].kind for reference in probe.evidence_refs)
 
 
 def _receipt_status(path: PathRecord, probe: "ProbeResult") -> str:
-    if not _receipt_proves_tool_execution(probe):
+    kinds = _receipt_evidence_kinds(probe)
+    if not kinds:
         return "not-verified"
-    if probe.status == "pass":
-        return "pass" if path.covered else "must-fix"
+    has_decision = "path-pre-action-decision" in kinds
+    has_invocation = "path-tool-invocation" in kinds
+    if probe.status == "must-fix":
+        return "must-fix" if has_invocation else "not-verified"
     if probe.status == "should-fix":
         return "should-fix"
-    if probe.status == "must-fix":
-        return "must-fix"
+    if probe.status == "pass" and has_decision:
+        if probe.observed not in (
+            "pre_action_decision_before_invocation",
+            "deny_decision_without_invocation",
+        ):
+            return "not-verified"
+        return "pass" if path.covered else "must-fix"
     return "not-verified"
+
+
+def _receipt_is_executed(probe: "ProbeResult") -> bool:
+    kinds = _receipt_evidence_kinds(probe)
+    return bool(
+        kinds
+        & {
+            "path-pre-action-decision",
+            "path-tool-invocation",
+        }
+    )
 
 
 def _mediation_findings(
@@ -826,10 +851,19 @@ def apply_execution_receipts(
         if not matches:
             updated.append(path)
             continue
+        duplicate_receipts = len(
+            {(probe.probe_id, probe.path_id) for probe in matches}
+        ) != len(matches)
         receipt_statuses = {_receipt_status(path, probe) for probe in matches}
-        executed = any(_receipt_proves_tool_execution(probe) for probe in matches)
-        if "must-fix" in receipt_statuses:
+        executed = any(_receipt_is_executed(probe) for probe in matches)
+        if (
+            duplicate_receipts
+            or "must-fix" in receipt_statuses
+            or {"pass", "should-fix"} <= receipt_statuses
+        ):
             status = "must-fix"
+        elif "not-verified" in receipt_statuses:
+            status = "not-verified"
         elif "should-fix" in receipt_statuses:
             status = "should-fix"
         elif receipt_statuses == {"pass"} and executed:

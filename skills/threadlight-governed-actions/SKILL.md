@@ -74,6 +74,46 @@ Optional live evidence is exactly that: **optional**. When it is not selected, o
 when a permission is missing, the affected control is reported `not-verified`.
 A `not-verified` finding is never silently converted to `pass`.
 
+## Path-bound execution contract
+
+`governance/probe-contract.json` must bind every assessor-discovered,
+non-provider mediation path to the exact importable function the assessor will
+execute:
+
+```json
+{
+  "dispatch": "app.agent:dispatch",
+  "execution_paths": [
+    {
+      "action_id": "payments.refund",
+      "mode": "background",
+      "path_id": "400019bbedc16b75",
+      "dispatch": "app.agent:background_payments_refund"
+    }
+  ]
+}
+```
+
+The top-level `dispatch` remains the generic deny/transform/fault probe seam; it
+does **not** prove mediation for any path. Each `execution_paths` record is
+validated against the assessor's recomputed `PathRecord`: `action_id`, `mode`,
+and `path_id` must match, bindings must be unique and complete, and `dispatch`
+must directly name the convention function
+`<mode>_<normalized_action_id>` in that discovered path's source module. This
+version accepts direct convention functions only; a dedicated adapter is not
+accepted unless a future contract can validate that it actually calls the
+convention function.
+
+The assessor imports each bound function in an isolated child and replaces its
+`agent_hooks`, `tool_service`, and provider namespaces with assessor-owned
+synthetic implementations. It calculates ledger order itself. A passing receipt
+must prove `pre_action_decision` preceded the synthetic invocation, or prove a
+deny decision with zero invocations. Static AST discovers the expected function
+and candidate bypasses but never grants `pass`. Missing, mismatched,
+unobservable, or duplicate receipts fail closed; multiple valid fault receipts
+for one path aggregate successfully when at least one proves the pre-action
+seam and none proves bypass or conflict.
+
 ## Outputs
 
 | Artifact | Default path | Shape |
