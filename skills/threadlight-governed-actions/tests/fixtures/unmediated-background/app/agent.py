@@ -10,13 +10,12 @@ seam behaves exactly as the conformant fixture's does.
 This one module is everything the fixture declares under ``app/``: the
 statically-inspected action declarations and mediation graph, *and* the
 generic dispatch seam used by enforcement, approval, and output probes.
-``dispatch`` routes those generic probe families by argument shape, while the
-contract's ``execution_paths`` records point directly to the convention-named
-functions below so mediation proof is bound to the function actually executed.
+``dispatch`` routes those generic probe families by argument shape, while
+``dispatch_execution_path`` routes action/mode pairs through ``EXECUTION_ROUTES``.
 
 The assessor imports this module only in isolated child subprocesses. For
-path probes it executes the bound convention function after replacing the
-hook/tool/provider namespaces with assessor-owned synthetic implementations;
+path probes it executes the application dispatcher after replacing the resolved
+route's hook/tool/provider namespaces with assessor-owned implementations;
 no target self-report can establish ledger order. No record this module writes, to a
 ledger or to ``AUDIT_EVENTS``, ever carries a raw argument payload -- only
 canonical hashes and payload-free identifiers.
@@ -36,7 +35,7 @@ class _Namespace:
 
     These stand-ins keep an ordinary module import executable. The isolated
     path-probe child replaces them with assessor-owned instrumented namespaces
-    before invoking a bound convention function, so these target stubs are
+    before invoking the application-resolved route, so these target stubs are
     never accepted as mediation evidence or invoked by a path probe.
     """
 
@@ -292,8 +291,8 @@ def dispatch_probe(
     arguments or any tool output.
 
     ``governance/probe-contract.json`` declares this function as its generic
-    ``dispatch`` target for enforcement and Task 6 probes only; mediation
-    receipts use the separate per-path ``execution_paths`` references. The
+    ``dispatch`` target for enforcement and Task 6 probes only; mediation path
+    receipts use ``dispatch_execution_path`` and ``EXECUTION_ROUTES``. The
     output probe harness calls ``dispatch`` with a bare
     ``(verdict, ledger_path)``
     tuple rather than a ``ProbeCase`` mapping, so this seam is never
@@ -668,7 +667,61 @@ def emit_output(verdict: str, ledger_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The single declared dispatch callable.
+# The application-owned execution routing table and dispatch callable.
+# ---------------------------------------------------------------------------
+
+
+EXECUTION_ROUTES = {
+    ("customer.lookup", "interactive"): interactive_customer_lookup,
+    ("customer.lookup", "batch"): batch_customer_lookup,
+    ("customer.lookup", "background"): background_customer_lookup,
+    ("customer.lookup", "subagent"): subagent_customer_lookup,
+    ("customer.lookup", "direct-tool"): direct_tool_customer_lookup,
+    ("payments.refund", "interactive"): interactive_payments_refund,
+    ("payments.refund", "batch"): batch_payments_refund,
+    ("payments.refund", "background"): background_payments_refund,
+    ("payments.refund", "subagent"): subagent_payments_refund,
+    ("payments.refund", "direct-tool"): direct_tool_payments_refund,
+}
+_EXECUTION_ARGUMENT_NAMES = {
+    "customer.lookup": ("customer_id",),
+    "payments.refund": ("payment_id", "amount"),
+}
+
+
+def dispatch_execution_path(
+    action_id: str,
+    mode: str,
+    case: Mapping[str, object],
+    ledger_path: str,
+) -> Mapping[str, object]:
+    target = EXECUTION_ROUTES[(action_id, mode)]
+    resolved_path = f"{target.__module__}:{target.__qualname__}"
+    _append_ledger(
+        ledger_path,
+        "resolved_path",
+        evidence_id=f"path-resolved-{case['path_id']}",
+        action_id=action_id,
+        mode=mode,
+        path_id=case["path_id"],
+        resolved_path=resolved_path,
+    )
+    supplied = case["arguments"]
+    if not isinstance(supplied, Mapping):
+        raise TypeError("execution case arguments must be a mapping")
+    arguments = {
+        name: supplied[name] for name in _EXECUTION_ARGUMENT_NAMES[action_id]
+    }
+    return {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "result": target(**arguments),
+    }
+
+
+# ---------------------------------------------------------------------------
+# The generic enforcement/approval/output dispatch callable.
 # ---------------------------------------------------------------------------
 
 

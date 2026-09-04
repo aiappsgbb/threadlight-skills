@@ -255,6 +255,15 @@ def all_not_verified(statuses: dict[str, str]) -> bool:
     return all(statuses[fid] == "not-verified" for fid in AGGREGATE_IDS)
 
 
+def validation_reason(tmp_path: Path, manifest: dict) -> str | None:
+    root = make_target(tmp_path, manifest)
+    loaded = pr.load_governed_actions_manifest(root)
+    assert loaded is not None
+    return pr._validate_governed_actions_manifest(
+        loaded, GOLDEN_COMMIT, FRESH_NOW
+    )
+
+
 # ---------------------------------------------------------------------------
 # catalog + boundary: three aggregates, no duplicated child detail
 # ---------------------------------------------------------------------------
@@ -631,6 +640,34 @@ def test_summary_referencing_an_absent_finding_is_not_verified(tmp_path):
 def test_malformed_finding_entry_is_not_verified(tmp_path):
     manifest = _golden()
     manifest["findings"].append("not-an-object")
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_non_list_mediation_paths_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"] = {"not": "an array"}
+    assert validation_reason(tmp_path, manifest) == "mediation_paths must be an array"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_malformed_mediation_path_evidence_refs_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"][0]["evidence_refs"] = [17]
+    assert (
+        validation_reason(tmp_path, manifest)
+        == "mediation_paths has malformed evidence_refs"
+    )
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_dangling_mediation_path_evidence_ref_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"][0]["evidence_refs"].append(
+        "sha256:" + "d" * 64
+    )
+    assert validation_reason(
+        tmp_path, manifest
+    ) == "a finding or probe cites evidence that is not in the manifest"
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 

@@ -144,12 +144,17 @@ def test_probe_case_is_frozen():
 def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
     contract = load_probe_contract(fixture_root / "conformant-maf")
     assert contract["dispatch"] == "app.agent:dispatch"
+    assert contract["execution_dispatch"] == "app.agent:dispatch_execution_path"
     assert contract["audit_sink"] == "app.agent:AUDIT_EVENTS"
     assert contract["timeout_ms"] == 500
     assert contract["side_effect_mode"] == "synthetic"
     assert contract["observation_ledger"] == "governance/probe-ledger.jsonl"
     assert contract["actions"] == ("payments.refund",)
     assert len(contract["execution_paths"]) == 10
+    assert all(
+        set(binding) == {"action_id", "mode", "path_id"}
+        for binding in contract["execution_paths"]
+    )
 
 
 def _discovered_fixture_paths(root: Path):
@@ -190,6 +195,11 @@ def test_execution_path_probes_exercise_allow_and_deny_receipts(
     assert {result.observed for result in denied} == {
         "deny_decision_without_invocation"
     }
+    assert all(
+        {"path-resolved-function", "path-pre-action-decision"}
+        <= {item.kind for item in result.evidence_items}
+        for result in denied
+    )
 
 
 def test_async_execution_path_uses_awaitable_synthetic_namespaces(
@@ -215,6 +225,31 @@ async def interactive_orders_cancel(order_id):
         action_id="orders.cancel", mode="interactive"
     )
     return await tool_service.invoke("orders.cancel", order_id=order_id)
+
+EXECUTION_ROUTES = {
+    ("orders.cancel", "interactive"): interactive_orders_cancel,
+}
+
+def dispatch_execution_path(action_id, mode, case, ledger_path):
+    target = EXECUTION_ROUTES[(action_id, mode)]
+    resolved_path = f"{target.__module__}:{target.__qualname__}"
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(__import__("json").dumps({
+            "event": "resolved_path",
+            "evidence_id": f"path-resolved-{case['path_id']}",
+            "action_id": action_id,
+            "mode": mode,
+            "path_id": case["path_id"],
+            "resolved_path": resolved_path,
+        }) + "\\n")
+        handle.flush()
+        __import__("os").fsync(handle.fileno())
+    return {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "result": target(order_id=case["arguments"]["order_id"]),
+    }
 
 def dispatch(case, ledger_path):
     return {
@@ -250,12 +285,12 @@ tools:
                 "actions": ["orders.cancel"],
                 "audit_sink": "app.agent:AUDIT_EVENTS",
                 "dispatch": "app.agent:dispatch",
+                "execution_dispatch": "app.agent:dispatch_execution_path",
                 "execution_paths": [
                     {
                         "action_id": "orders.cancel",
                         "mode": "interactive",
                         "path_id": interactive_path.path_id,
-                        "dispatch": "app.agent:interactive_orders_cancel",
                     }
                 ],
                 "observation_ledger": "governance/probe-ledger.jsonl",
@@ -284,7 +319,7 @@ def test_execution_path_runner_preserves_partial_results_on_child_start_failure(
     paths = _discovered_fixture_paths(root)
     calls = 0
 
-    def _dispatch(_root, _contract, binding, _ledger, decision):
+    def _dispatch(_root, _contract, binding, _ledger, _target_ledger, decision):
         nonlocal calls
         calls += 1
         if calls == 3:
@@ -333,19 +368,16 @@ def test_execution_path_binding_rejects_target_path_id_lie(
         )
 
 
-def test_execution_path_binding_rejects_dispatch_mismatch(
+def test_execution_path_binding_rejects_per_path_dispatch_callable(
     approval_root: Path,
 ):
     contract_path = approval_root / "governance" / "probe-contract.json"
     raw = json.loads(contract_path.read_text(encoding="utf-8"))
     raw["execution_paths"][0]["dispatch"] = "app.agent:dispatch"
     contract_path.write_text(json.dumps(raw), encoding="utf-8")
-    contract = load_probe_contract(approval_root)
 
-    with pytest.raises(ProbeContractError, match="convention-named path function"):
-        probes.validate_execution_paths(
-            approval_root, contract, _discovered_fixture_paths(approval_root)
-        )
+    with pytest.raises(ProbeContractError, match="must contain exactly"):
+        load_probe_contract(approval_root)
 
 
 def test_execution_path_binding_rejects_duplicate_path(
@@ -376,6 +408,366 @@ def test_execution_path_binding_rejects_unlisted_discovered_path(
         probes.validate_execution_paths(
             approval_root, contract, _discovered_fixture_paths(approval_root)
         )
+
+
+@pytest.mark.parametrize("value", [None, "", "not-importable"])
+def test_load_probe_contract_rejects_missing_or_malformed_execution_dispatch(
+    approval_root: Path,
+    value: object,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    if value is None:
+        raw.pop("execution_dispatch", None)
+    else:
+        raw["execution_dispatch"] = value
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ProbeContractError, match="execution_dispatch"):
+        load_probe_contract(approval_root)
+
+
+def _path_event(
+    binding: dict[str, str],
+    event: str,
+    evidence_id: str,
+    **fields: object,
+) -> dict[str, object]:
+    return {
+        "event": event,
+        "evidence_id": evidence_id,
+        "action_id": binding["action_id"],
+        "mode": binding["mode"],
+        "path_id": binding["path_id"],
+        **fields,
+    }
+
+
+def test_execution_path_deny_with_any_invocation_is_fail_open():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": None,
+        "resolved_path": "app.agent:background_payments_refund",
+        "expected_resolved_path": "app.agent:background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="deny",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-deny"
+    )
+
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-002"
+    assert result.observed == "tool_invoked_despite_deny"
+
+
+@pytest.mark.parametrize(
+    ("child_error", "reason_code"),
+    [
+        ("startup_failed", "path-dispatch-startup-failed"),
+        ("timeout", "path-dispatch-timeout"),
+        ("nonzero_exit", "path-dispatch-nonzero-exit"),
+        ("malformed_output", "path-dispatch-malformed-output"),
+    ],
+)
+def test_execution_path_child_errors_remain_not_verified_without_ledger_bypass(
+    child_error: str,
+    reason_code: str,
+):
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": child_error,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path=resolved_path,
+            )
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == reason_code
+
+
+def test_execution_path_startup_failure_without_ledger_reflects_child_error():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+
+    result = probes._build_path_probe_result(
+        binding,
+        {
+            "child_error": "startup_failed",
+            "resolved_path": None,
+            "expected_resolved_path": None,
+            "events": [],
+        },
+        "governance/probe-ledger.jsonl",
+        "path-dispatch-allow",
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "path-dispatch-startup-failed"
+
+
+@pytest.mark.parametrize("decision", ["allow", "transform"])
+def test_execution_path_allow_or_transform_may_invoke_after_decision(
+    decision: str,
+):
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": None,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision=decision,
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "pass"
+    assert result.observed == "pre_action_decision_before_invocation"
+
+
+def test_execution_path_resolved_identity_mismatch_cannot_pass():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": None,
+        "resolved_path": "app.agent:lying_decoy",
+        "expected_resolved_path": "app.agent:actual_background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:actual_background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:lying_decoy",
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="allow",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-002"
+    assert result.observed == "resolved_path_identity_mismatch"
+
+
+def test_execution_path_child_error_does_not_mask_proven_identity_mismatch():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": "timeout",
+        "resolved_path": "app.agent:lying_decoy",
+        "expected_resolved_path": "app.agent:actual_background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:actual_background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:lying_decoy",
+            ),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "must-fix"
+    assert result.observed == "resolved_path_identity_mismatch"
+
+
+def test_target_ledger_forgery_does_not_create_assessor_receipt(
+    approval_root: Path,
+):
+    source_path = approval_root / "app" / "agent.py"
+    source = source_path.read_text(encoding="utf-8")
+    marker = "    target = EXECUTION_ROUTES[(action_id, mode)]\n"
+    forged = """    if mode == "background":
+        resolved_path = f"{target.__module__}:{target.__qualname__}"
+        _append_ledger(
+            ledger_path,
+            "resolved_path",
+            evidence_id=f"path-resolved-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+            resolved_path=resolved_path,
+        )
+        _append_ledger(
+            ledger_path,
+            "pre_action_decision",
+            evidence_id=f"path-decision-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+            decision="allow",
+        )
+        _append_ledger(
+            ledger_path,
+            "invocation",
+            evidence_id=f"path-invocation-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+        )
+        return {
+            "action_id": action_id,
+            "mode": mode,
+            "resolved_path": resolved_path,
+            "result": {"forged": True},
+        }
+"""
+    assert marker in source
+    source_path.write_text(source.replace(marker, marker + forged, 1), encoding="utf-8")
+
+    paths = _discovered_fixture_paths(approval_root)
+    results = probes.run_execution_path_probe_set(approval_root, paths)
+    result = next(
+        result
+        for result in results
+        if result.action_id == "payments.refund"
+        and result.mode == "background"
+        and result.probe_id == "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "path-dispatch-malformed-output"
+
+
+def test_execution_path_cannot_pass_without_resolved_identity_in_ledger():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": None,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="allow",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.observed == "resolved_path_identity_unobservable"
 
 
 @pytest.mark.parametrize("timeout_ms", [1, 5_000])
@@ -758,6 +1150,7 @@ def test_load_probe_contract_rejects_observation_ledger_symlink_escape(
         json.dumps(
             {
                 "dispatch": "app.agent:dispatch_probe",
+                "execution_dispatch": "app.agent:dispatch_probe",
                 "audit_sink": "app.agent:AUDIT_EVENTS",
                 "timeout_ms": 100,
                 "side_effect_mode": "synthetic",
@@ -824,6 +1217,7 @@ def dispatch_probe(case, ledger_path):
         json.dumps(
             {
                 "dispatch": "app.agent:dispatch_probe",
+                "execution_dispatch": "app.agent:dispatch_probe",
                 "audit_sink": "app.agent:AUDIT_EVENTS",
                 "timeout_ms": 1000,
                 "side_effect_mode": "synthetic",
@@ -971,6 +1365,7 @@ def test_unobservable_outcome_raises_probe_tooling_error(tmp_path: Path):
         json.dumps(
             {
                 "dispatch": "probes_test_nonexistent_module:dispatch_probe",
+                "execution_dispatch": "probes_test_nonexistent_module:dispatch_execution_path",
                 "audit_sink": "probes_test_nonexistent_module:AUDIT_EVENTS",
                 "timeout_ms": 100,
                 "side_effect_mode": "synthetic",

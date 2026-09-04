@@ -185,6 +185,7 @@ def dispatch(*args):
 def _contract(*, approval: bool) -> dict:
     contract = {
         "dispatch": "app.agent:dispatch",
+        "execution_dispatch": "app.agent:dispatch",
         "audit_sink": "app.agent:AUDIT_EVENTS",
         "observation_ledger": "governance/observation-ledger.jsonl",
         "nonce_ledger": "governance/nonce-ledger.jsonl",

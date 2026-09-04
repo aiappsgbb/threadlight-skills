@@ -76,43 +76,51 @@ A `not-verified` finding is never silently converted to `pass`.
 
 ## Path-bound execution contract
 
-`governance/probe-contract.json` must bind every assessor-discovered,
-non-provider mediation path to the exact importable function the assessor will
-execute:
+`governance/probe-contract.json` must declare one importable application
+execution dispatcher and bind every assessor-discovered, non-provider mediation
+path to its recomputed identity:
 
 ```json
 {
   "dispatch": "app.agent:dispatch",
+  "execution_dispatch": "app.agent:dispatch_execution_path",
   "execution_paths": [
     {
       "action_id": "payments.refund",
       "mode": "background",
-      "path_id": "400019bbedc16b75",
-      "dispatch": "app.agent:background_payments_refund"
+      "path_id": "400019bbedc16b75"
     }
   ]
 }
 ```
 
 The top-level `dispatch` remains the generic deny/transform/fault probe seam; it
-does **not** prove mediation for any path. Each `execution_paths` record is
-validated against the assessor's recomputed `PathRecord`: `action_id`, `mode`,
-and `path_id` must match, bindings must be unique and complete, and `dispatch`
-must directly name the convention function
-`<mode>_<normalized_action_id>` in that discovered path's source module. This
-version accepts direct convention functions only; a dedicated adapter is not
-accepted unless a future contract can validate that it actually calls the
-convention function.
+does **not** prove mediation for any path. `execution_dispatch` is the only
+callable used for path proof. Every `execution_paths` record contains exactly
+`action_id`, `mode`, and `path_id`; those values must match the assessor's
+recomputed `PathRecord`, and the set must be unique and complete.
 
-The assessor imports each bound function in an isolated child and replaces its
-`agent_hooks`, `tool_service`, and provider namespaces with assessor-owned
-synthetic implementations. It calculates ledger order itself. A passing receipt
-must prove `pre_action_decision` preceded the synthetic invocation, or prove a
-deny decision with zero invocations. Static AST discovers the expected function
-and candidate bypasses but never grants `pass`. Missing, mismatched,
-unobservable, or duplicate receipts fail closed; multiple valid fault receipts
-for one path aggregate successfully when at least one proves the pre-action
-seam and none proves bypass or conflict.
+The application module owns an explicit `EXECUTION_ROUTES` table with exactly
+the declared action/mode keys. In an isolated child, the assessor calls
+`execution_dispatch(action_id, mode, case, ledger_path)` and replaces the
+resolved route's hook/tool/provider namespaces with assessor-owned synthetic
+implementations. The dispatch result and ledger record the resolved function
+identity, action, and mode; the child checks that identity against
+`EXECUTION_ROUTES`. Target-written metadata goes to a separate target ledger;
+only the assessor-owned route wrapper and synthetic hook/tool channel can
+produce proof events. The assessor then calculates decision/invocation order
+from that protected ledger. A deny followed by any invocation is fail-open.
+Allow or transform may invoke only after `pre_action_decision`. Startup failure,
+timeout, nonzero exit, or malformed output remains `not-verified` unless the
+assessor ledger independently proves a bypass. Static AST discovers candidate
+path shape but never chooses the callable or grants `pass`.
+
+This is **scoped local conformance evidence only**: it proves what happened when
+the declared application dispatcher was executed with synthetic inputs. It
+does not prove that every undeclared entry point, scheduler, provider runtime,
+or deployed request can reach that dispatcher. Production enforcement still
+requires live deployed evidence from the production routing and control plane;
+local path receipts must never be presented as proof of production reachability.
 
 ## Outputs
 

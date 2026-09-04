@@ -3,9 +3,11 @@
 A Conformance Test Kit (CTK) claim or upstream conformance report is
 useful dependency evidence, but it is never sufficient by itself: it
 proves the *framework* implements a contract, not that *this* target
-application's dispatch path actually enforces it. This module drives both the target's generic enforcement seam and each
-assessor-discovered, contract-bound convention path function in isolated
-children. Generic dispatch results never prove mediation paths.
+application's dispatch path actually enforces it. This module drives both the
+target's generic enforcement seam and one declared application execution
+dispatcher in isolated children. The dispatcher must route each assessor-bound
+action/mode through the application's real routing table; convention-named
+functions are discovery evidence only and are never selected by the assessor.
 
 Every probe runs the target's dispatch callable in an isolated
 subprocess: a sanitized (allow-listed, not inherited) environment,
@@ -197,6 +199,13 @@ _REQUIRED_REPORT_KEYS: Tuple[str, ...] = (
     "invocation_count",
     "argument_hash",
     "exception_class",
+)
+
+_REQUIRED_PATH_REPORT_KEYS: Tuple[str, ...] = (
+    "action_id",
+    "mode",
+    "resolved_path",
+    "expected_resolved_path",
 )
 
 # The only decision values a *completed* child report is ever allowed to
@@ -536,10 +545,10 @@ def _validated_execution_paths(raw: Mapping[str, object]) -> Tuple[Mapping[str, 
     if not isinstance(declared, (list, tuple)):
         raise ProbeContractError(
             "probe contract 'execution_paths' must be a list of "
-            "{action_id, mode, path_id, dispatch} records"
+            "{action_id, mode, path_id} records"
         )
     normalized: List[Mapping[str, str]] = []
-    required = {"action_id", "mode", "path_id", "dispatch"}
+    required = {"action_id", "mode", "path_id"}
     for index, item in enumerate(declared):
         if not isinstance(item, Mapping) or set(item) != required:
             raise ProbeContractError(
@@ -555,11 +564,6 @@ def _validated_execution_paths(raw: Mapping[str, object]) -> Tuple[Mapping[str, 
                     f"a non-empty string; got {value!r}"
                 )
             values[key] = value.strip()
-        if ":" not in values["dispatch"]:
-            raise ProbeContractError(
-                f"probe contract execution_paths[{index}].dispatch must be an "
-                f"importable 'module:attr' reference; got {values['dispatch']!r}"
-            )
         normalized.append(MappingProxyType(values))
     return tuple(normalized)
 
@@ -567,9 +571,10 @@ def _validated_execution_paths(raw: Mapping[str, object]) -> Tuple[Mapping[str, 
 def load_probe_contract(root: Path) -> Mapping[str, object]:
     """Load and validate ``<root>/governance/probe-contract.json``.
 
-    Returns a read-only mapping with ``dispatch``, ``audit_sink``,
-    ``timeout_ms``, ``side_effect_mode``, ``observation_ledger``,
-    ``actions`` (normalized to a tuple), and normalized ``execution_paths``.
+    Returns a read-only mapping with ``dispatch``, ``execution_dispatch``,
+    ``audit_sink``, ``timeout_ms``, ``side_effect_mode``,
+    ``observation_ledger``, ``actions`` (normalized to a tuple), and normalized
+    ``execution_paths``.
     A legacy top-level ``path_id`` may be read but is never attached to a
     generic dispatch result and therefore cannot prove mediation. Raises
     :class:`ProbeContractError`
@@ -595,9 +600,13 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             f"probe contract must be a JSON object: {contract_path}"
         )
 
-    for key in ("dispatch", "audit_sink"):
+    for key in ("dispatch", "execution_dispatch", "audit_sink"):
         value = raw.get(key)
-        if not isinstance(value, str) or ":" not in value:
+        if (
+            not isinstance(value, str)
+            or value.count(":") != 1
+            or not all(part.strip() for part in value.split(":", 1))
+        ):
             raise ProbeContractError(
                 f"probe contract {key!r} must be an importable 'module:attr' "
                 f"reference string; got {value!r}"
@@ -671,6 +680,7 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
     return MappingProxyType(
         {
             "dispatch": raw["dispatch"],
+            "execution_dispatch": raw["execution_dispatch"],
             "audit_sink": raw["audit_sink"],
             "timeout_ms": timeout_ms,
             "side_effect_mode": side_effect_mode,
@@ -682,32 +692,18 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
     )
 
 
-def _convention_dispatch_name(action_id: str, mode: str) -> str:
-    return (
-        f"{mode.replace('-', '_')}_"
-        f"{action_id.replace('.', '_').replace('-', '_')}"
-    )
-
-
-def _dispatch_module_paths(dispatch_ref: str) -> frozenset[str]:
-    module_name = dispatch_ref.split(":", 1)[0]
-    relative = module_name.replace(".", "/")
-    return frozenset((f"{relative}.py", f"{relative}/__init__.py"))
-
-
 def validate_execution_paths(
     root: Path,
     contract: Mapping[str, object],
     discovered_paths: Sequence["PathRecord"],
 ) -> Tuple[Mapping[str, str], ...]:
-    """Bind target declarations to the assessor's recomputed path inventory.
+    """Bind action/mode declarations to the assessor's recomputed inventory.
 
-    Only direct references to the convention-named function discovered in
-    that path's own source file are accepted. A generic whole-agent dispatch
-    remains valid for the ordinary enforcement probes but cannot prove any
-    mediation path.
+    Per-path callable references are deliberately forbidden. The isolated child
+    invokes only ``execution_dispatch`` and verifies the resolved target against
+    the dispatcher's same-module ``EXECUTION_ROUTES`` table.
     """
-    del root  # The discovered evidence refs are already root-confined.
+    del root
     bindings = tuple(contract.get("execution_paths", ()))
     expected = {
         (path.action_id, path.mode): path
@@ -721,7 +717,6 @@ def validate_execution_paths(
         action_id = binding["action_id"]
         mode = binding["mode"]
         path_id = binding["path_id"]
-        dispatch = binding["dispatch"]
         key = (action_id, mode)
         if key in seen_keys or path_id in seen_path_ids:
             raise ProbeContractError(
@@ -736,24 +731,6 @@ def validate_execution_paths(
             raise ProbeContractError(
                 f"execution path binding {action_id!r}/{mode!r}/{path_id!r} "
                 "does not match assessor-discovered PathRecord"
-            )
-        expected_attr = _convention_dispatch_name(action_id, mode)
-        _module, attr = dispatch.split(":", 1)
-        if attr != expected_attr:
-            raise ProbeContractError(
-                f"execution path binding dispatch {dispatch!r} must reference "
-                f"the convention-named path function {expected_attr!r}; generic "
-                "whole-agent dispatch functions cannot prove mediation paths"
-            )
-        source_refs = {
-            reference.split("#", 1)[0]
-            for reference in path.evidence_refs
-            if reference.endswith(".py") or ".py#" in reference
-        }
-        if not (_dispatch_module_paths(dispatch) & source_refs):
-            raise ProbeContractError(
-                f"execution path binding dispatch {dispatch!r} does not reference "
-                f"the assessor-discovered source for path {path_id!r}"
             )
         validated.append(binding)
 
@@ -898,8 +875,17 @@ _PATH_PROBE_IDS = frozenset(
 _PATH_PROBE_EXPECTED = "pre_action_decision_before_invocation_or_deny"
 _PATH_PRE_DECISION_KIND = "path-pre-action-decision"
 _PATH_INVOCATION_KIND = "path-tool-invocation"
+_PATH_RESOLVED_KIND = "path-resolved-function"
+_PATH_ROUTING_TARGET_KIND = "path-routing-table-target"
 _PATH_CHILD_ARG = "--path-child"
 PATH_PROBE_IDS = _PATH_PROBE_IDS
+
+_PATH_CHILD_ERROR_REASONS = {
+    "startup_failed": "path-dispatch-startup-failed",
+    "timeout": "path-dispatch-timeout",
+    "nonzero_exit": "path-dispatch-nonzero-exit",
+    "malformed_output": "path-dispatch-malformed-output",
+}
 
 
 def _build_path_probe_result(
@@ -939,14 +925,83 @@ def _build_path_probe_result(
         if decision_index is not None
         else None
     )
+    ledger_resolved_paths = {
+        str(event["resolved_path"])
+        for event in correlated
+        if event.get("event") == "resolved_path"
+        and isinstance(event.get("resolved_path"), str)
+    }
+    ledger_expected_paths = {
+        str(event["expected_resolved_path"])
+        for event in correlated
+        if event.get("event") == "routing_target"
+        and isinstance(event.get("expected_resolved_path"), str)
+    }
+    reported_resolved_path = (
+        str(outcome["resolved_path"])
+        if isinstance(outcome.get("resolved_path"), str)
+        else None
+    )
+    reported_expected_path = (
+        str(outcome["expected_resolved_path"])
+        if isinstance(outcome.get("expected_resolved_path"), str)
+        else None
+    )
+    identity_mismatch = (
+        len(ledger_resolved_paths) > 1
+        or len(ledger_expected_paths) > 1
+        or (
+            bool(ledger_resolved_paths)
+            and bool(ledger_expected_paths)
+            and ledger_resolved_paths != ledger_expected_paths
+        )
+        or (
+            reported_resolved_path is not None
+            and bool(ledger_resolved_paths)
+            and reported_resolved_path not in ledger_resolved_paths
+        )
+        or (
+            reported_expected_path is not None
+            and bool(ledger_expected_paths)
+            and reported_expected_path not in ledger_expected_paths
+        )
+        or (
+            reported_resolved_path is not None
+            and reported_expected_path is not None
+            and reported_resolved_path != reported_expected_path
+        )
+    )
+    identity_unobservable = (
+        len(ledger_resolved_paths) != 1
+        or len(ledger_expected_paths) != 1
+    )
+    child_error = outcome.get("child_error")
 
-    if invocation_index is not None and (
+    if invocation_index is not None and decision == "deny":
+        status = "must-fix"
+        reason_code = "ENF-002"
+        observed = "tool_invoked_despite_deny"
+    elif invocation_index is not None and (
         decision_index is None or decision_index > invocation_index
     ):
         status = "must-fix"
         reason_code = "ENF-002"
         observed = "tool_invoked_without_pre_action_decision"
-    elif invocation_index is not None:
+    elif identity_mismatch:
+        status = "must-fix"
+        reason_code = "ENF-002"
+        observed = "resolved_path_identity_mismatch"
+    elif child_error is not None:
+        status = "not-verified"
+        reason_code = _PATH_CHILD_ERROR_REASONS.get(
+            str(child_error), "path-dispatch-unobservable"
+        )
+        observed = f"path_dispatch_child_error:{child_error}"
+    elif identity_unobservable:
+        status = "not-verified"
+        reason_code = "path-dispatch-unobservable"
+        observed = "resolved_path_identity_unobservable"
+    elif invocation_index is not None and decision in ("allow", "transform"):
         status = "pass"
         reason_code = "path-dispatch-mediated"
         observed = "pre_action_decision_before_invocation"
@@ -962,7 +1017,8 @@ def _build_path_probe_result(
     evidence_events = [
         event
         for event in correlated
-        if event.get("event") in ("pre_action_decision", "invocation")
+        if event.get("event")
+        in ("routing_target", "resolved_path", "pre_action_decision", "invocation")
         and isinstance(event.get("evidence_id"), str)
     ]
     evidence_refs = tuple(str(event["evidence_id"]) for event in evidence_events)
@@ -970,9 +1026,12 @@ def _build_path_probe_result(
         _record_evidence(
             str(event["evidence_id"]),
             (
-                _PATH_PRE_DECISION_KIND
-                if event["event"] == "pre_action_decision"
-                else _PATH_INVOCATION_KIND
+                {
+                    "routing_target": _PATH_ROUTING_TARGET_KIND,
+                    "resolved_path": _PATH_RESOLVED_KIND,
+                    "pre_action_decision": _PATH_PRE_DECISION_KIND,
+                    "invocation": _PATH_INVOCATION_KIND,
+                }[str(event["event"])]
             ),
             ledger_source,
             event,
@@ -996,7 +1055,7 @@ def _build_path_probe_result(
 def run_execution_path_probe_set(
     root: Path, discovered_paths: Sequence["PathRecord"]
 ) -> Tuple[ProbeResult, ...]:
-    """Execute every contract-bound convention path in an isolated child."""
+    """Execute every bound action/mode through the application dispatcher."""
     root_path = Path(root).resolve()
     contract = load_probe_contract(root_path)
     bindings = validate_execution_paths(root_path, contract, discovered_paths)
@@ -1017,6 +1076,8 @@ def run_execution_path_probe_set(
             key=lambda item: (item["action_id"], item["mode"], item["path_id"]),
         ):
             for decision in _PATH_PROBE_DECISIONS:
+                ledger_path: Optional[Path] = None
+                target_ledger_path: Optional[Path] = None
                 try:
                     ledger_fd, ledger_name = tempfile.mkstemp(
                         dir=str(ledger_dir),
@@ -1024,16 +1085,34 @@ def run_execution_path_probe_set(
                         suffix=".jsonl",
                     )
                     os.close(ledger_fd)
+                    ledger_path = Path(ledger_name)
+                    target_ledger_fd, target_ledger_name = tempfile.mkstemp(
+                        dir=str(ledger_dir),
+                        prefix=f".path-target-{binding['path_id']}-{decision}-",
+                        suffix=".jsonl",
+                    )
+                    os.close(target_ledger_fd)
+                    target_ledger_path = Path(target_ledger_name)
                 except OSError as error:
+                    if ledger_path is not None:
+                        ledger_path.unlink(missing_ok=True)
+                    if target_ledger_path is not None:
+                        target_ledger_path.unlink(missing_ok=True)
                     raise PartialProbeToolingError(
                         f"cannot create execution-path observation ledger: {error}",
                         partial_results=tuple(results),
                     ) from error
-                ledger_path = Path(ledger_name)
                 try:
+                    assert ledger_path is not None
+                    assert target_ledger_path is not None
                     try:
                         outcome = _dispatch_path_child(
-                            root_path, contract, binding, ledger_path, decision
+                            root_path,
+                            contract,
+                            binding,
+                            ledger_path,
+                            target_ledger_path,
+                            decision,
                         )
                     except ProbeToolingError as error:
                         raise PartialProbeToolingError(
@@ -1048,7 +1127,10 @@ def run_execution_path_probe_set(
                         )
                     )
                 finally:
-                    ledger_path.unlink(missing_ok=True)
+                    if ledger_path is not None:
+                        ledger_path.unlink(missing_ok=True)
+                    if target_ledger_path is not None:
+                        target_ledger_path.unlink(missing_ok=True)
     finally:
         _remove_created_dirs(created_dirs)
     return tuple(results)
@@ -1625,14 +1707,21 @@ def _dispatch_path_child(
     root_path: Path,
     contract: Mapping[str, object],
     binding: Mapping[str, str],
-    ledger_path: Path,
+    assessor_ledger_path: Path,
+    target_ledger_path: Path,
     decision: str,
 ) -> Mapping[str, object]:
     stdin_bytes = canonical.canonical_bytes(
         {
             "binding": dict(binding),
+            "declared_routes": [
+                [item["action_id"], item["mode"]]
+                for item in contract["execution_paths"]
+            ],
             "decision": decision,
-            "ledger_path": str(ledger_path),
+            "execution_dispatch": contract["execution_dispatch"],
+            "assessor_ledger_path": str(assessor_ledger_path),
+            "target_ledger_path": str(target_ledger_path),
         }
     )
     env = {
@@ -1664,23 +1753,61 @@ def _dispatch_path_child(
         pass
 
     child_error: Optional[str] = None
+    stdout_bytes = b""
+    exit_code: Optional[int] = None
     if not _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S):
         process.kill()
         _reap_killed_child(process)
         child_error = "startup_failed"
     else:
         try:
-            process.communicate(timeout=contract["timeout_ms"] / 1000.0)
+            stdout_bytes, _stderr_bytes = process.communicate(
+                timeout=contract["timeout_ms"] / 1000.0
+            )
+            exit_code = process.returncode
         except subprocess.TimeoutExpired:
             process.kill()
             _reap_killed_child(process)
             child_error = "timeout"
         else:
-            if process.returncode != 0:
+            if exit_code != 0:
                 child_error = "nonzero_exit"
+    report: Optional[Mapping[str, object]] = None
+    if child_error is None:
+        try:
+            parsed = json.loads(stdout_bytes.decode("utf-8"))
+            _validate_path_child_report(parsed)
+            report = parsed
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            child_error = "malformed_output"
+    events = _read_ledger_events(assessor_ledger_path)
+    resolved_path = report.get("resolved_path") if report is not None else None
+    expected_resolved_path = (
+        report.get("expected_resolved_path") if report is not None else None
+    )
+    if resolved_path is None:
+        resolved_path = next(
+            (
+                event.get("resolved_path")
+                for event in events
+                if event.get("event") == "resolved_path"
+            ),
+            None,
+        )
+    if expected_resolved_path is None:
+        expected_resolved_path = next(
+            (
+                event.get("expected_resolved_path")
+                for event in events
+                if event.get("event") == "routing_target"
+            ),
+            None,
+        )
     return {
-        "events": _read_ledger_events(ledger_path),
+        "events": events,
         "child_error": child_error,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": expected_resolved_path,
     }
 
 
@@ -1810,6 +1937,19 @@ def _validate_child_report(report: object) -> None:
         raise ValueError("child report 'audit_ids' must be a list of strings")
 
 
+def _validate_path_child_report(report: object) -> None:
+    if not isinstance(report, dict) or set(report) != set(_REQUIRED_PATH_REPORT_KEYS):
+        raise ValueError(
+            "execution-path child report must contain exactly "
+            f"{_REQUIRED_PATH_REPORT_KEYS!r}"
+        )
+    for key in _REQUIRED_PATH_REPORT_KEYS:
+        if not isinstance(report[key], str) or not report[key]:
+            raise ValueError(
+                f"execution-path child report {key!r} must be a non-empty string"
+            )
+
+
 def _run_as_child() -> None:
     """Isolated-subprocess entry point; never runs during a normal import.
 
@@ -1859,25 +1999,20 @@ def _run_as_child() -> None:
     sys.stdout.flush()
 
 
-def _synthetic_value(parameter: inspect.Parameter) -> object:
-    name = parameter.name.lower()
-    if "amount" in name or "count" in name or "number" in name:
-        return 7
-    if name.startswith("is_") or name.startswith("has_") or name.startswith("allow"):
-        return False
-    return f"threadlight-synthetic-{parameter.name}"
-
-
 def _run_path_as_child() -> None:
-    """Execute one convention path with assessor-owned synthetic namespaces."""
+    """Execute one application-routed path with assessor-owned namespaces."""
     payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     binding = payload["binding"]
+    declared_routes = {
+        (str(item[0]), str(item[1])) for item in payload["declared_routes"]
+    }
     requested_decision = str(payload["decision"])
-    ledger_path = str(payload["ledger_path"])
+    assessor_ledger_path = str(payload["assessor_ledger_path"])
+    target_ledger_path = str(payload["target_ledger_path"])
     action_id = str(binding["action_id"])
     mode = str(binding["mode"])
     path_id = str(binding["path_id"])
-    dispatch_ref = str(binding["dispatch"])
+    dispatch_ref = str(payload["execution_dispatch"])
     module_name, attr = dispatch_ref.split(":", 1)
     module = importlib.import_module(module_name)
     dispatch = getattr(module, attr)
@@ -1891,7 +2026,7 @@ def _run_path_as_child() -> None:
             "path_id": path_id,
             **fields,
         }
-        with open(ledger_path, "a", encoding="utf-8") as handle:
+        with open(assessor_ledger_path, "a", encoding="utf-8") as handle:
             handle.write(
                 json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n"
             )
@@ -1905,6 +2040,9 @@ def _run_path_as_child() -> None:
 
             return resolved().__await__()
 
+    class _SyntheticPathDenied(RuntimeError):
+        pass
+
     class _SyntheticHooks:
         def pre_tool_call(self, *args: object, **kwargs: object) -> Mapping[str, object]:
             del args, kwargs
@@ -1914,7 +2052,7 @@ def _run_path_as_child() -> None:
                 decision=requested_decision,
             )
             if requested_decision == "deny":
-                raise RuntimeError("synthetic path probe denial")
+                raise _SyntheticPathDenied("synthetic path probe denial")
             return _AwaitableMapping(decision=requested_decision)
 
         def __getattr__(self, _name: str) -> Callable[..., None]:
@@ -1943,36 +2081,95 @@ def _run_path_as_child() -> None:
 
     dispatch_globals = getattr(dispatch, "__globals__", None)
     if not isinstance(dispatch_globals, dict):
-        raise TypeError("execution path dispatch must be a module-level function")
+        raise TypeError("execution_dispatch must be a module-level function")
+    routing_table = dispatch_globals.get("EXECUTION_ROUTES")
+    if not isinstance(routing_table, dict):
+        raise TypeError(
+            "execution_dispatch must expose same-module EXECUTION_ROUTES mapping"
+        )
+    route_keys = set(routing_table)
+    if route_keys != declared_routes:
+        raise ValueError(
+            "EXECUTION_ROUTES keys must exactly match declared execution_paths"
+        )
+    target = routing_table.get((action_id, mode))
+    if not callable(target):
+        raise TypeError("EXECUTION_ROUTES target must be callable")
+    if getattr(target, "__module__", None) != module_name:
+        raise TypeError("EXECUTION_ROUTES targets must belong to execution_dispatch module")
+    expected_resolved_path = (
+        f"{target.__module__}:{getattr(target, '__qualname__', target.__name__)}"
+    )
+    resolved_path = ""
+
+    def instrumented_target(*args: object, **kwargs: object) -> object:
+        nonlocal resolved_path
+        resolved_path = expected_resolved_path
+        append_event(
+            "resolved_path",
+            f"path-resolved-{path_id}",
+            resolved_path=resolved_path,
+        )
+        return target(*args, **kwargs)
+
+    instrumented_target.__module__ = target.__module__
+    instrumented_target.__name__ = target.__name__
+    instrumented_target.__qualname__ = target.__qualname__
+    routing_table[(action_id, mode)] = instrumented_target
+
+    target_globals = getattr(target, "__globals__", None)
+    if not isinstance(target_globals, dict):
+        raise TypeError("EXECUTION_ROUTES targets must be module-level functions")
     dispatch_globals["agent_hooks"] = _SyntheticHooks()
     dispatch_globals["tool_service"] = _SyntheticTool()
     dispatch_globals["provider"] = _SyntheticTool()
     dispatch_globals["audit_sink"] = _SyntheticNoop()
     dispatch_globals["output_mediator"] = _SyntheticNoop()
-
-    signature = inspect.signature(dispatch)
-    positional: List[object] = []
-    keywords = {}
-    for parameter in signature.parameters.values():
-        if parameter.kind in (
-            inspect.Parameter.VAR_POSITIONAL,
-            inspect.Parameter.VAR_KEYWORD,
-        ):
-            continue
-        if parameter.default is not inspect.Parameter.empty:
-            continue
-        value = _synthetic_value(parameter)
-        if parameter.kind == inspect.Parameter.POSITIONAL_ONLY:
-            positional.append(value)
-        else:
-            keywords[parameter.name] = value
+    target_globals["agent_hooks"] = dispatch_globals["agent_hooks"]
+    target_globals["tool_service"] = dispatch_globals["tool_service"]
+    target_globals["provider"] = dispatch_globals["provider"]
+    target_globals["audit_sink"] = dispatch_globals["audit_sink"]
+    target_globals["output_mediator"] = dispatch_globals["output_mediator"]
 
     sys.stdout.buffer.write(_CHILD_READY_MARKER)
     sys.stdout.buffer.flush()
-    result = dispatch(*positional, **keywords)
-    if inspect.isawaitable(result):
-        asyncio.run(result)
-    sys.stdout.buffer.write(canonical.canonical_bytes({}))
+    append_event(
+        "routing_target",
+        f"path-routing-target-{path_id}",
+        expected_resolved_path=expected_resolved_path,
+    )
+    case = {
+        "probe_id": f"{_PATH_PROBE_ID_PREFIX}{requested_decision}",
+        "path_id": path_id,
+        "arguments": {
+            "amount": 7,
+            "count": 7,
+            "number": 7,
+            "customer_id": "threadlight-synthetic-customer",
+            "order_id": "threadlight-synthetic-order",
+            "payment_id": "threadlight-synthetic-payment",
+        },
+    }
+    try:
+        result = dispatch(action_id, mode, case, target_ledger_path)
+        if inspect.isawaitable(result):
+            result = asyncio.run(result)
+        if not isinstance(result, Mapping):
+            raise TypeError("execution_dispatch result must be a mapping")
+        if result.get("action_id") != action_id or result.get("mode") != mode:
+            raise ValueError("execution_dispatch result action_id/mode mismatch")
+        routed_result = result.get("result")
+        if inspect.isawaitable(routed_result):
+            asyncio.run(routed_result)
+    except _SyntheticPathDenied:
+        pass
+    report = {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": expected_resolved_path,
+    }
+    sys.stdout.buffer.write(canonical.canonical_bytes(report))
     sys.stdout.flush()
 
 

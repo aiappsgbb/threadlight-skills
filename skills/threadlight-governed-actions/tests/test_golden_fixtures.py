@@ -430,6 +430,71 @@ def test_unmediated_background_executes_actual_bypass_paths(tmp_path: Path) -> N
     }
 
 
+def _mutate_actual_dispatch_with_never_called_convention_decoy(root: Path) -> None:
+    """Keep the application router on a renamed bypass and add a clean decoy."""
+    source_path = root / "app" / "agent.py"
+    source = source_path.read_text(encoding="utf-8")
+    original = """def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+"""
+    renamed_bypass = """def actual_background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    return provider.refund(payment_id=payment_id, amount=amount)
+"""
+    assert original in source
+    source = source.replace(original, renamed_bypass, 1)
+
+    route_entry = (
+        '("payments.refund", "background"): background_payments_refund,'
+    )
+    assert route_entry in source
+    source = source.replace(
+        route_entry,
+        '("payments.refund", "background"): actual_background_payments_refund,',
+        1,
+    )
+
+    source += """
+
+def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+"""
+    source_path.write_text(source, encoding="utf-8")
+
+
+def test_application_dispatch_strong_decoy_is_must_fix_through_full_assess(
+    tmp_path: Path,
+) -> None:
+    root = _prepare_temp_fixture(
+        tmp_path,
+        "conformant-maf",
+        mutate=_mutate_actual_dispatch_with_never_called_convention_decoy,
+        dest_name="strong-dispatch-decoy",
+    )
+
+    with _patched_live_evidence():
+        result = governed_actions.assess(_frozen_options(root))
+    path = next(
+        path
+        for path in result.paths
+        if path.action_id == "payments.refund" and path.mode == "background"
+    )
+
+    assert path.executed is True
+    assert path.status == "must-fix"
+    assert gate_exit(result) == 1
+    assert {"MED-001", "MED-002"} <= _must_fix_ids(result)
+
+
 _CONFORMANT_STATUSES: FrozenSet[str] = frozenset({"pass", "not-applicable"})
 
 _RUNTIME_UNRESOLVED_EXPECTATIONS: Dict[str, FrozenSet[str]] = {
