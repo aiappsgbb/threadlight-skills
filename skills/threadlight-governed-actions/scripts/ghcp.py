@@ -37,10 +37,15 @@ live proof.
 Task 8 adds two optional, read-only *collectors* --
 :func:`collect_live_github` and :func:`collect_live_azure` -- that a
 caller may run separately, independently of ``assess_change_plane``.
-They are the only functions in this module that ever run an external
-command (always through an injected runner, never a real subprocess in
-a unit test), and only ever a fixed set of read-only ``gh api``/``az
-... list`` commands: no write, no mutation, no secret.
+Along with :func:`resolve_subscription_id`, they are the only functions in
+this module that run an external command (always through an injected
+runner, never a real subprocess in a unit test), and only ever a fixed
+set of read-only ``gh api``/``az ... list`` commands: no write, no mutation,
+no secret. Display names resolve against ``az account list --all`` before
+scope comparison or deployment binding; failed or ambiguous resolution
+raises :class:`SubscriptionResolutionError`. GUIDs require no account lookup.
+Neither account resolution nor selected deployment metadata proves live
+runtime identity or enforcement.
 :func:`collect_live_github`'s ``data["default_branch"]``,
 ``data["branch_protection"]``, and ``data["environments"]`` are shaped
 to match exactly what ``assess_change_plane`` already reads from a
@@ -74,6 +79,10 @@ import canonical
 
 class ChangePlaneError(RuntimeError):
     """Raised when a change-plane input cannot be read or parsed at all."""
+
+
+class SubscriptionResolutionError(ValueError):
+    """An Azure selector could not be bound to one canonical subscription ID."""
 
 
 # ---------------------------------------------------------------------------
@@ -3276,6 +3285,38 @@ def _command_failure_detail(error_class: str, exit_code: Optional[int]) -> str:
     if exit_code is None:
         return f"{error_class} (no process exit code available)"
     return f"{error_class}, exit code {exit_code}"
+
+
+def resolve_subscription_id(selector: str, run: CommandRunner) -> str:
+    """Resolve display names read-only; GUID selectors need no account lookup.
+
+    The local Azure CLI account list is selector resolution, not independent
+    evidence of a deployment. Missing, ambiguous or malformed results stop the
+    assessment before it can bind evidence to an unresolved display name.
+    """
+    guid = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+    if guid.fullmatch(selector):
+        return selector.lower()
+    accounts, error, exit_code = _run_read_only_command(
+        run, ["az", "account", "list", "--all", "--query", "[].{id:id,name:name}", "-o", "json"],
+    )
+    if error is not None:
+        raise SubscriptionResolutionError(
+            "Azure subscription resolution failed: " + _command_failure_detail(error, exit_code)
+        )
+    if not isinstance(accounts, list) or any(
+        not isinstance(account, Mapping)
+        or not isinstance(account.get("name"), str)
+        or not isinstance(account.get("id"), str)
+        or not guid.fullmatch(account["id"])
+        for account in accounts
+    ):
+        raise SubscriptionResolutionError("Azure subscription resolution returned malformed accounts")
+    matches = [account["id"].lower() for account in accounts
+               if account["name"].casefold() == selector.casefold()]
+    if len(matches) != 1:
+        raise SubscriptionResolutionError("Azure subscription name is missing or ambiguous")
+    return matches[0]
 
 
 def _is_json_list(payload: object) -> bool:

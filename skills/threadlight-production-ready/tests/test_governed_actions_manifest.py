@@ -552,6 +552,14 @@ def test_application_probe_missing_mode_is_not_verified(tmp_path):
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 
+def test_approval_probe_missing_action_id_is_not_verified(tmp_path):
+    manifest = _golden()
+    probe = next(p for p in manifest["conformance"]["application_probes"]
+                 if p["probe_id"] == "approval-anti-replay")
+    del probe["action_id"]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
 def test_application_probe_malformed_mode_is_not_verified(tmp_path):
     manifest = _with_probe_modes()
     manifest["conformance"]["application_probes"][0]["mode"] = 42

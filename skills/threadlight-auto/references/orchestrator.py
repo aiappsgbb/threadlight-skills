@@ -442,7 +442,8 @@ def summarize_governed_actions_manifest(
         if not isinstance(probe, dict) or not isinstance(probe.get("probe_id"), str):
             return _governed_actions_untrusted("malformed governance probe")
         if (probe.get("status") not in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable")
-                or not isinstance(probe.get("action_id"), (str, type(None)))):
+                or "action_id" not in probe
+                or not isinstance(probe["action_id"], (str, type(None)))):
             return _governed_actions_untrusted("malformed governance probe status or identity")
         kinds = required_kinds.get(probe["probe_id"])
         if not kinds or probe.get("status") != "pass":

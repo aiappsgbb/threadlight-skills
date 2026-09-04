@@ -26,7 +26,7 @@ DEPLOYED = {
     "image_digest": "sha256:" + "b" * 64,
     "policy_digest": "sha256:" + "c" * 64,
     "environment": "staging",
-    "subscription": "subscription-1",
+    "subscription": "01234567-89ab-cdef-0123-456789abcdef",
     "resource_group": "rg-refund-staging",
 }
 AUDIT_FIELDS = (
@@ -245,6 +245,73 @@ def test_corrupt_ledger_cannot_certify_filtered_output_or_audit(target, trailing
     assert "SENSITIVE-SENTINEL" not in str(output_error.value)
     assert "SENSITIVE-SENTINEL" not in str(audit_error.value)
     assert snapshot(target) == before
+
+
+_DUPLICATE_AUDIT = (
+    '{"audit_id":"RAW PROMPT SENTINEL","audit_id":"audit-1",'
+    '"correlation_id":"correlation-1","decision":"deny",'
+    '"action_hash":"sha256:' + "a" * 64 + '",'
+    '"policy_hash":"sha256:' + "b" * 64 + '","delivery_status":"persisted"}'
+)
+_DUPLICATE_EGRESS = '{"event":"egress","bytes":32,"bytes":0,"mediated":true}'
+
+
+@pytest.mark.parametrize("record", (
+    _DUPLICATE_AUDIT, _DUPLICATE_EGRESS,
+    '{"metadata":{"RAW PROMPT SENTINEL":1,"RAW PROMPT SENTINEL":2}}',
+    '{"metadata":[{"audit_id":"RAW PROMPT SENTINEL","audit_id":"audit-1"}]}',
+))
+def test_duplicate_jsonl_keys_are_rejected_at_every_object_level(target, record):
+    ledger = target / "governance" / "duplicate.jsonl"
+    ledger.write_text(record + "\n", encoding="utf-8")
+    before = snapshot(target)
+    with pytest.raises(probes.ProbeToolingError, match="duplicate") as error:
+        probes._read_ledger_events(ledger)
+    assert "RAW PROMPT SENTINEL" not in str(error.value)
+    assert snapshot(target) == before
+
+
+def _inject_duplicate_output_record(target, record):
+    agent = target / "app" / "agent.py"
+    agent.write_text(agent.read_text() + (
+        "\n_original_dispatch = dispatch\n"
+        "def dispatch(*args):\n"
+        "    result = _original_dispatch(*args)\n"
+        "    with open(args[-1], 'a', encoding='utf-8') as handle:\n"
+        f"        handle.write({(record + chr(10))!r})\n"
+        "    return result\n"
+    ))
+
+
+@pytest.mark.parametrize("record", (_DUPLICATE_AUDIT, _DUPLICATE_EGRESS))
+def test_duplicate_jsonl_keys_cannot_certify_output_or_audit(target, record):
+    _inject_duplicate_output_record(target, record)
+    before = snapshot(target)
+    for run in (lambda: probes.run_output_probe(target, "deny"),
+                lambda: probes.run_privacy_probe_set(target)):
+        with pytest.raises(probes.ProbeToolingError, match="duplicate") as error:
+            run()
+        assert "RAW PROMPT SENTINEL" not in str(error.value)
+    assert snapshot(target) == before
+
+
+@pytest.mark.parametrize("record", (_DUPLICATE_AUDIT, _DUPLICATE_EGRESS))
+def test_assess_rejects_duplicate_jsonl_keys_without_payload_or_residue(tmp_path, monkeypatch, record):
+    root = tmp_path / "pilot"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "conformant-maf", root)
+    _inject_duplicate_output_record(root, record)
+    monkeypatch.setattr(governed_actions, "resolve_source",
+                        lambda _: contracts.SourceRef("owner/repo", "0" * 40, False))
+    before = snapshot(root)
+    result = governed_actions.assess(contracts.AssessmentOptions(root, "pre-deploy", now=NOW))
+    for control in ("AUD-001", "OUT-001"):
+        assert any(f.finding_id == control and f.status == "not-verified" for f in result.findings)
+    manifest = render.build_manifest(result)
+    assert manifest["summary"]["verdict"] != "governed"
+    assert "RAW PROMPT SENTINEL" not in json.dumps(manifest)
+    assert "RAW PROMPT SENTINEL" not in render.render_evidence_pack(result)
+    assert governed_actions.exit_code(result, gate=True) == 1
+    assert snapshot(root) == before
 
 
 @pytest.mark.parametrize("field,value", [
@@ -557,4 +624,180 @@ def test_post_deploy_binds_selection_without_claiming_live_enforcement(tmp_path)
     assert all(not ref.live_verified and ref.deployed_target == DEPLOYED for ref in result.evidence)
     assert render.build_manifest(result)["deployed_target"] == DEPLOYED
     assert governed_actions.exit_code(result, gate=True) == 1
+    assert snapshot(root) == before
+
+
+_SUBSCRIPTION_ID = "abcdef01-2345-6789-abcd-ef0123456789"
+_SUBSCRIPTION_NAME = "Governance staging"
+_ACCOUNT_LIST = ["az", "account", "list", "--all", "--query", "[].{id:id,name:name}", "-o", "json"]
+
+
+def _subscription_options(root, selector=_SUBSCRIPTION_NAME, **changes):
+    return contracts.AssessmentOptions(
+        root, "post-deploy", staging=True, now=NOW,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{**{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+           "subscription": selector, **changes},
+    )
+
+
+def _subscription_runner(monkeypatch, accounts=None, observed_id=_SUBSCRIPTION_ID):
+    calls = []
+    if accounts is None:
+        accounts = [{"name": _SUBSCRIPTION_NAME, "id": _SUBSCRIPTION_ID}]
+    scope = f"/subscriptions/{observed_id}/resourceGroups/{DEPLOYED['resource_group']}"
+
+    def run(command):
+        calls.append(command)
+        if command[:3] == ["az", "account", "list"]:
+            assert command == _ACCOUNT_LIST
+            data = accounts
+        else:
+            assert command[command.index("--subscription") + 1] == _SUBSCRIPTION_ID
+            if command[:4] == ["az", "identity", "federated-credential", "list"]:
+                data = [{"id": scope + "/providers/Microsoft.ManagedIdentity/"
+                         "userAssignedIdentities/identity/federatedIdentityCredentials/one"}]
+            elif command[:4] == ["az", "role", "assignment", "list"]:
+                data = [{"roleDefinitionName": "Reader", "scope": scope}]
+            else:
+                assert command[:4] == ["az", "role", "definition", "list"]
+                data = [{"roleName": "Reader"}]
+        return SimpleNamespace(returncode=0, stdout=json.dumps(data), stderr="")
+
+    monkeypatch.setattr(governed_actions, "_default_command_runner", run)
+    return calls
+
+
+def test_deployment_binding_resolves_subscription_display_name(target, monkeypatch):
+    calls = _subscription_runner(monkeypatch)
+    options = _subscription_options(target)
+    assert governed_actions._deployment_target(options)["subscription"] == _SUBSCRIPTION_ID
+    assert options.subscription == _SUBSCRIPTION_NAME
+    assert calls == [_ACCOUNT_LIST]
+
+
+def test_internal_live_collection_resolves_subscription_before_comparison(target, monkeypatch):
+    calls = _subscription_runner(monkeypatch)
+    _, data, findings = governed_actions._collect_selected_live_evidence(
+        target, _subscription_options(target, deploy_identity="identity"), None,
+    )
+    assert calls[0] == _ACCOUNT_LIST
+    assert data["selected_scope"]["subscription"] == _SUBSCRIPTION_ID
+    assert any(f.reason_code == "azure-observed-target-not-verified" for f in findings)
+
+
+def test_observed_subscription_guid_is_compared_in_canonical_form(target, monkeypatch):
+    _subscription_runner(monkeypatch, observed_id=_SUBSCRIPTION_ID.upper())
+    _, data, findings = governed_actions._collect_selected_live_evidence(
+        target, _subscription_options(target, deploy_identity="identity"), None,
+    )
+    assert data["selected_scope"]["subscription"] == _SUBSCRIPTION_ID
+    assert any(f.reason_code == "azure-observed-target-not-verified" for f in findings)
+
+
+def test_resolved_subscription_still_rejects_real_observed_mismatch(target, monkeypatch):
+    calls = _subscription_runner(monkeypatch, observed_id="11111111-2222-3333-4444-555555555555")
+    with pytest.raises(contracts.UnsafeTargetError, match="subscription mismatch"):
+        governed_actions._collect_selected_live_evidence(
+            target, _subscription_options(target, deploy_identity="identity"), None,
+        )
+    assert calls[0] == _ACCOUNT_LIST
+
+
+@pytest.mark.parametrize("accounts", (
+    [], {}, [{"name": "different", "id": _SUBSCRIPTION_ID}],
+    [{"name": _SUBSCRIPTION_NAME, "id": "arbitrary-id"}],
+    [{"name": _SUBSCRIPTION_NAME, "id": _SUBSCRIPTION_ID},
+     {"name": _SUBSCRIPTION_NAME, "id": "11111111-2222-3333-4444-555555555555"}],
+))
+def test_subscription_name_resolution_rejects_missing_ambiguous_or_invalid_accounts(target, monkeypatch, accounts):
+    calls = _subscription_runner(monkeypatch, accounts=accounts)
+    with pytest.raises(ValueError, match="subscription"):
+        governed_actions._deployment_target(_subscription_options(target))
+    assert calls == [_ACCOUNT_LIST]
+
+
+@pytest.mark.parametrize("failure", ("missing-cli", "cli-error", "malformed-json"))
+def test_subscription_resolution_errors_are_sanitized(target, monkeypatch, failure):
+    def run(command):
+        assert command == _ACCOUNT_LIST
+        if failure == "missing-cli":
+            raise FileNotFoundError("RAW PROMPT SENTINEL")
+        return SimpleNamespace(returncode=1 if failure == "cli-error" else 0,
+                               stdout="RAW PROMPT SENTINEL", stderr="RAW PROMPT SENTINEL")
+    monkeypatch.setattr(governed_actions, "_default_command_runner", run)
+    with pytest.raises(ValueError, match="subscription") as error:
+        governed_actions._deployment_target(_subscription_options(target))
+    assert "RAW PROMPT SENTINEL" not in str(error.value)
+
+
+@pytest.mark.parametrize("entry", ("assess", "cli"))
+def test_public_assessment_binds_resolved_subscription_without_inventing_live_identity(tmp_path, monkeypatch, entry):
+    root = tmp_path / "pilot"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "conformant-maf", root)
+    monkeypatch.setattr(governed_actions, "resolve_source",
+                        lambda _: contracts.SourceRef("owner/repo", "0" * 40, False))
+    calls = _subscription_runner(monkeypatch)
+    before = snapshot(root)
+    if entry == "assess":
+        result = governed_actions.assess(_subscription_options(root, deploy_identity="identity"))
+        manifest = render.build_manifest(result)
+        assert snapshot(root) == before
+    else:
+        argv = ["--target", str(root), "--phase", "post-deploy", "--emit", "--gate",
+                "--deploy-identity", "identity"]
+        for key, value in {**DEPLOYED, "subscription": _SUBSCRIPTION_NAME}.items():
+            flag = "staging-resource-group" if key == "resource_group" else key.replace("_", "-")
+            argv += ["--" + flag, value]
+        assert governed_actions.main(argv) == 1
+        manifest = json.loads((root / "tests/governed-actions-manifest.json").read_text())
+    assert calls.count(_ACCOUNT_LIST) == 1
+    assert manifest["deployed_target"]["subscription"] == _SUBSCRIPTION_ID
+    assert all(e["deployed_target"]["subscription"] == _SUBSCRIPTION_ID and not e["live_verified"]
+               for e in manifest["evidence"])
+    assert any(f["reason_code"] == "azure-observed-target-not-verified" for f in manifest["findings"])
+    assert any(f["reason_code"] == "live-runtime-enforcement-not-verified" for f in manifest["findings"])
+    assert manifest["summary"]["verdict"] != "governed"
+
+
+def test_local_guid_assessment_needs_no_account_lookup(tmp_path, monkeypatch):
+    root = tmp_path / "pilot"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "conformant-maf", root)
+    monkeypatch.setattr(governed_actions, "resolve_source",
+                        lambda _: contracts.SourceRef("owner/repo", "0" * 40, False))
+    def no_azure(command):
+        pytest.fail("local GUID assessment must not query Azure")
+    monkeypatch.setattr(governed_actions, "_default_command_runner", no_azure)
+    before = snapshot(root)
+    result = governed_actions.assess(_subscription_options(root, _SUBSCRIPTION_ID.upper()))
+    assert result.deployed_target["subscription"] == _SUBSCRIPTION_ID
+    assert all(not e.live_verified for e in result.evidence)
+    assert snapshot(root) == before
+
+
+@pytest.mark.parametrize("entry", ("assess", "cli", "collect"))
+def test_unresolved_subscription_cannot_emit_or_collect_evidence(tmp_path, monkeypatch, entry, capsys):
+    root = tmp_path / "pilot"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "conformant-maf", root)
+    monkeypatch.setattr(governed_actions, "resolve_source",
+                        lambda _: contracts.SourceRef("owner/repo", "0" * 40, False))
+    calls = _subscription_runner(monkeypatch, accounts=[])
+    before = snapshot(root)
+    if entry == "cli":
+        argv = ["--target", str(root), "--phase", "post-deploy", "--emit",
+                "--subscription", _SUBSCRIPTION_NAME, "--deploy-identity", "identity",
+                "--staging-resource-group", DEPLOYED["resource_group"]]
+        assert governed_actions.main(argv) == 2
+        assert "subscription" in capsys.readouterr().err
+    else:
+        with pytest.raises(ValueError, match="subscription"):
+            if entry == "assess":
+                governed_actions.assess(_subscription_options(root))
+            else:
+                options = contracts.AssessmentOptions(
+                    root, "post-deploy", subscription=_SUBSCRIPTION_NAME,
+                    staging_resource_group=DEPLOYED["resource_group"], deploy_identity="identity",
+                )
+                governed_actions._collect_selected_live_evidence(root, options, None)
+    assert calls == [_ACCOUNT_LIST]
     assert snapshot(root) == before

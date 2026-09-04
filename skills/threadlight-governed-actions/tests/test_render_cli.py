@@ -4721,6 +4721,12 @@ def _successful_azure_command_runner(command: Sequence[str]) -> subprocess.Compl
     unresolved rather than a fabricated ``pass``.
     """
     joined = " ".join(command)
+    if command[:3] == ["az", "account", "list"]:
+        return subprocess.CompletedProcess(
+            args=list(command), returncode=0,
+            stdout=json.dumps([{"name": "SUBSCRIPTION", "id": "01234567-89ab-cdef-0123-456789abcdef"}]),
+            stderr="",
+        )
     if "federated-credential" in joined:
         return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="[]", stderr="")
     if "role" in joined and "assignment" in joined:

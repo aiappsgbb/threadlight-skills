@@ -951,6 +951,38 @@ def test_auto_rejects_partial_or_hidden_governance_probe_outcomes(tmp_path):
     assert [s["trusted"] for s in summaries] == [False, False, False]
 
 
+def _assert_missing_approval_action_id_is_untrusted(tmp_path, monkeypatch, consumer):
+    manifest = _golden_governed_actions_manifest()
+    probe = next(p for p in manifest["conformance"]["application_probes"]
+                 if p["probe_id"] == "approval-anti-replay")
+    del probe["action_id"]
+    workspace = make_context(tmp_path, manifest=manifest)
+    if consumer == "summarize":
+        summary = orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL, GOLDEN_COMMIT, now=GOLDEN_FRESH_NOW,
+        )
+    else:
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return GOLDEN_FRESH_NOW
+        monkeypatch.setattr(orch, "datetime", FrozenDatetime)
+        monkeypatch.setattr(orch, "_git_head_commit", lambda _: GOLDEN_COMMIT)
+        summary = decide(workspace)["governed_actions_manifest"]
+    assert summary["trusted"] is False
+    assert summary["status"] == "rerun-recommended"
+    assert summary["verdict"] is None
+    assert summary["recommendation"]
+
+
+def test_auto_summarize_missing_approval_action_id_is_untrusted(tmp_path, monkeypatch):
+    _assert_missing_approval_action_id_is_untrusted(tmp_path, monkeypatch, "summarize")
+
+
+def test_auto_decide_missing_approval_action_id_is_untrusted(tmp_path, monkeypatch):
+    _assert_missing_approval_action_id_is_untrusted(tmp_path, monkeypatch, "decide")
+
+
 def test_auto_recommends_rerun_for_an_invalid_governed_actions_manifest(tmp_path):
     cases: dict[str, dict] = {}
 

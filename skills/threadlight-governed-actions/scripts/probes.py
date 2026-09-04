@@ -2034,6 +2034,15 @@ def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) 
         return False
     return bytes(result[0]) == _CHILD_READY_MARKER
 
+def _unique_ledger_object(pairs: list) -> dict:
+    record = {}
+    for key, value in pairs:
+        if key in record:
+            raise ProbeToolingError("observation ledger contains duplicate JSON keys")
+        record[key] = value
+    return record
+
+
 def _read_ledger_events(ledger_path: Path) -> list:
     """Read whole JSONL evidence without silently dropping corrupt records."""
     try:
@@ -2048,7 +2057,7 @@ def _read_ledger_events(ledger_path: Path) -> list:
         if not line:
             continue
         try:
-            parsed = json.loads(line)
+            parsed = json.loads(line, object_pairs_hook=_unique_ledger_object)
         except json.JSONDecodeError as error:
             raise ProbeToolingError(
                 "observation ledger contains a malformed JSON event"

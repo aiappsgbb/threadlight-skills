@@ -1729,6 +1729,9 @@ def _deployment_target(options: contracts.AssessmentOptions) -> Optional[Mapping
            for field in ("image_digest", "policy_digest")):
         raise ValueError("deployed target requires exact sha256 image/policy digests")
     probes.validate_staging_scope(selected)
+    selected["subscription"] = ghcp.resolve_subscription_id(
+        options.subscription, _default_command_runner,
+    )
     return selected
 
 
@@ -1772,6 +1775,10 @@ def _collect_selected_live_evidence(
             "environment": options.environment,
         }
         probes.validate_staging_scope(selected_scope)
+        options = replace(options, subscription=ghcp.resolve_subscription_id(
+            options.subscription, _default_command_runner,
+        ))
+        selected_scope["subscription"] = options.subscription
         result = ghcp.collect_live_azure(
             options.subscription,
             options.staging_resource_group,
@@ -1800,7 +1807,10 @@ def _collect_selected_live_evidence(
                     continue
                 for field, value in selected.items():
                     if value is not None and field in observed:
-                        if observed[field] != value:
+                        observed_value = observed[field]
+                        if field == "subscription" and isinstance(observed_value, str):
+                            observed_value = observed_value.lower()
+                        if observed_value != value:
                             raise contracts.UnsafeTargetError(f"staging evidence {field} mismatch")
                         available.add(field)
             for observed in observations:
@@ -1828,6 +1838,8 @@ def _assess_repository_controls(
 ) -> contracts.AssessmentResult:
     """Assess the complete repository control set for a deploy phase."""
     deployment_target = _deployment_target(options)
+    if deployment_target is not None:
+        options = replace(options, subscription=deployment_target["subscription"])
     inv = inventory.build_action_inventory(root)
     findings: List[contracts.Finding] = list(inv.findings)
     evidence: List[contracts.EvidenceRef] = list(_spec_section_8_evidence(inv, source, options.now))
@@ -1972,7 +1984,6 @@ def _assess_post_deploy(
         "subscription": options.subscription,
         "environment": options.environment,
     })
-    _deployment_target(options)
     result = _assess_repository_controls(root, source, options, "post-deploy")
     return replace(result, findings=result.findings + (contracts.Finding(
         finding_id="ENF-001", status="not-verified", phase="post-deploy", plane="runtime",
