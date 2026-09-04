@@ -1656,6 +1656,37 @@ def test_output_probe_allows_buffered_release_after_verdict(fixture_root: Path):
     assert result.observed == "buffered_release_after_verdict"
 
 
+def test_output_probe_uses_a_private_ledger_and_never_touches_declared_target_files(
+    fixture_root: Path, tmp_path: Path
+):
+    # The declared observation_ledger is provenance only. Even a hostile
+    # contract pointing it at a tracked workflow file must not let the
+    # probe delete or rewrite that file: the output probe uses its own
+    # exclusive private ledger and leaves the full target tree byte-
+    # identical.
+    root = tmp_path / "output-private-ledger"
+    shutil.copytree(fixture_root / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["observation_ledger"] = ".github/workflows/governed-actions.yml"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    untracked = root / "scratch" / "notes.txt"
+    untracked.parent.mkdir(parents=True)
+    untracked.write_text("leave me alone\n", encoding="utf-8")
+
+    workflow_path = root / ".github" / "workflows" / "governed-actions.yml"
+    workflow_before = workflow_path.read_bytes()
+    before = _tree_snapshot(root)
+
+    result = run_output_probe(root, verdict="deny")
+
+    assert result.status == "pass"
+    assert result.observed == "zero_bytes_egressed"
+    assert workflow_path.read_bytes() == workflow_before
+    assert _tree_snapshot(root) == before
+
+
 def test_output_probe_passes_when_stream_is_chunk_mediated_within_declared_bound(
     fixture_root: Path,
 ):

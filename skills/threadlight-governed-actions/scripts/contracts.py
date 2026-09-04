@@ -121,6 +121,10 @@ class ActionRecord:
     provider_hosted: bool
     approval_required: Optional[bool]
     policy_ids: Tuple[str, ...] = ()
+    policy_binding: Optional[str] = None
+    binding_requires_approval: Optional[bool] = None
+    binding_requires_output: Optional[bool] = None
+    binding_requires_durable_audit: Optional[bool] = None
     known_runtime_paths: Tuple[str, ...] = ()
     inventory_status: Status = "not-verified"
 

@@ -4777,6 +4777,46 @@ def _prepare_probe_target(tmp_path: Path, *, fail_open: bool = False) -> Path:
     return root
 
 
+def _rewrite_fixture_registry(
+    root: Path,
+    *,
+    binding_style: str = "policy_binding",
+    refund_requires: Optional[Dict[str, bool]] = None,
+) -> None:
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    tools = {tool["id"]: tool for tool in document["tools"]}
+    customer = tools["customer.lookup"]
+    refund = tools["payments.refund"]
+
+    for tool in (customer, refund):
+        tool.pop("policy_binding", None)
+        tool.pop("policy_ids", None)
+        tool.pop("requires", None)
+
+    customer["policy_binding"] = "none"
+    if binding_style == "policy_binding":
+        refund["policy_binding"] = "returns-write-v1"
+    elif binding_style == "policy_ids":
+        refund["policy_ids"] = ["returns-write-v1"]
+    else:  # pragma: no cover - test helper guard
+        raise AssertionError(f"unknown binding_style: {binding_style!r}")
+
+    if refund_requires is not None:
+        refund["requires"] = refund_requires
+
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _rewrite_probe_contract(root: Path, **updates: object) -> None:
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.update(updates)
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def _content_snapshot(root: Path) -> Dict[str, str]:
     """``relative-path -> sha256`` for every regular file under *root*
     (``.git`` excluded): a byte-level proof that a read-only assessment
@@ -4849,6 +4889,166 @@ def test_conformant_approval_seam_still_passes_the_first_assessment(tmp_path):
         governed_actions.probes._APPROVAL_MUTATION_FIELDS
     )
     assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy"]) == 0
+
+
+@pytest.mark.parametrize("binding_style", ["policy_binding", "policy_ids"])
+def test_bound_action_missing_from_probe_contract_is_not_verified_and_fails_gate(
+    tmp_path, binding_style
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        binding_style=binding_style,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+    _rewrite_probe_contract(root, actions=["customer.lookup"], action_id="customer.lookup")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-not-probed"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_matching_bound_action_passes_and_unbound_action_may_be_omitted(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+    _rewrite_probe_contract(root, actions=["payments.refund"], action_id="payments.refund")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert not any(
+        finding.reason_code == "bound-action-not-probed" for finding in result.findings
+    )
+    assert not any(
+        finding.finding_id in {"APR-001", "OUT-001", "AUD-001"} for finding in result.findings
+    )
+    assert all(
+        finding.affected_actions != ("customer.lookup",) for finding in result.findings
+    )
+
+
+def test_bound_action_missing_required_approval_proof_is_not_verified(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(root, refund_requires={"approval": True})
+
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["approval_binding"]["action_id"] = "customer.lookup"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "APR-001"
+        and finding.reason_code == "bound-action-missing-approval-proof"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_bound_action_missing_required_output_and_audit_proofs_is_not_verified(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root, refund_requires={"output": True, "durable_audit": True}
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["action_id"] = "customer.lookup"
+    contract["approval_binding"]["action_id"] = "customer.lookup"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    output_finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "OUT-001"
+        and finding.reason_code == "bound-action-missing-output-proof"
+    )
+    audit_finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "AUD-001"
+        and finding.reason_code == "bound-action-missing-durable-audit-proof"
+    )
+    assert output_finding.status == "not-verified"
+    assert audit_finding.status == "not-verified"
+    assert output_finding.affected_actions == audit_finding.affected_actions == (
+        "payments.refund",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_probe_contract_action_not_in_inventory_is_reported_fail_closed(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_probe_contract(root, actions=["payments.refund", "ghost.action"])
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "probe-action-not-in-inventory"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("ghost.action",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    ("field_name", "mutate"),
+    [
+        ("action_id", lambda contract: contract.__setitem__("action_id", "ghost.action")),
+        (
+            "approval_binding.action_id",
+            lambda contract: contract["approval_binding"].__setitem__("action_id", "ghost.action"),
+        ),
+    ],
+)
+def test_probe_contract_selected_task6_action_not_in_inventory_is_reported_fail_closed(
+    tmp_path, field_name, mutate
+):
+    root = _prepare_probe_target(tmp_path)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    mutate(contract)
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "probe-action-not-in-inventory"
+        and finding.affected_actions == ("ghost.action",)
+    )
+    assert finding.status == "not-verified"
+    assert governed_actions.exit_code(result, gate=True) == 1
 
 
 @pytest.mark.parametrize("phase", ["design", "pre-deploy", "post-deploy"])

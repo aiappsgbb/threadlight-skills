@@ -1189,6 +1189,22 @@ def test_string_or_list_helper_accepts_single_string_and_list(tmp_path: Path) ->
     assert record.policy_ids == ("policy.one",)
 
 
+def test_unknown_requires_key_raises_inventory_error(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": {"approvall": True},
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError, match="unsupported requirement"):
+        inventory.parse_action_registries(tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # Boolean fields (reversible, approval_required, provider_hosted) raise
 # InventoryError with field/path context for a non-boolean value, never a

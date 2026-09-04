@@ -1081,6 +1081,185 @@ def _run_output_coverage(
     return (result,), ()
 
 
+def _bound_action_evidence_refs(action: contracts.ActionRecord) -> Tuple[str, ...]:
+    refs = list(action.declaration_refs)
+    refs.append(str(_PROBE_CONTRACT_RELATIVE_PATH))
+    return tuple(dict.fromkeys(refs))
+
+
+def _action_is_bound(action: contracts.ActionRecord) -> bool:
+    return action.policy_binding is not None or bool(action.policy_ids)
+
+
+def _probe_contract_action_validation_findings(
+    root: Path, actions: Sequence[contracts.ActionRecord]
+) -> Tuple[contracts.Finding, ...]:
+    if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        return ()
+    probes.load_probe_contract(root)
+    raw_contract = probes._load_raw_contract(root)  # type: ignore[attr-defined]
+    declared_actions = {str(action_id) for action_id in raw_contract.get("actions", ())}
+    selected_output_action = raw_contract.get("action_id")
+    if isinstance(selected_output_action, str) and selected_output_action:
+        declared_actions.add(selected_output_action)
+    approval_binding = raw_contract.get("approval_binding")
+    if isinstance(approval_binding, Mapping):
+        selected_approval_action = approval_binding.get("action_id")
+        if isinstance(selected_approval_action, str) and selected_approval_action:
+            declared_actions.add(selected_approval_action)
+    inventory_actions = {action.action_id for action in actions}
+    unknown = sorted({action_id for action_id in declared_actions if action_id not in inventory_actions})
+    findings = tuple(
+        contracts.Finding(
+            finding_id="ENF-001",
+            status="not-verified",
+            phase="pre-deploy",
+            plane="runtime",
+            reason_code="probe-action-not-in-inventory",
+            summary=f"Probe contract action '{action_id}' is absent from the inventory.",
+            details=(
+                f"governance/probe-contract.json declares action '{action_id}', but the "
+                "action inventory did not declare it from registry/spec/Python sources. "
+                "Probe actions must not silently outgrow the inventory."
+            ),
+            affected_actions=(action_id,),
+            evidence_refs=(str(_PROBE_CONTRACT_RELATIVE_PATH),),
+        )
+        for action_id in unknown
+    )
+    return findings
+
+
+def _declared_enforcement_probe_actions(root: Path) -> Tuple[str, ...]:
+    if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        return ()
+    contract = probes.load_probe_contract(root)
+    return tuple(str(action_id) for action_id in contract["actions"])
+
+
+def _bound_action_not_probed_finding(
+    action: contracts.ActionRecord, phase: str
+) -> contracts.Finding:
+    bindings = action.policy_ids or ((action.policy_binding,) if action.policy_binding else ())
+    binding_text = ", ".join(bindings) if bindings else "declared runtime binding"
+    return contracts.Finding(
+        finding_id="ENF-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="bound-action-not-probed",
+        summary=f"Bound action '{action.action_id}' has no enforcement probe coverage.",
+        details=(
+            f"Action '{action.action_id}' declares runtime policy binding(s) "
+            f"{binding_text}, but governance/probe-contract.json names no "
+            "enforcement probe action for it. Bound actions must be probed "
+            "explicitly; omission is never inferred as covered."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(action),
+    )
+
+
+def _required_runtime_proof_missing_finding(
+    action: contracts.ActionRecord,
+    phase: str,
+    *,
+    finding_id: str,
+    reason_code: str,
+    control_name: str,
+) -> contracts.Finding:
+    return contracts.Finding(
+        finding_id=finding_id,
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code=reason_code,
+        summary=f"Bound action '{action.action_id}' has no verified {control_name} proof.",
+        details=(
+            f"Action '{action.action_id}' is runtime-bound in the inventory and "
+            f"declares {control_name} as required, but this assessment produced "
+            "no passing probe result for that same action. Missing proof is "
+            "reported not-verified rather than invented or borrowed from a "
+            "different action."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(action),
+    )
+
+
+def _reconcile_bound_action_probe_coverage(
+    root: Path,
+    actions: Sequence[contracts.ActionRecord],
+    probe_results: Sequence[contracts.ProbeResult],
+    phase: str,
+) -> Tuple[contracts.Finding, ...]:
+    declared_probe_actions = set(_declared_enforcement_probe_actions(root))
+    passing_actions_by_probe: Dict[str, set[str]] = {}
+    for probe in probe_results:
+        if probe.status != "pass" or probe.action_id is None:
+            continue
+        passing_actions_by_probe.setdefault(probe.probe_id, set()).add(probe.action_id)
+
+    findings: List[contracts.Finding] = list(
+        replace(finding, phase=phase)
+        for finding in _probe_contract_action_validation_findings(root, actions)
+    )
+    for action in actions:
+        if not _action_is_bound(action):
+            continue
+        if action.action_id not in declared_probe_actions:
+            findings.append(_bound_action_not_probed_finding(action, phase))
+
+        approval_required = (
+            action.binding_requires_approval is True or action.approval_required is True
+        )
+        if (
+            approval_required
+            and action.action_id
+            not in passing_actions_by_probe.get(probes._APPROVAL_PROBE_ID, set())
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    action,
+                    phase,
+                    finding_id="APR-001",
+                    reason_code="bound-action-missing-approval-proof",
+                    control_name="approval",
+                )
+            )
+
+        if (
+            action.binding_requires_output is True
+            and action.action_id
+            not in passing_actions_by_probe.get(probes._OUTPUT_PROBE_ID, set())
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    action,
+                    phase,
+                    finding_id="OUT-001",
+                    reason_code="bound-action-missing-output-proof",
+                    control_name="output mediation",
+                )
+            )
+
+        if (
+            action.binding_requires_durable_audit is True
+            and action.action_id
+            not in passing_actions_by_probe.get(probes._AUDIT_PROBE_ID, set())
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    action,
+                    phase,
+                    finding_id="AUD-001",
+                    reason_code="bound-action-missing-durable-audit-proof",
+                    control_name="durable audit",
+                )
+            )
+    return tuple(findings)
+
+
 #: The assessor's own tested complete-tuple pin, split into the two
 #: manifest-schema pin groups. Purely a technical grouping of
 #: :data:`maf_adapter._OBSERVED_TUPLE_KEYS` -- never a business policy
@@ -1305,6 +1484,9 @@ def _assess_repository_controls(
         policy_hashes,
     )
     findings.extend(derived_findings)
+    findings.extend(
+        _reconcile_bound_action_probe_coverage(root, inv.actions, probe_results, phase)
+    )
     evidence.extend(probe_evidence)
 
     alert_finding, alert_evidence = alerts.assess_alerts(root, phase, None)

@@ -103,6 +103,17 @@ _SAFE_REQUIREMENT_KEYS: Tuple[str, ...] = (
     "audit",
 )
 
+_RECOGNIZED_BINDING_REQUIREMENT_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "approval": "approval",
+        "human_approval_record": "approval",
+        "output": "output",
+        "output_mediation": "output",
+        "durable_audit": "durable_audit",
+        "idempotency": "idempotency",
+    }
+)
+
 _POLICY_GLOBS: Tuple[str, ...] = (
     "governance/**/*.json",
     "governance/**/*.yaml",
@@ -414,6 +425,82 @@ def _normalize_string_list(
     return tuple(sorted({value.strip() for value in values}))
 
 
+def _normalize_policy_binding(
+    raw: object, *, action_id: str, source_desc: str
+) -> Optional[str]:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise InventoryError(
+            f"{source_desc}: action '{action_id}' field 'policy_binding' must be a string"
+        )
+    text = raw.strip()
+    if not text or text.lower() == "none":
+        return None
+    return text
+
+
+def _normalize_binding_requirements(
+    raw: object, *, action_id: str, source_desc: str
+) -> Tuple[Optional[bool], Optional[bool], Optional[bool]]:
+    if raw is None:
+        return None, None, None
+    if isinstance(raw, (list, tuple)):
+        normalized_names: Set[str] = set()
+        for member in raw:
+            if not isinstance(member, str):
+                raise InventoryError(
+                    f"{source_desc}: action '{action_id}' field 'requires' must contain "
+                    "only strings when declared as a list"
+                )
+            name = _RECOGNIZED_BINDING_REQUIREMENT_KEYS.get(
+                member.strip().lower().replace("-", "_")
+            )
+            if name is None:
+                raise InventoryError(
+                    f"{source_desc}: action '{action_id}' field 'requires' declares "
+                    f"unsupported requirement {member!r}"
+                )
+            normalized_names.add(name)
+        return (
+            True if "approval" in normalized_names else None,
+            True if "output" in normalized_names else None,
+            True if "durable_audit" in normalized_names else None,
+        )
+    if not isinstance(raw, Mapping):
+        raise InventoryError(
+            f"{source_desc}: action '{action_id}' field 'requires' must be a mapping "
+            "of requirement names to booleans"
+        )
+
+    normalized: Dict[str, bool] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            raise InventoryError(
+                f"{source_desc}: action '{action_id}' field 'requires' has a non-string "
+                f"requirement name {key!r}"
+            )
+        if not isinstance(value, bool):
+            raise InventoryError(
+                f"{source_desc}: action '{action_id}' field 'requires.{key}' must be a boolean"
+            )
+        name = _RECOGNIZED_BINDING_REQUIREMENT_KEYS.get(
+            key.strip().lower().replace("-", "_")
+        )
+        if name is None:
+            raise InventoryError(
+                f"{source_desc}: action '{action_id}' field 'requires' declares "
+                f"unsupported requirement {key!r}"
+            )
+        normalized[name] = value
+
+    return (
+        normalized.get("approval"),
+        normalized.get("output"),
+        normalized.get("durable_audit"),
+    )
+
+
 def _schema_hash(raw: object) -> Optional[str]:
     if raw is None:
         return None
@@ -439,11 +526,23 @@ def _build_registry_action_record(
     aliases = _normalize_string_list(
         raw_entry.get("aliases"), field="aliases", action_id=action_id, source_desc=source_desc
     )
+    policy_binding = _normalize_policy_binding(
+        raw_entry.get("policy_binding"), action_id=action_id, source_desc=source_desc
+    )
     policy_ids = _normalize_string_list(
         raw_entry.get("policy_ids"),
         field="policy_ids",
         action_id=action_id,
         source_desc=source_desc,
+    )
+    if policy_binding is not None:
+        policy_ids = tuple(sorted({*policy_ids, policy_binding}))
+    (
+        binding_requires_approval,
+        binding_requires_output,
+        binding_requires_durable_audit,
+    ) = _normalize_binding_requirements(
+        raw_entry.get("requires"), action_id=action_id, source_desc=source_desc
     )
 
     reversible = _coerce_optional_bool(
@@ -492,6 +591,10 @@ def _build_registry_action_record(
         provider_hosted=bool(provider_hosted),
         approval_required=approval_required,
         policy_ids=policy_ids,
+        policy_binding=policy_binding,
+        binding_requires_approval=binding_requires_approval,
+        binding_requires_output=binding_requires_output,
+        binding_requires_durable_audit=binding_requires_durable_audit,
         known_runtime_paths=(),
         inventory_status="not-verified",
     )
@@ -512,6 +615,10 @@ def _fields_match(left: ActionRecord, right: ActionRecord) -> bool:
         "provider_hosted",
         "approval_required",
         "policy_ids",
+        "policy_binding",
+        "binding_requires_approval",
+        "binding_requires_output",
+        "binding_requires_durable_audit",
     )
     return all(getattr(left, field) == getattr(right, field) for field in comparable)
 
@@ -808,6 +915,10 @@ def _empty_action_record(action_id: str, source: str) -> ActionRecord:
         provider_hosted=False,
         approval_required=None,
         policy_ids=(),
+        policy_binding=None,
+        binding_requires_approval=None,
+        binding_requires_output=None,
+        binding_requires_durable_audit=None,
         known_runtime_paths=(),
         inventory_status="not-verified",
     )

@@ -1993,6 +1993,35 @@ def _validated_isolated_ledger(
     return resolved
 
 
+def _create_private_task6_ledger(
+    root_path: Path, *, directory_prefix: str, file_prefix: str
+) -> Tuple[Path, Path]:
+    governance_dir = root_path / "governance"
+    resolved_governance_dir = governance_dir.resolve()
+    try:
+        resolved_governance_dir.relative_to(root_path)
+    except ValueError as error:
+        raise ProbeContractError(
+            "probe contract's governance directory resolves outside the "
+            "target root (symlink escape?)"
+        ) from error
+
+    private_dir = governance_dir / f".{directory_prefix}-{uuid.uuid4().hex}"
+    try:
+        private_dir.mkdir(parents=False, exist_ok=False)
+        descriptor, raw_ledger_path = tempfile.mkstemp(
+            dir=str(private_dir), prefix=file_prefix, suffix=".jsonl"
+        )
+        os.close(descriptor)
+    except OSError as error:
+        _remove_created_dirs([private_dir])
+        raise ProbeToolingError(
+            f"cannot create the assessment-private {directory_prefix.replace('-', ' ')} "
+            f"ledger: {error}"
+        ) from error
+    return private_dir, Path(raw_ledger_path)
+
+
 def _mutated_binding(binding: ApprovalBinding, field: str) -> ApprovalBinding:
     """One deterministic single-field mutation of *binding*.
 
@@ -2384,12 +2413,12 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     (``AUD-001``) can never mask, or be masked by, this probe's own
     independent mediation finding.
 
-    Resets (deletes) the fixture's ledger file before calling dispatch
-    and again afterward, so a fixture's ledger — checked in once and
-    reused across separate verdict calls — never leaks a prior call's
-    events into this one; never mutates the target repository beyond
-    that, mirroring ``run_application_probe``'s own directory-creation
-    and cleanup discipline.
+    Uses an exclusive, assessment-private temporary ledger under the
+    target's own ``governance/`` directory, removing it again when done.
+    The contract's declared ``observation_ledger`` remains provenance
+    only; it is never opened, unlinked, truncated, or otherwise mutated
+    by this probe, so even a hostile contract pointing that field at a
+    tracked target file cannot let the assessment delete or rewrite it.
     """
     if verdict not in _RECOGNIZED_OUTPUT_VERDICTS:
         raise ProbeContractError(f"unknown output verdict: {verdict!r}")
@@ -2416,13 +2445,10 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
                 evidence_refs=(),
             )
 
-    ledger_relative = Path(contract["observation_ledger"])
-    ledger_dir = root_path / ledger_relative.parent
-    ledger_path = root_path / ledger_relative
-    created_dirs = _missing_ancestor_dirs(ledger_dir)
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path, directory_prefix="output-probe", file_prefix="ledger-"
+    )
     try:
-        ledger_dir.mkdir(parents=True, exist_ok=True)
-        ledger_path.unlink(missing_ok=True)
         _dispatch_task6_child(
             root_path,
             str(contract["dispatch"]),
@@ -2432,7 +2458,7 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         events = _read_ledger_events(ledger_path)
     finally:
         ledger_path.unlink(missing_ok=True)
-        _remove_created_dirs(created_dirs)
+        _remove_created_dirs([private_dir])
 
     verdict_index = _first_event_index(events, "verdict_received")
     release_indices = [
@@ -2595,23 +2621,9 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     contract = approval_contract if approval_contract is not None else output_contract
     assert contract is not None  # one of the two branches above always set it
 
-    governance_dir = root_path / "governance"
-    resolved_governance_dir = governance_dir.resolve()
-    try:
-        resolved_governance_dir.relative_to(root_path)
-    except ValueError as error:
-        raise ProbeContractError(
-            "probe contract's governance directory resolves outside the "
-            "target root (symlink escape?)"
-        ) from error
-
-    private_dir = governance_dir / f".privacy-probe-{uuid.uuid4().hex}"
-    private_dir.mkdir(parents=False, exist_ok=False)
-    descriptor, raw_ledger_path = tempfile.mkstemp(
-        dir=str(private_dir), prefix="ledger-", suffix=".jsonl"
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path, directory_prefix="privacy-probe", file_prefix="ledger-"
     )
-    os.close(descriptor)
-    ledger_path = Path(raw_ledger_path)
 
     try:
         if approval_contract is not None:
@@ -2630,13 +2642,17 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
         )
     finally:
         ledger_path.unlink(missing_ok=True)
-        try:
-            private_dir.rmdir()
-        except OSError:
-            pass
+        _remove_created_dirs([private_dir])
 
     action_id: Optional[str] = None
-    if output_contract is not None:
+    if approval_contract is not None:
+        raw = _load_raw_contract(root_path)
+        declared_binding = raw.get("approval_binding")
+        if isinstance(declared_binding, Mapping):
+            binding_action_id = declared_binding.get("action_id")
+            if isinstance(binding_action_id, str) and binding_action_id:
+                action_id = binding_action_id
+    elif output_contract is not None:
         contract_action_id = contract.get("action_id")
         action_id = str(contract_action_id) if contract_action_id else None
 
