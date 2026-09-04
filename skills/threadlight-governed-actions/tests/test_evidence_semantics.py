@@ -1,0 +1,358 @@
+"""Task 5 regression controls; synthetic subprocesses are not live enforcement."""
+import json
+import shutil
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+import canonical
+import contracts
+import governed_actions
+import probes
+import render
+
+
+NOW = "2026-09-01T12:00:00Z"
+BINDING = probes.ApprovalBinding(
+    "account:synthetic", "requester", "approver", "reviewer", "tenant",
+    "policy", "sha256:" + "a" * 64, "payments.refund", {"amount": 7},
+    NOW, "2026-09-01T12:05:00Z", "nonce-1",
+)
+DEPLOYED = {
+    "agent_name": "refund-agent",
+    "agent_version": "3",
+    "image_digest": "sha256:" + "b" * 64,
+    "policy_digest": "sha256:" + "c" * 64,
+    "environment": "staging",
+    "subscription": "subscription-1",
+    "resource_group": "rg-refund-staging",
+}
+AUDIT_FIELDS = (
+    "audit_id", "correlation_id", "decision", "action_hash", "policy_hash",
+    "delivery_status",
+)
+TARGET = '''
+import json
+import os
+from pathlib import Path
+
+MODE = "valid"
+AUDIT_EVENTS = []
+
+def append(path, record):
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+def dispatch(*args):
+    path = args[-1]
+    if len(args) == 5:
+        nonce, digest, expires, now, path = args
+        previous = [json.loads(line) for line in Path(path).read_text().splitlines()]
+        used = next((r for r in previous if r.get("nonce") == nonce
+                     and r.get("accepted") is True), None)
+        expired = now >= expires
+        accepted = not used and not expired
+        if MODE == "reject-after-first":
+            accepted = not any(r.get("accepted") is True for r in previous)
+        if MODE == "ignore-expiry":
+            accepted = not used
+        reason = ("expiry" if expired else
+                  "binding" if used and used["digest"] != digest else
+                  "replay" if used else "accepted")
+        decision = {"event": "decision", "nonce": nonce, "digest": digest,
+                    "accepted": accepted}
+        if MODE != "no-reasons":
+            decision["reason"] = "replay" if MODE == "wrong-reasons" and used else reason
+        if MODE == "wrong-digest":
+            decision["digest"] = "sha256:" + "0" * 64
+        append(path, decision)
+        if accepted:
+            append(path, {"event": "invocation", "nonce": nonce})
+        verdict = "allow" if accepted else "deny"
+    else:
+        verdict, path = args
+        append(path, {"event": "verdict_received",
+                      "verdict": "allow" if MODE == "wrong-verdict" else verdict})
+        if verdict != "deny" and MODE != "empty-allow":
+            append(path, {"event": "egress", "bytes": 32, "mediated": True})
+    record = {
+        "audit_id": "audit-1", "correlation_id": "correlation-1",
+        "decision": verdict, "action_hash": "sha256:" + "a" * 64,
+        "policy_hash": "sha256:" + "b" * 64, "delivery_status": "persisted",
+    }
+    if MODE.startswith("missing-"):
+        record.pop(MODE[len("missing-"):])
+    if MODE.startswith("raw-"):
+        record[MODE[len("raw-"):]] = "SENSITIVE-SENTINEL"
+    if MODE == "delivery-failed":
+        record["delivery_status"] = "failed"
+    AUDIT_EVENTS.append(record)
+    if MODE != "unpersisted":
+        append(path, record)
+'''
+
+
+@pytest.fixture
+def target(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "agent.py").write_text(TARGET)
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "probe-contract.json").write_text(json.dumps({
+        "dispatch": "app.agent:dispatch", "audit_sink": "app.agent:AUDIT_EVENTS",
+        "nonce_ledger": "governance/nonces.jsonl",
+        "observation_ledger": "governance/output.jsonl",
+        "side_effect_mode": "synthetic", "actions": ["payments.refund"],
+    }))
+    return tmp_path
+
+
+def set_mode(target, mode):
+    (target / "app" / "agent.py").write_text(
+        TARGET.replace('MODE = "valid"', f"MODE = {mode!r}")
+    )
+
+
+def snapshot(root):
+    return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def test_reject_everything_after_first_is_not_anti_replay(target):
+    set_mode(target, "reject-after-first")
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert any(p.status == "must-fix" and p.reason_code == "APR-001" for p in results)
+
+
+def test_sequence_has_second_valid_acceptance_and_fresh_expired_rejection(target):
+    before = snapshot(target)
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert len(results) == 4 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert [p.observed for p in results[-2:]] == ["approval_accepted", "expired_rejected"]
+    assert all(p.status == "pass" for p in results)
+    assert len({results[i].evidence_refs[0] for i in (0, -2, -1)}) == 3
+    assert snapshot(target) == before
+
+
+def test_sequence_detects_fresh_expired_acceptance(target):
+    set_mode(target, "ignore-expiry")
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert results[-1].status == "must-fix"
+    assert results[-1].observed == "expired_binding_fail_open_accepted"
+
+
+def test_reasonless_store_does_not_claim_binding_discrimination(target):
+    set_mode(target, "no-reasons")
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert {p.observed for p in results[1:2 + len(probes._APPROVAL_MUTATION_FIELDS)]} == {
+        "reused_nonce_rejected"
+    }
+
+
+def test_reported_wrong_binding_reason_cannot_pass(target):
+    set_mode(target, "wrong-reasons")
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert all(p.status != "pass" for p in results[2:2 + len(probes._APPROVAL_MUTATION_FIELDS)])
+
+
+def test_approval_evidence_includes_observed_decision_not_just_input_hash(target):
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert all(any(i.kind == "approval-ledger-records" for i in p.evidence_items) for p in results)
+
+
+def test_approval_requires_the_target_to_record_the_actual_binding_digest(target):
+    set_mode(target, "wrong-digest")
+    assert probes.run_approval_probe_sequence(target, BINDING, NOW)[0].status != "pass"
+
+
+@pytest.mark.parametrize("field", AUDIT_FIELDS)
+def test_missing_audit_field_never_passes(target, field):
+    set_mode(target, "missing-" + field)
+    results = probes.run_privacy_probe_set(target)
+    assert results and all(p.status != "pass" for p in results)
+
+
+@pytest.mark.parametrize("field", ("prompt", "arguments", "output", "secrets"))
+def test_raw_audit_payload_is_rejected_without_export(target, field):
+    set_mode(target, "raw-" + field)
+    results = probes.run_privacy_probe_set(target)
+    assert all(p.status == "must-fix" and p.reason_code == "AUD-001" for p in results)
+    assert "SENSITIVE-SENTINEL" not in repr(results)
+
+
+def test_in_memory_audit_alone_does_not_prove_durable_delivery(target):
+    set_mode(target, "unpersisted")
+    assert all(p.status != "pass" for p in probes.run_privacy_probe_set(target))
+
+
+def test_output_and_audit_bind_persisted_items_before_cleanup(target):
+    before = snapshot(target)
+    results = (probes.run_output_probe(target, "allow"), *probes.run_privacy_probe_set(target))
+    assert all(p.status == "pass" for p in results)
+    for probe in results:
+        assert probe.evidence_refs
+        assert set(probe.evidence_refs) == {item.evidence_id for item in probe.evidence_items}
+        assert all("assessment-isolated" in item.source for item in probe.evidence_items)
+        assert all(item.sha256 != "sha256:" + canonical.sha256_hex(item.evidence_id.encode())
+                   for item in probe.evidence_items)
+    assert snapshot(target) == before
+
+
+@pytest.mark.parametrize("mode,verdict", [
+    ("wrong-verdict", "deny"), ("empty-allow", "allow"), ("raw-output", "allow"),
+])
+def test_output_cannot_pass_wrong_empty_or_payload_bearing_evidence(target, mode, verdict):
+    set_mode(target, mode)
+    assert probes.run_output_probe(target, verdict).status != "pass"
+
+
+def test_output_ids_distinguish_actual_verdict_evidence(target):
+    denied = probes.run_output_probe(target, "deny")
+    allowed = probes.run_output_probe(target, "allow")
+    assert denied.evidence_refs and allowed.evidence_refs
+    assert set(denied.evidence_refs).isdisjoint(allowed.evidence_refs)
+
+
+@pytest.mark.parametrize("rg", ("rg-prod", "rg-production-west", "PROD", "rg-prod-staging"))
+def test_cli_rejects_production_resource_group(rg):
+    with pytest.raises(ValueError, match="staging|production"):
+        governed_actions.parse_args(["--phase", "post-deploy", "--staging-resource-group", rg])
+
+
+@pytest.mark.parametrize("field", tuple(DEPLOYED))
+def test_staging_scope_rejects_evidence_selector_mismatch(field):
+    validator = getattr(probes, "validate_staging_scope", None)
+    assert callable(validator), "missing pure scope validator"
+    with pytest.raises(contracts.UnsafeTargetError, match="mismatch"):
+        validator(DEPLOYED, {**DEPLOYED, field: "different"})
+
+
+def test_valid_staging_scope_and_options_binding(target):
+    fields = contracts.AssessmentOptions.__dataclass_fields__
+    assert set(DEPLOYED) - {"resource_group"} <= set(fields)
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", staging=True, staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    assert probes.validate_staging_scope(DEPLOYED, DEPLOYED) is None
+    assert governed_actions._deployment_target(options) == DEPLOYED
+
+
+@pytest.mark.parametrize("field", ("agent_version", "image_digest", "policy_digest", "environment"))
+def test_live_evidence_mismatch_invalidates_manifest(field):
+    assert "deployed_target" in contracts.EvidenceRef.__dataclass_fields__
+    ref = contracts.EvidenceRef(
+        "live-1", "staging-observation", "https://staging.invalid", "sha256:" + "d" * 64,
+        NOW, 0, True, "post-deploy", "owner/repo", "0" * 40, "staging", None,
+        deployed_target={**DEPLOYED, field: "different"},
+    )
+    finding = contracts.Finding("ENF-001", "pass", "post-deploy", "runtime", "test", "test", "",
+                                evidence_refs=("live-1",))
+    result = contracts.AssessmentResult(
+        contracts.SourceRef("owner/repo", "0" * 40, False), (), (), (), (finding,), (ref,),
+        captured_at=NOW, phase="post-deploy", deployed_target=DEPLOYED,
+    )
+    manifest = render.build_manifest(result)
+    assert manifest["deployed_target"] == DEPLOYED
+    assert manifest["freshness"]["status"] != "fresh"
+    assert manifest["summary"]["verdict"] != "governed"
+
+
+def test_local_probe_stays_non_live_even_with_deployment_selection(target):
+    assert "agent_version" in contracts.AssessmentOptions.__dataclass_fields__
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", staging=True, now=NOW,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    result = probes.run_output_probe(target, "allow")
+    _, _, refs = governed_actions._bind_probe_evidence(
+        (result,), contracts.SourceRef("owner/repo", "0" * 40, False), options, (),
+    )
+    assert refs and all(not ref.live_verified for ref in refs)
+    assert all(ref.deployed_target == DEPLOYED for ref in refs)
+
+
+def test_deployment_binding_cli_round_trip(target):
+    argv = ["--target", str(target), "--phase", "post-deploy"]
+    for key, value in DEPLOYED.items():
+        flag = "staging-resource-group" if key == "resource_group" else key.replace("_", "-")
+        argv += ["--" + flag, value]
+    options = governed_actions._options_from_namespace(governed_actions.parse_args(argv))
+    assert governed_actions._deployment_target(options) == DEPLOYED
+
+
+def test_manifest_with_deployed_target_validates_schema(target):
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", staging=True, now=NOW,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    source = contracts.SourceRef("owner/repo", "0" * 40, False)
+    results, findings, refs = governed_actions._bind_probe_evidence(
+        (probes.run_output_probe(target, "allow"),), source, options, (),
+    )
+    manifest = render.build_manifest(contracts.AssessmentResult(
+        source, (), (), results, findings, refs, captured_at=NOW, phase="post-deploy",
+        deployed_target=DEPLOYED,
+    ))
+    render._validate_manifest(manifest)
+    assert manifest["deployed_target"] == DEPLOYED
+    assert all(ref["deployed_target"] == DEPLOYED for ref in manifest["evidence"])
+
+
+@pytest.mark.parametrize("field", ("subscription", "resource_group"))
+def test_live_collector_checks_its_actual_flat_scope(target, monkeypatch, field):
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", subscription=DEPLOYED["subscription"],
+        staging_resource_group=DEPLOYED["resource_group"], deploy_identity="identity",
+    )
+    monkeypatch.setattr(governed_actions.ghcp, "collect_live_azure", lambda *args: SimpleNamespace(
+        data={**DEPLOYED, field: "different"}, finding=None,
+    ))
+    with pytest.raises(contracts.UnsafeTargetError, match="mismatch"):
+        governed_actions._collect_selected_live_evidence(target, options, None)
+
+
+def test_renderer_rejects_local_evidence_marked_live(target):
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", staging=True, now=NOW,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    source = contracts.SourceRef("owner/repo", "0" * 40, False)
+    results, findings, refs = governed_actions._bind_probe_evidence(
+        (probes.run_output_probe(target, "allow"),), source, options, (),
+    )
+    result = contracts.AssessmentResult(
+        source, (), (), results, findings, tuple(replace(ref, live_verified=True) for ref in refs),
+        captured_at=NOW, phase="post-deploy", deployed_target=DEPLOYED,
+    )
+    assert render.build_manifest(result)["summary"]["verdict"] != "governed"
+
+
+def test_failed_audit_delivery_cannot_pass(target):
+    set_mode(target, "delivery-failed")
+    assert all(p.status != "pass" for p in probes.run_privacy_probe_set(target))
+
+
+def test_post_deploy_binds_selection_without_claiming_live_enforcement(tmp_path):
+    root = tmp_path / "pilot"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "conformant-maf", root)
+    before = snapshot(root)
+    options = contracts.AssessmentOptions(
+        root, "post-deploy", staging=True, now=NOW,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    result = governed_actions._assess_post_deploy(
+        root, contracts.SourceRef("owner/repo", "0" * 40, False), options,
+    )
+    assert any(f.reason_code == "live-runtime-enforcement-not-verified"
+               and f.status == "not-verified" for f in result.findings)
+    assert all(not ref.live_verified and ref.deployed_target == DEPLOYED for ref in result.evidence)
+    assert render.build_manifest(result)["deployed_target"] == DEPLOYED
+    assert governed_actions.exit_code(result, gate=True) == 1
+    assert snapshot(root) == before

@@ -24,6 +24,7 @@
     "summary"
   ],
   "properties": {
+    "deployed_target": {"$ref": "#/$defs/deployedTarget"},
     "schema": {
       "const": "threadlight-governed-actions-manifest/v1"
     },
@@ -92,6 +93,20 @@
     }
   },
   "$defs": {
+    "deployedTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_name", "agent_version", "image_digest", "policy_digest", "environment", "subscription", "resource_group"],
+      "properties": {
+        "agent_name": {"type": "string", "minLength": 1},
+        "agent_version": {"type": "string", "minLength": 1},
+        "image_digest": {"$ref": "#/$defs/sha256"},
+        "policy_digest": {"$ref": "#/$defs/sha256"},
+        "environment": {"const": "staging"},
+        "subscription": {"type": "string", "minLength": 1},
+        "resource_group": {"type": "string", "minLength": 1}
+      }
+    },
     "sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -257,6 +272,7 @@
         "policy_set_sha256"
       ],
       "properties": {
+        "deployed_target": {"$ref": "#/$defs/deployedTarget"},
         "evidence_id": {
           "type": "string"
         },

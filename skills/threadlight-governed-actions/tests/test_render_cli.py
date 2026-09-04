@@ -223,7 +223,7 @@ def _evidence(
         sha256=_sha256_of(evidence_id),
         collected_at=collected_at,
         freshness_seconds=0 if collected_at else None,
-        live_verified=bool(collected_at),
+        live_verified=False,
         phase=phase,
         repository=repository,
         source_commit=source_commit,
@@ -2359,7 +2359,10 @@ def test_freshness_six_fractional_digits_is_the_supported_precision_boundary():
     # precision) must still parse and be treated as trustworthy -- the
     # degradation below only begins strictly beyond this boundary.
     findings = [_finding("MED-001", "pass")]
-    evidence = [_evidence("EVID-6digit", collected_at="2026-01-01T00:00:00.123456Z")]
+    evidence = [dataclasses.replace(
+        _evidence("EVID-6digit", collected_at="2026-01-01T00:00:00.123456Z"),
+        live_verified=True,
+    )]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     _assert_valid_manifest(manifest)
@@ -5034,12 +5037,13 @@ def test_conformant_approval_seam_still_passes_the_first_assessment(tmp_path):
         for probe in result.probes
         if probe.probe_id == governed_actions.probes.APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 2 + len(
+    assert len(approval_probes) == 4 + len(
         governed_actions.probes.APPROVAL_MUTATION_FIELDS
     )
     assert {probe.status for probe in approval_probes} == {"pass"}
     observed = [probe.observed for probe in approval_probes]
     assert observed[0] == "approval_accepted"
+    assert observed[-2:] == ["approval_accepted", "expired_rejected"]
     assert "replay_rejected" in observed
     assert observed.count("binding_mismatch_rejected") == len(
         governed_actions.probes.APPROVAL_MUTATION_FIELDS

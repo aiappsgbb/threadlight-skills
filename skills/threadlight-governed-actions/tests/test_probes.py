@@ -2285,12 +2285,13 @@ def test_approval_sequence_accepts_first_use_then_rejects_replay_and_mutations(
         approval_root, approval_binding, now="2026-09-01T12:00:00Z"
     )
 
-    assert len(results) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(results) == 4 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert results[0].observed == "approval_accepted"
     assert results[1].observed == "replay_rejected"
-    assert [probe.observed for probe in results[2:]] == [
+    assert [probe.observed for probe in results[2:-2]] == [
         "binding_mismatch_rejected"
     ] * len(probes._APPROVAL_MUTATION_FIELDS)
+    assert [probe.observed for probe in results[-2:]] == ["approval_accepted", "expired_rejected"]
     assert {probe.status for probe in results} == {"pass"}
     assert findings_from_probes(results) == ()
 
@@ -2303,7 +2304,7 @@ def test_approval_sequence_accepts_first_use_then_rejects_replay_and_mutations(
     # first use; every mutation cites a genuinely different one.
     digests = [probe.evidence_refs[0] for probe in results]
     assert digests[0] == digests[1] == approval_digest(approval_binding)
-    assert len(set(digests[1:])) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(set(digests[1:])) == 3 + len(probes._APPROVAL_MUTATION_FIELDS)
 
 
 def test_approval_sequence_never_writes_target_state(
@@ -2345,13 +2346,15 @@ def test_approval_sequence_flags_fail_open_replay_and_every_mutation(
 
     assert results[0].status == "pass"
     assert results[0].observed == "approval_accepted"
-    replays_and_mutations = results[1:]
+    replays_and_mutations = results[1:-2]
     assert len(replays_and_mutations) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert {probe.status for probe in replays_and_mutations} == {"must-fix"}
     assert {probe.reason_code for probe in replays_and_mutations} == {"APR-001"}
     assert {probe.observed for probe in replays_and_mutations} == {
         "fail_open_replay_or_mutation_accepted"
     }
+    assert results[-2].observed == "approval_accepted"
+    assert results[-1].observed == "expired_binding_fail_open_accepted"
     findings = findings_from_probes(results)
     assert findings
     assert {(f.finding_id, f.status) for f in findings} == {("APR-001", "must-fix")}
@@ -2418,7 +2421,8 @@ def redeem(nonce, digest, expires_at, now, ledger_path):
         root, approval_binding, now="2026-09-01T12:00:00Z"
     )
     assert results[0].status == "pass"
-    rejected = results[1:]
+    rejected = results[1:-2] + results[-1:]
+    assert results[-2].status == "pass"
     assert {probe.status for probe in rejected} == {"must-fix"}
     assert {probe.observed for probe in rejected} == {
         "fail_open_invocation_on_rejection"

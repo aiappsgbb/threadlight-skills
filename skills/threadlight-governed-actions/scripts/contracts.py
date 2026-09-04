@@ -85,6 +85,7 @@ class EvidenceRef:
     source_commit: str
     target_environment: Optional[str]
     policy_set_sha256: Optional[str]
+    deployed_target: Optional[Mapping[str, str]] = None
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,11 @@ class AssessmentOptions:
     staging_resource_group: Optional[str] = None
     deploy_identity: Optional[str] = None
     now: str = "1970-01-01T00:00:00Z"
+    agent_name: Optional[str] = None
+    agent_version: Optional[str] = None
+    image_digest: Optional[str] = None
+    policy_digest: Optional[str] = None
+    environment: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -239,6 +245,7 @@ class AssessmentResult:
     conformance_reports: Tuple[Mapping[str, object], ...] = ()
     change_plane: Mapping[str, object] = field(default_factory=dict)
     residual_risks: Tuple[Mapping[str, object], ...] = ()
+    deployed_target: Optional[Mapping[str, str]] = None
     #: The trusted, deterministic instant this assessment was captured at
     #: (an RFC3339 timestamp string), independent of any evidence's own
     #: ``collected_at``. Freshness is evaluated *at* this instant, never

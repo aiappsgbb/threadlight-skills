@@ -2359,6 +2359,22 @@ _GOVERNED_ACTIONS_SUMMARY_BUCKETS = (
     ("not_verified", "not-verified"), ("not_applicable", "not-applicable"),
 )
 _GOVERNED_ACTIONS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_GOVERNED_ACTIONS_DEPLOYMENT_KEYS = frozenset({
+    "agent_name", "agent_version", "image_digest", "policy_digest",
+    "environment", "subscription", "resource_group",
+})
+
+
+def _governed_actions_valid_deployment(target: object) -> bool:
+    return (
+        isinstance(target, dict)
+        and set(target) == _GOVERNED_ACTIONS_DEPLOYMENT_KEYS
+        and all(isinstance(value, str) and value.strip() for value in target.values())
+        and all(re.fullmatch(r"sha256:[0-9a-f]{64}", target[key])
+                for key in ("image_digest", "policy_digest"))
+        and target["environment"] == "staging"
+        and "prod" not in target["resource_group"].lower()
+    )
 
 
 def _governed_actions_worst(statuses: Iterable[str]) -> str:
@@ -2459,6 +2475,15 @@ def load_governed_actions_manifest(root: Path) -> dict[str, object] | None:
         "root": str(root),
         "repository": _detect_repo_full_name(str(root)),
         "target_environment": (azd_env.get("AZURE_ENV_NAME") or "").strip() or None,
+        "deployed_target": {
+            key: azd_env.get(env_key)
+            for key, env_key in {
+                "agent_name": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "policy_digest": "POLICY_DIGEST",
+                "environment": "AZURE_ENV_NAME", "subscription": "AZURE_SUBSCRIPTION_ID",
+                "resource_group": "AZURE_RESOURCE_GROUP",
+            }.items()
+        },
     }
     return data
 
@@ -2483,8 +2508,11 @@ def _validate_governed_actions_manifest(
     missing = sorted(_GOVERNED_ACTIONS_TOP_LEVEL_KEYS - declared)
     if missing:
         return "missing required key(s): " + ", ".join(missing)
-    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS:
+    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS - {"deployed_target"}:
         return "manifest contains unsupported top-level key(s)"
+    deployment = manifest.get("deployed_target")
+    if "deployed_target" in manifest and not _governed_actions_valid_deployment(deployment):
+        return "manifest deployment binding is malformed or not staging"
 
     if manifest["schema"] != _GOVERNED_ACTIONS_SCHEMA:
         return f"schema is not {_GOVERNED_ACTIONS_SCHEMA!r}"
@@ -2593,7 +2621,7 @@ def _validate_governed_actions_manifest(
         return "evidence must be a non-empty array"
     by_id: dict[str, Mapping[str, Any]] = {}
     for entry in evidence:
-        if not isinstance(entry, dict) or set(entry) != _GOVERNED_ACTIONS_EVIDENCE_KEYS:
+        if not isinstance(entry, dict) or set(entry) - {"deployed_target"} != _GOVERNED_ACTIONS_EVIDENCE_KEYS:
             return "evidence entries do not match the evidence contract"
         evidence_id = entry["evidence_id"]
         if not isinstance(evidence_id, str) or not evidence_id:
@@ -2716,6 +2744,19 @@ def _validate_governed_actions_manifest(
             and entry["policy_set_sha256"] != policy_set_sha256
         ):
             return "relied-upon evidence binds to a different policy set"
+        if "deployed_target" in entry and (
+            not _governed_actions_valid_deployment(entry["deployed_target"])
+            or entry["deployed_target"] != deployment
+            or entry["target_environment"] != deployment["environment"]
+        ):
+            return "relied-upon evidence has a deployment binding mismatch"
+        if entry["live_verified"]:
+            if deployment is None or entry.get("deployed_target") != deployment:
+                return "live evidence lacks an exact deployment binding"
+            if str(entry["kind"]).startswith(("probe-", "path-", "approval-", "output-", "audit-ledger-")):
+                return "local probe evidence cannot claim live deployment enforcement"
+            if observed.get("deployed_target") != deployment:
+                return "live evidence does not match the selected deployment"
         env = entry["target_environment"]
         if isinstance(env, str) and env.strip():
             environments.add(env.strip())

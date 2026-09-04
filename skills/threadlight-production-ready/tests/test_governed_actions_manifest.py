@@ -275,6 +275,47 @@ def validation_reason(tmp_path: Path, manifest: dict) -> str | None:
     )
 
 
+DEPLOYED_TARGET = {
+    "agent_name": "refund-agent", "agent_version": "3",
+    "image_digest": "sha256:" + "b" * 64,
+    "policy_digest": "sha256:" + "c" * 64,
+    "environment": "staging", "subscription": "subscription-1",
+    "resource_group": "rg-refund-staging",
+}
+
+
+def test_consumer_accepts_exact_local_deployment_binding_schema(tmp_path):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    for ref in manifest["evidence"]:
+        ref["deployed_target"] = dict(DEPLOYED_TARGET)
+        ref["target_environment"] = "staging"
+    assert validation_reason(tmp_path, manifest) is None
+
+
+@pytest.mark.parametrize("field", tuple(DEPLOYED_TARGET))
+def test_consumer_rejects_live_deployment_binding_mismatch(tmp_path, field):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    cited = manifest["conformance"]["application_probes"][0]["evidence_refs"][0]
+    ref = next(ref for ref in manifest["evidence"] if ref["evidence_id"] == cited)
+    ref["live_verified"] = True
+    ref["deployed_target"] = {**DEPLOYED_TARGET, field: "different"}
+    ref["target_environment"] = "staging"
+    reason = validation_reason(tmp_path, manifest)
+    assert reason and "deployment" in reason
+
+
+def test_consumer_never_upgrades_local_probe_to_live_enforcement(tmp_path):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    cited = manifest["conformance"]["application_probes"][0]["evidence_refs"][0]
+    ref = next(ref for ref in manifest["evidence"] if ref["evidence_id"] == cited)
+    ref.update(live_verified=True, deployed_target=dict(DEPLOYED_TARGET), target_environment="staging")
+    reason = validation_reason(tmp_path, manifest)
+    assert reason and ("local" in reason or "selected deployment" in reason)
+
+
 # ---------------------------------------------------------------------------
 # catalog + boundary: three aggregates, no duplicated child detail
 # ---------------------------------------------------------------------------

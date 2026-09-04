@@ -377,14 +377,14 @@ def test_declared_approval_binding_yields_honest_apr001_pass(approval_target: Pa
     # use, a byte-identical replay of it, and one mutated-binding
     # attempt per design-required dimension -- never a lone first use,
     # which could only ever have proven the acceptance.
-    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(approval_probes) == 4 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert {probe.status for probe in approval_probes} == {"pass"}
     observed = [probe.observed for probe in approval_probes]
     assert observed[0] == "approval_accepted"
-    assert observed.count("replay_rejected") == 1
-    assert observed.count("binding_mismatch_rejected") == len(
+    assert observed.count("reused_nonce_rejected") == 1 + len(
         probes._APPROVAL_MUTATION_FIELDS
     )
+    assert observed[-2:] == ["approval_accepted", "expired_rejected"]
     evidence_ids = {ref.evidence_id for ref in result.evidence}
     for probe in approval_probes:
         assert probe.evidence_refs

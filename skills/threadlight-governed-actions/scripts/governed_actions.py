@@ -179,6 +179,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--subscription", default=None, help="Azure subscription id/name")
     parser.add_argument("--deploy-identity", dest="deploy_identity", default=None, help="Azure deploy identity name")
+    for name in ("agent-name", "agent-version", "image-digest", "policy-digest", "environment"):
+        parser.add_argument(f"--{name}", default=None, help="exact deployed target binding")
     parser.add_argument(
         "--live-github",
         dest="live_github",
@@ -238,6 +240,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "--phase post-deploy requires --staging-resource-group naming an "
             "explicit, non-production staging resource group"
         )
+    if namespace.phase == "post-deploy":
+        probes.validate_staging_scope({
+            "resource_group": namespace.staging_resource_group,
+            "environment": namespace.environment,
+            "subscription": namespace.subscription,
+        })
     return namespace
 
 
@@ -871,8 +879,9 @@ def _bind_probe_evidence(
                 phase=options.phase,
                 repository=source.repository,
                 source_commit=source.commit,
-                target_environment=None,
+                target_environment=options.environment,
                 policy_set_sha256=policy_set_sha256,
+                deployed_target=_deployment_target(options),
             )
     findings.extend(probes.findings_from_probes(tuple(kept), phase=options.phase))
     evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
@@ -1700,6 +1709,29 @@ def _default_branch_unresolved_finding() -> contracts.Finding:
     )
 
 
+def _deployment_target(options: contracts.AssessmentOptions) -> Optional[Mapping[str, str]]:
+    """An exact selected binding, never an inferred deployment observation."""
+    selected = {
+        "agent_name": options.agent_name,
+        "agent_version": options.agent_version,
+        "image_digest": options.image_digest,
+        "policy_digest": options.policy_digest,
+        "environment": options.environment,
+        "subscription": options.subscription,
+        "resource_group": options.staging_resource_group,
+    }
+    if not any((options.agent_name, options.agent_version, options.image_digest,
+                options.policy_digest, options.environment)):
+        return None
+    if not all(isinstance(value, str) and value.strip() for value in selected.values()):
+        raise ValueError("deployed target requires agent name/version, image/policy digests and staging scope")
+    if any(not re.fullmatch(r"sha256:[0-9a-f]{64}", selected[field])
+           for field in ("image_digest", "policy_digest")):
+        raise ValueError("deployed target requires exact sha256 image/policy digests")
+    probes.validate_staging_scope(selected)
+    return selected
+
+
 def _collect_selected_live_evidence(
     root: Path,
     options: contracts.AssessmentOptions,
@@ -1734,6 +1766,12 @@ def _collect_selected_live_evidence(
 
     live_azure: Optional[Mapping[str, object]] = None
     if options.subscription and options.staging_resource_group and options.deploy_identity:
+        selected_scope = {
+            "subscription": options.subscription,
+            "resource_group": options.staging_resource_group,
+            "environment": options.environment,
+        }
+        probes.validate_staging_scope(selected_scope)
         result = ghcp.collect_live_azure(
             options.subscription,
             options.staging_resource_group,
@@ -1743,6 +1781,13 @@ def _collect_selected_live_evidence(
         if result.finding is not None:
             findings.append(result.finding)
         live_azure = result.data
+        if live_azure is not None:
+            observed_scope = live_azure.get("scope", live_azure)
+            probes.validate_staging_scope(
+                {key: value for key, value in selected_scope.items()
+                 if key != "environment" or "environment" in observed_scope},
+                observed_scope,
+            )
 
     return live_github, live_azure, findings
 
@@ -1754,6 +1799,7 @@ def _assess_repository_controls(
     phase: str,
 ) -> contracts.AssessmentResult:
     """Assess the complete repository control set for a deploy phase."""
+    deployment_target = _deployment_target(options)
     inv = inventory.build_action_inventory(root)
     findings: List[contracts.Finding] = list(inv.findings)
     evidence: List[contracts.EvidenceRef] = list(_spec_section_8_evidence(inv, source, options.now))
@@ -1850,6 +1896,16 @@ def _assess_repository_controls(
             paths=paths,
         )
     )
+    if deployment_target is not None:
+        for ref in evidence:
+            if ref.deployed_target is not None:
+                probes.validate_staging_scope(deployment_target, ref.deployed_target)
+            if ref.live_verified and ref.deployed_target is None:
+                raise contracts.UnsafeTargetError("live evidence lacks an exact deployed target binding")
+        evidence = [
+            replace(ref, deployed_target=deployment_target, target_environment=options.environment)
+            for ref in evidence
+        ]
     return contracts.AssessmentResult(
         source=source,
         actions=inv.actions,
@@ -1867,6 +1923,7 @@ def _assess_repository_controls(
         phase=phase,
         live_github_selected=options.live_github,
         live_azure_selected=options.live_azure,
+        deployed_target=deployment_target,
     )
 
 
@@ -1882,7 +1939,19 @@ def _assess_post_deploy(
 ) -> contracts.AssessmentResult:
     """Rerun the complete assessment against a non-production deployment."""
     probes.validate_post_deploy_target("post-deploy", options.staging, destructive=False)
-    return _assess_repository_controls(root, source, options, "post-deploy")
+    probes.validate_staging_scope({
+        "resource_group": options.staging_resource_group,
+        "subscription": options.subscription,
+        "environment": options.environment,
+    })
+    _deployment_target(options)
+    result = _assess_repository_controls(root, source, options, "post-deploy")
+    return replace(result, findings=result.findings + (contracts.Finding(
+        finding_id="ENF-001", status="not-verified", phase="post-deploy", plane="runtime",
+        reason_code="live-runtime-enforcement-not-verified",
+        summary="Local probes are not deployed runtime enforcement evidence.",
+        details="Staging-only assessment; a later safe-check live probe must verify the exact deployment.",
+    ),))
 
 
 def assess(options: contracts.AssessmentOptions) -> contracts.AssessmentResult:
@@ -1994,6 +2063,11 @@ def _options_from_namespace(namespace: argparse.Namespace) -> contracts.Assessme
         staging_resource_group=namespace.staging_resource_group,
         deploy_identity=namespace.deploy_identity,
         now=_now(),
+        agent_name=namespace.agent_name,
+        agent_version=namespace.agent_version,
+        image_digest=namespace.image_digest,
+        policy_digest=namespace.policy_digest,
+        environment=namespace.environment,
     )
 
 

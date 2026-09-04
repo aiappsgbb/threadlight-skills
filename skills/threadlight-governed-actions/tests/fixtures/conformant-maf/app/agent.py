@@ -600,6 +600,16 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
             )
             expired = now >= expires_at
             accepted = (not expired) and (not already_accepted)
+            prior_digest = next(
+                (record["digest"] for record in existing
+                 if record.get("nonce") == nonce and record.get("accepted") is True),
+                None,
+            )
+            reason = (
+                "expiry" if expired else
+                "binding" if already_accepted and prior_digest != digest else
+                "replay" if already_accepted else "accepted"
+            )
             handle.write(
                 json.dumps(
                     {
@@ -607,6 +617,7 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
                         "nonce": nonce,
                         "digest": digest,
                         "accepted": accepted,
+                        "reason": reason,
                     }
                 )
                 + "\n"
@@ -619,13 +630,18 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    AUDIT_EVENTS.append(
-        {
+    audit_record = {
             "audit_id": f"audit-approval-{nonce}",
             "event": "approval_redemption_attempt",
             "digest_hash": digest,
+            "correlation_id": f"approval-{nonce}",
+            "decision": "allow" if accepted else "deny",
+            "action_hash": digest,
+            "policy_hash": _canonical_hash("policy:refund-v1"),
+            "delivery_status": "persisted",
         }
-    )
+    AUDIT_EVENTS.append(audit_record)
+    _append_ledger(ledger_path, **audit_record)
 
 
 # ---------------------------------------------------------------------------

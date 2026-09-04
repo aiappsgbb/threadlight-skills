@@ -163,6 +163,7 @@ import importlib
 import inspect
 import json
 import os
+import re
 import secrets
 import select
 import subprocess
@@ -172,6 +173,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, List, Mapping, Optional, Sequence, Tuple
@@ -1246,6 +1248,20 @@ def _record_evidence(
         source=source,
         sha256="sha256:" + canonical.sha256_hex(canonical.canonical_bytes(dict(record))),
     )
+
+
+def _persisted_records_evidence(
+    records: Sequence[Mapping[str, object]], kind: str, source: str
+) -> Tuple[ProbeEvidence, ...]:
+    if not records:
+        return ()
+    document = {"records": list(records)}
+    try:
+        canonical.validate_payload_free_audit(document)
+        item = _record_evidence("", kind, source, document)
+    except (canonical.PayloadExposureError, canonical.CanonicalizationError):
+        return ()
+    return (replace(item, evidence_id=f"{kind}-{item.sha256[7:]}"),)
 
 
 def _evidence_items_for(
@@ -2512,7 +2528,8 @@ class ApprovalBinding:
     changing *any single one* of them — including reusing an
     already-consumed ``nonce`` with a different value for every other
     field — always yields a different digest, and is therefore always
-    rejected as a binding mismatch rather than silently accepted. Frozen
+    rejected rather than silently accepted. A probe reports binding-mismatch
+    discrimination only when the target records that reason. Frozen
     so an approval can never be mutated in place after it is issued;
     every "mutated" scenario a probe exercises always constructs a new
     binding via ``dataclasses.replace`` instead.
@@ -3053,8 +3070,9 @@ def run_approval_probe(
     again is a proven fail-open acceptance (``APR-001``) regardless of
     whether it is a byte-identical replay or a mutated binding, and
     only a genuinely rejected (``accepted: false``) later attempt
-    passes — distinguished as a replay (digest matches the original
-    accepted record) or a binding mismatch (it does not, covering every
+    passes. Target-provided rejection reasons must match the exercised
+    scenario; absent reasons prove only reused-nonce rejection, not target
+    discrimination between replay and binding mismatch (covering every
     mutated field: subject, role, target, tenant, policy, action, or
     arguments, including a reused nonce whose original approval was
     bound to different, pre-transform arguments).
@@ -3112,7 +3130,14 @@ def run_approval_probe(
         record for record in new_records if record.get("event") == "invocation"
     ]
 
-    expired = now >= binding.expires_at
+    try:
+        now_instant = datetime.fromisoformat(now.replace("Z", "+00:00"))
+        expiry_instant = datetime.fromisoformat(binding.expires_at.replace("Z", "+00:00"))
+        if now_instant.tzinfo is None or expiry_instant.tzinfo is None:
+            raise ValueError("approval timestamps require a timezone")
+        expired = now_instant >= expiry_instant
+    except ValueError as error:
+        raise ProbeContractError("invalid approval expiry timestamp") from error
     status: str
     observed: str
 
@@ -3125,7 +3150,11 @@ def run_approval_probe(
         status = "must-fix"
     else:
         decision = new_decisions[0]
-        if decision.get("nonce") != binding.nonce:
+        if (
+            decision.get("nonce") != binding.nonce
+            or decision.get("digest") != digest
+            or not isinstance(decision.get("accepted"), bool)
+        ):
             observed = "nonce_redemption_not_recorded"
             status = "must-fix"
         else:
@@ -3145,6 +3174,7 @@ def run_approval_probe(
                 status = "must-fix"
             elif accepted_now and (
                 len(matching_invocations) != 1
+                or len(new_invocations) != 1
                 or new_records.index(matching_invocations[0]) <= decision_index
             ):
                 # Accepted, but the ledger fails to prove the tool was
@@ -3178,6 +3208,29 @@ def run_approval_probe(
                 )
                 status = "pass"
 
+            if status == "pass" and not accepted_now:
+                expected_reason = (
+                    "expiry" if expired else
+                    "replay" if prior_accepted_digest == digest else "binding"
+                )
+                if "reason" in decision and decision["reason"] != expected_reason:
+                    observed = "approval_rejection_reason_mismatch"
+                    status = "must-fix"
+                elif "reason" not in decision and not expired:
+                    observed = "reused_nonce_rejected"
+
+    ledger_evidence = _persisted_records_evidence(
+        new_records, "approval-ledger-records", evidence_source
+    )
+    if status == "pass" and (
+        not ledger_evidence or after_records[:len(before_records)] != before_records
+    ):
+        status, observed = "must-fix", "approval_ledger_evidence_invalid"
+    binding_evidence = (
+        (_digest_evidence(digest, "approval-binding-digest", evidence_source),)
+        if any(record.get("digest") == digest for record in new_decisions) else ()
+    )
+    evidence_items = binding_evidence + ledger_evidence
     reason_code = _APPROVAL_PASS_REASON if status == "pass" else "APR-001"
     return ProbeResult(
         probe_id=_APPROVAL_PROBE_ID,
@@ -3187,7 +3240,7 @@ def run_approval_probe(
         reason_code=reason_code,
         expected=_APPROVAL_EXPECTED,
         observed=observed,
-        evidence_refs=(digest,),
+        evidence_refs=tuple(item.evidence_id for item in evidence_items),
         # The cited digest is the canonical hash of the exact 12-field
         # binding this attempt redeemed -- the same value the target's
         # own ledger records for it -- bound here to the nonce ledger it
@@ -3195,9 +3248,7 @@ def run_approval_probe(
         # assessment's own private, isolated one rather than the
         # target's declared path. Payload-free: no approver, argument,
         # or ledger record content ever leaves this call.
-        evidence_items=(
-            _digest_evidence(digest, "approval-binding-digest", evidence_source),
-        ),
+        evidence_items=evidence_items,
     )
 
 
@@ -3215,7 +3266,9 @@ def run_approval_probe_sequence(
     requires (:data:`_APPROVAL_MUTATION_FIELDS` -- the canonical action
     and its arguments, target scope, tenant, both subjects and the
     approving role, policy id and hash, and expiry), every one of them
-    reusing the same, already-consumed nonce.
+    reusing the same, already-consumed nonce. Finally a second valid binding
+    with a fresh nonce must succeed and a fresh expired binding must fail:
+    a store that indiscriminately rejects everything after first use fails.
 
     All of it runs against a single, freshly created, exclusive,
     *private* nonce ledger under the target's own ``governance``
@@ -3248,13 +3301,16 @@ def run_approval_probe_sequence(
     # unsafe approval contract is refused before anything is created,
     # exactly as each individual attempt below would refuse it.
     load_approval_contract(root_path)
+    attempts = (binding, binding) + tuple(
+        _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
+    ) + (
+        replace(binding, nonce=binding.nonce + "#fresh"),
+        replace(binding, nonce=binding.nonce + "#fresh-expired", expires_at=now),
+    )
     private_dir, ledger_path = _create_private_task6_ledger(
         root_path,
         directory_prefix="approval-probe",
         file_prefix="nonce-ledger-",
-    )
-    attempts = (binding, binding) + tuple(
-        _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
     )
     results: List[ProbeResult] = []
     try:
@@ -3380,6 +3436,10 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
             (verdict, str(ledger_path)),
         )
         events = _read_ledger_events(ledger_path)
+        evidence_items = _persisted_records_evidence(
+            events, "output-ledger-records",
+            f"{contract['observation_ledger']}#assessment-isolated",
+        )
     finally:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs([private_dir])
@@ -3398,6 +3458,12 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         verdict_index is None or index < verdict_index for index in release_indices
     ):
         observed = "output_released_before_verdict"
+        status = "must-fix"
+    elif (
+        len([event for event in events if event.get("event") == "verdict_received"]) != 1
+        or events[verdict_index].get("verdict") != verdict
+    ):
+        observed = "output_verdict_evidence_mismatch"
         status = "must-fix"
     elif verdict == "deny":
         release_events = [
@@ -3435,6 +3501,14 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         if any(event.get("event") == "chunk" for event in events):
             observed = "incremental_release_without_declared_stream_posture"
             status = "must-fix"
+        elif len(release_indices) != 1 or any(
+            not isinstance(events[index].get("bytes"), int)
+            or isinstance(events[index].get("bytes"), bool)
+            or events[index]["bytes"] <= 0
+            for index in release_indices
+        ):
+            observed = "buffered_release_evidence_missing_or_invalid"
+            status = "must-fix"
         else:
             observed = "buffered_release_after_verdict"
             status = "pass"
@@ -3466,6 +3540,8 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
             observed = "unmediated_or_oversized_chunk_release"
             status = "must-fix"
 
+    if status == "pass" and not evidence_items:
+        status, observed = "not-verified", "output_evidence_not_payload_free"
     reason_code = _OUTPUT_PASS_REASON if status == "pass" else "OUT-001"
     return ProbeResult(
         probe_id=_OUTPUT_PROBE_ID,
@@ -3475,7 +3551,8 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         reason_code=reason_code,
         expected=_OUTPUT_EXPECTED,
         observed=observed,
-        evidence_refs=(),
+        evidence_refs=tuple(item.evidence_id for item in evidence_items),
+        evidence_items=evidence_items,
     )
 
 
@@ -3573,11 +3650,28 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
         dispatch_result = _dispatch_task6_child(
             root_path, str(contract["dispatch"]), str(contract["audit_sink"]), args
         )
+        persisted_records = _read_ledger_events(ledger_path)
+        persisted_evidence = _persisted_records_evidence(
+            persisted_records, "audit-ledger-records",
+            f"{contract.get('nonce_ledger', contract.get('observation_ledger'))}#assessment-isolated",
+        )
+        return _privacy_results(
+            action_id, contract, dispatch_result["audit_records"],
+            persisted_records, persisted_evidence,
+        )
     finally:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs([private_dir])
 
-    audit_records = dispatch_result["audit_records"]
+
+def _privacy_results(
+    action_id: Optional[str],
+    contract: Mapping[str, object],
+    audit_records: Optional[list],
+    persisted_records: Sequence[Mapping[str, object]],
+    persisted_evidence: Tuple[ProbeEvidence, ...],
+) -> Tuple[ProbeResult, ...]:
+    """Bind audit records to persisted, payload-free evidence before cleanup."""
     if audit_records is None:
         return (
             ProbeResult(
@@ -3639,16 +3733,34 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
                 )
             )
         else:
+            complete = all(
+                isinstance(record.get(field), str) and record[field].strip()
+                for field in (
+                    "audit_id", "correlation_id", "decision", "action_hash",
+                    "policy_hash", "delivery_status",
+                )
+            ) and all(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(record.get(field, "")))
+                for field in ("action_hash", "policy_hash")
+            ) and record.get("delivery_status") in ("persisted", "delivered")
+            durable = record in persisted_records and bool(persisted_evidence)
+            if complete and durable:
+                audit_evidence = tuple(
+                    replace(item, source=persisted_evidence[0].source)
+                    for item in audit_evidence
+                ) + persisted_evidence
+            else:
+                audit_evidence = ()
             results.append(
                 ProbeResult(
                     probe_id=_AUDIT_PROBE_ID,
                     action_id=action_id,
                     path_id=None,
-                    status="pass",
-                    reason_code=_AUDIT_PASS_REASON,
+                    status="pass" if complete and durable else "not-verified",
+                    reason_code=_AUDIT_PASS_REASON if complete and durable else _AUDIT_NOT_VERIFIED_REASON,
                     expected=_AUDIT_EXPECTED,
-                    observed="payload_free_audit_record",
-                    evidence_refs=(audit_id_text,) if audit_id_text else (),
+                    observed="payload_free_audit_record" if complete and durable else "audit_evidence_incomplete_or_not_persisted",
+                    evidence_refs=tuple(item.evidence_id for item in audit_evidence),
                     evidence_items=audit_evidence,
                 )
             )
@@ -3756,6 +3868,28 @@ _STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH = 4096
 #: attacker/target-controlled value of unbounded original size as if it
 #: were trustworthy, bounded evidence.
 _STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH = 256
+
+
+def validate_staging_scope(
+    selected: Mapping[str, object], evidence: Optional[Mapping[str, object]] = None
+) -> None:
+    """Pure, fail-closed staging selector check; never discovers or mutates Azure."""
+    resource_group = selected.get("resource_group")
+    environment = selected.get("environment")
+    if not isinstance(resource_group, str) or not re.fullmatch(r"[\w().-]+", resource_group):
+        raise UnsafeTargetError("an explicit staging resource group is required")
+    if "prod" in resource_group.lower() or (
+        isinstance(environment, str) and "prod" in environment.lower()
+    ):
+        raise UnsafeTargetError("production scopes are forbidden; select staging")
+    if environment is not None and environment != "staging":
+        raise UnsafeTargetError("environment must explicitly name staging")
+    if environment is None and not re.search(r"(^|[-_.])(stage|staging)([-_.]|$)", resource_group, re.I):
+        raise UnsafeTargetError("resource group does not identify staging")
+    if evidence is not None:
+        for field, value in selected.items():
+            if value is not None and evidence.get(field) != value:
+                raise UnsafeTargetError(f"staging evidence {field} mismatch")
 
 
 def validate_post_deploy_target(phase: Phase, staging: bool, destructive: bool) -> None:

@@ -515,6 +515,7 @@ def _evidence_to_dict(ref: EvidenceRef) -> Dict[str, object]:
         "source_commit": ref.source_commit,
         "target_environment": ref.target_environment,
         "policy_set_sha256": ref.policy_set_sha256,
+        **({"deployed_target": dict(ref.deployed_target)} if ref.deployed_target is not None else {}),
     }
 
 
@@ -851,11 +852,8 @@ def _required_evidence_is_untrustworthy(
     -- or a ``governed`` summary verdict -- on the strength of evidence
     nothing actually needed.
 
-    Deliberately does *not* check a "target environment" or "tested
-    tuple" expectation: ``AssessmentResult`` carries no authoritative
-    expected value for either today, and this module never invents one
-    to compare against -- a real check there would need a new, explicit
-    assessment-level binding field, not a fabricated expectation.
+    Live evidence also requires an exact assessment-level deployment binding.
+    Local probe provenance cannot be relabeled as live enforcement evidence.
     """
     required_ids = _required_evidence_ids(result)
     if not required_ids:
@@ -880,6 +878,16 @@ def _required_evidence_is_untrustworthy(
         if finding_phases and ref.phase not in finding_phases:
             return True
         if ref.policy_set_sha256 is not None and ref.policy_set_sha256 != expected_policy_set_sha256:
+            return True
+        if ref.live_verified and (
+            result.deployed_target is None or ref.deployed_target != result.deployed_target
+            or ref.kind.startswith(("probe-", "path-", "approval-", "output-", "audit-ledger-"))
+        ):
+            return True
+        if ref.deployed_target is not None and (
+            ref.deployed_target != result.deployed_target
+            or ref.target_environment != ref.deployed_target.get("environment")
+        ):
             return True
     return False
 
@@ -1083,6 +1091,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
             "adapter": ADAPTER_NAME,
         },
         "phase": _phase_for(result),
+        **({"deployed_target": dict(result.deployed_target)} if result.deployed_target is not None else {}),
         "captured_at": captured_at,
         "source": {
             "repository": result.source.repository,

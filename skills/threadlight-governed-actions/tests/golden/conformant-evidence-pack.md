@@ -14,7 +14,7 @@
 ## Architecture and data flow
 
 - 2 declared consequential action(s) across 10 traced mediation path(s).
-- 39 application-path probe result(s) recorded.
+- 41 application-path probe result(s) recorded.
 
 ## Runtime action inventory
 
@@ -36,22 +36,24 @@
 
 ## Application-path probe evidence
 
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:7fcc9bc13f0f9d11ab9a43fa537d7a639da4870436ae47a067c72a9d7aafad97
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:85e2f35dafc595107b0b0c8de43b6b7e5fc4eae6c9cf27a801d2f57f9162e60b
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:890636974f81b6fd3a70ee47419806b268605bffcf50608254ac8ea8889928a5
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8
-- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-3f5a37daf58d0e9c3554ba271e6debfa54087a51c217a1072ea200ce6f268426, sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-5320a1cb731b620f1781eb8812bf0981604adfcd6bd4be5e1f3221af9e229e58, sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-551e9c1e70fe7c89bee7d7fb736c6f773b48e2d7d030f3e71474eb91ac7da38a, sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-5691b597c749a38481bc884ff61a9b116850cec3834c327d4039bd7ea3685e1d, sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-5cf7f0c4918f4f355a42eb2ffe86da837712cfe5d71530fd2250fd84f1a9bb0c, sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-6fa6ace5627cbb759e265868885204b7210d6cec45de7c617acc411ce869e92b, sha256:890636974f81b6fd3a70ee47419806b268605bffcf50608254ac8ea8889928a5
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-83055e3eb84e6756a3fcebd596ebcd690464ad0e396103c568a35828d9fc2141, sha256:7fcc9bc13f0f9d11ab9a43fa537d7a639da4870436ae47a067c72a9d7aafad97
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-90dbce3dd229d475d6bb1484c42481449dc608fef25a636d792ca6b4d4f075c7, sha256:85e2f35dafc595107b0b0c8de43b6b7e5fc4eae6c9cf27a801d2f57f9162e60b
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-d5b6e60e6f416bf68081a97a5a28b47ecb45916737d495315bd184eb9ed95e24, sha256:535a1397eae8ba9242b4729ecaf7971f51b5dadbb05e7a9a21f36316d035a68e
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-db9ccff3e2563424688935a2c902251dd097fa1118cbe6804a071efc25c2dea1, sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-e326423169bfe8a9837453d18bb1a93a4dc0d6a88f2e999a12a1d6ded54fd24e, sha256:17cd3433faf45558bb834cf1a122bcf46d02147ddc87d0028681ae67c65141b3
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-e5d433ae77d3797b8730a5696d2805a9947539f0700e0e7b250d3039fd163f12, sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-eeec48617ed14b24dca7f16abab3c1d0aed37d4631103257c0079fc68a31a52b, sha256:98fb1c0fb6872e23ee43ecc500c8aca4db964772ef09c28fe410c40802159b4f
+- `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=approval-ledger-records-f6de8371efba654466f5995f140dbf1b2c41b62c8859bbfb5d5fce3ee70ba500, sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9
 - `crash` action=`payments.refund` path=`None` status=pass reason=crash-blocked evidence=audit-0001~2bbdaccc2f5e1092
 - `deny` action=`payments.refund` path=`None` status=pass reason=deny-enforced evidence=audit-0001~381f4739271102cd
 - `malformed-verdict` action=`payments.refund` path=`None` status=pass reason=malformed-verdict-blocked evidence=audit-0001~6037364472d45cf2
-- `output-mediation` action=`payments.refund` path=`None` status=pass reason=output-mediation-enforced evidence=none
+- `output-mediation` action=`payments.refund` path=`None` status=pass reason=output-mediation-enforced evidence=output-ledger-records-432eb8c13a8986108d1f5b27e529a83be6017081663ff3f0b4d257eb4f651817
 - `path-dispatch-allow` action=`customer.lookup` path=`1e5fd34aca356abe` status=pass reason=path-dispatch-mediated evidence=path-decision-1e5fd34aca356abe~15b83f4eed0f0670, path-invocation-1e5fd34aca356abe, path-resolved-1e5fd34aca356abe, path-routing-target-1e5fd34aca356abe
 - `path-dispatch-allow` action=`customer.lookup` path=`347a7d4ba1b2a0fa` status=pass reason=path-dispatch-mediated evidence=path-decision-347a7d4ba1b2a0fa~4f4dc359d0d76064, path-invocation-347a7d4ba1b2a0fa, path-resolved-347a7d4ba1b2a0fa, path-routing-target-347a7d4ba1b2a0fa
 - `path-dispatch-allow` action=`customer.lookup` path=`37d1f78e666dd467` status=pass reason=path-dispatch-mediated evidence=path-decision-37d1f78e666dd467~e72d250a4cc07f1d, path-invocation-37d1f78e666dd467, path-resolved-37d1f78e666dd467, path-routing-target-37d1f78e666dd467
@@ -72,7 +74,7 @@
 - `path-dispatch-deny` action=`payments.refund` path=`400019bbedc16b75` status=pass reason=path-dispatch-denied evidence=path-decision-400019bbedc16b75~88d66a1681bc9589, path-resolved-400019bbedc16b75, path-routing-target-400019bbedc16b75
 - `path-dispatch-deny` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=path-dispatch-denied evidence=path-decision-68852d2b9d611a52~de9215ccb5033c58, path-resolved-68852d2b9d611a52, path-routing-target-68852d2b9d611a52
 - `path-dispatch-deny` action=`payments.refund` path=`8fa2a4cde35188b9` status=pass reason=path-dispatch-denied evidence=path-decision-8fa2a4cde35188b9~3f5a128ce7ebb9cf, path-resolved-8fa2a4cde35188b9, path-routing-target-8fa2a4cde35188b9
-- `payload-free-audit` action=`payments.refund` path=`None` status=pass reason=payload-free-audit-enforced evidence=audit-approval-audit-probe-nonce
+- `payload-free-audit` action=`payments.refund` path=`None` status=pass reason=payload-free-audit-enforced evidence=audit-approval-audit-probe-nonce, audit-ledger-records-01e347c048b95c0544f4e0e542f1c13465e0bdb5acf4085aeaf43154a166a454
 - `timeout` action=`payments.refund` path=`None` status=pass reason=timeout-blocked evidence=audit-0001~32eb7a5316406d67
 - `transform` action=`payments.refund` path=`None` status=pass reason=transform-enforced evidence=audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b
 
@@ -88,14 +90,30 @@
 | EVID-spec-section-8 | static-file-hash | specs/SPEC.md#section-8 | sha256:f1879370f7552799dc50d0e04ed0e4d1f85553e4f739ef4f2c7e259c087ff67d | 2026-09-01T12:00:00Z | False |
 | agent.yaml | static-file-hash | agent.yaml | sha256:4c5f915a6ca38f3b7e0278d05f672e9fb8a396fff05012db3a4dc0ba9439dd11 | 2026-09-01T12:00:00Z | False |
 | alert-catalog | file-set | governance/alerts.json | sha256:c5ed00d05bcfa6950957100fa7eaf6fd15d78bfd4c82411807438df7a5bedfeb | unknown | False |
-| app/agent.py | static-file-hash | app/agent.py | sha256:a8e395b62e005d7ef3d95d3f6b86da26ead3e7ad71de58fbcd703a615790641b | 2026-09-01T12:00:00Z | False |
+| app/agent.py | static-file-hash | app/agent.py | sha256:71915443d00d8fc82744d3c5ddfeb4e79fdb6afc93fa6a84e788b8d0bb283f9f | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-3f5a37daf58d0e9c3554ba271e6debfa54087a51c217a1072ea200ce6f268426 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:3f5a37daf58d0e9c3554ba271e6debfa54087a51c217a1072ea200ce6f268426 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-5320a1cb731b620f1781eb8812bf0981604adfcd6bd4be5e1f3221af9e229e58 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:5320a1cb731b620f1781eb8812bf0981604adfcd6bd4be5e1f3221af9e229e58 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-551e9c1e70fe7c89bee7d7fb736c6f773b48e2d7d030f3e71474eb91ac7da38a | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:551e9c1e70fe7c89bee7d7fb736c6f773b48e2d7d030f3e71474eb91ac7da38a | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-5691b597c749a38481bc884ff61a9b116850cec3834c327d4039bd7ea3685e1d | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:5691b597c749a38481bc884ff61a9b116850cec3834c327d4039bd7ea3685e1d | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-5cf7f0c4918f4f355a42eb2ffe86da837712cfe5d71530fd2250fd84f1a9bb0c | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:5cf7f0c4918f4f355a42eb2ffe86da837712cfe5d71530fd2250fd84f1a9bb0c | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-6fa6ace5627cbb759e265868885204b7210d6cec45de7c617acc411ce869e92b | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:6fa6ace5627cbb759e265868885204b7210d6cec45de7c617acc411ce869e92b | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-83055e3eb84e6756a3fcebd596ebcd690464ad0e396103c568a35828d9fc2141 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:83055e3eb84e6756a3fcebd596ebcd690464ad0e396103c568a35828d9fc2141 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-90dbce3dd229d475d6bb1484c42481449dc608fef25a636d792ca6b4d4f075c7 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:90dbce3dd229d475d6bb1484c42481449dc608fef25a636d792ca6b4d4f075c7 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-d5b6e60e6f416bf68081a97a5a28b47ecb45916737d495315bd184eb9ed95e24 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:d5b6e60e6f416bf68081a97a5a28b47ecb45916737d495315bd184eb9ed95e24 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-db9ccff3e2563424688935a2c902251dd097fa1118cbe6804a071efc25c2dea1 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:db9ccff3e2563424688935a2c902251dd097fa1118cbe6804a071efc25c2dea1 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-e326423169bfe8a9837453d18bb1a93a4dc0d6a88f2e999a12a1d6ded54fd24e | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:e326423169bfe8a9837453d18bb1a93a4dc0d6a88f2e999a12a1d6ded54fd24e | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-e5d433ae77d3797b8730a5696d2805a9947539f0700e0e7b250d3039fd163f12 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:e5d433ae77d3797b8730a5696d2805a9947539f0700e0e7b250d3039fd163f12 | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-eeec48617ed14b24dca7f16abab3c1d0aed37d4631103257c0079fc68a31a52b | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:eeec48617ed14b24dca7f16abab3c1d0aed37d4631103257c0079fc68a31a52b | 2026-09-01T12:00:00Z | False |
+| approval-ledger-records-f6de8371efba654466f5995f140dbf1b2c41b62c8859bbfb5d5fce3ee70ba500 | approval-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:f6de8371efba654466f5995f140dbf1b2c41b62c8859bbfb5d5fce3ee70ba500 | 2026-09-01T12:00:00Z | False |
 | audit-0001~2bbdaccc2f5e1092 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:2bbdaccc2f5e1092140a64b0a9da17e059dbcecff004e448e47e3d0fb6ccb8f2 | 2026-09-01T12:00:00Z | False |
 | audit-0001~32eb7a5316406d67 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:32eb7a5316406d67d326aec85eec3616fcd2b068e22ff7ee271ff803253b408b | 2026-09-01T12:00:00Z | False |
 | audit-0001~381f4739271102cd | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:381f4739271102cd6f2d740cd27fa73e10ea2478a8fee0cc07f35c0063f1a60a | 2026-09-01T12:00:00Z | False |
 | audit-0001~6037364472d45cf2 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:6037364472d45cf2d6402547b61d7071f5920343283f0acc72672e7c58cd6c5e | 2026-09-01T12:00:00Z | False |
 | audit-0001~f9cf5a5cf02e20f0 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:f9cf5a5cf02e20f0cc808a91b82c374be4d27b15183374c846497c969b4a3f09 | 2026-09-01T12:00:00Z | False |
-| audit-approval-audit-probe-nonce | probe-audit-record | app.agent:AUDIT_EVENTS | sha256:891ad27bce12dd0036cab84b211b9f3d8798656c89d100b07b1da07e3df78a35 | 2026-09-01T12:00:00Z | False |
+| audit-approval-audit-probe-nonce | probe-audit-record | governance/nonce-ledger.jsonl#assessment-isolated | sha256:593790675c1fa4169819c010dbe2aa4720a72f23015ab09f9c7f12a8c9966f22 | 2026-09-01T12:00:00Z | False |
+| audit-ledger-records-01e347c048b95c0544f4e0e542f1c13465e0bdb5acf4085aeaf43154a166a454 | audit-ledger-records | governance/nonce-ledger.jsonl#assessment-isolated | sha256:01e347c048b95c0544f4e0e542f1c13465e0bdb5acf4085aeaf43154a166a454 | 2026-09-01T12:00:00Z | False |
 | ghcp-workflows | file-set | .github/workflows/governed-actions.yml | sha256:16819e03d140b14bd7bf5d4007a8b0755170e7881180bcfab2cef328abac3fc1 | unknown | False |
+| output-ledger-records-432eb8c13a8986108d1f5b27e529a83be6017081663ff3f0b4d257eb4f651817 | output-ledger-records | governance/probe-ledger.jsonl#assessment-isolated | sha256:432eb8c13a8986108d1f5b27e529a83be6017081663ff3f0b4d257eb4f651817 | 2026-09-01T12:00:00Z | False |
 | path-decision-099ebdd0357f3031~20df8c2c566880bc | path-pre-action-decision | assessor:execution-path-proof-channel | sha256:20df8c2c566880bcf3f978e6bb6e902f66383588867b36ac45328022ed143ce6 | 2026-09-01T12:00:00Z | False |
 | path-decision-099ebdd0357f3031~38951f091a6f519f | path-pre-action-decision | assessor:execution-path-proof-channel | sha256:38951f091a6f519f0cbadfa8a7a6729768412083d85fc8a41faef4ad5c6cbc9a | 2026-09-01T12:00:00Z | False |
 | path-decision-1e5fd34aca356abe~15b83f4eed0f0670 | path-pre-action-decision | assessor:execution-path-proof-channel | sha256:15b83f4eed0f06706c8c8eb0f4f473e4cb2da84dbc9f82c22d623b943d08cb10 | 2026-09-01T12:00:00Z | False |
@@ -146,8 +164,10 @@
 | path-routing-target-7166e9d0b462e868 | path-routing-table-target | assessor:execution-path-proof-channel | sha256:90e32aea7d26a4a7960003f80d2d7db328f47f34d4a8375022971387ed9b3542 | 2026-09-01T12:00:00Z | False |
 | path-routing-target-8fa2a4cde35188b9 | path-routing-table-target | assessor:execution-path-proof-channel | sha256:c0196a5f737a410763f340bc8c09064a120a8bc9ad77da5983333e8f4432bf61 | 2026-09-01T12:00:00Z | False |
 | path-routing-target-aea9253c6ec0258e | path-routing-table-target | assessor:execution-path-proof-channel | sha256:6965e6b48ca0323f828bc7bfc45415cf2b8c308c3c9fc518ab495d07f1376aa0 | 2026-09-01T12:00:00Z | False |
+| sha256:17cd3433faf45558bb834cf1a122bcf46d02147ddc87d0028681ae67c65141b3 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:17cd3433faf45558bb834cf1a122bcf46d02147ddc87d0028681ae67c65141b3 | 2026-09-01T12:00:00Z | False |
 | sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:25526bc0da5d1228c8ea0bbabd91be6e776a862506e098c3da6ea2946cd67bf2 | 2026-09-01T12:00:00Z | False |
 | sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:4b04eb784efe559c59fe8f0ccb6cd9d35e99119b182c626ca67a288f2becbdd6 | 2026-09-01T12:00:00Z | False |
+| sha256:535a1397eae8ba9242b4729ecaf7971f51b5dadbb05e7a9a21f36316d035a68e | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:535a1397eae8ba9242b4729ecaf7971f51b5dadbb05e7a9a21f36316d035a68e | 2026-09-01T12:00:00Z | False |
 | sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:538fe7f57387468db9554f6de70243d94a49849217fb6b12f01e6a7d1ca96aba | 2026-09-01T12:00:00Z | False |
 | sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65 | approval-binding-digest | governance/nonce-ledger.jsonl#assessment-isolated | sha256:6b7522585bfa3a7a4c498a495a2513bfb745dd5ddabf8eb4edc758ef5fb3da65 | 2026-09-01T12:00:00Z | False |
 | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | probe-argument-hash | governance/probe-ledger.jsonl | sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf | 2026-09-01T12:00:00Z | False |

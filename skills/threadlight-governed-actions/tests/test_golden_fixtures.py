@@ -386,14 +386,15 @@ def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) 
     approval_probes = [
         probe for probe in result.probes if probe.probe_id == probes.APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 2 + len(probes.APPROVAL_MUTATION_FIELDS)
+    assert len(approval_probes) == 4 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert approval_probes[0].observed == "approval_accepted"
-    failing = [probe for probe in approval_probes if probe.status == "must-fix"]
+    failing = [probe for probe in approval_probes[:-2] if probe.status == "must-fix"]
     assert len(failing) == 1 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert {probe.observed for probe in failing} == {
         "fail_open_replay_or_mutation_accepted"
     }
-    assert "expired_rejected" not in {probe.observed for probe in approval_probes}
+    assert approval_probes[-2].observed == "approval_accepted"
+    assert approval_probes[-1].observed == "expired_binding_fail_open_accepted"
 
 
 def test_conformant_maf_executes_every_required_path_and_is_governed(
