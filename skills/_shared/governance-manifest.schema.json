@@ -171,8 +171,11 @@
       "additionalProperties": false,
       "properties": {
         "runtime": {
-          "type": "string",
-          "minLength": 1
+          "enum": [
+            "github-copilot-sdk",
+            "maf-responses",
+            "microsoft-agent-framework"
+          ]
         },
         "version": {
           "$ref": "#/definitions/version"
@@ -207,6 +210,7 @@
         },
         "expires_at": {
           "type": "string",
+          "pattern": "^(?!.*[\\r\\n]).+$",
           "format": "date-time",
           "description": "RFC 3339 timestamp shape only. Freshness against the caller or runtime clock is evaluated outside Draft 7 validation."
         }
@@ -581,8 +585,12 @@
           "$ref": "#/definitions/version"
         },
         "decision": {
-          "type": "string",
-          "minLength": 1
+          "enum": [
+            "allow",
+            "deny",
+            "escalate",
+            "transform"
+          ]
         },
         "downstream_effect_delta": {
           "type": "integer",

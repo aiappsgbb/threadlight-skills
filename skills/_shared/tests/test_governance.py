@@ -128,6 +128,94 @@ def set_primary_binding_status(
     return binding
 
 
+def add_live_probe(
+    manifest,
+    *,
+    probe_id,
+    binding_id="returns-write-v1",
+    decision="allow",
+    downstream_effect_delta=0,
+    decision_receipt_ref,
+    service_oracle_ref,
+    status="pass",
+):
+    manifest["live_probes"].append(
+        {
+            "probe_id": probe_id,
+            "binding_id": binding_id,
+            "environment": "preproduction",
+            "agent_version": "7",
+            "decision": decision,
+            "downstream_effect_delta": downstream_effect_delta,
+            "decision_receipt_ref": decision_receipt_ref,
+            "service_oracle_ref": service_oracle_ref,
+            "status": status,
+        }
+    )
+    return manifest["live_probes"][-1]
+
+
+def add_binding_with_probe(
+    manifest,
+    *,
+    binding_id,
+    tool_id,
+    enforcement_path="local-agent-hooks",
+    intervention_points=None,
+    mode="enforce",
+    binding_status="enforced",
+    safe_principles=None,
+    probe_id,
+    decision="allow",
+    downstream_effect_delta=0,
+    decision_receipt_ref,
+    service_oracle_ref,
+    probe_status="pass",
+):
+    if intervention_points is None:
+        intervention_points = ["pre_tool_call"]
+    if safe_principles is None:
+        safe_principles = ["scope"]
+
+    manifest["bindings"].append(
+        {
+            "binding_id": binding_id,
+            "tool_id": tool_id,
+            "enforcement_path": enforcement_path,
+            "intervention_points": intervention_points,
+            "mode": mode,
+            "safe_principles": safe_principles,
+            "status": binding_status,
+            "policy_digest": manifest["policy_bundle"]["digest"],
+            "probe_ids": [probe_id],
+            "evidence_refs": [decision_receipt_ref, service_oracle_ref],
+        }
+    )
+    add_live_probe(
+        manifest,
+        probe_id=probe_id,
+        binding_id=binding_id,
+        decision=decision,
+        downstream_effect_delta=downstream_effect_delta,
+        decision_receipt_ref=decision_receipt_ref,
+        service_oracle_ref=service_oracle_ref,
+        status=probe_status,
+    )
+    manifest["coverage"]["tools_total"] += 1
+    manifest["coverage"]["tools_bound"] += 0 if enforcement_path == "none" else 1
+    manifest["coverage"][_STATUS_TO_COVERAGE_FIELD[binding_status]] += 1
+    if binding_status != "enforced":
+        manifest["gaps"].append(
+            {
+                "binding_id": binding_id,
+                "status": binding_status,
+                "reason_code": "documented-gap",
+                "evidence_refs": [decision_receipt_ref],
+            }
+        )
+    return manifest["bindings"][-1], manifest["live_probes"][-1]
+
+
 def test_declares_shared_vocabularies():
     governance = governance_module()
 
@@ -180,6 +268,17 @@ def test_normalize_tool_rejects_ghcp_local_agent_hooks():
             },
             runtime="github-copilot-sdk",
         )
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    ["github-copilot-sdk ", "Github-copilot-sdk", " maf-responses", "unknown"],
+)
+def test_normalize_tool_rejects_invalid_runtime_override(runtime):
+    governance = governance_module()
+
+    with pytest.raises(governance.GovernanceContractError, match="runtime"):
+        governance.normalize_tool("returns_apply_decision", runtime=runtime)
 
 
 def test_normalize_tool_accepts_none_sentinel_for_unbound_mapping():
@@ -313,7 +412,7 @@ def test_validate_governance_manifest_rejects_ghcp_local_agent_hooks_binding():
 
 
 @pytest.mark.parametrize(("status", "mode"), [("enforced", "enforce"), ("observed", "evaluate_only")])
-def test_validate_governance_manifest_rejects_binding_citing_failing_probe(
+def test_validate_governance_manifest_rejects_binding_when_cited_probe_or_its_evidence_fails(
     status, mode
 ):
     governance = governance_module()
@@ -321,14 +420,45 @@ def test_validate_governance_manifest_rejects_binding_citing_failing_probe(
     set_primary_binding_status(manifest, status=status, mode=mode)
     manifest["live_probes"][0]["status"] = "fail"
 
+    with pytest.raises(governance.GovernanceContractError, match="passing live probe"):
+        governance.validate_governance_manifest(manifest)
+
+
+@pytest.mark.parametrize(("status", "mode"), [("enforced", "enforce"), ("observed", "evaluate_only")])
+def test_validate_governance_manifest_rejects_uncited_failing_same_binding_probe(
+    status, mode
+):
+    governance = governance_module()
+    manifest = valid_manifest()
+    set_primary_binding_status(manifest, status=status, mode=mode)
+    add_live_probe(
+        manifest,
+        probe_id="transform-returns-write-shadow",
+        binding_id="returns-write-v1",
+        decision="transform",
+        downstream_effect_delta=0,
+        decision_receipt_ref="EV-receipt-2",
+        service_oracle_ref="EV-service-2",
+        status="fail",
+    )
+
     with pytest.raises(governance.GovernanceContractError, match="passing live probes"):
         governance.validate_governance_manifest(manifest)
 
 
-def test_validate_governance_manifest_rejects_enforced_deny_probe_with_downstream_effect():
+def test_validate_governance_manifest_rejects_enforced_same_binding_deny_probe_with_nonzero_downstream_effect():
     governance = governance_module()
     manifest = valid_manifest()
-    manifest["live_probes"][0]["downstream_effect_delta"] = 1
+    add_live_probe(
+        manifest,
+        probe_id="deny-returns-write-shadow",
+        binding_id="returns-write-v1",
+        decision="deny",
+        downstream_effect_delta=1,
+        decision_receipt_ref="EV-receipt-2",
+        service_oracle_ref="EV-service-2",
+        status="pass",
+    )
 
     with pytest.raises(
         governance.GovernanceContractError,
@@ -337,7 +467,26 @@ def test_validate_governance_manifest_rejects_enforced_deny_probe_with_downstrea
         governance.validate_governance_manifest(manifest)
 
 
-def test_validate_governance_manifest_accepts_enforced_allow_probe_with_expected_effect():
+def test_validate_governance_manifest_rejects_binding_evidence_from_failing_probe_receipt():
+    governance = governance_module()
+    manifest = valid_manifest()
+    add_live_probe(
+        manifest,
+        probe_id="allow-returns-write-shadow",
+        binding_id="returns-write-v1",
+        decision="allow",
+        downstream_effect_delta=0,
+        decision_receipt_ref="EV-receipt-2",
+        service_oracle_ref="EV-service-2",
+        status="fail",
+    )
+    manifest["bindings"][0]["evidence_refs"] = ["EV-receipt-2", "EV-service-1"]
+
+    with pytest.raises(governance.GovernanceContractError, match="evidence_refs"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_accepts_enforced_allow_probe_with_nonzero_effect():
     governance = governance_module()
     manifest = valid_manifest()
     manifest["live_probes"][0]["decision"] = "allow"
@@ -501,39 +650,107 @@ def test_validate_governance_manifest_rejects_binding_gap_status_mismatch():
 def test_validate_governance_manifest_rejects_binding_claiming_another_bindings_probe():
     governance = governance_module()
     manifest = valid_manifest()
-    manifest["bindings"].append(
-        {
-            "binding_id": "returns-read-v1",
-            "tool_id": "returns_get_case",
-            "enforcement_path": "local-agent-hooks",
-            "intervention_points": ["pre_tool_call"],
-            "mode": "enforce",
-            "safe_principles": ["scope"],
-            "status": "enforced",
-            "policy_digest": manifest["policy_bundle"]["digest"],
-            "probe_ids": ["allow-returns-read"],
-            "evidence_refs": ["EV-receipt-2", "EV-service-2"],
-        }
+    add_binding_with_probe(
+        manifest,
+        binding_id="returns-read-v1",
+        tool_id="returns_get_case",
+        probe_id="allow-returns-read",
+        decision_receipt_ref="EV-receipt-2",
+        service_oracle_ref="EV-service-2",
     )
-    manifest["live_probes"].append(
-        {
-            "probe_id": "allow-returns-read",
-            "binding_id": "returns-read-v1",
-            "environment": "preproduction",
-            "agent_version": "7",
-            "decision": "allow",
-            "downstream_effect_delta": 0,
-            "decision_receipt_ref": "EV-receipt-2",
-            "service_oracle_ref": "EV-service-2",
-            "status": "pass",
-        }
-    )
-    manifest["coverage"]["tools_total"] = 2
-    manifest["coverage"]["tools_bound"] = 2
-    manifest["coverage"]["tools_enforced"] = 2
     manifest["bindings"][0]["probe_ids"] = ["allow-returns-read"]
 
     with pytest.raises(governance.GovernanceContractError, match="probe_ids"):
+        governance.validate_governance_manifest(manifest)
+
+
+@pytest.mark.parametrize("decision", ["ALLOW", "deny ", " deny", "denied"])
+def test_validate_governance_manifest_rejects_non_enum_live_probe_decision(decision):
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["live_probes"][0]["decision"] = decision
+
+    with pytest.raises(governance.GovernanceContractError, match="decision"):
+        governance.validate_governance_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    ["Github-copilot-sdk", "github-copilot-sdk ", " maf-responses", "maf_response"],
+)
+def test_validate_governance_manifest_rejects_unknown_or_padded_runtime(runtime):
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["agent"]["runtime"] = runtime
+
+    with pytest.raises(governance.GovernanceContractError, match="agent.runtime"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_probe_reusing_receipt_as_service_oracle():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["live_probes"][0]["service_oracle_ref"] = "EV-receipt-1"
+
+    with pytest.raises(governance.GovernanceContractError, match="must differ"):
+        governance.validate_governance_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "mutate"),
+    [
+        (
+            "same binding",
+            lambda manifest: add_live_probe(
+                manifest,
+                probe_id="allow-returns-write-shadow",
+                binding_id="returns-write-v1",
+                decision="allow",
+                downstream_effect_delta=0,
+                decision_receipt_ref="EV-receipt-1",
+                service_oracle_ref="EV-service-2",
+                status="pass",
+            ),
+        ),
+        (
+            "different binding",
+            lambda manifest: add_binding_with_probe(
+                manifest,
+                binding_id="returns-read-v1",
+                tool_id="returns_get_case",
+                probe_id="allow-returns-read",
+                decision_receipt_ref="EV-receipt-1",
+                service_oracle_ref="EV-service-2",
+            ),
+        ),
+    ],
+)
+def test_validate_governance_manifest_rejects_live_probe_evidence_ref_reuse_across_probes(
+    scenario, mutate
+):
+    governance = governance_module()
+    manifest = valid_manifest()
+    mutate(manifest)
+
+    with pytest.raises(governance.GovernanceContractError, match="globally unique"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_binding_gap_using_other_bindings_evidence():
+    governance = governance_module()
+    manifest = valid_manifest()
+    set_primary_binding_status(manifest, status="unverified", mode="evaluate_only")
+    add_binding_with_probe(
+        manifest,
+        binding_id="returns-read-v1",
+        tool_id="returns_get_case",
+        probe_id="allow-returns-read",
+        decision_receipt_ref="EV-receipt-2",
+        service_oracle_ref="EV-service-2",
+    )
+    manifest["gaps"][0]["evidence_refs"] = ["EV-receipt-2"]
+
+    with pytest.raises(governance.GovernanceContractError, match="gaps\\[\\]\\.evidence_refs"):
         governance.validate_governance_manifest(manifest)
 
 
@@ -600,6 +817,12 @@ def test_validate_governance_manifest_rejects_malformed_digest_timestamp_and_ver
                 0, "EV-receipt-1\n"
             ),
             "evidence reference",
+        ),
+        (
+            lambda manifest: manifest["policy_bundle"].__setitem__(
+                "expires_at", "2026-09-04T12:00:00Z\n"
+            ),
+            "policy_bundle.expires_at",
         ),
     ],
 )
@@ -698,6 +921,24 @@ def build_jsonschema_validator():
                 "id", "returns-safe\n"
             ),
         ),
+        (
+            "runtime enum exact match",
+            lambda manifest: manifest["agent"].__setitem__(
+                "runtime", "Github-copilot-sdk"
+            ),
+        ),
+        (
+            "live probe decision exact enum",
+            lambda manifest: manifest["live_probes"][0].__setitem__(
+                "decision", "ALLOW"
+            ),
+        ),
+        (
+            "expires_at trailing newline rejected",
+            lambda manifest: manifest["policy_bundle"].__setitem__(
+                "expires_at", "2026-09-04T12:00:00Z\n"
+            ),
+        ),
     ],
 )
 def test_schema_and_hand_validator_reject_expressible_binding_invariants(label, mutate):
@@ -741,6 +982,55 @@ def test_schema_and_hand_validator_reject_expressible_binding_invariants(label, 
                     manifest, status="unverified", mode="evaluate_only"
                 ),
                 manifest["gaps"].append(dict(manifest["gaps"][0])),
+            ),
+        ),
+        (
+            "same-binding live probe failures",
+            lambda manifest: add_live_probe(
+                manifest,
+                probe_id="transform-returns-write-shadow",
+                binding_id="returns-write-v1",
+                decision="transform",
+                downstream_effect_delta=0,
+                decision_receipt_ref="EV-receipt-2",
+                service_oracle_ref="EV-service-2",
+                status="fail",
+            ),
+        ),
+        (
+            "same-binding evidence ownership for gaps",
+            lambda manifest: (
+                set_primary_binding_status(
+                    manifest, status="unverified", mode="evaluate_only"
+                ),
+                add_binding_with_probe(
+                    manifest,
+                    binding_id="returns-read-v1",
+                    tool_id="returns_get_case",
+                    probe_id="allow-returns-read",
+                    decision_receipt_ref="EV-receipt-2",
+                    service_oracle_ref="EV-service-2",
+                ),
+                manifest["gaps"][0].__setitem__("evidence_refs", ["EV-receipt-2"]),
+            ),
+        ),
+        (
+            "cross-probe evidence uniqueness",
+            lambda manifest: add_live_probe(
+                manifest,
+                probe_id="allow-returns-write-shadow",
+                binding_id="returns-write-v1",
+                decision="allow",
+                downstream_effect_delta=0,
+                decision_receipt_ref="EV-receipt-1",
+                service_oracle_ref="EV-service-2",
+                status="pass",
+            ),
+        ),
+        (
+            "receipt and service refs differ within a probe",
+            lambda manifest: manifest["live_probes"][0].__setitem__(
+                "service_oracle_ref", "EV-receipt-1"
             ),
         ),
     ],

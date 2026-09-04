@@ -11,6 +11,9 @@ from skills._shared.manifest import (
 
 
 GOVERNANCE_MODES = frozenset({"off", "selective", "comprehensive"})
+AGENT_RUNTIMES = frozenset(
+    {"github-copilot-sdk", "maf-responses", "microsoft-agent-framework"}
+)
 BINDING_STATUSES = frozenset(
     {"enforced", "observed", "unbound", "unsupported", "unverified", "bypassable"}
 )
@@ -35,6 +38,7 @@ _INTERVENTION_POINTS = frozenset(
 )
 _ENFORCEMENT_MODES = frozenset({"enforce", "evaluate_only"})
 _PROBE_STATUSES = frozenset({"pass", "fail"})
+LIVE_PROBE_DECISIONS = frozenset({"allow", "deny", "escalate", "transform"})
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 _VERSION_RE = re.compile(r"\d+(?:\.\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?")
 _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
@@ -158,6 +162,9 @@ def _require_intervention_point(value, field):
 
 
 def normalize_tool(raw, runtime=None):
+    if runtime is not None:
+        runtime = _require_member(runtime, AGENT_RUNTIMES, "runtime")
+
     if isinstance(raw, str):
         tool_id = _require_identifier(raw, "id")
         return {
@@ -326,7 +333,9 @@ def _validate_live_probe(probe, *, known_binding_ids, agent_version):
     )
     if probe_agent_version != agent_version:
         _raise("live_probes[].agent_version must match agent.version")
-    decision = _require_non_empty_string(probe["decision"], "live_probes[].decision")
+    decision = _require_member(
+        probe["decision"], LIVE_PROBE_DECISIONS, "live_probes[].decision"
+    )
     downstream_effect_delta = _require_non_negative_integer(
         probe["downstream_effect_delta"], "live_probes[].downstream_effect_delta"
     )
@@ -336,6 +345,10 @@ def _validate_live_probe(probe, *, known_binding_ids, agent_version):
     service_oracle_ref = _require_evidence_ref(
         probe["service_oracle_ref"], "live_probes[].service_oracle_ref"
     )
+    if decision_receipt_ref == service_oracle_ref:
+        _raise(
+            "live_probes[].decision_receipt_ref and live_probes[].service_oracle_ref must differ"
+        )
     status = _require_member(probe["status"], _PROBE_STATUSES, "live_probes[].status")
 
     return {
@@ -351,7 +364,7 @@ def _validate_live_probe(probe, *, known_binding_ids, agent_version):
     }
 
 
-def _validate_gap(gap, *, binding_ids, evidence_refs):
+def _validate_gap(gap, *, binding_ids, evidence_refs, evidence_refs_by_binding):
     field = "gaps[]"
     gap = _require_object(gap, field)
     has_binding = "binding_id" in gap
@@ -381,6 +394,10 @@ def _validate_gap(gap, *, binding_ids, evidence_refs):
     for reference in refs:
         if reference not in evidence_refs:
             _raise("gaps[].evidence_refs must resolve to live probe evidence")
+        if has_binding and reference not in evidence_refs_by_binding.get(binding_id, set()):
+            _raise(
+                "gaps[].evidence_refs for binding-scoped gaps must resolve to that binding's live probe evidence"
+            )
 
 
 def validate_governance_manifest(manifest):
@@ -411,7 +428,7 @@ def validate_governance_manifest(manifest):
 
     agent = _require_object(manifest["agent"], "agent")
     _require_exact_keys(agent, "agent", {"runtime", "version", "image_digest"})
-    _require_non_empty_string(agent["runtime"], "agent.runtime")
+    agent_runtime = _require_member(agent["runtime"], AGENT_RUNTIMES, "agent.runtime")
     agent_version = _require_version(agent["version"], "agent.version")
     _require_sha256(agent["image_digest"], "agent.image_digest")
 
@@ -469,7 +486,7 @@ def validate_governance_manifest(manifest):
     for binding in bindings:
         normalized = _validate_binding(binding, policy_digest=policy_digest)
         if (
-            agent["runtime"] == "github-copilot-sdk"
+            agent_runtime == "github-copilot-sdk"
             and normalized["enforcement_path"] == "local-agent-hooks"
         ):
             _raise("github-copilot-sdk does not support local-agent-hooks bindings")
@@ -483,9 +500,12 @@ def validate_governance_manifest(manifest):
 
     live_probes = _require_list(manifest["live_probes"], "live_probes")
     probe_ids = set()
+    evidence_ref_owners = {}
     evidence_refs = set()
     probes_by_id = {}
     probes_by_binding = {}
+    evidence_refs_by_binding = {}
+    passing_evidence_refs_by_binding = {}
     for probe in live_probes:
         normalized = _validate_live_probe(
             probe, known_binding_ids=binding_ids, agent_version=agent_version
@@ -494,14 +514,20 @@ def validate_governance_manifest(manifest):
             _raise("live_probes.probe_id values must be unique")
         probe_ids.add(normalized["probe_id"])
         probes_by_id[normalized["probe_id"]] = normalized
-        evidence_refs.add(normalized["decision_receipt_ref"])
-        evidence_refs.add(normalized["service_oracle_ref"])
-        probes_by_binding.setdefault(normalized["binding_id"], set()).update(
-            {
-                normalized["decision_receipt_ref"],
-                normalized["service_oracle_ref"],
-            }
-        )
+        probes_by_binding.setdefault(normalized["binding_id"], []).append(normalized)
+        evidence_refs_by_binding.setdefault(normalized["binding_id"], set())
+        passing_evidence_refs_by_binding.setdefault(normalized["binding_id"], set())
+        for field_name in ("decision_receipt_ref", "service_oracle_ref"):
+            evidence_ref = normalized[field_name]
+            if evidence_ref in evidence_ref_owners:
+                _raise("live_probes evidence refs must be globally unique across probes")
+            evidence_ref_owners[evidence_ref] = (normalized["probe_id"], field_name)
+            evidence_refs.add(evidence_ref)
+            evidence_refs_by_binding[normalized["binding_id"]].add(evidence_ref)
+            if normalized["status"] == "pass":
+                passing_evidence_refs_by_binding[normalized["binding_id"]].add(
+                    evidence_ref
+                )
     for binding in normalized_bindings:
         if (
             enforcement["mode"] == "evaluate_only"
@@ -516,6 +542,18 @@ def validate_governance_manifest(manifest):
                 _raise(
                     "bindings[].probe_ids must resolve to live_probes[].probe_id for the same binding"
                 )
+        for evidence_ref in binding["evidence_refs"]:
+            if evidence_ref not in evidence_refs_by_binding.get(binding["binding_id"], set()):
+                _raise("bindings[].evidence_refs must resolve to matching live probe evidence")
+            if (
+                binding["status"] in {"enforced", "observed"}
+                and evidence_ref
+                not in passing_evidence_refs_by_binding.get(binding["binding_id"], set())
+            ):
+                _raise(
+                    "bindings[].evidence_refs for enforced or observed bindings must resolve to passing live probe evidence"
+                )
+        for probe in probes_by_binding.get(binding["binding_id"], []):
             if (
                 binding["status"] in {"enforced", "observed"}
                 and probe["status"] != "pass"
@@ -529,9 +567,6 @@ def validate_governance_manifest(manifest):
                 _raise(
                     "enforced deny probes must report live_probes[].downstream_effect_delta as 0"
                 )
-        for evidence_ref in binding["evidence_refs"]:
-            if evidence_ref not in probes_by_binding.get(binding["binding_id"], set()):
-                _raise("bindings[].evidence_refs must resolve to matching live probe evidence")
         if (
             not signature_verified
             and binding["status"] in {"enforced", "observed"}
@@ -548,6 +583,7 @@ def validate_governance_manifest(manifest):
             gap,
             binding_ids=binding_ids,
             evidence_refs=evidence_refs,
+            evidence_refs_by_binding=evidence_refs_by_binding,
         )
         if "binding_id" in gap:
             if gap["binding_id"] in gap_binding_ids:
@@ -616,11 +652,13 @@ def validate_governance_manifest(manifest):
 
 
 __all__ = [
+    "AGENT_RUNTIMES",
     "BINDING_STATUSES",
     "CONSEQUENCES",
     "ENFORCEMENT_PATHS",
     "GOVERNANCE_MODES",
     "GovernanceContractError",
+    "LIVE_PROBE_DECISIONS",
     "normalize_tool",
     "validate_governance_manifest",
 ]
