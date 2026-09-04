@@ -198,6 +198,12 @@ def test_governance_schema_uses_shared_enums_and_disallows_extra_properties():
     assert set(
         schema["definitions"]["structuredTool"]["properties"]["enforcement_path"]["enum"]
     ) == set(governance.ENFORCEMENT_PATHS)
+    assert set(
+        schema["definitions"]["lifecycleBinding"]["properties"]["requires"]["items"]["enum"]
+    ) == set(governance.CONTRACT_REQUIREMENT_TOKENS)
+    assert set(
+        schema["definitions"]["structuredTool"]["properties"]["requires"]["items"]["enum"]
+    ) == set(governance.CONTRACT_REQUIREMENT_TOKENS)
     assert schema["definitions"]["acceptanceRecord"]["additionalProperties"] is False
     assert "shared validator is authoritative for cross-record rules not schema-expressible" in schema[
         "description"

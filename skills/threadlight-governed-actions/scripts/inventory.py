@@ -469,6 +469,7 @@ def _normalize_binding_requirements(
         )
 
     normalized: Dict[str, bool] = {}
+    declared_by_dimension: Dict[str, str] = {}
     for key, value in raw.items():
         if not isinstance(key, str):
             raise InventoryError(
@@ -481,7 +482,15 @@ def _normalize_binding_requirements(
             )
         name = _proof_dimension(key)
         if name is not None:
+            previous = normalized.get(name)
+            if previous is not None and previous != value:
+                raise InventoryError(
+                    f"{source_desc}: action '{action_id}' field 'requires' declares "
+                    f"conflicting values for proof dimension '{name}' via "
+                    f"{declared_by_dimension[name]!r} and {key!r}"
+                )
             normalized[name] = value
+            declared_by_dimension.setdefault(name, key)
 
     return (
         normalized.get("approval"),
@@ -1058,6 +1067,31 @@ def build_action_inventory(root: Path) -> InventoryResult:
                 details=(
                     "An alias must resolve to exactly one canonical action; "
                     "it is never guessed which action a shared alias means."
+                ),
+                affected_actions=affected,
+            )
+        )
+    for alias, owners in sorted(alias_owners.items()):
+        if alias not in registry or alias in owners:
+            continue
+        affected = tuple(sorted({alias, *owners}))
+        severity = _drift_severity(registry[action_id].consequence for action_id in affected)
+        findings.append(
+            Finding(
+                finding_id="ACT-002",
+                status=severity,
+                phase="design",
+                plane="runtime",
+                reason_code="alias-collides-with-canonical-id",
+                summary=(
+                    f"Alias '{alias}' collides with canonical action id "
+                    f"'{alias}'."
+                ),
+                details=(
+                    "A registry alias must not shadow a different canonical "
+                    "action ID. Canonical IDs still resolve to themselves, "
+                    "but the alias declaration is ambiguous and cannot be "
+                    "trusted."
                 ),
                 affected_actions=affected,
             )

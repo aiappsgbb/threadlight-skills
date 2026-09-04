@@ -510,6 +510,14 @@ class ProbeToolingError(RuntimeError):
     """
 
 
+class PartialProbeToolingError(ProbeToolingError):
+    """A tooling failure that happened after some probe results were already proven."""
+
+    def __init__(self, message: str, *, partial_results: Tuple[ProbeResult, ...]):
+        super().__init__(message)
+        self.partial_results = partial_results
+
+
 @dataclass(frozen=True)
 class ProbeCase:
     probe_id: str
@@ -729,7 +737,12 @@ def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     for action_id in contract["actions"]:
         for probe_id, fault in _ENFORCEMENT_PROBE_SUITE:
             case = ProbeCase(probe_id, action_id, fault, _ENFORCEMENT_PROBE_ARGUMENTS)
-            results.append(run_application_probe(root, case))
+            try:
+                results.append(run_application_probe(root, case))
+            except ProbeToolingError as error:
+                raise PartialProbeToolingError(
+                    str(error), partial_results=tuple(results)
+                ) from error
     return tuple(results)
 
 
@@ -1863,7 +1876,60 @@ def load_raw_probe_contract(root: Path) -> Mapping[str, object]:
     return _load_raw_contract(Path(root))
 
 
-def load_approval_contract(root: Path) -> Mapping[str, object]:
+def _optional_nonempty_contract_string(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _declared_contract_actions(raw: Mapping[str, object]) -> Tuple[str, ...]:
+    actions = raw.get("actions")
+    if not isinstance(actions, (list, tuple)):
+        return ()
+    declared = []
+    for action in actions:
+        text = _optional_nonempty_contract_string(action)
+        if text is not None:
+            declared.append(text)
+    return tuple(declared)
+
+
+def _resolve_task6_action_id(raw: Mapping[str, object]) -> Tuple[Optional[str], Tuple[str, ...]]:
+    explicit_action_id = _optional_nonempty_contract_string(raw.get("action_id"))
+    if explicit_action_id is not None:
+        return explicit_action_id, ()
+    declared_binding = raw.get("approval_binding")
+    if isinstance(declared_binding, Mapping):
+        binding_action_id = _optional_nonempty_contract_string(declared_binding.get("action_id"))
+        if binding_action_id is not None:
+            return binding_action_id, ()
+    declared_actions = _declared_contract_actions(raw)
+    if len(declared_actions) == 1:
+        return declared_actions[0], ()
+    if len(declared_actions) > 1:
+        return None, declared_actions
+    return None, ()
+
+
+def _probe_action_unattributed_result(
+    probe_id: str, *, expected: str
+) -> ProbeResult:
+    return ProbeResult(
+        probe_id=probe_id,
+        action_id=None,
+        path_id=None,
+        status="not-verified",
+        reason_code="probe-action-unattributed",
+        expected=expected,
+        observed="probe_action_unattributed",
+        evidence_refs=(),
+    )
+
+
+def load_approval_contract(
+    root: Path, *, raw_contract: Optional[Mapping[str, object]] = None
+) -> Mapping[str, object]:
     """Load and validate an approval-anti-replay fixture's probe contract.
 
     Returns a read-only mapping with exactly ``dispatch``, ``audit_sink``,
@@ -1873,7 +1939,7 @@ def load_approval_contract(root: Path) -> Mapping[str, object]:
     ``nonce_ledger`` that would resolve outside *root* (symlink escape).
     """
     root_path = Path(root)
-    raw = _load_raw_contract(root_path)
+    raw = raw_contract if raw_contract is not None else _load_raw_contract(root_path)
     _validate_dispatch_and_audit_sink_refs(raw)
     nonce_ledger = raw.get("nonce_ledger")
     _validate_relative_ledger_path(root_path, "nonce_ledger", nonce_ledger)
@@ -1886,7 +1952,9 @@ def load_approval_contract(root: Path) -> Mapping[str, object]:
     )
 
 
-def load_output_contract(root: Path) -> Mapping[str, object]:
+def load_output_contract(
+    root: Path, *, raw_contract: Optional[Mapping[str, object]] = None
+) -> Mapping[str, object]:
     """Load and validate an output-mediation fixture's probe contract.
 
     Returns a read-only mapping with ``dispatch``, ``audit_sink``,
@@ -1899,7 +1967,7 @@ def load_output_contract(root: Path) -> Mapping[str, object]:
     ``OUT-001`` rather than pass by omission.
     """
     root_path = Path(root)
-    raw = _load_raw_contract(root_path)
+    raw = raw_contract if raw_contract is not None else _load_raw_contract(root_path)
     _validate_dispatch_and_audit_sink_refs(raw)
     observation_ledger = raw.get("observation_ledger")
     _validate_relative_ledger_path(root_path, "observation_ledger", observation_ledger)
@@ -2322,40 +2390,23 @@ def run_approval_probe_sequence(
     # unsafe approval contract is refused before anything is created,
     # exactly as each individual attempt below would refuse it.
     load_approval_contract(root_path)
-
-    governance_dir = root_path / "governance"
-    try:
-        governance_dir.resolve().relative_to(root_path)
-    except ValueError as error:
-        raise ProbeContractError(
-            "probe contract's governance directory resolves outside the "
-            "target root (symlink escape?)"
-        ) from error
-
-    private_dir = governance_dir / f".approval-probe-{uuid.uuid4().hex}"
-    try:
-        private_dir.mkdir(parents=False, exist_ok=False)
-        descriptor, raw_ledger_path = tempfile.mkstemp(
-            dir=str(private_dir), prefix="nonce-ledger-", suffix=".jsonl"
-        )
-        os.close(descriptor)
-    except OSError as error:
-        _remove_created_dirs([private_dir])
-        raise ProbeToolingError(
-            "cannot create the assessment-private approval anti-replay "
-            f"ledger: {error}"
-        ) from error
-
-    ledger_path = Path(raw_ledger_path)
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path,
+        directory_prefix="approval-probe",
+        file_prefix="nonce-ledger-",
+    )
     attempts = (binding, binding) + tuple(
         _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
     )
     results: List[ProbeResult] = []
     try:
         for attempt in attempts:
-            result = run_approval_probe(
-                root_path, attempt, now, ledger_path=ledger_path
-            )
+            try:
+                result = run_approval_probe(root_path, attempt, now, ledger_path=ledger_path)
+            except ProbeToolingError as error:
+                raise PartialProbeToolingError(
+                    str(error), partial_results=tuple(results)
+                ) from error
             if attempt.action_id != binding.action_id:
                 result = replace(result, action_id=binding.action_id)
             results.append(result)
@@ -2432,7 +2483,14 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         raise ProbeContractError(f"unknown output verdict: {verdict!r}")
 
     root_path = Path(root).resolve()
-    contract = load_output_contract(root_path)
+    raw_contract = _load_raw_contract(root_path)
+    contract = load_output_contract(root_path, raw_contract=raw_contract)
+    action_id, ambiguous_actions = _resolve_task6_action_id(raw_contract)
+    if ambiguous_actions:
+        return _probe_action_unattributed_result(
+            _OUTPUT_PROBE_ID,
+            expected=_OUTPUT_EXPECTED,
+        )
 
     if verdict == "stream":
         exposure_bound_bytes = contract["exposure_bound_bytes"]
@@ -2444,7 +2502,7 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         ):
             return ProbeResult(
                 probe_id=_OUTPUT_PROBE_ID,
-                action_id=contract["action_id"],
+                action_id=action_id,
                 path_id=None,
                 status="must-fix",
                 reason_code="OUT-001",
@@ -2553,7 +2611,7 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     reason_code = _OUTPUT_PASS_REASON if status == "pass" else "OUT-001"
     return ProbeResult(
         probe_id=_OUTPUT_PROBE_ID,
-        action_id=contract["action_id"],
+        action_id=action_id,
         path_id=None,
         status=status,
         reason_code=reason_code,
@@ -2610,14 +2668,15 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     ``OUT-001`` finding those probes report on their own.
     """
     root_path = Path(root).resolve()
+    raw_contract = _load_raw_contract(root_path)
 
     approval_contract: Optional[Mapping[str, object]] = None
     output_contract: Optional[Mapping[str, object]] = None
     try:
-        approval_contract = load_approval_contract(root_path)
+        approval_contract = load_approval_contract(root_path, raw_contract=raw_contract)
     except ProbeContractError:
         try:
-            output_contract = load_output_contract(root_path)
+            output_contract = load_output_contract(root_path, raw_contract=raw_contract)
         except ProbeContractError as error:
             raise ProbeContractError(
                 f"{root_path} is neither a recognized approval-anti-replay "
@@ -2628,6 +2687,14 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
 
     contract = approval_contract if approval_contract is not None else output_contract
     assert contract is not None  # one of the two branches above always set it
+    action_id, ambiguous_actions = _resolve_task6_action_id(raw_contract)
+    if ambiguous_actions:
+        return (
+            _probe_action_unattributed_result(
+                _AUDIT_PROBE_ID,
+                expected=_AUDIT_EXPECTED,
+            ),
+        )
 
     private_dir, ledger_path = _create_private_task6_ledger(
         root_path, directory_prefix="privacy-probe", file_prefix="ledger-"
@@ -2651,18 +2718,6 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     finally:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs([private_dir])
-
-    action_id: Optional[str] = None
-    if approval_contract is not None:
-        raw = _load_raw_contract(root_path)
-        declared_binding = raw.get("approval_binding")
-        if isinstance(declared_binding, Mapping):
-            binding_action_id = declared_binding.get("action_id")
-            if isinstance(binding_action_id, str) and binding_action_id:
-                action_id = binding_action_id
-    elif output_contract is not None:
-        contract_action_id = contract.get("action_id")
-        action_id = str(contract_action_id) if contract_action_id else None
 
     audit_records = dispatch_result["audit_records"]
     if audit_records is None:

@@ -50,7 +50,7 @@
 - `crash` action=`payments.refund` path=`None` status=pass reason=crash-blocked evidence=audit-0001~2bbdaccc2f5e1092
 - `deny` action=`payments.refund` path=`None` status=pass reason=deny-enforced evidence=audit-0001~381f4739271102cd
 - `malformed-verdict` action=`payments.refund` path=`None` status=pass reason=malformed-verdict-blocked evidence=audit-0001~6037364472d45cf2
-- `output-mediation` action=`None` path=`None` status=pass reason=output-mediation-enforced evidence=none
+- `output-mediation` action=`payments.refund` path=`None` status=pass reason=output-mediation-enforced evidence=none
 - `payload-free-audit` action=`payments.refund` path=`None` status=pass reason=payload-free-audit-enforced evidence=audit-approval-audit-probe-nonce
 - `timeout` action=`payments.refund` path=`None` status=pass reason=timeout-blocked evidence=audit-0001~32eb7a5316406d67
 - `transform` action=`payments.refund` path=`None` status=pass reason=transform-enforced evidence=audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b

@@ -47,6 +47,42 @@
       },
       "uniqueItems": true
     },
+    "requirementToken": {
+      "enum": [
+        "approval",
+        "audit",
+        "authorization",
+        "decision-receipt",
+        "durable-audit",
+        "human-approval-record",
+        "idempotency",
+        "idempotency-or-transaction",
+        "operator-review",
+        "output",
+        "output-mediation",
+        "signed-policy-bundle"
+      ]
+    },
+    "requirementList": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "approval",
+          "audit",
+          "authorization",
+          "decision-receipt",
+          "durable-audit",
+          "human-approval-record",
+          "idempotency",
+          "idempotency-or-transaction",
+          "operator-review",
+          "output",
+          "output-mediation",
+          "signed-policy-bundle"
+        ]
+      },
+      "uniqueItems": true
+    },
     "interventionPoints": {
       "type": "array",
       "items": {
@@ -165,7 +201,24 @@
           ]
         },
         "requires": {
-          "$ref": "#/definitions/stringList"
+          "type": "array",
+          "items": {
+            "enum": [
+              "approval",
+              "audit",
+              "authorization",
+              "decision-receipt",
+              "durable-audit",
+              "human-approval-record",
+              "idempotency",
+              "idempotency-or-transaction",
+              "operator-review",
+              "output",
+              "output-mediation",
+              "signed-policy-bundle"
+            ]
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -250,7 +303,24 @@
           "$ref": "#/definitions/stringList"
         },
         "requires": {
-          "$ref": "#/definitions/stringList"
+          "type": "array",
+          "items": {
+            "enum": [
+              "approval",
+              "audit",
+              "authorization",
+              "decision-receipt",
+              "durable-audit",
+              "human-approval-record",
+              "idempotency",
+              "idempotency-or-transaction",
+              "operator-review",
+              "output",
+              "output-mediation",
+              "signed-policy-bundle"
+            ]
+          },
+          "uniqueItems": true
         },
         "acceptance_record": {
           "$ref": "#/definitions/acceptanceRecord"

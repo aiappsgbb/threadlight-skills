@@ -4313,6 +4313,88 @@ def test_output_coverage_runs_real_probe_when_output_contract_available():
     assert findings == ()
 
 
+def test_conformant_probe_contract_without_top_level_action_id_still_proves_output_and_audit(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    output_probe = next(
+        probe for probe in result.probes if probe.probe_id == governed_actions.probes.OUTPUT_PROBE_ID
+    )
+    audit_probe = next(
+        probe for probe in result.probes if probe.probe_id == governed_actions.probes.AUDIT_PROBE_ID
+    )
+    assert output_probe.action_id == "payments.refund"
+    assert audit_probe.action_id == "payments.refund"
+    assert not any(
+        finding.reason_code
+        in {
+            "probe-action-unattributed",
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+    assert governed_actions.exit_code(result, gate=True) == 0
+
+
+def test_multi_action_probe_contract_without_attribution_reports_probe_action_unattributed(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    unattributed = [
+        finding for finding in result.findings if finding.reason_code == "probe-action-unattributed"
+    ]
+    assert {(finding.finding_id, finding.status) for finding in unattributed} == {
+        ("OUT-001", "not-verified"),
+        ("AUD-001", "not-verified"),
+    }
+    assert not any(
+        finding.reason_code
+        in {
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+    assert any(
+        probe.probe_id == governed_actions.probes.OUTPUT_PROBE_ID
+        and probe.reason_code == "probe-action-unattributed"
+        and probe.status == "not-verified"
+        for probe in result.probes
+    )
+    assert any(
+        probe.probe_id == governed_actions.probes.AUDIT_PROBE_ID
+        and probe.reason_code == "probe-action-unattributed"
+        and probe.status == "not-verified"
+        for probe in result.probes
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
 def test_pre_deploy_populates_pins_change_plane_and_conformance_claims(tmp_path):
     # pins/change_plane/conformance_claims must be populated with
     # deterministic, payload-free summaries of data pre-deploy already
@@ -5003,36 +5085,39 @@ def test_bound_action_missing_from_probe_contract_is_not_verified_and_fails_gate
     assert governed_actions.exit_code(result, gate=True) == 1
 
 
-def test_bound_action_with_only_not_verified_enforcement_results_keeps_enf_001(tmp_path):
+@pytest.mark.parametrize(
+    "statuses",
+    [(), ("not-verified",), ("not-verified", "not-applicable")],
+    ids=["empty", "not-verified-only", "not-verified-and-not-applicable"],
+)
+def test_bound_action_without_passing_enforcement_results_keeps_enf_001(
+    tmp_path, monkeypatch, statuses
+):
     root = _prepare_probe_target(tmp_path)
     _rewrite_fixture_registry(
         root,
         refund_requires={"approval": False, "output": False, "durable_audit": False},
     )
 
-    original = governed_actions.probes.run_enforcement_probe_set
-
-    def _only_not_verified(_root):
-        return (
+    def _only_unproven(_root):
+        return tuple(
             contracts.ProbeResult(
                 probe_id="deny",
                 action_id="payments.refund",
                 path_id=None,
-                status="not-verified",
-                reason_code="probe-timed-out",
+                status=status,
+                reason_code=f"{status}-synthetic",
                 expected="tool_not_invoked",
-                observed="timeout",
+                observed=status,
                 evidence_refs=(),
-            ),
+            )
+            for status in statuses
         )
 
-    governed_actions.probes.run_enforcement_probe_set = _only_not_verified
-    try:
-        result = governed_actions.assess(
-            contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
-        )
-    finally:
-        governed_actions.probes.run_enforcement_probe_set = original
+    monkeypatch.setattr(governed_actions.probes, "run_enforcement_probe_set", _only_unproven)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
 
     finding = next(
         finding
@@ -5042,6 +5127,27 @@ def test_bound_action_with_only_not_verified_enforcement_results_keeps_enf_001(t
     )
     assert finding.status == "not-verified"
     assert finding.affected_actions == ("payments.refund",)
+
+
+def test_bound_action_missing_probe_contract_cites_only_existing_sources(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+    (root / "governance" / "probe-contract.json").unlink()
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-not-probed"
+    )
+    assert finding.evidence_refs == ("agent.yaml",)
 
 
 def test_matching_bound_action_passes_and_unbound_action_may_be_omitted(tmp_path):
@@ -5124,6 +5230,135 @@ def test_bound_action_missing_required_output_and_audit_proofs_is_not_verified(t
         "payments.refund",
     )
     assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    ("probe_attr", "finding_id", "reason_code"),
+    [
+        ("run_enforcement_probe_set", "ENF-001", "enforcement-probe-unavailable"),
+        ("run_privacy_probe_set", "AUD-001", "payload-free-audit-probe-unavailable"),
+        ("run_approval_probe_sequence", "APR-001", "approval-probe-unavailable"),
+        ("run_output_probe", "OUT-001", "output-probe-unavailable"),
+    ],
+)
+def test_probe_tooling_errors_degrade_to_not_verified_findings_instead_of_exit_3(
+    tmp_path, monkeypatch, probe_attr, finding_id, reason_code
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise governed_actions.probes.ProbeToolingError("synthetic tooling failure")
+
+    monkeypatch.setattr(governed_actions.probes, probe_attr, _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == finding_id and finding.reason_code == reason_code
+    )
+    assert finding.status == "not-verified"
+    assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy", "--gate"]) == 1
+
+
+def test_enforcement_probe_tooling_error_preserves_partial_must_fix_results(
+    tmp_path, monkeypatch
+):
+    root = _prepare_probe_target(tmp_path)
+
+    error = governed_actions.probes.ProbeToolingError("synthetic enforcement failure")
+    error.partial_results = (
+        contracts.ProbeResult(
+            probe_id="deny",
+            action_id="payments.refund",
+            path_id=None,
+            status="must-fix",
+            reason_code="ENF-002",
+            expected="tool_not_invoked",
+            observed="tool_invoked_despite_fault",
+            evidence_refs=(),
+        ),
+    )
+
+    def _boom(_root):
+        raise error
+
+    monkeypatch.setattr(governed_actions.probes, "run_enforcement_probe_set", _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert any(
+        probe.reason_code == "ENF-002" and probe.status == "must-fix"
+        for probe in result.probes
+    )
+    assert any(
+        finding.reason_code == "enforcement-probe-unavailable" and finding.status == "not-verified"
+        for finding in result.findings
+    )
+
+
+def test_approval_probe_tooling_error_preserves_partial_must_fix_results(
+    tmp_path, monkeypatch
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(root, refund_requires={"approval": True})
+
+    error = governed_actions.probes.ProbeToolingError("synthetic approval failure")
+    error.partial_results = (
+        contracts.ProbeResult(
+            probe_id=governed_actions.probes.APPROVAL_PROBE_ID,
+            action_id="payments.refund",
+            path_id=None,
+            status="must-fix",
+            reason_code="APR-001",
+            expected="anti_replay_enforced",
+            observed="fail_open_replay_or_mutation_accepted",
+            evidence_refs=(),
+        ),
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(governed_actions.probes, "run_approval_probe_sequence", _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert any(
+        probe.reason_code == "APR-001" and probe.status == "must-fix"
+        for probe in result.probes
+    )
+    assert any(
+        finding.reason_code == "approval-probe-unavailable" and finding.status == "not-verified"
+        for finding in result.findings
+    )
+
+
+def test_bound_policy_identifiers_are_redacted_from_findings_and_reports():
+    raw_policy_marker = "policy:raw-marker-should-not-appear"
+    action = dataclasses.replace(
+        _action("payments.refund"),
+        policy_binding=raw_policy_marker,
+        policy_ids=(),
+    )
+    finding = governed_actions._bound_action_missing_enforcement_proof_finding(
+        Path("."), action, "pre-deploy"
+    )
+    result = _base_result(actions=[action], findings=[finding])
+
+    manifest = render.build_manifest(result)
+    report = render.render_evidence_pack(result)
+
+    assert raw_policy_marker not in json.dumps(manifest, sort_keys=True)
+    assert raw_policy_marker not in report
 
 
 def test_probe_contract_action_not_in_inventory_is_reported_fail_closed(tmp_path):

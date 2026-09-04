@@ -1579,6 +1579,74 @@ def test_approval_sequence_cleans_up_its_private_ledger_on_failure(
     assert not list((approval_root / "governance").glob(".approval-probe-*"))
 
 
+def test_enforcement_probe_set_raises_with_partial_results_on_late_tooling_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    first = ProbeResult(
+        probe_id="deny",
+        action_id="payments.refund",
+        path_id=None,
+        status="must-fix",
+        reason_code="ENF-002",
+        expected="tool_not_invoked",
+        observed="tool_invoked_despite_fault",
+        evidence_refs=(),
+    )
+    call_count = {"value": 0}
+
+    monkeypatch.setattr(
+        probes,
+        "load_probe_contract",
+        lambda _root: {"actions": ("payments.refund",)},
+    )
+
+    def _runner(_root, _case):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return first
+        raise ProbeToolingError("synthetic late enforcement failure")
+
+    monkeypatch.setattr(probes, "run_application_probe", _runner)
+
+    with pytest.raises(ProbeToolingError) as excinfo:
+        run_enforcement_probe_set(Path("."))
+    assert getattr(excinfo.value, "partial_results", ()) == (first,)
+
+
+def test_approval_sequence_raises_with_partial_results_on_late_tooling_error(
+    monkeypatch: pytest.MonkeyPatch, approval_root: Path, approval_binding: ApprovalBinding
+):
+    first = ProbeResult(
+        probe_id=probes._APPROVAL_PROBE_ID,
+        action_id=approval_binding.action_id,
+        path_id=None,
+        status="must-fix",
+        reason_code="APR-001",
+        expected="anti_replay_enforced",
+        observed="fail_open_replay_or_mutation_accepted",
+        evidence_refs=("sha256:deadbeef",),
+    )
+    call_count = {"value": 0}
+    real = probes.run_approval_probe
+
+    def _runner(root, binding, now, *, ledger_path=None):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return first
+        if call_count["value"] == 2:
+            raise ProbeToolingError("synthetic late approval failure")
+        return real(root, binding, now, ledger_path=ledger_path)
+
+    monkeypatch.setattr(probes, "run_approval_probe", _runner)
+
+    with pytest.raises(ProbeToolingError) as excinfo:
+        probes.run_approval_probe_sequence(
+            approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+        )
+    assert getattr(excinfo.value, "partial_results", ()) == (first,)
+    assert not list((approval_root / "governance").glob(".approval-probe-*"))
+
+
 def test_approval_sequence_rejects_a_target_without_an_approval_contract(
     tmp_path: Path, approval_binding: ApprovalBinding
 ):
@@ -1646,6 +1714,7 @@ def test_approval_probe_override_never_targets_the_declared_nonce_ledger(
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
     result = run_output_probe(fixture_root / "conformant-maf", verdict="deny")
     assert result.status == "pass"
+    assert result.action_id == "payments.refund"
     assert result.observed == "zero_bytes_egressed"
     assert findings_from_probes((result,)) == ()
 
@@ -2030,6 +2099,27 @@ def test_output_probe_rejects_unknown_verdict(fixture_root: Path):
         run_output_probe(fixture_root / "output-streaming", verdict="bogus")
 
 
+def test_output_probe_with_multiple_declared_actions_and_no_attribution_is_not_verified(
+    tmp_path: Path,
+):
+    root = tmp_path / "output-unattributed"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = run_output_probe(root, verdict="deny")
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "probe-action-unattributed"
+    assert result.action_id is None
+    assert result.evidence_refs == ()
+    assert findings_from_probes((result,)) == ()
+
+
 def test_audit_probe_rejects_payload_bearing_record(tmp_path: Path):
     # A target whose nonce store behaves correctly but whose audit
     # sink leaks a raw argument payload: ``run_privacy_probe_set``
@@ -2092,6 +2182,7 @@ def test_audit_probe_passes_payload_free_record(fixture_root: Path):
     results = run_privacy_probe_set(fixture_root / "conformant-maf")
     passing = [result for result in results if result.status == "pass"]
     assert passing
+    assert {result.action_id for result in passing} == {"payments.refund"}
     assert all(result.observed == "payload_free_audit_record" for result in passing)
     assert findings_from_probes(tuple(passing)) == ()
 
@@ -2155,6 +2246,29 @@ def test_audit_probe_set_rejects_root_with_no_recognized_contract(tmp_path: Path
     )
     with pytest.raises(ProbeContractError):
         run_privacy_probe_set(root)
+
+
+def test_audit_probe_with_multiple_declared_actions_and_no_attribution_is_not_verified(
+    tmp_path: Path,
+):
+    root = tmp_path / "audit-unattributed"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    results = run_privacy_probe_set(root)
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.status == "not-verified"
+    assert result.reason_code == "probe-action-unattributed"
+    assert result.action_id is None
+    assert result.evidence_refs == ()
+    assert findings_from_probes(results) == ()
 
 
 def test_output_probe_never_unconditionally_passes_allow_before_verdict(

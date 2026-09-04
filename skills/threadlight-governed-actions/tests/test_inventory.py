@@ -1339,6 +1339,61 @@ def test_requires_list_non_string_member_raises_inventory_error(tmp_path: Path) 
         inventory.parse_action_registries(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "requires_map",
+    [
+        {"approval": True, "human-approval-record": False},
+        {"output": True, "output-mediation": False},
+        {"audit": True, "decision-receipt": False},
+    ],
+)
+def test_requires_mapping_conflicting_alias_values_raise_inventory_error(
+    tmp_path: Path, requires_map: dict[str, bool]
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": requires_map,
+            }
+        ],
+    )
+    with pytest.raises(inventory.InventoryError) as excinfo:
+        inventory.parse_action_registries(tmp_path)
+    message = str(excinfo.value)
+    assert "requires" in message
+    assert "payments.refund" in message
+    assert "conflict" in message.lower()
+
+
+def test_requires_mapping_duplicate_alias_values_allow_same_dimension(tmp_path: Path) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "payments.refund",
+                "consequence": "irreversible",
+                "execution_modes": ["interactive"],
+                "requires": {
+                    "approval": True,
+                    "human-approval-record": True,
+                    "output": False,
+                    "output-mediation": False,
+                    "audit": True,
+                    "decision-receipt": True,
+                },
+            }
+        ],
+    )
+    record = inventory.parse_action_registries(tmp_path)["payments.refund"]
+    assert record.binding_requires_approval is True
+    assert record.binding_requires_output is False
+    assert record.binding_requires_durable_audit is True
+
+
 # ---------------------------------------------------------------------------
 # Boolean fields (reversible, approval_required, provider_hosted) raise
 # InventoryError with field/path context for a non-boolean value, never a
@@ -1446,6 +1501,44 @@ def test_source_gap_from_non_registry_agent_yaml_still_surfaces_as_finding(
         f.finding_id == "ACT-002" and "mail.send" in f.affected_actions
         for f in result.findings
     )
+
+
+def test_alias_equal_to_another_canonical_action_id_emits_act_002_without_breaking_resolution(
+    tmp_path: Path,
+) -> None:
+    write_registry(
+        tmp_path,
+        [
+            {
+                "id": "orders.cancel",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+                "aliases": ["reports.export"],
+            },
+            {
+                "id": "reports.export",
+                "consequence": "write",
+                "execution_modes": ["interactive"],
+            },
+        ],
+    )
+    write_fixture_with_python_tool(tmp_path, "reports.export")
+
+    result = inventory.build_action_inventory(tmp_path)
+
+    collision = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ACT-002"
+        and finding.reason_code == "alias-collides-with-canonical-id"
+    )
+    assert set(collision.affected_actions) == {"orders.cancel", "reports.export"}
+    assert [action.action_id for action in result.actions] == [
+        "orders.cancel",
+        "reports.export",
+    ]
+    export_action = next(action for action in result.actions if action.action_id == "reports.export")
+    assert export_action.implementation_refs == ("app_agent.py",)
 
 
 def test_present_but_malformed_tools_key_still_raises_inventory_error(
