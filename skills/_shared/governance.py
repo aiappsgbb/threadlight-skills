@@ -5,7 +5,8 @@ import re
 
 from skills._shared.manifest import (
     ManifestValidationError,
-    _validate_iso8601_timestamp,
+    is_draft7_integer,
+    validate_iso8601_timestamp,
 )
 
 
@@ -34,10 +35,10 @@ _INTERVENTION_POINTS = frozenset(
 )
 _ENFORCEMENT_MODES = frozenset({"enforce", "evaluate_only"})
 _PROBE_STATUSES = frozenset({"pass", "fail"})
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
-_VERSION_RE = re.compile(r"^\d+(?:\.\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?$")
-_SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_EVIDENCE_REF_RE = re.compile(r"^EV-[A-Za-z0-9][A-Za-z0-9._:-]*$")
+_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
+_VERSION_RE = re.compile(r"\d+(?:\.\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?")
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_EVIDENCE_REF_RE = re.compile(r"EV-[A-Za-z0-9][A-Za-z0-9._:-]*")
 
 
 class GovernanceContractError(ValueError):
@@ -77,21 +78,21 @@ def _require_non_empty_string(value, field):
 
 def _require_identifier(value, field):
     value = _require_non_empty_string(value, field)
-    if not _IDENTIFIER_RE.match(value):
+    if not _IDENTIFIER_RE.fullmatch(value):
         _raise(f"{field} must be a valid identifier")
     return value
 
 
 def _require_version(value, field):
     value = _require_non_empty_string(value, field)
-    if not _VERSION_RE.match(value):
+    if not _VERSION_RE.fullmatch(value):
         _raise(f"{field} must be a valid version")
     return value
 
 
 def _require_sha256(value, field):
     value = _require_non_empty_string(value, field)
-    if not _SHA256_RE.match(value):
+    if not _SHA256_RE.fullmatch(value):
         _raise(f"{field} must be an exact sha256 digest")
     return value
 
@@ -102,16 +103,8 @@ def _require_boolean(value, field):
     return value
 
 
-def _is_draft7_integer(value):
-    if isinstance(value, bool):
-        return False
-    if isinstance(value, int):
-        return True
-    return isinstance(value, float) and value.is_integer()
-
-
 def _require_non_negative_integer(value, field):
-    if not _is_draft7_integer(value) or value < 0:
+    if not is_draft7_integer(value) or value < 0:
         _raise(f"{field} must be a non-negative integer")
     return value
 
@@ -119,7 +112,7 @@ def _require_non_negative_integer(value, field):
 def _require_timestamp(value, field):
     value = _require_non_empty_string(value, field)
     try:
-        _validate_iso8601_timestamp(value, field)
+        validate_iso8601_timestamp(value, field)
     except ManifestValidationError as error:
         _raise(str(error))
     return value
@@ -155,7 +148,7 @@ def _require_unique_string_list(value, field, *, item_validator=None, allow_empt
 
 def _require_evidence_ref(value, field):
     value = _require_non_empty_string(value, field)
-    if not _EVIDENCE_REF_RE.match(value):
+    if not _EVIDENCE_REF_RE.fullmatch(value):
         _raise(f"{field} must be a valid evidence reference")
     return value
 
@@ -166,8 +159,9 @@ def _require_intervention_point(value, field):
 
 def normalize_tool(raw, runtime=None):
     if isinstance(raw, str):
+        tool_id = _require_identifier(raw, "id")
         return {
-            "id": raw,
+            "id": tool_id,
             "consequence": "unknown",
             "policy_binding": None,
             "enforcement_path": "none",
@@ -357,10 +351,9 @@ def _validate_live_probe(probe, *, known_binding_ids, agent_version):
     }
 
 
-def _validate_gap(gap, *, binding_ids, tool_ids, evidence_refs):
+def _validate_gap(gap, *, binding_ids, evidence_refs):
     field = "gaps[]"
     gap = _require_object(gap, field)
-    keys = set(gap)
     has_binding = "binding_id" in gap
     has_tool = "tool_id" in gap
     if has_binding == has_tool:
@@ -373,7 +366,7 @@ def _validate_gap(gap, *, binding_ids, tool_ids, evidence_refs):
         if binding_id not in binding_ids:
             _raise("gaps[].binding_id must resolve to a declared binding")
     else:
-        tool_id = _require_identifier(gap["tool_id"], "gaps[].tool_id")
+        _require_identifier(gap["tool_id"], "gaps[].tool_id")
 
     status = _require_member(gap["status"], BINDING_STATUSES, "gaps[].status")
     if status == "enforced":
@@ -434,6 +427,9 @@ def validate_governance_manifest(manifest):
     _require_boolean(
         policy_bundle["signature_verified"], "policy_bundle.signature_verified"
     )
+    signature_verified = policy_bundle["signature_verified"]
+    # ``expires_at`` is intentionally shape-only here so the validator stays
+    # deterministic; freshness against the caller/runtime clock is external.
     _require_timestamp(policy_bundle["expires_at"], "policy_bundle.expires_at")
 
     enforcement = _require_object(manifest["enforcement"], "enforcement")
@@ -472,6 +468,11 @@ def validate_governance_manifest(manifest):
     tool_ids = set()
     for binding in bindings:
         normalized = _validate_binding(binding, policy_digest=policy_digest)
+        if (
+            agent["runtime"] == "github-copilot-sdk"
+            and normalized["enforcement_path"] == "local-agent-hooks"
+        ):
+            _raise("github-copilot-sdk does not support local-agent-hooks bindings")
         if normalized["binding_id"] in binding_ids:
             _raise("bindings.binding_id values must be unique")
         if normalized["tool_id"] in tool_ids:
@@ -483,8 +484,8 @@ def validate_governance_manifest(manifest):
     live_probes = _require_list(manifest["live_probes"], "live_probes")
     probe_ids = set()
     evidence_refs = set()
+    probes_by_id = {}
     probes_by_binding = {}
-    probe_ids_by_binding = {}
     for probe in live_probes:
         normalized = _validate_live_probe(
             probe, known_binding_ids=binding_ids, agent_version=agent_version
@@ -492,6 +493,7 @@ def validate_governance_manifest(manifest):
         if normalized["probe_id"] in probe_ids:
             _raise("live_probes.probe_id values must be unique")
         probe_ids.add(normalized["probe_id"])
+        probes_by_id[normalized["probe_id"]] = normalized
         evidence_refs.add(normalized["decision_receipt_ref"])
         evidence_refs.add(normalized["service_oracle_ref"])
         probes_by_binding.setdefault(normalized["binding_id"], set()).update(
@@ -500,10 +502,6 @@ def validate_governance_manifest(manifest):
                 normalized["service_oracle_ref"],
             }
         )
-        probe_ids_by_binding.setdefault(normalized["binding_id"], set()).add(
-            normalized["probe_id"]
-        )
-
     for binding in normalized_bindings:
         if (
             enforcement["mode"] == "evaluate_only"
@@ -513,24 +511,47 @@ def validate_governance_manifest(manifest):
                 "evaluate_only enforcement may not declare enforce-mode or enforced bindings"
             )
         for probe_id in binding["probe_ids"]:
-            if probe_id not in probe_ids_by_binding.get(binding["binding_id"], set()):
+            probe = probes_by_id.get(probe_id)
+            if probe is None or probe["binding_id"] != binding["binding_id"]:
                 _raise(
                     "bindings[].probe_ids must resolve to live_probes[].probe_id for the same binding"
+                )
+            if (
+                binding["status"] in {"enforced", "observed"}
+                and probe["status"] != "pass"
+            ):
+                _raise("enforced or observed bindings must cite passing live probes")
+            if (
+                binding["status"] == "enforced"
+                and probe["decision"] == "deny"
+                and probe["downstream_effect_delta"] != 0
+            ):
+                _raise(
+                    "enforced deny probes must report live_probes[].downstream_effect_delta as 0"
                 )
         for evidence_ref in binding["evidence_refs"]:
             if evidence_ref not in probes_by_binding.get(binding["binding_id"], set()):
                 _raise("bindings[].evidence_refs must resolve to matching live probe evidence")
+        if (
+            not signature_verified
+            and binding["status"] in {"enforced", "observed"}
+        ):
+            _raise(
+                "policy_bundle.signature_verified must be true for enforced or observed bindings"
+            )
 
     gaps = _require_list(manifest["gaps"], "gaps")
     gap_binding_ids = set()
+    gap_tool_ids = set()
     for gap in gaps:
         _validate_gap(
             gap,
             binding_ids=binding_ids,
-            tool_ids=tool_ids,
             evidence_refs=evidence_refs,
         )
         if "binding_id" in gap:
+            if gap["binding_id"] in gap_binding_ids:
+                _raise("gaps[].binding_id may not duplicate another gap binding_id")
             binding = next(
                 binding
                 for binding in normalized_bindings
@@ -539,8 +560,12 @@ def validate_governance_manifest(manifest):
             if gap["status"] != binding["status"]:
                 _raise("gaps[].status must match the referenced binding status")
             gap_binding_ids.add(gap["binding_id"])
-        elif gap["tool_id"] in tool_ids:
-            _raise("gaps[].tool_id may not duplicate a bound tool")
+        else:
+            if gap["tool_id"] in gap_tool_ids:
+                _raise("gaps[].tool_id may not duplicate another gap tool_id")
+            if gap["tool_id"] in tool_ids:
+                _raise("gaps[].tool_id may not duplicate a bound tool")
+            gap_tool_ids.add(gap["tool_id"])
 
     for binding in normalized_bindings:
         if binding["status"] != "enforced" and binding["binding_id"] not in gap_binding_ids:

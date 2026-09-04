@@ -74,6 +74,87 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "const": "github-copilot-sdk"
+              }
+            },
+            "required": [
+              "runtime"
+            ]
+          }
+        },
+        "required": [
+          "agent"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bindings": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "enforcement_path": {
+                    "const": "local-agent-hooks"
+                  }
+                },
+                "required": [
+                  "enforcement_path"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "policy_bundle": {
+            "type": "object",
+            "properties": {
+              "signature_verified": {
+                "const": false
+              }
+            },
+            "required": [
+              "signature_verified"
+            ]
+          }
+        },
+        "required": [
+          "policy_bundle"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bindings": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "enforced",
+                      "observed"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -126,7 +207,8 @@
         },
         "expires_at": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "RFC 3339 timestamp shape only. Freshness against the caller or runtime clock is evaluated outside Draft 7 validation."
         }
       }
     },
@@ -236,19 +318,19 @@
   "definitions": {
     "identifier": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._:-]*$"
     },
     "version": {
       "type": "string",
-      "pattern": "^\\d+(?:\\.\\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?$"
+      "pattern": "^(?!.*[\\r\\n])\\d+(?:\\.\\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?$"
     },
     "sha256Digest": {
       "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
+      "pattern": "^(?!.*[\\r\\n])sha256:[0-9a-f]{64}$"
     },
     "evidenceRef": {
       "type": "string",
-      "pattern": "^EV-[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      "pattern": "^(?!.*[\\r\\n])EV-[A-Za-z0-9][A-Za-z0-9._:-]*$"
     },
     "interventionPoint": {
       "enum": [
@@ -363,6 +445,107 @@
               },
               "evidence_refs": {
                 "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "enforced"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "enforce"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "observed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "evaluate_only"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unbound"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enforcement_path": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "enforced",
+                  "observed",
+                  "bypassable"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enforcement_path": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcement_path": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "enforcement_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "intervention_points": {
+                "maxItems": 0
               }
             }
           }
@@ -499,5 +682,6 @@
         }
       ]
     }
-  }
+  },
+  "description": "Schema-level shape checks for the threadlight governance manifest. validate_governance_manifest remains authoritative for referential, arithmetic, uniqueness, digest, count, and gap invariants that Draft 7 cannot express (including cross-record reference resolution, cross-array uniqueness, policy digest coherence, coverage derivation, and complete non-enforced gap coverage)."
 }

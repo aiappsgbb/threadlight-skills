@@ -83,6 +83,51 @@ def valid_manifest():
     }
 
 
+_STATUS_TO_COVERAGE_FIELD = {
+    "enforced": "tools_enforced",
+    "observed": "tools_observed",
+    "unbound": "tools_unbound",
+    "unverified": "tools_unverified",
+    "unsupported": "tools_unsupported",
+    "bypassable": "tools_bypassable",
+}
+
+
+def set_primary_binding_status(
+    manifest,
+    *,
+    status,
+    mode,
+    enforcement_path=None,
+    intervention_points=None,
+):
+    binding = manifest["bindings"][0]
+    binding["status"] = status
+    binding["mode"] = mode
+    if enforcement_path is not None:
+        binding["enforcement_path"] = enforcement_path
+    if intervention_points is not None:
+        binding["intervention_points"] = intervention_points
+
+    for field in _STATUS_TO_COVERAGE_FIELD.values():
+        manifest["coverage"][field] = 0
+    manifest["coverage"][_STATUS_TO_COVERAGE_FIELD[status]] = 1
+    manifest["coverage"]["tools_bound"] = (
+        0 if binding["enforcement_path"] == "none" else 1
+    )
+    manifest["gaps"] = []
+    if status != "enforced":
+        manifest["gaps"].append(
+            {
+                "binding_id": binding["binding_id"],
+                "status": status,
+                "reason_code": "documented-gap",
+                "evidence_refs": ["EV-receipt-1"],
+            }
+        )
+    return binding
+
+
 def test_declares_shared_vocabularies():
     governance = governance_module()
 
@@ -258,6 +303,71 @@ def test_validate_governance_manifest_accepts_draft7_integral_floats():
     assert governance.validate_governance_manifest(manifest) is manifest
 
 
+def test_validate_governance_manifest_rejects_ghcp_local_agent_hooks_binding():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["agent"]["runtime"] = "github-copilot-sdk"
+
+    with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
+        governance.validate_governance_manifest(manifest)
+
+
+@pytest.mark.parametrize(("status", "mode"), [("enforced", "enforce"), ("observed", "evaluate_only")])
+def test_validate_governance_manifest_rejects_binding_citing_failing_probe(
+    status, mode
+):
+    governance = governance_module()
+    manifest = valid_manifest()
+    set_primary_binding_status(manifest, status=status, mode=mode)
+    manifest["live_probes"][0]["status"] = "fail"
+
+    with pytest.raises(governance.GovernanceContractError, match="passing live probes"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_enforced_deny_probe_with_downstream_effect():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["live_probes"][0]["downstream_effect_delta"] = 1
+
+    with pytest.raises(
+        governance.GovernanceContractError,
+        match="downstream_effect_delta",
+    ):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_accepts_enforced_allow_probe_with_expected_effect():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["live_probes"][0]["decision"] = "allow"
+    manifest["live_probes"][0]["downstream_effect_delta"] = 1
+
+    assert governance.validate_governance_manifest(manifest) is manifest
+
+
+@pytest.mark.parametrize(("status", "mode"), [("enforced", "enforce"), ("observed", "evaluate_only")])
+def test_validate_governance_manifest_rejects_unsigned_live_binding(status, mode):
+    governance = governance_module()
+    manifest = valid_manifest()
+    set_primary_binding_status(manifest, status=status, mode=mode)
+    manifest["policy_bundle"]["signature_verified"] = False
+
+    with pytest.raises(
+        governance.GovernanceContractError,
+        match="signature_verified",
+    ):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_accepts_expired_policy_bundle_shape_without_clock_check():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["policy_bundle"]["expires_at"] = "2000-01-01T00:00:00Z"
+
+    assert governance.validate_governance_manifest(manifest) is manifest
+
+
 def test_validate_governance_manifest_rejects_coverage_mismatch():
     governance = governance_module()
     manifest = valid_manifest()
@@ -273,6 +383,38 @@ def test_validate_governance_manifest_rejects_unresolved_probe_reference():
     manifest["bindings"][0]["probe_ids"] = ["missing-probe"]
 
     with pytest.raises(governance.GovernanceContractError, match="probe_ids"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_duplicate_gap_binding_entry():
+    governance = governance_module()
+    manifest = valid_manifest()
+    set_primary_binding_status(manifest, status="unverified", mode="evaluate_only")
+    manifest["gaps"].append(dict(manifest["gaps"][0]))
+
+    with pytest.raises(governance.GovernanceContractError, match="duplicate"):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_validate_governance_manifest_rejects_duplicate_gap_tool_entry():
+    governance = governance_module()
+    manifest = valid_manifest()
+    manifest["gaps"] = [
+        {
+            "tool_id": "shell.exec",
+            "status": "unsupported",
+            "reason_code": "provider-hosted-bypass",
+            "evidence_refs": ["EV-receipt-1"],
+        },
+        {
+            "tool_id": "shell.exec",
+            "status": "unsupported",
+            "reason_code": "provider-hosted-bypass-dup",
+            "evidence_refs": ["EV-service-1"],
+        },
+    ]
+
+    with pytest.raises(governance.GovernanceContractError, match="duplicate"):
         governance.validate_governance_manifest(manifest)
 
 
@@ -436,19 +578,198 @@ def test_validate_governance_manifest_rejects_malformed_digest_timestamp_and_ver
         governance.validate_governance_manifest(manifest)
 
 
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda manifest: manifest["policy_bundle"].__setitem__("id", "returns-safe\n"),
+            "policy_bundle.id",
+        ),
+        (
+            lambda manifest: manifest["policy_bundle"].__setitem__("version", "1.2.0\n"),
+            "policy_bundle.version",
+        ),
+        (
+            lambda manifest: manifest["agent"].__setitem__(
+                "image_digest", manifest["agent"]["image_digest"] + "\n"
+            ),
+            "agent.image_digest",
+        ),
+        (
+            lambda manifest: manifest["bindings"][0]["evidence_refs"].__setitem__(
+                0, "EV-receipt-1\n"
+            ),
+            "evidence reference",
+        ),
+    ],
+)
+def test_validate_governance_manifest_rejects_trailing_newlines_in_exact_match_fields(
+    mutate, message
+):
+    governance = governance_module()
+    manifest = valid_manifest()
+    mutate(manifest)
+
+    with pytest.raises(governance.GovernanceContractError, match=message):
+        governance.validate_governance_manifest(manifest)
+
+
+def test_normalize_tool_rejects_legacy_string_id_with_trailing_newline():
+    governance = governance_module()
+
+    with pytest.raises(governance.GovernanceContractError, match="identifier"):
+        governance.normalize_tool("returns_apply_decision\n")
+
+
 def build_jsonschema_validator():
     assert SCHEMA_PATH.exists(), "shared governance manifest schema missing"
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     format_checker = jsonschema.FormatChecker()
-    if "date-time" not in format_checker.checkers:
-        pytest.skip(
-            "jsonschema's standard 'date-time' format check requires an RFC-3339 backend"
-        )
+    assert "date-time" in format_checker.checkers, (
+        "installed jsonschema lacks a 'date-time' format checker; install "
+        '"jsonschema[format]" so governance schema format assertions stay active'
+    )
 
     jsonschema.Draft7Validator.check_schema(schema)
     return jsonschema.Draft7Validator(schema, format_checker=format_checker)
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate"),
+    [
+        (
+            "enforced requires enforce mode",
+            lambda manifest: set_primary_binding_status(
+                manifest, status="enforced", mode="evaluate_only"
+            ),
+        ),
+        (
+            "observed requires evaluate_only mode",
+            lambda manifest: set_primary_binding_status(
+                manifest, status="observed", mode="enforce"
+            ),
+        ),
+        (
+            "unbound requires path none",
+            lambda manifest: set_primary_binding_status(
+                manifest,
+                status="unbound",
+                mode="evaluate_only",
+                enforcement_path="local-agent-hooks",
+            ),
+        ),
+        (
+            "bypassable requires non-none path",
+            lambda manifest: set_primary_binding_status(
+                manifest,
+                status="bypassable",
+                mode="evaluate_only",
+                enforcement_path="none",
+                intervention_points=[],
+            ),
+        ),
+        (
+            "path none requires empty intervention points",
+            lambda manifest: set_primary_binding_status(
+                manifest,
+                status="unbound",
+                mode="evaluate_only",
+                enforcement_path="none",
+                intervention_points=["pre_tool_call"],
+            ),
+        ),
+        (
+            "github copilot sdk rejects local hooks",
+            lambda manifest: manifest["agent"].__setitem__(
+                "runtime", "github-copilot-sdk"
+            ),
+        ),
+        (
+            "unsigned live binding rejected",
+            lambda manifest: manifest["policy_bundle"].__setitem__(
+                "signature_verified", False
+            ),
+        ),
+        (
+            "identifier trailing newline rejected",
+            lambda manifest: manifest["policy_bundle"].__setitem__(
+                "id", "returns-safe\n"
+            ),
+        ),
+    ],
+)
+def test_schema_and_hand_validator_reject_expressible_binding_invariants(label, mutate):
+    governance = governance_module()
+    jsonschema_validator = build_jsonschema_validator()
+    manifest = valid_manifest()
+    if label == "unsigned live binding rejected":
+        set_primary_binding_status(manifest, status="observed", mode="evaluate_only")
+    mutate(manifest)
+
+    with pytest.raises(governance.GovernanceContractError):
+        governance.validate_governance_manifest(manifest)
+    assert not jsonschema_validator.is_valid(manifest), (
+        f"jsonschema unexpectedly accepted manifest where {label}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate"),
+    [
+        (
+            "referential probe id resolution",
+            lambda manifest: manifest["bindings"][0].__setitem__(
+                "probe_ids", ["missing-probe"]
+            ),
+        ),
+        (
+            "digest coherence",
+            lambda manifest: manifest["bindings"][0].__setitem__(
+                "policy_digest", "sha256:" + ("9" * 64)
+            ),
+        ),
+        (
+            "coverage arithmetic",
+            lambda manifest: manifest["coverage"].__setitem__("tools_bound", 0),
+        ),
+        (
+            "gap uniqueness",
+            lambda manifest: (
+                set_primary_binding_status(
+                    manifest, status="unverified", mode="evaluate_only"
+                ),
+                manifest["gaps"].append(dict(manifest["gaps"][0])),
+            ),
+        ),
+    ],
+)
+def test_documented_intentional_schema_gaps_remain_hand_validator_only(label, mutate):
+    governance = governance_module()
+    jsonschema_validator = build_jsonschema_validator()
+    manifest = valid_manifest()
+    mutate(manifest)
+
+    with pytest.raises(governance.GovernanceContractError):
+        governance.validate_governance_manifest(manifest)
+    assert jsonschema_validator.is_valid(manifest), (
+        f"jsonschema unexpectedly rejected documented gap case: {label}"
+    )
+
+
+def test_build_jsonschema_validator_fails_loudly_without_date_time_backend(
+    monkeypatch,
+):
+    jsonschema = pytest.importorskip("jsonschema")
+
+    class CheckerWithoutDateTime:
+        checkers = {}
+
+    monkeypatch.setattr(jsonschema, "FormatChecker", lambda: CheckerWithoutDateTime())
+
+    with pytest.raises(AssertionError, match="date-time"):
+        build_jsonschema_validator()
 
 
 def test_json_schema_accepts_valid_manifest():
@@ -488,6 +809,21 @@ def test_json_schema_rejects_enforced_binding_without_live_proof():
 
     with pytest.raises(jsonschema.exceptions.ValidationError):
         jsonschema_validator.validate(manifest)
+
+
+def test_schema_root_description_documents_authoritative_hand_validator_gaps():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    assert "validate_governance_manifest" in schema["description"]
+    for fragment in (
+        "referential",
+        "arithmetic",
+        "uniqueness",
+        "digest",
+        "count",
+        "gap invariants",
+    ):
+        assert fragment in schema["description"]
 
 
 def test_shared_upstream_pin_exact_values():
