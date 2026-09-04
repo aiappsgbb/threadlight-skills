@@ -534,6 +534,7 @@
         "probe_id",
         "action_id",
         "path_id",
+        "mode",
         "status",
         "reason_code",
         "expected_sha256",
@@ -549,6 +550,9 @@
         },
         "path_id": {
           "type": ["string", "null"]
+        },
+        "mode": {
+          "anyOf": [{ "$ref": "#/$defs/executionMode" }, { "type": "null" }]
         },
         "status": {
           "$ref": "#/$defs/status"

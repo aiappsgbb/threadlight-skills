@@ -321,15 +321,16 @@ def _call_qualified_name(call: ast.Call) -> Optional[str]:
 
 # Statement/expression types under which a nested call might not actually
 # execute at runtime — an ``if``/``elif``/``else`` branch, a ternary
-# expression's branch, a ``try``/``except``/``finally`` block, or a
+# expression's branch, a ``try``/``except``/``finally`` block, a
+# ``with``/``async with`` body (whose context-manager entry can fail), or a
 # ``while``/``for``/``async for`` loop body (which can run zero times).
-# Every call reached only through one of these is "conditional"; a
-# ``with`` block is deliberately excluded because its body always executes
-# once its context manager is entered.
+# Every call reached only through one of these is "conditional".
 _CONDITIONAL_NODE_TYPES: Tuple[type, ...] = (
     ast.If,
     ast.IfExp,
     ast.Try,
+    ast.With,
+    ast.AsyncWith,
     ast.While,
     ast.For,
     ast.AsyncFor,
@@ -743,7 +744,7 @@ def _receipt_evidence_kinds(probe: "ProbeResult") -> frozenset[str]:
     return frozenset(items_by_id[reference].kind for reference in probe.evidence_refs)
 
 
-def _receipt_status(path: PathRecord, probe: "ProbeResult") -> str:
+def _receipt_status(probe: "ProbeResult") -> str:
     kinds = _receipt_evidence_kinds(probe)
     if not kinds:
         return "not-verified"
@@ -759,7 +760,7 @@ def _receipt_status(path: PathRecord, probe: "ProbeResult") -> str:
             "deny_decision_without_invocation",
         ):
             return "not-verified"
-        return "pass" if path.covered else "must-fix"
+        return "pass"
     return "not-verified"
 
 
@@ -854,7 +855,7 @@ def apply_execution_receipts(
         duplicate_receipts = len(
             {(probe.probe_id, probe.path_id) for probe in matches}
         ) != len(matches)
-        receipt_statuses = {_receipt_status(path, probe) for probe in matches}
+        receipt_statuses = {_receipt_status(probe) for probe in matches}
         executed = any(_receipt_is_executed(probe) for probe in matches)
         if (
             duplicate_receipts
@@ -867,7 +868,12 @@ def apply_execution_receipts(
         elif "should-fix" in receipt_statuses:
             status = "should-fix"
         elif receipt_statuses == {"pass"} and executed:
-            status = "pass"
+            if path.static_assessment == "bypass-proven":
+                status = "must-fix"
+            elif path.static_assessment == "mediated-candidate":
+                status = "pass"
+            else:
+                status = "not-verified"
         else:
             status = "not-verified"
         updated.append(
@@ -981,11 +987,20 @@ def _build_path(
     static = _static_evidence(root, action, mode, ast_index, candidate_files)
     if static is not None:
         nodes, found_relative = static
+        statically_covered, _static_status = _recompute_coverage(nodes)
+        static_assessment = (
+            "mediated-candidate"
+            if statically_covered
+            else "bypass-proven"
+            if "tool-service" in nodes
+            else "incomplete"
+        )
         evidence_refs = tuple(
             sorted(set(entry_refs) | {found_relative})
         )
     elif adapter_declared is not None:
         nodes = adapter_declared.nodes
+        static_assessment = "incomplete"
         evidence_refs = tuple(sorted(set(entry_refs) | set(adapter_declared.evidence_refs)))
     else:
         nodes = ("entry",)
@@ -1023,6 +1038,7 @@ def _build_path(
         evidence_refs=evidence_refs,
         discovered=True,
         executed=False,
+        static_assessment=static_assessment,
     )
 
 

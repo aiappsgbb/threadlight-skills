@@ -163,6 +163,7 @@ import importlib
 import inspect
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -693,7 +694,6 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
 
 
 def validate_execution_paths(
-    root: Path,
     contract: Mapping[str, object],
     discovered_paths: Sequence["PathRecord"],
 ) -> Tuple[Mapping[str, str], ...]:
@@ -703,7 +703,6 @@ def validate_execution_paths(
     invokes only ``execution_dispatch`` and verifies the resolved target against
     the dispatcher's same-module ``EXECUTION_ROUTES`` table.
     """
-    del root
     bindings = tuple(contract.get("execution_paths", ()))
     expected = {
         (path.action_id, path.mode): path
@@ -877,6 +876,7 @@ _PATH_PRE_DECISION_KIND = "path-pre-action-decision"
 _PATH_INVOCATION_KIND = "path-tool-invocation"
 _PATH_RESOLVED_KIND = "path-resolved-function"
 _PATH_ROUTING_TARGET_KIND = "path-routing-table-target"
+_PATH_PROOF_SOURCE = "assessor:execution-path-proof-channel"
 _PATH_CHILD_ARG = "--path-child"
 PATH_PROBE_IDS = _PATH_PROBE_IDS
 
@@ -1034,7 +1034,11 @@ def _build_path_probe_result(
                 }[str(event["event"])]
             ),
             ledger_source,
-            event,
+            {
+                key: value
+                for key, value in event.items()
+                if key != "proof_nonce"
+            },
         )
         for event in evidence_events
     )
@@ -1058,7 +1062,7 @@ def run_execution_path_probe_set(
     """Execute every bound action/mode through the application dispatcher."""
     root_path = Path(root).resolve()
     contract = load_probe_contract(root_path)
-    bindings = validate_execution_paths(root_path, contract, discovered_paths)
+    bindings = validate_execution_paths(contract, discovered_paths)
     ledger_dir = root_path / Path(contract["observation_ledger"]).parent
     created_dirs = _missing_ancestor_dirs(ledger_dir)
     try:
@@ -1076,16 +1080,8 @@ def run_execution_path_probe_set(
             key=lambda item: (item["action_id"], item["mode"], item["path_id"]),
         ):
             for decision in _PATH_PROBE_DECISIONS:
-                ledger_path: Optional[Path] = None
                 target_ledger_path: Optional[Path] = None
                 try:
-                    ledger_fd, ledger_name = tempfile.mkstemp(
-                        dir=str(ledger_dir),
-                        prefix=f".path-probe-{binding['path_id']}-{decision}-",
-                        suffix=".jsonl",
-                    )
-                    os.close(ledger_fd)
-                    ledger_path = Path(ledger_name)
                     target_ledger_fd, target_ledger_name = tempfile.mkstemp(
                         dir=str(ledger_dir),
                         prefix=f".path-target-{binding['path_id']}-{decision}-",
@@ -1094,8 +1090,6 @@ def run_execution_path_probe_set(
                     os.close(target_ledger_fd)
                     target_ledger_path = Path(target_ledger_name)
                 except OSError as error:
-                    if ledger_path is not None:
-                        ledger_path.unlink(missing_ok=True)
                     if target_ledger_path is not None:
                         target_ledger_path.unlink(missing_ok=True)
                     raise PartialProbeToolingError(
@@ -1103,14 +1097,12 @@ def run_execution_path_probe_set(
                         partial_results=tuple(results),
                     ) from error
                 try:
-                    assert ledger_path is not None
                     assert target_ledger_path is not None
                     try:
                         outcome = _dispatch_path_child(
                             root_path,
                             contract,
                             binding,
-                            ledger_path,
                             target_ledger_path,
                             decision,
                         )
@@ -1122,13 +1114,11 @@ def run_execution_path_probe_set(
                         _build_path_probe_result(
                             binding,
                             outcome,
-                            str(contract["observation_ledger"]),
+                            _PATH_PROOF_SOURCE,
                             f"{_PATH_PROBE_ID_PREFIX}{decision}",
                         )
                     )
                 finally:
-                    if ledger_path is not None:
-                        ledger_path.unlink(missing_ok=True)
                     if target_ledger_path is not None:
                         target_ledger_path.unlink(missing_ok=True)
     finally:
@@ -1703,14 +1693,79 @@ def _dispatch_child(
     }
 
 
+def _decode_path_proof_events(raw: bytes, proof_nonce: str) -> List[Mapping[str, object]]:
+    events: List[Mapping[str, object]] = []
+    for line in raw.splitlines():
+        try:
+            parsed = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if (
+            isinstance(parsed, Mapping)
+            and isinstance(parsed.get("proof_nonce"), str)
+            and secrets.compare_digest(str(parsed["proof_nonce"]), proof_nonce)
+        ):
+            events.append(parsed)
+    return events
+
+
+def _read_all_fd(fd: int) -> bytes:
+    chunks = []
+    while True:
+        chunk = os.read(fd, 65_536)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
 def _dispatch_path_child(
     root_path: Path,
     contract: Mapping[str, object],
     binding: Mapping[str, str],
-    assessor_ledger_path: Path,
     target_ledger_path: Path,
     decision: str,
 ) -> Mapping[str, object]:
+    proof_nonce = secrets.token_hex(32)
+    proof_read_fd: Optional[int] = None
+    proof_write_fd: Optional[int] = None
+    proof_path: Optional[Path] = None
+    proof_directory: Optional[tempfile.TemporaryDirectory[str]] = None
+    popen_extra: Mapping[str, object] = {}
+    try:
+        if os.name == "posix":
+            proof_read_fd, proof_write_fd = os.pipe()
+            popen_extra = {"pass_fds": (proof_write_fd,)}
+        else:
+            proof_base = Path(tempfile.gettempdir()).resolve()
+            try:
+                proof_base.relative_to(root_path)
+            except ValueError:
+                pass
+            else:
+                raise ProbeToolingError(
+                    "assessor proof directory would resolve inside the target root"
+                )
+            proof_directory = tempfile.TemporaryDirectory(
+                prefix="threadlight-assessor-path-proof-",
+                dir=str(proof_base),
+            )
+            proof_path = (
+                Path(proof_directory.name).resolve()
+                / f"{secrets.token_hex(32)}.jsonl"
+            )
+            proof_fd = os.open(
+                proof_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            os.close(proof_fd)
+    except OSError as error:
+        if proof_directory is not None:
+            proof_directory.cleanup()
+        raise ProbeToolingError(
+            f"cannot create assessor execution-path proof channel: {error}"
+        ) from error
+
     stdin_bytes = canonical.canonical_bytes(
         {
             "binding": dict(binding),
@@ -1720,7 +1775,9 @@ def _dispatch_path_child(
             ],
             "decision": decision,
             "execution_dispatch": contract["execution_dispatch"],
-            "assessor_ledger_path": str(assessor_ledger_path),
+            "proof_fd": proof_write_fd,
+            "proof_path": str(proof_path) if proof_path is not None else None,
+            "proof_nonce": proof_nonce,
             "target_ledger_path": str(target_ledger_path),
         }
     )
@@ -1731,47 +1788,70 @@ def _dispatch_path_child(
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONIOENCODING": "utf-8",
     }
+    proof_bytes = b""
     try:
-        process = subprocess.Popen(  # noqa: S603 - fixed, trusted argv; no shell
-            [sys.executable, str(THIS_FILE), _PATH_CHILD_ARG],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            cwd=str(root_path),
-        )
-    except OSError as error:
-        raise ProbeToolingError(
-            f"cannot start isolated execution-path probe subprocess: {error}"
-        ) from error
-
-    try:
-        assert process.stdin is not None
-        process.stdin.write(stdin_bytes)
-        process.stdin.close()
-    except (OSError, ValueError):
-        pass
-
-    child_error: Optional[str] = None
-    stdout_bytes = b""
-    exit_code: Optional[int] = None
-    if not _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S):
-        process.kill()
-        _reap_killed_child(process)
-        child_error = "startup_failed"
-    else:
         try:
-            stdout_bytes, _stderr_bytes = process.communicate(
-                timeout=contract["timeout_ms"] / 1000.0
+            process = subprocess.Popen(  # noqa: S603 - fixed, trusted argv; no shell
+                [sys.executable, str(THIS_FILE), _PATH_CHILD_ARG],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=str(root_path),
+                **popen_extra,
             )
-            exit_code = process.returncode
-        except subprocess.TimeoutExpired:
+        except OSError as error:
+            raise ProbeToolingError(
+                f"cannot start isolated execution-path probe subprocess: {error}"
+            ) from error
+        finally:
+            if proof_write_fd is not None:
+                os.close(proof_write_fd)
+                proof_write_fd = None
+
+        try:
+            assert process.stdin is not None
+            process.stdin.write(stdin_bytes)
+            process.stdin.close()
+        except (OSError, ValueError):
+            pass
+
+        child_error: Optional[str] = None
+        stdout_bytes = b""
+        exit_code: Optional[int] = None
+        if not _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S):
             process.kill()
             _reap_killed_child(process)
-            child_error = "timeout"
+            child_error = "startup_failed"
         else:
-            if exit_code != 0:
-                child_error = "nonzero_exit"
+            try:
+                stdout_bytes, _stderr_bytes = process.communicate(
+                    timeout=contract["timeout_ms"] / 1000.0
+                )
+                exit_code = process.returncode
+            except subprocess.TimeoutExpired:
+                process.kill()
+                _reap_killed_child(process)
+                child_error = "timeout"
+            else:
+                if exit_code != 0:
+                    child_error = "nonzero_exit"
+    finally:
+        if proof_write_fd is not None:
+            os.close(proof_write_fd)
+        if proof_read_fd is not None:
+            try:
+                proof_bytes = _read_all_fd(proof_read_fd)
+            finally:
+                os.close(proof_read_fd)
+        elif proof_path is not None:
+            try:
+                proof_bytes = proof_path.read_bytes()
+            except OSError:
+                proof_bytes = b""
+        if proof_directory is not None:
+            proof_directory.cleanup()
+
     report: Optional[Mapping[str, object]] = None
     if child_error is None:
         try:
@@ -1780,7 +1860,7 @@ def _dispatch_path_child(
             report = parsed
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             child_error = "malformed_output"
-    events = _read_ledger_events(assessor_ledger_path)
+    events = _decode_path_proof_events(proof_bytes, proof_nonce)
     resolved_path = report.get("resolved_path") if report is not None else None
     expected_resolved_path = (
         report.get("expected_resolved_path") if report is not None else None
@@ -2007,7 +2087,15 @@ def _run_path_as_child() -> None:
         (str(item[0]), str(item[1])) for item in payload["declared_routes"]
     }
     requested_decision = str(payload["decision"])
-    assessor_ledger_path = str(payload["assessor_ledger_path"])
+    proof_nonce = str(payload["proof_nonce"])
+    proof_fd = payload.get("proof_fd")
+    proof_path = payload.get("proof_path")
+    if proof_fd is not None:
+        if not isinstance(proof_fd, int) or isinstance(proof_fd, bool):
+            raise TypeError("proof_fd must be an integer or null")
+        os.set_inheritable(proof_fd, False)
+    elif not isinstance(proof_path, str) or not proof_path:
+        raise TypeError("proof_path must be a non-empty string when proof_fd is absent")
     target_ledger_path = str(payload["target_ledger_path"])
     action_id = str(binding["action_id"])
     mode = str(binding["mode"])
@@ -2021,22 +2109,36 @@ def _run_path_as_child() -> None:
         record = {
             "event": event,
             "evidence_id": evidence_id,
+            "proof_nonce": proof_nonce,
             "action_id": action_id,
             "mode": mode,
             "path_id": path_id,
             **fields,
         }
-        with open(assessor_ledger_path, "a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n"
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
+        encoded = canonical.canonical_bytes(record) + b"\n"
+        if proof_fd is not None:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(proof_fd, view)
+                view = view[written:]
+        else:
+            assert isinstance(proof_path, str)
+            with open(proof_path, "ab") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
 
     class _AwaitableMapping(dict):
         def __await__(self):
             async def resolved():
                 return self
+
+            return resolved().__await__()
+
+    class _AwaitableNoop:
+        def __await__(self):
+            async def resolved():
+                return None
 
             return resolved().__await__()
 
@@ -2055,8 +2157,8 @@ def _run_path_as_child() -> None:
                 raise _SyntheticPathDenied("synthetic path probe denial")
             return _AwaitableMapping(decision=requested_decision)
 
-        def __getattr__(self, _name: str) -> Callable[..., None]:
-            return lambda *args, **kwargs: None
+        def __getattr__(self, _name: str) -> Callable[..., _AwaitableNoop]:
+            return lambda *args, **kwargs: _AwaitableNoop()
 
     class _SyntheticTool:
         def __getattr__(self, _name: str) -> Callable[..., Mapping[str, object]]:
@@ -2076,8 +2178,8 @@ def _run_path_as_child() -> None:
             return invoke
 
     class _SyntheticNoop:
-        def __getattr__(self, _name: str) -> Callable[..., None]:
-            return lambda *args, **kwargs: None
+        def __getattr__(self, _name: str) -> Callable[..., _AwaitableNoop]:
+            return lambda *args, **kwargs: _AwaitableNoop()
 
     dispatch_globals = getattr(dispatch, "__globals__", None)
     if not isinstance(dispatch_globals, dict):

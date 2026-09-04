@@ -440,6 +440,7 @@ def test_correlated_executed_receipt_turns_a_discovered_path_into_pass():
         evidence_refs=("app/agent.py",),
         discovered=True,
         executed=False,
+        static_assessment="mediated-candidate",
     )
 
     updated_paths, findings = apply_execution_receipts(
@@ -479,6 +480,7 @@ def test_executed_bypass_receipt_remains_must_fix():
         evidence_refs=("app/agent.py",),
         discovered=True,
         executed=False,
+        static_assessment="bypass-proven",
     )
 
     updated_paths, findings = apply_execution_receipts(
@@ -502,6 +504,38 @@ def test_executed_bypass_receipt_remains_must_fix():
     assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
 
 
+def test_static_bypass_cannot_be_erased_by_a_passing_receipt():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "tool-service"),
+        pre_action_seam=None,
+        equivalent_control_ref=None,
+        covered=False,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="bypass-proven",
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "allow",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is True
+    assert updated_paths[0].status == "must-fix"
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
 def test_wrong_action_or_path_receipt_cannot_verify_the_path():
     path = PathRecord(
         path_id="path-1",
@@ -515,6 +549,7 @@ def test_wrong_action_or_path_receipt_cannot_verify_the_path():
         evidence_refs=("app/agent.py",),
         discovered=True,
         executed=False,
+        static_assessment="mediated-candidate",
     )
 
     updated_paths, findings = apply_execution_receipts(
@@ -598,6 +633,7 @@ def test_multiple_valid_fault_receipts_for_one_path_aggregate_to_pass():
         evidence_refs=("app/agent.py",),
         discovered=True,
         executed=False,
+        static_assessment="mediated-candidate",
     )
     receipts = (
         _path_receipt("deny"),
@@ -1227,6 +1263,143 @@ def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass
     assert "pre-action-seam" not in path.nodes
     assert "tool-service" in path.nodes
     assert any(f.finding_id == "MED-002" for f in graph.findings)
+
+
+@pytest.mark.parametrize(
+    ("function_prefix", "with_statement"),
+    [
+        ("def", "with contextlib.suppress(Exception):"),
+        ("async def", "async with contextlib.nullcontext():"),
+    ],
+)
+def test_context_manager_scoped_pre_action_seam_is_not_credited(
+    tmp_path: Path,
+    function_prefix: str,
+    with_statement: str,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            f"""
+            import contextlib
+
+
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {{"decision": "allow"}}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {{"cancelled": True}}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            {function_prefix} direct_tool_orders_cancel(**kwargs):
+                {with_statement}
+                    agent_hooks.pre_tool_call(**kwargs)
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+
+    assert path.pre_action_seam is None
+    assert path.covered is False
+    assert path.static_assessment == "bypass-proven"
+
+
+def test_helper_delegation_with_valid_receipt_stays_not_verified(
+    tmp_path: Path,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def _invoke_cancel(**kwargs):
+                return tool_service.cancel_order(**kwargs)
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return _invoke_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
+    med002 = next(f for f in findings if f.finding_id == "MED-002")
+
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert "app/agent.py" in med002.evidence_refs
+    assert path.path_id in med002.affected_paths
+    assert not [f for f in findings if f.finding_id == "MED-001"]
 
 
 def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definition(

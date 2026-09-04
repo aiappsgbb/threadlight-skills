@@ -1009,6 +1009,7 @@ def _populated_manifest():
                 "probe_id": "probe-1",
                 "action_id": "send_email",
                 "path_id": "path-1",
+                "mode": "interactive",
                 "status": "pass",
                 "reason_code": "hook-observed",
                 "expected_sha256": _sha("4"),

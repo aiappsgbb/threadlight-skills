@@ -191,6 +191,7 @@ def _probe(
     *,
     expected: str = "expected-value",
     observed: str = "observed-value",
+    mode: Optional[str] = "direct-tool",
 ) -> contracts.ProbeResult:
     return contracts.ProbeResult(
         probe_id=probe_id,
@@ -201,6 +202,7 @@ def _probe(
         expected=expected,
         observed=observed,
         evidence_refs=(f"EVID-{probe_id}",),
+        mode=mode,
     )
 
 
@@ -540,6 +542,7 @@ def test_manifest_never_contains_probe_payload_values():
     assert "SENTINEL-OBSERVED-PAYLOAD" not in serialized
     probes = manifest["conformance"]["application_probes"]
     delete_record_probe = next(p for p in probes if p["probe_id"] == "probe-delete-record")
+    assert delete_record_probe["mode"] == "direct-tool"
     assert delete_record_probe["expected_sha256"] == _sha256_of("SENTINEL-EXPECTED-PAYLOAD")
     assert delete_record_probe["observed_sha256"] == _sha256_of("SENTINEL-OBSERVED-PAYLOAD")
     assert "expected" not in delete_record_probe

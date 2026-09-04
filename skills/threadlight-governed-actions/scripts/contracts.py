@@ -61,6 +61,7 @@ class UnsafeTargetError(ValueError):
 Phase = Literal["design", "pre-deploy", "post-deploy"]
 Status = Literal["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
 Consequence = Literal["read", "write", "external-egress", "irreversible"]
+StaticAssessment = Literal["bypass-proven", "mediated-candidate", "incomplete"]
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,7 @@ class PathRecord:
     evidence_refs: Tuple[str, ...]
     discovered: bool = False
     executed: bool = False
+    static_assessment: StaticAssessment = "incomplete"
 
 
 @dataclass(frozen=True)

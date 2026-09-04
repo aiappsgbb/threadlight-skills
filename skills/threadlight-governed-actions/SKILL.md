@@ -5,10 +5,11 @@ description: >-
   inventoried, mediated, enforced, approved, and auditable — then emits a
   customer-facing Governance Evidence Pack. Read-only by default. Inventories
   declared vs implemented actions, traces mediation across all six execution
-  modes, runs hermetic application-path probes (deny, transform, crash,
-  timeout, malformed verdict, approval replay, output gating, payload-free
-  audit), and assesses the GitHub Copilot change plane (PR-only, CODEOWNERS,
-  required checks, SHA pins, OIDC/WIF, identity separation). USE FOR:
+  modes, runs path-bound allow/deny receipts plus generic enforcement probes
+  (deny, transform, crash, timeout, malformed verdict, approval replay, output
+  gating, payload-free audit), and assesses the GitHub Copilot change plane
+  (PR-only, CODEOWNERS, required checks, SHA pins, OIDC/WIF, identity
+  separation). USE FOR:
   governance evidence, evidence pack, consequential actions, action inventory,
   Agent Hooks mediation, interceptor coverage, fail-closed enforcement,
   approval anti-replay, output mediation, payload-free audit, GHCP
@@ -45,7 +46,7 @@ alert catalog ────────────────────► al
 | Phase | Invoke | What it proves |
 | --- | --- | --- |
 | `design` | after `threadlight-design`, before code exists | the SPEC § 8 action declaration is complete and every action has an explicit consequence class |
-| `pre-deploy` | before `threadlight-deploy` | declared and implemented actions agree, every consequential path is mediated, and the application probes actually enforce deny/transform/fail-closed, approval anti-replay, output gating, and payload-free audit |
+| `pre-deploy` | before `threadlight-deploy` | declared and implemented actions agree; path-bound allow/deny receipts verify mediation candidates; separate generic probes exercise deny/transform/fail-closed, approval anti-replay, output gating, and payload-free audit |
 | `post-deploy` | **staging only** | the same assessment against a deployed non-production environment; `--phase post-deploy` refuses to run without `--staging-resource-group` naming an explicit, non-production staging resource group |
 
 `post-deploy` is deliberately staging-only. This skill never runs, not even
@@ -78,7 +79,7 @@ A `not-verified` finding is never silently converted to `pass`.
 
 `governance/probe-contract.json` must declare one importable application
 execution dispatcher and bind every assessor-discovered, non-provider mediation
-path to its recomputed identity:
+path to its recomputed path id and action/mode routing-table key:
 
 ```json
 {
@@ -102,18 +103,22 @@ recomputed `PathRecord`, and the set must be unique and complete.
 
 The application module owns an explicit `EXECUTION_ROUTES` table with exactly
 the declared action/mode keys. In an isolated child, the assessor calls
-`execution_dispatch(action_id, mode, case, ledger_path)` and replaces the
-resolved route's hook/tool/provider namespaces with assessor-owned synthetic
-implementations. The dispatch result and ledger record the resolved function
-identity, action, and mode; the child checks that identity against
-`EXECUTION_ROUTES`. Target-written metadata goes to a separate target ledger;
-only the assessor-owned route wrapper and synthetic hook/tool channel can
-produce proof events. The assessor then calculates decision/invocation order
-from that protected ledger. A deny followed by any invocation is fail-open.
-Allow or transform may invoke only after `pre_action_decision`. Startup failure,
-timeout, nonzero exit, or malformed output remains `not-verified` unless the
-assessor ledger independently proves a bypass. Static AST discovers candidate
-path shape but never chooses the callable or grants `pass`.
+`execution_dispatch(action_id, mode, case, target_ledger_path)` and replaces the
+routing-table target's hook/tool/provider namespaces with assessor-owned
+synthetic implementations. The assessor wraps that selected target and records
+whether the wrapper was invoked; this verifies the declared local routing-table
+selection, not stronger application or production reachability. Target-written
+metadata goes only to its separate target ledger. On POSIX, proof events flow
+through an assessor-created pipe whose write descriptor alone is inherited by
+the child; each canonical JSONL event carries an assessor nonce that the parent
+matches exactly. The Windows fallback uses an assessor-private temporary
+directory outside the target plus the same unpredictable nonce. Neither proof
+location nor nonce is passed to the target dispatcher. A deny followed by any
+invocation is fail-open. Allow may invoke only after `pre_action_decision`.
+Startup failure, timeout, nonzero exit, or malformed output remains
+`not-verified` unless the assessor proof channel independently proves a bypass.
+Static AST classifies each path as `bypass-proven`, `mediated-candidate`, or
+`incomplete`; only a mediated candidate plus a valid receipt passes.
 
 This is **scoped local conformance evidence only**: it proves what happened when
 the declared application dispatcher was executed with synthetic inputs. It
@@ -185,7 +190,7 @@ finding, never a status.
 | `MED-001` | runtime | A consequential path lacks evidenced pre-action mediation. |
 | `MED-002` | runtime | Interactive, batch, background, subagent, or direct-tool coverage is absent or indeterminate. |
 | `MED-003` | runtime | A provider-hosted side effect is not pre-interceptable and lacks equivalent server-side proof. |
-| `ENF-001` | runtime | Deny or transform is not enforced on the application path. |
+| `ENF-001` | runtime | The separate generic enforcement probe does not enforce deny or transform. |
 | `ENF-002` | runtime | Crash, timeout, or malformed verdict does not fail closed. |
 | `APR-001` | runtime | Approval is not actor-, tenant-, policy-, action-, argument-, expiry-, and nonce-bound with atomic one-time redemption. |
 | `OUT-001` | runtime | Protected output can egress before mediation. |

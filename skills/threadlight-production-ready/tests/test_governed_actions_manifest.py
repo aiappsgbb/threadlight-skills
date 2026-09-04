@@ -97,6 +97,17 @@ def _golden() -> dict:
     return json.loads(GOLDEN_MANIFEST.read_text(encoding="utf-8"))
 
 
+def _with_probe_modes(manifest: dict | None = None) -> dict:
+    manifest = manifest or _golden()
+    path_modes = {
+        path["path_id"]: path["mode"] for path in manifest["mediation_paths"]
+    }
+    for probe in manifest["conformance"]["application_probes"]:
+        path_id = probe["path_id"]
+        probe["mode"] = path_modes[path_id] if path_id is not None else None
+    return manifest
+
+
 def _rebuild_summary(manifest: dict) -> dict:
     """Restamp `summary` so it agrees with `findings` (counts included).
 
@@ -446,6 +457,29 @@ def test_non_object_manifest_is_not_verified(tmp_path):
 def test_wrong_schema_is_not_verified(tmp_path):
     manifest = _golden()
     manifest["schema"] = "threadlight-governed-actions-manifest/v2"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_application_probe_missing_mode_is_not_verified(tmp_path):
+    manifest = _with_probe_modes()
+    del manifest["conformance"]["application_probes"][0]["mode"]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_application_probe_malformed_mode_is_not_verified(tmp_path):
+    manifest = _with_probe_modes()
+    manifest["conformance"]["application_probes"][0]["mode"] = 42
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_path_probe_mode_must_match_mediation_path(tmp_path):
+    manifest = _with_probe_modes()
+    probe = next(
+        item
+        for item in manifest["conformance"]["application_probes"]
+        if item["path_id"] is not None
+    )
+    probe["mode"] = "provider-hosted-tool"
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 

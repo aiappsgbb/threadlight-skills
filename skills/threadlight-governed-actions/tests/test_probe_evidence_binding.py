@@ -328,6 +328,39 @@ def test_unresolvable_probe_citation_can_never_pass(target: Path, monkeypatch):
         assert any(ref.evidence_id == evidence_id for ref in result.evidence)
 
 
+def test_unresolvable_path_receipt_maps_to_med002_with_path_evidence(
+    tmp_path: Path,
+):
+    probe = contracts.ProbeResult(
+        probe_id="path-dispatch-allow",
+        action_id="payments.refund",
+        path_id="path-1",
+        mode="background",
+        status="pass",
+        reason_code="path-dispatch-mediated",
+        expected="pre_action_decision_before_invocation_or_deny",
+        observed="pre_action_decision_before_invocation",
+        evidence_refs=("missing-proof",),
+        evidence_items=(),
+    )
+
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe,),
+        contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False),
+        contracts.AssessmentOptions(root=tmp_path, phase="pre-deploy", now=NOW),
+        (),
+        path_evidence_by_id={"path-1": ("agent.yaml", "app/agent.py")},
+    )
+
+    assert kept[0].status == "not-verified"
+    assert evidence == ()
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.finding_id == "MED-002"
+    assert finding.affected_paths == ("path-1",)
+    assert finding.evidence_refs == ("agent.yaml", "app/agent.py")
+
+
 # ---------------------------------------------------------------------------
 # APR-001
 # ---------------------------------------------------------------------------

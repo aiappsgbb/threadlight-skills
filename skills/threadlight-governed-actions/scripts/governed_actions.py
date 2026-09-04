@@ -558,7 +558,7 @@ def _run_probe_sets(
                 summary="Execution-path probes could not be completed.",
                 details=(
                     "At least one contract-bound path dispatch did not produce "
-                    "an observable assessor-owned ledger receipt, so mediation "
+                    "an observable assessor-owned proof-channel receipt, so mediation "
                     "coverage remains not-verified."
                 ),
             )
@@ -635,7 +635,11 @@ def _probe_action_unattributed_finding(
     )
 
 
-def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str) -> contracts.Finding:
+def _probe_evidence_unresolved_finding(
+    probe: contracts.ProbeResult,
+    phase: str,
+    path_evidence_by_id: Mapping[str, Tuple[str, ...]],
+) -> contracts.Finding:
     """An explicit not-verified finding for a probe that cited evidence
     the probe pipeline could not actually resolve to an observed
     artifact.
@@ -645,7 +649,17 @@ def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str)
     result is reported not-verified so it fails ``--gate`` exactly like
     any other unproven control.
     """
-    finding_id = _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    is_path_receipt = probe.probe_id in probes.PATH_PROBE_IDS
+    finding_id = (
+        "MED-002"
+        if is_path_receipt
+        else _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    )
+    path_refs = (
+        path_evidence_by_id.get(probe.path_id, ())
+        if is_path_receipt and probe.path_id is not None
+        else ()
+    )
     return contracts.Finding(
         finding_id=finding_id,
         status="not-verified",
@@ -661,6 +675,8 @@ def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str)
             "unresolvable citation."
         ),
         affected_actions=(probe.action_id,) if probe.action_id else (),
+        affected_paths=(probe.path_id,) if is_path_receipt and probe.path_id else (),
+        evidence_refs=tuple(sorted(path_refs)),
     )
 
 
@@ -691,6 +707,8 @@ def _bind_probe_evidence(
     source: contracts.SourceRef,
     options: contracts.AssessmentOptions,
     policy_hashes: Sequence[Mapping[str, str]],
+    *,
+    path_evidence_by_id: Optional[Mapping[str, Tuple[str, ...]]] = None,
 ) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...], Tuple[contracts.EvidenceRef, ...]]:
     """Bind every probe-cited evidence id to a real :class:`contracts.EvidenceRef`.
 
@@ -740,6 +758,7 @@ def _bind_probe_evidence(
     """
     policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
     findings: List[contracts.Finding] = []
+    path_evidence_by_id = path_evidence_by_id or {}
 
     # First pass: filter out probes citing an id their own
     # evidence_items never resolved at all -- unchanged from before,
@@ -778,7 +797,11 @@ def _bind_probe_evidence(
                     evidence_items=(),
                 )
             )
-            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            findings.append(
+                _probe_evidence_unresolved_finding(
+                    probe, options.phase, path_evidence_by_id
+                )
+            )
             continue
 
         _, items = resolved[index]
@@ -823,7 +846,11 @@ def _bind_probe_evidence(
                     evidence_items=(),
                 )
             )
-            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            findings.append(
+                _probe_evidence_unresolved_finding(
+                    probe, options.phase, path_evidence_by_id
+                )
+            )
             continue
 
         probe = replace(
@@ -1766,6 +1793,9 @@ def _assess_repository_controls(
         source,
         options,
         policy_hashes,
+        path_evidence_by_id={
+            path.path_id: path.evidence_refs for path in graph.paths
+        },
     )
     mediated_paths, mediation_findings = mediation.apply_execution_receipts(
         graph.paths, probe_results, phase=phase

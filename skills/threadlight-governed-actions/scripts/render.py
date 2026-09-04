@@ -472,6 +472,7 @@ def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
         "probe_id": probe.probe_id,
         "action_id": probe.action_id,
         "path_id": probe.path_id,
+        "mode": probe.mode,
         "status": probe.status,
         "reason_code": probe.reason_code,
         "expected_sha256": f"sha256:{canonical.sha256_hex(probe.expected.encode('utf-8'))}",

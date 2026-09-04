@@ -2346,6 +2346,14 @@ _GOVERNED_ACTIONS_EVIDENCE_KEYS = frozenset({
     "freshness_seconds", "live_verified", "phase", "repository",
     "source_commit", "target_environment", "policy_set_sha256",
 })
+_GOVERNED_ACTIONS_PROBE_KEYS = frozenset({
+    "probe_id", "action_id", "path_id", "mode", "status", "reason_code",
+    "expected_sha256", "observed_sha256", "evidence_refs",
+})
+_GOVERNED_ACTIONS_EXECUTION_MODES = frozenset({
+    "interactive", "batch", "background", "subagent", "direct-tool",
+    "provider-hosted-tool",
+})
 _GOVERNED_ACTIONS_SUMMARY_BUCKETS = (
     ("pass", "pass"), ("must_fix", "must-fix"), ("should_fix", "should-fix"),
     ("not_verified", "not-verified"), ("not_applicable", "not-applicable"),
@@ -2602,9 +2610,21 @@ def _validate_governed_actions_manifest(
     mediation_paths = manifest["mediation_paths"]
     if not isinstance(mediation_paths, list):
         return "mediation_paths must be an array"
+    path_modes: dict[str, str] = {}
     for path in mediation_paths:
         if not isinstance(path, dict):
             return "mediation_paths entries must be objects"
+        path_id = path.get("path_id")
+        path_mode = path.get("mode")
+        if (
+            not isinstance(path_id, str)
+            or not path_id
+            or not isinstance(path_mode, str)
+            or path_mode not in _GOVERNED_ACTIONS_EXECUTION_MODES
+            or path_id in path_modes
+        ):
+            return "mediation_paths has malformed or duplicate path identity"
+        path_modes[path_id] = path_mode
         refs = path.get("evidence_refs")
         if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
             return "mediation_paths has malformed evidence_refs"
@@ -2643,8 +2663,20 @@ def _validate_governed_actions_manifest(
     if not isinstance(probes, list):
         return "conformance.application_probes must be an array"
     for probe in probes:
-        if not isinstance(probe, dict):
-            return "conformance.application_probes entries must be objects"
+        if not isinstance(probe, dict) or set(probe) != _GOVERNED_ACTIONS_PROBE_KEYS:
+            return "conformance.application_probes entries do not match the probe contract"
+        path_id = probe["path_id"]
+        mode = probe["mode"]
+        if path_id is None:
+            if mode is not None:
+                return "non-path application probe must have null mode"
+        elif (
+            not isinstance(path_id, str)
+            or path_id not in path_modes
+            or not isinstance(mode, str)
+            or mode != path_modes[path_id]
+        ):
+            return "path application probe mode does not match its mediation path"
         refs = probe.get("evidence_refs", [])
         if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
             return "conformance.application_probes has malformed evidence_refs"
