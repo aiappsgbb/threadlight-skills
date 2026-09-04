@@ -224,6 +224,29 @@ def test_output_rejects_unknown_payload_fields_in_persisted_records(target, fiel
     assert "SENSITIVE-SENTINEL" not in repr(result)
 
 
+@pytest.mark.parametrize("trailing_record", (
+    b'{"raw_prompt":"SENSITIVE-SENTINEL",}\n',
+    b'not-json\n',
+    b'\xff\n',
+))
+def test_corrupt_ledger_cannot_certify_filtered_output_or_audit(target, trailing_record):
+    (target / "app" / "agent.py").write_text(TARGET + (
+        "\n_original_dispatch = dispatch\n"
+        "def dispatch(*args):\n"
+        "    _original_dispatch(*args)\n"
+        "    with open(args[-1], 'ab') as handle:\n"
+        f"        handle.write({trailing_record!r})\n"
+    ))
+    before = snapshot(target)
+    with pytest.raises(probes.ProbeToolingError) as output_error:
+        probes.run_output_probe(target, "allow")
+    with pytest.raises(probes.ProbeToolingError) as audit_error:
+        probes.run_privacy_probe_set(target)
+    assert "SENSITIVE-SENTINEL" not in str(output_error.value)
+    assert "SENSITIVE-SENTINEL" not in str(audit_error.value)
+    assert snapshot(target) == before
+
+
 @pytest.mark.parametrize("field,value", [
     ("audit_id", "x" * 257), ("correlation_id", "x" * 257),
     ("decision", "arbitrary prose"), ("decision", {"nested": "payload"}),
@@ -414,6 +437,42 @@ def test_real_collector_rejects_available_deployment_identity_mismatch(target, m
         collect_injected_azure(target, monkeypatch, [], [
             {"roleDefinitionName": "Reader", "scope": scope, field: "different"},
         ])
+
+
+def test_real_collector_rejects_wrong_observed_managed_identity(target, monkeypatch):
+    scope = f"/subscriptions/{DEPLOYED['subscription']}/resourceGroups/{DEPLOYED['resource_group']}"
+    credentials = [{
+        "id": scope + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
+        "OTHER-IDENTITY/federatedIdentityCredentials/one",
+        **{k: v for k, v in DEPLOYED.items() if k not in {"subscription", "resource_group"}},
+    }]
+    with pytest.raises(contracts.UnsafeTargetError, match="deploy_identity mismatch"):
+        collect_injected_azure(target, monkeypatch, credentials, [
+            {"roleDefinitionName": "Reader", "scope": scope},
+        ])
+
+
+def test_real_collector_preserves_matching_observed_managed_identity(target, monkeypatch):
+    scope = f"/subscriptions/{DEPLOYED['subscription']}/resourceGroups/{DEPLOYED['resource_group']}"
+    credentials = [{
+        "id": scope + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
+        "identity/federatedIdentityCredentials/one",
+        **{k: v for k, v in DEPLOYED.items() if k not in {"subscription", "resource_group"}},
+    }]
+    _, data, findings = collect_injected_azure(target, monkeypatch, credentials, [
+        {"roleDefinitionName": "Reader", "scope": scope},
+    ])
+    assert {"deploy_identity": "identity"} in data["observed_identities"]
+    assert not findings
+
+
+def test_unobserved_managed_identity_does_not_inherit_the_selector(target, monkeypatch):
+    scope = f"/subscriptions/{DEPLOYED['subscription']}/resourceGroups/{DEPLOYED['resource_group']}"
+    _, _, findings = collect_injected_azure(target, monkeypatch, [], [{
+        "roleDefinitionName": "Reader", "scope": scope,
+        **{k: v for k, v in DEPLOYED.items() if k not in {"subscription", "resource_group"}},
+    }])
+    assert any(f.reason_code == "azure-observed-target-not-verified" for f in findings)
 
 
 @pytest.mark.parametrize("observed_scope", (False, True))

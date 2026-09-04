@@ -2035,26 +2035,13 @@ def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) 
     return bytes(result[0]) == _CHILD_READY_MARKER
 
 def _read_ledger_events(ledger_path: Path) -> list:
-    """Read an observation/nonce ledger's JSONL events, tolerantly.
-
-    A missing ledger file, or a line that fails to parse as JSON at
-    all, is treated as *no evidence yet* — a killed child can leave a
-    partial trailing line, and that must never be mistaken for a real
-    recorded event. But a line that *does* parse as valid JSON while
-    not being a JSON object (a bare string, number, boolean, ``null``,
-    or array) is never silently accepted as an event either: every
-    caller unconditionally calls ``.get(...)`` on each returned event,
-    so returning anything non-mapping here would let a malformed or
-    adversarial target crash a caller with a raw ``AttributeError``
-    instead of a typed probe failure. Such a line raises
-    :class:`ProbeToolingError` instead — the ledger is corrupt/
-    malformed evidence, which is exactly as unobservable as no
-    evidence at all, never a silent pass.
-    """
+    """Read whole JSONL evidence without silently dropping corrupt records."""
     try:
         text = ledger_path.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return []
+    except (OSError, UnicodeError) as error:
+        raise ProbeToolingError("observation ledger is unreadable") from error
     events = []
     for line in text.splitlines():
         line = line.strip()
@@ -2062,15 +2049,14 @@ def _read_ledger_events(ledger_path: Path) -> list:
             continue
         try:
             parsed = json.loads(line)
-        except json.JSONDecodeError:
-            # A killed child can leave a partial trailing line; ignore
-            # it rather than let it look like a real recorded event.
-            continue
+        except json.JSONDecodeError as error:
+            raise ProbeToolingError(
+                "observation ledger contains a malformed JSON event"
+            ) from error
         if not isinstance(parsed, Mapping):
             raise ProbeToolingError(
-                f"observation ledger {ledger_path} contains a malformed "
-                f"event that is valid JSON but not a JSON object: "
-                f"{parsed!r}"
+                "observation ledger contains a malformed event "
+                "that is valid JSON but not a JSON object"
             )
         events.append(parsed)
     return events
@@ -2887,7 +2873,7 @@ def _read_nonce_records(ledger_path: Path) -> List[Mapping[str, object]]:
 
     A missing ledger file reads as no records at all — a nonce's very
     first redemption attempt has nothing to append to yet. Reuses
-    ``_read_ledger_events``'s tolerant, best-effort line parsing.
+    ``_read_ledger_events``'s strict parsing; a corrupt ledger is not evidence.
     """
     return _read_ledger_events(ledger_path)
 

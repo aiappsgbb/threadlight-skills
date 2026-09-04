@@ -3944,6 +3944,16 @@ def collect_live_azure(
     identity_fields = {
         "agent_name", "agent_version", "image_digest", "policy_digest", "environment",
     }
+    for record in federated_credentials:
+        resource_id = record.get("id")
+        identity_match = re.fullmatch(
+            r"/subscriptions/[^/]+/resourceGroups/[^/]+/providers/"
+            r"Microsoft\.ManagedIdentity/userAssignedIdentities/([^/]+)/"
+            r"federatedIdentityCredentials/[^/]+/?",
+            resource_id, re.I,
+        ) if isinstance(resource_id, str) else None
+        if identity_match:
+            observed_identities.append({"deploy_identity": identity_match[1]})
     for record in federated_credentials + role_assignments:
         scopes = [record[field] for field in ("id", "scope") if field in record]
         for scope in scopes or [None]:

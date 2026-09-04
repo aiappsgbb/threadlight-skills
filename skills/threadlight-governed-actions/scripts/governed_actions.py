@@ -1782,7 +1782,10 @@ def _collect_selected_live_evidence(
             findings.append(result.finding)
         live_azure = result.data
         if live_azure is not None:
-            selected = _deployment_target(options) or selected_scope
+            selected = {
+                **(_deployment_target(options) or selected_scope),
+                "deploy_identity": options.deploy_identity,
+            }
             # Only API-derived observations participate in comparison. Query
             # selectors bind collection provenance but are not observations.
             observations = live_azure.get("observed_scopes")
